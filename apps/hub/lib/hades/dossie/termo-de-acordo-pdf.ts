@@ -14,7 +14,10 @@
 //   - o cabeçalho, os três cartões e as tabelas limpas são os do extrato (`lib/apolo/pdf-timbrado.ts`,
 //     para onde os cartões e o cabeçalho com a unidade à direita subiram no mesmo dia);
 //   - as duas cláusulas do modelo ("manutenção das parcelas mensais regulares" e "inadimplemento do
-//     acordo") viraram três frases diretas em `REGRAS_DO_ACORDO`, sem perder nenhum dos efeitos;
+//     acordo") viraram três frases diretas, sem perder nenhum dos efeitos. ⚠️ EM 20/09/2026 ESSAS
+//     TRÊS FRASES SAÍRAM e entrou, no lugar delas, o texto do jurídico que o Lucas mandou
+//     (`TEXTO_LEGAL_DO_ACORDO`) — literal, porque agora este papel vai para a assinatura das três
+//     partes na Clicksign;
 //   - não há fecho "Belo Horizonte/MG, <data>" nem bloco de assinatura. Sem assinatura o fecho vira
 //     linha solta, e a data de emissão vai no rodapé. ⚠️ `blocoDeAssinatura` CONTINUA em
 //     `pdf-timbrado.ts`: a assinatura volta num segundo momento, e é lá que ela mora.
@@ -66,7 +69,6 @@ import {
   SOFT_TEXT,
   TEXT,
   tituloDeSecao,
-  topico,
   USABLE,
 } from "@/lib/apolo/pdf-timbrado";
 
@@ -136,21 +138,78 @@ export type DadosDoTermoDeAcordo = {
 export const TITULO_DO_TERMO_DE_ACORDO = "Termo de Acordo";
 
 /**
- * As regras do acordo, em três frases que se leem sem advogado.
+ * O título do bloco de fecho, como o Lucas escreveu no print.
  *
- * ⚠️ NENHUM EFEITO DO MODELO FICOU DE FORA, e isto é o que o teste trava. O modelo tinha dois blocos
- * de cartório: "manutenção das parcelas mensais regulares" (o acordo não substitui, não suspende e
- * não engloba as vincendas; o comprador continua obrigado às mensais; atraso nas mensais tem as
- * penalidades do contrato mesmo com o acordo em dia) e "inadimplemento do acordo" (perda das
- * condições negociadas, vencimento antecipado do saldo devedor, restabelecimento integral do
- * débito, encargos do contrato, medidas administrativas e judiciais). A redação mudou a pedido do
- * dono do produto (*"muito formal"*); o que o cliente assume, não.
+ * ⚠️ ELE NÃO É MAIS "IMPORTANTE". Até 19/09/2026 o bloco se chamava assim e trazia três frases
+ * escritas por nós; o texto que o Lucas mandou em 20/09/2026 vem com o PRÓPRIO cabeçalho, e trocar
+ * o cabeçalho dele pelo nosso seria reescrever o que ele pediu para entrar literal.
  */
-export const REGRAS_DO_ACORDO: string[] = [
-  "Este acordo cobre só as parcelas em atraso listadas acima. As parcelas mensais do contrato continuam vencendo normalmente e devem ser pagas em dia, junto com as do acordo.",
-  "Se uma parcela mensal do contrato atrasar, valem as penalidades previstas no contrato, mesmo que o acordo esteja sendo pago em dia.",
-  "Se qualquer parcela do acordo não for paga, o acordo é desfeito: as condições negociadas deixam de valer, o débito volta ao valor integral do contrato com os encargos previstos nele, o saldo devedor vence de uma vez e a cobrança pode seguir pela via administrativa ou judicial.",
+export const TITULO_DO_ACEITE = "ACEITE E CONDIÇÕES DO ACORDO";
+
+/**
+ * O TEXTO LEGAL DO ACORDO — LITERAL, palavra por palavra, como o dono do produto mandou.
+ *
+ * ────────────────────────────────────────────────────────────────────────────────────────────
+ * ⚠️ AQUI NÃO SE EDITA REDAÇÃO. Lucas, 20/09/2026: *"o que esta hoje esta aprovado quero so incluir
+ * o texto legal substituindo o texto de observacao"*.
+ * ────────────────────────────────────────────────────────────────────────────────────────────
+ *
+ * Este papel vai para a assinatura do comprador, do incorporador e da Careli: o que ele diz é o que
+ * as três partes assumem. Até 19/09/2026 o fecho era `REGRAS_DO_ACORDO`, três frases nossas, que
+ * resumiam sem advogado os dois blocos do modelo feito à mão. O texto abaixo é o do JURÍDICO e
+ * SUBSTITUI aquelas frases: ele cobre os mesmos efeitos (só as parcelas em atraso, as vincendas
+ * continuam vencendo, o não pagamento cancela as condições e atualiza o débito) e acrescenta os dois
+ * que faltavam: a tratativa extrajudicial pelo escritório de advocacia, com custos e honorários, e
+ * a declaração de leitura e aceite.
+ *
+ * ⚠️ UM ITEM DO ARRAY É UM PARÁGRAFO, e a quebra entre eles é a do print. Juntar dois num só, ou
+ * partir um em dois, mudaria a leitura de um texto que foi aprovado como está.
+ *
+ * ⚠️ NÃO LEVA TRAVESSÃO NEM TÓPICO. São seis parágrafos de prosa corrida, e é assim que eles são
+ * desenhados (`paragrafo`, na largura cheia) — a bolinha de `topico`, que o bloco antigo usava,
+ * transformaria um texto jurídico numa lista de obrigações e roubaria 12pt de recuo por linha.
+ *
+ * ⚠️ A ACENTUAÇÃO PASSA INTEIRA no WinAnsi das fontes padrão (Ç, Õ, à, ã, é, ê, ú estão todos na
+ * faixa \xA0-\xFF que `limpar` preserva). Nenhum caractere deste texto é comido no desenho.
+ */
+export const TEXTO_LEGAL_DO_ACORDO: string[] = [
+  "Ao assinar este termo, as partes declaram que estão de acordo com os valores, prazos e condições de pagamento aqui apresentados.",
+  "Este acordo refere-se somente às parcelas em atraso indicadas neste documento. As demais parcelas do contrato continuam vencendo normalmente e deverão ser pagas nas datas previstas.",
+  "Caso alguma parcela deste acordo não seja paga no vencimento, as condições negociadas poderão ser canceladas e o débito será atualizado conforme as regras do contrato.",
+  "Nesse caso, a cobrança poderá seguir por tratativa extrajudicial, inclusive por meio do escritório de advocacia responsável, podendo haver custos, encargos e honorários relacionados à cobrança, quando aplicáveis conforme o contrato e a legislação.",
+  "Se não houver regularização, poderão ser adotadas as medidas judiciais cabíveis.",
+  "Ao assinar, o COMPRADOR declara que leu, compreendeu e aceita estas condições.",
 ];
+
+/**
+ * QUEM ASSINA, dito no papel. Uma frase, e ela não faz parte do texto do jurídico.
+ *
+ * ────────────────────────────────────────────────────────────────────────────────────────────
+ * ⚠️ ELA NASCEU EM 20/09/2026, COM A ASSINATURA. Até aquele dia o termo era um IMPRESSO, e o
+ * próprio Lucas tinha dito *"não precisa colocar quem assina"*. No mesmo dia ele pediu o contrário
+ * do contrário: *"vamos levar esse documento para ser assinado na click. quem vai, o comprador, o
+ * incorporador e a nivea careli"*. O papel passou a ter TRÊS partes e continuava qualificando UMA,
+ * enquanto a primeira frase do texto legal fala no plural: *"as partes declaram que estão de
+ * acordo"*. Um instrumento que diz "as partes" e não diz quem são é exatamente o que a outra ponta
+ * discute depois.
+ * ────────────────────────────────────────────────────────────────────────────────────────────
+ *
+ * ⚠️ E ELA NOMEIA OS PAPÉIS, NÃO AS PESSOAS, E ISSO É MEDIDO. Qualificar a vendedora exigiria razão
+ * social, CNPJ e representante legal, que NENHUM dos dois caminhos do papel lê hoje: a montagem
+ * (`lib/hades/acordo/termo-em-pdf.ts`) recebe o acordo e a ficha do C2X, e quem lê o quadro do
+ * empreendimento é só o ENVIO. Ou o download passaria a abrir o Panteon também, ou os dois papéis
+ * divergiriam, que é justamente o que `termo-em-pdf.ts` existe para impedir. Some-se o custo de
+ * folha: o bloco do COMPRADOR ocupa cerca de 44pt, e repeti-lo para mais duas partes derrubaria a
+ * folha única que as 35 formas de produção têm hoje.
+ *
+ * ⚠️ QUEM QUALIFICA AS OUTRAS DUAS É A PÁGINA DE ASSINATURAS DA CLICKSIGN, e a frase diz isso com
+ * todas as letras em vez de deixar subentendido. Ela traz nome, e-mail, data, hora e o hash do
+ * documento de cada signatário. ⚠️ SE O LUCAS QUISER A QUALIFICAÇÃO COMPLETA NO CORPO DO PAPEL, é
+ * uma decisão dele, e ela precisa acontecer ANTES de `TERMO_DE_ACORDO_LIBERADO` virar `true`:
+ * implica ler o Panteon também no download e medir de novo a folha única.
+ */
+export const QUEM_ASSINA_O_TERMO =
+  "Assinam este termo o COMPRADOR, a VENDEDORA do empreendimento e a CARELI, administradora da carteira.";
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
 // AS FUNÇÕES PURAS QUE MONTAM AS FRASES E OS NÚMEROS
@@ -595,11 +654,23 @@ export type Disposicao = { grupos: number; ladoALado: boolean; passo: number };
  * mais densa cabe numa folha: aí o termo sai em mais de uma (ver `montarTermoDeAcordoPdf`), porque
  * papel com parcela a menos é pior que papel com duas folhas.
  *
- * ⚠️ O LIMITE MEDIDO (16/09/2026, PDF gerado e contado, já com o passo de 9pt): com as 37 parcelas
- * que a tela do Hades permite (entrada + 36), cabem numa folha até 42 parcelas em atraso com a ficha
- * mais comprida (nome em duas linhas, qualificação e endereço longos) e até 51 com a ficha curta.
- * Com 12 parcelas no acordo, até 69 e 78. No mesmo dia, a venda do C2X com mais vencidas tinha 33. O acordo real mais pesado medido (AC-000018: 18 em atraso, 25 no acordo)
- * sai lado a lado, com folga.
+ * ⚠️ O LIMITE MEDIDO (20/09/2026, PDF gerado e páginas contadas, já com o passo de 9pt): com as 37
+ * parcelas que a tela do Hades permite (entrada + 36), cabem numa folha até 24 parcelas em atraso
+ * com a ficha mais comprida (nome em duas linhas, qualificação e endereço longos) e até 36 com a
+ * ficha curta. Com 12 no acordo, 51 e 63; com 8 no acordo, 54 e 66.
+ *
+ * ⚠️ ESSE TETO CAIU, E O PREÇO FOI ESCOLHIDO. Até 19/09/2026 ele era 42 e 51 (com 37 no acordo),
+ * porque o bloco de fecho eram três frases nossas em 91pt de altura. Em 20/09/2026 o Lucas mandou o
+ * TEXTO LEGAL do jurídico para entrar literal (*"quero so incluir o texto legal substituindo o texto
+ * de observacao"*): seis parágrafos, 9 linhas, ~139pt — 48pt a mais, que é o mesmo que 16 linhas de
+ * parcela em três grupos. Baixar a fonte não devolve nada: entre 8pt e 6,8pt o texto legal ocupa as
+ * MESMAS 9 linhas (medido). Um quarto grupo de colunas também não serve — ele cortaria
+ * "R$ 1.234,56", que é o número que o cliente confere.
+ *
+ * ⚠️ E O QUE ACONTECE ACIMA DO TETO NÃO É PERDER PARCELA: o termo sai em duas folhas, com o aceite
+ * inteiro na última (ver o fim de `montarTermoDeAcordoPdf`). Nos 40 acordos que existem hoje em
+ * produção isso não acontece: o mais pesado aprovado tem 25 em atraso e 8 no acordo, e o maior
+ * reprovado, 48 em atraso e 4 no acordo — os dois em UMA folha.
  */
 export function escolherDisposicao(
   atraso: { linhas: unknown[] },
@@ -634,17 +705,44 @@ export function escolherDisposicao(
 }
 
 /**
- * Quanto o bloco "Importante" RESERVA: o título de seção e as três regras em 8pt.
+ * O corpo do texto legal.
  *
- * ⚠️ É O QUE `tituloDeSecao` E `topico` PEDEM A `garantirEspaco`, E NÃO O QUE ELES GASTAM. O título
- * pede 30pt e gasta 27; cada regra pede 4pt a mais que as linhas e gasta 2. Medir pelo gasto deixava
- * até 5pt de diferença, e é exatamente a sobra que, na borda, jogaria as regras sozinhas para uma
- * segunda folha com as tabelas cabendo na primeira. Se um dos dois mudar de medida, a conta daqui
- * erra, e o teste de página única é o que acusa.
+ * ⚠️ 7,8pt É O CORPO PADRÃO DE `paragrafo`, e não um número escolhido aqui. O bloco antigo eram três
+ * frases em 8pt dentro de `topico`; este é prosa corrida, e a peça da casa que escreve prosa corrida
+ * na largura cheia já tem o seu tamanho. Medido em 20/09/2026 (PDF gerado, linhas contadas): entre
+ * 8pt e 6,8pt o texto ocupa as MESMAS 9 linhas, então baixar a fonte não compra folha nenhuma —
+ * compra só texto mais difícil de ler num papel que o cliente assina.
  */
-function alturaDasRegras(ctx: Ctx): number {
-  const linhas = REGRAS_DO_ACORDO.map((regra) => quebrar(regra, ctx.font, 8, USABLE - 12).length);
-  return 30 + linhas.reduce((total, quantidade) => total + quantidade * 10.6 + 2, 0) + 2;
+const CORPO_DO_ACEITE = 7.8;
+
+/** O respiro entre um parágrafo e o seguinte: é ele que faz os seis se lerem como seis. */
+const RESPIRO_ENTRE_PARAGRAFOS = 3;
+
+/**
+ * Quanto o bloco do aceite RESERVA: o título de seção e os seis parágrafos do texto legal.
+ *
+ * ⚠️ É O QUE `tituloDeSecao` E `paragrafo` PEDEM A `garantirEspaco`, E NÃO O QUE ELES GASTAM. O
+ * título pede 30pt e gasta 27; `paragrafo` pede e gasta a mesma altura por linha, então aqui a
+ * conta fecha nas duas pontas — diferente do `topico` de antes, que pedia 4pt a mais que as linhas
+ * e gastava 2. Se uma das duas peças mudar de medida, a conta daqui erra, e o teste de página única
+ * é o que acusa.
+ *
+ * ⚠️ E A LARGURA É A CHEIA (`USABLE`), sem os 12pt de recuo do tópico: o texto legal é prosa, não
+ * lista, e medir com a largura errada reservaria altura para linhas que não existem.
+ */
+function alturaDoAceite(ctx: Ctx): number {
+  // ⚠️ A FRASE DE QUEM ASSINA ENTRA NA CONTA como um sétimo parágrafo. Reservar só os seis do
+  // jurídico faria o bloco pedir menos espaço do que gasta, e quem paga é a última linha, que
+  // desceria em cima do rodapé sem ninguém perceber.
+  const paragrafos = [...TEXTO_LEGAL_DO_ACORDO, QUEM_ASSINA_O_TERMO];
+  const linhas = paragrafos.map(
+    (paragrafoDoTexto) => quebrar(paragrafoDoTexto, ctx.font, CORPO_DO_ACEITE, USABLE).length,
+  );
+  const corpo = linhas.reduce(
+    (total, quantidade) => total + quantidade * (CORPO_DO_ACEITE + 2.6),
+    0,
+  );
+  return 30 + corpo + (paragrafos.length - 1) * RESPIRO_ENTRE_PARAGRAFOS + 2;
 }
 
 /**
@@ -713,7 +811,7 @@ export async function montarTermoDeAcordoPdf(
     vazio: "Sem parcelas definidas para este acordo.",
   };
 
-  const alturaDoFim = alturaDasRegras(ctx) + 4;
+  const alturaDoFim = alturaDoAceite(ctx) + 4;
   const disposicao = escolherDisposicao(atraso, acordo, ctx.y - CHAO - alturaDoFim);
 
   if (disposicao?.ladoALado) {
@@ -750,11 +848,23 @@ export async function montarTermoDeAcordoPdf(
     }
   }
 
-  // As regras descem inteiras: título e as três frases na mesma folha.
+  // O aceite desce inteiro: título e os seis parágrafos na mesma folha. Um texto legal partido ao
+  // meio, com o cabeçalho numa folha e a cláusula do inadimplemento na outra, é o tipo de papel que
+  // o advogado do cliente usa contra quem o emitiu.
   ctx.y -= 4;
-  tituloDeSecao(ctx, "Importante", alturaDoFim - 4 - 30);
-  for (const regra of REGRAS_DO_ACORDO) {
-    topico(ctx, regra, { color: TEXT, size: 8 });
+  tituloDeSecao(ctx, TITULO_DO_ACEITE, alturaDoFim - 4 - 30);
+  for (const [indice, paragrafoDoTexto] of [
+    ...TEXTO_LEGAL_DO_ACORDO,
+    QUEM_ASSINA_O_TERMO,
+  ].entries()) {
+    if (indice > 0) ctx.y -= RESPIRO_ENTRE_PARAGRAFOS;
+    // ⚠️ A FRASE DE QUEM ASSINA SAI EM CINZA, um degrau abaixo do texto do jurídico: ela é NOSSA,
+    // explica o instrumento, e não é cláusula. Misturá-la no mesmo tom faria o leitor contar sete
+    // parágrafos de texto legal onde o jurídico escreveu seis.
+    paragrafo(ctx, paragrafoDoTexto, {
+      color: indice === TEXTO_LEGAL_DO_ACORDO.length ? SOFT_TEXT : TEXT,
+      size: CORPO_DO_ACEITE,
+    });
   }
 
   desenharRodapes(

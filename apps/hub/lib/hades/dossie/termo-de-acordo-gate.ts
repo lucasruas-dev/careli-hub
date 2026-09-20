@@ -14,12 +14,16 @@
 // emitir"; qualquer texto quer dizer "não pode", e o texto é o que a tela escreve ao lado do botão,
 // em uma frase que quem cobra entende sem saber o que é `approval_status`.
 //
-// ⚠️ SÓ ACORDO APROVADO EMITE, E ISSO DEIXA O BOTÃO APAGADO PARA TODO MUNDO HOJE. Medido em
-// 16/09/2026 no Supabase de produção (`guardian_compromissos`, `kind = 'acordo'`): 18 acordos,
-// 14 `pendente`, 4 `reprovado`, ZERO `aprovado`. Exigir a aprovação é o certo — o termo vai para a
-// assinatura do cliente e fala em nome da Careli, e a mesa do gestor existe exatamente para isso —,
-// mas um botão que nunca acende e nunca explica seria o defeito da lição acima multiplicado por 18.
-// Então o botão existe em TODO acordo, e a frase diz o que falta.
+// ⚠️ SÓ ACORDO APROVADO EMITE, E DESDE 20/09/2026 ESSA RÉGUA TAMBÉM DECIDE O ENVIO PARA ASSINATURA.
+// Lucas, nesse dia: *"o acordo so pode ficar disponivel para envio depois da aprovacao"* — e o envio
+// chama ESTA função, não uma segunda leitura de `approval_status`
+// (`lib/hades/acordo/envio-gate.ts`). Exigir a aprovação é o certo: o termo vai para a assinatura do
+// cliente, do incorporador e da Careli, e a mesa do gestor existe exatamente para isso.
+//
+// ⚠️ E O QUADRO MUDOU. Em 16/09/2026 eram 18 acordos, 14 `pendente`, 4 `reprovado` e ZERO
+// `aprovado` — o botão não acendia para ninguém, e foi por isso que a frase nasceu. Medido de novo
+// em 20/09/2026: 40 acordos, 18 `aprovado`, 22 `reprovado`, zero pendentes. Ou seja, hoje o botão
+// acende em 18 deles e a frase do reprovado é a que os outros 22 leem.
 //
 // ⚠️ PROMESSA NÃO TEM TERMO. Promessa é "pago dia tal", sem parcelamento nem atualização do débito:
 // não há instrumento a assinar. A tela nem desenha o botão para ela; a frase existe para a rota,
@@ -82,9 +86,9 @@ export const MOTIVOS_DO_TERMO = {
  * mostra "aguarda aprovação": é o que o operador vê primeiro, e o gestor reprova o misturado antes
  * de o problema da unidade virar a frase da vez.
  *
- * ⚠️ `SEM UNIDADE` NÃO É HIPÓTESE. Medido em 16/09/2026: 2 dos 18 acordos (AC-000012 e AC-000014)
- * têm `acquisition_request_c2x_id` nulo, nasceram antes de 11/09/2026 juntando parcelas de dois
- * contratos cada. Sem a unidade o termo não tem PV nem objeto.
+ * ⚠️ `SEM UNIDADE` NÃO É HIPÓTESE. Medido de novo em 20/09/2026: 2 dos 40 acordos (AC-000012 e
+ * AC-000014) têm `acquisition_request_c2x_id` nulo, nascidos antes de 11/09/2026 juntando parcelas
+ * de dois contratos cada — e os dois estão reprovados. Sem a unidade o termo não tem PV nem objeto.
  */
 export function motivoParaNaoEmitirOTermo(acordo: AcordoParaOGate): null | string {
   if (acordo.kind !== "acordo") return MOTIVOS_DO_TERMO.promessa;

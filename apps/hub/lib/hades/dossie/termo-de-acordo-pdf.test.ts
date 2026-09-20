@@ -14,9 +14,10 @@ import {
   type ParcelaDoAcordo,
   qualificacaoEmUmaLinha,
   quantasParcelas,
-  REGRAS_DO_ACORDO,
   resumoDoPagamento,
   semTracoSeparador,
+  TEXTO_LEGAL_DO_ACORDO,
+  TITULO_DO_ACEITE,
   TITULO_DO_TERMO_DE_ACORDO,
   totalNominalEmAtraso,
 } from "./termo-de-acordo-pdf";
@@ -91,6 +92,36 @@ const CASO_PESADO: DadosDoTermoDeAcordo = {
 };
 
 /**
+ * O caso extremo, parametrizado: a ficha mais comprida que a tela do Hades produz, com N parcelas
+ * em atraso e M no acordo.
+ *
+ * ⚠️ É ELE QUE MEDE O TETO DA FOLHA ÚNICA. Nome em duas linhas, qualificação e endereço longos,
+ * empreendimento de nome comprido: tudo que empurra as tabelas para baixo.
+ */
+function fichaLonga(emAtraso: number, noAcordo: number): DadosDoTermoDeAcordo {
+  return {
+    ...CASO_PESADO,
+    comprador: {
+      ...CASO_PESADO.comprador,
+      nome: `${CASO_PESADO.comprador.nome} BITTENCOURT DOS SANTOS FILHA`,
+    },
+    debito: {
+      ...CASO_PESADO.debito,
+      parcelas: Array.from({ length: emAtraso }, (_, indice) => ({
+        numero: `${indice + 1}/144`,
+        valor: 1234.56,
+        vencimento: "10/03/2026",
+      })),
+      valorAtualizado: 1000 + (noAcordo - 1) * 345.67,
+    },
+    parcelasDoAcordo: Array.from({ length: noAcordo }, (_, indice) => ({
+      valor: indice === 0 ? 1000 : 345.67,
+      vencimento: "10/10/2026",
+    })),
+  };
+}
+
+/**
  * O texto que o PDF desenha, lido de volta dos fluxos de conteúdo.
  *
  * ⚠️ O pdf-lib comprime o conteúdo da página (FlateDecode) e escreve cada linha como uma string
@@ -118,6 +149,70 @@ function textoDoPdf(bytes: Uint8Array): string {
   }
 
   return trechos.join("\n");
+}
+
+/**
+ * Cada linha desenhada, com a FOLHA e a altura em que ela saiu.
+ *
+ * ⚠️ `textoDoPdf` NÃO RESPONDE "VAZOU DA PÁGINA?". Ele junta tudo numa string só, e um parágrafo
+ * desenhado em cima do rodapé, ou com metade das linhas na folha seguinte, aparece lá exatamente
+ * igual a um parágrafo bem posto. O que separa os dois é a COORDENADA, e ela está no fluxo: o
+ * pdf-lib escreve `1 0 0 1 <x> <y> Tm` antes de cada `<hex> Tj`. Cada fluxo com texto é uma folha,
+ * na ordem do arquivo — é assim que `montarTermoDeAcordoPdf` as cria.
+ */
+type LinhaDesenhada = { folha: number; texto: string; x: number; y: number };
+
+function linhasDoPdf(bytes: Uint8Array): LinhaDesenhada[] {
+  const arquivo = Buffer.from(bytes);
+  const linhas: LinhaDesenhada[] = [];
+  let folha = 0;
+  let inicio = arquivo.indexOf("stream");
+
+  while (inicio !== -1) {
+    const comeco = arquivo.indexOf("\n", inicio) + 1;
+    const fim = arquivo.indexOf("endstream", comeco);
+    if (fim === -1) break;
+    try {
+      const conteudo = inflateSync(arquivo.subarray(comeco, fim)).toString("latin1");
+      const achados = [
+        ...conteudo.matchAll(/1 0 0 1 (-?[\d.]+) (-?[\d.]+) Tm\s*<([0-9A-Fa-f]*)>\s*Tj/g),
+      ];
+      if (achados.length > 0) {
+        folha += 1;
+        for (const [, x, y, hexadecimal] of achados) {
+          linhas.push({
+            folha,
+            texto: Buffer.from(hexadecimal ?? "", "hex").toString("latin1"),
+            x: Number(x),
+            y: Number(y),
+          });
+        }
+      }
+    } catch {
+      // fluxo que não é conteúdo de página comprimido (fonte, imagem): não tem texto a ler
+    }
+    inicio = arquivo.indexOf("stream", fim + "endstream".length);
+  }
+
+  return linhas;
+}
+
+/**
+ * As linhas em que o texto legal foi desenhado, na ordem do papel.
+ *
+ * Uma linha do texto legal é uma linha cujas palavras são TODAS palavras do texto legal: as linhas
+ * das tabelas ("10/03/2026", "R$ 1.234,56"), da ficha e do rodapé nunca satisfazem isso.
+ */
+function linhasDoTextoLegal(desenhadas: LinhaDesenhada[]): LinhaDesenhada[] {
+  const doTexto = new Set(
+    TEXTO_LEGAL_DO_ACORDO.flatMap((paragrafo) => paragrafo.split(/\s+/)).map((palavra) =>
+      palavra.toLowerCase(),
+    ),
+  );
+  return desenhadas.filter((linha) => {
+    const palavras = linha.texto.split(/\s+/).filter(Boolean);
+    return palavras.length > 1 && palavras.every((palavra) => doTexto.has(palavra.toLowerCase()));
+  });
 }
 
 describe("o arredondamento das parcelas do acordo", () => {
@@ -293,25 +388,37 @@ describe("o texto do termo", () => {
     expect(frase).toContain("não mudam quando este termo é impresso de novo");
   });
 
-  // ⚠️ A REDAÇÃO MUDOU A PEDIDO DO DONO DO PRODUTO ("muito formal"); O QUE O CLIENTE ASSUME, NÃO.
-  // Cada efeito dos dois blocos do modelo está travado aqui por uma expressão que o diz.
-  it("as três regras mantêm todos os efeitos do modelo", () => {
-    expect(REGRAS_DO_ACORDO).toHaveLength(3);
-    const [cobertura, mensais, inadimplemento] = REGRAS_DO_ACORDO;
+  // ────────────────────────────────────────────────────────────────────────────────────────────
+  // ⚠️ O TEXTO LEGAL É LITERAL, E É POR ISSO QUE ESTE TESTE O ESCREVE INTEIRO, DE NOVO.
+  // ────────────────────────────────────────────────────────────────────────────────────────────
+  //
+  // Lucas, 20/09/2026: *"o que esta hoje esta aprovado quero so incluir o texto legal substituindo o
+  // texto de observacao"*. O texto veio em print, do jurídico, e vai para a assinatura das três
+  // partes na Clicksign: uma palavra trocada aqui muda o que o comprador assume. Conferir por
+  // `toContain` de trechos deixaria passar justamente o tipo de mudança que mais acontece (uma
+  // vírgula, um "poderão" virando "serão"), então o teste guarda a CÓPIA e compara caractere a
+  // caractere — se alguém editar o array, é preciso editar este teste também, de propósito.
+  it("os seis parágrafos do texto legal estão literais, palavra por palavra", () => {
+    expect(TEXTO_LEGAL_DO_ACORDO).toEqual([
+      "Ao assinar este termo, as partes declaram que estão de acordo com os valores, prazos e condições de pagamento aqui apresentados.",
+      "Este acordo refere-se somente às parcelas em atraso indicadas neste documento. As demais parcelas do contrato continuam vencendo normalmente e deverão ser pagas nas datas previstas.",
+      "Caso alguma parcela deste acordo não seja paga no vencimento, as condições negociadas poderão ser canceladas e o débito será atualizado conforme as regras do contrato.",
+      "Nesse caso, a cobrança poderá seguir por tratativa extrajudicial, inclusive por meio do escritório de advocacia responsável, podendo haver custos, encargos e honorários relacionados à cobrança, quando aplicáveis conforme o contrato e a legislação.",
+      "Se não houver regularização, poderão ser adotadas as medidas judiciais cabíveis.",
+      "Ao assinar, o COMPRADOR declara que leu, compreendeu e aceita estas condições.",
+    ]);
+    expect(TITULO_DO_ACEITE).toBe("ACEITE E CONDIÇÕES DO ACORDO");
+  });
 
-    // Manutenção das parcelas mensais regulares.
-    expect(cobertura).toContain("cobre só as parcelas em atraso listadas");
-    expect(cobertura).toContain("continuam vencendo normalmente e devem ser pagas em dia");
-    expect(mensais).toContain("valem as penalidades previstas no contrato");
-    expect(mensais).toContain("mesmo que o acordo esteja sendo pago em dia");
+  // ⚠️ E O QUE SAIU, SAIU. As três frases que a casa tinha escrito em 16/09/2026 não podem conviver
+  // com o texto do jurídico: as duas dizendo a mesma coisa com palavras diferentes é exatamente o
+  // que um advogado explora num acordo contestado.
+  it("as três frases antigas não sobraram em lugar nenhum", () => {
+    const tudo = TEXTO_LEGAL_DO_ACORDO.join(" ");
 
-    // Inadimplemento do acordo: os cinco efeitos.
-    expect(inadimplemento).toContain("o acordo é desfeito");
-    expect(inadimplemento).toContain("as condições negociadas deixam de valer");
-    expect(inadimplemento).toContain("o débito volta ao valor integral do contrato");
-    expect(inadimplemento).toContain("com os encargos previstos nele");
-    expect(inadimplemento).toContain("o saldo devedor vence de uma vez");
-    expect(inadimplemento).toContain("via administrativa ou judicial");
+    expect(tudo).not.toContain("cobre só as parcelas em atraso listadas");
+    expect(tudo).not.toContain("valem as penalidades previstas no contrato");
+    expect(tudo).not.toContain("o acordo é desfeito");
   });
 
   it("título único, sem o nome de cartório", () => {
@@ -399,31 +506,108 @@ describe("a emissão do PDF", () => {
     expect(documento.getPageCount()).toBe(1);
   });
 
-  // ⚠️ O PIOR CASO QUE JÁ EXISTE NO C2X, COM FOLGA: em 16/09/2026 a venda com mais vencidas tinha 33,
-  // e ganha uma por mês. Ficha longa, 42 em atraso e as 37 parcelas que a tela permite: uma folha.
-  it("a ficha longa com 42 em atraso e 37 no acordo ainda cabe em UMA página", async () => {
-    const emAtraso = Array.from({ length: 42 }, (_, indice) => ({
-      numero: `${indice + 1}/144`,
-      valor: 1234.56,
-      vencimento: "10/03/2026",
-    }));
-    const bytes = await montarTermoDeAcordoPdf({
-      ...CASO_PESADO,
-      comprador: {
-        ...CASO_PESADO.comprador,
-        nome: `${CASO_PESADO.comprador.nome} BITTENCOURT DOS SANTOS FILHA`,
-      },
-      debito: { ...CASO_PESADO.debito, parcelas: emAtraso, valorAtualizado: 13444.12 },
-      parcelasDoAcordo: Array.from({ length: 37 }, (_, indice) => ({
-        valor: indice === 0 ? 1000 : 345.67,
-        vencimento: "10/10/2026",
-      })),
-    });
+  // ⚠️ O TETO DE PÁGINA ÚNICA CAIU DUAS VEZES EM 20/09/2026, E OS NÚMEROS AQUI SÃO MEDIDOS, um a um,
+  // com o PDF lido de volta. Primeiro o texto legal do jurídico, com 9 linhas contra as 5 do bloco
+  // antigo: de 42 para 24. Depois a frase de QUEM ASSINA (`QUEM_ASSINA_O_TERMO`), que nasceu com a
+  // ida do termo para a Clicksign: de 24 para 21.
+  //
+  // ⚠️ UMA LINHA DE TEXTO CUSTA TRÊS PARCELAS, e é por isso que uma frase só derruba o teto em três.
+  // A tabela do caso pesado sai em TRÊS grupos lado a lado: cada linha do papel carrega 3 parcelas,
+  // então cada linha que o fecho ganha é uma linha que a tabela perde.
+  //
+  // Medido em 20/09/2026, com 37 no acordo: ficha longa 21 (era 24), ficha curta 30 (era 36). Com 12
+  // no acordo: 48 e 57. Com 8: 51 e 60. Os dois lados do teto ficam travados abaixo: 21 cabe, 22 não.
+  //
+  // ⚠️ E O TETO QUE CAIU É O DO CASO EXTREMO, NÃO O DA OPERAÇÃO. As 37 parcelas são o máximo que a
+  // tela do Hades permite (entrada + 36); nos acordos que existem de verdade o máximo é 25 no acordo
+  // e 48 em atraso, e as 35 formas de produção continuam cabendo em UMA folha, com a ficha longa e
+  // com a curta (`termo-de-acordo-pdf.revisao.test.ts`). Acima do teto nada some: o papel vira duas
+  // folhas e o aceite desce inteiro para a última.
+  it.each([
+    [21, 1],
+    [22, 2],
+  ])("com a ficha longa e 37 no acordo, %i em atraso sai em %i folha(s)", async (emAtraso, folhas) => {
+    const bytes = await montarTermoDeAcordoPdf(fichaLonga(emAtraso, 37));
+
+    expect((await PDFDocument.load(bytes)).getPageCount()).toBe(folhas);
+    // E nenhuma parcela some, nem quando o papel vira duas folhas.
+    expect(textoDoPdf(bytes)).toContain(`${emAtraso}/144`);
+    expect(textoDoPdf(bytes)).toContain("37/37");
+  });
+
+  // ⚠️ OS ACORDOS QUE EXISTEM DE VERDADE CONTINUAM EM UMA FOLHA. Medido no Supabase de produção em
+  // 20/09/2026: o mais pesado APROVADO tem 25 parcelas em atraso e 8 no acordo, e o maior reprovado
+  // tem 48 em atraso e 4 no acordo. O teto que caiu é o do caso extremo, não o da operação.
+  it.each([
+    ["o maior acordo aprovado de produção (25 em atraso, 8 no acordo)", 25, 8],
+    ["o maior reprovado (48 em atraso, 4 no acordo)", 48, 4],
+  ])("%s cabe em UMA página", async (_rotulo, emAtraso, noAcordo) => {
+    const bytes = await montarTermoDeAcordoPdf(fichaLonga(emAtraso, noAcordo));
 
     expect((await PDFDocument.load(bytes)).getPageCount()).toBe(1);
-    const texto = textoDoPdf(bytes);
-    expect(texto).toContain("42/144");
-    expect(texto).toContain("37/37");
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────────────────────
+  // ⚠️ O TEXTO LEGAL NÃO VAZA DA PÁGINA — nem por baixo (no rodapé), nem por fora (nas margens),
+  // nem partido entre duas folhas.
+  // ────────────────────────────────────────────────────────────────────────────────────────────
+  //
+  // Este é o teste que o `toContain` não faz: um parágrafo desenhado por cima do rodapé aparece no
+  // texto extraído exatamente como um bem posto. Num papel que vai para a assinatura das três
+  // partes, cláusula ilegível vale o mesmo que cláusula ausente.
+  it.each([
+    ["leve", CASO_REAL],
+    ["pesado", CASO_PESADO],
+  ])("no caso %s, o texto legal sai inteiro, numa folha só, dentro das margens", async (_rotulo, dados) => {
+    const desenhadas = linhasDoPdf(await montarTermoDeAcordoPdf(dados));
+    const doTexto = linhasDoTextoLegal(desenhadas);
+
+    // As 9 linhas medidas em 20/09/2026: 1, 2, 2, 2, 1, 1 por parágrafo.
+    expect(doTexto).toHaveLength(9);
+    // Todas na MESMA folha: o aceite desce inteiro ou não desce.
+    expect(new Set(doTexto.map((linha) => linha.folha)).size).toBe(1);
+    for (const linha of doTexto) {
+      // Acima do chão do rodapé (FOOT = MARGIN + 6 = 48; o corpo para em FOOT + 16).
+      expect(linha.y).toBeGreaterThanOrEqual(48);
+      // E dentro da margem esquerda, sem recuo de tópico.
+      expect(linha.x).toBe(42);
+    }
+  });
+
+  // ⚠️ E QUANDO O PAPEL VIRA DUAS FOLHAS, O ACEITE VAI INTEIRO PARA A ÚLTIMA. Cabeçalho numa folha
+  // e a cláusula do inadimplemento na outra é o tipo de papel que o advogado do cliente usa contra
+  // quem o emitiu.
+  it("com duas folhas, o aceite inteiro fica na última", async () => {
+    const bytes = await montarTermoDeAcordoPdf(fichaLonga(25, 37));
+    const desenhadas = linhasDoPdf(bytes);
+    const doTexto = linhasDoTextoLegal(desenhadas);
+    const folhas = (await PDFDocument.load(bytes)).getPageCount();
+
+    expect(folhas).toBe(2);
+    expect(doTexto).toHaveLength(9);
+    expect(new Set(doTexto.map((linha) => linha.folha))).toEqual(new Set([folhas]));
+    // E o título do bloco desceu junto com ele.
+    const titulo = desenhadas.find((linha) => linha.texto === TITULO_DO_ACEITE);
+    expect(titulo?.folha).toBe(folhas);
+  });
+
+  // ⚠️ O CABEÇALHO DO BLOCO É O DO LUCAS, e o nosso ("Importante") saiu junto com as três frases.
+  it("o papel imprime o título do jurídico, e não mais o 'Importante' da casa", async () => {
+    const texto = textoDoPdf(await montarTermoDeAcordoPdf(CASO_REAL));
+
+    expect(texto).toContain("ACEITE E CONDIÇÕES DO ACORDO");
+    expect(texto).not.toContain("IMPORTANTE");
+    expect(texto).not.toContain("cobre só as parcelas em atraso listadas");
+  });
+
+  // ⚠️ CADA PARÁGRAFO SAI INTEIRO, E NA ORDEM. Juntar as linhas de volta e comparar com o array é
+  // o que prova que o WinAnsi das fontes padrão não comeu nenhum acento (Ç, Õ, à, ã, é, ê, ú) e que
+  // nenhuma palavra ficou pelo caminho na quebra de linha.
+  it("os seis parágrafos saem no papel, inteiros e na ordem", async () => {
+    const doTexto = linhasDoTextoLegal(linhasDoPdf(await montarTermoDeAcordoPdf(CASO_REAL)));
+    const remontado = doTexto.map((linha) => linha.texto).join(" ");
+
+    expect(remontado).toBe(TEXTO_LEGAL_DO_ACORDO.join(" "));
   });
 
   // ⚠️ "NÃO PRECISA COLOCAR QUEM ASSINA" (dono do produto, 16/09/2026): nem nome, nem cargo, nem o

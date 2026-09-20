@@ -1,21 +1,13 @@
 import { NextResponse } from "next/server";
 
-import { loadHadesAttendanceClient } from "@/lib/guardian/attendance";
 import { authorizeHadesWrite } from "@/lib/guardian/auth";
 import {
   createGuardianMotorClient,
   getGuardianCompromissoDetail,
 } from "@/lib/guardian/compromissos";
 import { sanitizeHadesDbError } from "@/lib/guardian/db";
-import {
-  hojeEmBrasilia,
-  montarDadosDoTermoDeAcordo,
-} from "@/lib/hades/dossie/termo-de-acordo-dados";
+import { montarTermoDoAcordoEmPdf } from "@/lib/hades/acordo/termo-em-pdf";
 import { motivoParaNaoEmitirOTermo } from "@/lib/hades/dossie/termo-de-acordo-gate";
-import {
-  montarTermoDeAcordoPdf,
-  nomeDoArquivoDoTermoDeAcordo,
-} from "@/lib/hades/dossie/termo-de-acordo-pdf";
 
 // O TERMO DE ACORDO — o "Instrumento particular de acordo para regularização de inadimplência" de
 // um acordo do Hades, em PDF, para o operador baixar e mandar para assinatura.
@@ -31,16 +23,16 @@ import {
 // no log; (2) o `viewer` do Hades é somente leitura, e emitir instrumento para assinatura é operar a
 // cobrança, não consultá-la.
 //
-// ⚠️ O GATE RODA ANTES DO C2X. Hoje (medido em 16/09/2026) ZERO dos 18 acordos está aprovado; se a
-// consulta ao legado viesse primeiro, cada clique num acordo pendente abriria uma conexão no MySQL
-// do C2X — que tem teto de conexões e já derrubou a fila com "Too many connections" — só para
-// responder a frase que o próprio card já sabia.
+// ⚠️ O GATE RODA ANTES DO C2X. Medido em 20/09/2026 no Supabase de produção (`kind = 'acordo'`):
+// 40 acordos, 18 APROVADOS e 22 reprovados, zero pendentes — ou seja, 22 cliques que o gate responde
+// sozinho. Se a consulta ao legado viesse primeiro, cada um deles abriria uma conexão no MySQL do
+// C2X — que tem teto de conexões e já derrubou a fila com "Too many connections" — só para responder
+// a frase que o próprio card já sabia.
 //
-// ⚠️ A QUALIFICAÇÃO E AS PARCELAS VÊM DE `loadHadesAttendanceClient`, A MESMA LEITURA DA FICHA DO
-// HADES (`app/api/guardian/attendance/client/[clientId]/route.ts`). Nome, CPF, nacionalidade,
-// estado civil, profissão e endereço do termo são, letra por letra, os que o operador vê na tela
-// antes de clicar. Uma segunda consulta ao C2X com outros joins e outra formatação faria o papel
-// discordar da tela no dia em que um dos dois mudasse.
+// ⚠️ A MONTAGEM DO PAPEL MORA EM `lib/hades/acordo/termo-em-pdf.ts`, E NÃO AQUI. Desde 20/09/2026
+// são DOIS caminhos para o mesmo documento: este download e o envio para a Clicksign
+// (`app/api/guardian/termo-de-acordo/assinatura/route.ts`). Duas montagens divergiriam no primeiro
+// ajuste, e a divergência seria o cliente assinando um PDF diferente do que o operador baixou.
 //
 // ⚠️ NÃO TOCA EM `hercules_premissas_de_rescisao`. As alíquotas de rescisão são do relatório de
 // rescisão; o termo de acordo não deduz nada, só formaliza o parcelamento que o acordo já decidiu.
@@ -88,24 +80,12 @@ export async function POST(request: Request) {
       return erro(motivo, 409);
     }
 
-    // ⚠️ `client_c2x_id` É O `users.id` DO C2X, e não o id da negociação — os dois espaços de id
-    // colidem (o 2508 existe nas duas tabelas). O prefixo `c2x-client-` diz ao leitor qual é qual.
-    const cliente = await loadHadesAttendanceClient(`c2x-client-${acordo.clientC2xId}`);
-    if (!cliente) {
-      return erro("O cliente deste acordo não foi encontrado no C2X.", 404);
+    const termo = await montarTermoDoAcordoEmPdf(acordo);
+    if (!termo.ok) {
+      return erro(termo.motivo, termo.status);
     }
 
-    const montado = montarDadosDoTermoDeAcordo({
-      acordo,
-      cliente,
-      emitidoEm: hojeEmBrasilia(),
-    });
-    if (!montado.ok) {
-      return erro(montado.motivo, montado.status);
-    }
-
-    const bytes = await montarTermoDeAcordoPdf(montado.dados);
-    const nome = nomeDoArquivoDoTermoDeAcordo(montado.dados);
+    const { bytes, nome } = termo;
 
     // Quem emitiu, qual acordo — sem dado do cliente no log.
     console.info("[guardian][termo-de-acordo] emitido", {

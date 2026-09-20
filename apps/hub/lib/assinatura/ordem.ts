@@ -1,4 +1,4 @@
-import { PAPEIS, type PapelNoContrato, type Signatario } from "./tipos";
+import { PAPEIS, PAPEIS_DO_CONTRATO, type PapelNoContrato, type Signatario } from "./tipos";
 
 // A ORDEM DE ASSINATURA — quem assina primeiro, e quem espera.
 //
@@ -197,7 +197,11 @@ export function regraDeLista(ordenada: boolean, papeis: PapelNoContrato[]): Regr
  */
 export function gruposDaRegra(regra: RegraDeOrdem): PapelNoContrato[][] {
   const porNumero = new Map<number, PapelNoContrato[]>();
-  for (const papel of PAPEIS) {
+  // ⚠️ `PAPEIS_DO_CONTRATO`, E NÃO `PAPEIS`. Esta função descreve a fila de assinatura de uma VENDA,
+  // e a Careli não é parte dela — ela assina o TERMO DE ACORDO do Hades, que tem ordem própria
+  // (`ORDEM_DO_ACORDO`, em `lib/hades/acordo/signatarios-do-acordo.ts`). Iterar a lista inteira faria
+  // toda venda da casa exibir "... → Careli" numa frase sobre um documento que ela não assina.
+  for (const papel of PAPEIS_DO_CONTRATO) {
     const n = regra.ordens[papel] ?? PAPEIS.length;
     const grupo = porNumero.get(n);
     if (grupo) grupo.push(papel);

@@ -134,6 +134,18 @@ async function acharEnvelope(
   const propostaDoMetadata = String(evento.metadados?.proposta_id ?? "").trim();
   if (propostaDoMetadata) tentativas.push(["proposta_id", propostaDoMetadata]);
 
+  // ⚠️ E O TERMO DE ACORDO DO HADES ENTRA PELA OUTRA CHAVE. Ele nasce com `proposta_id` NULO de
+  // propósito (um acordo não é uma proposta, e preenchê-la faria a Têmis recusar o envio do CONTRATO
+  // daquela venda): o elo dele é `temis_envelopes.compromisso_id`, e é ele que viaja no `metadata`
+  // do documento desde 20/09/2026. Sem esta linha, um envelope de acordo cujo carimbo não gravasse
+  // ficaria sem nenhuma das três portas de entrada do webhook.
+  //
+  // ⚠️ A COLUNA PODE NÃO EXISTIR AINDA (migration 0179, que nasce pendente). O `error` do PostgREST
+  // cai no `continue` de baixo como qualquer outra falha de leitura, então um webhook de CONTRATO
+  // que chegue antes da migration continua encontrando a linha pelas duas primeiras tentativas.
+  const acordoDoMetadata = String(evento.metadados?.compromisso_id ?? "").trim();
+  if (acordoDoMetadata) tentativas.push(["compromisso_id", acordoDoMetadata]);
+
   for (const [coluna, valor] of tentativas) {
     const { data, error } = await sb
       .from("temis_envelopes")

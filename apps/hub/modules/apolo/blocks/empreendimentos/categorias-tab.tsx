@@ -17,7 +17,7 @@ import { VincularLotes } from "./vincular-lotes";
 import { useCallback, useEffect, useState } from "react";
 
 import { descreverRegra, regraDeLista } from "@/lib/assinatura/ordem";
-import { PAPEIS, type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
+import { PAPEIS_DO_CONTRATO, type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 
 // AS CATEGORIAS DO EMPREENDIMENTO — o recorte que tem contrato próprio.
@@ -251,7 +251,10 @@ export function CategoriasTab({ codigo, enterpriseId, name }: Props) {
     setOrdemAberta(categoria.id);
     setRascunho({
       ordenada: base?.ordenada ?? false,
-      papeis: [...(base?.papeis ?? PAPEIS)],
+      // ⚠️ SEM A CARELI. Esta aba é a ordem de assinatura do CONTRATO da categoria; `careli` só
+      // assina o termo de acordo do Hades. Partir de `PAPEIS` faria a lista da categoria nascer com
+      // uma parte que não assina venda nenhuma.
+      papeis: [...(base?.papeis ?? PAPEIS_DO_CONTRATO)],
       propria: categoria.ordemPropria !== null,
     });
   };

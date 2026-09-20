@@ -460,11 +460,22 @@ const ESTADOS_QUE_LIBERAM_REENVIO = new Set<string>([
  * procurar o envelope mais VELHO seria mandar procurar o errado.
  */
 export function envelopeQueSegura(linhas: EnvelopeDaProposta[]): EnvelopeDaProposta | null {
+  return linhas.find(seguraOEnvio) ?? null;
+}
+
+/**
+ * ESTA linha segura um novo envio?
+ *
+ * ⚠️ ELA É A RÉGUA DE `envelopeQueSegura`, SOLTA PARA QUEM PRECISA DA LISTA E NÃO DA PRIMEIRA. O
+ * termo de acordo do Hades, depois de gravar a intenção, precisa saber se OUTRA linha viva nasceu na
+ * mesma janela (a corrida do segundo envelope) e comparar as duas: `envelopeQueSegura` devolve uma
+ * só. Escrever um segundo `find` lá faria a casa ter duas definições de "envelope vivo", e a que
+ * discordasse seria a que deixa passar.
+ */
+export function seguraOEnvio(linha: EnvelopeDaProposta): boolean {
   return (
-    linhas.find(
-      (l) =>
-        !ESTADOS_QUE_LIBERAM_REENVIO.has(l.estado) && (l.envelope_id !== null || l.falha === null),
-    ) ?? null
+    !ESTADOS_QUE_LIBERAM_REENVIO.has(linha.estado)
+    && (linha.envelope_id !== null || linha.falha === null)
   );
 }
 
@@ -525,8 +536,14 @@ const JANELA_DE_ENVIO_EM_CURSO_EM_MS = MAX_DURATION_DO_ENVIO_EM_MS + 60_000;
  * ⚠️ DATA ILEGÍVEL CONTA COMO VELHA. A frase do "ainda em curso" manda ESPERAR, e mandar esperar
  * para sempre por um envio que morreu é o pior dos dois enganos: a venda fica parada sem ninguém
  * conferir a conta da Clicksign.
+ *
+ * ⚠️ EXPORTADA PARA O TERMO DE ACORDO DO HADES (20/09/2026), e não copiada para lá. A janela é a
+ * mesma (as duas rotas reservam 120s) e o engano que ela evita é o mesmo: durante os 40 a 90
+ * segundos de um envio normal a linha vive em rascunho, sem `envelope_id` e sem `falha`, e a frase
+ * que manda "cancelar por lá" mataria um envelope pago que o `carimbarSucesso` ia registrar meio
+ * minuto depois. Duas cópias divergiriam no primeiro ajuste de `maxDuration`.
  */
-function envioAindaPodeEstarNoAr(criadoEm: string, agora = Date.now()): boolean {
+export function envioAindaPodeEstarNoAr(criadoEm: string, agora = Date.now()): boolean {
   const nasceu = Date.parse(criadoEm);
   if (Number.isNaN(nasceu)) return false;
   return agora - nasceu < JANELA_DE_ENVIO_EM_CURSO_EM_MS;

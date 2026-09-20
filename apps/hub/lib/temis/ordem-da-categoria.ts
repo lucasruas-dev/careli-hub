@@ -1,5 +1,5 @@
 import { lerRegraDeOrdem, ORDEM_PADRAO, type RegraDeOrdem } from "@/lib/assinatura/ordem";
-import { PAPEIS, type PapelNoContrato } from "@/lib/assinatura/tipos";
+import { PAPEIS_DO_CONTRATO, type PapelNoContrato } from "@/lib/assinatura/tipos";
 
 // A ORDEM DE ASSINATURA DA CATEGORIA — o degrau do meio da cadeia.
 //
@@ -113,7 +113,13 @@ export type CorpoComOrdem = {
   assinaturaOrdenada?: unknown;
 };
 
-const LISTA_DE_PAPEIS = PAPEIS.join(", ");
+// ⚠️ `PAPEIS_DO_CONTRATO`, E NÃO `PAPEIS`. Esta lib valida a ordem de assinatura de uma CATEGORIA
+// de contrato de venda, e `careli` entrou em `PAPEIS` em 20/09/2026 pelo TERMO DE ACORDO do Hades
+// (Lucas: *"quem vai, o comprador, o incorporador e a nivea careli"*). Medindo por `PAPEIS`, a rota
+// da categoria passaria a ACEITAR `careli` dentro de `apolo_enterprise_categorias.assinatura_ordem`
+// e a OFERECÊ-LA na frase de erro como papel válido de venda. O acordo tem ordem própria
+// (`ORDEM_DO_ACORDO`, em `lib/hades/acordo/signatarios-do-acordo.ts`) e não passa por aqui.
+const LISTA_DE_PAPEIS = PAPEIS_DO_CONTRATO.join(", ");
 
 /**
  * Lê o par do corpo da requisição, com a disciplina do resto da casa: AUSENTE = não mexeu, NULO =
@@ -183,7 +189,7 @@ export function lerOrdemDoCorpo(corpo: CorpoComOrdem): LeituraDaOrdem {
 
   for (const bruto of ordem) {
     const papel = typeof bruto === "string" ? bruto.trim() : String(bruto);
-    if (!PAPEIS.includes(papel as PapelNoContrato)) {
+    if (!PAPEIS_DO_CONTRATO.includes(papel as PapelNoContrato)) {
       if (!desconhecidos.includes(papel)) desconhecidos.push(papel);
       continue;
     }

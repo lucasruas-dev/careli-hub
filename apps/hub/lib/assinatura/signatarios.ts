@@ -253,6 +253,7 @@ function listar(itens: readonly string[]): string {
  */
 function rotulo(papel: PapelNoContrato): string {
   const mapa: Record<PapelNoContrato, string> = {
+    careli: "Careli",
     comprador: "comprador",
     conjuge: "cônjuge",
     coordenadora: "coordenadora",

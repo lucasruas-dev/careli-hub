@@ -82,8 +82,28 @@ export type PedidoDeEnvio = {
 export type IdentidadeDoEnvelope = {
   /** "Henrique Sales do Vale". */
   comprador: string;
+  /**
+   * QUE DOCUMENTO É ESTE, na primeira palavra do nome do envelope. O padrão é "Contrato".
+   *
+   * ⚠️ ELE NASCEU COM O TERMO DE ACORDO DO HADES (20/09/2026), e não é enfeite: a conta da Clicksign
+   * é de PRODUÇÃO e a lista dela é como a casa acha o que mandou. Um termo de acordo chamado
+   * "Contrato - LOX - Q13 L01 - FULANO" convidaria alguém a abrir a lista daqui a um mês e tratar um
+   * parcelamento de dívida como a venda — e envelope não se apaga.
+   */
+  especie?: string;
   /** "TST" ou o nome do empreendimento. */
   empreendimento: string;
+  /**
+   * O id do ACORDO do Hades (`guardian_compromissos`) — viaja no `metadata` e volta no webhook.
+   *
+   * ⚠️ ELE É A REDE DE SEGURANÇA DO TERMO DE ACORDO, e sem ele o acordo ficava sem nenhuma. O
+   * envelope de CONTRATO manda `proposta_id`, e é por ele que `acharEnvelope` reencontra a linha
+   * quando os dois ids do provedor falham. O acordo deixa `proposta_id` NULO de propósito (ver
+   * `lib/hades/acordo/envio-db.ts`) e, até 20/09/2026, não punha nada no lugar: um envelope de
+   * acordo cujo carimbo não gravasse ficava invisível para o webhook e para o Panteon, pago e
+   * permanente. Esta chave é o que devolve a rede.
+   */
+  compromissoId?: string;
   /** O id da proposta — viaja no `metadata` e volta no webhook. */
   propostaId?: string;
   /** O id da linha em `hercules_documentos` — idem. */
@@ -860,8 +880,21 @@ function atributosDoEnvelope(nome: string, pedido: PedidoDeEnvio): Record<string
     remind_interval: null,
   };
 
-  // ⚠️ O ASSUNTO TEM TETO DE 100 CARACTERES na doc deles, e estourar é 422 no passo 1.
-  atributos.default_subject = cortar(`Assinatura do contrato — ${nome}`, 100);
+  // ⚠️ O ASSUNTO SAI DA MESMA `especie` DO NOME, e não da palavra "contrato". É o mesmo raciocínio
+  // que criou o campo (a lista da Clicksign é de produção), e aqui ele vale com mais força: o nome
+  // do envelope só a casa lê, o ASSUNTO do e-mail quem lê é o cliente. Um termo de acordo de dívida
+  // chegando na caixa de entrada com "Assinatura do contrato" faz o inadimplente abrir achando que é
+  // a compra, e é a primeira frase que ele mostra a quem for contestar depois.
+  //
+  // ⚠️ SEM TRAVESSÃO, que é regra da casa para texto visível ([[feedback_sem_travessao]]) — e este é
+  // o texto mais visível de todos, porque vai para fora.
+  //
+  // ⚠️ O TETO DE 100 CARACTERES É DA DOC DELES, e estourar é 422 no passo 1.
+  //
+  // ⚠️ E O ASSUNTO NÃO REPETE A ESPÉCIE, PORQUE O `nome` JÁ COMEÇA POR ELA (`nomeDoEnvelope`).
+  // "Assinatura: Termo de Acordo Termo de Acordo - VDO - ..." gastaria 17 dos 100 caracteres para
+  // dizer duas vezes a mesma palavra, e o que o teto corta no fim é justamente o nome do cliente.
+  atributos.default_subject = cortar(`Assinatura: ${nome}`, 100);
 
   if (pedido.mensagem?.trim()) atributos.default_message = pedido.mensagem.trim();
 
@@ -944,7 +977,7 @@ function papelDaClicksign(_papel: PapelNoContrato): string {
  */
 export function nomeDoEnvelope(identidade: IdentidadeDoEnvelope): string {
   const pedacos = [
-    "Contrato",
+    identidade.especie?.trim() || "Contrato",
     identidade.empreendimento.trim(),
     identidade.unidade.trim(),
     identidade.comprador.trim(),
@@ -986,6 +1019,9 @@ function metadadosDoDocumento(identidade: IdentidadeDoEnvelope): Record<string, 
     unidade: identidade.unidade.trim(),
   };
   if (identidade.propostaId) meta.proposta_id = identidade.propostaId;
+  // ⚠️ O ELO DO TERMO DE ACORDO. Ver `IdentidadeDoEnvelope.compromissoId`: é o `proposta_id` do
+  // acordo, e `acharEnvelope` o tenta pela coluna `compromisso_id` na mesma ordem.
+  if (identidade.compromissoId) meta.compromisso_id = identidade.compromissoId;
   if (identidade.documentoId) meta.documento_id = identidade.documentoId;
   if (ehDeTeste(identidade.empreendimento)) meta.teste = "true";
   return meta;

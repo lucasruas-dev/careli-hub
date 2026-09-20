@@ -101,13 +101,30 @@ export function ehTerminal(estado: EstadoDaAssinatura): boolean {
  * a única linha de `apolo_enterprise_settings` que citava "interveniente" (medida em 13/09/2026)
  * passa a ignorá-lo sem migration nenhuma.
  */
+/**
+ * ⚠️ `careli` NÃO ASSINA CONTRATO: ELE ENTROU PELO TERMO DE ACORDO DO HADES (20/09/2026). Lucas,
+ * sobre quem assina o termo: *"quem vai, o comprador, o incorporador e a nivea careli"*, e sobre o
+ * papel dela: *"Assina como careli"* — como representante da ADMINISTRADORA, e não como testemunha.
+ * Testemunha assiste ao ato; a Careli é parte no acordo, porque é ela que administra a carteira e
+ * concede o parcelamento.
+ *
+ * ⚠️ ELE VAI NO FIM DA LISTA, E ISSO NÃO É ARRUMAÇÃO. A posição em `PAPEIS` é o número canônico do
+ * papel (`ordensCanonicas`): pôr `careli` no meio renumeraria vendedora, coordenadora, corretor e
+ * testemunha em TODO empreendimento que não tem regra própria. No fim, ele nasce como o último a
+ * assinar, que é o que o Lucas pediu, e nada do que já está cadastrado muda de lugar.
+ *
+ * ⚠️ E ELE NÃO APARECE NO QUADRO DO EMPREENDIMENTO. A tela de ordem de assinatura
+ * (`ordem-de-assinatura-card.tsx`) é sobre o CONTRATO de venda, onde a Careli não é parte; ela
+ * filtra este papel de propósito. Quem configura a Careli é `lib/hades/acordo/assinante-da-careli.ts`.
+ */
 export type PapelNoContrato =
   | "comprador"
   | "conjuge"
   | "vendedora"
   | "coordenadora"
   | "corretor"
-  | "testemunha";
+  | "testemunha"
+  | "careli";
 
 /**
  * Os papéis, NA ORDEM EM QUE UM CONTRATO COSTUMA SER ASSINADO.
@@ -123,7 +140,25 @@ export const PAPEIS: PapelNoContrato[] = [
   "coordenadora",
   "corretor",
   "testemunha",
+  // ⚠️ ÚLTIMO, E SÓ NO TERMO DE ACORDO DO HADES. Ver a nota de `PapelNoContrato`: a posição aqui é o
+  // número canônico do papel, e acrescentar no fim é o único lugar que não renumera ninguém.
+  "careli",
 ];
+
+/**
+ * Os papéis que assinam um CONTRATO de venda — `PAPEIS` sem a Careli.
+ *
+ * ⚠️ ELE EXISTE PORQUE `careli` NÃO É PARTE DO CONTRATO, só do TERMO DE ACORDO do Hades. Tudo que
+ * descreve a fila de assinatura de uma VENDA (o cartão de ordem do empreendimento, a aba de
+ * categorias, a frase "Comprador → Vendedora → Testemunha" de `descreverRegra`) tem de iterar esta
+ * lista: com `PAPEIS`, toda venda da casa passaria a exibir uma parte que não assina nada ali, e o
+ * operador do empreendimento acreditaria que a Careli entra em todo contrato.
+ *
+ * ⚠️ E `PAPEIS` CONTINUA SENDO A LISTA INTEIRA, porque é dela que sai o NÚMERO CANÔNICO de cada
+ * papel (`ordensCanonicas`). Tirar a Careli de lá deixaria o `Record<PapelNoContrato, number>`
+ * incompleto e o acordo sem ordem própria.
+ */
+export const PAPEIS_DO_CONTRATO: PapelNoContrato[] = PAPEIS.filter((papel) => papel !== "careli");
 
 export function rotuloDoPapel(papel: PapelNoContrato): string {
   const mapa: Record<PapelNoContrato, string> = {
@@ -136,6 +171,9 @@ export function rotuloDoPapel(papel: PapelNoContrato): string {
     // endereço, e as VARIÁVEIS dela mantêm o nome antigo (`nome_fantasia_coordenadora_vendas`)
     // porque é a chave que as 41 minutas do legado trazem — a mesma regra de `valor_imovel_venda`.
     coordenadora: "Coordenador de Vendas",
+    // "Careli" e não "Administradora": é o nome que o Lucas usa (*"Assina como careli"*) e o que
+    // aparece no papel timbrado que o cliente recebe.
+    careli: "Careli",
     corretor: "Corretor / imobiliária",
     testemunha: "Testemunha",
     vendedora: "Vendedora",

@@ -18,6 +18,7 @@ import {
   type UpdateCompromissoStageInput,
 } from "@/lib/guardian/compromissos";
 import { createSupabaseAdminClient } from "@/lib/guardian/read-model-sync";
+import { impedimentoParaExcluirOAcordo } from "@/lib/hades/acordo/envelopes-db";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -176,6 +177,19 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       { error: "Proposta nao encontrada." },
       { status: 404 },
     );
+  }
+
+  // ⚠️ O TERMO EM ASSINATURA SEGURA A EXCLUSAO (20/09/2026). Desde que o acordo passou a ir para a
+  // Clicksign, apagar o compromisso deixa o envelope orfao: a 0179 liga os dois com
+  // `on delete set null`, e a unica leitura de envelope por `compromisso_id` e o card do acordo.
+  // Some o acordo, some a chave, e o termo continua vivo la cobrando assinatura do cliente sem que
+  // nenhuma tela do Panteon volte a alcanca-lo. A frase diz a saida: cancelar o envelope no card.
+  const admin = createSupabaseAdminClient();
+  if (detail.kind === "acordo" && admin) {
+    const impedimento = await impedimentoParaExcluirOAcordo(admin, id);
+    if (impedimento) {
+      return NextResponse.json({ error: impedimento }, { status: 409 });
+    }
   }
 
   // Registra a exclusao na timeline do cliente ANTES de apagar (auditavel; o

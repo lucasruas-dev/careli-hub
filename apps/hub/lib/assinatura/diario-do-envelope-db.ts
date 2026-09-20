@@ -55,7 +55,16 @@ export type EnvelopeDoDiario = {
   signatarios: SignatarioDaProposta[];
 };
 
-export type DiarioDaProposta = {
+/**
+ * O diário de UM envelope: quantos assinaram, de quantos, e a história que os eventos contaram.
+ *
+ * ⚠️ O NOME NÃO FALA MAIS EM PROPOSTA porque desde 20/09/2026 ele serve a DOIS documentos: o
+ * contrato de venda (chaveado em `proposta_id`) e o termo de acordo do Hades (chaveado em
+ * `compromisso_id`). O cálculo é o mesmo, e ele é um só de propósito: duas contagens do "2 de 3
+ * assinaram" divergiriam no primeiro ajuste, que é a armadilha catalogada em
+ * [[reference_painel_assinatura_duas_telas]].
+ */
+export type DiarioDaAssinatura = {
   /** Quantos JÁ assinaram — o numerador do "1/5" que o Lucas pediu no card (12/09/2026). */
   assinaram: number;
   /** Do mais recente para o mais antigo. Vem vazio enquanto nenhum webhook chegou. */
@@ -64,6 +73,9 @@ export type DiarioDaProposta = {
   /** Quantos signatários o envelope tem — o denominador do "1/5". */
   total: number;
 };
+
+/** O nome antigo, mantido para quem já lê o diário do contrato. */
+export type DiarioDaProposta = DiarioDaAssinatura;
 
 type LinhaDoEnvelope = {
   atualizado_em: null | string;
@@ -87,12 +99,50 @@ type LinhaDoEnvelope = {
 export async function diarioDaProposta(
   sb: SupabaseClient,
   propostaId: string,
-): Promise<DiarioDaProposta | null> {
+): Promise<DiarioDaAssinatura | null> {
   if (!propostaId) return null;
 
   const envelope = await envelopeMaisRecente(sb, propostaId);
   if (!envelope) return null;
 
+  return diarioDaLinha(sb, envelope);
+}
+
+/**
+ * O diário do envelope mais recente de um ACORDO do Hades (`guardian_compromissos`).
+ *
+ * ⚠️ MESMO MIOLO, OUTRA CHAVE, E É SÓ ISSO QUE MUDA. O acordo não tem proposta — `proposta_id` fica
+ * NULO no envelope dele de propósito (ver `lib/hades/acordo/envio-db.ts`) —, então a consulta é por
+ * `compromisso_id`. Tudo o que vem depois (o payload do webhook, `quemAssinou`, `diarioDoEnvelope`,
+ * a junção com a lista congelada) é exatamente o mesmo código que o contrato usa.
+ *
+ * ⚠️ E ELE TOLERA A MIGRATION 0179 AUSENTE. Sem a coluna, a consulta falha com 42703 e a resposta é
+ * `null`, que é a resposta CERTA: sem coluna não existe envelope de acordo nenhum para narrar. A
+ * tela simplesmente não desenha o bloco, como faz quando o acordo ainda não foi enviado.
+ */
+export async function diarioDoCompromisso(
+  sb: SupabaseClient,
+  compromissoId: string,
+): Promise<DiarioDaAssinatura | null> {
+  if (!compromissoId) return null;
+
+  const envelope = await envelopeMaisRecenteDoCompromisso(sb, compromissoId);
+  if (!envelope) return null;
+
+  return diarioDaLinha(sb, envelope);
+}
+
+/**
+ * O miolo, a partir da LINHA do envelope: vale para contrato e para acordo.
+ *
+ * ⚠️ ELE RECEBE A LINHA, E NÃO O ID, e essa é a costura inteira da reutilização. Quem sabe procurar
+ * o envelope é quem conhece a chave (proposta ou compromisso); daqui para a frente nada mais
+ * depende de saber que documento é aquele.
+ */
+async function diarioDaLinha(
+  sb: SupabaseClient,
+  envelope: LinhaDoEnvelope,
+): Promise<DiarioDaAssinatura> {
   const payload = await payloadMaisRecente(sb, envelope);
   const congelados = signatariosCongelados(envelope.signatarios);
 
@@ -139,6 +189,40 @@ async function envelopeMaisRecente(
 
   if (error) {
     console.error("[temis][diário] falha ao ler o envelope da proposta", error.message);
+    return null;
+  }
+  return (data as LinhaDoEnvelope | null) ?? null;
+}
+
+/**
+ * O envelope mais recente de um acordo do Hades.
+ *
+ * ⚠️ A COLUNA PODE NÃO EXISTIR AINDA. A migration 0179 nasce pendente (aguardando o OK do Lucas) e
+ * o código sobe antes dela: um 42703 aqui vira `null` sem `console.error`, porque não é defeito — é
+ * a ausência esperada, e encher o log de "column compromisso_id does not exist" a cada carga de card
+ * esconderia o erro de verdade no dia em que ele aparecesse.
+ */
+async function envelopeMaisRecenteDoCompromisso(
+  sb: SupabaseClient,
+  compromissoId: string,
+): Promise<LinhaDoEnvelope | null> {
+  const { data, error } = await sb
+    .from("temis_envelopes")
+    .select(
+      "id, provedor, envelope_id, provedor_documento_id, estado, estado_cru, atualizado_em, signatarios",
+    )
+    .eq("compromisso_id", compromissoId)
+    .order("criado_em", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    const texto = `${error.code ?? ""} ${error.message ?? ""}`;
+    const semAColuna =
+      /compromisso_id/i.test(texto) && /42703|PGRST204|does not exist|schema cache/i.test(texto);
+    if (!semAColuna) {
+      console.error("[hades][diário] falha ao ler o envelope do acordo", error.message);
+    }
     return null;
   }
   return (data as LinhaDoEnvelope | null) ?? null;

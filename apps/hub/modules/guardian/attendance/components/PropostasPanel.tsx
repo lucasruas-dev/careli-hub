@@ -16,10 +16,12 @@ import {
   Handshake,
   Loader2,
   MessageSquare,
+  RefreshCw,
   Scale,
   Send,
   Trash2,
   X,
+  XCircle,
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 import { DetailSection } from "@/modules/guardian/attendance/components/DetailSection";
@@ -34,6 +36,7 @@ import {
   motivoParaNaoEmitirOTermo,
   situacaoDaAprovacao,
 } from "@/lib/hades/dossie/termo-de-acordo-gate";
+import { motivoParaNaoEnviarParaAssinatura } from "@/lib/hades/acordo/envio-gate";
 import { TERMO_DE_ACORDO_LIBERADO } from "@/lib/apolo/termos-liberados";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import type {
@@ -240,8 +243,15 @@ function CompromissoCard({
   const [deleting, setDeleting] = useState(false);
 
   async function handleDelete() {
+    // ⚠️ O AVISO NOMEIA A ASSINATURA, e não é redundância com a recusa do servidor. A rota RECUSA
+    // apagar um acordo com termo vivo na Clicksign (409), mas quem lê a frase depois já clicou e já
+    // digitou o motivo; dizer antes é o que evita a viagem. Os dois existem: o aviso é cortesia, a
+    // recusa é a trava.
     const reason = window.prompt(
-      `Motivo da exclusão da proposta ${item.protocol} (obrigatório):`,
+      `Motivo da exclusão da proposta ${item.protocol} (obrigatório).`
+        + (isAcordo
+          ? "\n\nSe este acordo já tiver termo em assinatura na Clicksign, cancele o envelope no card antes: a exclusão é recusada enquanto ele estiver vivo."
+          : ""),
     );
     if (!reason || !reason.trim()) {
       return;
@@ -259,7 +269,13 @@ function CompromissoCard({
       });
       if (response.ok) {
         onDeleted();
+        return;
       }
+      // ⚠️ A RECUSA VIRA FRASE. Até 20/09/2026 um DELETE recusado não dizia nada na tela: o botão
+      // voltava ao normal e o card continuava lá, o que se lê como "não funcionou". Agora a rota
+      // recusa de verdade (termo em assinatura), e a frase dela é a única coisa que explica.
+      const corpo = (await response.json().catch(() => null)) as null | { error?: string };
+      window.alert(corpo?.error ?? "Não foi possível excluir esta proposta agora.");
     } finally {
       setDeleting(false);
     }
@@ -362,6 +378,13 @@ function CompromissoCard({
       {/* A chave vem antes: sem liberação (lib/apolo/termos-liberados.ts), o botão não existe. */}
       {isAcordo && TERMO_DE_ACORDO_LIBERADO ? <TermoDeAcordoAcao item={item} /> : null}
 
+      {/* ⚠️ A MESMA CHAVE DO TERMO, E NÃO UMA NOVA. Mandar para assinatura é o passo seguinte de
+          emitir o termo: se o papel ainda não pode aparecer na tela (decisão do Lucas em
+          16/09/2026, *"Portal + planos, termos escondidos"*), mandá-lo para a Clicksign muito
+          menos. Uma segunda chave criaria o estado impossível de "não pode baixar, mas pode
+          assinar". */}
+      {isAcordo && TERMO_DE_ACORDO_LIBERADO ? <AssinaturaDoAcordo item={item} /> : null}
+
       {chatOpen ? (
         <div className="mt-3">
           <ProposalChat
@@ -380,8 +403,9 @@ function CompromissoCard({
  *
  * ⚠️ BOTÃO APAGADO SEM MENSAGEM É DEFEITO — o dono do produto cobrou duas vezes (15/09/2026). Quando
  * o gate diz não, a frase fica ESCRITA ao lado do botão, e não num tooltip: tooltip só existe para
- * quem passa o mouse, e some no toque. Medido em 16/09/2026 no Supabase de produção: 0 dos 18
- * acordos está aprovado (14 pendentes, 4 reprovados), então é essa frase que todo operador lê hoje.
+ * quem passa o mouse, e some no toque. Medido em 20/09/2026 no Supabase de produção: dos 40 acordos
+ * vivos, 18 estão aprovados e 22 reprovados (zero pendentes), então o botão acende em 18 deles e a
+ * frase do reprovado é a que os outros 22 leem. Em 16/09/2026 eram 18 acordos e ZERO aprovados.
  *
  * ⚠️ A RECUSA DO SERVIDOR TAMBÉM VIRA FRASE NA TELA. O card pode estar velho (o gestor reprovou
  * depois que a lista carregou) e o C2X pode não confirmar mais o débito (parcela paga depois do
@@ -474,6 +498,376 @@ function TermoDeAcordoAcao({ item }: { item: GuardianCompromissoDetail }) {
       ) : null}
     </div>
   );
+}
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
+// O TERMO DE ACORDO NA CLICKSIGN — mandar, acompanhar e consertar, no card onde o acordo vive.
+// ────────────────────────────────────────────────────────────────────────────────────────────
+//
+// ⚠️ TELA APROVEITADA, E NÃO TELA NOVA. Lucas, 20/09/2026: *"nesse caso vamos ter que criar alguma
+// tela ou aproveitar alguma que temos hoje para monitorar essas assinaturas"*. A escolha é este
+// card, e ela é medida: é a ÚNICA tela que conhece `guardian_compromissos` (as três telas de
+// assinatura do Apolo casam por proposta ou por unidade, e acordo não tem proposta), é onde a
+// aprovação acontece, pela mesma pessoa que vai assinar, e é a tela viva — em 7 dias,
+// `/hades/cobranca` teve 420 acessos contra ZERO das três telas de assinatura do Apolo.
+//
+// ⚠️ E A CONTAGEM NÃO É NOVA: ELA É A MESMA DO CARD DA TÊMIS. O "2 de 3 assinaram", quem assinou e o
+// convite devolvido saem de `diarioDoCompromisso`, casca do mesmo miolo de `diarioDaProposta`
+// ([[reference_painel_assinatura_duas_telas]]: duas contagens do mesmo fato divergem na primeira
+// mudança). O que esta tela faz é DESENHAR; quem conta é a lib.
+//
+// ⚠️ SÓ CARREGA O QUE PODE ANDAR. A consulta do GET lê a venda no Panteon e o quadro do
+// empreendimento — não é barata, e a casa já teve fatura alta por leitura repetida. Por isso ela só
+// sai para acordo que PASSA no gate do Lucas: medido em 20/09/2026, 22 dos 40 acordos estão
+// reprovados, e para eles a resposta seria sempre a mesma frase que o card já sabe escrever sozinho.
+
+type SignatarioDoAcordo = {
+  email: string;
+  nome: string;
+  ordem: number;
+  papel: string;
+};
+
+type EnvelopeNaTela = {
+  criadoEm: string;
+  enviadoEm: null | string;
+  enviadoPorNome: null | string;
+  envelopeId: null | string;
+  estado: string;
+  falha: null | string;
+};
+
+type QuemAssinouNaTela = {
+  assinouEm: null | string;
+  chave: string;
+  convite: string;
+  conviteDetalhe: null | string;
+  email: string;
+  nome: string;
+  papel: null | string;
+};
+
+type AssinaturaDoCard = {
+  assinaram: number;
+  envelope: { envelopeId: null | string; signatarios: QuemAssinouNaTela[] };
+  total: number;
+};
+
+type RespostaDaAssinatura = {
+  assinatura: AssinaturaDoCard | null;
+  envelope: EnvelopeNaTela | null;
+  impedimento: null | string;
+  signatarios: SignatarioDoAcordo[];
+};
+
+/** Os rótulos da casa para o estado do envelope. O valor cru quando ele não é dos nossos. */
+const ESTADO_ESCRITO: Record<string, string> = {
+  aguardando: "Aguardando assinatura",
+  assinado: "Assinado",
+  cancelado: "Cancelado",
+  desconhecido: "Situação desconhecida",
+  expirado: "Prazo vencido",
+  parcial: "Parcialmente assinado",
+  rascunho: "Enviando",
+  recusado: "Recusado",
+};
+
+/** Quem é a pessoa no acordo, em uma palavra. */
+const PAPEL_ESCRITO: Record<string, string> = {
+  careli: "Careli",
+  comprador: "Comprador",
+  vendedora: "Incorporador",
+};
+
+function AssinaturaDoAcordo({ item }: { item: GuardianCompromissoDetail }) {
+  // ⚠️ O GATE RODA NA TELA ANTES DE QUALQUER REQUISIÇÃO, e é a MESMA função que a rota chama. Sem
+  // isso, abrir a ficha de um cliente com cinco acordos reprovados dispararia cinco leituras da
+  // venda no Panteon para receber cinco vezes a frase "este acordo foi reprovado pelo gestor".
+  const motivoDoGate = motivoParaNaoEnviarParaAssinatura(item);
+
+  const [dados, setDados] = useState<RespostaDaAssinatura | null>(null);
+  const [carregando, setCarregando] = useState(false);
+  const [trabalhando, setTrabalhando] = useState<null | string>(null);
+  const [erro, setErro] = useState<null | string>(null);
+
+  /**
+   * ⚠️ O GATE BARRA O BOTÃO, E NÃO A LEITURA. Até 20/09/2026 esta função desistia quando o acordo
+   * não podia ser enviado, e o preço era o caso exato para o qual o cancelamento foi feito: um
+   * acordo APROVADO que foi para a Clicksign e depois perde a aprovação (editar um acordo aprovado
+   * o devolve para `pendente`) sumia da tela com o envelope vivo dentro, sem estado, sem id e sem o
+   * botão de cancelar. O termo continuava cobrando assinatura do cliente e ninguém aqui o alcançava.
+   *
+   * ⚠️ E A LEITURA BARRADA É BARATA, medida: `prepararEnvioDoAcordo` lê os envelopes (um select em
+   * `temis_envelopes`) e SAI no gate, antes de tocar a venda do Panteon e o quadro do
+   * empreendimento, que são a parte cara. O diário só roda quando existe envelope. Ou seja, para os
+   * 22 acordos reprovados de hoje o custo é um select que devolve zero linhas.
+   *
+   * ⚠️ E ELA NÃO ZERA O ERRO. `agir` grava a recusa do servidor e chama `carregar` no `finally`, sem
+   * `await` entre os dois: um `setErro(null)` aqui caía no MESMO lote de render e a frase nunca era
+   * desenhada. Quem pagava era a recusa que o GET não sabe recalcular, como o papel recusado porque
+   * o débito mudou no C2X: o operador clicava, nada aparecia, e o botão continuava aceso. Quem limpa
+   * o erro é quem COMEÇA uma ação nova, e `agir` já faz isso.
+   */
+  const carregar = useCallback(async () => {
+    setCarregando(true);
+    try {
+      const token = await getApoloAccessToken();
+      const resposta = await fetch(
+        `/api/guardian/termo-de-acordo/assinatura?acordo=${encodeURIComponent(item.id)}`,
+        { cache: "no-store", headers: { Authorization: `Bearer ${token}` } },
+      );
+      const corpo = (await resposta.json().catch(() => null)) as {
+        data?: RespostaDaAssinatura;
+        error?: string;
+      } | null;
+      if (!resposta.ok) {
+        setErro(corpo?.error ?? "Não foi possível ler a assinatura deste acordo agora.");
+        return;
+      }
+      setDados(corpo?.data ?? null);
+    } catch {
+      setErro("Não foi possível ler a assinatura deste acordo agora.");
+    } finally {
+      setCarregando(false);
+    }
+    // ⚠️ `motivoDoGate` SAIU DAS DEPENDÊNCIAS junto com o `return` que ele comandava: a leitura não
+    // depende mais dele, e deixá-lo aqui faria a consulta sair de novo a cada mudança de aprovação.
+  }, [item.id]);
+
+  useEffect(() => {
+    void carregar();
+  }, [carregar]);
+
+  /**
+   * As três ações que mexem na Clicksign.
+   *
+   * ⚠️ O BOTÃO NÃO VOLTA QUANDO SOBROU ENVELOPE NA CONTA. `envelopeAtivo` vem como CAMPO, e não como
+   * palavra dentro da frase: quando a Clicksign falha no passo `notificar`, o envelope ficou ATIVO,
+   * pago e permanente — e a recarga logo abaixo é o que mostra a linha dele na tela, para ninguém
+   * clicar de novo achando que nada aconteceu.
+   */
+  async function agir(
+    acao: "cancelar" | "enviar" | "reenviar",
+    extra?: { signerId: string },
+  ): Promise<void> {
+    setTrabalhando(acao);
+    setErro(null);
+    try {
+      const token = await getApoloAccessToken();
+      const resposta = await fetch("/api/guardian/termo-de-acordo/assinatura", {
+        body: JSON.stringify({ acordo: item.id, ...(extra ?? {}) }),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        method: acao === "enviar" ? "POST" : acao === "cancelar" ? "DELETE" : "PATCH",
+      });
+      const corpo = (await resposta.json().catch(() => null)) as {
+        data?: { aviso?: string };
+        envelopeAtivo?: boolean;
+        error?: string;
+      } | null;
+      if (!resposta.ok) {
+        setErro(corpo?.error ?? "Não foi possível falar com a Clicksign agora.");
+        return;
+      }
+      // ⚠️ 200 NÃO QUER DIZER "SEM PROBLEMA". Existe um desfecho em que o envelope foi criado,
+      // ativado e notificado e o Panteon NÃO conseguiu registrar isso: o envio aconteceu (por isso
+      // não é erro), e o envelope está vivo na conta, pago, com o convite já na caixa do cliente. O
+      // aviso traz o id dele. Engolir este 200 faria a tela recarregar, não mostrar envelope nenhum,
+      // e o operador clicar de novo.
+      if (corpo?.data?.aviso) setErro(corpo.data.aviso);
+    } catch {
+      setErro("Não foi possível falar com a Clicksign agora.");
+    } finally {
+      setTrabalhando(null);
+      await carregar();
+    }
+  }
+
+  const envelope = dados?.envelope ?? null;
+  const impedimento = dados?.impedimento ?? null;
+  const assinatura = dados?.assinatura ?? null;
+  // ⚠️ O GATE DO LUCAS APAGA O BOTÃO DE ENVIAR, E SÓ ELE. Ver `carregar`: o bloco continua na tela
+  // para mostrar o envelope que já existe e oferecer o cancelamento, que é justamente o gesto de
+  // quem perdeu a aprovação DEPOIS de mandar. O que some é o convite a mandar de novo.
+  const podeEnviar = Boolean(dados) && !impedimento && !motivoDoGate && !carregando;
+  // Acordo barrado pelo gate e SEM envelope não desenha bloco nenhum: a frase já está escrita ao
+  // lado do botão do termo, logo acima, e repeti-la seria dizer a mesma coisa duas vezes no card.
+  const semNadaAMostrar = Boolean(motivoDoGate) && !envelope && !erro;
+  // A frase que explica o botão ausente: a do gate vence, porque é a que não muda com a recarga.
+  const porQueNaoEnvia = motivoDoGate ?? impedimento;
+  // ⚠️ SÓ O ENVELOPE VIVO OFERECE CANCELAR. Cancelado, recusado e vencido já estão mortos lá, e o
+  // assinado não se desfaz — oferecer o botão neles seria oferecer um gesto que a Clicksign recusa.
+  const podeCancelar = Boolean(
+    envelope?.envelopeId && ["aguardando", "parcial", "rascunho"].includes(envelope.estado),
+  );
+
+  if (semNadaAMostrar) return null;
+
+  return (
+    <div className="mt-2 grid gap-2 border-t border-line/60 pt-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {/* ⚠️ O BOTÃO DE ENVIAR SOME QUANDO O GATE BARRA, e o de cancelar (abaixo) NÃO: mandar é o
+            que a régua do Lucas proíbe, cancelar é o conserto de quem já mandou. */}
+        {motivoDoGate ? null : (
+        <button
+          type="button"
+          onClick={() => void agir("enviar")}
+          disabled={!podeEnviar || trabalhando !== null}
+          aria-describedby={impedimento ? `assinatura-motivo-${item.id}` : undefined}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/5 px-2.5 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[#A07C3B]/5 dark:text-[#d9b877]"
+        >
+          {trabalhando === "enviar" || carregando ? (
+            <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+          ) : (
+            <Send className="size-3.5" aria-hidden="true" />
+          )}
+          Enviar para assinatura
+        </button>
+        )}
+
+        {podeCancelar ? (
+          <Tooltip content="Cancela o envelope na Clicksign. Ele não se apaga, só fecha, e é isso que libera o reenvio." placement="top">
+            <button
+              type="button"
+              onClick={() => void agir("cancelar")}
+              disabled={trabalhando !== null}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-xs font-semibold text-ink-soft transition-colors hover:bg-subtle disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {trabalhando === "cancelar" ? (
+                <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+              ) : (
+                <XCircle className="size-3.5" aria-hidden="true" />
+              )}
+              Cancelar envelope
+            </button>
+          </Tooltip>
+        ) : null}
+
+        {porQueNaoEnvia ? (
+          <p
+            id={`assinatura-motivo-${item.id}`}
+            className="min-w-0 flex-1 text-[11px] font-medium text-ink-muted"
+          >
+            {porQueNaoEnvia}
+          </p>
+        ) : null}
+      </div>
+
+      {/* ⚠️ QUEM VAI ASSINAR APARECE ANTES DE ALGUÉM CLICAR. A conta da Clicksign é de produção, o
+          envelope custa e o ativado não se apaga: descobrir que o e-mail do incorporador está errado
+          DEPOIS de mandar é caro e não se desfaz. */}
+      {!envelope && dados && dados.signatarios.length > 0 ? (
+        <ul className="m-0 grid list-none gap-0.5 p-0">
+          {dados.signatarios.map((s) => (
+            <li
+              className="flex items-baseline gap-2 text-[11px] text-ink-soft"
+              key={`${s.papel}-${s.email}`}
+            >
+              <span className="tabular-nums text-ink-muted">{s.ordem}.</span>
+              <span className="font-semibold text-ink">{s.nome}</span>
+              <span className="text-ink-muted">{PAPEL_ESCRITO[s.papel] ?? s.papel}</span>
+              <span className="min-w-0 flex-1 truncate text-ink-muted">{s.email}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {envelope ? (
+        <section className="rounded-lg border border-line bg-subtle/40 px-3 py-2">
+          <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+            <p className="m-0 text-xs font-semibold text-ink">
+              {assinatura ? (
+                <span className="tabular-nums">
+                  {assinatura.assinaram} de {assinatura.total} assinaram
+                </span>
+              ) : (
+                (ESTADO_ESCRITO[envelope.estado] ?? envelope.estado)
+              )}
+            </p>
+            <span className="shrink-0 text-[11px] text-ink-muted">
+              {ESTADO_ESCRITO[envelope.estado] ?? envelope.estado}
+              {/* ⚠️ "DESDE QUANDO" É A PERGUNTA DA COBRANÇA. Um termo parado há dois dias é normal;
+                  parado há três semanas é o que faz alguém ligar para o cliente. */}
+              {envelope.enviadoEm
+                ? ` · enviado em ${formatBrDateTime(envelope.enviadoEm)}`
+                : ` · começou em ${formatBrDateTime(envelope.criadoEm)}`}
+            </span>
+          </header>
+
+          {assinatura ? (
+            <ul className="m-0 mt-1.5 grid list-none gap-0.5 p-0">
+              {assinatura.envelope.signatarios.map((s) => (
+                <li className="flex items-baseline gap-2 text-[11px]" key={s.chave}>
+                  {s.assinouEm ? (
+                    <Check className="size-3 shrink-0 text-emerald-600" aria-hidden="true" />
+                  ) : (
+                    <span className="size-3 shrink-0" aria-hidden="true" />
+                  )}
+                  <span className="font-semibold text-ink">{s.nome}</span>
+                  <span className="text-ink-muted">
+                    {s.papel ? (PAPEL_ESCRITO[s.papel] ?? s.papel) : ""}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-ink-muted">
+                    {/* ⚠️ "SEM NOTÍCIA" NÃO É "ENTREGUE": a Clicksign só avisa quando algo dá
+                        errado, então silêncio quer dizer "nenhum erro chegou". Escrever "entregue"
+                        aqui faria o operador parar de procurar. */}
+                    {s.assinouEm
+                      ? `assinou em ${formatBrDateTime(s.assinouEm)}`
+                      : s.convite === "nao_entregue"
+                        ? `convite devolvido${s.conviteDetalhe ? `: ${s.conviteDetalhe}` : ""}`
+                        : s.email}
+                  </span>
+                  {!s.assinouEm && assinatura.envelope.envelopeId ? (
+                    <Tooltip content="Reenvia o convite desta pessoa. Nada é criado nem removido no envelope." placement="top">
+                      <button
+                        type="button"
+                        onClick={() => void agir("reenviar", { signerId: s.chave })}
+                        disabled={trabalhando !== null}
+                        className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-line text-ink-soft transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label={`Reenviar o convite de ${s.nome}`}
+                      >
+                        <RefreshCw className="size-3" aria-hidden="true" />
+                      </button>
+                    </Tooltip>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
+          {/* ⚠️ A FALHA GRAVADA FICA VISÍVEL. Ela é o que diz que sobrou envelope na conta — e
+              esconder isso é o que faz alguém clicar de novo e criar o segundo. */}
+          {envelope.falha ? (
+            <p className="m-0 mt-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+              {envelope.falha}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {erro ? (
+        <p
+          role="alert"
+          className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 dark:border-rose-500/25 dark:bg-rose-500/12 dark:text-rose-300"
+        >
+          {erro}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** "20/09/2026 11:04" — a hora em Brasília, que é a hora da operação. */
+function formatBrDateTime(iso: string): string {
+  const quando = new Date(iso);
+  if (Number.isNaN(quando.getTime())) return iso;
+  return quando.toLocaleString("pt-BR", {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "2-digit",
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+  });
 }
 
 /** O nome que a rota sugeriu no `Content-Disposition`; sem ele, o protocolo do acordo. */

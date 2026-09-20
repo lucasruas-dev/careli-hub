@@ -4,7 +4,7 @@ import { PenLine, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { lerRegraDeOrdem, ORDEM_MAXIMA, ORDEM_PADRAO } from "@/lib/assinatura/ordem";
-import { PAPEIS, type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
+import { PAPEIS, PAPEIS_DO_CONTRATO, type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 
 // A ORDEM DE ASSINATURA, NO SETUP DO EMPREENDIMENTO.
@@ -132,7 +132,15 @@ export function OrdemDeAssinaturaCard({ code, enterpriseId }: Props) {
           real, de cima para baixo. Empate desempata pela ordem canônica, para a lista não dançar a
           cada tecla enquanto alguém digita. */}
       <div className={`mt-3 grid gap-1.5 ${ordenada ? "" : "opacity-50"}`}>
-        {[...PAPEIS]
+        {/*
+          ⚠️ `PAPEIS_DO_CONTRATO`, E NÃO `PAPEIS`: a Careli fica de fora desta tela de propósito.
+          Este cartão configura a ordem do CONTRATO de venda do empreendimento, onde ela não é
+          parte — ela assina o TERMO DE ACORDO do Hades (Lucas, 20/09/2026: *"Assina como
+          careli"*), que tem ordem própria e configuração própria em
+          `lib/hades/acordo/assinante-da-careli.ts`. Mostrá-la aqui faria o operador do
+          empreendimento acreditar que ela entra em toda venda.
+        */}
+        {[...PAPEIS_DO_CONTRATO]
           .sort(
             (a, b) =>
               (ordens[a] ?? 99) - (ordens[b] ?? 99) || PAPEIS.indexOf(a) - PAPEIS.indexOf(b),
@@ -158,10 +166,10 @@ export function OrdemDeAssinaturaCard({ code, enterpriseId }: Props) {
               </span>
               {/* Quem divide o número com este papel assina junto com ele — dizer isso na linha
                   evita o operador ter de cruzar a lista inteira de olho para descobrir. */}
-              {PAPEIS.filter((p) => p !== papel && ordens[p] === ordens[papel]).length > 0 ? (
+              {PAPEIS_DO_CONTRATO.filter((p) => p !== papel && ordens[p] === ordens[papel]).length > 0 ? (
                 <span className="shrink-0 rounded-md bg-subtle px-1.5 py-0.5 text-[10px] font-medium text-ink-muted">
                   junto com{" "}
-                  {PAPEIS.filter((p) => p !== papel && ordens[p] === ordens[papel])
+                  {PAPEIS_DO_CONTRATO.filter((p) => p !== papel && ordens[p] === ordens[papel])
                     .map(rotuloDoPapel)
                     .join(", ")}
                 </span>

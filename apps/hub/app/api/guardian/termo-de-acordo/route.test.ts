@@ -9,8 +9,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // de escrita, o `viewer` emitiria instrumento para assinatura. As duas trocas compilam limpas.
 //
 // ⚠️ A PARTE EXERCITADA COBRA A ORDEM. O gate tem de responder ANTES de a rota abrir conexão no C2X:
-// medido em 16/09/2026, nenhum dos 18 acordos de produção está aprovado, então quase todo clique é
-// uma recusa — e cada recusa que passasse pelo legado gastaria uma conexão de um MySQL com teto.
+// medido em 20/09/2026, 22 dos 40 acordos de produção estão reprovados, então quase um em cada dois
+// cliques é uma recusa — e cada recusa que passasse pelo legado gastaria uma conexão de um MySQL
+// com teto.
 const ROTA = readFileSync(join(__dirname, "route.ts"), "utf8");
 const CODIGO = ROTA.split("\n")
   .filter((linha) => !/^\s*(\/\/|\/\*|\*)/.test(linha))
@@ -30,12 +31,18 @@ describe("a rota do termo de acordo, lida como texto", () => {
 
   it("a decisão é da lib: gate e montagem importados, nenhuma régua local", () => {
     expect(CODIGO).toContain('from "@/lib/hades/dossie/termo-de-acordo-gate"');
-    expect(CODIGO).toContain("montarDadosDoTermoDeAcordo({");
+    expect(CODIGO).toContain("montarTermoDoAcordoEmPdf(acordo)");
     expect(CODIGO).not.toContain("approvalStatus ===");
   });
 
-  it("a qualificação vem da mesma leitura da ficha do Hades", () => {
-    expect(CODIGO).toContain("loadHadesAttendanceClient(`c2x-client-${acordo.clientC2xId}`)");
+  // ⚠️ A MONTAGEM DO PAPEL É UMA SÓ, E DESDE 20/09/2026 ISSO IMPORTA: são DOIS caminhos para o
+  // mesmo documento — este download e o envio para a Clicksign
+  // (`app/api/guardian/termo-de-acordo/assinatura/route.ts`). Uma segunda montagem aqui faria o
+  // cliente assinar um PDF diferente do que o operador baixou.
+  it("a montagem do papel mora na lib, e não na rota", () => {
+    expect(CODIGO).toContain('from "@/lib/hades/acordo/termo-em-pdf"');
+    expect(CODIGO).not.toContain("loadHadesAttendanceClient");
+    expect(CODIGO).not.toContain("montarTermoDeAcordoPdf(");
   });
 });
 

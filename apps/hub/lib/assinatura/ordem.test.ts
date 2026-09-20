@@ -111,6 +111,28 @@ describe("a ordem por papel", () => {
     );
   });
 
+  // ⚠️ A CARELI NÃO ENTRA NA FRASE DO CONTRATO. Ela é papel do TERMO DE ACORDO do Hades (Lucas,
+  // 20/09/2026: *"Assina como careli"*) e entrou em `PAPEIS` no fim, para não renumerar ninguém —
+  // mas `descreverRegra` e `gruposDaRegra` descrevem a fila de uma VENDA, e iterar a lista inteira
+  // faria todo empreendimento da casa exibir "... → Careli" numa frase sobre um documento que ela
+  // não assina.
+  it("a Careli fica fora da fila do contrato", () => {
+    const r = lerRegraDeOrdem({ ordenada: true, papeis: ["comprador"] });
+
+    expect(descreverRegra(r, rotuloDoPapel)).not.toContain("Careli");
+    expect(gruposDaRegra(r).flat()).not.toContain("careli");
+  });
+
+  // ⚠️ MAS ELA CONTINUA TENDO NÚMERO CANÔNICO, e é o ÚLTIMO. É isso que faz o termo de acordo sair
+  // na ordem que o Lucas pediu (comprador, incorporador, Careli) sem uma segunda tabela de números.
+  it("mas ela tem número canônico, e assina por último", () => {
+    const { ordens } = ORDEM_PADRAO;
+
+    expect(ordens.careli).toBeGreaterThan(ordens.comprador);
+    expect(ordens.careli).toBeGreaterThan(ordens.vendedora);
+    expect(ordens.careli).toBeGreaterThan(ordens.testemunha);
+  });
+
   // Os dois papéis que o contrato de CORRETAGEM traz, e que não existiam antes de 08/09/2026.
   it("conhece a coordenadora de vendas e o corretor", () => {
     const saida = ordenarSignatarios(
