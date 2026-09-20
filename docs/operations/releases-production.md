@@ -95,6 +95,27 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Hades/Temis/Apolo/Hercules] Termo de acordo assinavel, card da Temis pelo Panteon e o pedido recusado que prendia a venda (v1.352.0 + v1.351.1)`.
+- Squad/agente responsavel: `Zeus` (quatro workflows com revisao adversarial em tres lentes cada).
+- Data e hora local: `2026-09-20T15:16:12-03:00` (push na main).
+- Ambiente: `producao`.
+- Origem: OK explicito do Lucas em 20/09/2026 ("pode subir" e "pode subir junto"), depois dos pedidos "tem um distrato mas nao esta trazendo as informacoes", "tudo tem que ser alimentado pelo panteon", "quero so incluir o texto legal substituindo o texto de observacao", "vamos levar esse documento para ser assinado na click", "o acordo so pode ficar disponivel para envio depois da aprovacao", "entra no envelope somente o proponente" e "nessa tela vc pode abrir mais um campo para assinatura de termos vendedora".
+- Migrations: `0179_envelope_do_acordo.sql` APLICADA (coluna `compromisso_id` em `temis_envelopes`, com FK para `guardian_compromissos`, indice parcial e indice unico que impede dois envelopes vivos do mesmo acordo; conferido depois no schema). `0180_assinante_de_termos_da_vendedora.sql` ESCRITA e NAO APLICADA (troca o CHECK do papel em `temis_assinantes`); sem ela o campo novo le e mostra, e gravar recusa com a frase que a nomeia.
+- Escopo publicado:
+  - Hades: texto legal do aceite no termo de acordo; envio para a Clicksign pelo motor dos contratos (proponente, incorporador e Careli, nessa ordem), so para acordo aprovado, com a aprovacao relida antes de abrir o envelope; acompanhamento no card (quem assinou, quem falta, reenviar convite, cancelar).
+  - Apolo: papel `termos_vendedora` no quadro de assinatura do empreendimento, recusado para o ator portal no servidor.
+  - Temis: ficha certa do cliente, RG fora dos exigidos, regime so para casado ou uniao estavel, comissao pela divisao da unidade, corretor e imobiliaria pela CAD, e a frase da carteira nas vendas importadas.
+  - Hercules: pedido de cancelamento recusado com o contrato ja indeferido devolve a venda para Proposta (distrato nao), marca de pedido sem card aberto ha mais de 15 minutos deixa de travar o botao.
+- Porta fechada: `TERMO_DE_ACORDO_LIBERADO` e `TERMO_DE_RESCISAO_LIBERADO` continuam `false`; o botao de enviar para assinatura nasce atras da mesma chave do termo de acordo, e o POST e o PATCH da rota respondem 503 com a chave desligada.
+- Commits publicados: `fccd3e17`, `c10fe2f4`, `b46e84ee`, `624152ca`, o cherry-pick da correcao do cancelamento e o do registro.
+- Deployment anterior: commit `f384e036` (v1.351.0) / `dpl_F2TR5P3QAcUzpasoabDzF68EwzJT`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Validacoes executadas: typecheck limpo; suite completa 7.390 testes em 462 arquivos; nenhuma chamada real a Clicksign (porta HTTP em duble, com contagem de chamadas como prova); medicoes em producao so com SELECT.
+- Rollback definido: `f384e036` / `dpl_F2TR5P3QAcUzpasoabDzF68EwzJT`. A 0179 nao precisa ser desfeita (coluna nova, nula em todas as linhas).
+- Pendencias: a migration 0180 (pede OK); apontar quem assina os termos por incorporadora (medido: 0 dos 18 acordos aprovados tem quem assine hoje; com 4 apontamentos, 18 de 18); o SQL de VOL1106 e VOC0306 (escrita em producao, pede OK); ligar a chave do termo de acordo depois do cadastro.
+
+Registro de producao:
+
 - Assunto: `[Hercules/Apolo] Os planos do Garden iguais aos da MMendes (v1.351.0)`.
 - Squad/agente responsavel: `Zeus` (tres rodadas com workflow de implementacao e revisao adversarial em tres lentes: paridade, regressao fora do Garden, seguranca da rota publica).
 - Data e hora local: `2026-09-18T18:00:13-03:00` (push na main).

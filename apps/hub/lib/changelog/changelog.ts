@@ -36,8 +36,64 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-20-termo-de-acordo-e-card-do-panteon",
+    deployedAt: "2026-09-20T15:16:12-03:00",
+    modules: [
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "**O termo de acordo traz o texto legal do aceite**, com as condições, o que acontece se uma parcela do acordo não for paga e a declaração de que o comprador leu e aceita. O resto do termo continua como estava.",
+              "**Dá para mandar o acordo para assinatura na Clicksign**, direto do card: assinam o proponente, o incorporador e a Careli, nessa ordem. Só acordo aprovado pode ser enviado.",
+              "**O card mostra o andamento da assinatura:** quem já assinou, quem falta, desde quando, convite devolvido, além de reenviar convite e cancelar.",
+              "**Falta de dado não vira erro:** quando falta e-mail, CPF ou quem assina pelo incorporador, a tela diz o que falta e onde resolver, e nada é enviado.",
+            ],
+            screen: "Cobrança · Acordo",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**No quadro de assinatura do empreendimento dá para apontar quem assina os TERMOS pela vendedora.** Não precisa ser o representante legal: pode ser o jurídico, um analista, quem você indicar. Vale para os termos, e não para o contrato de venda.",
+            ],
+            screen: "Empreendimentos · Setup · Assinatura",
+          },
+        ],
+      },
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O card de análise mostra o cliente qualificado**: nascimento, estado civil, nacionalidade e profissão. Antes faltavam em 8 dos 10 cards, porque o sistema lia a ficha errada quando havia duas com o mesmo CPF.",
+              "**O RG deixa de ser exigido** e só aparece quando existe. O regime de bens só aparece para casado ou união estável.",
+              "**A comissão vem do empreendimento da unidade**, e os cards que estavam sem percentual passam a mostrar.",
+              "**O corretor e os contatos da imobiliária aparecem nas vendas importadas**, lidos da CAD do cliente no Apolo.",
+              "**Quando a venda veio do C2X e a carteira ainda não separa as parcelas**, o card diz isso, em vez de mostrar entrada e prazo em branco.",
+            ],
+            screen: "Análise do trabalho",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Hades: texto legal do aceite em lib/hades/dossie/termo-de-acordo-pdf.ts (teste caractere a caractere e prova por coordenada de que não vaza da folha); envio pelo mesmo motor dos contratos (lib/assinatura/*), com papel novo `careli` fora de PAPEIS_DO_CONTRATO, assinante da Careli num arquivo só, ordem comprador/incorporador/Careli, gate que reusa `motivoParaNaoEmitirOTermo` e relê a aprovação antes de abrir o envelope, guarda contra o segundo envelope em três camadas (leitura, índice único parcial da 0179 e releitura pós-insert), `proposta_id` nulo de propósito e `compromisso_id` no metadata do documento. Migration 0179 APLICADA em produção. Apolo: papel `termos_vendedora` no quadro (temis_assinantes), recusado para o ator portal no servidor, com precedência divisão da unidade, empreendimento da proposta e pai (a mesma de chavesDaComissao); migration 0180 escrita e NÃO aplicada (sem ela o campo lê e mostra, e gravar recusa com a frase que a nomeia). Têmis: escolha da ficha por cliente_entity_id, ponte do id do C2X e cadastro preenchido, com complemento só de ficha provadamente da mesma pessoa; comissão pela divisão; corretor e imobiliária pela CAD, nunca o próprio comprador; leitor da carteira por venda sem tocar o C2X. Três workflows com revisão adversarial em três lentes cada. 7.390 testes em 462 arquivos, typecheck limpo.",
+      motivation:
+        "Lucas, 18 e 20/09/2026: \"tem um distrato mas nao esta trazendo as informacoes, analisa o porque\", \"tudo tem que ser alimentado pelo panteon\", \"o que esta hoje esta aprovado quero so incluir o texto legal substituindo o texto de observacao\", \"vamos levar esse documento para ser assinado na click\", \"o acordo so pode ficar disponivel para envio depois da aprovacao\", \"entra no envelope somente o proponente\" e \"nessa tela vc pode abrir mais um campo para assinatura de termos vendedora\".",
+    },
+    rollback: "f384e036",
+    title: "Termo de acordo assinável e o card da Têmis alimentado pelo Panteon",
+    type: "melhoria",
+    version: "1.352.0",
+  },
+  {
     buildTag: "2026-09-18-pedido-indeferido-libera-o-botao",
-    deployedAt: "2026-09-18T17:10:00-03:00",
+    deployedAt: "2026-09-20T15:16:12-03:00",
     internal: true,
     modules: [
       {

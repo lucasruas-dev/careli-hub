@@ -1094,6 +1094,28 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
     situacao: "entregue",
     titulo: "Os planos do Garden iguais aos da MMendes",
   },
+  {
+    id: "PAN-118",
+    entregueEm: "2026-09-20",
+    evidencia:
+      "v1.352.0. lib/temis/dados-do-contrato.ts (escolha da ficha por cliente_entity_id, ponte do C2X e cadastro), comissão pela divisão, corretor pela CAD, lib/apolo/carteira-da-venda.ts. Medido nos 10 cards em análise: qualificação de 0/4 para 4/4 em 8 deles, comissão nos 4 distratos que estavam sem, corretor em 5 dos 6.",
+    modulo: "Temis",
+    porque:
+      "Lucas (18/09/2026), com o print de um distrato: *\"tem um distrato mas nao esta trazendo as informacoes\"*. O card lia a ficha errada quando o CPF tinha duas fichas, e as vendas importadas do C2X vinham sem corretor, sem comissão e sem cronograma.",
+    situacao: "entregue",
+    titulo: "O card da Têmis alimentado pelo Panteon",
+  },
+  {
+    id: "PAN-119",
+    entregueEm: "2026-09-20",
+    evidencia:
+      "v1.352.0, com a migration 0179 aplicada. lib/hades/acordo/* (gate, signatários, envio, envelopes), texto legal em termo-de-acordo-pdf.ts, acompanhamento em PropostasPanel.tsx, papel termos_vendedora no quadro (0180 escrita, não aplicada). O botão continua atrás de TERMO_DE_ACORDO_LIBERADO, que segue false.",
+    modulo: "Hades",
+    porque:
+      "Lucas (20/09/2026): *\"vamos levar esse documento para ser assinado na click. quem vai, o comprador, o incorporador e a nivea careli\"* e *\"o acordo so pode ficar disponivel para envio depois da aprovacao\"*. Havia 40 acordos esperando emissão e nenhum caminho para assinar.",
+    situacao: "entregue",
+    titulo: "Termo de acordo com texto legal, assinatura e acompanhamento",
+  },
 ];
 
 /** Quantos itens em cada situação — o cabeçalho da tela lê daqui. */
