@@ -1553,6 +1553,38 @@ describe("o cadastro da imobiliária entra pelo vínculo", () => {
     });
   }
 
+  // ⚠️ O CRECI DO VINCULADO VEM DA FICHA — e ficava em branco desde sempre. Lucas, 20/09/2026, no
+  // contrato do Vale do Ouro: a linha do beneficiário saiu "CRECI: [creci_vinculado]" e travou a
+  // geração. O catálogo já apontava para `ficha.creci`; o motor é que não lia.
+  it("o CRECI sai do cadastro da imobiliária", async () => {
+    const comCreci = clienteFalso({
+      apolo_contacts: [],
+      apolo_entities: (f: Record<string, unknown>) =>
+        f.id === IMOBILIARIA
+          ? {
+              document_masked: "58.896.684/0001-31",
+              id: IMOBILIARIA,
+              metadata: { cadastro: { creci: "53964" } },
+            }
+          : [ENTIDADE_THIAGO],
+      hercules_empreendimentos: EMPREENDIMENTO,
+      hercules_propostas: proposta({
+        imobiliaria_entity_id: IMOBILIARIA,
+        imobiliaria_nome: "FLAT IMOBILIARIA",
+      }),
+      hercules_unidades: UNIDADE,
+    });
+
+    expect((await dadosDaProposta("p1", comCreci))!.dados.gerais.creci_vinculado).toBe("53964");
+  });
+
+  // Imobiliária que veio do sync do C2X não tem cadastro no Apolo: o CRECI fica em branco e a
+  // conferência acusa. O número existe no legado, e a regra da casa é trazê-lo para cá, não ler lá.
+  it("sem cadastro no Apolo, o CRECI não é inventado", async () => {
+    const g = (await dadosDaProposta("p1", comVinculo()))!.dados.gerais;
+    expect(g.creci_vinculado ?? "").toBe("");
+  });
+
   it("CNPJ, telefone e e-mail saem do cadastro da entidade vinculada", async () => {
     const r = await dadosDaProposta("p1", comVinculo());
     const g = r!.dados.gerais;
@@ -1694,6 +1726,30 @@ describe("a comissão de corretagem e a coordenadora de vendas", () => {
       hercules_unidades: entrada.unidade ?? UNIDADE,
     });
   }
+
+  // ⚠️ O NOME QUE OBRIGA É A RAZÃO SOCIAL. Lucas, 20/09/2026, no contrato do Vale do Ouro: *"O nome
+  // da Gurgel está incompleto"* — a linha do beneficiário saía com o FANTASIA, que na ficha real é
+  // "GURGEL LANÇAMENTOS" para a razão social "FABRICIO GURGEL NEGOCIOS IMOBILIARIOS LTDA".
+  it("a coordenadora sai com o fantasia E com a razão social, cada um na sua variável", async () => {
+    const g = (await dadosDaProposta("p1", cliente({ ajustes: AJUSTES })))!.dados.gerais;
+
+    expect(g.nome_fantasia_coordenadora_vendas).toBe("Careli Vendas");
+    expect(g.razao_social_coordenadora_vendas).toBe("CARELI VENDAS E INTERMEDIACAO LTDA");
+  });
+
+  // ⚠️ PREÇO DO LOTE E CUSTO DA AQUISIÇÃO SÃO NÚMEROS DIFERENTES. Lucas, 20/09/2026: *"O preço do
+  // lote e da aquisição não podem ser os mesmos"* — a minuta repetia `preco_venda` nas duas linhas
+  // porque `valor_custo_total_aquisicao` estava no catálogo e ninguém a preenchia.
+  it("o custo total da aquisição é o lote mais a comissão", async () => {
+    const g = (await dadosDaProposta("p1", cliente({ ajustes: AJUSTES })))!.dados.gerais;
+
+    // 185.400,00 do lote + 12.051,00 de comissão.
+    expect(g.preco_venda).toBe("R$ 185.400,00");
+    expect(g.valor_custo_total_aquisicao).toBe("R$ 197.451,00");
+    expect(g.valor_custo_total_aquisicao_extenso).toBe(
+      "cento e noventa e sete mil quatrocentos e cinquenta e um reais",
+    );
+  });
 
   it("os três valores e os três extensos: 1,5% e 5% de R$ 185.400", async () => {
     const g = (await dadosDaProposta("p1", cliente({ ajustes: AJUSTES })))!.dados.gerais;

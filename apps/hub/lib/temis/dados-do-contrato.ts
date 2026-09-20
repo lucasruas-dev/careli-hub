@@ -62,6 +62,7 @@ import {
   quantidadePorExtenso,
 } from "./por-extenso";
 import type { DadosDoComprador, DadosDoContrato } from "./preencher-contrato";
+import { tabelaGeralDePagamentos } from "./tabela-de-pagamentos";
 
 // ── AS LINHAS COMO ELAS CHEGAM ───────────────────────────────────────────────
 
@@ -199,6 +200,15 @@ type CadastroDaCoordenadora = {
   email: string;
   nome: string;
   numero: string;
+  /**
+   * A RAZÃO SOCIAL, que é o nome que obriga.
+   *
+   * ⚠️ NÃO É O `nome`. Aquele é o FANTASIA ("GURGEL LANÇAMENTOS"), e foi ele que saiu na linha de
+   * beneficiário do contrato de corretagem — Lucas, 20/09/2026: *"O nome da Gurgel está
+   * incompleto"*. Medido no mesmo dia: a ficha tem fantasia "GURGEL LANÇAMENTOS" e razão social
+   * "FABRICIO GURGEL NEGOCIOS IMOBILIARIOS LTDA". Quem assina e recebe é a razão social.
+   */
+  razaoSocial: string;
   rua: string;
   telefone: string;
 };
@@ -466,6 +476,39 @@ export async function dadosDaProposta(
         }).catch(() => null)
       : null;
 
+  // ⚠️ O QUADRO DE PAGAMENTO É NÓ, NÃO TEXTO, e por isso viaja em `gerados` e não em `gerais` (ver
+  // `tabela-de-pagamentos.ts`). Os DOIS nomes recebem a mesma tabela, pela mesma razão de
+  // `preco_venda`/`valor_imovel_venda`: as minutas usam um ou outro, e escrever só um faria metade
+  // delas imprimir o colchete. Sem cronograma não há quadro: a variável continua cobrando.
+  //
+  // ⚠️ MAS O AVISO NÃO SE REPETE. Quem não tem `condicoes` JÁ é avisado por `avisoSemCronograma`, e
+  // lá a frase é escolhida pela CAUSA (nativa sem cronograma, carteira que ainda não separa a venda,
+  // carteira sincronizada sem lançamento, leitura que falhou). Um segundo aviso aqui poria duas
+  // frases para o mesmo buraco e, na venda IMPORTADA, a segunda mandaria o operador procurar um
+  // cronograma que aquela venda nunca teve — exatamente o que a nota das quatro causas evita.
+  //
+  // ⚠️ SÓ QUE EXISTE UM QUINTO CASO, E ELE FICOU MUDO NO MERGE DE 20/09/2026: a venda importada cuja
+  // carteira do Apolo respondeu `ok`. Aí `gerais` preenche entrada e financiado COM A CARTEIRA e
+  // volta ANTES de `avisoSemCronograma` — ninguém fala nada —, e esta linha, que na `main` avisava
+  // sempre que o quadro não saía, passou a exigir `condicoes`, que na importada é NULA. Resultado: o
+  // documento é recusado por `tabela_geral_pagamentos` em `semValor` e nenhuma frase explica o
+  // porquê. Hoje o caso é latente (`apolo_carteira_vendas` ainda não existe em produção, conferido
+  // em 20/09/2026); no dia da migration ele vale para as ~4.9 mil propostas importadas.
+  //
+  // ⚠️ E A FRASE DELE É PRÓPRIA, pela regra da casa: cada causa tem a sua. A do cronograma vazio
+  // manda conferir o que foi gravado na proposta; esta precisa dizer que a carteira já tem as
+  // parcelas e que, mesmo assim, o quadro do CONTRATO depende do cronograma da proposta — senão o
+  // operador vai procurar defeito na carteira, que está certa.
+  const quadro = tabelaGeralDePagamentos(proposta.condicoes);
+  const temCronogramaGravado = objeto(proposta.condicoes) !== null;
+  if (!quadro && (temCronogramaGravado || carteira?.situacao === "ok")) {
+    avisos.push(
+      temCronogramaGravado
+        ? "O cronograma gravado na proposta não tem parcela nenhuma: o quadro de pagamento não pôde ser montado."
+        : "Venda importada do C2X: a carteira do Apolo já tem as parcelas desta venda, mas o quadro de pagamento do contrato é montado a partir do cronograma gravado na proposta, e esta proposta não tem cronograma.",
+    );
+  }
+
   return {
     avisos,
     carteira,
@@ -473,6 +516,9 @@ export async function dadosDaProposta(
       compradores: montados.compradores,
       condicoes: condicoesDoContrato(proposta),
       gerais: gerais(proposta, unidade, empreendimento, vendeu, comissao, avisos, { carteira, fatos }),
+      ...(quadro
+        ? { gerados: { tabela_geral_pagamentos: [quadro], tabela_pagamentos: [quadro] } }
+        : {}),
     },
   };
 }
@@ -1114,6 +1160,20 @@ async function cadastroDoVinculado(
 
   const contatos = comEntidade.flatMap((l) => l.contatos);
   return {
+    // ⚠️ O CRECI VEM DA FICHA, COMO O CATÁLOGO SEMPRE DISSE (`VINCULADO_FICHA("creci")`), e até
+    // 20/09/2026 ninguém o lia: o contrato de corretagem do Vale do Ouro saiu com
+    // "CRECI: [creci_vinculado]" e travou a geração. Ele é o campo que o cadastro de imobiliária do
+    // Apolo grava (`metadata.cadastro.creci`).
+    //
+    // ⚠️ E NÃO SE LÊ O C2X PARA COMPLETAR. O número existe lá (`users.creci_number`, 431 linhas), mas
+    // a regra da casa é trazer o dado para o Panteon, não abrir leitura do legado numa peça de
+    // contrato: imobiliária vinda do sync fica sem CRECI até alguém cadastrar, e a conferência da
+    // Têmis acusa. Ver [[feedback_c2x_so_financeiro_via_carteira]].
+    //
+    // ⚠️ E ELE SAI DA PRIMEIRA ENTIDADE QUE O TIVER, pela mesma razão do documento: a imobiliária
+    // pode ter duas entidades no Apolo (o espelho do C2X e a do credenciamento), e o CRECI está na
+    // cadastrada aqui, que nem sempre é a primeira da lista.
+    creci: comEntidade.map((l) => texto(cadastroDaEntidade(null, l.entidade)?.creci)).find(Boolean) ?? "",
     documento:
       comEntidade.map((l) => documentoImprimivel(texto(l.entidade?.document_masked))).find(Boolean) ?? "",
     email: primeiroContato(contatos, ["email"]),
@@ -1123,7 +1183,7 @@ async function cadastroDoVinculado(
   };
 }
 
-type DoVinculado = { documento: string; email: string; telefone: string };
+type DoVinculado = { creci: string; documento: string; email: string; telefone: string };
 
 /** Entidade e contatos de cada id, uma consulta por id (são no máximo três). */
 async function lerEntidadesDoVinculo(
@@ -1137,7 +1197,10 @@ async function lerEntidadesDoVinculo(
         umaLinha<LinhaDaEntidade>(
           sb
             .from("apolo_entities")
-            .select("display_name, document_masked, id, legal_name, trade_name")
+            // ⚠️ `metadata` ENTRA AQUI PELO CRECI. Ele mora em `metadata.cadastro.creci` (ver
+            // `cadastroDoVinculado`); sem a coluna na consulta, `[creci_vinculado]` volta a sair
+            // como colchete no contrato de corretagem — e a variável trava a geração.
+            .select("display_name, document_masked, id, legal_name, metadata, trade_name")
             .eq("id", id)
             .maybeSingle(),
           "apolo_entities",
@@ -1268,6 +1331,14 @@ async function quemVendeuPeloApolo(
     vinculado:
       vinculadas.length > 0
         ? {
+            // ⚠️ O CRECI TAMBÉM SAI POR AQUI, e não só pelo vínculo da proposta. Esta é a imobiliária
+            // da venda IMPORTADA (achada pelo link do C2X ou pela CAD): se o CRECI só fosse lido em
+            // `cadastroDoVinculado`, "CRECI: [creci_vinculado]" voltaria a travar a geração em
+            // justamente as vendas que são a maioria de hoje. Mesma fonte e mesma regra de lá:
+            // `metadata.cadastro.creci`, da primeira entidade que o tiver, sem ler o legado.
+            creci:
+              vinculadas.map((l) => texto(cadastroDaEntidade(null, l?.entidade)?.creci)).find(Boolean) ??
+              "",
             documento:
               vinculadas
                 .map((l) => documentoImprimivel(texto(l?.entidade?.document_masked)))
@@ -1559,6 +1630,7 @@ async function cadastroDaCoordenadora(
     // bloco sairia sem nome com o cadastro ali do lado.
     nome: texto(entidade.trade_name) || texto(entidade.display_name) || texto(entidade.legal_name),
     numero: texto(endereco?.numero),
+    razaoSocial: texto(entidade.legal_name) || texto(entidade.display_name),
     // Ver `RUIDO_DE_CARGA`: "Endereco cadastral" está na coluna `street` de 4.633 linhas e já saiu
     // impresso num contrato real.
     rua: textoUtil(endereco?.logradouro),
@@ -1959,13 +2031,12 @@ function gerais(
   // `imobiliaria_c2x_id` (ver `quemVendeuPeloApolo`). Sem nenhum dos dois, os três ficam em branco.
   const doVinculado = vendeu.vinculado;
   if (doVinculado) {
+    por("creci_vinculado", doVinculado.creci);
     por("cpf_cnpj_vinculado", doVinculado.documento);
     por("telefone_vinculado", doVinculado.telefone);
     por("email_vinculado", doVinculado.email);
   }
 
-  // ⚠️ O CRECI NÃO ESTÁ NO PANTEON. Ele existe no C2X (`users.creci_number`) e não foi importado —
-  // nenhuma tabela daqui tem a coluna. Fica em branco e aparece na conferência da Têmis.
 
   // ── VALORES ──
   //
@@ -2018,12 +2089,19 @@ function gerais(
     // outra sozinha no lugar dela imprimiria no contrato uma comissão total menor do que a combinada
     // — em cima da frase que diz que o total "refere-se à intermediação". Melhor o colchete.
     if (daCoordenadora !== null && doVinculadoEmCentavos !== null) {
-      parDeDinheiro("valor_total_comissao", (daCoordenadora + doVinculadoEmCentavos) / 100);
+      const comissaoEmCentavos = daCoordenadora + doVinculadoEmCentavos;
+      parDeDinheiro("valor_total_comissao", comissaoEmCentavos / 100);
+      // ⚠️ O CUSTO TOTAL É O LOTE MAIS A COMISSÃO, e sem ele a minuta repete o preço do lote nas duas
+      // linhas: Lucas, 20/09/2026, no contrato do Vale do Ouro — *"O preço do lote e da aquisição não
+      // podem ser os mesmos"*. A soma é em CENTAVOS INTEIROS, pela mesma razão da nota acima: em
+      // reais ela erra um centavo para cima e o documento se contradiz sozinho.
+      parDeDinheiro("valor_custo_total_aquisicao", (emCentavos + comissaoEmCentavos) / 100);
     }
   }
 
   if (comissao.coordenadora) {
     por("nome_fantasia_coordenadora_vendas", comissao.coordenadora.nome);
+    por("razao_social_coordenadora_vendas", comissao.coordenadora.razaoSocial);
     por("cnpj_coordenadora_vendas", comissao.coordenadora.documento);
     por("rua_coordenadora_vendas", comissao.coordenadora.rua);
     por("numero_coordenadora_vendas", comissao.coordenadora.numero);

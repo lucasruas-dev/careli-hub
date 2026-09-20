@@ -818,3 +818,200 @@ describe("a oração do RG", () => {
     expect(r.semValor).toEqual([]);
   });
 });
+
+// ── O BLOCO CONDICIONAL QUE ATRAVESSA PARÁGRAFOS ─────────────────────────────
+//
+// Lucas (20/09/2026), com o contrato do Vale do Ouro na mão: *"Está trazendo o conjuge sem ter
+// conjuge"*. Na minuta publicada do VOL as seis ocorrências do cônjuge estão certas, cada uma
+// entre `[inicio_dados_conjuge]` e `[fim_dados_conjuge]` — medido no banco em 20/09/2026. O que
+// falhava era o motor: os pares só eram aplicados DENTRO de um parágrafo, e na área das
+// assinaturas o bloco abrange parágrafos inteiros (o marcador é um parágrafo só).
+describe("bloco condicional entre parágrafos", () => {
+  const assinaturas = () => [
+    p("(Assinado eletronicamente)"),
+    p(v("nome_cliente")),
+    p("COMPROMISSÁRIO(A) COMPRADOR(A)"),
+    p(v("inicio_dados_conjuge")),
+    p("(Assinado eletronicamente)"),
+    p(v("nome_conjuge")),
+    p("CÔNJUGE"),
+    p(v("fim_dados_conjuge")),
+    p("Testemunhas:"),
+  ];
+
+  it("⚠️ sem cônjuge, o bloco inteiro some — e não sobra `[nome_conjuge]` no papel", () => {
+    const r = preencherContrato(assinaturas(), {
+      compradores: [comprador("VITORIA SILVA ARAUJO")],
+      gerais: {},
+    });
+
+    expect(texto(r.nos)).toBe(
+      "(Assinado eletronicamente) VITORIA SILVA ARAUJO COMPROMISSÁRIO(A) COMPRADOR(A) Testemunhas:",
+    );
+    // E não trava a geração: o que sumiu não pode ser cobrado como variável sem valor.
+    expect(r.semValor).not.toContain("nome_conjuge");
+  });
+
+  it("com cônjuge, o bloco fica, com o nome no lugar", () => {
+    const r = preencherContrato(assinaturas(), {
+      compradores: [
+        comprador("VITORIA SILVA ARAUJO", {
+          temConjuge: true,
+          valores: { nome_cliente: "VITORIA SILVA ARAUJO", nome_conjuge: "JOAO ARAUJO" },
+        }),
+      ],
+      gerais: {},
+    });
+
+    expect(texto(r.nos)).toBe(
+      "(Assinado eletronicamente) VITORIA SILVA ARAUJO COMPROMISSÁRIO(A) COMPRADOR(A) " +
+        "(Assinado eletronicamente) JOAO ARAUJO CÔNJUGE Testemunhas:",
+    );
+  });
+
+  // O laço já é expandido antes dos pares: cada cópia pergunta pelo SEU comprador.
+  it("dois compradores, só um casado: o bloco sai uma vez", () => {
+    const r = preencherContrato(
+      [
+        p(v("inicio_cada_comprador")),
+        p(v("nome_cliente")),
+        p(v("inicio_dados_conjuge")),
+        p(v("nome_conjuge")),
+        p(v("fim_dados_conjuge")),
+        p(v("fim_cada_comprador")),
+      ],
+      {
+        compradores: [
+          comprador("SOLTEIRO", { valores: { nome_cliente: "SOLTEIRO" } }),
+          comprador("CASADO", {
+            temConjuge: true,
+            valores: { nome_cliente: "CASADO", nome_conjuge: "ESPOSA" },
+          }),
+        ],
+        gerais: {},
+      },
+    );
+
+    expect(texto(r.nos)).toBe("SOLTEIRO CASADO ESPOSA");
+    expect(r.semValor).not.toContain("nome_conjuge");
+  });
+
+  // Par quebrado (abre e não fecha) não pode engolir o resto do contrato: é a mesma rede do laço.
+  it("abertura sem fechamento não engole o contrato", () => {
+    const r = preencherContrato(
+      [p("Antes"), p(v("inicio_dados_conjuge")), p("Depois")],
+      { compradores: [comprador("X")], gerais: {} },
+    );
+    expect(texto(r.nos)).toBe("Antes Depois");
+  });
+});
+
+// ── OS GERADOS: o que não é texto ────────────────────────────────────────────
+//
+// `[tabela_geral_pagamentos]` não vira palavra: vira QUADRO. O motor troca o parágrafo inteiro
+// pelos nós que o gerador entregou (ver lib/temis/tabela-de-pagamentos.ts).
+describe("variáveis geradas (tabelas)", () => {
+  const quadro: NoDoDocumento = {
+    children: [{ children: [{ children: [{ text: "Mensais" }], type: "td" }], type: "tr" }],
+    type: "table",
+  };
+
+  it("o parágrafo da variável vira o quadro", () => {
+    const r = preencherContrato(
+      [p("O preço será pago conforme o quadro:"), p(v("tabela_geral_pagamentos")), p("Segue.")],
+      { compradores: [comprador("X")], gerados: { tabela_geral_pagamentos: [quadro] }, gerais: {} },
+    );
+
+    expect(texto(r.nos)).toBe("O preço será pago conforme o quadro: Mensais Segue.");
+    expect(r.semValor).not.toContain("tabela_geral_pagamentos");
+    expect(r.nos.some((no) => no.type === "table")).toBe(true);
+  });
+
+  // ⚠️ SEM CRONOGRAMA O QUADRO NÃO EXISTE, e a variável tem de continuar cobrando: é a regra do
+  // topo deste arquivo. Some quem escolheu sumir, e o quadro não escolheu.
+  it("sem gerado, a variável continua aparecendo e trava a geração", () => {
+    const r = preencherContrato([p(v("tabela_geral_pagamentos"))], {
+      compradores: [comprador("X")],
+      gerais: {},
+    });
+
+    expect(texto(r.nos)).toBe("[tabela_geral_pagamentos]");
+    expect(r.semValor).toContain("tabela_geral_pagamentos");
+  });
+
+  // ⚠️ DENTRO DE CÉLULA É O CAMINHO REAL, E O ÚNICO QUE NÃO ESTAVA MEDIDO. Nas DUAS minutas
+  // publicadas que usam a variável (VOL v6 e RVP v2, conferidas em produção em 20/09/2026) ela mora
+  // em `table > tr > td > p`, no Quadro-Resumo — nunca num parágrafo solto. Até esta data quem
+  // atendia o caso era `dentroDoFilho`, que devolvia os FILHOS do nó gerado no lugar do nó: as
+  // `<tr>` do quadro saíam soltas dentro do `<p>`, sem o `<table>` em volta. Exatamente o HTML
+  // inválido que a nota desta seção diz estar evitando — e o navegador expulsa a `<tr>` do
+  // parágrafo ao imprimir.
+  it("dentro de uma célula de tabela, o quadro continua sendo uma TABELA", () => {
+    const r = preencherContrato(
+      [
+        {
+          children: [{ children: [{ children: [p(v("tabela_geral_pagamentos"))], type: "td" }], type: "tr" }],
+          type: "table",
+        } as NoDoDocumento,
+      ],
+      { compradores: [comprador("X")], gerados: { tabela_geral_pagamentos: [quadro] }, gerais: {} },
+    );
+
+    const celula = (r.nos[0]?.children?.[0] as NoDoDocumento | undefined)?.children?.[0] as
+      | NoDoDocumento
+      | undefined;
+    const tabelas = (celula?.children ?? []).filter((f) => (f as NoDoDocumento).type === "table");
+    expect(tabelas).toHaveLength(1);
+    expect(texto(r.nos)).toContain("Mensais");
+  });
+
+  // ⚠️ E A CÉLULA REAL TEM A CLÁUSULA INTEIRA DENTRO, não um parágrafo só. Lida em produção em
+  // 20/09/2026, a `<td>` do Quadro-Resumo das duas minutas guarda os parágrafos da cláusula VI em
+  // sequência, e o da variável é um deles: `{ text: "" }`, a variável, `{ text: "" }`. O quadro tem
+  // de entrar NA POSIÇÃO daquele parágrafo — se ele fosse parar no fim da célula, a tabela sairia
+  // depois do 6.2, fora da cláusula que a anuncia.
+  it("na célula da cláusula VI, o quadro entra no lugar do parágrafo da variável", () => {
+    const celula: NoDoDocumento = {
+      children: [
+        p("VI - PREÇO, FORMA DE PAGAMENTO E PARCELAMENTO DO PREÇO"),
+        p("6.1. PREÇO DO LOTE: R$ 100.000,00"),
+        { children: [{ text: "" }, v("tabela_geral_pagamentos"), { text: "" }], type: "p" },
+        p("6.2. O pagamento obedecerá ao quadro acima."),
+      ],
+      type: "td",
+    };
+
+    const r = preencherContrato(
+      [{ children: [{ children: [celula], type: "tr" }], type: "table" } as NoDoDocumento],
+      { compradores: [comprador("X")], gerados: { tabela_geral_pagamentos: [quadro] }, gerais: {} },
+    );
+
+    const td = (r.nos[0]?.children?.[0] as NoDoDocumento | undefined)?.children?.[0] as
+      | NoDoDocumento
+      | undefined;
+    expect((td?.children ?? []).map((f) => (f as NoDoDocumento).type)).toEqual([
+      "p",
+      "p",
+      "table",
+      "p",
+    ]);
+    // A `<tr>` não pode acabar dentro do `<p>`: era o que o `map` de `dentroDoFilho` produzia.
+    const html = documentoParaHtml(r.nos);
+    expect(html).not.toMatch(/<p[^>]*>\s*<tr/);
+    expect(html).toContain("<table");
+    expect(texto(r.nos)).toContain("Mensais");
+    expect(r.semValor).not.toContain("tabela_geral_pagamentos");
+  });
+
+  // O quadro no meio de uma frase seria HTML inválido (tabela dentro de parágrafo): o texto ao
+  // redor fica, e o quadro entra depois dele.
+  it("com texto ao redor, o texto fica e o quadro entra em seguida", () => {
+    const r = preencherContrato([p("Quadro: ", v("tabela_geral_pagamentos"), " (parte integrante)")], {
+      compradores: [comprador("X")],
+      gerados: { tabela_geral_pagamentos: [quadro] },
+      gerais: {},
+    });
+
+    expect(texto(r.nos)).toBe("Quadro: (parte integrante) Mensais");
+  });
+});

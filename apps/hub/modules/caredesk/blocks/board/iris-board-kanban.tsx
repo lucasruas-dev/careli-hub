@@ -62,9 +62,11 @@ type AbaDoBoard = "atendimento" | "email" | "grupos" | "acoes";
 // "Atendimento" virou "Conversas" (Lucas, 15/08): com a central logo acima chamando-se
 // Atendimento, a aba de mesmo nome fazia a pessoa ler duas vezes a mesma palavra em dois
 // níveis diferentes. "Conversas" diz o que a aba tem, e serve para as duas centrais.
+// ⚠️ A ABA E-MAIL SAIU (Lucas, 18/09/2026: *"tira o canal e-mail da iris (...) pode tirar a aba e
+// não mostrar"*). Os tickets de e-mail também deixaram de ser carregados (lib/iris/canais-de-email.ts)
+// e a importação da caixa foi desligada; o ramo de e-mail em `ticketsDaAba` ficou só como rede.
 const ABAS_DO_BOARD: { chave: AbaDoBoard; rotulo: string }[] = [
   { chave: "atendimento", rotulo: "Conversas" },
-  { chave: "email", rotulo: "E-mail" },
   { chave: "grupos", rotulo: "Grupos" },
   { chave: "acoes", rotulo: "Ações" },
 ];
@@ -74,15 +76,15 @@ const ABAS_DO_BOARD: { chave: AbaDoBoard; rotulo: string }[] = [
 // - Grupos vive só no Relacionamento (a fila "Grupo" é de lá desde a 0087).
 // - Ações fica em todas: campanha de contato em massa é transversal, e as 333 de hoje estão no
 //   Atendimento só porque foi para lá que dispararam.
-// - Gurgel é um número de WhatsApp só (31 tickets, nenhum e-mail e nenhum grupo), mas E-mail
-//   fica visível porque basta criar a caixa no Setup para ela passar a receber.
+// - Gurgel é um número de WhatsApp só (31 tickets, nenhum grupo).
+// - E-mail não aparece mais em central nenhuma desde 18/09/2026 (ver ABAS_DO_BOARD).
 // Em "Todas" aparecem todas, que é o ponto daquela visão.
 function abasDaCentral(central: IrisCentralSelecionada): AbaDoBoard[] {
   if (central === "relacionamento" || central === "todas") {
-    return ["atendimento", "email", "grupos", "acoes"];
+    return ["atendimento", "grupos", "acoes"];
   }
 
-  return ["atendimento", "email", "acoes"];
+  return ["atendimento", "acoes"];
 }
 
 const groupModes: { key: GroupMode; label: string }[] = [

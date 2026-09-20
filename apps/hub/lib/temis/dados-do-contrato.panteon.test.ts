@@ -682,6 +682,25 @@ describe("D. o corretor e a imobiliária da venda importada, pelo Apolo", () => 
     expect(g.corretor_nome).toBe("CORRETOR DA CAD");
   });
 
+  // ⚠️ O CRECI TEM DUAS PORTAS, E A FUSÃO DE 20/09/2026 QUASE FECHOU UMA. O vinculado é lido ou pelo
+  // vínculo gravado na proposta (`cadastroDoVinculado`) ou pela imobiliária achada no link do C2X e
+  // na CAD (`quemVendeuPeloApolo`) — e cada uma monta o seu objeto. A segunda nasceu sem o campo, e
+  // como `por()` não escreve string vazia, "CRECI: [creci_vinculado]" voltaria calado justamente na
+  // venda IMPORTADA, que é a maioria de hoje. Mesma fonte da outra porta: `metadata.cadastro.creci`.
+  it("o CRECI também sai pela imobiliária do link, na venda sem vínculo na proposta", async () => {
+    const antes = CADASTROS_DE_QUEM_VENDEU[IMOBILIARIA]!;
+    CADASTROS_DE_QUEM_VENDEU[IMOBILIARIA] = {
+      ...antes,
+      metadata: { cadastro: { creci: "53964" } },
+    };
+    try {
+      const g = (await dadosDaProposta("p", distrato()))!.dados.gerais;
+      expect(g.creci_vinculado).toBe("53964");
+    } finally {
+      CADASTROS_DE_QUEM_VENDEU[IMOBILIARIA] = antes;
+    }
+  });
+
   it("sem CAD e sem link, tudo fica como antes: só o nome da proposta", async () => {
     const g = (await dadosDaProposta("p", distrato({ esteira: [], links: [] })))!.dados.gerais;
     expect(g.nome_vinculado).toBe("IMOBILIARIA DO VOC");
@@ -782,7 +801,88 @@ describe("E. o financeiro da venda importada pela carteira do Apolo", () => {
     expect(g.valor_entrada).toBe("R$ 15.000,00");
     expect(g.valor_divida_financiada).toBe("R$ 3.000,00");
     expect(g.prazo_meses_amortizacao).toBe("3");
-    expect(r.avisos.join(" | ")).not.toContain("carteira do Apolo");
+    // ⚠️ NENHUMA QUEIXA DA CARTEIRA: ela respondeu, e o financeiro saiu dela. A asserção era
+    // `not.toContain("carteira do Apolo")` e ficou apertada demais em 20/09/2026, quando o aviso do
+    // quadro de pagamento passou a CITAR a carteira para dizer que ela está certa e que o que falta
+    // é o cronograma da proposta. O que não pode sair é a queixa — as três frases de
+    // `semValorNaCarteira` —, e é isso que se mede aqui.
+    const tudo = r.avisos.join(" | ");
+    expect(tudo).not.toContain("ainda não separa esta venda");
+    expect(tudo).not.toContain("sem lançamentos");
+    expect(tudo).not.toContain("consegui ler a carteira");
+  });
+
+  // ⚠️ O BURACO QUE O MERGE DE 20/09/2026 ABRIU, E QUE NENHUMA DAS QUATRO CAUSAS COBRE.
+  //
+  // `avisoSemCronograma` só fala quando NÃO há `condicoes` E NÃO há carteira lida — com a carteira
+  // em `ok` a função devolve os valores e sai antes dele. E o aviso do quadro, que na `main` saía
+  // sempre que `tabelaGeralDePagamentos` devolvia nada, passou a exigir `objeto(condicoes)`, que na
+  // venda importada é NULO. Resultado: a venda importada com carteira sincronizada perde a ÚNICA
+  // frase que explicava por que o quadro não foi montado, e o operador vê o documento recusado com
+  // a lista de variáveis sem valor e nenhuma frase.
+  //
+  // Hoje o caso não acontece porque `apolo_carteira_vendas` ainda não existe (medido em produção em
+  // 20/09/2026: a tabela não está no schema). No dia em que a migration entrar, ele vale para as
+  // 4.885 propostas importadas.
+  it("com a carteira sincronizada, alguém tem de dizer que o quadro de pagamento não foi montado", async () => {
+    const parcela = (id: number, tipo: number, valor: number, extra: Linhas = {}) => ({
+      a_excluir: false,
+      boleto_url: null,
+      c2x_payment_id: id,
+      competencia: null,
+      descricao: null,
+      fatura_url: null,
+      juros: 0,
+      multa: 0,
+      pagamento: null,
+      parcela_atual: tipo === 3 ? id - 10 : 0,
+      parcela_total: tipo === 3 ? 3 : 0,
+      sinal_atual: 0,
+      sinal_total: 0,
+      status_id: 6,
+      tipo_id: tipo,
+      tipo_nome: tipo === 1 ? "Ato" : "Parcela",
+      valor_inicial: valor,
+      valor_pago: 0,
+      vencimento: "2030-01-10",
+      ...extra,
+    });
+    const r = (await dadosDaProposta(
+      "p",
+      distrato({
+        carteiraVendas: { estagio_c2x: 4, parcelas: 4, sincronizada_em: "2026-09-18T21:45:19Z" },
+        parcelas: [parcela(1, 1, 15000), parcela(11, 3, 1000), parcela(12, 3, 1000), parcela(13, 3, 1000)],
+      }),
+    ))!;
+
+    expect(r.carteira?.situacao).toBe("ok");
+    // Sem cronograma não há quadro: as duas variáveis continuam cobrando, e isso está certo.
+    expect(r.dados.gerados).toBeUndefined();
+    // O que faltava é a frase. Sem ela, a recusa não tem explicação em lugar nenhum.
+    const tudo = r.avisos.join(" | ");
+    expect(tudo).toContain("quadro de pagamento");
+    // ⚠️ E É UMA FRASE PRÓPRIA, não a emprestada do cronograma vazio: aqui a carteira ESTÁ certa e
+    // tem as parcelas: mandar conferir "o cronograma gravado" seria mandar procurar no lugar errado.
+    expect(tudo).toContain("a carteira do Apolo já tem as parcelas");
+    expect(tudo).toContain("cronograma gravado na proposta");
+    expect(tudo).not.toContain("não tem parcela nenhuma");
+  });
+
+  // A OUTRA CAUSA CONTINUA COM A FRASE DELA: cronograma gravado, e vazio. É proposta NATIVA, a
+  // carteira nem é procurada — e aí o defeito é de gravação, não da importação.
+  it("cronograma gravado sem parcela nenhuma mantém a frase de sempre", async () => {
+    const r = (await dadosDaProposta(
+      "p",
+      distrato({
+        proposta: { condicoes: { mensais: [], totais: { entrada: 0, geral: 0 } }, origem_c2x_id: null },
+      }),
+    ))!;
+
+    expect(r.carteira).toBeNull();
+    expect(r.dados.gerados).toBeUndefined();
+    const tudo = r.avisos.join(" | ");
+    expect(tudo).toContain("O cronograma gravado na proposta não tem parcela nenhuma");
+    expect(tudo).not.toContain("a carteira do Apolo já tem as parcelas");
   });
 
   it("sincronizada e vazia, com ato pago no Hércules: é fato, e a divergência aparece", async () => {

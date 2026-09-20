@@ -65,6 +65,13 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
         ],
       },
       {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**Pedido de cancelamento recusado quando o contrato já tinha sido indeferido: a venda volta para Proposta.** Sem contrato, quem vendeu cancela a proposta e o lote volta. Antes ela ficava presa em Contrato, sem botão nenhum.",
+              "**A marca de um pedido que já acabou não apaga mais o botão \"Solicitar cancelamento\".** Quem decide se há pedido é o card aberto na Têmis.",
+              {
         module: "Têmis",
         screens: [
           {
@@ -82,42 +89,72 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     technical: {
       done:
-        "Hades: texto legal do aceite em lib/hades/dossie/termo-de-acordo-pdf.ts (teste caractere a caractere e prova por coordenada de que não vaza da folha); envio pelo mesmo motor dos contratos (lib/assinatura/*), com papel novo `careli` fora de PAPEIS_DO_CONTRATO, assinante da Careli num arquivo só, ordem comprador/incorporador/Careli, gate que reusa `motivoParaNaoEmitirOTermo` e relê a aprovação antes de abrir o envelope, guarda contra o segundo envelope em três camadas (leitura, índice único parcial da 0179 e releitura pós-insert), `proposta_id` nulo de propósito e `compromisso_id` no metadata do documento. Migration 0179 APLICADA em produção. Apolo: papel `termos_vendedora` no quadro (temis_assinantes), recusado para o ator portal no servidor, com precedência divisão da unidade, empreendimento da proposta e pai (a mesma de chavesDaComissao); migration 0180 escrita e NÃO aplicada (sem ela o campo lê e mostra, e gravar recusa com a frase que a nomeia). Têmis: escolha da ficha por cliente_entity_id, ponte do id do C2X e cadastro preenchido, com complemento só de ficha provadamente da mesma pessoa; comissão pela divisão; corretor e imobiliária pela CAD, nunca o próprio comprador; leitor da carteira por venda sem tocar o C2X. Três workflows com revisão adversarial em três lentes cada. 7.390 testes em 462 arquivos, typecheck limpo.",
+        "Hércules: `recusarOPedido` encadeia `devolverAQuemVendeu` quando o pedido recusado é de cancelamento e o card de contrato da mesma passagem por Contrato foi indeferido (no distrato não, porque houve pagamento ou assinatura); `lib/hercules/marca-de-pedido.ts` solta a marca sem card aberto há mais de 15 minutos, só em venda viva depois do contrato. Hades: texto legal do aceite em lib/hades/dossie/termo-de-acordo-pdf.ts (teste caractere a caractere e prova por coordenada de que não vaza da folha); envio pelo mesmo motor dos contratos (lib/assinatura/*), com papel novo `careli` fora de PAPEIS_DO_CONTRATO, assinante da Careli num arquivo só, ordem comprador/incorporador/Careli, gate que reusa `motivoParaNaoEmitirOTermo` e relê a aprovação antes de abrir o envelope, guarda contra o segundo envelope em três camadas (leitura, índice único parcial da 0179 e releitura pós-insert), `proposta_id` nulo de propósito e `compromisso_id` no metadata do documento. Migration 0179 APLICADA em produção. Apolo: papel `termos_vendedora` no quadro (temis_assinantes), recusado para o ator portal no servidor, com precedência divisão da unidade, empreendimento da proposta e pai (a mesma de chavesDaComissao); migration 0180 escrita e NÃO aplicada (sem ela o campo lê e mostra, e gravar recusa com a frase que a nomeia). Têmis: escolha da ficha por cliente_entity_id, ponte do id do C2X e cadastro preenchido, com complemento só de ficha provadamente da mesma pessoa; comissão pela divisão; corretor e imobiliária pela CAD, nunca o próprio comprador; leitor da carteira por venda sem tocar o C2X. Três workflows com revisão adversarial em três lentes cada. 7.390 testes em 462 arquivos, typecheck limpo.",
       motivation:
         "Lucas, 18 e 20/09/2026: \"tem um distrato mas nao esta trazendo as informacoes, analisa o porque\", \"tudo tem que ser alimentado pelo panteon\", \"o que esta hoje esta aprovado quero so incluir o texto legal substituindo o texto de observacao\", \"vamos levar esse documento para ser assinado na click\", \"o acordo so pode ficar disponivel para envio depois da aprovacao\", \"entra no envelope somente o proponente\" e \"nessa tela vc pode abrir mais um campo para assinatura de termos vendedora\".",
     },
-    rollback: "f384e036",
+    rollback: "9252e5d1",
     title: "Termo de acordo assinável e o card da Têmis alimentado pelo Panteon",
     type: "melhoria",
     version: "1.352.0",
   },
   {
-    buildTag: "2026-09-18-pedido-indeferido-libera-o-botao",
-    deployedAt: "2026-09-20T15:16:12-03:00",
-    internal: true,
+    buildTag: "2026-09-20-contrato-conjuge-e-quadro-de-pagamento",
+    deployedAt: "2026-09-20T17:24:00-03:00",
     modules: [
       {
-        module: "Hércules",
+        module: "Têmis",
         screens: [
           {
             items: [
-              "**Pedido de cancelamento recusado quando o contrato já tinha sido indeferido: a venda volta para Proposta.** Sem contrato, quem vendeu cancela a proposta e o lote volta. Antes ela ficava presa em Contrato, sem botão nenhum.",
-              "**A marca de um pedido que já acabou não apaga mais o botão \"Solicitar cancelamento\".** Quem decide se há pedido é o card aberto na Têmis.",
+              "**O contrato não traz mais o cônjuge de quem não tem cônjuge.** O bloco de assinatura do cônjuge, que ocupa vários parágrafos, some inteiro quando o comprador é solteiro. Antes ele saía no papel e ainda travava a geração do documento.",
+              "**O quadro de pagamento passa a ser montado.** A variável da tabela estava no catálogo e ninguém a preenchia, então saía o colchete no lugar do quadro. Agora o contrato traz uma linha por tipo de parcela (entrada, mensais e anuais) com correção, juros, primeiro vencimento, quantidade, valor e total, tudo a partir do cronograma da própria proposta.",
+              "**O custo total da aquisição deixa de repetir o preço do lote**: ele passa a ser o preço mais a comissão.",
+              "**O CRECI da imobiliária sai do cadastro dela**, e a coordenadora de vendas ganha a variável da razão social, para a linha do beneficiário não sair com o nome fantasia.",
             ],
-            screen: "Venda · Cancelamento",
+            screen: "Contrato · Prévia e geração",
           },
         ],
       },
     ],
+    rollback: "86de613f",
     technical: {
       done:
-        "lib/hercules/indeferimento-na-venda-server.ts: `recusarOPedido`, depois de limpar a marca, encadeia `devolverAQuemVendeu` quando o pedido recusado é de CANCELAMENTO (nunca distrato, que envolve pagamento ou assinatura), a venda está em contrato e o card de contrato mais recente foi indeferido depois da entrada da venda em contrato (`contratoJaIndeferido`); a limpeza da marca passou a exigir a marca lida. lib/hercules/marca-de-pedido.ts: `marcaEhResto` (marca sem card de pedido aberto E com mais de 15 minutos, acima do teto de duração da rota) e `soltarMarcasQueSobraram` (na carga da tela da Venda, só vendas em assinatura, contrato ou faturado; uma leitura de temis_trabalhos em lotes de 100; leitura que falha mantém toda marca). O desfazer do carimbo na rota do pedido passou a exigir a marca que ele gravou. app/api/incorporador/venda/route.ts chama na carga; a rota do pedido (`limparMarcaOrfa`) passa a recusar a marca recém-nascida, que ainda não tem card porque a própria rota grava a marca antes do card. Medido em produção (só leitura): das 9 vendas marcadas, 3 sem card aberto (VOL1106, VOC0306 e TST0104, de teste) e 6 com distrato em análise, que continuam travadas. VOL1106 e VOC0306 ficaram presas antes desta versão e vão para Proposta pelo SQL de docs/operations/2026-09-18-vol1106-voc0306-volta-para-proposta.sql, aplicado à parte com OK do Lucas.",
+        "`preencher-contrato.ts`: novo `paresEntreBlocos`, entre o laço e as variáveis — `aplicarPares` só enxergava marcadores irmãos DENTRO de um parágrafo, e nas assinaturas `[inicio_dados_conjuge]` é um parágrafo e `[fim_dados_conjuge]` é outro (medido na minuta publicada do VOL: as 6 ocorrências estão corretamente entre marcadores, o defeito era do motor). Mesma rede do laço para par quebrado, recursivo para aninhado, e o que está fora dos marcadores no mesmo parágrafo fica. Novo `inserirGerados`: variável que vira NÓ troca o parágrafo inteiro (tabela dentro de `<p>` é HTML inválido); gerado ausente continua caindo em `semValor`. Novo `lib/temis/tabela-de-pagamentos.ts` (6 testes) lê `hercules_propostas.condicoes` — entrada, mensais, anuais, totais e o plano — e escreve o quadro com `INDICES`/taxa na mesma grafia do resto da casa; quantidade sai do campo `total` da parcela (o prazo contratado), e valor que muda no reajuste sai como \"a partir de\". `dados-do-contrato.ts`: `gerados` com o quadro nos DOIS nomes (`tabela_pagamentos` e `tabela_geral_pagamentos`), `valor_custo_total_aquisicao` (preço + comissão em centavos inteiros), `creci_vinculado` de `metadata.cadastro.creci` e `razao_social_coordenadora_vendas` de `legal_name`. Catálogo atualizado (o custo total saiu da lista de pendentes). 12 testes novos, validados por mutação; 7.123 testes passando e typecheck limpo. ⚠️ Sem cronograma gravado (proposta importada do C2X) o quadro não existe: a variável continua cobrando e entra um aviso na conferência. ⚠️ Imobiliária vinda do sync do C2X segue sem CRECI até ser cadastrada no Apolo — não se lê o legado para completar contrato.",
       motivation:
-        "Medição pós-deploy da v1.350.0 (18/09/2026): VOL1106 e VOC0306 sem saída. A tela lia a marca como pedido e apagava o botão, e a limpeza da marca que sobrou só rodava quando o pedido novo chegava à rota, o que nunca acontecia. A revisão adversarial mostrou que o botão sozinho levava ao caminho errado: a Nívea indeferiu primeiro o contrato e depois o pedido porque não havia contrato nem boletos, e a saída certa é a proposta.",
+        "Lucas (20/09/2026), com quatro prints do contrato do Vale do Ouro: *\"Está trazendo o conjuge sem ter conjuge\"*, *\"Falta a tabela de pagamentos\"* e *\"mudamos a variavel e mesmo assim não veio a tabela\"*, *\"O preço do lote e da aquisição não podem ser os mesmos\"*, *\"O nome da Gurgel está incompleto. Não está trazendo o CRECi\"*.",
     },
-    rollback: "f384e036",
-    title: "Pedido de cancelamento recusado não prende mais a venda em Contrato",
+    title: "Contrato: o cônjuge que não existe some e o quadro de pagamento aparece",
     type: "correcao",
+    version: "1.351.2",
+  },
+  {
+    buildTag: "2026-09-18-email-sai-da-iris",
+    deployedAt: "2026-09-18T22:38:00-03:00",
+    modules: [
+      {
+        module: "Íris",
+        screens: [
+          {
+            items: [
+              "**O e-mail saiu da Íris.** O Board não tem mais a aba E-mail, a lista de conversas não tem mais o filtro E-mail, e os atendimentos de e-mail deixam de aparecer no Board, na lista, no histórico e nos atendimentos do cliente.",
+              "**Os e-mails recebidos deixaram de virar atendimento.** A leitura automática da caixa de e-mail, que rodava a cada 5 minutos, foi desligada.",
+              "**Nada foi apagado.** Os atendimentos e as mensagens de e-mail antigos continuam guardados, e o histórico do cliente no Apolo segue mostrando tudo.",
+            ],
+            screen: "Board e Conversas",
+          },
+        ],
+      },
+    ],
+    rollback: "f384e036",
+    technical: {
+      done:
+        "Novo `lib/iris/canais-de-email.ts` (`idsDosCanaisDeEmail`, `semOsCanaisDeEmail`): a carga da Íris tira os tickets dos canais `kind = email` NA CONSULTA (`channel_id not in (...)`), nas duas cargas de `iris-data-client.ts` (`loadIrisData` e `carregarTicketsSobDemanda`, que serve o histórico anterior e os tickets do contato), para não ocuparem a janela de 400 encerrados. Falha ao ler os canais de e-mail derruba a carga em vez de virar lista vazia (que faria o e-mail voltar em silêncio). `iris-board-kanban.tsx` perde a aba E-mail; `iris-conversation-readonly.tsx` perde o filtro E-mail. `/api/iris/gmail/poll` responde 410 sem chamar `ingestGmailInbox`, e o cron dela sai do `vercel.json`: tirar só o cron não bastava, porque `x-vercel-cron` é um header que qualquer um manda. A importação continua em `lib/iris/gmail-inbound.ts` para religar. Medido em 18/09/2026: 2.019 tickets de e-mail, todos em canal de e-mail (nenhum ticket sem canal); dos 543 não encerrados, 537 eram de e-mail. Rodado em leitura contra produção: com o filtro sobram 6, nenhum de e-mail. 9 testes novos (a trava da aba validada por mutação). 7.106 testes passando e typecheck limpo.",
+      motivation:
+        "Lucas (18/09/2026): *\"tira o canal e-mail da iris por favor, não precisa mais ter eles na iris, pode tirar a aba e não mostrar\"* e *\"pode cortar a conexão que registrávamos os e-mails no banco\"*.",
+    },
+    title: "O e-mail sai da Íris",
+    type: "melhoria",
     version: "1.351.1",
   },
   {

@@ -48,6 +48,14 @@ export type DadosDoComprador = {
 export type DadosDoContrato = {
   /** Anexos que EXISTEM, por posição (1, 2, 3…). É o que liga `[inicio_tem_anexo_2]`. */
   anexos?: Record<number, string>;
+  /**
+   * As variáveis que viram NÓS, e não texto: o quadro de pagamento e o que vier depois.
+   *
+   * ⚠️ TABELA NÃO CABE EM `textoDaVariavel`. Ela devolve um nó de TEXTO, e uma tabela escrita com
+   * espaços sai torta no PDF — num quadro que o comprador confere número a número. Aqui o parágrafo
+   * da variável é TROCADO pelos nós prontos (`lib/temis/tabela-de-pagamentos.ts`).
+   */
+  gerados?: Record<string, NoDoDocumento[]>;
   /** Na ordem do contrato. O primeiro é o titular. */
   compradores: DadosDoComprador[];
   /** Ligado/desligado de pares que não são por comprador (`tem_anuais`, e o que vier). */
@@ -84,7 +92,9 @@ export function preencherContrato(
   const semValor = new Set<string>();
 
   const comLaco = expandirLaco(minuta, dados);
-  const nos = comLaco.nos.map((no) => resolverNo(no, dados, semValor, null));
+  const comPares = paresEntreBlocos(comLaco.nos, dados);
+  const comGerados = inserirGerados(comPares, dados);
+  const nos = comGerados.map((no) => resolverNo(no, dados, semValor, null));
 
   return {
     nos: podarVazios(nos),
@@ -328,6 +338,186 @@ function acharFimInline(filhos: readonly (NoDeTexto | NoDoDocumento)[], inicio: 
     else if (fechaLaco(f)) {
       if (profundidade === 0) return i;
       profundidade -= 1;
+    }
+  }
+  return -1;
+}
+
+// ── 2.5. OS GERADOS: O QUE NÃO VIRA TEXTO ───────────────────────────────────
+//
+// ⚠️ O QUADRO DE PAGAMENTO É UMA TABELA, E TABELA NÃO CABE DENTRO DE UM `<p>`. A etapa das
+// variáveis devolve texto; esta troca o PARÁGRAFO inteiro pelos nós que o gerador entregou. O que
+// estava escrito ao redor da variável fica, no lugar dele, e o quadro entra em seguida — HTML com
+// `<table>` dentro de `<p>` é inválido e o navegador o expulsa do parágrafo na hora de imprimir,
+// desmontando o alinhamento da cláusula.
+//
+// ⚠️ GERADO QUE NÃO VEIO CONTINUA COBRANDO. Sem cronograma não há quadro (proposta importada do
+// C2X), e a variável segue para a etapa 3, sai `[tabela_geral_pagamentos]` no papel e entra em
+// `semValor`. É a regra do topo deste arquivo: some quem escolheu sumir.
+function inserirGerados(
+  nos: readonly NoDoDocumento[],
+  dados: DadosDoContrato,
+): NoDoDocumento[] {
+  const gerados = dados.gerados;
+  if (!gerados || Object.keys(gerados).length === 0) return [...nos];
+
+  const saida: NoDoDocumento[] = [];
+
+  for (const no of nos) {
+    const filhos = no?.children;
+    if (!no) continue;
+    if (!Array.isArray(filhos)) {
+      saida.push(no);
+      continue;
+    }
+
+    const posicao = filhos.findIndex((f) => {
+      const nome = ehTexto(f) ? null : nomeDaVariavel(f);
+      return nome !== null && Array.isArray(gerados[nome]);
+    });
+
+    if (posicao < 0) {
+      // Pode estar mais abaixo (célula de tabela, item de lista): desce.
+      //
+      // ⚠️ E DESCE COM `flatMap`, PORQUE UM FILHO PODE VIRAR DOIS — OU NENHUM. Até 20/09/2026 esta
+      // linha era um `map` para `dentroDoFilho`, que devolvia UM nó por filho e ficava só com os
+      // FILHOS do primeiro nó da lista gerada. Quando a variável mora num parágrafo dentro de uma
+      // célula, esse primeiro nó é a própria `<table>` do quadro: as `<tr>` dela voltavam para
+      // dentro do `<p>` e o `<table>` em volta se perdia — o HTML inválido que a nota desta seção
+      // diz estar evitando.
+      //
+      // ⚠️ E ESSE É O CAMINHO REAL, NÃO O EXÓTICO. Nas DUAS minutas publicadas que usam a variável
+      // (VOL-MINUTA-COMPRA-VENDA-NORMAL v6 e RVP-MINUTA-COMPRA-VENDA-NORMAL v2, lidas em produção
+      // em 20/09/2026) ela está em `table > tr > td > p`, no Quadro-Resumo da cláusula VI — nunca
+      // num parágrafo solto. Ou seja: o quadro de pagamento que subiu hoje na v1.351.2 não entrava
+      // em NENHUM contrato de verdade. Com o `flatMap`, o filho devolve a lista inteira que
+      // `inserirGerados` montou para ele: o parágrafo da variável sai e a tabela entra no lugar
+      // dele, dentro da célula, na mesma posição entre os irmãos.
+      saida.push({
+        ...no,
+        children: filhos.flatMap((f) => (ehTexto(f) ? [f] : inserirGerados([f], dados))),
+      });
+      continue;
+    }
+
+    const nome = nomeDaVariavel(filhos[posicao]) as string;
+    const resto = filhos.filter((_, i) => i !== posicao);
+    // O texto ao redor fica: ele é cláusula, não moldura da tabela.
+    if (resto.some((f) => (ehTexto(f) ? f.text.trim() !== "" : true))) {
+      saida.push({ ...no, children: resto });
+    }
+    for (const doGerado of gerados[nome] ?? []) saida.push(doGerado);
+  }
+
+  return saida;
+}
+
+// ── 1.5. OS PARES QUE ATRAVESSAM PARÁGRAFOS ─────────────────────────────────
+//
+// ⚠️ `aplicarPares` SÓ ENXERGA IRMÃOS DENTRO DE UM PARÁGRAFO, e o bloco das assinaturas não é assim.
+// Lá o `[inicio_dados_conjuge]` é um parágrafo inteiro, e `[fim_dados_conjuge]` é outro, três
+// parágrafos depois — a mesma forma que o laço já tratava aqui em cima e que os pares não tratavam.
+// Resultado, medido em 20/09/2026 no contrato do Vale do Ouro: um comprador SOLTEIRO saía com o
+// bloco do cônjuge no papel ("[nome_conjuge] / CÔNJUGE"), e a variável entrava em `semValor` —
+// travando a geração do documento por um dado que ninguém deveria pedir. A minuta estava certa: as
+// seis ocorrências do cônjuge estão entre os marcadores, conferidas no banco.
+//
+// ⚠️ RODA DEPOIS DO LAÇO, pelo mesmo motivo da ordem das etapas lá no topo: só depois de expandido
+// existe "o comprador desta cópia", e o marcador copiado carrega o dono (`marcarDono`).
+function paresEntreBlocos(
+  nos: readonly NoDoDocumento[],
+  dados: DadosDoContrato,
+): NoDoDocumento[] {
+  const saida: NoDoDocumento[] = [];
+
+  for (let i = 0; i < nos.length; i += 1) {
+    const no = nos[i];
+    if (!no) continue;
+
+    const filhos = no.children;
+    const posicaoDoInicio = Array.isArray(filhos)
+      ? filhos.findIndex((f) => chaveDeInicio(f) !== null)
+      : -1;
+    const chave = posicaoDoInicio >= 0 ? chaveDeInicio(filhos?.[posicaoDoInicio]) : null;
+
+    // Sem abertura aqui, ou abre e fecha no MESMO parágrafo: `aplicarPares` resolve, como sempre.
+    if (!chave || !Array.isArray(filhos) || acharFim(filhos, posicaoDoInicio, chave) >= 0) {
+      saida.push(no);
+      continue;
+    }
+
+    const ondeFecha = acharBlocoQueFechaPar(nos, i, chave);
+    if (ondeFecha < 0) {
+      // Par quebrado: o marcador some e o texto fica. É a mesma rede do laço, e pela mesma razão.
+      saida.push({ ...no, children: filhos.filter((f) => chaveDeInicio(f) !== chave) });
+      continue;
+    }
+
+    const doMarcador = donoDoNo(filhos[posicaoDoInicio]) ?? donoDoNo(no);
+    const ligado = condicaoLigada(chave, dados, doMarcador);
+
+    const doFim = nos[ondeFecha];
+    const filhosDoFim = (doFim?.children ?? []) as (NoDeTexto | NoDoDocumento)[];
+    const posicaoDoFim = filhosDoFim.findIndex((f) => chaveDeFim(f) === chave);
+
+    // O que está FORA dos marcadores fica, ligado ou não: o marcador é a borda do bloco, e o resto
+    // do parágrafo é texto do contrato.
+    empurrar(saida, no, filhos.slice(0, posicaoDoInicio));
+    if (ligado) {
+      empurrar(saida, no, filhos.slice(posicaoDoInicio + 1));
+      // Recursivo: um par pode estar dentro de outro, e o de dentro também atravessa parágrafos.
+      for (const doMeio of paresEntreBlocos(nos.slice(i + 1, ondeFecha), dados)) saida.push(doMeio);
+      if (doFim) empurrar(saida, doFim, filhosDoFim.slice(0, posicaoDoFim));
+    }
+    if (doFim) empurrar(saida, doFim, filhosDoFim.slice(posicaoDoFim + 1));
+
+    i = ondeFecha;
+  }
+
+  return saida;
+}
+
+/** O pedaço só entra se tiver conteúdo: parágrafo com um texto vazio é uma linha em branco no papel. */
+function empurrar(
+  saida: NoDoDocumento[],
+  molde: NoDoDocumento,
+  filhos: (NoDeTexto | NoDoDocumento)[],
+): void {
+  if (!filhos.some((f) => (ehTexto(f) ? f.text !== "" : true))) return;
+  saida.push({ ...molde, children: filhos });
+}
+
+/** A chave de um marcador de ABERTURA que não seja o laço (esse já foi expandido). */
+function chaveDeInicio(no: unknown): null | string {
+  const nome = nomeDaVariavel(no);
+  if (!nome?.startsWith(PREFIXO_INICIO)) return null;
+  const chave = nome.slice(PREFIXO_INICIO.length);
+  return chave === LACO ? null : chave;
+}
+
+function chaveDeFim(no: unknown): null | string {
+  const nome = nomeDaVariavel(no);
+  if (!nome?.startsWith(PREFIXO_FIM)) return null;
+  const chave = nome.slice(PREFIXO_FIM.length);
+  return chave === LACO ? null : chave;
+}
+
+/** ⚠️ CONTA OS ANINHADOS, como `acharBlocoQueFecha` faz para o laço. */
+function acharBlocoQueFechaPar(
+  nos: readonly NoDoDocumento[],
+  inicio: number,
+  chave: string,
+): number {
+  let profundidade = 0;
+  for (let i = inicio + 1; i < nos.length; i += 1) {
+    const filhos = nos[i]?.children;
+    if (!Array.isArray(filhos)) continue;
+    for (const f of filhos) {
+      if (chaveDeInicio(f) === chave) profundidade += 1;
+      else if (chaveDeFim(f) === chave) {
+        if (profundidade === 0) return i;
+        profundidade -= 1;
+      }
     }
   }
   return -1;

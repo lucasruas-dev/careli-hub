@@ -1,49 +1,25 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { ingestGmailInbox } from "@/lib/iris/gmail-inbound";
-
-// Cron de ingestão de e-mail da Iris: lê os não-lidos da caixa robô caca@ e vira ticket +
-// mensagem no caredesk (canal kind=email). Começa por poll (Pub/Sub em tempo real fica pra
-// depois). Protegido como os demais crons: só o cron interno do Vercel (x-vercel-cron) ou
-// Bearer CRON_SECRET. Entra na allowlist do proxy.ts. Ver [[project-iris-email-grupos]].
+// A IMPORTAÇÃO DE E-MAIL DA IRIS ESTÁ DESLIGADA.
+//
+// Lucas (18/09/2026): *"pode cortar a conexão que registrávamos os e-mails no banco"*, junto com
+// *"tira o canal e-mail da iris"*. Esta rota lia os não-lidos da caixa robô e criava ticket +
+// mensagem no caredesk (canal kind=email), a cada 5 minutos pelo cron da Vercel.
+//
+// ⚠️ TIRAR O CRON NÃO BASTAVA, e por isso a rota também parou. `x-vercel-cron` é só um header, e
+// qualquer um que chame esta URL com ele seria atendido (ver [[reference_cron_x_vercel_cron_spoofavel]]):
+// o cron fora do vercel.json deixaria a importação a uma requisição de voltar. Agora nenhuma chamada
+// lê a caixa nem grava no banco.
+//
+// ⚠️ PARA RELIGAR: a importação continua inteira em `lib/iris/gmail-inbound.ts` (`ingestGmailInbox`).
+// Religar é devolver a chamada aqui, com a autorização de antes (x-vercel-cron ou Bearer CRON_SECRET),
+// o cron no vercel.json e a aba/filtro de e-mail na Iris (lib/iris/canais-de-email.ts).
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET(request: NextRequest) {
-  if (!isAuthorized(request)) {
-    return NextResponse.json({ error: "Nao autorizado." }, { status: 401 });
-  }
-
-  try {
-    const result = await ingestGmailInbox({ maxResults: 25 });
-
-    return NextResponse.json(
-      { data: { ...result, source: "cron" } },
-      { headers: { "Cache-Control": "no-store" } },
-    );
-  } catch (error) {
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Falha ao processar a caixa de e-mail da Iris.",
-      },
-      { status: 500 },
-    );
-  }
-}
-
-function isAuthorized(request: NextRequest) {
-  if (request.headers.get("x-vercel-cron")) {
-    return true;
-  }
-
-  const authorization = request.headers.get("authorization");
-  const token = authorization?.startsWith("Bearer ")
-    ? authorization.slice("Bearer ".length).trim()
-    : "";
-  const cronSecret = process.env.CRON_SECRET?.trim();
-
-  return Boolean(cronSecret && token === cronSecret);
+export async function GET(_request: NextRequest) {
+  return NextResponse.json(
+    { error: "A importação de e-mail da Iris está desligada." },
+    { headers: { "Cache-Control": "no-store" }, status: 410 },
+  );
 }
