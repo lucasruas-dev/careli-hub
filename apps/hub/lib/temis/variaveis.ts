@@ -658,6 +658,11 @@ const CORRETAGEM: VariavelDoContrato[] = [
   { exemplo: "(31) 3333-0000", fonte: VINCULADO_FICHA("telefone (ou apolo_contacts)"), grupo: "corretagem", nome: "telefone_vinculado", origem: "Imobiliária ou corretor da venda", rotulo: "Telefone do vinculado", tipo: "texto" },
   { exemplo: "contato@imobiliaria.com.br", fonte: VINCULADO_FICHA("email (ou apolo_contacts)"), grupo: "corretagem", nome: "email_vinculado", origem: "Imobiliária ou corretor da venda", rotulo: "E-mail do vinculado", tipo: "texto" },
   { exemplo: "Careli Vendas", fonte: COORDENADORA("trade_name (ou display_name, quando a entidade não tem fantasia)"), grupo: "corretagem", nome: "nome_fantasia_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "Coordenadora de vendas", tipo: "texto" },
+  // ⚠️ O FANTASIA E A RAZÃO SOCIAL SÃO DUAS VARIÁVEIS, e a diferença é jurídica. Lucas, 20/09/2026,
+  // no contrato do Vale do Ouro: *"O nome da Gurgel está incompleto"* — a linha do beneficiário
+  // trazia "GURGEL LANÇAMENTOS" (o fantasia) onde o documento precisa de "FABRICIO GURGEL NEGOCIOS
+  // IMOBILIARIOS LTDA". Quem assina e recebe é a razão social; o fantasia serve ao texto corrido.
+  { exemplo: "CARELI VENDAS E INTERMEDIACAO LTDA", fonte: COORDENADORA("legal_name (ou display_name, quando não há razão social)"), grupo: "corretagem", nome: "razao_social_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "Razão social da coordenadora", tipo: "texto" },
   { exemplo: "11.115.899/0001-04", fonte: COORDENADORA("document_masked (o documento completo, CNPJ ou CPF)"), grupo: "corretagem", nome: "cnpj_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "CNPJ da coordenadora", tipo: "texto" },
   { exemplo: "Avenida Central", fonte: COORDENADORA("apolo_addresses.street, ou metadata.cadastro.logradouro"), grupo: "corretagem", nome: "rua_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "Logradouro da coordenadora", tipo: "texto" },
   { exemplo: "1000", fonte: COORDENADORA("apolo_addresses.number, ou metadata.cadastro.numero"), grupo: "corretagem", nome: "numero_coordenadora_vendas", origem: "Coordenadora de vendas do empreendimento", rotulo: "Número da coordenadora", tipo: "texto" },
@@ -700,7 +705,10 @@ const CORRETAGEM: VariavelDoContrato[] = [
   // minuta cai em `[preco_venda]` — que é o MESMO campo de `[valor_imovel_venda]` do item 4.1 — e o
   // contrato imprime o custo total igual ao preço do lote, sem a comissão, em cima da frase que diz
   // "corresponde à soma". Nenhum motor acusa isso: os dois números existem e são válidos.
-  { exemplo: "R$ 196.524,00", fonte: PENDENTE("valor_negociado + comissão total — soma sem coluna"), grupo: "corretagem", nome: "valor_custo_total_aquisicao", origem: "Preço da unidade mais a comissão", rotulo: "Custo total da aquisição", tipo: "dinheiro" },
+  // Preenchida desde 20/09/2026 (`dados-do-contrato.ts`): preço negociado + comissão total, somados
+  // em centavos inteiros. Antes disto era PENDENTE, e a minuta repetia o preço do lote na linha do
+  // custo total.
+  { exemplo: "R$ 196.524,00", fonte: SISTEMA("valor negociado + comissão total, somados em centavos"), grupo: "corretagem", nome: "valor_custo_total_aquisicao", origem: "Preço da unidade mais a comissão", rotulo: "Custo total da aquisição", tipo: "dinheiro" },
   { exemplo: "cento e noventa e seis mil quinhentos e vinte e quatro reais", extensoDe: "valor_custo_total_aquisicao", fonte: EXTENSO_DE("valor_custo_total_aquisicao"), grupo: "corretagem", nome: "valor_custo_total_aquisicao_extenso", origem: "Escrito pelo sistema", rotulo: "Custo total por extenso", tipo: "extenso" },
   // Novos em 02/09/2026: imobiliária e corretor separados, cada um pelo seu vínculo na venda.
   { exemplo: "IMOBILIÁRIA CENTRAL LTDA.", fonte: ENTIDADE("display_name (imobiliaria_entity_id da venda)"), grupo: "corretagem", nome: "imobiliaria_nome", origem: "Imobiliária da venda", rotulo: "Nome da imobiliária", tipo: "texto" },

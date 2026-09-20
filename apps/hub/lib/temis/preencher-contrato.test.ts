@@ -732,3 +732,136 @@ describe("o parágrafo que esvaziou no corte", () => {
     expect(r.nos).toHaveLength(3);
   });
 });
+
+// ── O BLOCO CONDICIONAL QUE ATRAVESSA PARÁGRAFOS ─────────────────────────────
+//
+// Lucas (20/09/2026), com o contrato do Vale do Ouro na mão: *"Está trazendo o conjuge sem ter
+// conjuge"*. Na minuta publicada do VOL as seis ocorrências do cônjuge estão certas, cada uma
+// entre `[inicio_dados_conjuge]` e `[fim_dados_conjuge]` — medido no banco em 20/09/2026. O que
+// falhava era o motor: os pares só eram aplicados DENTRO de um parágrafo, e na área das
+// assinaturas o bloco abrange parágrafos inteiros (o marcador é um parágrafo só).
+describe("bloco condicional entre parágrafos", () => {
+  const assinaturas = () => [
+    p("(Assinado eletronicamente)"),
+    p(v("nome_cliente")),
+    p("COMPROMISSÁRIO(A) COMPRADOR(A)"),
+    p(v("inicio_dados_conjuge")),
+    p("(Assinado eletronicamente)"),
+    p(v("nome_conjuge")),
+    p("CÔNJUGE"),
+    p(v("fim_dados_conjuge")),
+    p("Testemunhas:"),
+  ];
+
+  it("⚠️ sem cônjuge, o bloco inteiro some — e não sobra `[nome_conjuge]` no papel", () => {
+    const r = preencherContrato(assinaturas(), {
+      compradores: [comprador("VITORIA SILVA ARAUJO")],
+      gerais: {},
+    });
+
+    expect(texto(r.nos)).toBe(
+      "(Assinado eletronicamente) VITORIA SILVA ARAUJO COMPROMISSÁRIO(A) COMPRADOR(A) Testemunhas:",
+    );
+    // E não trava a geração: o que sumiu não pode ser cobrado como variável sem valor.
+    expect(r.semValor).not.toContain("nome_conjuge");
+  });
+
+  it("com cônjuge, o bloco fica, com o nome no lugar", () => {
+    const r = preencherContrato(assinaturas(), {
+      compradores: [
+        comprador("VITORIA SILVA ARAUJO", {
+          temConjuge: true,
+          valores: { nome_cliente: "VITORIA SILVA ARAUJO", nome_conjuge: "JOAO ARAUJO" },
+        }),
+      ],
+      gerais: {},
+    });
+
+    expect(texto(r.nos)).toBe(
+      "(Assinado eletronicamente) VITORIA SILVA ARAUJO COMPROMISSÁRIO(A) COMPRADOR(A) " +
+        "(Assinado eletronicamente) JOAO ARAUJO CÔNJUGE Testemunhas:",
+    );
+  });
+
+  // O laço já é expandido antes dos pares: cada cópia pergunta pelo SEU comprador.
+  it("dois compradores, só um casado: o bloco sai uma vez", () => {
+    const r = preencherContrato(
+      [
+        p(v("inicio_cada_comprador")),
+        p(v("nome_cliente")),
+        p(v("inicio_dados_conjuge")),
+        p(v("nome_conjuge")),
+        p(v("fim_dados_conjuge")),
+        p(v("fim_cada_comprador")),
+      ],
+      {
+        compradores: [
+          comprador("SOLTEIRO", { valores: { nome_cliente: "SOLTEIRO" } }),
+          comprador("CASADO", {
+            temConjuge: true,
+            valores: { nome_cliente: "CASADO", nome_conjuge: "ESPOSA" },
+          }),
+        ],
+        gerais: {},
+      },
+    );
+
+    expect(texto(r.nos)).toBe("SOLTEIRO CASADO ESPOSA");
+    expect(r.semValor).not.toContain("nome_conjuge");
+  });
+
+  // Par quebrado (abre e não fecha) não pode engolir o resto do contrato: é a mesma rede do laço.
+  it("abertura sem fechamento não engole o contrato", () => {
+    const r = preencherContrato(
+      [p("Antes"), p(v("inicio_dados_conjuge")), p("Depois")],
+      { compradores: [comprador("X")], gerais: {} },
+    );
+    expect(texto(r.nos)).toBe("Antes Depois");
+  });
+});
+
+// ── OS GERADOS: o que não é texto ────────────────────────────────────────────
+//
+// `[tabela_geral_pagamentos]` não vira palavra: vira QUADRO. O motor troca o parágrafo inteiro
+// pelos nós que o gerador entregou (ver lib/temis/tabela-de-pagamentos.ts).
+describe("variáveis geradas (tabelas)", () => {
+  const quadro: NoDoDocumento = {
+    children: [{ children: [{ children: [{ text: "Mensais" }], type: "td" }], type: "tr" }],
+    type: "table",
+  };
+
+  it("o parágrafo da variável vira o quadro", () => {
+    const r = preencherContrato(
+      [p("O preço será pago conforme o quadro:"), p(v("tabela_geral_pagamentos")), p("Segue.")],
+      { compradores: [comprador("X")], gerados: { tabela_geral_pagamentos: [quadro] }, gerais: {} },
+    );
+
+    expect(texto(r.nos)).toBe("O preço será pago conforme o quadro: Mensais Segue.");
+    expect(r.semValor).not.toContain("tabela_geral_pagamentos");
+    expect(r.nos.some((no) => no.type === "table")).toBe(true);
+  });
+
+  // ⚠️ SEM CRONOGRAMA O QUADRO NÃO EXISTE, e a variável tem de continuar cobrando: é a regra do
+  // topo deste arquivo. Some quem escolheu sumir, e o quadro não escolheu.
+  it("sem gerado, a variável continua aparecendo e trava a geração", () => {
+    const r = preencherContrato([p(v("tabela_geral_pagamentos"))], {
+      compradores: [comprador("X")],
+      gerais: {},
+    });
+
+    expect(texto(r.nos)).toBe("[tabela_geral_pagamentos]");
+    expect(r.semValor).toContain("tabela_geral_pagamentos");
+  });
+
+  // O quadro no meio de uma frase seria HTML inválido (tabela dentro de parágrafo): o texto ao
+  // redor fica, e o quadro entra depois dele.
+  it("com texto ao redor, o texto fica e o quadro entra em seguida", () => {
+    const r = preencherContrato([p("Quadro: ", v("tabela_geral_pagamentos"), " (parte integrante)")], {
+      compradores: [comprador("X")],
+      gerados: { tabela_geral_pagamentos: [quadro] },
+      gerais: {},
+    });
+
+    expect(texto(r.nos)).toBe("Quadro: (parte integrante) Mensais");
+  });
+});

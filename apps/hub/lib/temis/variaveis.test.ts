@@ -162,11 +162,9 @@ describe("toda variável nasce do Panteon — Lucas, 02/09/2026: 'esquece c2x co
         // fonte de verdade, e quem os resolve e `dados-do-contrato.ts`. Sobrou o CRECI, que nao tem
         // coluna em tabela nenhuma do Panteon.
         "creci_coordenadora_vendas",
-        // ⚠️ O CUSTO TOTAL NAO E O PRECO: e preco + comissao. Sem variavel propria a minuta cai em
-        // [preco_venda], que e o MESMO campo de [valor_imovel_venda], e o contrato imprime o custo
-        // total igual ao preco do lote logo abaixo da frase que promete "a soma". A comissao ja
-        // existe desde a 0145; a SOMA e que continua sem ninguem para faze-la.
-        "valor_custo_total_aquisicao",
+        // O custo total (preco + comissao) SAIU desta lista em 20/09/2026: `dados-do-contrato.ts`
+        // passou a somar as duas pontas em centavos. Era exatamente o defeito que o Lucas viu no
+        // contrato do Vale do Ouro — *"O preco do lote e da aquisicao nao podem ser os mesmos"*.
         "valor_garantia_fiduciaria",
       ].sort(),
     );

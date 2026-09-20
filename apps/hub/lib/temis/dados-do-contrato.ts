@@ -59,6 +59,7 @@ import {
   quantidadePorExtenso,
 } from "./por-extenso";
 import type { DadosDoComprador, DadosDoContrato } from "./preencher-contrato";
+import { tabelaGeralDePagamentos } from "./tabela-de-pagamentos";
 
 // ── AS LINHAS COMO ELAS CHEGAM ───────────────────────────────────────────────
 
@@ -164,6 +165,15 @@ type CadastroDaCoordenadora = {
   email: string;
   nome: string;
   numero: string;
+  /**
+   * A RAZÃO SOCIAL, que é o nome que obriga.
+   *
+   * ⚠️ NÃO É O `nome`. Aquele é o FANTASIA ("GURGEL LANÇAMENTOS"), e foi ele que saiu na linha de
+   * beneficiário do contrato de corretagem — Lucas, 20/09/2026: *"O nome da Gurgel está
+   * incompleto"*. Medido no mesmo dia: a ficha tem fantasia "GURGEL LANÇAMENTOS" e razão social
+   * "FABRICIO GURGEL NEGOCIOS IMOBILIARIOS LTDA". Quem assina e recebe é a razão social.
+   */
+  razaoSocial: string;
   rua: string;
   telefone: string;
 };
@@ -337,12 +347,24 @@ export async function dadosDaProposta(
     comissaoDoEmpreendimento(sb, empreendimento, unidade),
   ]);
 
+  // ⚠️ O QUADRO DE PAGAMENTO É NÓ, NÃO TEXTO, e por isso viaja em `gerados` e não em `gerais` (ver
+  // `tabela-de-pagamentos.ts`). Os DOIS nomes recebem a mesma tabela, pela mesma razão de
+  // `preco_venda`/`valor_imovel_venda`: as minutas usam um ou outro, e escrever só um faria metade
+  // delas imprimir o colchete. Sem cronograma não há quadro: a variável continua cobrando.
+  const quadro = tabelaGeralDePagamentos(proposta.condicoes);
+  if (!quadro) {
+    avisos.push("A proposta não tem cronograma gravado: o quadro de pagamento não pôde ser montado.");
+  }
+
   return {
     avisos,
     dados: {
       compradores,
       condicoes: condicoesDoContrato(proposta),
       gerais: gerais(proposta, unidade, empreendimento, doVinculado, comissao, avisos),
+      ...(quadro
+        ? { gerados: { tabela_geral_pagamentos: [quadro], tabela_pagamentos: [quadro] } }
+        : {}),
     },
   };
 }
@@ -565,13 +587,17 @@ async function cadastroDoVinculado(
   sb: SupabaseClient,
   imobiliariaId: null | string,
   corretorId: null | string,
-): Promise<null | { documento: string; email: string; telefone: string }> {
+): Promise<null | { creci: string; documento: string; email: string; telefone: string }> {
   const id = imobiliariaId ?? corretorId;
   if (!id) return null;
 
   const [entidade, contatos] = await Promise.all([
     umaLinha<LinhaDaEntidade>(
-      sb.from("apolo_entities").select("document_masked, id").eq("id", id).maybeSingle(),
+      sb
+        .from("apolo_entities")
+        .select("document_masked, id, metadata")
+        .eq("id", id)
+        .maybeSingle(),
       "apolo_entities",
     ),
     varias<LinhaDoContato>(
@@ -583,6 +609,16 @@ async function cadastroDoVinculado(
   if (!entidade) return null;
 
   return {
+    // ⚠️ O CRECI VEM DA FICHA, COMO O CATÁLOGO SEMPRE DISSE (`VINCULADO_FICHA("creci")`), e até
+    // 20/09/2026 ninguém o lia: o contrato de corretagem do Vale do Ouro saiu com
+    // "CRECI: [creci_vinculado]" e travou a geração. Ele é o campo que o cadastro de imobiliária do
+    // Apolo grava (`metadata.cadastro.creci`).
+    //
+    // ⚠️ E NÃO SE LÊ O C2X PARA COMPLETAR. O número existe lá (`users.creci_number`, 431 linhas), mas
+    // a regra da casa é trazer o dado para o Panteon, não abrir leitura do legado numa peça de
+    // contrato: imobiliária vinda do sync fica sem CRECI até alguém cadastrar, e a conferência da
+    // Têmis acusa. Ver [[feedback_c2x_so_financeiro_via_carteira]].
+    creci: texto(cadastroDaEntidade(null, entidade)?.creci),
     documento: documentoImprimivel(texto(entidade.document_masked)),
     email: primeiroContato(contatos, ["email"]),
     // ⚠️ WHATSAPP PRIMEIRO. No Apolo o `whatsapp` é o tipo que a maioria das entidades tem; ler só
@@ -711,6 +747,7 @@ async function cadastroDaCoordenadora(
     // bloco sairia sem nome com o cadastro ali do lado.
     nome: texto(entidade.trade_name) || texto(entidade.display_name) || texto(entidade.legal_name),
     numero: texto(endereco?.numero),
+    razaoSocial: texto(entidade.legal_name) || texto(entidade.display_name),
     // Ver `RUIDO_DE_CARGA`: "Endereco cadastral" está na coluna `street` de 4.633 linhas e já saiu
     // impresso num contrato real.
     rua: textoUtil(endereco?.logradouro),
@@ -968,7 +1005,7 @@ function gerais(
   proposta: LinhaDaProposta,
   unidade: LinhaDaUnidade | null,
   empreendimento: LinhaDoEmpreendimento | null,
-  doVinculado: null | { documento: string; email: string; telefone: string },
+  doVinculado: null | { creci: string; documento: string; email: string; telefone: string },
   comissao: ComissaoDaVenda,
   avisos: string[],
 ): Record<string, string> {
@@ -1118,13 +1155,12 @@ function gerais(
   // nascidas no Panteon guardam `imobiliaria_entity_id` (vem da reserva) e daí saem documento,
   // telefone e e-mail; as importadas do C2X têm só o nome, e ficam com estes três em branco.
   if (doVinculado) {
+    por("creci_vinculado", doVinculado.creci);
     por("cpf_cnpj_vinculado", doVinculado.documento);
     por("telefone_vinculado", doVinculado.telefone);
     por("email_vinculado", doVinculado.email);
   }
 
-  // ⚠️ O CRECI NÃO ESTÁ NO PANTEON. Ele existe no C2X (`users.creci_number`) e não foi importado —
-  // nenhuma tabela daqui tem a coluna. Fica em branco e aparece na conferência da Têmis.
 
   // ── VALORES ──
   //
@@ -1177,12 +1213,19 @@ function gerais(
     // outra sozinha no lugar dela imprimiria no contrato uma comissão total menor do que a combinada
     // — em cima da frase que diz que o total "refere-se à intermediação". Melhor o colchete.
     if (daCoordenadora !== null && doVinculadoEmCentavos !== null) {
-      parDeDinheiro("valor_total_comissao", (daCoordenadora + doVinculadoEmCentavos) / 100);
+      const comissaoEmCentavos = daCoordenadora + doVinculadoEmCentavos;
+      parDeDinheiro("valor_total_comissao", comissaoEmCentavos / 100);
+      // ⚠️ O CUSTO TOTAL É O LOTE MAIS A COMISSÃO, e sem ele a minuta repete o preço do lote nas duas
+      // linhas: Lucas, 20/09/2026, no contrato do Vale do Ouro — *"O preço do lote e da aquisição não
+      // podem ser os mesmos"*. A soma é em CENTAVOS INTEIROS, pela mesma razão da nota acima: em
+      // reais ela erra um centavo para cima e o documento se contradiz sozinho.
+      parDeDinheiro("valor_custo_total_aquisicao", (emCentavos + comissaoEmCentavos) / 100);
     }
   }
 
   if (comissao.coordenadora) {
     por("nome_fantasia_coordenadora_vendas", comissao.coordenadora.nome);
+    por("razao_social_coordenadora_vendas", comissao.coordenadora.razaoSocial);
     por("cnpj_coordenadora_vendas", comissao.coordenadora.documento);
     por("rua_coordenadora_vendas", comissao.coordenadora.rua);
     por("numero_coordenadora_vendas", comissao.coordenadora.numero);
