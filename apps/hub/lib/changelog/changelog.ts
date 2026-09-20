@@ -71,7 +71,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
             items: [
               "**Pedido de cancelamento recusado quando o contrato já tinha sido indeferido: a venda volta para Proposta.** Sem contrato, quem vendeu cancela a proposta e o lote volta. Antes ela ficava presa em Contrato, sem botão nenhum.",
               "**A marca de um pedido que já acabou não apaga mais o botão \"Solicitar cancelamento\".** Quem decide se há pedido é o card aberto na Têmis.",
-              {
+            ],
+            screen: "Venda · Cancelamento",
+          },
+        ],
+      },
+      {
         module: "Têmis",
         screens: [
           {
@@ -89,14 +94,71 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     technical: {
       done:
-        "Hércules: `recusarOPedido` encadeia `devolverAQuemVendeu` quando o pedido recusado é de cancelamento e o card de contrato da mesma passagem por Contrato foi indeferido (no distrato não, porque houve pagamento ou assinatura); `lib/hercules/marca-de-pedido.ts` solta a marca sem card aberto há mais de 15 minutos, só em venda viva depois do contrato. Hades: texto legal do aceite em lib/hades/dossie/termo-de-acordo-pdf.ts (teste caractere a caractere e prova por coordenada de que não vaza da folha); envio pelo mesmo motor dos contratos (lib/assinatura/*), com papel novo `careli` fora de PAPEIS_DO_CONTRATO, assinante da Careli num arquivo só, ordem comprador/incorporador/Careli, gate que reusa `motivoParaNaoEmitirOTermo` e relê a aprovação antes de abrir o envelope, guarda contra o segundo envelope em três camadas (leitura, índice único parcial da 0179 e releitura pós-insert), `proposta_id` nulo de propósito e `compromisso_id` no metadata do documento. Migration 0179 APLICADA em produção. Apolo: papel `termos_vendedora` no quadro (temis_assinantes), recusado para o ator portal no servidor, com precedência divisão da unidade, empreendimento da proposta e pai (a mesma de chavesDaComissao); migration 0180 escrita e NÃO aplicada (sem ela o campo lê e mostra, e gravar recusa com a frase que a nomeia). Têmis: escolha da ficha por cliente_entity_id, ponte do id do C2X e cadastro preenchido, com complemento só de ficha provadamente da mesma pessoa; comissão pela divisão; corretor e imobiliária pela CAD, nunca o próprio comprador; leitor da carteira por venda sem tocar o C2X. Três workflows com revisão adversarial em três lentes cada. 7.390 testes em 462 arquivos, typecheck limpo.",
+        "Hércules: o pedido de cancelamento recusado com o contrato da mesma passagem já indeferido devolve a venda para Proposta (no distrato não, porque houve pagamento ou assinatura), e a marca de pedido sem card aberto há mais de 15 minutos deixa de travar o botão. Hades: texto legal do aceite em lib/hades/dossie/termo-de-acordo-pdf.ts (teste caractere a caractere e prova por coordenada de que não vaza da folha); envio pelo mesmo motor dos contratos (lib/assinatura/*), com papel novo `careli` fora de PAPEIS_DO_CONTRATO, assinante da Careli num arquivo só, ordem comprador/incorporador/Careli, gate que reusa `motivoParaNaoEmitirOTermo` e relê a aprovação antes de abrir o envelope, guarda contra o segundo envelope em três camadas (leitura, índice único parcial da 0179 e releitura pós-insert), `proposta_id` nulo de propósito e `compromisso_id` no metadata do documento. Migration 0179 APLICADA em produção. Apolo: papel `termos_vendedora` no quadro (temis_assinantes), recusado para o ator portal no servidor, com precedência divisão da unidade, empreendimento da proposta e pai (a mesma de chavesDaComissao); migration 0180 escrita e NÃO aplicada (sem ela o campo lê e mostra, e gravar recusa com a frase que a nomeia). Têmis: escolha da ficha por cliente_entity_id, ponte do id do C2X e cadastro preenchido, com complemento só de ficha provadamente da mesma pessoa; comissão pela divisão; corretor e imobiliária pela CAD, nunca o próprio comprador; leitor da carteira por venda sem tocar o C2X. Três workflows com revisão adversarial em três lentes cada. 7.390 testes em 462 arquivos, typecheck limpo.",
       motivation:
         "Lucas, 18 e 20/09/2026: \"tem um distrato mas nao esta trazendo as informacoes, analisa o porque\", \"tudo tem que ser alimentado pelo panteon\", \"o que esta hoje esta aprovado quero so incluir o texto legal substituindo o texto de observacao\", \"vamos levar esse documento para ser assinado na click\", \"o acordo so pode ficar disponivel para envio depois da aprovacao\", \"entra no envelope somente o proponente\" e \"nessa tela vc pode abrir mais um campo para assinatura de termos vendedora\".",
     },
-    rollback: "9252e5d1",
+    rollback: "9d83752c",
     title: "Termo de acordo assinável e o card da Têmis alimentado pelo Panteon",
     type: "melhoria",
     version: "1.352.0",
+  },
+  {
+    buildTag: "2026-09-20-contrato-dentro-do-quadro-resumo",
+    deployedAt: "2026-09-20T19:20:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O cônjuge de quem é solteiro some também do Quadro-Resumo.** O bloco do cônjuge aparece em seis lugares da minuta do Vale do Ouro, e dois deles ficam dentro da tabela do Quadro-Resumo. Só os quatro de fora eram tratados: na caixa de CIÊNCIA PRÉVIA saía o nome do cônjuge de uma compradora solteira.",
+              "**Venda com dois compradores passa a mostrar os dois no Quadro-Resumo.** Os dois laços de comprador que ficam dentro daquela tabela não rodavam, e o quadro saía com o primeiro comprador apenas, enquanto o corpo do contrato trazia os dois.",
+              "**A grade do quadro não encolhe mais.** Célula que ficou sem conteúdo depois de um bloco desligado continua existindo, vazia, em vez de sumir e tirar uma coluna da linha.",
+            ],
+            screen: "Contrato · Prévia e geração",
+          },
+        ],
+      },
+    ],
+    rollback: "4d79ca49",
+    technical: {
+      done:
+        "Uma régua única de descida no motor (`preencher-contrato.ts`): `ehConteinerDeBlocos` (td, th, tr, table, tbody/thead/tfoot, li, ul, ol, blockquote, callout, column) decide onde cada etapa entra, pelo TIPO DO PAI. `paresEntreBlocos` passou a descer (não descia: percorria só a lista que recebia) e `expandirLaco` passou a descer com a LISTA INTEIRA de filhos em vez de um filho por vez — o par e o laço atravessam parágrafos IRMÃOS dentro da mesma célula, e descer um a um nunca via o fechamento. Medido no jsonb de produção (VOL-MINUTA-COMPRA-VENDA-NORMAL v6, nó de topo nº 3, tabela de 44 KB): 2 pares de cônjuge e 2 laços de comprador vivem lá dentro, em tr[1]>td e tr[16]>td (a caixa de CIÊNCIA PRÉVIA); os outros 4 de cada são de topo e sempre funcionaram. A régua por tipo também fecha dois pontos cegos de olhar a forma dos filhos: texto solto entre os parágrafos da célula (uma linha em branco) bloqueava a descida, e nó de LINHA com filhos (link, a própria variável) a autorizava onde não devia. `inserirGerados`: não desce mais em nó de linha (tabela dentro de `<p>` racha a cláusula) e, quando a variável é filha direta da célula, o quadro entra DENTRO dela em vez de virar irmão do `<td>`. `resolverNo`: célula que esvaziou no corte fica vazia em vez de ser removida, senão a linha perde coluna. 6 testes novos com as formas reais; 1.096 testes da Têmis passando; suíte e typecheck limpos. ⚠️ AINDA EM ABERTO, medido e não corrigido: par ou laço que abre numa célula e fecha em OUTRA (ou fora da tabela) continua contando como par quebrado e some com um comprador EM SILÊNCIO — não acontece na minuta do VOL, e a conferência que roda antes de publicar não pega, porque ela só confere equilíbrio de marcadores no texto, não se o motor os alcança.",
+      motivation:
+        "Lucas (20/09/2026), com o print do contrato gerado depois da 1.351.3: *\"ainda está aparecendo o nome do conjuge mesmo a pessoa sendo solteira\"*. A auditoria das demais etapas do motor, feita em seguida, achou o laço e a poda pelo mesmo caminho.",
+    },
+    title: "Contrato: o que está dentro do Quadro-Resumo também obedece",
+    type: "correcao",
+    version: "1.351.4",
+  },
+  {
+    buildTag: "2026-09-20-quadro-de-pagamento-dentro-do-quadro-resumo",
+    deployedAt: "2026-09-20T18:40:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O quadro de pagamento parou de desconfigurar o contrato.** Na minuta, a variável do quadro mora dentro do Quadro-Resumo, e a tabela entrava lá de um jeito que bagunçava a grade: as seções do contrato encolhiam e o texto quebrava em colunas estreitas. Agora o quadro entra como tabela de verdade dentro da célula e o resto do Quadro-Resumo fica como estava.",
+              "**A coluna Valor sai só com o número, sem o \"a partir de\".** Quem conta o reajuste continua sendo a coluna Correção e a cláusula de correção monetária.",
+            ],
+            screen: "Contrato · Prévia e geração",
+          },
+        ],
+      },
+    ],
+    rollback: "9252e5d1",
+    technical: {
+      done:
+        "`preencher-contrato.ts`, descida do `inserirGerados`: o filho passa a ser trocado por uma LISTA de nós (flatMap) em vez de um nó só. A versão anterior (`dentroDoFilho`) preservava o parágrafo e trocava apenas os filhos dele, então o quadro saía como `<p><tr><td>…</td></tr></p>` — medido no HTML gerado. Na VOL-MINUTA-COMPRA-VENDA-NORMAL v6 o Quadro-Resumo inteiro é uma tabela de uma coluna e a variável está num `<p>` dentro do `<td>` do item VI; o parser reaproveita essas linhas soltas na tabela de fora, a grade ganha sete colunas que não são dela e todas as seções encolhem. Agora o parágrafo dá lugar à `<table>`, irmã dos outros parágrafos da mesma célula. `tabela-de-pagamentos.ts`: `valorDaSerie` devolve só a primeira parcela. Teste novo com a estrutura real (table > tr > td > p > variável) travando `<p><tr>`; 980 testes da Têmis passando. ⚠️ Largura: não é declarada no nó — o CSS do documento (`css-do-documento.ts:90`) já dá `width: 100%` a toda tabela, e declarar inline mudaria a diagramação de minutas que gravam largura própria.",
+      motivation:
+        "Lucas (20/09/2026), vendo o contrato do Vale do Ouro gerado: *\"a tabela está desconfigurando o resto do contrato, outra coisa que precisa mudar é tirar o texto a partir de\"*.",
+    },
+    title: "Contrato: o quadro de pagamento dentro do Quadro-Resumo",
+    type: "correcao",
+    version: "1.351.3",
   },
   {
     buildTag: "2026-09-20-contrato-conjuge-e-quadro-de-pagamento",

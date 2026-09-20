@@ -71,10 +71,13 @@ describe("tabelaGeralDePagamentos", () => {
     expect(saida).toContain("R$ 217.772,10");
   });
 
-  it("⚠️ a parcela mensal que MUDA no reajuste sai como 'a partir de'", () => {
-    // A primeira mensal é 770,49 e a última 2.083,74: escrever "156 x R$ 770,49" seria afirmar um
-    // valor fixo que o próprio contrato corrige todo ano.
-    expect(texto(tabelaGeralDePagamentos(CONDICOES))).toContain("a partir de");
+  it("⚠️ a coluna Valor é só o número, sem 'a partir de'", () => {
+    // Pedido do Lucas em 20/09/2026, vendo o quadro impresso: *"outra coisa que precisa mudar é
+    // tirar o texto a partir de"*. A mensal muda no reajuste (770,49 → 2.083,74 na 156ª) e mesmo
+    // assim a célula sai limpa: quem conta o reajuste é a coluna Correção e a cláusula VII.
+    const saida = texto(tabelaGeralDePagamentos(CONDICOES));
+    expect(saida).not.toContain("a partir de");
+    expect(saida).toContain("R$ 770,49");
   });
 
   it("sem parcela anual, a linha das anuais não existe", () => {

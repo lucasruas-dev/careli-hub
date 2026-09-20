@@ -205,7 +205,21 @@ function expandirLaco(
       continue;
     }
 
-    // Sem laço aqui: desce nos filhos, que podem ter um mais abaixo (célula de tabela, item de lista).
+    // ⚠️ DENTRO DE UM CONTÊINER DE BLOCOS, A DESCIDA LEVA A LISTA INTEIRA DE FILHOS. Medido em
+    // 20/09/2026 no jsonb da minuta publicada do Vale do Ouro (VOL v6): a tabela do Quadro-Resumo (o
+    // nó de topo nº 3) carrega DOIS laços de comprador, e cada um abre num parágrafo e fecha em
+    // outro, dentro da MESMA célula. Descendo um filho por vez, o fechamento no parágrafo vizinho
+    // nunca era visto: o par contava como quebrado, o laço não rodava (`vezesDoLaco` zero) e o
+    // Quadro-Resumo de uma venda com dois compradores saía com um comprador só.
+    if (ehConteinerDeBlocos(no) && Array.isArray(filhos) && filhos.length > 0) {
+      const dentro = expandirLaco(filhos as NoDoDocumento[], dados);
+      vezes += dentro.vezes;
+      saida.push({ ...no, children: dentro.nos });
+      continue;
+    }
+
+    // Filhos misturados (texto e elemento): desce um por um, que é o que dá para fazer sem
+    // atropelar o texto do parágrafo.
     if (Array.isArray(filhos) && filhos.some((f) => !ehTexto(f) && Array.isArray((f as NoDoDocumento).children))) {
       const filhosNovos: (NoDeTexto | NoDoDocumento)[] = [];
       for (const f of filhos) {
@@ -379,31 +393,46 @@ function inserirGerados(
     if (posicao < 0) {
       // Pode estar mais abaixo (célula de tabela, item de lista): desce.
       //
-      // ⚠️ E DESCE COM `flatMap`, PORQUE UM FILHO PODE VIRAR DOIS — OU NENHUM. Até 20/09/2026 esta
-      // linha era um `map` para `dentroDoFilho`, que devolvia UM nó por filho e ficava só com os
-      // FILHOS do primeiro nó da lista gerada. Quando a variável mora num parágrafo dentro de uma
-      // célula, esse primeiro nó é a própria `<table>` do quadro: as `<tr>` dela voltavam para
-      // dentro do `<p>` e o `<table>` em volta se perdia — o HTML inválido que a nota desta seção
-      // diz estar evitando.
+      // ⚠️ A DESCIDA TROCA O FILHO POR UMA LISTA, e não por um filho só. Na minuta real (VOL v6,
+      // medida em 20/09/2026) o Quadro-Resumo inteiro é uma tabela de uma coluna e a variável mora
+      // num parágrafo DENTRO da célula do item VI. Quando a descida preservava o parágrafo e só
+      // trocava o conteúdo dele, o quadro saía como `<p><tr><td>…</td></tr></p>`: linhas de tabela
+      // penduradas num parágrafo. O navegador reaproveita essas linhas na tabela de fora, o
+      // Quadro-Resumo ganha sete colunas que não são dele e todas as outras seções encolhem —
+      // *"a tabela está desconfigurando o resto do contrato"* (Lucas, 20/09/2026). Aqui o parágrafo
+      // dá lugar à tabela, que vira IRMÃ dos outros parágrafos da mesma célula.
       //
-      // ⚠️ E ESSE É O CAMINHO REAL, NÃO O EXÓTICO. Nas DUAS minutas publicadas que usam a variável
-      // (VOL-MINUTA-COMPRA-VENDA-NORMAL v6 e RVP-MINUTA-COMPRA-VENDA-NORMAL v2, lidas em produção
-      // em 20/09/2026) ela está em `table > tr > td > p`, no Quadro-Resumo da cláusula VI — nunca
-      // num parágrafo solto. Ou seja: o quadro de pagamento que subiu hoje na v1.351.2 não entrava
-      // em NENHUM contrato de verdade. Com o `flatMap`, o filho devolve a lista inteira que
-      // `inserirGerados` montou para ele: o parágrafo da variável sai e a tabela entra no lugar
-      // dele, dentro da célula, na mesma posição entre os irmãos.
-      saida.push({
-        ...no,
-        children: filhos.flatMap((f) => (ehTexto(f) ? [f] : inserirGerados([f], dados))),
-      });
+      // ⚠️ E SÓ DESCE EM CONTÊINER DE BLOCOS. Dentro de um parágrafo os filhos são texto e nós de
+      // LINHA (o link, a própria variável): entrar ali devolvia a tabela como filha do `<p>`, e
+      // `<table>` dentro de `<p>` racha a cláusula em duas na impressão. Quando a variável está
+      // debaixo de um link, ela não é trocada, vira `[nome]` no papel e entra em `semValor` — o
+      // aviso é melhor do que o contrato remontado.
+      if (!ehConteinerDeBlocos(no)) {
+        saida.push(no);
+        continue;
+      }
+      const descidos = filhos.flatMap((f) =>
+        ehTexto(f) ? [f] : inserirGerados([f as NoDoDocumento], dados),
+      );
+      saida.push({ ...no, children: descidos });
       continue;
     }
 
     const nome = nomeDaVariavel(filhos[posicao]) as string;
     const resto = filhos.filter((_, i) => i !== posicao);
+    const temResto = resto.some((f) => (ehTexto(f) ? f.text.trim() !== "" : true));
+
+    // ⚠️ VARIÁVEL FILHA DIRETA DE UMA CÉLULA: O QUADRO ENTRA DENTRO DELA. Empurrar os nós gerados
+    // como IRMÃOS aqui poria a tabela ao lado do `<td>`, dentro do `<tr>` — e o navegador expulsa
+    // a tabela do quadro inteiro. Só é irmão quando o vizinho é bloco de verdade (parágrafo na
+    // folha, parágrafo dentro da célula).
+    if (ehConteinerDeBlocos(no)) {
+      saida.push({ ...no, children: [...(temResto ? resto : []), ...(gerados[nome] ?? [])] });
+      continue;
+    }
+
     // O texto ao redor fica: ele é cláusula, não moldura da tabela.
-    if (resto.some((f) => (ehTexto(f) ? f.text.trim() !== "" : true))) {
+    if (temResto) {
       saida.push({ ...no, children: resto });
     }
     for (const doGerado of gerados[nome] ?? []) saida.push(doGerado);
@@ -442,6 +471,24 @@ function paresEntreBlocos(
 
     // Sem abertura aqui, ou abre e fecha no MESMO parágrafo: `aplicarPares` resolve, como sempre.
     if (!chave || !Array.isArray(filhos) || acharFim(filhos, posicaoDoInicio, chave) >= 0) {
+      // ⚠️ MAS "SEM ABERTURA AQUI" PODE SER "MAIS ABAIXO". Medido em 20/09/2026 no jsonb da minuta
+      // publicada do Vale do Ouro (VOL v6): DOIS dos seis pares `[inicio_dados_conjuge]` estão
+      // dentro da tabela do Quadro-Resumo — o nó de topo nº 3, de 44 KB —, e não soltos no
+      // documento. Como esta etapa só percorria a lista que recebia, esses dois nunca eram
+      // resolvidos: o contrato de uma compradora SOLTEIRA saía com `[nome_conjuge]` e a palavra
+      // CÔNJUGE impressos na caixa de CIÊNCIA PRÉVIA (*"ainda está aparecendo o nome do conjuge
+      // mesmo a pessoa sendo solteira"*, Lucas). É a mesma descida que `expandirLaco` já fazia.
+      //
+      // ⚠️ E A DESCIDA LEVA A LISTA INTEIRA DE FILHOS, não um filho por vez: o par atravessa
+      // parágrafos IRMÃOS dentro da célula (abre no "(Assinado eletronicamente)" e fecha três
+      // parágrafos depois). Descer um a um acharia a abertura e nunca o fechamento.
+      //
+      // ⚠️ SÓ DESCE EM CONTÊINER DE BLOCOS — `td`, `tr`, `table`, item de lista: todo filho é
+      // elemento. Parágrafo tem texto entre os filhos, e lá quem manda é `aplicarPares`.
+      if (!chave && ehConteinerDeBlocos(no) && Array.isArray(filhos) && filhos.length > 0) {
+        saida.push({ ...no, children: paresEntreBlocos(filhos as NoDoDocumento[], dados) });
+        continue;
+      }
       saida.push(no);
       continue;
     }
@@ -607,9 +654,13 @@ function resolverNo(
       continue;
     }
     const resolvido = resolverNo(alvo, dados, semValor, donoDoNo(alvo) ?? dono);
-    // O filho que esvaziou no corte não entra: um `<td>` ou um `<li>` vazio abre o mesmo vão que o
-    // parágrafo, e aqui é o único lugar que sabe que ele existiu.
-    if (!esvaziouNoCorte(resolvido)) finais.push(resolvido);
+    // O filho que esvaziou no corte não entra: um `<li>` vazio abre o mesmo vão que o parágrafo, e
+    // aqui é o único lugar que sabe que ele existiu.
+    //
+    // ⚠️ MENOS A CÉLULA DE TABELA, QUE FICA VAZIA EM VEZ DE SUMIR. Apagar um `<td>` tira uma coluna
+    // daquela linha e desmonta a grade: no Quadro-Resumo, a linha encolhe e o quadro inteiro sai
+    // torto no papel. Um vão vazio dentro da célula é o preço certo a pagar; a grade, não.
+    if (!esvaziouNoCorte(resolvido) || ehCelulaDaGrade(resolvido)) finais.push(resolvido);
   }
 
   const pronto = limpar({ ...no, children: finais });
@@ -625,60 +676,7 @@ const REGIME = "regime_casamento_cliente";
  */
 const ANUNCIA_O_REGIME = /regime|casad/i;
 
-/**
- * Quem não é casado não leva a oração do regime de bens.
- *
- * ⚠️ O PROBLEMA NÃO É O CAMPO VAZIO, É A ORAÇÃO QUE SOBRA. A minuta do Lucas escreve, em texto
- * corrido, `[estado_civil_cliente]`, casado sob o regime de `[regime_casamento_cliente]` — e num
- * comprador solteiro o motor imprimia "Solteiro (a), casado sob o regime de
- * [regime_casamento_cliente]". Esconder só a variável não resolve: sobraria "Solteiro (a), casado
- * sob o regime de ,", que é pior, porque parece redação e não erro. Some a oração inteira.
- *
- * ⚠️ E O CORTE É ANTES DAS VARIÁVEIS VIRAREM TEXTO, de propósito. Depois disso o nó anterior pode
- * ser o VALOR de outra variável — o "Solteiro (a)" do estado civil — e recortar ali comeria o dado
- * do cadastro em vez da redação da minuta.
- *
- * ⚠️ O GATILHO É DUPLO: o comprador não ser casado E o texto anterior anunciar o regime. Sem a
- * segunda condição, uma minuta que escrevesse a variável sozinha perderia a vírgula do vizinho.
- *
- * A forma CERTA de escrever isto numa minuta nova é o par `[inicio_dados_casado]` … `[fim_dados_
- * casado]`, que já existe. Isto aqui é o conserto de quem já foi escrito sem ele — e as 41 minutas
- * a migrar do legado estão todas nesse caso.
- */
-function semOracaoDoRegime(
-  filhos: readonly (NoDeTexto | NoDoDocumento)[],
-  dados: DadosDoContrato,
-  dono: null | number,
-): (NoDeTexto | NoDoDocumento)[] {
-  const saida = [...filhos];
-
-  // De trás para frente: remover um item não desloca os índices que ainda faltam olhar.
-  for (let i = saida.length - 1; i >= 0; i -= 1) {
-    const filho = saida[i];
-    if (!filho || ehTexto(filho) || nomeDaVariavel(filho) !== REGIME) continue;
-
-    const comprador = dados.compradores[donoDoNo(filho) ?? dono ?? 0];
-    if (comprador?.ehCasado !== false) continue;
-
-    saida.splice(i, 1);
-
-    const anterior = i > 0 ? saida[i - 1] : undefined;
-    if (!anterior || !ehTexto(anterior)) continue;
-    saida[i - 1] = { ...anterior, text: semAOracao(anterior.text) };
-  }
-
-  return saida;
-}
-
-/** Corta da última vírgula até o fim, quando o que vem depois dela anuncia o regime. */
-function semAOracao(bruto: string): string {
-  const corte = Math.max(bruto.lastIndexOf(","), bruto.lastIndexOf(";"));
-  const oracao = corte >= 0 ? bruto.slice(corte) : bruto;
-  if (!ANUNCIA_O_REGIME.test(oracao)) return bruto;
-  return corte >= 0 ? bruto.slice(0, corte) : "";
-}
-
-/** `rg_cliente` e os sufixados do legado (`rg_cliente_2` … `rg_cliente_5`). */
+/** `rg_cliente` e os sufixados do legado (`rg_cliente_2` ... `rg_cliente_5`). */
 const RG = /^rg_cliente(?:_([2-5]))?$/;
 
 /** O texto que ANUNCIA o RG: "portador da cédula de identidade nº", "RG nº", "registro geral". */
@@ -742,6 +740,59 @@ function semOracaoDoRg(
   }
 
   return saida;
+}
+
+/**
+ * Quem não é casado não leva a oração do regime de bens.
+ *
+ * ⚠️ O PROBLEMA NÃO É O CAMPO VAZIO, É A ORAÇÃO QUE SOBRA. A minuta do Lucas escreve, em texto
+ * corrido, `[estado_civil_cliente]`, casado sob o regime de `[regime_casamento_cliente]` — e num
+ * comprador solteiro o motor imprimia "Solteiro (a), casado sob o regime de
+ * [regime_casamento_cliente]". Esconder só a variável não resolve: sobraria "Solteiro (a), casado
+ * sob o regime de ,", que é pior, porque parece redação e não erro. Some a oração inteira.
+ *
+ * ⚠️ E O CORTE É ANTES DAS VARIÁVEIS VIRAREM TEXTO, de propósito. Depois disso o nó anterior pode
+ * ser o VALOR de outra variável — o "Solteiro (a)" do estado civil — e recortar ali comeria o dado
+ * do cadastro em vez da redação da minuta.
+ *
+ * ⚠️ O GATILHO É DUPLO: o comprador não ser casado E o texto anterior anunciar o regime. Sem a
+ * segunda condição, uma minuta que escrevesse a variável sozinha perderia a vírgula do vizinho.
+ *
+ * A forma CERTA de escrever isto numa minuta nova é o par `[inicio_dados_casado]` … `[fim_dados_
+ * casado]`, que já existe. Isto aqui é o conserto de quem já foi escrito sem ele — e as 41 minutas
+ * a migrar do legado estão todas nesse caso.
+ */
+function semOracaoDoRegime(
+  filhos: readonly (NoDeTexto | NoDoDocumento)[],
+  dados: DadosDoContrato,
+  dono: null | number,
+): (NoDeTexto | NoDoDocumento)[] {
+  const saida = [...filhos];
+
+  // De trás para frente: remover um item não desloca os índices que ainda faltam olhar.
+  for (let i = saida.length - 1; i >= 0; i -= 1) {
+    const filho = saida[i];
+    if (!filho || ehTexto(filho) || nomeDaVariavel(filho) !== REGIME) continue;
+
+    const comprador = dados.compradores[donoDoNo(filho) ?? dono ?? 0];
+    if (comprador?.ehCasado !== false) continue;
+
+    saida.splice(i, 1);
+
+    const anterior = i > 0 ? saida[i - 1] : undefined;
+    if (!anterior || !ehTexto(anterior)) continue;
+    saida[i - 1] = { ...anterior, text: semAOracao(anterior.text) };
+  }
+
+  return saida;
+}
+
+/** Corta da última vírgula até o fim, quando o que vem depois dela anuncia o regime. */
+function semAOracao(bruto: string): string {
+  const corte = Math.max(bruto.lastIndexOf(","), bruto.lastIndexOf(";"));
+  const oracao = corte >= 0 ? bruto.slice(corte) : bruto;
+  if (!ANUNCIA_O_REGIME.test(oracao)) return bruto;
+  return corte >= 0 ? bruto.slice(0, corte) : "";
 }
 
 /**
@@ -993,6 +1044,48 @@ function podarVazios(nos: readonly NoDoDocumento[]): NoDoDocumento[] {
 function donoDoNo(no: unknown): null | number {
   const v = (no as Record<string, unknown>)?.[DONO];
   return typeof v === "number" ? v : null;
+}
+
+/**
+ * Os nós que guardam OUTROS BLOCOS dentro de si: célula, linha, tabela, item de lista, box.
+ *
+ * ⚠️ É O QUE SEPARA "DESCER" DE "ESTRAGAR", e por isso a régua é o TIPO DO PAI, não a forma dos
+ * filhos. Dentro de um destes, os filhos são blocos irmãos e um laço ou um par condicional pode
+ * atravessar dois deles — é onde as etapas precisam descer. Num PARÁGRAFO, não: lá os filhos são
+ * texto e nós de linha (a variável, o link), quem resolve o par é `aplicarPares`, e trocar um
+ * parágrafo por uma tabela ali dentro produz `<table>` dentro de `<p>`, que o navegador desmonta.
+ *
+ * ⚠️ E LER O TIPO RESOLVE DOIS PONTOS CEGOS de olhar só os filhos: (1) um texto solto no meio dos
+ * parágrafos da célula — uma linha em branco — fazia "todo filho é elemento" dar falso e a descida
+ * não acontecia; (2) um nó de LINHA com filhos (o link, a própria variável) fazia dar verdadeiro, e
+ * a descida entrava onde não devia.
+ */
+const CONTEINERES_DE_BLOCO = new Set([
+  "blockquote",
+  "callout",
+  "column",
+  "column_group",
+  "li",
+  "ol",
+  "table",
+  "tbody",
+  "td",
+  "tfoot",
+  "th",
+  "thead",
+  "tr",
+  "ul",
+]);
+
+/** A célula do quadro: some o conteúdo, ela não. Ver a nota em `resolverNo`. */
+function ehCelulaDaGrade(no: unknown): boolean {
+  const tipo = (no as NoDoDocumento)?.type;
+  return tipo === "td" || tipo === "th";
+}
+
+function ehConteinerDeBlocos(no: unknown): boolean {
+  const tipo = (no as NoDoDocumento)?.type;
+  return typeof tipo === "string" && CONTEINERES_DE_BLOCO.has(tipo);
 }
 
 function ehTexto(no: unknown): no is NoDeTexto {

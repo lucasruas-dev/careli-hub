@@ -6,7 +6,8 @@
 -- assinatura de termos vendedora, ae eu posso apontar quem vai assinar os termos, não precisa
 -- necessariamente ser os representantes legais, pode ser o juridico, analista, enfim)"*.
 --
--- Autorização do Lucas para APLICAR: PENDENTE — escrita, esperando o OK.
+-- ✅ APLICADA EM PRODUÇÃO em 20/09/2026, com OK do Lucas ("tem o meu ok"), ANTES do código.
+-- Conferido depois: o CHECK aceita os quatro papéis (pg_get_constraintdef).
 --
 -- ATENÇÃO 1: O PAPEL É NOVO PORQUE A PERGUNTA É OUTRA. `vendedora` responde "quem assina o CONTRATO
 -- de venda pela empresa" — é uma linha da qualificação do papel impresso, e o jurídico confere o
