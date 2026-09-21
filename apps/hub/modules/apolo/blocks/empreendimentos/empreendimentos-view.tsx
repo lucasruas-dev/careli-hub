@@ -1553,13 +1553,15 @@ function SetupTab({
 }) {
   const [subAba, setSubAba] = useState<SubAbaDoSetup>("categorias");
 
-  // ⚠️ A ESTRUTURA VEM PRIMEIRO, e é a ordem de quem monta um produto: o filho e a categoria são o
-  // que o produto É; credenciamento e assinatura são como ele opera. Por isso a aba abre em
-  // Categorias, que é o que o Lucas disse ir buscar aqui (*"é lá que abro essas categorias"*).
+  // ⚠️ A ORDEM É A DO LUCAS (21/09/2026: *"muda somente a ordem, coloca o credenciamento - filho -
+  // categoria - assinatura"*), e ela segue a vida do produto: primeiro quem pode vender
+  // (credenciamento), depois como o produto se divide (filho e categoria), por último como o
+  // contrato sai para assinar. A aba continua ABRINDO em Categorias, que é o que ele disse vir
+  // buscar aqui (*"é lá que abro essas categorias"*).
   const abas: { id: SubAbaDoSetup; rotulo: string }[] = [
-    { id: "categorias", rotulo: "Categorias" },
-    { id: "filhos", rotulo: "Filho" },
     { id: "credenciamento", rotulo: "Credenciamento" },
+    { id: "filhos", rotulo: "Filho" },
+    { id: "categorias", rotulo: "Categorias" },
     { id: "assinatura", rotulo: "Assinatura" },
   ];
 
