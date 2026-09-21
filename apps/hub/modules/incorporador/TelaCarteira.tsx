@@ -25,6 +25,7 @@ import type {
 } from "@/lib/apolo/incorporador/carteira-liquida";
 
 import { T } from "./tema";
+import { chaveDaLinhaDaCarteira } from "./chave-da-linha";
 
 // A CARTEIRA DO INCORPORADOR — a CarteiraTab do Apolo interno, portada para o portal, com o
 // LÍQUIDO que é dele ao lado do bruto que a Careli administra.
@@ -939,7 +940,9 @@ function AbaCarteira({
             <tbody>
               {visiveis.map((unit) => (
                 <tr
-                  key={unit.id}
+                  // Mesma regra da tabela do coordenador: o lote revendido tem uma linha por
+                  // contrato, e o id da unidade se repete. Ver `chave-da-linha.ts`.
+                  key={chaveDaLinhaDaCarteira(unit)}
                   onClick={() => setUnidadeAberta(unit)}
                   style={{ cursor: "pointer" }}
                   title="Ver as parcelas desta unidade"
@@ -1221,15 +1224,19 @@ function AbaParcelasDoCoordenador({
             </thead>
             <tbody>
               {visiveis.map((unit) => {
-                const aberta = abertas.has(unit.id);
+                // ⚠️ A CHAVE É DA LINHA, NÃO DA UNIDADE — ver `chave-da-linha.ts`. O lote revendido
+                // aparece duas vezes (um contrato por comprador), e `key={unit.id}` repetido fazia o
+                // React deixar linhas de OUTRO empreendimento na tabela depois de filtrar.
+                const chave = chaveDaLinhaDaCarteira(unit);
+                const aberta = abertas.has(chave);
                 const foco = parcelaEmFoco(unit.parcelas);
 
                 return (
                   <UnidadeDoCoordenador
                     aberta={aberta}
                     foco={foco}
-                    key={unit.id}
-                    onAlternar={() => alternar(unit.id)}
+                    key={chave}
+                    onAlternar={() => alternar(chave)}
                     unit={unit}
                   />
                 );

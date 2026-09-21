@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-21-financeiro-do-portal-filtra-de-verdade",
+    deployedAt: "2026-09-21T11:50:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "**O filtro por empreendimento no Financeiro passa a mostrar só o que foi pedido.** Ao escolher um empreendimento, sobravam na lista algumas unidades da consulta anterior — dava para ver lote do Vale do Ouro dentro do Veredas do Ouro, e quem precisava do boleto não achava a unidade.",
+              "**Expandir as parcelas de um contrato não abre mais o contrato do vizinho.** Quando o mesmo lote tem dois contratos (revenda ou cessão), cada linha agora abre sozinha.",
+            ],
+            screen: "Financeiro · Parcelas por unidade",
+          },
+        ],
+      },
+    ],
+    rollback: "754ec922",
+    technical: {
+      done:
+        "Relato da Nívea (*\"o filtro não está funcionando\"*) e do Lucas (*\"ao clicar no veredas não está filtrando\"*). MEDIDO NA SESSÃO REAL, pelo navegador do Lucas: a tela pede `?code=pai:044f4f12…`, o servidor responde 200 com 38 unidades TODAS do Veredas e o contador mostra 38 — filtro, tradução (`codigosDoPedido`) e consulta estavam corretos. O erro era o DOM: 56 unidades renderizadas onde havia 38, com 18 órfãs da consulta anterior (10 VOC, 6 VOL, 2 REP). Causa: `key={unit.id}` em `TelaCarteira.tsx` (as duas tabelas) e o id é o da UNIDADE, que se repete quando o lote foi revendido — uma linha por contrato. Na carteira da Gurgel são 473 linhas para 453 ids distintos; o id 2646 (REPC96) tem duas, de LUCIMAR e de SIMONE. Com chave duplicada o React não reconcilia e deixa nós no DOM. Novo `modules/incorporador/chave-da-linha.ts` (5 testes): chave = unidade + contrato + comprador, normalizada, sem índice de lista (a tabela ordena por seis colunas e índice remontaria tudo a cada ordenação). A mesma chave passou a governar o Set `abertas`, o que corrige o segundo defeito, não relatado: expandir um contrato abria também o outro contrato do mesmo lote. 468 arquivos e 7.462 testes, typecheck limpo.",
+      motivation:
+        "Nívea (21/09/2026): *\"O filtro não está funcionando. O Luna está precisando de alguns boletos e não está conseguindo filtrar.\"* Lucas: *\"realmente, ao clicar no veredas não está filtrando\"* e *\"corrige esse bug da tela do financeiro\"*.",
+    },
+    title: "Portal: o Financeiro filtra de verdade",
+    type: "correcao",
+    version: "1.353.1",
+  },
+  {
     buildTag: "2026-09-21-hierarquia-minutas-e-anexos",
     deployedAt: "2026-09-21T11:17:44-03:00",
     modules: [
