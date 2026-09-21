@@ -36,6 +36,37 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-21-workflow-da-cobranca-que-salva",
+    deployedAt: "2026-09-21T11:10:00-03:00",
+    modules: [
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "**Dá para registrar um comentário no workflow sem precisar mudar de etapa.** Antes o botão de salvar só acendia se a etapa mudasse, então quem só queria anotar o que aconteceu no contato ficava sem saída.",
+              "**O que você grava fica gravado.** A etapa e o comentário passam a ser salvos de verdade e voltam ao reabrir a tela: nenhuma etapa manual tinha chegado ao banco desde que a gravação foi criada, quase um mês atrás.",
+              "**O motor da cobrança não passa mais por cima da sua decisão.** A etapa calculada pelos compromissos vira sugestão; quem escolheu a etapa à mão manda, e ela não volta atrás quando a tela recarrega.",
+              "**Quando a gravação falha, a tela avisa** em vez de mostrar a alteração como se tivesse dado certo.",
+              "**O histórico de alteração guarda mais de um registro por cliente**, com quem escreveu e quando.",
+            ],
+            screen: "Cobrança · Workflow operacional",
+          },
+        ],
+      },
+    ],
+    rollback: "f73eefff",
+    technical: {
+      done:
+        "Chamado TI-000138 (crítico, Isac Santa Fé, 25/08/2026), quatro defeitos empilhados. (1) `OperationalWorkflowCard.tsx`: `canConfirm = stageChanged && reasonFilled` impedia comentar sem trocar etapa — a queixa literal. (2) `app/api/guardian/etapa/route.ts` fazia `Number(clienteId)` e a tela manda `c2x-client-3757` (`read-model.ts`): NaN → 400 em TODA chamada; medido em 21/09, `guardian_etapa_manual` com ZERO linhas. Novo `lib/guardian/id-do-cliente.ts` (5 testes) extrai os dígitos FINAIS, nunca todos — `replace(/\D/g,\"\")` traz o \"2\" de \"c2x\" e grava no cliente errado, armadilha já medida no Apolo. (3) `void onChangeStage?.(...)` descartava a rejeição: agora o card aguarda, desfaz o estado otimista e mostra a frase do servidor. (4) `read-model.ts` devolvia `workflowStage = \"A acionar\"` fixo e ninguém lia a tabela: `carregarEtapasManuais` lê a tabela inteira (sem `.in()` com centenas de ids, que estoura a URL do PostgREST) e a etapa manual entra no mapeamento com o motivo no histórico. Como a 0106 guarda uma linha por cliente de propósito, o histórico por evento vai para `caredesk_ticket_events` (`guardian_manual_timeline`), o mesmo canal que a tela já lê por `client_id`. VARREDURA PEDIDA PELO LUCAS, achado alto confirmado e corrigido junto: `applyClientStage` (`AttendancePage.tsx`) e o efeito de `autoStage` no card sobrescreviam a etapa manual a cada carga — a trava era um `useRef` que nasce falso a cada montagem —, o que desfazia esta correção para todo cliente com compromisso e ainda escrevia no histórico uma linha assinada \"Hades\" que não existe no banco; a etapa manual agora viaja marcada (`workflow.stageManual`) e o motor não passa por cima. 467 arquivos e 7.457 testes, typecheck limpo. ⚠️ EM ABERTO, MEDIDO E NÃO CORRIGIDO: a régua de lembretes da PROMESSA nunca dispara — `carimboAoCriar` grava `approval_status: aprovado` com `approved_at: null` (`aprovacao-da-proposta.ts`), `podeDispararLembrete` exige o carimbo, e a única rota que carimba filtra `approval_status = pendente`, que a promessa nunca é. Hoje são 1 promessa sem carimbo com 4 lembretes presos, 18 acordos com 440 lembretes pendentes e ZERO lembretes enviados. Destravar dispara mensagem real para cliente: precisa de decisão do Lucas e de plano para os presos.",
+      motivation:
+        "Chamado TI-000138: *\"Não conseguimos colocar comentário de workflow, não fica salvo após fechar\"*. Lucas (21/09/2026): *\"um outro erro que estamos tendo na operação de cobrança, com alteração do workflows, o time não está conseguindo fazer isso manualmente\"* e *\"aproveita e faça uma varredura nesse processo, até nos processos automatizados\"*.",
+    },
+    title: "Cobrança: o workflow guarda o que o time escreve",
+    type: "correcao",
+    version: "1.352.3",
+  },
+  {
     buildTag: "2026-09-21-abertura-de-atendimento-na-fila-certa",
     deployedAt: "2026-09-21T10:15:00-03:00",
     modules: [

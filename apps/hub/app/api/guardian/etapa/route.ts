@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { authorizeHadesWrite } from "@/lib/guardian/auth";
 import { createGuardianMotorClient } from "@/lib/guardian/compromissos";
+import { idDoClienteDaCobranca } from "@/lib/guardian/id-do-cliente";
 
 // SALVAR A ETAPA DO WORKFLOW escolhida pelo operador.
 //
@@ -23,11 +24,15 @@ export async function POST(request: Request) {
     | { clienteId?: number | string; etapa?: string; motivo?: string }
     | null;
 
-  const clienteId = Number(corpo?.clienteId);
+  // ⚠️ A TELA MANDA TEXTO, NÃO NÚMERO. Aqui era `Number(corpo?.clienteId)`, e o id que a cobrança
+  // carrega é `c2x-client-3757` (`lib/guardian/read-model.ts`): dava NaN e esta rota respondia 400
+  // em TODA tentativa. Medido em 21/09/2026, quase um mês depois de ela existir:
+  // `guardian_etapa_manual` com ZERO linhas. É o chamado TI-000138.
+  const clienteId = idDoClienteDaCobranca(corpo?.clienteId);
   const etapa = String(corpo?.etapa ?? "").trim();
   const motivo = String(corpo?.motivo ?? "").trim();
 
-  if (!Number.isFinite(clienteId) || clienteId <= 0) {
+  if (clienteId === null) {
     return NextResponse.json({ error: "Cliente inválido." }, { status: 400 });
   }
   if (!etapa) {
@@ -66,5 +71,44 @@ export async function POST(request: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-  return NextResponse.json({ data: { etapa, ok: true } });
+  // ⚠️ A TABELA DA ETAPA GUARDA UMA LINHA POR CLIENTE, e isso é de propósito (0106: "NÃO É
+  // HISTÓRICO ETERNO"): ela responde "em que etapa este cliente está". O HISTÓRICO, que é o que o
+  // operador lê no card, vive na timeline manual do Hades — o mesmo canal do resto do módulo
+  // (`caredesk_ticket_events` com `guardian_manual_timeline`), já lido pela tela por `client_id`.
+  // Sem isto, o segundo comentário apagava o primeiro e o "Histórico de alteração" nunca passava
+  // de uma entrada.
+  const idDaTela = String(corpo?.clienteId ?? "").trim() || `c2x-client-${clienteId}`;
+  // ⚠️ `as never` de novo: o client do motor tipa só as tabelas do Hades, e `caredesk_ticket_events`
+  // é da Iris. É a mesma defasagem de tipagem do upsert acima, não gambiarra de dado.
+  const { error: erroDoHistorico } = await (admin.from(
+    "caredesk_ticket_events" as never,
+  ) as never as {
+    insert: (linha: Record<string, unknown>) => Promise<{ error: null | { message: string } }>;
+  }).insert({
+      actor_type: "user",
+      actor_user_id: auth.user.id,
+      description: motivo,
+      event_type: "guardian_manual_timeline",
+      metadata: {
+        client_id: idDaTela,
+        etapa,
+        event: { description: motivo, title: `Workflow: ${etapa}` },
+        history: [
+          {
+            action: "Etapa do workflow",
+            actorName: auth.user.displayName,
+            actorUserId: auth.user.id,
+            occurredAt: new Date().toISOString(),
+          },
+        ],
+        kind: "timeline",
+        source_module: "guardian",
+      },
+    title: `Workflow: ${etapa}`,
+  });
+
+  // A etapa já está gravada; o histórico é o extra. Quem chamou fica sabendo em vez de supor.
+  return NextResponse.json({
+    data: { etapa, historicoRegistrado: !erroDoHistorico, ok: true },
+  });
 }

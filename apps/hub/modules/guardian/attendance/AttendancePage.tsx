@@ -1245,7 +1245,14 @@ function applyClientStage(
     return client;
   }
 
-  const stageChanged = derived.stage !== client.workflow.stage;
+  // ⚠️ ETAPA ESCOLHIDA À MÃO NÃO É SOBRESCRITA PELO MOTOR. A derivada dos compromissos é sugestão;
+  // a decisão é de quem atende. Sem esta linha, todo cliente com compromisso voltava a exibir a
+  // etapa calculada assim que a fila carregava — e como a sobrescrita acontece na FONTE, a fila, o
+  // card e o histórico mentiam juntos, com uma linha atribuída ao "Hades" que nunca existiu no
+  // banco. Era o chamado TI-000138 desfeito pela porta dos fundos, justamente nos clientes em
+  // negociação ativa, que são os mais trabalhados.
+  const stageChanged =
+    !client.workflow.stageManual && derived.stage !== client.workflow.stage;
   // Operador que esta tratando = quem enviou a proposta mais recente. Cai pro
   // responsavel atual quando nao houver proposta.
   const responsavel =
