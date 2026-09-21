@@ -18,7 +18,7 @@ import { temAlteracaoNaoSalva } from "@/lib/apolo/politica-rascunho";
 import { ENTRADA_MINIMA_PERCENTUAL } from "@/lib/hercules/composicoes";
 
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
-import { CategoriasTab } from "@/modules/apolo/blocks/empreendimentos/categorias-tab";
+
 import { PlanosComerciaisTab } from "@/modules/apolo/blocks/empreendimentos/planos-comerciais-tab";
 
 // ABA POLÍTICAS COMERCIAIS do empreendimento.
@@ -62,11 +62,15 @@ type Props = {
  * de cadastrar plano. Enterrada no fim de outra lista, ninguém a encontrava — foi exatamente o que
  * aconteceu.
  */
-type SubAba = "categorias" | "gestao" | "planos";
+// ⚠️ CATEGORIAS SAIU DAQUI EM 21/09/2026 e foi para o Setup (Lucas: *"categoria - filhos tem que
+// está dentro do setup é lá que abro essas categorias"*). A categoria é ESTRUTURA do produto (que
+// recorte assina qual contrato), e não política comercial; ela ficava aqui desde 07/09 porque quem
+// configura plano costuma configurar categoria na mesma sentada, e o preço disso era procurar a
+// estrutura do produto dentro do acordo com o incorporador.
+type SubAba = "gestao" | "planos";
 
 const SUB_ABAS: { id: SubAba; rotulo: string }[] = [
   { id: "gestao", rotulo: "Gestão e comissão" },
-  { id: "categorias", rotulo: "Categorias" },
   { id: "planos", rotulo: "Planos" },
 ];
 
@@ -548,14 +552,6 @@ export function PoliticaComercialTab({
     </div>
   );
 
-  if (subAba === "categorias") {
-    return (
-      <div className="flex min-h-0 flex-1 flex-col">
-        {faixa}
-        <CategoriasTab codigo={codes[0] ?? code} enterpriseId={enterpriseId} name={name} />
-      </div>
-    );
-  }
 
   if (subAba === "planos") {
     return (

@@ -51,7 +51,8 @@ export function situacoesDoArquivo(html: string): null | number {
  *
  * ⚠️ POR QUE O ÚLTIMO, E NÃO UM FIXO. Nos arquivos de quatro estados o último é o `3`, que é o
  * cinza-ardósia (`--blq: #64748b`, `#f3` com `fill:#e2e8f0`) — o mesmo neutro que a casa já usa
- * para "Indisponível" no mapa do Garden dentro do Apolo (`masterplan-mapa.tsx`), e é ele que o
+ * para "Indisponível" no mapa do Garden (a aba Mapa saiu da ficha do Apolo em 21/09/2026; o mesmo
+ * neutro segue no espelho e no portal), e é ele que o
  * painel de unidade do arquivo já sabe tratar: `if(L.sit===0||L.sit===3) esconde o bloco do
  * comprador`, que é justamente o que um mapa de dois estados quer. No arquivo de três, o último é
  * o `2` (vermelho `--dang`), porque é o que existe — e um lote pintado de vermelho é infinitamente
