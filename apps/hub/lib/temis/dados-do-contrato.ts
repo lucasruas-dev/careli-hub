@@ -1198,13 +1198,30 @@ async function cadastroDoVinculado(
     documento:
       comEntidade.map((l) => documentoImprimivel(texto(l.entidade?.document_masked))).find(Boolean) ?? "",
     email: primeiroContato(contatos, ["email"]),
+    // A razão social, da primeira entidade que a tiver — ver a nota em `DoVinculado`.
+    razaoSocial: comEntidade.map((l) => texto(l.entidade?.legal_name)).find(Boolean) ?? "",
     // ⚠️ WHATSAPP PRIMEIRO. No Apolo o `whatsapp` é o tipo que a maioria das entidades tem; ler só
     // `phone` deixaria o contrato de corretagem sem telefone na maior parte das vendas.
     telefone: primeiroContato(contatos, ["whatsapp", "phone"]),
   };
 }
 
-type DoVinculado = { creci: string; documento: string; email: string; telefone: string };
+type DoVinculado = {
+  creci: string;
+  documento: string;
+  email: string;
+  /**
+   * A RAZÃO SOCIAL da entidade vinculada.
+   *
+   * ⚠️ ELA EXISTE PORQUE O NOME GRAVADO NA PROPOSTA É O FANTASIA. Medido em 21/09/2026: a proposta
+   * guarda "FLAT IMOBILIARIA" e a entidade tem "FLAT NEGOCIOS IMOBILIARIOS LTDA"; o mesmo vale para
+   * RAIANE (razão "60.054.065 RAIANE SANTOS OLIVEIRA"), CDP e RR SOLUÇÕES. Quem assume obrigação no
+   * contrato é a pessoa jurídica registrada — Lucas, 21/09/2026: *"e a da imobiliaria? vai ter que
+   * ser razão também"*.
+   */
+  razaoSocial: string;
+  telefone: string;
+};
 
 /** Entidade e contatos de cada id, uma consulta por id (são no máximo três). */
 async function lerEntidadesDoVinculo(
@@ -1370,6 +1387,8 @@ async function quemVendeuPeloApolo(
                 .map((l) => documentoImprimivel(texto(l?.entidade?.document_masked)))
                 .find(Boolean) ?? "",
             email: primeiroContato(contatos, ["email"]),
+            razaoSocial:
+              vinculadas.map((l) => texto(l?.entidade?.legal_name)).find(Boolean) ?? "",
             telefone: primeiroContato(contatos, ["whatsapp", "phone"]),
           }
         : null,
@@ -2064,7 +2083,16 @@ function gerais(
   //
   // ⚠️ E O NOME DA PROPOSTA CONTINUA GANHANDO. O que `quemVendeuPeloApolo` achou só entra onde a
   // proposta está em branco — na importada, o corretor (a carga o gravou vazio em todas).
-  const imobiliariaNome = texto(proposta.imobiliaria_nome) || vendeu.imobiliariaNome;
+  //
+  // ⚠️ MAS A RAZÃO SOCIAL DA ENTIDADE GANHA DO TEXTO. O campo da proposta guarda o nome COMERCIAL
+  // ("FLAT IMOBILIARIA"), e o contrato tem de nomear a pessoa jurídica ("FLAT NEGOCIOS
+  // IMOBILIARIOS LTDA") — Lucas, 21/09/2026: *"e a da imobiliaria? vai ter que ser razão também"*.
+  // Quem decide QUEM vendeu continua sendo a proposta; isto muda só COMO o nome é escrito, e só
+  // quando existe entidade vinculada com razão social cadastrada.
+  const imobiliariaNome =
+    texto(vendeu.vinculado?.razaoSocial) ||
+    texto(proposta.imobiliaria_nome) ||
+    vendeu.imobiliariaNome;
   const corretorNome = texto(proposta.corretor_nome) || vendeu.corretorNome;
   const vinculado = imobiliariaNome || corretorNome;
   if (vinculado) {

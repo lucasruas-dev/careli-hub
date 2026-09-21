@@ -594,8 +594,12 @@ describe("D. o corretor e a imobiliária da venda importada, pelo Apolo", () => 
 
     expect(g.corretor_nome).toBe("CORRETOR DA CAD");
     // O nome da proposta continua ganhando.
-    expect(g.imobiliaria_nome).toBe("IMOBILIARIA DO VOC");
-    expect(g.nome_vinculado).toBe("IMOBILIARIA DO VOC");
+    // ⚠️ A RAZÃO SOCIAL GANHA DO NOME GRAVADO NA PROPOSTA. A proposta guarda o nome comercial
+    // ("IMOBILIARIA DO VOC"), e o contrato nomeia a pessoa jurídica ("...LTDA") — Lucas,
+    // 21/09/2026: *"e a da imobiliaria? vai ter que ser razão também"*. Quem decide QUEM vendeu
+    // continua sendo a proposta; isto muda só como o nome é escrito.
+    expect(g.imobiliaria_nome).toBe("IMOBILIARIA DO VOC LTDA");
+    expect(g.nome_vinculado).toBe("IMOBILIARIA DO VOC LTDA");
     expect(g.cpf_cnpj_vinculado).toBe("44.555.666/0001-81");
     expect(g.telefone_vinculado).toBe("(31) 90000-0001");
     expect(g.email_vinculado).toBe("contato@imobiliaria.exemplo");
