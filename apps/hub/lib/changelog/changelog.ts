@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-21-contrato-alterado-a-mao-salva-de-verdade",
+    deployedAt: "2026-09-21T13:05:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O que você digita no contrato para de sumir sozinho.** Com o contrato aberto para alteração manual, qualquer atualização da tela devolvia o texto ao da minuta — sem erro e sem aviso — e o parágrafo reescrito se perdia antes mesmo de salvar.",
+              "**Fechar a janela agora salva.** O X do cabeçalho e o clique no fundo escuro fechavam a prévia e jogavam fora a alteração; só o botão do rodapé guardava. Agora os três salvam, e a janela só fecha depois de o texto estar guardado.",
+              "**Selecionar um parágrafo arrastando até fora da folha não fecha mais a prévia** — era o gesto de quem revisa, e ele fechava a janela no meio da frase.",
+              "**Quando o seu perfil não pode alterar o contrato, a tela diz isso em português** e mantém o texto na tela para você copiar. Antes aparecia só um código de erro. Alterar cláusula é do time de contratos (coordenação).",
+            ],
+            screen: "Contrato · Prévia e edição",
+          },
+        ],
+      },
+    ],
+    rollback: "9b8989de",
+    technical: {
+      done:
+        "MEDIDO PRIMEIRO: `temis_contrato_edicoes` estava VAZIA em produção (0 linhas), com o recurso no ar desde 10/09 (migration 0152) — nenhuma alteração manual jamais foi gravada. TRÊS CAUSAS, as três em `modules/incorporador/hercules/PreviaDoContrato.tsx`. (1) A FOLHA ERA `contentEditable` POR CIMA DE `dangerouslySetInnerHTML`, e o arquivo apostava que \"o React só reescreve a folha quando o texto vem do servidor\". Experimento isolado em React 19, 21/09/2026: um `div` com `dangerouslySetInnerHTML`, innerHTML trocado por fora e UM `setState` qualquer — o DOM volta ao valor da prop. Ou seja, qualquer re-render (o `setSalvando` do próprio salvamento, um estado do pai) apagava o que estava sendo digitado. Agora quem escreve na folha é um efeito (`escreverNaFolha`), que não toca no DOM enquanto `editando` — e só escreve quando o texto difere. (2) ERAM DOIS \"FECHAR\" NA MESMA TELA: o botão do rodapé chama-se \"Fechar o contrato\" e salva (regra do Lucas, 11/09/2026), enquanto o X e o fundo chamavam `aoFechar` direto. Novo `fechar()`: com a edição aberta, salva e só então fecha. (3) O CLIQUE DO ARRASTO NASCE NO ANCESTRAL COMUM: selecionar texto puxando para fora do cartão disparava `click` no fundo e fechava a janela; agora só fecha o gesto cujo `mousedown` nasceu no próprio fundo. VÁLVULA: se o servidor recusa, a janela NÃO fecha (o texto fica na tela com o motivo escrito) e o segundo clique sai avisando que a alteração será perdida — sem isso, quem não pode salvar ficaria preso numa janela que não fecha. 10 testes de comportamento novos (`PreviaDoContrato.edicao.comportamento.test.tsx`), 489 arquivos e 7.689 testes, typecheck limpo. ⚠️ EM ABERTO, PARA O LUCAS DECIDIR: a tela oferece a edição olhando só a etapa do card (`podeEditar={ehContrato}`), mas quem grava é `autorizarEmissaoDeContrato` (admin + leader). Medido hoje: há 2 `operator` ATIVOS (entraram em 16/09) que veem o botão e levam 403 — a nota de 08/09 em `lib/temis/autorizacao.ts` dizia \"hoje isto não tira ninguém de dentro\" porque naquela data havia ZERO operators. A premissa venceu; quem pode reescrever cláusula é decisão de negócio.",
+      motivation:
+        "Lucas (21/09/2026), trazendo o relato do time: *\"o time não está conseguindo editar manualmente o contrato... ela abre, altera, fecha, depois que atualiza o valor que estava antes, ou seja, não está salvando\"*.",
+    },
+    title: "Contrato: a alteração manual salva de verdade",
+    type: "correcao",
+    version: "1.353.3",
+  },
+  {
     buildTag: "2026-09-21-contrato-com-creci-razao-social-e-sem-assinatura-orfa",
     deployedAt: "2026-09-21T12:10:00-03:00",
     modules: [

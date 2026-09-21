@@ -195,6 +195,14 @@ export function PreviaDoContrato({
   const [contratoAberto, setContratoAberto] = useState<DocumentoParaVer | null>(null);
   /** O que a faxina do servidor tirou do texto colado. Vazio = nada mexeu. */
   const [faxina, setFaxina] = useState<string[]>([]);
+  /**
+   * O salvamento falhou e a pessoa ja foi avisada: o proximo "fechar" sai e perde o texto.
+   *
+   * ⚠️ SEM ESTA VALVULA A JANELA VIRA ARMADILHA. Se fechar passa a salvar e o servidor recusa
+   * sempre (e o que acontece hoje com quem nao e da coordenacao), a pessoa ficaria presa numa
+   * janela que nao fecha. O primeiro clique tenta salvar e explica; o segundo sai, sabendo.
+   */
+  const [sairSemSalvar, setSairSemSalvar] = useState(false);
 
   /**
    * A folha, para ler o que a pessoa escreveu.
@@ -207,6 +215,8 @@ export function PreviaDoContrato({
   const folha = useRef<HTMLDivElement>(null);
   /** Conta os pedidos em voo: resposta velha não sobrescreve tela nova. */
   const pedido = useRef(0);
+  /** O clique que fecha pelo fundo começou no fundo? Ver a nota do `onMouseDown` do fundo. */
+  const gestoNoFundo = useRef(false);
   /**
    * A porta da Têmis.
    *
@@ -299,7 +309,7 @@ export function PreviaDoContrato({
    * ele também recalcula o que ficou sem valor sobre o texto novo. Sem a releitura, a tela mostra
    * uma coisa e o papel sai outra — exatamente o que esta tela existe para impedir.
    */
-  const salvar = useCallback(async () => {
+  const salvar = useCallback(async (): Promise<boolean> => {
     const html = folha.current?.innerHTML ?? "";
     setSalvando(true);
     setErroDaGeracao(null);
@@ -319,17 +329,57 @@ export function PreviaDoContrato({
         data?: { removeu: string[] };
         erro?: string;
       };
+      // ⚠️ "NÃO CONSEGUI SALVAR (403)" NÃO É UM RECADO, É UM CÓDIGO. Quem grava é
+      // `autorizarEmissaoDeContrato` (admin + leader), e a tela oferece a edição olhando só a
+      // etapa do card. Medido em 21/09/2026: há 2 `operator` ATIVOS no hub (entraram em 16/09)
+      // que veem o botão e levam 403 ao fechar — e a mensagem antiga não dizia a quem pedir.
+      if (r.status === 401 || r.status === 403) {
+        throw new Error(
+          "Seu perfil não pode alterar o contrato: isso é do time de contratos (coordenação). " +
+            "Copie o que você escreveu antes de sair e peça a alteração a quem emite.",
+        );
+      }
       if (!r.ok) throw new Error(j.erro ?? `Não consegui salvar (${r.status}).`);
 
       setFaxina(j.data?.removeu ?? []);
       setEditando(false);
+      setSairSemSalvar(false);
       await carregar();
+      return true;
     } catch (e) {
       setErroDaGeracao(e instanceof Error ? e.message : "Não consegui salvar a alteração.");
+      return false;
     } finally {
       setSalvando(false);
     }
   }, [carregar, propostaId, resposta?.baseImpressao, resposta?.minuta?.id, temisFetch]);
+
+  /**
+   * Fechar a JANELA no meio da edição — e o texto digitado vai junto, ou não vai ninguém.
+   *
+   * Lucas, 21/09/2026, com o relato do time: *"ela abre, altera, fecha, depois que atualiza o
+   * valor que estava antes, ou seja, não está salvando"*.
+   *
+   * ⚠️ ERAM DOIS "FECHAR" NA MESMA TELA, E UM DELES MENTIA. O botão do rodapé chama-se "Fechar
+   * o contrato" e salva — é a regra do Lucas de 11/09/2026 (*"automaticamente ao fechar o
+   * contrato salva"*). O X do cabeçalho e o fundo escuro fechavam a JANELA e jogavam fora o que
+   * tinha sido escrito, calados. Para quem digita, os dois são "fechar o contrato".
+   *
+   * ⚠️ E NADA DE `confirm()`: um diálogo do navegador no meio de um contrato de 27 páginas é a
+   * pergunta que se responde no automático. Fechar salva; quando o servidor recusa, a janela
+   * fica aberta, com o texto na tela e o motivo escrito.
+   */
+  const fechar = useCallback(async () => {
+    if (!editando || sairSemSalvar) {
+      aoFechar();
+      return;
+    }
+    if (await salvar()) {
+      aoFechar();
+      return;
+    }
+    setSairSemSalvar(true);
+  }, [aoFechar, editando, sairSemSalvar, salvar]);
 
   /** Joga fora a alteração manual: o contrato volta a ser o texto da minuta. */
   const descartar = useCallback(async () => {
@@ -388,6 +438,32 @@ export function PreviaDoContrato({
    * ser o mesmo documento; um critério aqui e outro lá faria a conferência não provar nada.
    */
   const htmlDaFolha = edicao?.html ?? resposta?.html ?? "";
+
+  /**
+   * Escreve o contrato na folha — e só quando o texto vem do SERVIDOR.
+   *
+   * ⚠️ ISTO ERA UM `dangerouslySetInnerHTML`, E ERA A CAUSA DE O TIME PERDER O QUE DIGITAVA.
+   * O arquivo apostava que a prop "só reescreve a folha quando o texto vem do servidor";
+   * medido em 21/09/2026, em React 19, é falso: QUALQUER re-render reaplica o `__html` no DOM,
+   * mesmo com a string idêntica à do render anterior — e o DOM, ali, é onde a pessoa estava
+   * escrevendo. Bastava um `setState` (o do próprio salvamento, um do pai, um relógio de outra
+   * parte da tela) para o contrato voltar sozinho ao texto da minuta, sem erro e sem aviso.
+   *
+   * ⚠️ ENQUANTO SE EDITA, A FOLHA É DE QUEM DIGITA. O efeito não escreve no meio da edição:
+   * uma resposta do servidor chegando atrasada apagaria o parágrafo em curso. Fechada a
+   * edição, o servidor volta a mandar — é assim que o texto salvo e o descarte aparecem.
+   *
+   * ⚠️ E RODA A CADA RENDER, DE PROPÓSITO: a folha só existe no DOM depois que a carga acaba,
+   * e um efeito com lista de dependências poderia disparar antes do elemento existir e nunca
+   * mais — deixando a folha em branco. A escrita é condicionada à diferença, então o caso comum
+   * não toca no DOM.
+   */
+  const escreverNaFolha = () => {
+    const alvo = folha.current;
+    if (!alvo || editando) return;
+    if (alvo.innerHTML !== htmlDaFolha) alvo.innerHTML = htmlDaFolha;
+  };
+  useEffect(escreverNaFolha);
   const semValor = resposta?.semValor ?? [];
   const semValorVisivel = comAvisos ? semValor : [];
   const avisos = comAvisos ? (resposta?.avisos ?? []) : [];
@@ -409,7 +485,16 @@ export function PreviaDoContrato({
 
   return (
     <div
-      onClick={aoFechar}
+      // ⚠️ SÓ FECHA O GESTO QUE NASCEU NO FUNDO. Selecionar um parágrafo arrastando até fora
+      // da folha é o gesto de quem edita, e o `click` daí nasce no ANCESTRAL COMUM — este fundo.
+      // A janela fechava no meio da frase, levando o texto junto.
+      onClick={(e) => {
+        if (e.target !== e.currentTarget || !gestoNoFundo.current) return;
+        void fechar();
+      }}
+      onMouseDown={(e) => {
+        gestoNoFundo.current = e.target === e.currentTarget;
+      }}
       style={{
         alignItems: "center",
         background: "rgba(0,0,0,.45)",
@@ -513,7 +598,7 @@ export function PreviaDoContrato({
           </div>
           <button
             aria-label="Fechar"
-            onClick={aoFechar}
+            onClick={() => void fechar()}
             style={{
               background: "transparent",
               border: "none",
@@ -638,13 +723,12 @@ export function PreviaDoContrato({
                   confere é a folha com a cara do papel; abrir o texto num segundo componente
                   faria a pessoa escrever num lugar e conferir noutro, com dois CSS diferentes.
 
-                  ⚠️ O `dangerouslySetInnerHTML` CONVIVE COM A EDIÇÃO porque `htmlDaFolha` não
-                  muda enquanto se digita — o React só reescreve a folha quando o texto vem do
-                  servidor (ao salvar, ao descartar, ao recarregar). Ver a nota do `ref`. */}
+                  ⚠️ E O CONTEÚDO NÃO VEM POR `dangerouslySetInnerHTML`: quem escreve na folha é
+                  `escreverNaFolha`, acima. A prop reaplicava o texto do servidor a cada
+                  re-render e apagava o que estava sendo digitado. */}
               <div
                 className="previa-do-contrato"
                 contentEditable={editando}
-                dangerouslySetInnerHTML={{ __html: htmlDaFolha }}
                 ref={folha}
                 spellCheck={editando}
                 style={{
@@ -712,6 +796,16 @@ export function PreviaDoContrato({
                 }}
               >
                 {erroDaGeracao}
+              </p>
+            ) : null}
+
+            {/* ⚠️ A SAÍDA EXISTE, E ELA DIZ O QUE CUSTA. Sem esta linha, uma recusa do servidor
+                trancaria a pessoa numa janela que não fecha; com ela, sair vira uma decisão
+                tomada sabendo que o texto digitado não foi guardado. */}
+            {sairSemSalvar ? (
+              <p style={{ color: T.muted, fontSize: 11.5, margin: 0 }}>
+                A alteração não foi salva. Clique em fechar de novo para sair sem salvar — o que
+                você digitou será perdido.
               </p>
             ) : null}
 
@@ -802,6 +896,7 @@ export function PreviaDoContrato({
                       return;
                     }
                     setFaxina([]);
+                    setSairSemSalvar(false);
                     setEditando(true);
                   }}
                   style={{
