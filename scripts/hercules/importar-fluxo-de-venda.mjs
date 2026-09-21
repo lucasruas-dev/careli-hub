@@ -67,6 +67,39 @@ const EXCETO = new Set(
 const SUPABASE_URL = env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_KEY = env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SECRET_KEY;
 const GRAVAR = process.argv.includes("--gravar");
+// CARGA DO LEGADO ENCERRADA EM 21/09/2026.
+//
+// Lucas, depois de conferir que a carga daquele dia nao tinha alterado nada do que o time
+// comecou no Panteon: *"nao vou mais fazer isso"*. E o fim do caminho aberto em 11/09
+// (*"depois disso fazemos todo operacional comercial dentro do panteon"*): reserva, proposta e
+// contrato nascem aqui, e o legado nao volta a mandar.
+//
+// POR QUE UMA TRAVA, E NAO SO UM COMENTARIO. Enquanto ninguem tinha movido venda importada no
+// Panteon, rodar isto de novo era inofensivo, e foi medido em 21/09: zero movimentos nossos,
+// zero carimbos de quem moveu, zero encerramentos. A partir do dia em que o time mover, a carga
+// REGRAVA a etapa com o que o C2X diz e desfaz o trabalho sem aviso; a unica excecao que existe
+// e para venda ja encerrada aqui. Comentario no topo nao para quem copiou o comando de um chat
+// antigo. Esta trava para.
+//
+// O ENSAIO CONTINUA LIVRE (sem --gravar): ele so le e mostra a diferenca.
+const CARGA_AUTORIZADA = process.argv.includes('--carga-do-legado-autorizada');
+if (GRAVAR && !CARGA_AUTORIZADA) {
+  for (const linha of [
+    '',
+    'CARGA DO LEGADO ENCERRADA (decisao do Lucas, 21/09/2026: "nao vou mais fazer isso").',
+    '',
+    '  O operacional comercial vive no Panteon desde 11/09. Rodar esta carga hoje pode REGRAVAR',
+    '  por cima do que o time fez aqui: a etapa volta para a do C2X e o trabalho some sem aviso.',
+    '',
+    '  O ensaio continua liberado: rode sem --gravar, que ele so le e mostra a diferenca.',
+    '  Se a carga for mesmo necessaria, peca o ok ao Lucas e rode com:',
+    '    --gravar --carga-do-legado-autorizada',
+    '',
+  ]) {
+    console.error(linha);
+  }
+  process.exit(1);
+}
 
 /**
  * A dobra dos 11 estágios do C2X nos 7 do Panteon.
