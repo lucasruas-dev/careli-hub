@@ -36,6 +36,52 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-21-hierarquia-minutas-e-anexos",
+    deployedAt: "2026-09-21T11:17:44-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Dá para vincular os lotes à divisão e à categoria de três jeitos:** pela planilha, um a um na ficha, ou em massa escolhendo por quadra, faixa de lotes ou filtro. Antes de aplicar, a tela mostra o que vai mudar.",
+              "**Quem vincular fica registrado**, com data e por onde entrou.",
+              "**Lote com venda em andamento avisa antes**, e o que estiver em risco é recusado com o motivo.",
+              "**O anexo do contrato agora tem alcance:** empreendimento, divisão ou categoria.",
+              "**A categoria pode apontar a própria minuta**, e a lista só oferece as publicadas do mesmo produto.",
+            ],
+            screen: "Empreendimentos · Unidades, Minutas e Anexos",
+          },
+        ],
+      },
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O contrato procura o modelo subindo a cadeia:** unidade, categoria, divisão e, por fim, o empreendimento pai. A prévia e a geração dizem de onde veio o modelo, por exemplo \"modelo herdado do Vale do Ouro\".",
+              "**Os anexos somam os níveis:** o contrato leva os do pai, os da divisão e os da categoria, sem repetir arquivo e em ordem previsível.",
+              "**O PDF sai montado:** capa na frente, contrato no meio e anexos no fim.",
+              "**Peça que não pode entrar é recusada com o nome dela:** arquivo que não é PDF, PDF protegido por senha, ou anexo citado na minuta que não está cadastrado. Antes o contrato saía sem a peça, em silêncio.",
+              "**O contrato guardado passa a lembrar de qual modelo nasceu.**",
+            ],
+            screen: "Contrato · Prévia e geração",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Migrations 0181 (carimbo do vinculo em hercules_unidades: vinculo_em, vinculo_por, vinculo_por_nome, vinculo_origem com CHECK ficha/massa/planilha e indice parcial) e 0182 (hercules_documentos.minuta_id com FK para temis_minutas e minuta_origem) APLICADAS em producao antes do codigo. Novos: lib/temis/cadeia-do-contrato.ts (unidade, categoria, divisao, pai, com alias group: da raiz), minuta-da-cadeia.ts (heranca com regua de familia: a minuta tem de ser de um produto da cadeia), anexos-da-venda.ts (soma dos tres niveis, sem duplicar, ordem estavel), montar-pdf-do-contrato.ts (capa, corpo, anexos, teto de 24 MB decidido pelo arquivo_bytes do cadastro antes do download, formato pelos magic bytes, recusa de PDF cifrado), lib/apolo/vinculo-de-unidades-servidor.ts e lib/hercules/unidade-vinculo.ts (identidadeDoTerreno por espelho_de, lotes de 100, previa antes de aplicar, parcial reportado). Publicar versao nova passou a repassar capa e o vinculo da categoria, alem do plano. Tres revisoes adversariais (contrato certo, anexos e PDF, telas e massa) com 18 achados, todos corrigidos. 7.632 testes em 483 arquivos, typecheck limpo.",
+      motivation:
+        "Lucas, 21/09/2026: \"preciso garantir que consigamos vincular os anexos por filho, categoria. tambem as minutas\" e \"eu preciso tambem vincular as unidades no filho, categoria (quando existir), ou seja, eu ainda nao tenho esse fluxo pronto e preciso\". Medido antes: 3.073 propostas penduradas no pai de produto dividido (1.251 em produto que ainda vende), a minuta do Vale do Ouro publicada no filho e invisivel para as 559 do pai, zero anexos cadastrados e o bloco de anexo da minuta do VOL sumindo do papel em silencio.",
+    },
+    rollback: "eeda0a86",
+    title: "Divisão, categoria, minuta que herda e anexos no contrato",
+    type: "melhoria",
+    version: "1.353.0",
+  },
+  {
     buildTag: "2026-09-20-termo-de-acordo-e-card-do-panteon",
     deployedAt: "2026-09-20T15:16:12-03:00",
     modules: [

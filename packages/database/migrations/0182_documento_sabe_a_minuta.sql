@@ -1,5 +1,8 @@
 -- 0182 · O CONTRATO GUARDADO PASSA A SABER DE QUAL MINUTA SAIU (e de que degrau da cadeia)
 --
+-- ✅ APLICADA EM PRODUÇÃO em 21/09/2026, com OK do Lucas ("tem o meu ok"), antes do código.
+-- Conferida depois no schema: colunas, CHECK, FK e índices.
+--
 -- ⚠️ ESCRITA E NÃO APLICADA. Espera OK explícito do Lucas.
 --
 -- ⚠️ ORDEM DE DEPLOY: TANTO FAZ. O código foi escrito para sobreviver às duas ordens, e isso está

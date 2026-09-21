@@ -1,5 +1,8 @@
 -- 0181 — QUEM VINCULOU A UNIDADE À DIVISÃO E À CATEGORIA, QUANDO E POR ONDE
 --
+-- ✅ APLICADA EM PRODUÇÃO em 21/09/2026, com OK do Lucas ("tem o meu ok"), antes do código.
+-- Conferida depois no schema: colunas, CHECK, FK e índices.
+--
 -- Lucas (21/09/2026): *"eu preciso também vincular as unidades no filho, categoria (quando
 -- existir), ou seja, eu ainda não tenho esse fluxo pronto e preciso"*. E em 15/09/2026, sobre as
 -- formas: *"vai ocorrer das duas formas, normalmente vamos subir em massa essa configuração na
