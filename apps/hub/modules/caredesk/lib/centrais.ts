@@ -142,3 +142,53 @@ export function recortarDadosPorCentral(
     ),
   };
 }
+
+// ── ABRIR UM ATENDIMENTO QUE ESTÁ EM OUTRA CENTRAL ───────────────────────────
+//
+// Chamado TI-000126: *"quando tento abrir novamente, diz que já tem um ticket aberto, mas não
+// aparece a conversa"*.
+//
+// ⚠️ A RECUSA ENXERGA MAIS DO QUE A TELA. A rota que barra o segundo atendimento procura o ticket
+// aberto do contato SEM recorte nenhum (`tickets/route.ts`), enquanto a lista da tela passa por
+// duas peneiras: a régua de acesso (fila do seu departamento) e a CENTRAL aberta, aqui em cima.
+// Quando o ticket existente cai fora de uma das duas, a pessoa recebe "Cliente já está em
+// atendimento", clica em "Abrir o atendimento existente" e não encontra a conversa.
+//
+// Medido no banco em 21/09/2026: 548 atendimentos abertos na central de Atendimento e 10 na de
+// Relacionamento — qualquer um deles fica invisível para quem está na outra aba.
+export type DestinoDoTicket =
+  | { tipo: "esta_aqui" }
+  | { tipo: "outra_central"; central: IrisCentralSelecionada }
+  | { tipo: "fora_do_alcance" };
+
+/**
+ * Onde está o atendimento que a pessoa quer abrir, do ponto de vista da tela dela.
+ *
+ * Recebe os dados BRUTOS (antes do recorte por central), que já vêm filtrados por permissão: é
+ * assim que dá para separar "está na outra aba" de "não é seu".
+ */
+export function ondeAbrirOTicket(
+  ticketId: null | string,
+  dataBruto: IrisData,
+  centralAtual: IrisCentralSelecionada,
+): DestinoDoTicket {
+  if (!ticketId) return { tipo: "esta_aqui" };
+
+  const ticket = dataBruto.tickets.find((item) => item.id === ticketId);
+  // Não está nem no bruto: a fila dele é de um departamento que não é o desta pessoa.
+  if (!ticket) return { tipo: "fora_do_alcance" };
+
+  const fila = dataBruto.queues.find((item) => item.slug === ticket.queueSlug);
+  // Ticket órfão (sem fila) aparece em qualquer recorte — ver `recortarDadosPorCentral`.
+  if (!ticket.queueSlug || !fila) return { tipo: "esta_aqui" };
+
+  if (filaEhDaCentral(fila, centralAtual)) return { tipo: "esta_aqui" };
+
+  // ⚠️ SÓ MANDA TROCAR PARA UMA CENTRAL QUE ELA TEM. Se a fila do ticket não pertence a nenhuma
+  // central que a pessoa enxerga, trocar a aba deixaria a tela vazia do mesmo jeito.
+  const central = fila.central;
+  const disponiveis = centraisDisponiveis(dataBruto.queues);
+  return central && disponiveis.includes(central)
+    ? { central, tipo: "outra_central" }
+    : { tipo: "fora_do_alcance" };
+}

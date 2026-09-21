@@ -69,6 +69,7 @@ import {
   centraisDisponiveis,
   centralValida,
   naoLidasPorCentral,
+  ondeAbrirOTicket,
   recortarDadosPorCentral,
   type IrisCentralSelecionada,
 } from "./lib/centrais";
@@ -1230,11 +1231,14 @@ export function IrisPage({
   }, [selectedTicketId]);
 
   const selectedTicket = useMemo(() => {
-    return (
-      irisData.tickets.find((ticket) => ticket.id === selectedTicketId) ??
-      irisData.tickets[0] ??
-      null
-    );
+    const escolhido = irisData.tickets.find((ticket) => ticket.id === selectedTicketId);
+    if (escolhido) return escolhido;
+
+    // ⚠️ PEDIU UM TICKET E ELE NÃO ESTÁ NA LISTA? ENTÃO NENHUM. Cair no primeiro da lista abria a
+    // conversa de OUTRO cliente no lugar do que a pessoa pediu — e ela lia aquilo como sendo o
+    // atendimento que procurava. É o outro lado do chamado TI-000126 ("não aparece a conversa"):
+    // aparecia, e era de outra pessoa. Sem id pedido, o primeiro da lista segue sendo o padrão.
+    return selectedTicketId ? null : (irisData.tickets[0] ?? null);
   }, [irisData.tickets, selectedTicketId]);
 
   // OS ATENDIMENTOS DO CLIENTE, BUSCADOS NO BANCO — no Histórico E no Atendimento.
@@ -1664,11 +1668,24 @@ export function IrisPage({
           // `recortarDadosPorCentral` e traz só a aba aberta — o seletor de canal precisa
           // justamente do que está fora dela. O bruto já vem filtrado por permissão.
           todasAsFilas={irisDataBruto.queues}
+          // ⚠️ QUEM SABE SE A CONVERSA APARECE É A TELA, não a rota: a recusa "já existe ticket
+          // aberto" enxerga todas as filas, e a lista aqui passa pela régua de acesso e pela
+          // central aberta. O modal usa isto para não oferecer um botão que não leva a nada.
+          ondeAbrir={(ticketId) => ondeAbrirOTicket(ticketId, irisDataBruto, centralAtiva)}
           onTicketCreated={(ticketId) => {
             setStartAttendanceOpen(false);
             setStartAttendanceQueueLabel(null);
             void refreshIrisData({ notifyNewInbound: false });
             if (ticketId) {
+              // ⚠️ O ATENDIMENTO PODE ESTAR NA OUTRA ABA. A recusa "já existe ticket aberto"
+              // enxerga todas as centrais; a lista da tela, só a aberta. Sem trocar a central
+              // antes, a conversa simplesmente não estava lá — o chamado TI-000126.
+              const destino = ondeAbrirOTicket(ticketId, irisDataBruto, centralAtiva);
+              // Fora do alcance o modal nem oferece o botão (ele recebe `ondeAbrir` e mostra a
+              // frase), então aqui só resta trocar de aba quando for o caso.
+              if (destino.tipo === "outra_central") {
+                setCentralEscolhida(destino.central);
+              }
               setSelectedTicketId(ticketId);
               setActiveView("atendimento");
             }

@@ -36,6 +36,37 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-21-abertura-de-atendimento-na-fila-certa",
+    deployedAt: "2026-09-21T10:15:00-03:00",
+    modules: [
+      {
+        module: "Íris",
+        screens: [
+          {
+            items: [
+              "**O atendimento nasce na fila que você escolheu.** Nas filas que ainda não têm assunto cadastrado (Central de Relacionamento, Contato, Compras, Gente&Cultura, Grupo, Antecipação e Supervisionamento), o atendimento ia parar na Cobrança, que é de outra central — e sumia da tela de quem tinha acabado de abrir. Na segunda tentativa vinha o aviso de que já existia atendimento aberto.",
+              "**A conversa de outro cliente não aparece mais no lugar da que você pediu.** Quando o atendimento procurado não estava na lista, a tela abria o primeiro da fila, e era fácil ler aquilo como sendo o atendimento certo.",
+              "**Atendimento aberto na outra central agora abre de verdade**: a tela troca de aba sozinha em vez de mostrar tela vazia.",
+              "**Quando o atendimento está numa fila fora do seu acesso, a Íris explica isso** e diz para pedir transferência a quem responde pela fila, em vez de oferecer um botão que não leva a lugar nenhum.",
+              "**A fila de grupos saiu da lista de destinos ao abrir atendimento.** Grupo de WhatsApp é monitoramento, não atendimento individual.",
+            ],
+            screen: "Atendimento · Abrir atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "69ed0935",
+    technical: {
+      done:
+        "Chamado TI-000126 (crítico, aberto por Northon Nascimento em 21/08/2026). Três defeitos, um relato. (1) `tickets/route.ts` decidia `profileQueue ?? requestedQueue`: a fila do ASSUNTO ganhava da escolhida, e a fila gravada (`queueId`) vinha de `profile?.queue_id` primeiro. Como 7 das 14 filas ativas não têm assunto, a tela não manda `profileId` e o servidor caía em `getDefaultProfile` → \"primeiro-contato\", que pertence à COBRANÇA (medido no banco). 71 tickets nasceram assim, 29 em setembro. Efeito colateral: com a fila trocada, `getEvolutionChannelOfQueue` rodava sobre a fila errada e a trava da janela de 24h voltava a valer para a Central de Relacionamento, desfazendo a 1.349.3. Novo `lib/iris/fila-da-abertura.ts` (9 testes): `filaDaAbertura` (a escolhida manda; o assunto só decide quando não há fila pedida, que é como Hades e Apolo abrem) e `assuntoParaAFila` (assunto de outra fila é descartado, porque carrega SLA, prioridade e nome). (2) `IrisPage.tsx`: `selectedTicket` caía em `irisData.tickets[0]` quando o id pedido não estava na lista — abria a conversa de OUTRO cliente. Agora id sem correspondência não abre nada. (3) `centrais.ts`: novo `ondeAbrirOTicket` (7 testes) separa \"está aqui\", \"outra central\" e \"fora do alcance\" lendo o dado BRUTO (já filtrado por permissão), porque a recusa do servidor enxerga todas as filas e a lista da tela passa por régua de acesso e central; o modal usa isso para trocar de aba ou explicar. A fila `grupos-whatsapp` saiu do seletor de abertura. 466 arquivos e 7.452 testes passando, typecheck limpo. ⚠️ As 7 filas sem assunto continuam sem assunto: isso é cadastro no Setup, não código — o atendimento agora nasce sem assunto e herda o SLA da fila.",
+      motivation:
+        "Chamado TI-000126: *\"Tento chamar o usuário mas vai para os grupos e quando tento abrir novamente, diz que já tem um ticket aberto, mas não aparece a conversa\"*. Lucas (21/09/2026): *\"analise o ticket do helpdesk TI-000126\"*, *\"e corrija\"*, *\"ele está reclamando com abertura de ticket na iris\"*.",
+    },
+    title: "Íris: o atendimento nasce na fila que você escolheu",
+    type: "correcao",
+    version: "1.352.2",
+  },
+  {
     buildTag: "2026-09-21-iris-quem-transferiu",
     deployedAt: "2026-09-21T09:40:00-03:00",
     modules: [
