@@ -36,8 +36,8 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
-    buildTag: "2026-09-21-setup-estrutura-e-cadastro-da-unidade",
-    deployedAt: "2026-09-21T12:06:20-03:00",
+    buildTag: "2026-09-21-setup-estrutura-cadastro-da-unidade-e-minuta-do-filho",
+    deployedAt: "2026-09-21T14:33:57-03:00",
     modules: [
       {
         module: "Apolo",
@@ -46,7 +46,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
             items: [
               "**As categorias e os filhos agora moram no Setup do empreendimento**, um do lado do outro. A categoria saiu de dentro de Políticas comerciais, e o filho deixou de ser aba solta lá em cima.",
               "**O filho novo nasce aqui dentro**, pelo botão Novo filho, já pendurado neste empreendimento: não precisa mais sair para o Novo produto e digitar o código do pai de cabeça.",
-              "**\"Etapa\" virou \"filho\" na tela**, que é como a casa fala.",
+              "**“etapa” virou “filho” na tela**, que é como a casa fala.",
             ],
             screen: "Empreendimentos · Setup",
           },
@@ -54,10 +54,17 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
             items: [
               "**A aba Unidades ganhou duas abas:** Resumo, que é a tabela de sempre (status, valor, quem comprou), e Cadastro da unidade.",
               "**No cadastro da unidade você mexe no lote inteiro:** área, valor de tabela e matrícula, o filho e a categoria dele, e os anexos que só aquele lote leva para o contrato.",
-              "**O botão Categoria da linha virou Cadastro** e abre a ficha do lote já escolhido.",
+              "**Os botões da linha viraram só ícone, com o nome no tooltip:** lápis para abrir o cadastro, cadeado para bloquear. E o valor de tabela passou a ser escrito como moeda enquanto se digita.",
               "**Lote que o sistema anterior ainda mantém aparece travado, com o motivo escrito.** Quadra, lote e situação continuam sem edição: a identificação é a chave que o contrato e o espelho usam, e reserva, venda e bloqueio têm caminho próprio.",
             ],
             screen: "Empreendimentos · Unidades",
+          },
+          {
+            items: [
+              "**A minuta agora tem dono, e o filho pode ter a dele.** O seletor “De quem é esta minuta” traz o empreendimento e os filhos, e governa a lista, a minuta nova e os anexos junto.",
+              "**O filho sem minuta publicada assina a do empreendimento**, e a categoria que aponta a dela vence as duas. O vínculo da categoria se faz no Setup.",
+            ],
+            screen: "Empreendimentos · Minutas",
           },
           {
             items: [
@@ -70,12 +77,12 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     technical: {
       done:
-        "Sem migration. SetupTab passou a receber `row` e ganhou as sub-abas categorias/filhos (CategoriasTab saiu de PoliticaComercialTab, que ficou com gestao+planos; FilhosTab saiu de `detailTabs`). `ABA_APOSENTADA` mapeia filhos->setup e mapa/vendas->resumo para o estado guardado no ApoloPage e os links salvos. UnidadesTab ganhou a prop `cadastroDaUnidade` (so o Apolo a passa; o portal segue sem sub-abas) e um atalho por linha. Novos: cadastro-da-unidade.tsx (dados do lote pela acao modelo/atualizar da rota /unidades/panteon, sempre pela DIVISAO da unidade lida do universo do vinculo; a recusa do servidor trava os campos) e a prop `unidade` do AnexosDoContrato (alcance unidade, que existe em temis_anexos desde a 0156 e ja era somado por anexos-da-venda.ts). categoria-da-unidade.tsx deixou de ser modal e recebe o universo por prop. NovoProduto ganhou `paiInicial`. Apagados 871 linhas da VendasTab e o masterplan-mapa.tsx (sem leitor); as rotas /api/apolo/empreendimentos/vendas seguem de pe. 487 arquivos, 7.663 testes, typecheck e lint limpos.",
+        "Sem migration. SetupTab recebe `row` e ganhou as sub-abas categorias/filhos (CategoriasTab saiu de PoliticaComercialTab; FilhosTab saiu de `detailTabs`); `ABA_APOSENTADA` manda filhos->setup e mapa/vendas->resumo para o estado guardado no ApoloPage e os links salvos. UnidadesTab ganhou a prop `cadastroDaUnidade` (so o Apolo a passa) e um atalho por linha. Novos: cadastro-da-unidade.tsx (dados do lote pela acao modelo/atualizar da rota /unidades/panteon, sempre pela DIVISAO da unidade lida do universo do vinculo; recusa do servidor trava os campos) e a prop `unidade` do AnexosDoContrato (alcance unidade, que existe em temis_anexos desde a 0156). MinutasTab ganhou o seletor de empreendimento: a minuta sempre foi gravada no `enterprise_id` que a tela manda, faltava a tela deixar escolher; a familia vem de carona na leitura dos anexos (`aoSaberDaFamilia`), sem dobrar a chamada. categoria-da-unidade.tsx deixou de ser modal, recebe o universo por prop e para de afirmar “nao tem categorias” enquanto carrega. NovoProduto ganhou `paiInicial`. Apagados 871 linhas da VendasTab e o masterplan-mapa.tsx (sem leitor). E os tres scripts de carga do legado (importar-fluxo-de-venda, carregar-unidades-do-c2x, importar-eventos-da-proposta) passaram a RECUSAR --gravar sem --carga-do-legado-autorizada; o ensaio segue livre. 489 arquivos, 7.681 testes, typecheck e lint limpos.",
       motivation:
-        "Lucas, 21/09/2026: \"categoria - filhos tem que está dentro do setup é lá que abro essas categorias\", \"dentro da unidade eu preciso ter as abas de resumo (...) e preciso ter a aba cadastro de unidade a qual vai ter o cadastro daquela unidade a qual eu posso fazer a vinculação das categorias, inserir os anexos se for o caso\" e \"no apolo empreendimento, pode tirar o mapa e vendas, não precisa mais dessas telas ali\". A estrutura do produto estava espalhada em tres lugares (categoria dentro da politica comercial, filho em aba de primeiro nivel, vinculo por botao na linha da tabela) e nenhum deles era onde se procura por ela.",
+        "Lucas, 21/09/2026: “categoria - filhos tem que está dentro do setup é lá que abro essas categorias”, “dentro da unidade eu preciso ter as abas de resumo (...) e preciso ter a aba cadastro de unidade”, “no apolo empreendimento, pode tirar o mapa e vendas, não precisa mais dessas telas ali” e “eu também posso ter minutas diferentes para filho - categoria, eu não vi essa marcação”. A estrutura do produto estava espalhada em tres lugares e nenhum deles era onde se procura por ela; a minuta do filho nao tinha onde nascer, apesar de o banco e a cadeia do contrato ja a lerem. A trava das cargas veio junto por decisao do mesmo dia: “nao vou mais fazer isso”.",
     },
-    rollback: "7c501aea",
-    title: "Setup guarda a estrutura do produto, e a unidade ganha cadastro",
+    rollback: "0088c1ac",
+    title: "Estrutura no Setup, cadastro da unidade e minuta por filho",
     type: "melhoria",
     version: "1.354.0",
   },
