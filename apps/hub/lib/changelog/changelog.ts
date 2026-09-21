@@ -36,6 +36,45 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-21-painel-de-parcelas-e-ordem-do-setup",
+    deployedAt: "2026-09-21T15:00:37-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "**O painel de parcelas passou a usar a altura da tela.** Ele estava travado em pouco mais da metade: numa tela de 1080 mostrava 11 das 38 linhas e deixava uma faixa branca embaixo, e quem rolava a página para ver a lista inteira perdia os cards de cima sem ganhar linha nenhuma. Agora mostra cerca de 16, e o cabeçalho continua grudado enquanto você desce.",
+            ],
+            screen: "Financeiro · Parcelas por unidade",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**As sub-abas do Setup mudaram de ordem:** Credenciamento, Filho, Categoria e Assinatura, que é a ordem da vida do produto. A aba continua abrindo em Categorias.",
+            ],
+            screen: "Empreendimentos · Setup",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "TelaCarteira.tsx: os dois paineis de parcelas (incorporador e comercial) trocaram `maxHeight: 58vh` por `max(340px, calc(100dvh - 260px))`. Na casca do Hercules quem rola e o <main> (`.inc--hercules .inc-conteudo`, 100dvh), e a tabela ainda ganhava rolagem propria de 58vh -- dai a faixa morta. Mantive a rolagem NA TABELA de proposito: e ela que faz o `thead` sticky grudar; trocar por `overflow-x` mataria o cabecalho fixo. Varri o resto do portal: os outros `vh` sao de modal (85vh, 92vh) e da coluna do kanban da TelaVendas (52vh), onde a altura limitada e o desenho. empreendimentos-view.tsx: so a ordem do array `abas` do SetupTab. typecheck limpo, 7.709 testes verdes.",
+      motivation:
+        "Lucas, 21/09/2026, com print do Financeiro: “corrige esse painel, comeu um pedaco da tela”. E, sobre o Setup: “muda somente a ordem, coloca o credenciamento - filho - categoria - assinatura”.",
+    },
+    rollback: "9f336a71",
+    title: "O painel de parcelas cabe na tela, e o Setup na ordem do Lucas",
+    type: "correcao",
+    internal: true,
+    version: "1.355.0",
+  },
+  {
     buildTag: "2026-09-21-setup-estrutura-cadastro-da-unidade-e-minuta-do-filho",
     deployedAt: "2026-09-21T14:33:57-03:00",
     modules: [
