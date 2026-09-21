@@ -43,6 +43,14 @@ type AlcancePossivel = { id: string; nome: string; tipo: "categoria" | "empreend
 
 type Props = {
   /**
+   * AVISA QUEM ESTÁ POR CIMA de quem é a família (o pai e os filhos, já resolvidos pelo servidor).
+   *
+   * ⚠️ EXISTE PARA NÃO LER DUAS VEZES. A aba Minutas precisa da mesma lista para oferecer "de quem
+   * é esta minuta", e buscá-la por conta própria dobraria a chamada em toda abertura da aba — o
+   * teste do portal da Cecília flagrou exatamente isso. `useCallback` nela.
+   */
+  aoSaberDaFamilia?: (familia: AlcancePossivel[]) => void;
+  /**
    * O código de UMA etapa, quando a ficha é a consolidada.
    *
    * ⚠️ A FICHA CONSOLIDADA NÃO TEM ID DE EMPREENDIMENTO (`group:Lagoa Bonita` é rótulo, não
@@ -70,7 +78,7 @@ function tamanhoLegivel(bytes: null | number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function AnexosDoContrato({ codigo, enterpriseId, unidade }: Props) {
+export function AnexosDoContrato({ aoSaberDaFamilia, codigo, enterpriseId, unidade }: Props) {
   // ⚠️ PRIMITIVOS, E NÃO O OBJETO: quem chama monta `unidade={{ ... }}` no render, e o objeto novo
   // a cada render refaria o fetch em laço (a mesma armadilha que a `api` da UnidadesTab documenta).
   const unidadeId = unidade?.id ?? null;
@@ -129,14 +137,17 @@ export function AnexosDoContrato({ codigo, enterpriseId, unidade }: Props) {
       // ⚠️ A LISTA SÓ É SUBSTITUÍDA QUANDO VEM CHEIA. Ler uma categoria não devolve os alcances da
       // família (o servidor só os monta a partir do empreendimento), e zerar a lista aqui deixaria o
       // operador preso na categoria em que ele acabou de entrar, sem caminho de volta.
-      if (corpo.alcances && corpo.alcances.length > 0) setAlcances(corpo.alcances);
+      if (corpo.alcances && corpo.alcances.length > 0) {
+        setAlcances(corpo.alcances);
+        aoSaberDaFamilia?.(corpo.alcances);
+      }
       setErro(null);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao ler os anexos.");
     } finally {
       setCarregando(false);
     }
-  }, [codigo, doAlcance, temisFetch, unidadeId]);
+  }, [aoSaberDaFamilia, codigo, doAlcance, temisFetch, unidadeId]);
 
   useEffect(() => {
     void carregar();

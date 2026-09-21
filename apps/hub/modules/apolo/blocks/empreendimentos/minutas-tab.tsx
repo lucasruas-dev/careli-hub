@@ -162,6 +162,39 @@ export function MinutasTab({ codigo, enterpriseId, name, tipo = "contrato" }: Pr
   // com `/api/incorporador/temis` pelo cookie, e a rota de lá recorta pelo escopo do incorporador.
   const { temisFetch } = useApiDaTemis();
 
+  /**
+   * DE QUEM É ESTA MINUTA: o empreendimento da ficha ou um filho dele.
+   *
+   * ⚠️ SEM ISTO, MINUTA DE FILHO NÃO TINHA ONDE NASCER. Lucas (21/09/2026): *"eu também posso ter
+   * minutas diferentes para filho - categoria, eu não vi essa marcação"*. A categoria já apontava a
+   * dela (no Setup), o banco sempre gravou a minuta no empreendimento que a tela mandasse e a
+   * cadeia do contrato já lia o filho antes do pai — mas a aba mandava sempre o id da ficha, então
+   * o jurídico não tinha como publicar uma minuta só do LBF ou só do VOC.
+   *
+   * ⚠️ A LISTA VEM DA ROTA DOS ANEXOS, que já monta a família (pai, filhos e categorias) a partir
+   * do cadastro. Reusar evita uma segunda régua sobre quem é da família — que é justamente o tipo
+   * de divergência que faz a tela e o motor discordarem.
+   */
+  const [familia, setFamilia] = useState<{ id: string; nome: string }[]>([]);
+  const [deQuem, setDeQuem] = useState<null | string>(null);
+  const idEmUso = deQuem ?? enterpriseId;
+  const nomeEmUso = familia.find((f) => f.id === idEmUso)?.nome ?? name;
+
+  /**
+   * A família chega de carona na leitura dos anexos, que já a monta no servidor.
+   *
+   * ⚠️ SÓ TROCA O ESTADO QUANDO A LISTA MUDA DE VERDADE: o bloco de anexos relê a cada troca de
+   * alcance, e trocar o estado por uma lista igual remontaria a aba em laço.
+   */
+  const aoSaberDaFamilia = useCallback((alcances: { id: string; nome: string; tipo: string }[]) => {
+    const nova = alcances
+      .filter((a) => a.tipo === "empreendimento")
+      .map((a) => ({ id: a.id, nome: a.nome }));
+    setFamilia((atual) =>
+      atual.length === nova.length && atual.every((a, i) => a.id === nova[i]?.id) ? atual : nova,
+    );
+  }, []);
+
   useEffect(() => {
     let vivo = true;
     setMinutas(null);
@@ -170,7 +203,7 @@ export function MinutasTab({ codigo, enterpriseId, name, tipo = "contrato" }: Pr
     void (async () => {
       try {
         const r = await temisFetch(
-          `/minutas?enterpriseId=${encodeURIComponent(enterpriseId)}&tipo=${encodeURIComponent(tipo)}`,
+          `/minutas?enterpriseId=${encodeURIComponent(idEmUso)}&tipo=${encodeURIComponent(tipo)}`,
           { cache: "no-store" },
         );
         const corpo = (await r.json().catch(() => ({}))) as {
@@ -193,7 +226,7 @@ export function MinutasTab({ codigo, enterpriseId, name, tipo = "contrato" }: Pr
     return () => {
       vivo = false;
     };
-  }, [enterpriseId, recarregar, temisFetch, tipo]);
+  }, [idEmUso, recarregar, temisFetch, tipo]);
 
   const abrir = useCallback(async (id: string) => {
     setErro(null);
@@ -231,7 +264,7 @@ export function MinutasTab({ codigo, enterpriseId, name, tipo = "contrato" }: Pr
     setErro(null);
     setAviso(null);
     try {
-      const r = await temisFetch(`/minutas?enterpriseId=${encodeURIComponent(enterpriseId)}`, {
+      const r = await temisFetch(`/minutas?enterpriseId=${encodeURIComponent(idEmUso)}`, {
         body: JSON.stringify({ nome, tipo }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -551,13 +584,43 @@ export function MinutasTab({ codigo, enterpriseId, name, tipo = "contrato" }: Pr
             <FileText aria-hidden="true" className="size-4" />
           </span>
           <div className="min-w-0">
-            <h4 className="m-0 text-sm font-semibold text-ink">Minutas de {name}</h4>
+            <h4 className="m-0 text-sm font-semibold text-ink">Minutas de {nomeEmUso}</h4>
             <p className="m-0 mt-0.5 text-xs text-ink-muted">
               O texto do contrato. Suba o arquivo que o loteador entregou, marque onde entram os
               dados do sistema e publique. Quem decide qual minuta a venda usa é o plano de pagamento.
             </p>
           </div>
         </div>
+
+        {/* ⚠️ O SELETOR SÓ APARECE QUANDO HÁ FILHO, e é ele que responde ao pedido do Lucas de
+            21/09/2026 (*"posso ter minutas diferentes para filho - categoria, eu não vi essa
+            marcação"*). Num produto simples ele seria uma pergunta com uma resposta só. */}
+        {familia.length > 1 ? (
+          <div className="flex flex-wrap items-end gap-3 border-b border-line px-4 py-3">
+            <label className="flex min-w-[260px] flex-1 flex-col gap-1">
+              <span className="font-medium text-ink-muted text-xs">De quem é esta minuta</span>
+              <select
+                className="h-9 rounded-lg border border-line bg-surface px-2 text-ink text-sm"
+                onChange={(e) => {
+                  setDeQuem(e.target.value || null);
+                  setErro(null);
+                  setAviso(null);
+                }}
+                value={idEmUso}
+              >
+                {familia.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="m-0 flex-1 basis-full text-ink-muted text-xs">
+              O filho que não tem minuta publicada assina a do empreendimento. E a categoria, quando
+              aponta a dela, vence as duas — esse vínculo se faz no Setup, na aba Categorias.
+            </p>
+          </div>
+        ) : null}
 
         {/* ⚠️ O BOTÃO VIVE ACESO, E A PERGUNTA VEM DEPOIS (Lucas, 07/09/2026: *"acho que o botão de
             adicionar tem que estar habilitado, aí abre um popup perguntando nome, se vai importar
@@ -583,7 +646,11 @@ export function MinutasTab({ codigo, enterpriseId, name, tipo = "contrato" }: Pr
       {/* ⚠️ OS ANEXOS FICAM AQUI, JUNTO DA MINUTA, e não numa aba própria. O contrato é capa +
           corpo + anexos, e quem está marcando `[anexo_1]` no texto precisa ver, na mesma tela, qual
           peça está na posição 1. Separar em abas faria a posição virar decoreba. */}
-      <AnexosDoContrato codigo={codigo} enterpriseId={enterpriseId} />
+      <AnexosDoContrato
+        aoSaberDaFamilia={aoSaberDaFamilia}
+        codigo={codigo}
+        enterpriseId={idEmUso}
+      />
 
       {/* ── A JANELA DA MINUTA NOVA ──────────────────────────────────────── */}
       {abrindoNova ? (
