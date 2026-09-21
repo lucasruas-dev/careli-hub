@@ -291,6 +291,139 @@ export const POP_CATALOG: readonly PopModule[] = [
       },
     ],
   },
+  {
+    id: "apolo",
+    modulo: "Apolo",
+    telas: [
+      {
+        id: "empreendimentos",
+        tela: "Empreendimentos",
+        processos: [
+          {
+            id: "vinculo-da-unidade",
+            nome: "Vincular lote à divisão e à categoria",
+            resumo:
+              "O lote passa a dizer de que divisão e de que categoria ele é, por planilha, um a um na ficha ou em massa por quadra, faixa de lotes ou filtro. A tela mostra o que vai mudar antes de aplicar, e o vínculo fica registrado com autor, data e origem.",
+            disciplina: "O&M",
+            status: "vigente",
+            objetivo:
+              "Carimbar cada lote no degrau certo do produto, para que preço, plano, comissão, modelo de contrato e anexos venham do lugar certo.",
+            responsavel: "Cadastro de Produto (Apolo)",
+            entradas: [
+              "Lote cadastrado no empreendimento",
+              "Divisão e categoria existentes no cadastro do produto",
+            ],
+            saidas: [
+              "Lote vinculado, com autor, data e origem do vínculo",
+              "Lote recusado quando a troca atinge venda em andamento",
+            ],
+            estados: [
+              { id: "inicio", label: "Lote sem vínculo", kind: "inicio", x: 16, y: 104 },
+              { id: "planilha", label: "Planilha", kind: "etapa", x: 160, y: 24, nota: "Importação com divisão e categoria, até 2.000 linhas por arquivo." },
+              { id: "ficha", label: "Ficha do lote", kind: "etapa", x: 160, y: 104, nota: "Um lote de cada vez, para acerto pontual." },
+              { id: "massa", label: "Seleção em massa", kind: "etapa", x: 160, y: 184, nota: "Por quadra, faixa de lotes ou filtro da tela." },
+              { id: "previa", label: "Prévia do que muda", kind: "etapa", x: 360, y: 104, nota: "Mostra só o que muda de verdade, e avisa quando o lote tem venda em andamento." },
+              { id: "aplicar", label: "Aplicar", kind: "etapa", x: 540, y: 104 },
+              { id: "vinculado", label: "Lote vinculado", kind: "fim-sucesso", x: 726, y: 104, processoLink: "contrato-modelo-e-pecas", nota: "Daqui em diante o contrato procura o modelo e os anexos por esta divisão e por esta categoria. Clique para abrir o processo do contrato." },
+              { id: "recusado", label: "Recusado: venda viva", kind: "fim-escalonamento", x: 540, y: 218 },
+            ],
+            transicoes: [
+              { de: "inicio", para: "planilha", gatilho: "carteira inteira ou lançamento novo", modo: "manual" },
+              { de: "inicio", para: "ficha", gatilho: "acerto de um lote", modo: "manual" },
+              { de: "inicio", para: "massa", gatilho: "um trecho do produto (quadra, faixa ou filtro)", modo: "manual" },
+              { de: "planilha", para: "previa", gatilho: "o sistema casa cada linha com o lote", modo: "auto" },
+              { de: "ficha", para: "previa", gatilho: "operador escolhe divisão e categoria", modo: "manual" },
+              { de: "massa", para: "previa", gatilho: "operador escolhe divisão e categoria da seleção", modo: "manual" },
+              { de: "previa", para: "aplicar", gatilho: "operador confere a lista e confirma", modo: "manual" },
+              { de: "aplicar", para: "vinculado", gatilho: "gravado em blocos de 100, com autor, data e origem", modo: "auto" },
+              { de: "aplicar", para: "recusado", gatilho: "a troca de divisão atinge lote com venda em andamento", modo: "auto", tag: "quebra" },
+            ],
+            sla: [
+              { item: "Teto da planilha", valor: "2.000 linhas por arquivo" },
+              { item: "Gravação", valor: "blocos de 100 lotes" },
+              { item: "Prévia", valor: "sempre antes de aplicar, só com o que muda" },
+              { item: "Origem registrada", valor: "planilha · ficha · massa" },
+              { item: "Venda em andamento", valor: "aviso na prévia · troca de divisão recusada" },
+              { item: "Falha no meio", valor: "a tela diz quantos lotes já entraram antes da falha" },
+            ],
+            decisoes: [
+              "A categoria só pode ser de um empreendimento da mesma família do lote.",
+              "Trocar a divisão de lote com venda em andamento é recusado; a categoria pode mudar, e o contrato ainda não gerado passa a sair pela minuta e pelos anexos da categoria nova.",
+              "O nome de quem vinculou é copiado no ato, para o histórico dizer quem era naquele dia.",
+              "Código ambíguo na planilha, quando o mesmo lote existe em duas glebas vivas, é recusado nomeando os dois códigos.",
+              "Lucas, 21/09/2026: o vínculo precisa existir pelos três caminhos, importação, unitário e em massa.",
+            ],
+            execucao: { automatizado: false },
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "temis",
+    modulo: "Têmis",
+    telas: [
+      {
+        id: "contrato",
+        tela: "Contrato",
+        processos: [
+          {
+            id: "contrato-modelo-e-pecas",
+            nome: "Modelo e peças do contrato",
+            resumo:
+              "Ao gerar o contrato, o sistema procura o modelo subindo a cadeia do produto, mostra de onde ele veio, junta capa, contrato e anexos do pai, da divisão e da categoria, e entrega um PDF só. Peça inválida é recusada com o nome dela, em vez de sair contrato incompleto.",
+            disciplina: "O&M",
+            status: "vigente",
+            objetivo:
+              "Emitir o contrato certo do produto certo, com todas as peças, sem depender de alguém lembrar qual modelo usar.",
+            responsavel: "Jurídico e Coordenação (Têmis)",
+            entradas: [
+              "Venda em contrato, com o lote vinculado à divisão e à categoria",
+              "Minuta publicada em algum degrau da cadeia",
+              "Capa e anexos cadastrados, quando houver",
+            ],
+            saidas: [
+              "PDF do contrato com capa, corpo e anexos, guardado na ficha",
+              "Recusa nomeando o que falta ou a peça inválida",
+            ],
+            estados: [
+              { id: "inicio", label: "Contrato pedido", kind: "inicio", x: 16, y: 104 },
+              { id: "cadeia", label: "Procura o modelo", kind: "etapa", x: 170, y: 104, nota: "Sobe a cadeia: unidade, categoria, divisão e, por último, o empreendimento pai." },
+              { id: "origem", label: "Origem na tela", kind: "etapa", x: 360, y: 104, nota: "A prévia diz se o modelo é próprio ou herdado, por exemplo modelo herdado do Vale do Ouro." },
+              { id: "pecas", label: "Junta as peças", kind: "etapa", x: 540, y: 104, nota: "Capa na frente, contrato no meio, anexos do pai, da divisão e da categoria no fim." },
+              { id: "pdf", label: "PDF montado", kind: "fim-sucesso", x: 726, y: 104 },
+              { id: "semmodelo", label: "Sem modelo publicado", kind: "fim-escalonamento", x: 170, y: 220, processoLink: "vinculo-da-unidade", nota: "Nenhum degrau da cadeia tem minuta publicada. Conferir o vínculo do lote e a publicação da minuta." },
+              { id: "recusada", label: "Peça recusada", kind: "fim-escalonamento", x: 540, y: 220, nota: "Arquivo que não é PDF, PDF protegido por senha, anexo citado na minuta e não cadastrado, ou soma acima de 24 MB." },
+            ],
+            transicoes: [
+              { de: "inicio", para: "cadeia", gatilho: "coordenação pede a geração do contrato", modo: "manual" },
+              { de: "cadeia", para: "origem", gatilho: "achou minuta publicada no degrau mais próximo", modo: "auto" },
+              { de: "cadeia", para: "semmodelo", gatilho: "nenhum degrau da cadeia tem minuta publicada", modo: "auto", tag: "quebra" },
+              { de: "origem", para: "pecas", gatilho: "operador confere de onde veio o modelo e segue", modo: "manual" },
+              { de: "pecas", para: "pdf", gatilho: "todas as peças aceitas", modo: "auto" },
+              { de: "pecas", para: "recusada", gatilho: "peça inválida ou soma acima do teto", modo: "auto", tag: "quebra" },
+            ],
+            sla: [
+              { item: "Cadeia do modelo", valor: "unidade → categoria → divisão → pai" },
+              { item: "Origem do modelo", valor: "dita na prévia e na geração, e guardada no contrato" },
+              { item: "Anexos", valor: "somam pai, divisão e categoria, sem repetir arquivo" },
+              { item: "Ordem do PDF", valor: "capa · contrato · anexos" },
+              { item: "Teto do contrato montado", valor: "24 MB" },
+              { item: "Formato das peças", valor: "só PDF, sem senha" },
+            ],
+            decisoes: [
+              "A minuta só é herdada de um produto da mesma família: divisão usa a do pai, categoria usa a da divisão.",
+              "Publicar versão nova leva junto a capa e o vínculo da categoria, que antes se perdiam.",
+              "Anexo citado na minuta e não cadastrado trava a geração, em vez de sair contrato sem a peça e sem aviso.",
+              "Peça recusada é nomeada, para o operador saber qual arquivo trocar sem abrir chamado.",
+              "Lucas, 21/09/2026: a minuta herda do nível de cima, e os anexos somam os níveis.",
+            ],
+            execucao: { automatizado: false },
+          },
+        ],
+      },
+    ],
+  },
 ];
 
 export function findPopProcess(processId: string): PopProcess | undefined {
