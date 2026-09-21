@@ -671,7 +671,7 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
   },
   {
     id: "PAN-070",
-    bloqueio: "Precisa ser feito nas cinco de uma vez; mexer em uma só faz a mesma tela obedecer duas regras diferentes.",
+    bloqueio: "DUAS DAS CINCO JA FORAM (21/09/2026, v1.353.0 e v1.354.0): a MINUTA e os ANEXOS passam pelo filho, e a tela deixa publicar minuta e pendurar anexo nele. Faltam vendedora, ordem de assinatura, comissao e entrada minima, que continuam indo de categoria direto ao empreendimento.",
     evidencia: "Memória reference_precedencia_categoria_filho_pai (08/09), com a tabela das cinco cadeias e das migrations 0140, 0141, 0142, 0145 e 0128.",
     modulo: "Temis",
     porque: "A regra da casa é categoria, depois filho, depois pai — o menor recorte configurado ganha. O código vai de categoria direto ao empreendimento em minuta, vendedora, ordem de assinatura, comissão e entrada mínima, pulando o filho, que tem cadastro próprio.",
@@ -680,11 +680,12 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
   },
   {
     id: "PAN-071",
-    bloqueio: "A base já existe (migration 0156, 13/09/2026: temis_anexos + capa_path na minuta). Faltam a tela de upload e o MONTADOR do PDF final, que é a peça cara: [anexo_N] marca um LUGAR dentro da cláusula, então o montador quebra o PDF do corpo naquele ponto e costura as páginas do anexo.",
-    evidencia: "Migration 0156 aplicada e conferida em 13/09/2026 (17 colunas, RLS ligada, 4 CHECKs exercitados). O bucket e o upload por URL assinada já rodam no editor de minutas, e o pdf-lib já é dependência — não falta infra, falta tela e montador.",
+    bloqueio: "",
+    entregueEm: "2026-09-21",
+    evidencia: "v1.353.0 e v1.354.0: lib/temis/montar-pdf-do-contrato.ts (capa, corpo e anexos num PDF so, teto de 24 MB, recusa de arquivo que nao e PDF e de PDF cifrado), anexos-da-venda.ts (soma pai, filho, categoria e unidade sem repetir) e a tela de upload com alcance (aba Minutas para empreendimento, filho e categoria; Cadastro da unidade para o lote). Medido em 21/09: zero anexos cadastrados ainda, a porta e que estava faltando.",
     modulo: "Temis",
     porque: "O contrato é capa mais corpo mais anexos, e só o corpo existe. A variável de anexo marca um lugar na cláusula em vez de virar texto, e a quantidade nasce do que foi importado — nada disso tem tabela.",
-    situacao: "depois",
+    situacao: "entregue",
     titulo: "Construir a capa e os anexos do contrato",
   },
   {

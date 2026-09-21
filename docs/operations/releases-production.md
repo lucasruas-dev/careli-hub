@@ -6724,3 +6724,34 @@ So layout: nenhuma conta, nenhum dado e nenhuma regra mudaram. typecheck 11/11, 
 sem aviso novo. ⚠️ Nao verificado em tela — o hub exige login.
 
 - Status: `EM PRODUCAO`.
+
+## 2026-09-21 · v1.354.0 · Estrutura no Setup, cadastro da unidade e minuta por filho
+
+- Commit publicado: `9f336a71` · rollback: `0088c1ac` (deployment anterior, v1.353.5).
+- Deployment: `dpl_DDaPuER2SBmBwcJgbkiXyQwSsBmn`.
+- Sem migration. As tabelas que a frente usa ja existiam (0156 anexos, 0181 carimbo do vinculo,
+  0182 minuta do documento).
+
+### O que entrou
+
+1. **Setup virou a casa da estrutura**: sub-abas Categorias e Filho. A categoria saiu de Politicas
+   comerciais e o filho deixou de ser aba de primeiro nivel. O filho novo nasce ali, ja pendurado no
+   pai (`paiInicial` no NovoProduto).
+2. **Unidades ganhou Resumo + Cadastro da unidade**: area, valor, matricula, filho, categoria e os
+   anexos do lote. Os botoes da linha viraram so icone com tooltip (lapis para editar) e o valor de
+   tabela passou a ser escrito como moeda.
+3. **Minuta por filho**: o seletor "De quem e esta minuta" na aba Minutas. O banco sempre gravou a
+   minuta no `enterprise_id` que a tela manda e a cadeia ja lia o filho antes do pai; faltava a tela
+   deixar escolher.
+4. **Mapa e Vendas sairam da ficha** (871 linhas da VendasTab e o masterplan-mapa.tsx apagados).
+5. **As tres cargas do legado passaram a recusar `--gravar`** sem `--carga-do-legado-autorizada`
+   (decisao do Lucas no mesmo dia: *"nao vou mais fazer isso"*). O ensaio segue livre.
+
+### Conferencia
+
+- typecheck limpo, lint limpo, **491 arquivos de teste e 7.709 testes verdes**.
+- ⚠️ A primeira rodada da suite teve 1 falha por contencao do ambiente ("Too many connections",
+  "statement timeout"); o arquivo passa isolado em 342ms e a segunda rodada completa passou inteira.
+- ⚠️ Nao verificado em tela por mim: o hub exige login, e quem clica e o Lucas.
+
+- Status: `EM PRODUCAO`.
