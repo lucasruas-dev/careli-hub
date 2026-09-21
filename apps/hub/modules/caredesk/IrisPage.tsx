@@ -173,6 +173,7 @@ import { templateSaiCompletoPeloServidor } from "@/lib/iris/template-chaves";
 import { PhoneFlag } from "./components/phone-flag";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { IrisCronometroEspera } from "./blocks/conversation/iris-cronometro-espera";
+import { autoriaDaPilula } from "./lib/autoria-da-pilula";
 import { calcularEspera, classesDaEspera } from "./lib/espera";
 import { useAuth } from "@/providers/auth-provider";
 import { usePanteonNotifications } from "@/providers/pulsex-notification-provider";
@@ -6198,10 +6199,21 @@ function MessageBubble({
       );
     }
 
+    // ⚠️ A PÍLULA DIZ QUEM FEZ. O corpo conta a fila de origem, a de destino e o motivo, e durante
+    // meses não contava quem clicou — o chamado TI-000059 é exatamente isso. O nome já chegava aqui
+    // dentro de `senderLabel` e era descartado na renderização. Ver `autoria-da-pilula.ts`.
+    const autoria = autoriaDaPilula(
+      { createdAt: message.createdAt, senderLabel: message.senderLabel },
+      formatDateTime,
+    );
+
     return (
       <div className="flex justify-center">
-        <div className="max-w-[70%] rounded-full border border-line/70 bg-surface px-3 py-1.5 text-center text-xs font-semibold text-ink-muted shadow-[0_1px_2px_rgba(15,23,42,0.04)] [overflow-wrap:anywhere]">
+        <div className="max-w-[70%] rounded-2xl border border-line/70 bg-surface px-3 py-1.5 text-center text-xs font-semibold text-ink-muted shadow-[0_1px_2px_rgba(15,23,42,0.04)] [overflow-wrap:anywhere]">
           {message.body}
+          {autoria ? (
+            <div className="mt-0.5 text-[11px] font-normal text-ink-muted/80">{autoria}</div>
+          ) : null}
         </div>
       </div>
     );

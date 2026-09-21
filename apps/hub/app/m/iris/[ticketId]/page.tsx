@@ -25,6 +25,7 @@ import {
   ensureOperatorIdentity,
   mapMessageRow,
 } from "@/modules/caredesk/data/iris-data-client";
+import { autoriaDaPilula } from "@/modules/caredesk/lib/autoria-da-pilula";
 import type { IrisMessage } from "@/modules/caredesk/types/iris-types";
 import { useAuth } from "@/providers/auth-provider";
 import {
@@ -240,24 +241,35 @@ export default function MobileIrisConversationPage() {
       >
         <div className="grid gap-2">
           {orderedMessages.map((message) => {
+            // ⚠️ A PÍLULA DIZ QUEM FEZ, IGUAL À DO HUB. A transferência cai aqui (ela é `internal` E
+            // `system`), e o corpo conta a fila de origem, a de destino e o motivo, mas não quem
+            // clicou — o chamado TI-000059. A regra é a mesma nas duas telas: `autoria-da-pilula.ts`.
             if (message.direction === "internal") {
+              const autoria = autoriaDaPilula(message, formatClockTime);
               return (
                 <p
                   className="mx-auto max-w-[88%] rounded-lg bg-[#fdf3d8] px-3 py-1.5 text-center text-xs text-[#8a6d1f]"
                   key={message.id}
                 >
                   {message.body}
+                  {autoria ? (
+                    <span className="mt-0.5 block text-[0.7rem] text-[#8a6d1f]/80">{autoria}</span>
+                  ) : null}
                 </p>
               );
             }
 
             if (message.senderType === "system") {
+              const autoria = autoriaDaPilula(message, formatClockTime);
               return (
                 <p
                   className="mx-auto max-w-[88%] text-center text-[0.7rem] text-[#7c7264]"
                   key={message.id}
                 >
                   {message.body}
+                  {autoria ? (
+                    <span className="mt-0.5 block text-[0.7rem] text-[#7c7264]/80">{autoria}</span>
+                  ) : null}
                 </p>
               );
             }

@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-21-iris-quem-transferiu",
+    deployedAt: "2026-09-21T09:40:00-03:00",
+    modules: [
+      {
+        module: "Íris",
+        screens: [
+          {
+            items: [
+              "**A conversa passa a dizer QUEM transferiu o atendimento, e quando.** A linha cinza da transferência contava a fila de origem, a de destino e o motivo, mas nunca o nome de quem fez a operação. Agora traz o nome e o horário logo abaixo.",
+              "**Vale para o histórico inteiro, não só daqui para a frente**: o nome já estava gravado em todas as transferências desde o fim de junho, e a tela é que não o mostrava. Ao abrir um atendimento antigo, as transferências passadas aparecem identificadas.",
+              "**A transferência automática se identifica como Cacá**, do mesmo jeito, então dá para distinguir num relance o que foi a máquina e o que foi pessoa.",
+              "Vale também no celular, na conversa do /m.",
+            ],
+            screen: "Atendimento · Conversa",
+          },
+        ],
+      },
+    ],
+    rollback: "eeda0a86",
+    technical: {
+      done:
+        "Chamado TI-000059 da operação. O dado nunca faltou: medido no banco em 21/09/2026, as 2.521 mensagens de transferência têm `provider_payload.operatorLabel` preenchido (100%, desde 28/06/2026), e `mapMessageRow` já vira `senderLabel` (`iris-data-client.ts:1500`). Quem descartava era o render: a pílula de sistema imprimia só `message.body` (`IrisPage.tsx:6201`), enquanto o cartão de nota interna, no mesmo arquivo, já mostrava autor e hora. Novo `modules/caredesk/lib/autoria-da-pilula.ts` (8 testes) monta a linha \"Nome · data\" e é usado pelas DUAS telas que desenham a pílula — `IrisPage` e `app/m/iris/[ticketId]` —, que era a varredura de leitores; nenhuma outra tela lê mensagem. O \"-\" que `formatDateTime` devolve para data inválida é tratado como vazio, senão sairia \"Beatriz Araújo · -\". Nada mudou no servidor, então a correção é retroativa. ⚠️ MEDIDO E EM ABERTO: existem caminhos que trocam o DONO do ticket sem registrar nada — assumir ao responder por WhatsApp (`meta/messages/route.ts:1605`), o mesmo por e-mail (`email-reply/route.ts:251`) e o disparo ativo que reaproveita atendimento aberto (`tickets/route.ts:549`). De 4.484 tickets com dono, 3.966 não têm nenhum evento de transferência. É outra frente, não o que o chamado pede.",
+      motivation:
+        "Chamado TI-000059, aberto pela operação: *\"Precisamos que apareça quem foi o responsável pela transferência na Iris, pra sabermos exatamente quem fez a operação\"*. Lucas (21/09/2026): *\"verifica por favor se fica registrado quem transfere os tickets da iris\"*.",
+    },
+    title: "Íris: a conversa mostra quem transferiu o atendimento",
+    type: "melhoria",
+    version: "1.352.1",
+  },
+  {
     buildTag: "2026-09-20-termo-de-acordo-e-card-do-panteon",
     deployedAt: "2026-09-20T15:16:12-03:00",
     modules: [
