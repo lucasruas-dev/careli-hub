@@ -6755,3 +6755,29 @@ sem aviso novo. ⚠️ Nao verificado em tela — o hub exige login.
 - ⚠️ Nao verificado em tela por mim: o hub exige login, e quem clica e o Lucas.
 
 - Status: `EM PRODUCAO`.
+
+## 2026-09-21 · v1.355.0 · O painel de parcelas cabe na tela, e o Setup na ordem do Lucas
+
+- Commit publicado: `66449917` · rollback: `9f336a71` (v1.354.0).
+- Deployment: `dpl_Ed71cyS7acCP9dpoF9Y7ofkiZW3P`. Sem migration.
+- `type: correcao` com `internal: true`: entra no changelog tecnico e nao no painel de Novidades,
+  como manda a regra da casa para correcao.
+
+### O que entrou
+
+1. **Painel de parcelas do portal** (incorporador e comercial): `maxHeight: 58vh` virou
+   `max(340px, calc(100dvh - 260px))`. Na casca do Hercules quem rola e o `<main>` (100dvh), e a
+   tabela ainda tinha rolagem propria de 58vh — numa tela de 1080 mostrava 11 das 38 linhas e
+   deixava ~300px mortos embaixo. A rolagem segue NA TABELA de proposito: e ela que faz o `thead`
+   sticky grudar.
+2. **Ordem das sub-abas do Setup**: Credenciamento, Filho, Categoria, Assinatura. So a ordem; a aba
+   continua abrindo em Categorias.
+
+### Conferencia
+
+- typecheck limpo, **7.709 testes verdes** (491 arquivos).
+- Varredura dos outros `vh` do portal: sao de modal (85vh, 92vh) e da coluna do kanban da
+  TelaVendas (52vh), onde a altura limitada e o desenho.
+- ⚠️ Nao verificado em tela por mim: o portal exige sessao, e quem clica e o Lucas.
+
+- Status: `EM PRODUCAO`.
