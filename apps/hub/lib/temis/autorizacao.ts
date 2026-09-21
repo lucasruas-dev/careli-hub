@@ -1,8 +1,11 @@
+import { NextResponse } from "next/server";
+
 import {
   type ApoloAuthResult,
   authorizeApoloCoordenacao,
   authorizeApoloRead,
 } from "@/lib/apolo/auth";
+import { createApoloAdminClient } from "@/lib/apolo/server";
 
 // QUEM EMITE CONTRATO — o portão da Têmis, num lugar só.
 //
@@ -60,4 +63,72 @@ export function autorizarEmissaoDeContrato(request: Request): Promise<ApoloAuthR
  */
 export function autorizarLeituraDeContrato(request: Request): Promise<ApoloAuthResult> {
   return authorizeApoloRead(request);
+}
+
+/** A permissão que dá o direito de reescrever cláusula. Catalogada pela migration 0184. */
+export const PERMISSAO_ALTERAR_CONTRATO = "temis-contrato-editar";
+
+/**
+ * ALTERAR O CONTRATO À MÃO: mais estreito que emitir, e nominal.
+ *
+ * Lucas, 21/09/2026: *"quem pode editar é a Nivea Careli e Northon Nascimento"*.
+ *
+ * ⚠️ PAPEL NÃO RECORTA ESSAS DUAS PESSOAS. Medido no mesmo dia: a Nívea é `admin` e o Northon é
+ * `leader`. "Só admin" deixaria o Northon — o Analista de Contratos — de fora; "admin + leader"
+ * (a régua de emitir) arrasta mais cinco pessoas junto. Por isso a lista é uma PERMISSÃO
+ * CONCEDIDA, o mesmo mecanismo que a migration 0164 usou para a Raiane no Setup: entra e sai
+ * gente com uma linha no banco, sem deploy e sem mexer em papel nenhum.
+ *
+ * ⚠️ E É UMA FUNÇÃO NOVA, NÃO UM APERTO EM `autorizarEmissaoDeContrato`. Aquela guarda outras
+ * seis portas (gerar o PDF, mandar assinar, trocar signatário, mexer no card, escrever na
+ * conversa e o `podeEmitir` que a tela recebe). Estreitá-la fecharia tudo isso para duas
+ * pessoas, e ainda esconderia de quem EMITE o texto que o PDF vai imprimir — conferir o
+ * contrato alterado continua sendo trabalho da coordenação inteira.
+ *
+ * ⚠️ O PORTAL DO INCORPORADOR NÃO PASSA POR AQUI, de propósito: lá a sessão vem do cookie
+ * `apolo_inc` (`apolo_incorporador_usuarios`), gente que nem existe em `hub_users`. A decisão
+ * do Lucas é sobre o time da Careli; quem confecciona no portal segue como estava.
+ */
+export async function autorizarAlteracaoManualDoContrato(
+  request: Request,
+): Promise<ApoloAuthResult> {
+  // Primeiro a sessão: quem não entrou, ou está desativado, para aqui — e sem consultar nada.
+  const sessao = await authorizeApoloRead(request);
+  if (!sessao.ok) return sessao;
+
+  const sb = createApoloAdminClient();
+  if (!sb) return recusa("Não foi possível conferir o acesso agora.", 503);
+
+  // ⚠️ LEITURA PELO ADMIN CLIENT, E NÃO POR POLICY. `hub_user_permissions` tem RLS ligada e ZERO
+  // policies desde a 0001 (só o service role lê), e é assim que tem de ficar: uma policy de
+  // leitura ali abriria a lista de quem pode o quê para todo mundo. Mesmo padrão do Ares.
+  const { data, error } = await sb
+    .from("hub_user_permissions")
+    .select("permission_id")
+    .eq("user_id", sessao.userId)
+    .eq("permission_id", PERMISSAO_ALTERAR_CONTRATO)
+    .is("revoked_at", null)
+    .limit(1)
+    .maybeSingle();
+
+  // ⚠️ NÃO CONSEGUIR CONFERIR NÃO É "PODE". Banco fora do ar responde 503; liberar por omissão
+  // transformaria uma queda de infraestrutura em permissão de reescrever contrato.
+  if (error) {
+    console.error("[temis][edicao] falha ao conferir a permissão", error.message);
+    return recusa("Não foi possível conferir o acesso agora.", 503);
+  }
+
+  if (!data) {
+    return recusa(
+      "Alterar o contrato à mão é do time de contratos. Peça a alteração a quem tem esse acesso.",
+      403,
+    );
+  }
+
+  return sessao;
+}
+
+/** A recusa desta porta sai com `erro` (e não `error`): é o campo que as telas do contrato leem. */
+function recusa(mensagem: string, status: number): ApoloAuthResult {
+  return { ok: false, response: NextResponse.json({ erro: mensagem }, { status }) };
 }

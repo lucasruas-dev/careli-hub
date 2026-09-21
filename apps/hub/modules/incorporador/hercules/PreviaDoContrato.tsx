@@ -118,6 +118,15 @@ type Resposta = {
   baseImpressao?: string;
   edicao?: EdicaoNaTela | null;
   erro?: string;
+  /**
+   * O SERVIDOR deixa esta pessoa reescrever cláusula?
+   *
+   * ⚠️ A PROP `podeEditar` NÃO SABE DISSO: ela olha a etapa do card, não quem está logado.
+   * Desde 21/09/2026 a edição é nominal (permissão `temis-contrato-editar`), então só o
+   * servidor sabe a resposta — e sem ela a tela oferece o botão para quem vai levar 403 no
+   * fechamento, depois de ter reescrito a cláusula.
+   */
+  podeAlterar?: boolean;
   html?: string;
   /** Os marcadores de montagem que a minuta usou: `capa_contrato`, `anexo_3`. */
   marcadores?: string[];
@@ -507,6 +516,10 @@ export function PreviaDoContrato({
     [temisFetch],
   );
 
+  // ⚠️ AS DUAS CONDIÇÕES, E NESTA ORDEM: a tela decide ONDE se edita (`podeEditar`, a etapa do
+  // card) e o servidor decide QUEM edita (`podeAlterar`, a permissão nominal). Faltando
+  // qualquer uma, o botão não aparece — e a ausência do campo na resposta conta como "não".
+  const podeAlterarDeVerdade = podeEditar && resposta?.podeAlterar === true;
   const edicao = resposta?.edicao ?? null;
   /**
    * O texto que vale — o alterado à mão quando existe, senão o da minuta.
@@ -568,7 +581,7 @@ export function PreviaDoContrato({
   const temRodape =
     !carregando &&
     !resposta?.erro &&
-    (podeGerar || podeEditar || Boolean(vigente) || Boolean(erroDaGeracao));
+    (podeGerar || podeAlterarDeVerdade || Boolean(vigente) || Boolean(erroDaGeracao));
 
   return (
     <div
@@ -973,7 +986,7 @@ export function PreviaDoContrato({
                 ⚠️ "DESCARTAR" SOBREVIVEU porque é a única saída de quem se arrependeu do que já
                 está salvo: ele apaga a alteração e devolve o texto da minuta. Fica pequeno, ao
                 lado, e só aparece quando existe alteração para jogar fora. */}
-            {!podeEditar ? null : (
+            {!podeAlterarDeVerdade ? null : (
               <div style={{ display: "flex", gap: 8 }}>
                 <button
                   disabled={salvando}

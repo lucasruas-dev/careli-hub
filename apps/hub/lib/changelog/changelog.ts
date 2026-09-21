@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-21-alterar-o-contrato-a-mao-e-do-time-de-contratos",
+    deployedAt: "2026-09-21T14:20:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Alterar o contrato à mão passa a ser do time de contratos.** Reescrever uma cláusula é escrever o que o cliente vai assinar em cartório, e isso deixa de ser de toda a coordenação: hoje a lista é Nívea Careli e Northon Nascimento.",
+              "**Quem não está na lista não vê mais o botão de abrir o contrato para edição** — antes ele aparecia para todo mundo e a recusa só vinha no fechamento, com a cláusula já reescrita.",
+              "**Descartar a alteração segue a mesma régua de fazer a alteração.** Apagar a cláusula que outra pessoa escreveu é a mesma porta, pelo outro lado.",
+              "**Conferir o contrato continua sendo de todos, e emitir também.** Quem gera o PDF segue vendo (e imprimindo) o texto alterado à mão, exatamente como antes.",
+            ],
+            screen: "Contrato · Prévia e edição",
+          },
+        ],
+      },
+    ],
+    rollback: "5843ed49",
+    technical: {
+      done:
+        "MIGRATION 0184 (aplicada ANTES do deploy, e a ordem importa: sem as concessões no banco o código novo fecha a edição para todos). Ela cataloga `temis-contrato-editar` em `hub_permissions` e concede a duas pessoas em `hub_user_permissions` — o mesmo mecanismo da 0164 (permissão de gerir pessoas da Raiane). ⚠️ POR QUE LISTA NOMINAL E NÃO PAPEL: medido em 21/09/2026, a Nívea é `admin` e o Northon é `leader`; "só admin" deixaria de fora o Analista de Contratos e traria a Raiane junto, e "admin + leader" é exatamente a régua larga (7 pessoas ativas) que se queria fechar. ⚠️ E POR QUE UMA FUNÇÃO NOVA: `autorizarEmissaoDeContrato` guarda outras seis portas (gerar o PDF, mandar assinar, trocar signatário, mexer no card, escrever na conversa e o `podeEmitir` da tela) — estreitá-la fecharia tudo isso para duas pessoas e ainda esconderia de quem EMITE o texto que o PDF vai imprimir. Agora `autorizarAlteracaoManualDoContrato` guarda só o PUT e o DELETE de `/api/temis/contrato/edicao`: sessão primeiro (desativado para antes de consultar), depois a concessão viva, lida pelo admin client (a tabela tem RLS sem policy desde a 0001, como tem de ser); erro de leitura responde 503, porque não conseguir conferir não é "pode". A prévia passou a devolver `podeAlterar`, e a tela só mostra o botão com `podeEditar` (a etapa do card) E `podeAlterar` (quem é a pessoa) — `baseImpressao`, que só serve para salvar, seguiu junto. ⚠️ O PORTAL DO INCORPORADOR NÃO MUDA: a porta dele é `autorizarTemisDoPortal` (cookie `apolo_inc`, gente que nem existe em `hub_users`), e as 10 contas ativas do `cecilio-rocha` seguem como estavam. 6 testes novos na régua + 1 na tela; o teste do portal ganhou o recorte de "consultas de alcance" (a permissão é consultada, alcance continua zero). 490 arquivos e 7.707 testes, typecheck limpo. ⚠️ CONCEDER E REVOGAR É SQL: medido que NÃO existe tela — a aba Permissões do Setup só lista o catálogo e nenhum caminho do aplicativo escreve em `hub_user_permissions`. As receitas estão comentadas no fim da 0184.",
+      motivation:
+        "Lucas (21/09/2026), respondendo a quem deve poder reescrever cláusula: *\"quem pode editar é a Nivea Careli e Northon Nascimento\"*.",
+    },
+    title: "Contrato: alterar à mão é do time de contratos",
+    type: "melhoria",
+    version: "1.353.5",
+  },
+  {
     buildTag: "2026-09-21-abrir-o-contrato-para-ler-nao-altera-nada",
     deployedAt: "2026-09-21T13:55:00-03:00",
     modules: [

@@ -13,7 +13,7 @@ import {
   type UsoDoAlcance,
 } from "./alcance-da-estrutura";
 import { type AtorDaTemis, idDoAutor, trabalhoNoAlcance } from "./ator";
-import { autorizarEmissaoDeContrato } from "./autorizacao";
+import { autorizarAlteracaoManualDoContrato, autorizarEmissaoDeContrato } from "./autorizacao";
 import { nomeComOrigem, registrarAtoDoPortal } from "./autoria-dos-modelos";
 import { montarContratoDaProposta } from "./contrato-da-proposta";
 import {
@@ -350,6 +350,21 @@ async function atorPodeEmitir(ator: AtorDaTemis, request: Request): Promise<bool
   return (await autorizarEmissaoDeContrato(request)).ok;
 }
 
+/**
+ * Este ator pode ALTERAR O CONTRATO À MÃO?
+ *
+ * ⚠️ A TELA PRECISA SABER, SENÃO ELA MENTE. `podeEditar` na Têmis olha só a etapa do card, e
+ * quem grava é o servidor: desde 21/09/2026 a edição é nominal (Lucas: *"quem pode editar é a
+ * Nivea Careli e Northon Nascimento"*). Sem este campo, cinco pessoas da coordenação abririam o
+ * contrato, reescreveriam uma cláusula e só descobririam no fechamento.
+ *
+ * Portal: sim, como sempre — quem confecciona lá não passa pela régua do hub.
+ */
+async function atorPodeAlterar(ator: AtorDaTemis, request: Request): Promise<boolean> {
+  if (ator.tipo === "portal") return true;
+  return (await autorizarAlteracaoManualDoContrato(request)).ok;
+}
+
 // ── A PRÉVIA ────────────────────────────────────────────────────────────────
 
 /**
@@ -390,6 +405,7 @@ export async function previaDoContrato(ator: AtorDaTemis, request: Request): Pro
   // `contrato/edicao`. Aqui só se decide o que a resposta carrega. No portal quem chega até aqui é
   // quem confecciona a proposta, e por isso vê o próprio rascunho.
   const podeEmitir = await atorPodeEmitir(ator, request);
+  const podeAlterar = await atorPodeAlterar(ator, request);
   const edicao = podeEmitir ? await lerEdicao(sb, propostaId) : null;
 
   // ⚠️ O QUE FALTA É MEDIDO NO TEXTO QUE VAI VIRAR PAPEL. Com uma alteração manual salva, a
@@ -404,7 +420,12 @@ export async function previaDoContrato(ator: AtorDaTemis, request: Request): Pro
     avisos: montado.avisos,
     // A impressão da base VOLTA COM A PRÉVIA e volta no salvamento: é a foto do contrato que a
     // pessoa realmente tinha na tela quando começou a escrever. Ver `contrato-editado.ts`.
-    baseImpressao: podeEmitir ? impressaoDaBase(montado.html) : undefined,
+    // ⚠️ O CARIMBO SEGUE QUEM ALTERA, e não quem emite: ele só serve para SALVAR uma edição
+    // (é a foto da base sobre a qual se escreveu). Mandar para quem não pode escrever é dar a
+    // chave de uma porta que não abre.
+    baseImpressao: podeAlterar ? impressaoDaBase(montado.html) : undefined,
+    // A tela usa isto para não oferecer o que o servidor vai recusar. Ver `atorPodeAlterar`.
+    podeAlterar,
     edicao: edicao
       ? {
           atualizadoEm: edicao.atualizadoEm,

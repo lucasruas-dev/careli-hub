@@ -1,4 +1,4 @@
-import { autorizarEmissaoDeContrato } from "@/lib/temis/autorizacao";
+import { autorizarAlteracaoManualDoContrato } from "@/lib/temis/autorizacao";
 import {
   descartarEdicaoDoContrato,
   salvarEdicaoDoContrato,
@@ -10,10 +10,14 @@ import { atorDoHub } from "@/lib/temis/ator";
 // Lucas (10/09/2026): *"quando eu clicar no abrir contrato, esse contrato tem que me permitir fazer
 // alteração manual, salvar, fechar contrato"*.
 //
-// ⚠️ QUEM EDITA É QUEM EMITE — `autorizarEmissaoDeContrato`, a mesma régua de
-// `/api/temis/contrato/gerar`, e não a de leitura. Reescrever uma cláusula é um ato maior do que
-// imprimir o texto que a minuta já aprovou; deixar isso na régua de conferência daria ao comercial
-// do portal o poder de mudar o contrato que o jurídico vai assinar.
+// ⚠️ QUEM EDITA NÃO É MAIS QUEM EMITE (21/09/2026). Lucas: *"quem pode editar é a Nivea Careli
+// e Northon Nascimento"*. Reescrever cláusula passou a exigir a permissão nominal
+// `temis-contrato-editar` (`autorizarAlteracaoManualDoContrato`), enquanto EMITIR o PDF continua
+// com a coordenação inteira. São atos diferentes: um escreve o que o cliente vai assinar, o
+// outro imprime o texto que já foi escrito.
+//
+// ⚠️ O DELETE ENTRA NA MESMA RÉGUA. Descartar apaga a cláusula que a Nívea escreveu — deixar o
+// apagar mais largo que o escrever seria a mesma porta, aberta pelo outro lado.
 //
 // ⚠️ NÃO EXISTE `GET` AQUI, DE PROPÓSITO. A edição vigente volta junto com a prévia
 // (`/api/temis/contrato/previa`), porque a tela precisa das duas coisas ao mesmo tempo: o texto que
@@ -35,7 +39,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function PUT(request: Request) {
-  const autorizacao = await autorizarEmissaoDeContrato(request);
+  const autorizacao = await autorizarAlteracaoManualDoContrato(request);
   if (!autorizacao.ok) return autorizacao.response;
 
   return salvarEdicaoDoContrato(atorDoHub(autorizacao, "coordenacao"), request);
@@ -43,7 +47,7 @@ export async function PUT(request: Request) {
 
 /** Joga fora a alteração manual: o contrato volta a ser o texto da minuta. */
 export async function DELETE(request: Request) {
-  const autorizacao = await autorizarEmissaoDeContrato(request);
+  const autorizacao = await autorizarAlteracaoManualDoContrato(request);
   if (!autorizacao.ok) return autorizacao.response;
 
   return descartarEdicaoDoContrato(atorDoHub(autorizacao, "coordenacao"), request);

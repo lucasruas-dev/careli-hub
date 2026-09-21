@@ -45,6 +45,7 @@ let derrubarRede = false;
 let htmlDoServidor = DA_MINUTA;
 let salvamentosLentos: (() => void)[] = [];
 let segurarSalvamento = false;
+let servidorDeixaAlterar = true;
 
 function montarFetch() {
   chamadas = [];
@@ -79,6 +80,7 @@ function montarFetch() {
         baseImpressao: "a".repeat(64),
         html: htmlDoServidor,
         minuta: { id: "m-1", nome: "MINUTA", versao: 6 },
+        podeAlterar: servidorDeixaAlterar,
         semValor: [],
       }),
       ok: true,
@@ -148,6 +150,7 @@ beforeEach(async () => {
   recusar403 = false;
   derrubarRede = false;
   segurarSalvamento = false;
+  servidorDeixaAlterar = true;
   htmlDoServidor = DA_MINUTA;
   montarFetch();
   container = document.createElement("div");
@@ -432,5 +435,28 @@ describe("a folha sob re-render", () => {
       folhaDoContrato().firstElementChild,
       "a folha foi reescrita e os nós trocaram de identidade",
     ).toBe(primeiroParagrafo);
+  });
+});
+
+// ── A TELA NÃO OFERECE O QUE O SERVIDOR RECUSA ──────────────────────────────
+//
+// Lucas, 21/09/2026: *"quem pode editar é a Nivea Careli e Northon Nascimento"*. A prop
+// `podeEditar` só sabe a ETAPA do card; quem sabe QUEM está logado é o servidor, e ele responde
+// isso em `podeAlterar`. Sem ler esse campo, cinco pessoas da coordenação abririam o contrato,
+// reescreveriam uma cláusula e levariam 403 no fechamento.
+describe("quem não pode alterar", () => {
+  it("não vê o botão de abrir o contrato para edição", async () => {
+    servidorDeixaAlterar = false;
+    await act(async () => root.unmount());
+    container.remove();
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await rerenderizar();
+
+    const rotulos = [...container.querySelectorAll("button")].map((b) => (b.textContent ?? "").trim());
+    expect(rotulos).not.toContain("Abrir o contrato");
+    // E a folha continua inteira na tela: conferir o contrato é de todo mundo.
+    expect(folhaDoContrato().innerHTML).toBe(DA_MINUTA);
   });
 });

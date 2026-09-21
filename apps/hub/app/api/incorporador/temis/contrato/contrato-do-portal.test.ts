@@ -24,6 +24,7 @@ const PROPOSTA = "641f22ac-6c4a-4133-afec-49fa7b7e1765";
 const estado = vi.hoisted(() => ({
   cards: [] as Array<{ enterprise_id: string; operado_por: null | string }>,
   consultas: [] as Array<{ filtros: unknown[][]; tabela: string }>,
+  podeAlterarOContrato: true,
   documento: null as null | { proposta_id: null | string },
   leiturasDoCadastro: 0,
   minuta: null as null | { enterprise_id: string },
@@ -132,6 +133,15 @@ vi.mock("@/lib/apolo/server", () => ({
         if (tabela === "temis_trabalhos") return { data: estado.cards, error: null };
         if (tabela === "hercules_documentos") return { data: estado.documento, error: null };
         if (tabela === "temis_minutas") return { data: estado.minuta, error: null };
+        // A permissão nominal de alterar o contrato (migration 0184). O jurídico da Careli deste
+        // cenário é quem reescreve cláusula, então ele a tem; `estado.podeAlterarOContrato` deixa
+        // o outro lado testável.
+        if (tabela === "hub_user_permissions") {
+          return {
+            data: estado.podeAlterarOContrato ? { permission_id: "temis-contrato-editar" } : null,
+            error: null,
+          };
+        }
         return { data: null, error: null };
       };
       q.maybeSingle = async () => resposta();
@@ -214,6 +224,7 @@ const VERBOS: Array<[string, () => Promise<Response>]> = [
 beforeEach(() => {
   estado.cards = [{ enterprise_id: "37", operado_por: CECILIO }];
   estado.consultas = [];
+  estado.podeAlterarOContrato = true;
   estado.documento = { proposta_id: PROPOSTA };
   estado.leiturasDoCadastro = 0;
   estado.minuta = null;
@@ -420,6 +431,11 @@ describe("portal: o card dele num produto só consulta (decisão do Lucas, 16/09
 
 // ── 4. O HUB NÃO MUDA ───────────────────────────────────────────────────────
 
+/** Tudo que o hub consulta, TIRANDO a permissão nominal de alterar o contrato (migration 0184). */
+function consultasDeAlcance() {
+  return estado.consultas.filter((c) => c.tabela !== "hub_user_permissions");
+}
+
 describe("hub: mesma função, sem recorte e com o autor de sempre", () => {
   const HUB = "https://c2x.app.br/api/temis";
   const BEARER = { authorization: "Bearer tok", "content-type": "application/json" };
@@ -441,7 +457,12 @@ describe("hub: mesma função, sem recorte e com o autor de sempre", () => {
     expect(aberto.status).toBe(200);
 
     // ⚠️ NENHUMA leitura de alcance: nem cards, nem documento, nem minuta, nem `hub_users`.
-    expect(estado.consultas).toHaveLength(0);
+    //
+    // ⚠️ A EXCEÇÃO É A PERMISSÃO DE ALTERAR (21/09/2026, migration 0184): desde que EDITAR virou
+    // nominal (Lucas: *"quem pode editar é a Nivea Careli e Northon Nascimento"*), a prévia do hub
+    // pergunta ao banco se ESTA pessoa pode reescrever cláusula, para a tela não oferecer o botão
+    // a quem vai levar 403. Recorte de alcance continua sendo zero.
+    expect(consultasDeAlcance()).toHaveLength(0);
   });
 
   it("o autor do hub é o do portão, sem sufixo de origem", async () => {
@@ -466,7 +487,9 @@ describe("hub: mesma função, sem recorte e com o autor de sempre", () => {
       expect.anything(),
       expect.objectContaining({ editadoPor: "user-hub", editadoPorNome: "Jurídico Careli", minutaId: "qualquer" }),
     );
-    expect(estado.consultas).toHaveLength(0);
+    // A permissão nominal de alterar é consultada (ver acima); alcance, nenhum.
+    expect(estado.consultas.map((c) => c.tabela)).toContain("hub_user_permissions");
+    expect(consultasDeAlcance()).toHaveLength(0);
   });
 
   it("o hub não deixa log de portal", async () => {
