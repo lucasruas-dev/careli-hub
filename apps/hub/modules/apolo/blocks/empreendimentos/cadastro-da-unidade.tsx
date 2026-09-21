@@ -52,6 +52,41 @@ function paraCampo(n: null | number | undefined): string {
   return String(n).replace(".", ",");
 }
 
+const SO_DIGITOS = (texto: string) =>
+  [...texto].filter((c) => c >= "0" && c <= "9").join("");
+
+/**
+ * DINHEIRO SEMPRE COM CARA DE DINHEIRO (Lucas, 21/09/2026: *"onde estiver valor sempre trazer
+ * formatação de moeda"*). O campo mostra "432.808,00" e é esse texto que viaja: do outro lado,
+ * `numeroBR` tira o que não é número e trata o ponto como milhar quando existe vírgula.
+ */
+function paraMoeda(n: null | number | undefined): string {
+  if (n === null || n === undefined) return "";
+  return n.toLocaleString("pt-BR", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
+}
+
+/** Reescreve o que o operador digita a cada tecla: os dois últimos dígitos são os centavos. */
+function moedaEnquantoDigita(texto: string): string {
+  const digitos = SO_DIGITOS(texto).slice(0, 12);
+  if (!digitos) return "";
+  return (Number(digitos) / 100).toLocaleString("pt-BR", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
+  });
+}
+
+/**
+ * O número que o campo representa, para comparar com o gravado.
+ *
+ * ⚠️ A COMPARAÇÃO É POR NÚMERO, E NÃO POR TEXTO: "432808" e "432.808,00" são o mesmo valor, e
+ * comparar o texto acenderia o botão Salvar só porque a tela formatou o que já estava lá.
+ */
+function numeroDoCampo(texto: string): null | number {
+  const limpo = texto.replace(/[.]/g, "").replace(",", ".");
+  const n = Number(limpo.trim());
+  return limpo.trim() && Number.isFinite(n) ? n : null;
+}
+
 export function CadastroDaUnidade({ codigo, enterpriseId, recarregar, unidade }: Props) {
   const panteonId = unidade.panteonId ? String(unidade.panteonId) : "";
   const [universo, setUniverso] = useState<null | Universo>(null);
@@ -166,7 +201,7 @@ function DadosDoLote({
   // O que está gravado manda nos campos: o efeito roda de novo quando a tabela é relida.
   useEffect(() => {
     setArea(paraCampo(unidade.area));
-    setPreco(paraCampo(unidade.price));
+    setPreco(paraMoeda(unidade.price));
     setMatricula(unidade.registration ?? "");
     setRecado(null);
     setErro(null);
@@ -210,15 +245,15 @@ function DadosDoLote({
   }, [divisaoDaUnidade, panteonId]);
 
   const mudou =
-    area !== paraCampo(unidade.area) ||
-    preco !== paraCampo(unidade.price) ||
+    numeroDoCampo(area) !== (unidade.area ?? null) ||
+    numeroDoCampo(preco) !== (unidade.price ?? null) ||
     matricula !== (unidade.registration ?? "");
 
   async function salvar() {
     if (!divisaoDaUnidade) return;
     const campos: Record<string, string> = {};
-    if (area !== paraCampo(unidade.area)) campos.area = area.trim();
-    if (preco !== paraCampo(unidade.price)) campos.preco = preco.trim();
+    if (numeroDoCampo(area) !== (unidade.area ?? null)) campos.area = area.trim();
+    if (numeroDoCampo(preco) !== (unidade.price ?? null)) campos.preco = preco.trim();
     if (matricula !== (unidade.registration ?? "")) campos.matricula = matricula.trim();
     if (Object.keys(campos).length === 0) return;
 
@@ -292,8 +327,8 @@ function DadosDoLote({
             disabled={bloqueado || salvando}
             id="cadastro-preco"
             inputMode="decimal"
-            onChange={(e) => setPreco(e.target.value)}
-            placeholder="140401,00"
+            onChange={(e) => setPreco(moedaEnquantoDigita(e.target.value))}
+            placeholder="140.401,00"
             value={preco}
           />
         </div>

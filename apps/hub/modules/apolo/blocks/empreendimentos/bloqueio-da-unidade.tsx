@@ -87,8 +87,11 @@ export function AcaoDeBloqueio({
     }
   }
 
+  // ⚠️ SÓ O ÍCONE, E O NOME NO TOOLTIP (Lucas, 21/09/2026: *"não precisa do texto cadastro e
+  // bloquear, deixa somente os icones e tooltip"*). Quadrado, para os dois botões da linha ficarem
+  // do mesmo tamanho; o `aria-label` diz o que o texto dizia.
   const base =
-    "inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-xs font-semibold text-ink transition-colors hover:border-ink/40 hover:bg-subtle disabled:cursor-default disabled:opacity-40 disabled:hover:border-line disabled:hover:bg-surface";
+    "inline-flex size-8 items-center justify-center rounded-lg border border-line bg-surface text-ink transition-colors hover:border-ink/40 hover:bg-subtle disabled:cursor-default disabled:opacity-40 disabled:hover:border-line disabled:hover:bg-surface";
 
   return (
     <div className="inline-flex flex-col items-end gap-1">
@@ -97,13 +100,14 @@ export function AcaoDeBloqueio({
         // guarda nada e é reversível; bloquear é que pergunta o motivo, porque o motivo precisa
         // sobreviver meses.
         <button
+          aria-label={`Desbloquear ${unidade.code}`}
           className={base}
           disabled={herdadoDoC2x || desbloqueando}
           onClick={() => void desbloquear()}
           title={
             herdadoDoC2x
               ? "Este bloqueio veio do C2X, e é lá que ele se desfaz."
-              : "Devolver o lote ao estoque"
+              : "Desbloquear: devolver o lote ao estoque"
           }
           type="button"
         >
@@ -112,21 +116,24 @@ export function AcaoDeBloqueio({
           ) : (
             <LockOpen aria-hidden="true" className="size-3.5" />
           )}
-          Desbloquear
         </button>
       ) : (
         <button
+          aria-label={`Bloquear ${unidade.code}`}
           className={base}
           disabled={!livre}
           onClick={() => {
             setRecado(null);
             setBloqueando(true);
           }}
-          title={livre ? "Tirar o lote da venda, com o motivo" : undefined}
+          title={
+            livre
+              ? "Bloquear: tirar o lote da venda, com o motivo"
+              : "Só lote livre pode ser bloqueado"
+          }
           type="button"
         >
           <Ban aria-hidden="true" className="size-3.5" />
-          Bloquear
         </button>
       )}
 

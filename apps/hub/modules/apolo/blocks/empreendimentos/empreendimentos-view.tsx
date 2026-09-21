@@ -58,6 +58,7 @@ import {
   Loader2,
   MapPinned,
   Network,
+  Pencil,
   Percent,
   Plus,
   Search,
@@ -2518,15 +2519,18 @@ export function UnidadesTab({
                       <div className="inline-flex items-center gap-1.5">
                         {/* ⚠️ O ATALHO LEVA PARA A SUB-ABA, e não abre uma segunda janela de
                             cadastro: uma porta só para o mesmo assunto. */}
+                        {/* ⚠️ SÓ O ÍCONE, COM O NOME NO TOOLTIP (Lucas, 21/09/2026: *"não precisa
+                            do texto cadastro e bloquear, deixa somente os icones e tooltip"*). O
+                            `aria-label` carrega o nome para quem lê a tela sem ver. */}
                         {cadastroDaUnidade ? (
                           <button
-                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-xs font-semibold text-ink transition-colors hover:border-ink/40 hover:bg-subtle"
+                            aria-label={`Editar o cadastro de ${unit.code}`}
+                            className="inline-flex size-8 items-center justify-center rounded-lg border border-line bg-surface text-ink transition-colors hover:border-ink/40 hover:bg-subtle"
                             onClick={() => abrirCadastro(unit)}
-                            title="Abrir o cadastro desta unidade"
+                            title="Editar o cadastro desta unidade"
                             type="button"
                           >
-                            <FileText aria-hidden="true" className="size-3.5" />
-                            Cadastro
+                            <Pencil aria-hidden="true" className="size-3.5" />
                           </button>
                         ) : null}
                         {acaoDaUnidade ? acaoDaUnidade(unit, recarregar) : null}

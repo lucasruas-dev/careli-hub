@@ -76,6 +76,11 @@ export function VinculoDaUnidade({
   const [resultado, setResultado] = useState<null | Aplicacao>(null);
   const [ocupado, setOcupado] = useState(false);
 
+  // ⚠️ ENQUANTO NÃO CHEGA, A TELA NÃO PODE AFIRMAR NADA. Antes disto, com o universo nulo, o bloco
+  // dizia "este empreendimento não tem categorias" e escondia o seletor de filho — e quem abria a
+  // ficha de um lote do Lagoa Bonita (que tem 2 categorias e 3 filhos) concluía que não havia onde
+  // vincular. A leitura traz a família inteira (907 unidades no Lagoa Bonita), então ela demora.
+  const carregando = universo === null;
   const linha = universo?.unidades.find((u) => u.id === panteonId) ?? null;
   const atualId = linha?.categoriaId ?? "";
   const divisaoAtual = linha?.enterpriseId ?? "";
@@ -204,9 +209,11 @@ export function VinculoDaUnidade({
               segurança": são 5.540 unidades vivas e a maioria esmagadora assina a minuta do
               produto. */}
           <p className="m-0 mt-1 text-[11px] text-ink-muted">
-            {(universo?.categorias.length ?? 0) === 0
-              ? "Este empreendimento não tem categorias. Sem categoria, o lote segue a minuta do produto, e a categoria nova se cadastra no Setup do empreendimento."
-              : "Sem categoria, o lote segue a minuta do produto. O registro antigo do mesmo terreno é carimbado junto."}
+            {carregando
+              ? "Lendo as categorias e os filhos deste empreendimento…"
+              : (universo?.categorias.length ?? 0) === 0
+                ? "Este empreendimento não tem categorias. Sem categoria, o lote segue a minuta do produto, e a categoria nova se cadastra no Setup do empreendimento."
+                : "Sem categoria, o lote segue a minuta do produto. O registro antigo do mesmo terreno é carimbado junto."}
           </p>
           {linha?.vinculo ? (
             <p className="m-0 mt-1 text-[11px] text-ink-muted">
@@ -217,7 +224,9 @@ export function VinculoDaUnidade({
           ) : null}
         </div>
 
-        {(universo?.divisoes.length ?? 0) > 1 ? (
+        {/* ⚠️ O BLOCO DO FILHO APARECE TAMBÉM ENQUANTO CARREGA, desabilitado: escondê-lo até a
+            resposta chegar faz a tela parecer que aquele produto não tem filho nenhum. */}
+        {carregando || (universo?.divisoes.length ?? 0) > 1 ? (
           <div className="rounded-xl border border-dashed border-line p-3">
             <label
               className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted"
@@ -237,6 +246,7 @@ export function VinculoDaUnidade({
               }}
               value={divisaoDestino || divisaoAtual}
             >
+              {carregando ? <option value="">Carregando…</option> : null}
               {(universo?.divisoes ?? []).map((d) => (
                 <option key={d.enterpriseId} value={d.enterpriseId}>
                   {d.pai ? `${d.nome} (o conjunto)` : d.nome}
