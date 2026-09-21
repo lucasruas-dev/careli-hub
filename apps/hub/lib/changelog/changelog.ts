@@ -76,10 +76,102 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
       motivation:
         "Lucas, 21/09/2026: \"preciso garantir que consigamos vincular os anexos por filho, categoria. tambem as minutas\" e \"eu preciso tambem vincular as unidades no filho, categoria (quando existir), ou seja, eu ainda nao tenho esse fluxo pronto e preciso\". Medido antes: 3.073 propostas penduradas no pai de produto dividido (1.251 em produto que ainda vende), a minuta do Vale do Ouro publicada no filho e invisivel para as 559 do pai, zero anexos cadastrados e o bloco de anexo da minuta do VOL sumindo do papel em silencio.",
     },
-    rollback: "eeda0a86",
+    rollback: "15cf2a6e",
     title: "Divisão, categoria, minuta que herda e anexos no contrato",
     type: "melhoria",
     version: "1.353.0",
+  },
+  {
+    buildTag: "2026-09-21-workflow-da-cobranca-que-salva",
+    deployedAt: "2026-09-21T11:10:00-03:00",
+    modules: [
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "**Dá para registrar um comentário no workflow sem precisar mudar de etapa.** Antes o botão de salvar só acendia se a etapa mudasse, então quem só queria anotar o que aconteceu no contato ficava sem saída.",
+              "**O que você grava fica gravado.** A etapa e o comentário passam a ser salvos de verdade e voltam ao reabrir a tela: nenhuma etapa manual tinha chegado ao banco desde que a gravação foi criada, quase um mês atrás.",
+              "**O motor da cobrança não passa mais por cima da sua decisão.** A etapa calculada pelos compromissos vira sugestão; quem escolheu a etapa à mão manda, e ela não volta atrás quando a tela recarrega.",
+              "**Quando a gravação falha, a tela avisa** em vez de mostrar a alteração como se tivesse dado certo.",
+              "**O histórico de alteração guarda mais de um registro por cliente**, com quem escreveu e quando.",
+            ],
+            screen: "Cobrança · Workflow operacional",
+          },
+        ],
+      },
+    ],
+    rollback: "f73eefff",
+    technical: {
+      done:
+        "Chamado TI-000138 (crítico, Isac Santa Fé, 25/08/2026), quatro defeitos empilhados. (1) `OperationalWorkflowCard.tsx`: `canConfirm = stageChanged && reasonFilled` impedia comentar sem trocar etapa — a queixa literal. (2) `app/api/guardian/etapa/route.ts` fazia `Number(clienteId)` e a tela manda `c2x-client-3757` (`read-model.ts`): NaN → 400 em TODA chamada; medido em 21/09, `guardian_etapa_manual` com ZERO linhas. Novo `lib/guardian/id-do-cliente.ts` (5 testes) extrai os dígitos FINAIS, nunca todos — `replace(/\D/g,\"\")` traz o \"2\" de \"c2x\" e grava no cliente errado, armadilha já medida no Apolo. (3) `void onChangeStage?.(...)` descartava a rejeição: agora o card aguarda, desfaz o estado otimista e mostra a frase do servidor. (4) `read-model.ts` devolvia `workflowStage = \"A acionar\"` fixo e ninguém lia a tabela: `carregarEtapasManuais` lê a tabela inteira (sem `.in()` com centenas de ids, que estoura a URL do PostgREST) e a etapa manual entra no mapeamento com o motivo no histórico. Como a 0106 guarda uma linha por cliente de propósito, o histórico por evento vai para `caredesk_ticket_events` (`guardian_manual_timeline`), o mesmo canal que a tela já lê por `client_id`. VARREDURA PEDIDA PELO LUCAS, achado alto confirmado e corrigido junto: `applyClientStage` (`AttendancePage.tsx`) e o efeito de `autoStage` no card sobrescreviam a etapa manual a cada carga — a trava era um `useRef` que nasce falso a cada montagem —, o que desfazia esta correção para todo cliente com compromisso e ainda escrevia no histórico uma linha assinada \"Hades\" que não existe no banco; a etapa manual agora viaja marcada (`workflow.stageManual`) e o motor não passa por cima. 467 arquivos e 7.457 testes, typecheck limpo. ⚠️ EM ABERTO, MEDIDO E NÃO CORRIGIDO: a régua de lembretes da PROMESSA nunca dispara — `carimboAoCriar` grava `approval_status: aprovado` com `approved_at: null` (`aprovacao-da-proposta.ts`), `podeDispararLembrete` exige o carimbo, e a única rota que carimba filtra `approval_status = pendente`, que a promessa nunca é. Hoje são 1 promessa sem carimbo com 4 lembretes presos, 18 acordos com 440 lembretes pendentes e ZERO lembretes enviados. Destravar dispara mensagem real para cliente: precisa de decisão do Lucas e de plano para os presos.",
+      motivation:
+        "Chamado TI-000138: *\"Não conseguimos colocar comentário de workflow, não fica salvo após fechar\"*. Lucas (21/09/2026): *\"um outro erro que estamos tendo na operação de cobrança, com alteração do workflows, o time não está conseguindo fazer isso manualmente\"* e *\"aproveita e faça uma varredura nesse processo, até nos processos automatizados\"*.",
+    },
+    title: "Cobrança: o workflow guarda o que o time escreve",
+    type: "correcao",
+    version: "1.352.3",
+  },
+  {
+    buildTag: "2026-09-21-abertura-de-atendimento-na-fila-certa",
+    deployedAt: "2026-09-21T10:15:00-03:00",
+    modules: [
+      {
+        module: "Íris",
+        screens: [
+          {
+            items: [
+              "**O atendimento nasce na fila que você escolheu.** Nas filas que ainda não têm assunto cadastrado (Central de Relacionamento, Contato, Compras, Gente&Cultura, Grupo, Antecipação e Supervisionamento), o atendimento ia parar na Cobrança, que é de outra central — e sumia da tela de quem tinha acabado de abrir. Na segunda tentativa vinha o aviso de que já existia atendimento aberto.",
+              "**A conversa de outro cliente não aparece mais no lugar da que você pediu.** Quando o atendimento procurado não estava na lista, a tela abria o primeiro da fila, e era fácil ler aquilo como sendo o atendimento certo.",
+              "**Atendimento aberto na outra central agora abre de verdade**: a tela troca de aba sozinha em vez de mostrar tela vazia.",
+              "**Quando o atendimento está numa fila fora do seu acesso, a Íris explica isso** e diz para pedir transferência a quem responde pela fila, em vez de oferecer um botão que não leva a lugar nenhum.",
+              "**A fila de grupos saiu da lista de destinos ao abrir atendimento.** Grupo de WhatsApp é monitoramento, não atendimento individual.",
+            ],
+            screen: "Atendimento · Abrir atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "69ed0935",
+    technical: {
+      done:
+        "Chamado TI-000126 (crítico, aberto por Northon Nascimento em 21/08/2026). Três defeitos, um relato. (1) `tickets/route.ts` decidia `profileQueue ?? requestedQueue`: a fila do ASSUNTO ganhava da escolhida, e a fila gravada (`queueId`) vinha de `profile?.queue_id` primeiro. Como 7 das 14 filas ativas não têm assunto, a tela não manda `profileId` e o servidor caía em `getDefaultProfile` → \"primeiro-contato\", que pertence à COBRANÇA (medido no banco). 71 tickets nasceram assim, 29 em setembro. Efeito colateral: com a fila trocada, `getEvolutionChannelOfQueue` rodava sobre a fila errada e a trava da janela de 24h voltava a valer para a Central de Relacionamento, desfazendo a 1.349.3. Novo `lib/iris/fila-da-abertura.ts` (9 testes): `filaDaAbertura` (a escolhida manda; o assunto só decide quando não há fila pedida, que é como Hades e Apolo abrem) e `assuntoParaAFila` (assunto de outra fila é descartado, porque carrega SLA, prioridade e nome). (2) `IrisPage.tsx`: `selectedTicket` caía em `irisData.tickets[0]` quando o id pedido não estava na lista — abria a conversa de OUTRO cliente. Agora id sem correspondência não abre nada. (3) `centrais.ts`: novo `ondeAbrirOTicket` (7 testes) separa \"está aqui\", \"outra central\" e \"fora do alcance\" lendo o dado BRUTO (já filtrado por permissão), porque a recusa do servidor enxerga todas as filas e a lista da tela passa por régua de acesso e central; o modal usa isso para trocar de aba ou explicar. A fila `grupos-whatsapp` saiu do seletor de abertura. 466 arquivos e 7.452 testes passando, typecheck limpo. ⚠️ As 7 filas sem assunto continuam sem assunto: isso é cadastro no Setup, não código — o atendimento agora nasce sem assunto e herda o SLA da fila.",
+      motivation:
+        "Chamado TI-000126: *\"Tento chamar o usuário mas vai para os grupos e quando tento abrir novamente, diz que já tem um ticket aberto, mas não aparece a conversa\"*. Lucas (21/09/2026): *\"analise o ticket do helpdesk TI-000126\"*, *\"e corrija\"*, *\"ele está reclamando com abertura de ticket na iris\"*.",
+    },
+    title: "Íris: o atendimento nasce na fila que você escolheu",
+    type: "correcao",
+    version: "1.352.2",
+  },
+  {
+    buildTag: "2026-09-21-iris-quem-transferiu",
+    deployedAt: "2026-09-21T09:40:00-03:00",
+    modules: [
+      {
+        module: "Íris",
+        screens: [
+          {
+            items: [
+              "**A conversa passa a dizer QUEM transferiu o atendimento, e quando.** A linha cinza da transferência contava a fila de origem, a de destino e o motivo, mas nunca o nome de quem fez a operação. Agora traz o nome e o horário logo abaixo.",
+              "**Vale para o histórico inteiro, não só daqui para a frente**: o nome já estava gravado em todas as transferências desde o fim de junho, e a tela é que não o mostrava. Ao abrir um atendimento antigo, as transferências passadas aparecem identificadas.",
+              "**A transferência automática se identifica como Cacá**, do mesmo jeito, então dá para distinguir num relance o que foi a máquina e o que foi pessoa.",
+              "Vale também no celular, na conversa do /m.",
+            ],
+            screen: "Atendimento · Conversa",
+          },
+        ],
+      },
+    ],
+    rollback: "eeda0a86",
+    technical: {
+      done:
+        "Chamado TI-000059 da operação. O dado nunca faltou: medido no banco em 21/09/2026, as 2.521 mensagens de transferência têm `provider_payload.operatorLabel` preenchido (100%, desde 28/06/2026), e `mapMessageRow` já vira `senderLabel` (`iris-data-client.ts:1500`). Quem descartava era o render: a pílula de sistema imprimia só `message.body` (`IrisPage.tsx:6201`), enquanto o cartão de nota interna, no mesmo arquivo, já mostrava autor e hora. Novo `modules/caredesk/lib/autoria-da-pilula.ts` (8 testes) monta a linha \"Nome · data\" e é usado pelas DUAS telas que desenham a pílula — `IrisPage` e `app/m/iris/[ticketId]` —, que era a varredura de leitores; nenhuma outra tela lê mensagem. O \"-\" que `formatDateTime` devolve para data inválida é tratado como vazio, senão sairia \"Beatriz Araújo · -\". Nada mudou no servidor, então a correção é retroativa. ⚠️ MEDIDO E EM ABERTO: existem caminhos que trocam o DONO do ticket sem registrar nada — assumir ao responder por WhatsApp (`meta/messages/route.ts:1605`), o mesmo por e-mail (`email-reply/route.ts:251`) e o disparo ativo que reaproveita atendimento aberto (`tickets/route.ts:549`). De 4.484 tickets com dono, 3.966 não têm nenhum evento de transferência. É outra frente, não o que o chamado pede.",
+      motivation:
+        "Chamado TI-000059, aberto pela operação: *\"Precisamos que apareça quem foi o responsável pela transferência na Iris, pra sabermos exatamente quem fez a operação\"*. Lucas (21/09/2026): *\"verifica por favor se fica registrado quem transfere os tickets da iris\"*.",
+    },
+    title: "Íris: a conversa mostra quem transferiu o atendimento",
+    type: "melhoria",
+    version: "1.352.1",
   },
   {
     buildTag: "2026-09-20-termo-de-acordo-e-card-do-panteon",

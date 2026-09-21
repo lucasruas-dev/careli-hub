@@ -14,7 +14,7 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { IRIS_CENTRAIS, IRIS_CENTRAL_LABEL_CURTO } from "../../lib/centrais";
+import { IRIS_CENTRAIS, IRIS_CENTRAL_LABEL_CURTO, type DestinoDoTicket } from "../../lib/centrais";
 import { interpretarDigitos } from "@/lib/iris/apolo/busca-por-numero";
 
 import type {
@@ -110,6 +110,14 @@ type IrisStartAttendanceModalProps = {
    * (`recortarDadosPorCentral`), e o seletor de canal precisa justamente do que está FORA dela.
    */
   todasAsFilas?: IrisQueueConfig[];
+  /**
+   * Onde está, para ESTA pessoa, o atendimento que já existe.
+   *
+   * ⚠️ A RECUSA ENXERGA MAIS DO QUE A LISTA. O servidor barra o segundo atendimento olhando todas
+   * as filas; a tela mostra só as do departamento da pessoa, e só as da central aberta. Sem isto,
+   * o botão "Abrir o atendimento existente" levava a uma tela vazia — o chamado TI-000126.
+   */
+  ondeAbrir?: (ticketId: string) => DestinoDoTicket;
   onClose: () => void;
   onTicketCreated: (ticketId?: string) => void;
   onTemplatesSynced?: () => void;
@@ -150,6 +158,10 @@ function parseBrDateMs(raw: string | null | undefined): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
+// A fila de monitoramento de grupos, que não recebe atendimento aberto pela tela. O slug é o mesmo
+// que `iris-data-client.ts` usa para montar a aba Grupos.
+const FILA_DOS_GRUPOS = "grupos-whatsapp";
+
 // Check 1 (regra Lucas 30/jun): cliente já com ticket ativo NO MESMO NÚMERO —
 // devolvido pelo backend pra bloquear a abertura e oferecer abrir o existente.
 type IrisActiveTicketBlock = {
@@ -169,6 +181,7 @@ export function IrisStartAttendanceModal({
   helpers,
   initialQueueLabel,
   onClose,
+  ondeAbrir,
   onTicketCreated,
   todasAsFilas,
 }: IrisStartAttendanceModalProps) {
@@ -213,8 +226,12 @@ export function IrisStartAttendanceModal({
 
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Onde esse atendimento existente está, do ponto de vista desta pessoa. Sem `ondeAbrir` (nenhum
+  // chamador antigo passa), segue como antes: oferece abrir.
   const [blockedTicket, setBlockedTicket] =
     useState<IrisActiveTicketBlock | null>(null);
+  const destinoDoBloqueado =
+    blockedTicket && ondeAbrir ? ondeAbrir(blockedTicket.ticketId) : null;
 
   /**
    * O CANAL vem primeiro, e a fila depois — o fluxo que o Lucas descreveu (20/08/2026):
@@ -252,6 +269,12 @@ export function IrisStartAttendanceModal({
         .filter(
           (queue) =>
             queue.status === "active" &&
+            // ⚠️ A FILA DOS GRUPOS NÃO É DESTINO DE ATENDIMENTO. Grupo de WhatsApp não é ticket:
+            // é entidade própria, monitorada, montada de `caredesk_whatsapp_groups`
+            // (`iris-data-client.ts`). Escolhê-la aqui criava um atendimento 1:1 que ia parar na
+            // aba Grupos — o "vai para os grupos" do chamado TI-000126, ao pé da letra. Ela nunca
+            // recebeu nenhum ticket em produção (medido em 21/09/2026: zero).
+            queue.slug !== FILA_DOS_GRUPOS &&
             (!centralEscolhida || queue.central === centralEscolhida),
         )
         .sort(sortIrisQueues),
@@ -1071,17 +1094,32 @@ export function IrisStartAttendanceModal({
                         . Não dá pra abrir um segundo ticket nesse número —
                         continue no atendimento que já existe.
                       </p>
+                      {/* ⚠️ FORA DO SEU ACESSO NÃO É "CLIQUE AQUI". A fila é de outro
+                          departamento, e a régua já tirou esse atendimento da sua lista: o botão
+                          abria uma tela vazia, e a pessoa ficava sem entender (TI-000126). */}
+                      {destinoDoBloqueado?.tipo === "fora_do_alcance" ? (
+                        <p className="mt-1.5 text-xs leading-relaxed text-amber-800">
+                          Esse atendimento está numa fila que não faz parte do seu acesso, então ele
+                          não aparece na sua lista. Peça a quem responde pela fila
+                          {blockedTicket.queueLabel ? ` ${blockedTicket.queueLabel}` : ""} para
+                          transferir ou encerrar.
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onTicketCreated(blockedTicket.ticketId)}
-                  className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#101820] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1f2c3a]"
-                >
-                  <Headset className="size-4" aria-hidden="true" />
-                  Abrir o atendimento existente
-                </button>
+                {destinoDoBloqueado?.tipo === "fora_do_alcance" ? null : (
+                  <button
+                    type="button"
+                    onClick={() => onTicketCreated(blockedTicket.ticketId)}
+                    className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#101820] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1f2c3a]"
+                  >
+                    <Headset className="size-4" aria-hidden="true" />
+                    {destinoDoBloqueado?.tipo === "outra_central"
+                      ? "Abrir na outra central"
+                      : "Abrir o atendimento existente"}
+                  </button>
+                )}
               </div>
             ) : (
             <>

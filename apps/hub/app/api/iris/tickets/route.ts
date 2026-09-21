@@ -3,6 +3,7 @@ import {
   decidirAbertura,
   origemDoTicket,
 } from "@/lib/iris/abertura-fora-da-meta";
+import { assuntoParaAFila, filaDaAbertura } from "@/lib/iris/fila-da-abertura";
 import { fixLegacyBrazilianMobileNumber } from "@/lib/iris/phone-country";
 import { NextResponse, type NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -300,7 +301,14 @@ export async function POST(request: NextRequest) {
     const profileQueue = profile?.queue_id
       ? await getQueueById(client, profile.queue_id)
       : null;
-    const queue = profileQueue ?? requestedQueue ?? defaultQueue;
+    // ⚠️ A FILA ESCOLHIDA NA TELA MANDA — ver `lib/iris/fila-da-abertura.ts` e o chamado TI-000126.
+    // Aqui era `profileQueue ?? requestedQueue`, e a fila do ASSUNTO ganhava da escolhida: quem
+    // abria numa das 7 filas sem assunto cadastrado (Central de Relacionamento, Contato, Compras,
+    // Gente&Cultura, Grupo, Antecipação, Supervisionamento) caía no assunto padrão do sistema, que
+    // é da COBRANÇA — e o atendimento nascia na outra central, sumindo da tela de quem o abriu.
+    const queue = filaDaAbertura(requestedQueue, profileQueue, defaultQueue);
+    // O assunto de outra fila é descartado: ele carrega SLA, prioridade e o nome que sai na tela.
+    const assunto = assuntoParaAFila(profile, queue);
     // Amarra o canal + número de envio à FILA: cada fila tem um canal WhatsApp
     // dedicado (config.defaultQueueSlug) — Jurídico → número Jurídico, Gurgel →
     // Gurgel, Atendimento → 4143. Sem channelId explícito, o canal (e o número)
@@ -506,20 +514,22 @@ export async function POST(request: NextRequest) {
         })
       : null;
     const now = new Date();
-    const queueId = profile?.queue_id ?? queue?.id ?? null;
+    // ⚠️ E A FILA GRAVADA É A MESMA QUE O RESTO DA ROTA USOU. Aqui era `profile?.queue_id` primeiro,
+    // então mesmo com a fila certa escolhida acima o ticket ia para o banco na fila do assunto.
+    const queueId = queue?.id ?? assunto?.queue_id ?? null;
     const firstResponseMinutes =
-      Number(profile?.sla_first_response_minutes) ||
+      Number(assunto?.sla_first_response_minutes) ||
       Number(queue?.sla_first_response_minutes) ||
       60;
     const resolutionMinutes =
-      Number(profile?.sla_resolution_minutes) ||
+      Number(assunto?.sla_resolution_minutes) ||
       Number(queue?.sla_resolution_minutes) ||
       480;
     const ticketProjection = "id,protocol,profile_id,queue_id,priority,status,opened_at,subject";
     const ticketSubject =
       subject ??
       (sourceModule === "hades"
-        ? `Cobranca Hades - ${profile?.name ?? "Atendimento WhatsApp"}`
+        ? `Cobranca Hades - ${assunto?.name ?? "Atendimento WhatsApp"}`
         : "Contato ativo - aceite Iris");
     const activeContactConsent = shouldSendTemplate
       ? "awaiting_customer_reply"
@@ -577,8 +587,8 @@ export async function POST(request: NextRequest) {
             templateInstallmentSummary,
             templateProtocolReference,
           },
-          priority: profile?.priority ?? linkedAttendanceTicket.priority ?? queue?.default_priority ?? "medium",
-          profile_id: profile?.id ?? linkedAttendanceTicket.profile_id ?? null,
+          priority: assunto?.priority ?? linkedAttendanceTicket.priority ?? queue?.default_priority ?? "medium",
+          profile_id: assunto?.id ?? linkedAttendanceTicket.profile_id ?? null,
           queue_id: queueId ?? linkedAttendanceTicket.queue_id ?? null,
           source_context: {
             ...currentSourceContext,
@@ -656,8 +666,8 @@ export async function POST(request: NextRequest) {
             templateProtocolReference,
           },
           opened_at: now.toISOString(),
-          priority: profile?.priority ?? queue?.default_priority ?? "medium",
-          profile_id: profile?.id ?? null,
+          priority: assunto?.priority ?? queue?.default_priority ?? "medium",
+          profile_id: assunto?.id ?? null,
           protocol,
           queue_id: queueId,
           resolution_due_at: addMinutes(now, resolutionMinutes),

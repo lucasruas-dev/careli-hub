@@ -224,14 +224,84 @@ export async function loadHadesAttendanceQueueReadModel(
     return null;
   }
 
+  const etapasManuais = await carregarEtapasManuais(adminClient);
+
   return {
     clients: data.map((row) =>
-      mapAttendanceQueueRow(row, { compact: !includeMetadata }),
+      mapAttendanceQueueRow(row, {
+        compact: !includeMetadata,
+        etapaManual: etapasManuais.get(String(row.client_c2x_id ?? row.id)) ?? null,
+      }),
     ),
     count: count ?? null,
     syncedAt: latestSyncedAt(data),
   };
 }
+
+/** A etapa que o operador escolheu à mão, como ela vive em `guardian_etapa_manual` (0106). */
+type EtapaManual = {
+  cliente_c2x_id: number | string;
+  etapa: string;
+  motivo: string;
+  operador_nome: null | string;
+  updated_at: null | string;
+};
+
+/**
+ * As etapas manuais, por cliente.
+ *
+ * ⚠️ LÊ A TABELA INTEIRA, sem `.in()` com os ids da página. São no máximo algumas centenas de
+ * linhas (uma por cliente da carteira), e montar um `.in()` com centenas de ids estoura o limite
+ * de tamanho da URL do PostgREST — armadilha já medida neste repo. O teto de 1.000 linhas do
+ * PostgREST é respeitado com o `limit` explícito: se um dia a carteira passar disso, a página
+ * seguinte precisa ser paginada aqui.
+ *
+ * ⚠️ FALHA NA LEITURA NÃO DERRUBA A FILA. Sem as etapas manuais a tela volta ao comportamento
+ * antigo (todo mundo em "A acionar"), que é ruim mas é melhor do que a cobrança inteira sem lista.
+ */
+async function carregarEtapasManuais(
+  adminClient: ReturnType<typeof createSupabaseAdminClient>,
+): Promise<Map<string, EtapaManual>> {
+  const vazio = new Map<string, EtapaManual>();
+  if (!adminClient) return vazio;
+
+  const { data, error } = await (adminClient
+    .from("guardian_etapa_manual" as never)
+    .select("cliente_c2x_id,etapa,motivo,operador_nome,updated_at")
+    .limit(1000) as unknown as Promise<{
+    data: EtapaManual[] | null;
+    error: null | { message: string };
+  }>);
+
+  if (error || !data) return vazio;
+
+  for (const linha of data) {
+    vazio.set(String(linha.cliente_c2x_id), linha);
+  }
+
+  return vazio;
+}
+
+/** Etapa gravada que não é mais uma etapa conhecida do workflow não pode virar estado da tela. */
+function etapaManualValida(
+  etapa: EtapaManual | null | undefined,
+): (EtapaManual & { etapa: WorkflowStage }) | null {
+  if (!etapa) return null;
+  const nome = String(etapa.etapa ?? "").trim() as WorkflowStage;
+  return ETAPAS_DO_WORKFLOW.includes(nome) ? { ...etapa, etapa: nome } : null;
+}
+
+// As mesmas sete do popup (`OperationalWorkflowCard`). Escrever aqui de novo é deliberado: este
+// módulo roda no servidor e não importa componente de tela.
+const ETAPAS_DO_WORKFLOW: WorkflowStage[] = [
+  "A acionar",
+  "Contato",
+  "Negociação",
+  "Promessa de pagamento",
+  "Acordo",
+  "Quebra",
+  "Jurídico",
+];
 
 export type {
   HadesAgingByClientBucket,
@@ -365,7 +435,7 @@ function mapDistributionRows(
 
 function mapAttendanceQueueRow(
   row: AttendanceQueueRow,
-  options: { compact: boolean },
+  options: { compact: boolean; etapaManual?: EtapaManual | null },
 ): QueueClient {
   const clientName = row.client_name?.trim() || EMPTY_FIELD;
   const enterpriseName = row.enterprise_name?.trim() || EMPTY_FIELD;
@@ -381,7 +451,13 @@ function mapAttendanceQueueRow(
   const priority = mapHadesPriority(row.priority);
   // Regra (Lucas): todos entram na 1a etapa "A acionar"; o estagio avanca
   // manual (popup) ou auto (acao). Nao derivamos mais por dias de atraso.
-  const workflowStage: WorkflowStage = "A acionar";
+  //
+  // ⚠️ E A ETAPA ESCOLHIDA À MÃO GANHA DA IMPORTAÇÃO, senão ela morre na próxima sync. Este
+  // read-model é REESCRITO pelo sync do C2X a cada 15 minutos; a decisão do operador mora em
+  // `guardian_etapa_manual` e é aplicada aqui, na leitura. Sem isto, gravar a etapa não adiantava
+  // nada: a tela recarregava em "A acionar" e o comentário sumia — o chamado TI-000138.
+  const etapaManual = etapaManualValida(options.etapaManual);
+  const workflowStage: WorkflowStage = etapaManual?.etapa ?? "A acionar";
   const nextAction = nextActionForStage(workflowStage, priority);
   const rowId = String(row.client_c2x_id ?? row.id);
   const metadata = options.compact ? null : (row.metadata ?? null);
@@ -486,19 +562,35 @@ function mapAttendanceQueueRow(
       history: options.compact
         ? []
         : [
+            // A alteração manual vem primeiro: é a mais recente e é a que explica a etapa atual.
+            ...(etapaManual
+              ? [
+                  {
+                    changedAt: formatSyncedAt(etapaManual.updated_at),
+                    from: "A acionar" as const,
+                    id: `etapa-manual-${row.id}`,
+                    operator: etapaManual.operador_nome ?? EMPTY_FIELD,
+                    reason: etapaManual.motivo,
+                    to: etapaManual.etapa,
+                  },
+                ]
+              : []),
             {
               changedAt: formatSyncedAt(row.synced_at),
               from: "Entrada",
               id: `c2x-workflow-${row.id}`,
               operator: EMPTY_FIELD,
               reason: `${overduePayments} parcela(s) vencida(s) importada(s) do C2X para a fila operacional.`,
-              to: workflowStage,
+              to: "A acionar",
             },
           ],
       nextAction,
       owner: EMPTY_FIELD,
       stage: workflowStage,
-      updatedAt: formatSyncedAt(row.synced_at),
+      stageManual: Boolean(etapaManual),
+      updatedAt: etapaManual
+        ? formatSyncedAt(etapaManual.updated_at)
+        : formatSyncedAt(row.synced_at),
     },
   };
 }

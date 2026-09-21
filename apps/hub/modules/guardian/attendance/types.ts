@@ -174,6 +174,15 @@ export type QueueClient = {
   };
   workflow: {
     stage: WorkflowStage;
+    /**
+     * A etapa foi escolhida À MÃO por alguém (`guardian_etapa_manual`).
+     *
+     * ⚠️ DECISÃO DE GENTE NÃO É SOBRESCRITA PELO MOTOR. A etapa derivada dos compromissos é
+     * SUGESTÃO; quando isto é verdadeiro, quem manda é a pessoa. Sem esta marca, todo cliente com
+     * compromisso voltava a exibir a etapa calculada assim que a tela carregava, e a escolha
+     * gravada no banco nunca aparecia — o chamado TI-000138 voltando pela porta dos fundos.
+     */
+    stageManual?: boolean;
     updatedAt: string;
     owner: string;
     nextAction: string;

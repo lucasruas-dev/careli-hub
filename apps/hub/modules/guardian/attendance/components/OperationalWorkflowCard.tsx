@@ -60,6 +60,8 @@ export function OperationalWorkflowCard({
     client.workflow.history,
   );
   const [editorOpen, setEditorOpen] = useState(false);
+  // A frase que a rota devolveu quando a gravação falhou. Vazio = nada a dizer.
+  const [erroAoSalvar, setErroAoSalvar] = useState("");
   const nextAction = autoNextAction ?? client.workflow.nextAction;
   // O override manual (popup) vence o auto na sessao: depois que o operador
   // muda a mao, o motor para de sobrescrever.
@@ -67,8 +69,15 @@ export function OperationalWorkflowCard({
 
   // Auto - Hades: aplica a etapa derivada do motor quando ela difere da atual
   // (e o operador ainda nao mexeu na mao). Carimba no historico como Auto.
+  //
+  // ⚠️ E NUNCA POR CIMA DE ETAPA ESCOLHIDA À MÃO. `manuallyChanged` é um `useRef` que nasce FALSO a
+  // cada montagem, então ele só protege a sessão em que a pessoa clicou: ao reabrir a tela, o motor
+  // atropelava de novo a etapa que estava gravada em `guardian_etapa_manual`. Quem carrega a
+  // memória do que a pessoa decidiu é o read-model (`stageManual`), e ele vale para sempre.
+  const etapaEhDaPessoa = client.workflow.stageManual === true;
+
   useEffect(() => {
-    if (!autoStage || manuallyChanged.current || autoStage === stage) {
+    if (!autoStage || etapaEhDaPessoa || manuallyChanged.current || autoStage === stage) {
       return;
     }
     setHistory((current) => [
@@ -87,7 +96,12 @@ export function OperationalWorkflowCard({
     setUpdatedAt(nowForDisplay());
   }, [autoStage]);
 
-  function applyStageChange(nextStage: WorkflowStage, reason: string) {
+  // ⚠️ A GRAVAÇÃO É ESPERADA, E O ERRO VOLTA PARA A TELA. Aqui era `void onChangeStage?.(...)`: a
+  // promessa ia para o vazio, o estado local já mostrava a etapa nova e o comentário no histórico,
+  // e quem olhava jurava que tinha salvado. Ao fechar e reabrir, nada. Era o outro elo do chamado
+  // TI-000138 — a rota recusava toda chamada com 400 e ninguém ficava sabendo.
+  async function applyStageChange(nextStage: WorkflowStage, reason: string) {
+    const estadoAnterior = { history, stage, updatedAt };
     manuallyChanged.current = true;
     const change: WorkflowChange = {
       id: `${client.id}-wf-${Date.now()}`,
@@ -102,14 +116,28 @@ export function OperationalWorkflowCard({
     setHistory((current) => [change, ...current]);
     setStage(nextStage);
     setUpdatedAt(nowForDisplay());
-    setEditorOpen(false);
+    setErroAoSalvar("");
 
-    void onChangeStage?.({
-      from: change.from,
-      operator,
-      reason,
-      to: nextStage,
-    });
+    try {
+      await onChangeStage?.({
+        from: change.from,
+        operator,
+        reason,
+        to: nextStage,
+      });
+      setEditorOpen(false);
+    } catch (erro) {
+      // Desfaz o que a tela já tinha mostrado: etapa que não foi gravada não pode ficar no papel.
+      setHistory(estadoAnterior.history);
+      setStage(estadoAnterior.stage);
+      setUpdatedAt(estadoAnterior.updatedAt);
+      manuallyChanged.current = false;
+      setErroAoSalvar(
+        erro instanceof Error && erro.message
+          ? erro.message
+          : "Nao foi possivel salvar a etapa. Tente de novo.",
+      );
+    }
   }
 
   return (
@@ -279,7 +307,11 @@ export function OperationalWorkflowCard({
         <WorkflowStageEditor
           client={client}
           currentStage={stage}
-          onClose={() => setEditorOpen(false)}
+          erro={erroAoSalvar}
+          onClose={() => {
+            setErroAoSalvar("");
+            setEditorOpen(false);
+          }}
           onConfirm={applyStageChange}
         />
       ) : null}
@@ -289,6 +321,7 @@ export function OperationalWorkflowCard({
 
 function WorkflowStageEditor({
   client,
+  erro,
   currentStage,
   onClose,
   onConfirm,
@@ -296,13 +329,19 @@ function WorkflowStageEditor({
   client: QueueClient;
   currentStage: WorkflowStage;
   onClose: () => void;
-  onConfirm: (nextStage: WorkflowStage, reason: string) => void;
+  erro?: string;
+  onConfirm: (nextStage: WorkflowStage, reason: string) => Promise<void> | void;
 }) {
   const [nextStage, setNextStage] = useState<WorkflowStage>(currentStage);
   const [reason, setReason] = useState("");
   const stageChanged = nextStage !== currentStage;
   const reasonFilled = reason.trim().length > 0;
-  const canConfirm = stageChanged && reasonFilled;
+  // ⚠️ COMENTAR SEM TROCAR DE ETAPA TEM DE SER POSSÍVEL, e era isto que o chamado TI-000138 dizia
+  // ao pé da letra: *"não conseguimos colocar comentário de workflow"*. A trava era
+  // `stageChanged && reasonFilled` — com o cliente parado em "Contato" e nada a mudar, o botão
+  // ficava apagado e não havia como registrar o que aconteceu no contato. O texto continua
+  // obrigatório: registro sem explicação não serve para ninguém.
+  const canConfirm = reasonFilled;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -359,12 +398,17 @@ function WorkflowStageEditor({
 
         <div className="mt-4">
           <p className="text-xs font-medium text-ink-muted">
-            Motivo da mudança <span className="text-rose-600">obrigatório</span>
+            {stageChanged ? "Motivo da mudança" : "Comentário"}{" "}
+            <span className="text-rose-600">obrigatório</span>
           </p>
           <textarea
             value={reason}
             onChange={(event) => setReason(event.target.value)}
-            placeholder="Ex.: sem retorno após 5 tentativas; encaminhar para jurídico."
+            placeholder={
+              stageChanged
+                ? "Ex.: sem retorno após 5 tentativas; encaminhar para jurídico."
+                : "Ex.: falei com o cliente, vai pagar na sexta; mantém em Contato."
+            }
             className="mt-1 min-h-20 w-full resize-none rounded-lg border border-line/70 bg-surface px-3 py-2 text-sm leading-6 text-ink outline-none transition-colors focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
           />
         </div>
@@ -373,6 +417,14 @@ function WorkflowStageEditor({
           <GitBranch className="size-3.5 text-[#A07C3B]" aria-hidden="true" />
           Fica registrado no histórico e nos últimos eventos como alteração manual.
         </div>
+
+        {/* ⚠️ FALHOU? A TELA DIZ. Antes a gravação ia para o vazio e a etapa aparecia mudada de
+            qualquer jeito — o operador só descobria ao reabrir, com tudo como estava. */}
+        {erro ? (
+          <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+            {erro}
+          </p>
+        ) : null}
 
         <div className="mt-4 flex justify-end gap-2">
           <button
@@ -388,7 +440,7 @@ function WorkflowStageEditor({
             onClick={() => onConfirm(nextStage, reason.trim())}
             className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#A07C3B] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Salvar alteração
+            {stageChanged ? "Salvar alteração" : "Salvar comentário"}
           </button>
         </div>
       </div>
