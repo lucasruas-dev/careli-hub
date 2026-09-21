@@ -275,18 +275,23 @@ function componenteDaAssinatura(): string {
 
 // ── O QUE A REVISÃO CONFERIU E ESTÁ CERTO ───────────────────────────────────
 
+// ⚠️ A CHAVE DO ACORDO FOI LIGADA EM 21/09/2026 (Lucas, sobre o TI-000146: *"pode ligar o termo
+// de acordo"*). O teste continua existindo e mudou de lado: ele guardava o "ainda não"; agora
+// guarda que a rescisão NÃO foi junto e que a chave continua sendo UMA SÓ para o termo e para a
+// assinatura. Uma segunda chave criaria o estado impossível de "não pode baixar, mas pode
+// assinar".
 describe("a chave de liberação", () => {
-  it("continua desligada, e esconde TAMBÉM o bloco de assinatura", () => {
+  it("liberou o acordo, NÃO liberou a rescisão, e continua sendo uma chave só", () => {
     const chaves = readFileSync(
       join(__dirname, "..", "..", "apolo", "termos-liberados.ts"),
       "utf8",
     );
 
-    expect(chaves).toContain("export const TERMO_DE_ACORDO_LIBERADO = false;");
+    expect(chaves).toContain("export const TERMO_DE_ACORDO_LIBERADO = true;");
+    // A rescisão é outra decisão, e ela não foi tomada: espera o nome do papel e o jurídico.
     expect(chaves).toContain("export const TERMO_DE_RESCISAO_LIBERADO = false;");
 
-    // Os dois blocos do card nascem atrás da MESMA chave: com ela desligada, nem o botão do termo
-    // nem o de assinatura existem na tela.
+    // Os dois blocos do card nascem atrás da MESMA chave.
     expect(TELA).toContain(
       "{isAcordo && TERMO_DE_ACORDO_LIBERADO ? <TermoDeAcordoAcao item={item} /> : null}",
     );

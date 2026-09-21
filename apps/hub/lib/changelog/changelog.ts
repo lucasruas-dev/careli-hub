@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-21-termo-de-acordo-liberado",
+    deployedAt: "2026-09-21T15:00:00-03:00",
+    modules: [
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "**O acordo vira documento.** No card do acordo aparece o botão que gera o termo em PDF, com o texto legal do jurídico, os dados do cliente, a dívida e o parcelamento combinado. Era o pedido do chamado TI-000146.",
+              "**E o termo pode seguir para assinatura eletrônica**, do comprador, do incorporador e da Nívea, sem sair da tela.",
+              "**Só acordo aprovado.** Dos 40 acordos vivos hoje, 18 estão aprovados e ganham o botão; nos 22 reprovados ele nasce apagado, com a frase dizendo o motivo em vez de um botão morto.",
+              "**Acordo já assinado por todos não é mandado de novo** — dois termos assinados da mesma dívida valeriam os dois, cada um com o seu parcelamento.",
+            ],
+            screen: "Cobrança · Acordos",
+          },
+        ],
+      },
+    ],
+    rollback: "66449917",
+    technical: {
+      done:
+        "`TERMO_DE_ACORDO_LIBERADO` passou de `false` para `true` em `lib/apolo/termos-liberados.ts`. O termo estava pronto e escondido desde 16/09/2026 (\"Portal + planos, termos escondidos\"), esperando quatro respostas; duas chegaram em 20/09 (o texto legal do jurídico e \"o acordo so pode ficar disponivel para envio depois da aprovacao\") e a terceira é esta. ⚠️ A CHAVE É UMA SÓ, E ABRE AS DUAS COISAS: baixar o PDF e mandar para a Clicksign, que é conta de PRODUÇÃO (envelope custa e o ativado não se apaga). Foi assim de propósito desde o desenho: uma segunda chave criaria o estado impossível de \"não pode baixar, mas pode assinar\". O que protege daqui em diante é o gate, não a chave: `motivoParaNaoEnviarParaAssinatura` reusa `motivoParaNaoEmitirOTermo` (uma régua só para o PDF e para o envio), exige aprovação inclusive no REENVIO, e `aprovacaoAindaVale` relê o `approval_status` no servidor antes de criar o envelope. Medido em produção hoje, em `guardian_compromissos`: 18 aprovados e 22 reprovados, todos ativos. E não existe disparo automático: nenhum cron toca o acordo, o envio é sempre clique de gente. A chave da RESCISÃO continua `false` (ela espera o nome do papel e a leitura do jurídico). O teste-sentinela de `lib/hades/acordo/revisao-do-envio.test.ts` mudou de lado: guardava o \"ainda não\", agora guarda que a rescisão NÃO foi junto e que continua existindo uma chave só. 490 arquivos e 7.707 testes, typecheck limpo.",
+      motivation:
+        "TI-000146 (Cinthia Cruz, 04/09/2026): *\"Hoje o acordo não vem em formato de documento, mas precisamos gerar esse documento\"*. Lucas, 21/09/2026: *\"pode ligar o termo de acordo\"*.",
+    },
+    title: "Acordo: o termo vira documento e pode ir para assinatura",
+    type: "novidade",
+    version: "1.355.1",
+  },
+  {
     buildTag: "2026-09-21-painel-de-parcelas-e-ordem-do-setup",
     deployedAt: "2026-09-21T15:00:37-03:00",
     modules: [

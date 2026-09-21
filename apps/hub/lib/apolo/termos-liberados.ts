@@ -27,5 +27,21 @@
 // continuam no ar atrás do login do hub, como qualquer rota interna sem tela.
 //
 // Ligar é trocar para `true` depois das respostas, com deploy e changelog.
+//
+// ⚠️ O ACORDO FOI LIGADO EM 21/09/2026. Lucas, respondendo ao chamado TI-000146 da Cinthia
+// (*"hoje o acordo não vem em formato de documento, mas precisamos gerar esse documento"*):
+// *"pode ligar o termo de acordo"*.
+//
+// ⚠️ E LIGAR ABRE AS DUAS COISAS, porque a chave é uma só, de propósito (ver a nota acima):
+// baixar o PDF do termo E mandar para a assinatura na Clicksign, que é conta de PRODUÇÃO, onde
+// cada envelope custa e o ativado não se apaga. O que protege daqui em diante não é mais a
+// chave, é o gate: `motivoParaNaoEnviarParaAssinatura` exige acordo APROVADO (regra do Lucas em
+// 20/09/2026, *"o acordo so pode ficar disponivel para envio depois da aprovacao"*, valendo
+// também para reenvio) e recusa o que já foi assinado. Medido em 21/09/2026: dos 40 acordos
+// vivos, 18 estão aprovados e 22 reprovados; para os 22 o botão nasce apagado com a frase do
+// motivo. E nenhum cron toca nisso: não existe envio automático, só clique de gente.
+//
+// ⚠️ A RESCISÃO CONTINUA DESLIGADA, e a decisão foi só sobre o acordo. Ela ainda espera o nome
+// do papel e a leitura do jurídico.
 export const TERMO_DE_RESCISAO_LIBERADO = false;
-export const TERMO_DE_ACORDO_LIBERADO = false;
+export const TERMO_DE_ACORDO_LIBERADO = true;
