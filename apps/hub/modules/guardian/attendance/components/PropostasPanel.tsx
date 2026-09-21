@@ -30,6 +30,7 @@ import { ProposalChat } from "@/modules/guardian/attendance/components/ProposalC
 import {
   contratoDaSelecao,
   unidadesEmAtraso,
+  unidadeDoAcordo,
 } from "@/lib/guardian/acordo-por-unidade";
 import { hasProposalUpdate } from "@/lib/guardian/proposal-seen";
 import {
@@ -186,6 +187,7 @@ export function PropostasPanel({
             <CompromissoCard
               key={item.id}
               item={item}
+              parcelasDoCliente={client.c2xInstallments ?? []}
               onEdit={() => setEditing(item)}
               onDeleted={() => {
                 void load();
@@ -229,12 +231,19 @@ function CompromissoCard({
   item,
   onEdit,
   onDeleted,
+  parcelasDoCliente,
 }: {
   item: GuardianCompromissoDetail;
   onEdit: () => void;
   onDeleted: () => void;
+  /** Todas as parcelas do C2X deste cliente: é delas que sai o código da unidade. */
+  parcelasDoCliente: readonly OverdueInstallment[];
 }) {
   const isAcordo = item.kind === "acordo";
+  // ⚠️ DE QUAL UNIDADE É ESTE ACORDO — TI-000149 (Cinthia, 17/09/2026). O card mostrava valor,
+  // parcelas e datas, e nenhuma palavra sobre o lote: em cliente com mais de uma unidade, dois
+  // acordos ficavam indistinguíveis na tela.
+  const unidade = unidadeDoAcordo(item.acquisitionRequestC2xId, parcelasDoCliente);
   // ⚠️ O SELO E O BOTÃO DO TERMO LEEM A MESMA RÉGUA (`situacaoDaAprovacao`). Com duas, o card
   // poderia mostrar "Aprovada" e, logo abaixo, o botão apagado dizendo que aguarda aprovação.
   const approval = situacaoDaAprovacao(item.approvalStatus, item.metadata);
@@ -357,6 +366,21 @@ function CompromissoCard({
         {isAcordo
           ? `1a em ${formatBrDate(item.firstDueDate)}`
           : `prometido para ${formatBrDate(item.promisedDate)}`}
+      </p>
+
+      {/* ⚠️ QUANDO NÃO DÁ PARA SABER, A TELA DIZ ISSO. Acordo anterior a 11/09/2026 nasceu sem
+          contrato gravado; escrever ali a unidade "mais provável" seria repetir o erro da tela
+          de aprovação, que mostrava a primeira unidade da carteira como se fosse a do acordo. */}
+      <p className="mt-1 text-xs text-ink-muted">
+        {unidade ? (
+          <>
+            Unidade <span className="font-medium text-ink-soft">{unidade.rotulo}</span>
+          </>
+        ) : item.acquisitionRequestC2xId ? (
+          "Unidade não encontrada nas parcelas deste cliente"
+        ) : (
+          "Unidade não registrada (acordo anterior à escolha por unidade)"
+        )}
       </p>
 
       <div className="mt-3 flex flex-wrap gap-1.5">
@@ -1116,6 +1140,15 @@ export function ProposalModal({
     setFormError(null);
 
     const c2xParcelas = selectedInstallments.map((item) => item.id);
+    // ⚠️ A UNIDADE DESTE ACORDO, GRAVADA NA HORA. A Central do gestor não tem as parcelas do
+    // C2X para casar depois, e por isso mostrava a PRIMEIRA matrícula da carteira do cliente
+    // como se fosse a do acordo — em cliente com mais de uma unidade, dois acordos diferentes
+    // apareciam com o mesmo lote (TI-000149). Guardar aqui é o único jeito de a tela de lá
+    // dizer a verdade sem consultar o legado.
+    const unidadeDesteAcordo = unidadeDoAcordo(
+      contratoDaSelecao(selectedInstallments),
+      selectedInstallments,
+    );
     const sharedMetadata = {
       approval_status: "pendente",
       c2x_parcelas: c2xParcelas,
@@ -1133,6 +1166,9 @@ export function ProposalModal({
         matriculas: client.carteira.unidades
           .map((unit) => unit.matricula)
           .filter(Boolean),
+        // A unidade DO ACORDO, que não se confunde com a lista acima (a carteira inteira).
+        unidadeDoAcordo: unidadeDesteAcordo?.rotulo ?? null,
+        unidadeDoAcordoCodigo: unidadeDesteAcordo?.unitCode ?? null,
         parcelasVencidas: client.parcelas.vencidas,
         saldoDevedor: client.saldoDevedor,
         scoreRisco: client.scoreRisco,

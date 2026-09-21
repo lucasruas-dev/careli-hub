@@ -674,7 +674,12 @@ function ProposalTableRow({
   const isAcordo = item.kind === "acordo";
   const clientName = metaString(item.metadata, "client_name") ?? "Cliente C2X";
   const operator = metaString(item.metadata, "submitted_by_name");
-  const unidade = contractMatriculas(item.metadata)[0] ?? null;
+  // ⚠️ A UNIDADE DO ACORDO, E NÃO A PRIMEIRA DA CARTEIRA. Esta linha mostrava
+  // `contractMatriculas(...)[0]`, que é o retrato da carteira INTEIRA do cliente: acertava por
+  // sorte em quem só tem uma unidade e MENTIA no resto. Medido em 21/09/2026: dos 40 acordos
+  // vivos, 14 são de cliente com mais de uma unidade, e 6 clientes têm acordos de contratos
+  // diferentes que apareciam aqui com o mesmo rótulo (TI-000149, da Cinthia).
+  const unidade = unidadeGravadaNoAcordo(item.metadata) ?? unidadeQuandoNaoHaDuvida(item.metadata);
   const status = statusBadge(item.approvalStatus);
   const exec = proposalExecution(item);
   const novidade = hasProposalUpdate(item);
@@ -1562,6 +1567,28 @@ async function openHadesContract(documentId: string) {
   } catch {
     popup?.close();
   }
+}
+
+/** O rótulo da unidade que o próprio acordo gravou, quando ele nasceu depois de 21/09/2026. */
+function unidadeGravadaNoAcordo(metadata: Record<string, unknown>): null | string {
+  const contract = metadata.contract;
+  if (contract && typeof contract === "object") {
+    const valor = (contract as Record<string, unknown>).unidadeDoAcordo;
+    if (typeof valor === "string" && valor.trim()) return valor.trim();
+  }
+  return null;
+}
+
+/**
+ * A unidade do acordo antigo — só quando não há dúvida possível.
+ *
+ * ⚠️ COM MAIS DE UMA MATRÍCULA NA CARTEIRA, NÃO DÁ PARA SABER, e a tela não inventa: escolher a
+ * primeira é exatamente o defeito que o TI-000149 apontou. Sem rótulo, a coluna fica vazia — o
+ * acordo continua abrindo, e lá dentro as parcelas dizem de qual contrato ele é.
+ */
+function unidadeQuandoNaoHaDuvida(metadata: Record<string, unknown>): null | string {
+  const matriculas = contractMatriculas(metadata);
+  return matriculas.length === 1 ? (matriculas[0] ?? null) : null;
 }
 
 function contractMatriculas(metadata: Record<string, unknown>): string[] {

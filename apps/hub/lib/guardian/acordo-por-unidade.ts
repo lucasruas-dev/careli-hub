@@ -96,3 +96,52 @@ export function contratoDaSelecao(
 
   return [...contratos][0] ?? null;
 }
+
+/** A unidade de um acordo, do jeito que a operadora lê. */
+export type UnidadeDoAcordo = {
+  rotulo: string;
+  unitCode: null | string;
+  unitLabel: null | string;
+};
+
+/**
+ * De qual unidade é este acordo — traduzindo o contrato gravado nele para o código do lote.
+ *
+ * TI-000149 (Cinthia, 17/09/2026): *"Em acordo mostrar de qual unidade o acordo é."*
+ *
+ * ⚠️ O ACORDO GUARDA O CONTRATO, NÃO O CÓDIGO DO LOTE. `acquisition_request_c2x_id` é a única
+ * chave que separa dois acordos do mesmo cliente (ver `contratoDaSelecao`), e o código legível
+ * (LOS0504) mora nas parcelas do C2X. Quem quiser o nome da unidade tem de casar os dois — é o
+ * mesmo casamento que o termo de acordo já faz para imprimir o papel.
+ *
+ * ⚠️ E NÃO SE USA A CARTEIRA DO CLIENTE PARA ISSO. A tela de aprovação mostrava a PRIMEIRA
+ * matrícula da carteira, que em cliente de uma unidade só acerta por sorte e em cliente com várias
+ * mente: medido em 21/09/2026, dos 40 acordos vivos, 14 são de clientes com mais de uma unidade, e
+ * 6 clientes têm acordos de contratos DIFERENTES que a tela rotulava igual.
+ *
+ * `null` quando o acordo é antigo e nasceu sem contrato (a coluna ficou nula até 11/09/2026) ou
+ * quando nenhuma parcela daquele contrato aparece na lista: a tela diz isso em português, em vez
+ * de escrever a unidade de outra pessoa.
+ */
+export function unidadeDoAcordo(
+  acquisitionRequestId: null | number | string | undefined,
+  parcelasDoCliente: readonly ParcelaParaAcordo[],
+): null | UnidadeDoAcordo {
+  const contrato = String(acquisitionRequestId ?? "").trim();
+  if (!contrato) return null;
+
+  const daUnidade = parcelasDoCliente.find(
+    (parcela) => String(parcela.acquisitionRequestId ?? "").trim() === contrato,
+  );
+  if (!daUnidade) return null;
+
+  const unitCode = (daUnidade.unitCode ?? "").trim() || null;
+  const unitLabel = (daUnidade.unitLabel ?? "").trim() || null;
+  // O código é o que a operadora procura na lista; o rótulo longo vem atrás quando acrescenta.
+  const rotulo = unitCode && unitLabel && unitLabel !== unitCode
+    ? `${unitCode} · ${unitLabel}`
+    : unitCode ?? unitLabel;
+  if (!rotulo) return null;
+
+  return { rotulo, unitCode, unitLabel };
+}

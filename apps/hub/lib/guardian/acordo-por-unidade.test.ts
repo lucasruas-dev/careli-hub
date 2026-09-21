@@ -4,6 +4,7 @@ import {
   contratoDaSelecao,
   unidadesEmAtraso,
   type ParcelaParaAcordo,
+  unidadeDoAcordo,
 } from "./acordo-por-unidade";
 
 // O QUE ESTES TESTES TRAVAM (pedido do Lucas em 11/09/2026): "se o cliente tiver mais de uma
@@ -120,5 +121,54 @@ describe("contratoDaSelecao", () => {
 
   it("seleção vazia não tem contrato", () => {
     expect(contratoDaSelecao([])).toBeNull();
+  });
+});
+
+// TI-000149 (Cinthia, 17/09/2026): *"Em acordo mostrar de qual unidade o acordo é."*
+describe("unidadeDoAcordo", () => {
+  const PARCELAS = [
+    {
+      acquisitionRequestId: "4001",
+      id: "p1",
+      number: "12",
+      status: "Vencida",
+      unitCode: "LOS0504",
+      unitLabel: "Quadra 05 Lote 04",
+      valueNumber: 1200,
+    },
+    {
+      acquisitionRequestId: "4002",
+      id: "p2",
+      number: "7",
+      status: "Vencida",
+      unitCode: "LOS0811",
+      unitLabel: "Quadra 08 Lote 11",
+      valueNumber: 900,
+    },
+  ];
+
+  it("acha a unidade pelo contrato gravado no acordo", () => {
+    expect(unidadeDoAcordo("4001", PARCELAS)?.rotulo).toBe("LOS0504 · Quadra 05 Lote 04");
+    expect(unidadeDoAcordo(4002, PARCELAS)?.unitCode).toBe("LOS0811");
+  });
+
+  // ⚠️ O ERRO QUE ESTAVA NA TELA: mostrar a primeira unidade da CARTEIRA. Em cliente com duas
+  // unidades isso rotula dois acordos diferentes com o mesmo lote.
+  it("cada acordo do mesmo cliente responde a SUA unidade", () => {
+    expect(unidadeDoAcordo("4001", PARCELAS)?.unitCode).not.toBe(
+      unidadeDoAcordo("4002", PARCELAS)?.unitCode,
+    );
+  });
+
+  it("sem contrato gravado, ou sem parcela daquele contrato, devolve nulo em vez de chutar", () => {
+    expect(unidadeDoAcordo(null, PARCELAS)).toBeNull();
+    expect(unidadeDoAcordo("", PARCELAS)).toBeNull();
+    expect(unidadeDoAcordo("9999", PARCELAS)).toBeNull();
+    expect(unidadeDoAcordo("4001", [])).toBeNull();
+  });
+
+  it("sem rótulo longo, o código basta", () => {
+    const so = [{ ...PARCELAS[0]!, unitLabel: undefined }];
+    expect(unidadeDoAcordo("4001", so)?.rotulo).toBe("LOS0504");
   });
 });

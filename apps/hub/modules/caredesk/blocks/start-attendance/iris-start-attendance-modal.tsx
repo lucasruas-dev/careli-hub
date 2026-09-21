@@ -809,7 +809,14 @@ export function IrisStartAttendanceModal({
         return { payload, response };
       };
 
-      const windowAttempt = await attempt(false);
+      // ⚠️ UM PEDIDO SÓ, E QUEM ESCOLHE A FORMA É O SERVIDOR. Eram dois passos: primeiro
+      // "abre sem mandar nada" e, se voltasse 409 por janela fechada, "manda o template". Com a
+      // janela ABERTA o primeiro passo devolvia 200 — e nada era enviado nem gravado. O ticket
+      // nascia mudo, o operador via sucesso, e o cliente nunca era procurado (TI-000139 e
+      // TI-000140; medidos 37 tickets assim, 31 clientes, 28 encerrados como "sem interação").
+      // Agora a rota recebe "quero falar com o cliente" e decide: janela aberta manda o corpo
+      // como texto, janela fechada manda o template.
+      const windowAttempt = await attempt(true);
       if (windowAttempt.response.ok) {
         onTicketCreated(windowAttempt.payload?.ticket?.id);
         return;
@@ -831,28 +838,10 @@ export function IrisStartAttendanceModal({
       const windowError =
         windowAttempt.payload?.error ??
         "Nao foi possivel iniciar o atendimento.";
-      const needsTemplate =
-        windowAttempt.response.status === 409 &&
-        typeof windowError === "string" &&
-        windowError.toLowerCase().includes("janela de 24h");
-      if (!needsTemplate) {
-        throw new Error(windowError);
-      }
+      // ⚠️ NÃO HÁ MAIS SEGUNDA TENTATIVA: o pedido já foi "fale com o cliente", e a rota
+      // escolheu a forma. O que sobra aqui é erro de verdade, e ele vai para a tela.
+      throw new Error(windowError);
 
-      if (!selectedTemplate) {
-        throw new Error(
-          "Janela de 24h fechada. Selecione um template aprovado para iniciar o contato.",
-        );
-      }
-
-      const templateAttempt = await attempt(true);
-      if (!templateAttempt.response.ok) {
-        throw new Error(
-          templateAttempt.payload?.error ??
-            "Nao foi possivel iniciar o atendimento.",
-        );
-      }
-      onTicketCreated(templateAttempt.payload?.ticket?.id);
     } catch (ticketError) {
       setError(
         ticketError instanceof Error

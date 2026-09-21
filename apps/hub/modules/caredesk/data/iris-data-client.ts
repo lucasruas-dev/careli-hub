@@ -161,9 +161,13 @@ function aplicarReguaDeAcessoAosTickets(
   }
 
   if (normalizedQueueSlugFilter) {
-    comRegua = scopedQueueIds.length
-      ? comRegua.in("queue_id", scopedQueueIds)
-      : comRegua.eq("queue_id", "__iris_queue_scope_not_found__");
+    // ⚠️ A MESMA ARMADILHA DA NOTA ACIMA, E ELA SOBREVIVEU À CORREÇÃO. Esta linha comparava
+    // `queue_id` (UUID) com o texto `__iris_queue_scope_not_found__` para "forçar zero linhas", e o
+    // Postgres recusa a consulta inteira antes de filtrar (22P02). Quem abria /hades/cobranca sem
+    // enxergar a fila Cobrança não via "você não tem acesso": via a tela INTEIRA do atendimento
+    // cair no erro de carga. `.in()` com lista vazia devolve zero linhas sem inventar valor nenhum,
+    // que é exatamente o que se queria — e é o que a linha de cima já fazia.
+    comRegua = comRegua.in("queue_id", scopedQueueIds);
   }
 
   return comRegua;

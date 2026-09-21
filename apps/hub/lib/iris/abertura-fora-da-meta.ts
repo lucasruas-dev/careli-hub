@@ -35,6 +35,21 @@ export type DecisaoDaAbertura = {
   bloquearPorJanela: boolean;
   /** Mandar o template da Meta na abertura. */
   enviarTemplate: boolean;
+  /**
+   * Mandar o CORPO escolhido como mensagem de texto, dentro da janela de 24h.
+   *
+   * ⚠️ SEM ISTO A ABERTURA FICA MUDA, e foi o que aconteceu por três meses. Com a janela
+   * aberta a Meta não exige template — e o código entendia "não exige template" como "não
+   * manda nada": o ticket nascia sem uma linha, o operador via sucesso e o cliente nunca era
+   * procurado. Medido em 21/09/2026: 37 tickets assim na base, 31 clientes distintos, e 28
+   * deles encerrados como "sem interação" — registrando que o cliente não respondeu uma
+   * conversa que nunca existiu. Chamados TI-000139 e TI-000140, do Isac.
+   *
+   * ⚠️ TEXTO, E NÃO O TEMPLATE, porque dentro da janela a Meta cobra o template e não cobra a
+   * conversa de serviço. O cliente recebe o MESMO texto; o que se perde são os botões do
+   * template, que dentro de uma conversa aberta ele pode responder escrevendo.
+   */
+  enviarTextoLivre: boolean;
 };
 
 /**
@@ -53,12 +68,14 @@ export function decidirAbertura({
   pediuTemplate: boolean;
 }): DecisaoDaAbertura {
   if (foraDaMeta) {
-    return { bloquearPorJanela: false, enviarTemplate: false };
+    return { bloquearPorJanela: false, enviarTemplate: false, enviarTextoLivre: false };
   }
 
   return {
     bloquearPorJanela: !pediuTemplate && !janelaAberta,
     enviarTemplate: pediuTemplate && !janelaAberta,
+    // ⚠️ JANELA ABERTA NÃO É "NÃO MANDA NADA": é "manda sem template". Ver a nota do campo.
+    enviarTextoLivre: pediuTemplate && janelaAberta,
   };
 }
 

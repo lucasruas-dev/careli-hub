@@ -34,31 +34,41 @@ describe("decidirAbertura", () => {
   it("fora da Meta não trava por janela nem manda template, com a janela fechada", () => {
     expect(
       decidirAbertura({ foraDaMeta: true, janelaAberta: false, pediuTemplate: false }),
-    ).toEqual({ bloquearPorJanela: false, enviarTemplate: false });
+    ).toEqual({ bloquearPorJanela: false, enviarTemplate: false, enviarTextoLivre: false });
   });
 
   it("fora da Meta ignora o template mesmo quando a tela manda um", () => {
     expect(
       decidirAbertura({ foraDaMeta: true, janelaAberta: false, pediuTemplate: true }),
-    ).toEqual({ bloquearPorJanela: false, enviarTemplate: false });
+    ).toEqual({ bloquearPorJanela: false, enviarTemplate: false, enviarTextoLivre: false });
   });
 
   it("na Meta, janela fechada sem template continua travando", () => {
     expect(
       decidirAbertura({ foraDaMeta: false, janelaAberta: false, pediuTemplate: false }),
-    ).toEqual({ bloquearPorJanela: true, enviarTemplate: false });
+    ).toEqual({ bloquearPorJanela: true, enviarTemplate: false, enviarTextoLivre: false });
   });
 
   it("na Meta, janela fechada com template manda o template", () => {
     expect(
       decidirAbertura({ foraDaMeta: false, janelaAberta: false, pediuTemplate: true }),
-    ).toEqual({ bloquearPorJanela: false, enviarTemplate: true });
+    ).toEqual({ bloquearPorJanela: false, enviarTemplate: true, enviarTextoLivre: false });
   });
 
-  it("na Meta, janela aberta reaproveita a conversa sem template", () => {
+  // ⚠️ JANELA ABERTA NÃO É "NÃO MANDA NADA". Era assim que o código lia, e o ticket nascia mudo:
+  // 37 tickets sem uma linha na base, 31 clientes que ninguém procurou, 28 deles encerrados como
+  // "sem interação" (medido em 21/09/2026). Chamados TI-000139 e TI-000140.
+  it("na Meta, janela aberta manda o CORPO como texto, sem template e sem tarifa", () => {
     expect(
       decidirAbertura({ foraDaMeta: false, janelaAberta: true, pediuTemplate: true }),
-    ).toEqual({ bloquearPorJanela: false, enviarTemplate: false });
+    ).toEqual({ bloquearPorJanela: false, enviarTemplate: false, enviarTextoLivre: true });
+  });
+
+  it("na Meta, janela aberta SEM corpo escolhido continua só abrindo a conversa", () => {
+    // Aqui o operador vai digitar: não há o que mandar por ele.
+    expect(
+      decidirAbertura({ foraDaMeta: false, janelaAberta: true, pediuTemplate: false }),
+    ).toEqual({ bloquearPorJanela: false, enviarTemplate: false, enviarTextoLivre: false });
   });
 });
 

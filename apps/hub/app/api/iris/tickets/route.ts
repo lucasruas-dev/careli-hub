@@ -15,6 +15,7 @@ import {
   getMetaWhatsAppOutboundConfig,
   listMetaWhatsAppMessageTemplates,
   sendMetaWhatsAppTemplateMessage,
+  sendMetaWhatsAppTextMessage,
 } from "@/lib/iris/meta-whatsapp";
 import { authorizeIrisMetaRequest } from "@/lib/iris/meta-server";
 import { loadC2xUserWhatsAppNumber } from "@/lib/guardian/attendance";
@@ -399,6 +400,20 @@ export async function POST(request: NextRequest) {
       pediuTemplate: requestedTemplateSend,
     });
     const shouldSendTemplate = decisaoDaAbertura.enviarTemplate;
+    /**
+     * Com a janela de 24h ABERTA, o corpo escolhido vai como mensagem de texto.
+     *
+     * ⚠️ SEM ISTO A ABERTURA FICAVA MUDA. "A Meta não exige template aqui" virou "não mandar
+     * nada": o ticket nascia sem uma linha, o operador via sucesso e o cliente nunca era
+     * procurado. Medido em 21/09/2026: 37 tickets assim, 31 clientes, 28 encerrados como "sem
+     * interação". Chamados TI-000139 e TI-000140.
+     *
+     * ⚠️ E SÓ COM CORPO ESCOLHIDO. Quem abre a conversa sem escolher texto continua abrindo
+     * calado, para digitar — mandar algo por ele seria pior do que o defeito.
+     */
+    const shouldSendText = decisaoDaAbertura.enviarTextoLivre;
+    /** Vai sair mensagem neste clique, de um jeito ou de outro. O corpo é o mesmo. */
+    const vaiFalarComOCliente = shouldSendTemplate || shouldSendText;
 
     if (decisaoDaAbertura.bloquearPorJanela) {
       return NextResponse.json(
@@ -435,18 +450,18 @@ export async function POST(request: NextRequest) {
             localTemplate?.phoneNumberId,
         })
       : null;
-    const templateName = shouldSendTemplate
+    const templateName = vaiFalarComOCliente
       ? approvedTemplate?.name ?? requestedTemplateName
       : null;
-    const templateLanguage = shouldSendTemplate
+    const templateLanguage = vaiFalarComOCliente
       ? approvedTemplate?.language ?? requestedTemplateLanguage
       : null;
-    const templateBody = shouldSendTemplate
+    const templateBody = vaiFalarComOCliente
       ? localTemplate?.body ?? IRIS_OPT_IN_TEMPLATE.bodyText
       : null;
     const templateInstallmentSummary =
       formatTemplateInstallmentSummary(relatedInstallmentLabels);
-    const templateBodyParameters = shouldSendTemplate
+    const templateBodyParameters = vaiFalarComOCliente
       ? buildTemplateBodyParameters({
           boletoLink: relatedBoletoLink,
           context: templateContext,
@@ -466,8 +481,10 @@ export async function POST(request: NextRequest) {
           unit: relatedUnit,
         })
       : [];
+    // O texto que o cliente vai LER, igual nos dois caminhos: é ele que vira template ou vira
+    // mensagem de texto, e é ele que fica gravado no histórico da conversa.
     const templatePreview =
-      shouldSendTemplate && templateBody
+      vaiFalarComOCliente && templateBody
         ? renderTemplatePreview(templateBody, templateBodyParameters)
         : null;
     const templateHeaderMedia = shouldSendTemplate && localTemplate
@@ -480,7 +497,7 @@ export async function POST(request: NextRequest) {
         null
       : requestedPhoneNumberId ?? queuePhoneNumberId ?? null;
     const templateSendConfig =
-      shouldSendTemplate && templatePhoneNumberId
+      vaiFalarComOCliente && templatePhoneNumberId
         ? {
             ...getMetaWhatsAppOutboundConfig(),
             phoneNumberId: templatePhoneNumberId,
@@ -501,6 +518,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ⚠️ DENTRO DA JANELA VAI TEXTO, E NÃO O TEMPLATE, por causa da conta: a Meta cobra o
+    // template e não cobra a conversa de serviço já aberta. O cliente lê o MESMO texto; o que
+    // fica de fora são os botões, que numa conversa aberta ele responde escrevendo.
     const sent = shouldSendTemplate
       ? await sendMetaWhatsAppTemplateMessage({
           bodyParameters: templateBodyParameters,
@@ -512,7 +532,13 @@ export async function POST(request: NextRequest) {
           registrarNaIris: false,
           to: phone,
         })
-      : null;
+      : shouldSendText && templatePreview
+        ? await sendMetaWhatsAppTextMessage({
+            body: templatePreview,
+            config: templateSendConfig,
+            to: phone,
+          })
+        : null;
     const now = new Date();
     // ⚠️ E A FILA GRAVADA É A MESMA QUE O RESTO DA ROTA USOU. Aqui era `profile?.queue_id` primeiro,
     // então mesmo com a fila certa escolhida acima o ticket ia para o banco na fila do assunto.
@@ -534,14 +560,17 @@ export async function POST(request: NextRequest) {
     const activeContactConsent = shouldSendTemplate
       ? "awaiting_customer_reply"
       : "customer_replied";
-    const initialStatus = shouldSendTemplate
-      ? "waiting_customer"
-      : "waiting_operator";
+    // ⚠️ QUEM JÁ FALOU COM O CLIENTE ESTÁ ESPERANDO ELE, e não esperando o operador. Com a
+    // janela aberta o ticket nascia "Pendente" depois de mandarmos a cobrança: o card ficava na
+    // coluna de quem ainda precisa agir, e o operador o encerrava como "sem interação".
+    const initialStatus = vaiFalarComOCliente ? "waiting_customer" : "waiting_operator";
     const metaTemplateStatus = shouldSendTemplate
       ? "sent"
-      : customerServiceWindow.open
-        ? "window_open_reused"
-        : "not_sent";
+      : shouldSendText && sent?.messageId
+        ? "window_open_text"
+        : customerServiceWindow.open
+          ? "window_open_reused"
+          : "not_sent";
     const origemDoTicketNovo = origemDoTicket({
       foraDaMeta,
       sourceEntityId,
@@ -704,7 +733,10 @@ export async function POST(request: NextRequest) {
     }
     let messageId: string | null = null;
 
-    if (shouldSendTemplate && templatePreview) {
+    // ⚠️ O QUE SAIU FICA GRAVADO, venha como template ou como texto. Prender este insert ao
+    // template deixava a conversa vazia na tela ("Sem mensagens registradas") justamente no
+    // caminho em que nada tinha sido enviado — e ninguém percebia nem uma coisa nem outra.
+    if (vaiFalarComOCliente && templatePreview) {
       const messageResult = await client
         .from("caredesk_messages")
         .insert({
@@ -713,7 +745,7 @@ export async function POST(request: NextRequest) {
           delivery_status: sent?.messageId ? "sent" : "queued",
           direction: "outbound",
           external_message_id: sent?.messageId ?? null,
-          message_type: "template",
+          message_type: shouldSendTemplate ? "template" : "text",
           provider_payload: {
             meta: sent?.raw ?? null,
             operatorAvatarUrl: operator.avatarUrl,
@@ -771,6 +803,8 @@ export async function POST(request: NextRequest) {
         customerServiceWindow,
         ok: true,
         ticket,
+        // O que a tela precisa para não mentir no recado nem na linha do tempo.
+        mensagemEnviada: Boolean(sent?.messageId),
         templateSent: shouldSendTemplate,
       },
       { headers: { "Cache-Control": "no-store" } },

@@ -288,6 +288,8 @@ export function HadesAttendanceModal({
       });
       const body = (await response.json().catch(() => null)) as {
         error?: string;
+        mensagemEnviada?: boolean;
+        templateSent?: boolean;
         ticket?: { id?: string };
       } | null;
       return { body, response };
@@ -334,30 +336,22 @@ export function HadesAttendanceModal({
       if (!phone) {
         throw new Error("Cliente sem telefone para WhatsApp.");
       }
-      // 1) tenta dentro da janela de 24h (sem template ativo).
-      const windowAttempt = await attempt(false);
-      if (windowAttempt.response.ok) {
-        await logAttendanceTimeline(true);
-        onCreated(windowAttempt.body?.ticket?.id ?? null);
-        return;
-      }
-      const windowError =
-        windowAttempt.body?.error ?? "Não foi possível abrir o atendimento.";
-      const needsTemplate =
-        windowAttempt.response.status === 409 &&
-        windowError.toLowerCase().includes("janela de 24h");
-      if (!needsTemplate) {
-        throw new Error(windowError);
-      }
-      // 2) janela fechada -> contato ativo com o template aprovado.
-      const templateAttempt = await attempt(true);
-      if (!templateAttempt.response.ok) {
+      // ⚠️ UM PEDIDO SÓ, E QUEM ESCOLHE A FORMA É O SERVIDOR. Eram dois passos: primeiro
+      // "abre sem mandar nada" e, se voltasse 409 por janela fechada, "manda o template". Com a
+      // janela ABERTA o primeiro passo devolvia 200 — e nada era enviado nem gravado. O ticket
+      // nascia mudo, o operador via sucesso, e o cliente nunca era procurado (TI-000139 e
+      // TI-000140; medidos 37 tickets assim, 31 clientes, 28 encerrados como "sem interação").
+      // Agora a rota recebe "quero falar com o cliente" e decide: janela aberta manda o corpo
+      // como texto, janela fechada manda o template.
+      const envio = await attempt(true);
+      if (!envio.response.ok) {
         throw new Error(
-          templateAttempt.body?.error ?? "Não foi possível abrir o atendimento.",
+          envio.body?.error ?? "Não foi possível abrir o atendimento.",
         );
       }
-      await logAttendanceTimeline(false);
-      onCreated(templateAttempt.body?.ticket?.id ?? null);
+      // A linha do tempo do cliente registra a FORMA que saiu, e quem sabe disso é a rota.
+      await logAttendanceTimeline(!envio.body?.templateSent);
+      onCreated(envio.body?.ticket?.id ?? null);
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -588,7 +582,7 @@ export function HadesAttendanceModal({
               <p className="mb-1 text-[11px] font-semibold text-ink-muted">
                 Pré-visualização da mensagem{" "}
                 <span className="font-normal text-ink-muted">
-                  (enviada só com a janela de 24h fechada)
+                  (é esta que o cliente recebe)
                 </span>
               </p>
               <div className="rounded-lg border border-line/70 bg-subtle/70 px-3 py-2 text-xs leading-relaxed text-ink whitespace-pre-line">
