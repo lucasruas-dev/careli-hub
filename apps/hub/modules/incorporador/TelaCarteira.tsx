@@ -920,7 +920,14 @@ function AbaCarteira({
           </div>
         </div>
 
-        <div style={{ maxHeight: "58vh", overflow: "auto" }}>
+        {/* ⚠️ A ALTURA SEGUE A TELA, E NÃO UMA FRAÇÃO FIXA (Lucas, 21/09/2026: *"corrige esse
+            painel, comeu um pedaço da tela"*). Com `58vh` a tabela usava pouco mais da metade da
+            altura e o resto da página ficava em branco embaixo dela: numa tela de 1080 sobravam
+            uns 300px mortos, e quem rolava para ver a lista inteira perdia os cards de cima sem
+            ganhar linha nenhuma. O `calc` desconta o cabeçalho, os cards e os filtros; o `min`
+            garante que numa tela baixa (ou num notebook de 768px) ainda sobre tabela para ler.
+            A rolagem continua sendo a da tabela, que é o que faz o `thead` sticky grudar. */}
+        <div style={{ maxHeight: "max(340px, calc(100dvh - 260px))", overflow: "auto" }}>
           <table style={{ borderCollapse: "collapse", fontSize: 13, minWidth: 1120, width: "100%" }}>
             <thead style={{ position: "sticky", top: 0, zIndex: 5 }}>
               <tr style={{ background: T.soft }}>
@@ -1205,7 +1212,14 @@ function AbaParcelasDoCoordenador({
           </div>
         </div>
 
-        <div style={{ maxHeight: "58vh", overflow: "auto" }}>
+        {/* ⚠️ A ALTURA SEGUE A TELA, E NÃO UMA FRAÇÃO FIXA (Lucas, 21/09/2026: *"corrige esse
+            painel, comeu um pedaço da tela"*). Com `58vh` a tabela usava pouco mais da metade da
+            altura e o resto da página ficava em branco embaixo dela: numa tela de 1080 sobravam
+            uns 300px mortos, e quem rolava para ver a lista inteira perdia os cards de cima sem
+            ganhar linha nenhuma. O `calc` desconta o cabeçalho, os cards e os filtros; o `min`
+            garante que numa tela baixa (ou num notebook de 768px) ainda sobre tabela para ler.
+            A rolagem continua sendo a da tabela, que é o que faz o `thead` sticky grudar. */}
+        <div style={{ maxHeight: "max(340px, calc(100dvh - 260px))", overflow: "auto" }}>
           <table style={{ borderCollapse: "collapse", fontSize: 13, minWidth: 1120, width: "100%" }}>
             <thead style={{ position: "sticky", top: 0, zIndex: 5 }}>
               <tr style={{ background: T.soft }}>
