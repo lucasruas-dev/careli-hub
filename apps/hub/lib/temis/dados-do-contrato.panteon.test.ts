@@ -465,7 +465,8 @@ describe("C. a comissão pela divisão da unidade", () => {
     expect(g.valor_total_comissao).toBe("R$ 9.000,00");
     expect(r.avisos.join(" | ")).not.toContain("percentuais de comissão");
     // A coordenadora veio (as duas linhas apontam a mesma).
-    expect(g.nome_fantasia_coordenadora_vendas).toBe("Coordenadora");
+    // A razão social, e não o fantasia (Lucas, 21/09/2026).
+    expect(g.nome_fantasia_coordenadora_vendas).toBe("COORDENADORA LTDA");
     // ⚠️ E A MINUTA CONTINUA A DO PAI.
     expect(g.__empreendimento_id).toBe("35");
   });
@@ -508,7 +509,8 @@ describe("C. a comissão pela divisão da unidade", () => {
     const g = r.dados.gerais;
     expect(g.percentual_comissao_vinculado).toBe("5%");
     expect(g.percentual_comissao_coordenadora_vendas).toBe("3%");
-    expect(g.nome_fantasia_coordenadora_vendas).toBe("Coordenadora");
+    // A razão social, e não o fantasia (Lucas, 21/09/2026).
+    expect(g.nome_fantasia_coordenadora_vendas).toBe("COORDENADORA LTDA");
   });
 
   it("empreendimento sem divisão: a chave é uma só, e nada muda", async () => {
@@ -579,7 +581,8 @@ describe("C. a comissão pela divisão da unidade", () => {
     });
     const g = (await dadosDaProposta("p", sb))!.dados.gerais;
     expect(g.percentual_comissao_coordenadora_vendas).toBe("2%");
-    expect(g.nome_fantasia_coordenadora_vendas).toBe("Coordenadora");
+    // A razão social, e não o fantasia (Lucas, 21/09/2026).
+    expect(g.nome_fantasia_coordenadora_vendas).toBe("COORDENADORA LTDA");
   });
 });
 

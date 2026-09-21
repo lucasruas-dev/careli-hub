@@ -550,7 +550,17 @@ function paresEntreBlocos(
 
     // O que está FORA dos marcadores fica, ligado ou não: o marcador é a borda do bloco, e o resto
     // do parágrafo é texto do contrato.
-    empurrar(saida, no, filhos.slice(0, posicaoDoInicio));
+    //
+    // ⚠️ MENOS O RÓTULO DE ASSINATURA DE QUEM NÃO ASSINA. Nívea, 21/09/2026, sobre o contrato de uma
+    // compradora solteira: *"ainda está saindo a parte do Assinado eletronicamente do conjuge"*. Na
+    // minuta o rótulo vem ANTES do marcador — `(Assinado eletronicamente)[inicio_dados_conjuge]` —,
+    // então pela regra de cima ele sobrevive ao corte e sobra sozinho no papel, anunciando uma
+    // assinatura que não existe. Quando o par está DESLIGADO e o que resta do parágrafo é SÓ esse
+    // rótulo, ele some junto: é preâmbulo do bloco, não cláusula.
+    const antesDoMarcador = filhos.slice(0, posicaoDoInicio);
+    if (ligado || !soRotuloDeAssinatura(antesDoMarcador)) {
+      empurrar(saida, no, antesDoMarcador);
+    }
     if (ligado) {
       empurrar(saida, no, filhos.slice(posicaoDoInicio + 1));
       // Recursivo: um par pode estar dentro de outro, e o de dentro também atravessa parágrafos.
@@ -563,6 +573,27 @@ function paresEntreBlocos(
   }
 
   return saida;
+}
+
+/**
+ * O pedaço é APENAS um rótulo de assinatura ("(Assinado eletronicamente)")?
+ *
+ * ⚠️ A REGRA É ESTREITA DE PROPÓSITO: só texto, nenhuma variável, e o texto inteiro tem de ser o
+ * rótulo. No mesmo fecho existe `(Assinado eletronicamente)` antes do laço do COMPRADOR — aquele
+ * parágrafo traz o nome logo em seguida e nunca cai aqui. Alargar isso apagaria a assinatura de
+ * quem assina.
+ */
+function soRotuloDeAssinatura(pedaco: readonly (NoDeTexto | NoDoDocumento)[]): boolean {
+  // Qualquer variavel no pedaco ja o torna conteudo, e nao rotulo.
+  if (pedaco.some((f) => !ehTexto(f) && nomeDaVariavel(f) !== null)) return false;
+
+  const texto = pedaco
+    .map((f) => (ehTexto(f) ? f.text : ""))
+    .join("")
+    .trim();
+
+  if (texto === "") return false;
+  return /^\(?\s*assinad[oa]\s+eletronicamente\s*\)?[.,;:]?$/i.test(texto);
 }
 
 /** O pedaço só entra se tiver conteúdo: parágrafo com um texto vazio é uma linha em branco no papel. */

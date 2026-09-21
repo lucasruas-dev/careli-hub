@@ -173,6 +173,14 @@ type LinhaDoEmpreendimento = {
 
 type LinhaDaEntidade = {
   created_at?: null | string;
+  /**
+   * O CRECI, agora em COLUNA (migration 0183).
+   *
+   * ⚠️ ANTES ELE SÓ EXISTIA NO `metadata`, e por isso o contrato saía com `[creci_vinculado]`: das
+   * 5.566 entidades, 31 tinham o número no jsonb, e ZERO das 229 importadas do C2X — justamente as
+   * imobiliárias que vendem. O sync agora traz de `users.creci_number` para cá.
+   */
+  creci?: null | string;
   display_name: null | string;
   /** ⚠️ `metadata.cadastro` é a TERCEIRA camada do cadastro. Ver `cadastroDaEntidade`. */
   metadata?: unknown;
@@ -1186,7 +1194,7 @@ async function cadastroDoVinculado(
     // ⚠️ E ELE SAI DA PRIMEIRA ENTIDADE QUE O TIVER, pela mesma razão do documento: a imobiliária
     // pode ter duas entidades no Apolo (o espelho do C2X e a do credenciamento), e o CRECI está na
     // cadastrada aqui, que nem sempre é a primeira da lista.
-    creci: comEntidade.map((l) => texto(cadastroDaEntidade(null, l.entidade)?.creci)).find(Boolean) ?? "",
+    creci: comEntidade.map((l) => creciDaEntidade(l.entidade)).find(Boolean) ?? "",
     documento:
       comEntidade.map((l) => documentoImprimivel(texto(l.entidade?.document_masked))).find(Boolean) ?? "",
     email: primeiroContato(contatos, ["email"]),
@@ -1213,7 +1221,7 @@ async function lerEntidadesDoVinculo(
             // ⚠️ `metadata` ENTRA AQUI PELO CRECI. Ele mora em `metadata.cadastro.creci` (ver
             // `cadastroDoVinculado`); sem a coluna na consulta, `[creci_vinculado]` volta a sair
             // como colchete no contrato de corretagem — e a variável trava a geração.
-            .select("display_name, document_masked, id, legal_name, metadata, trade_name")
+            .select("creci, display_name, document_masked, id, legal_name, metadata, trade_name")
             .eq("id", id)
             .maybeSingle(),
           "apolo_entities",
@@ -1322,9 +1330,14 @@ async function quemVendeuPeloApolo(
       : "";
   const imobiliariaDaCadValida = cadCasa && !(idImobDaCad && ehComprador(idImobDaCad));
 
+  // ⚠️ NO CONTRATO A PARTE É A RAZÃO SOCIAL, NÃO O FANTASIA. Lucas, 21/09/2026: *"lembrando trazer
+  // as razões sociais em vez de fantasia"*. Quem assume obrigação é a pessoa jurídica registrada —
+  // o contrato do Vale do Ouro saiu com "FLAT IMOBILIARIA" onde devia estar "FLAT NEGOCIOS
+  // IMOBILIARIOS LTDA". O fantasia fica de reserva, para a entidade que não tem razão social
+  // cadastrada: nome errado é ruim, bloco sem nome nenhum é pior.
   const nomeDe = (id: string) => {
     const e = porId.get(id)?.entidade;
-    return texto(e?.trade_name) || texto(e?.display_name) || texto(e?.legal_name);
+    return texto(e?.legal_name) || texto(e?.trade_name) || texto(e?.display_name);
   };
   const nomeDePessoa = (id: string) => {
     const e = porId.get(id)?.entidade;
@@ -1350,7 +1363,7 @@ async function quemVendeuPeloApolo(
             // justamente as vendas que são a maioria de hoje. Mesma fonte e mesma regra de lá:
             // `metadata.cadastro.creci`, da primeira entidade que o tiver, sem ler o legado.
             creci:
-              vinculadas.map((l) => texto(cadastroDaEntidade(null, l?.entidade)?.creci)).find(Boolean) ??
+              vinculadas.map((l) => creciDaEntidade(l?.entidade)).find(Boolean) ??
               "",
             documento:
               vinculadas
@@ -1637,11 +1650,15 @@ async function cadastroDaCoordenadora(
     // possível. `documentoImprimivel` é quem barra o documento truncado, dos dois tipos.
     documento: documentoImprimivel(texto(entidade.document_masked)),
     email: primeiroContato(contatos, ["email"]),
-    // ⚠️ NOME FANTASIA PRIMEIRO, COM O `display_name` DE RESERVA. A variável se chama
-    // `nome_fantasia_coordenadora_vendas` e `trade_name` é o campo certo — mas 19 das 590 entidades
-    // PJ do Apolo estão sem ele (medido em 08/09/2026), e as 19 têm `display_name`. Sem a reserva o
-    // bloco sairia sem nome com o cadastro ali do lado.
-    nome: texto(entidade.trade_name) || texto(entidade.display_name) || texto(entidade.legal_name),
+    // ⚠️ RAZÃO SOCIAL PRIMEIRO, APESAR DO NOME DA VARIÁVEL. Lucas, 21/09/2026: *"lembrando trazer as
+    // razões sociais em vez de fantasia"*. A variável da minuta se chama
+    // `nome_fantasia_coordenadora_vendas` por herança, e trocá-la exigiria reeditar toda minuta
+    // publicada — o contrato de hoje não pode esperar por isso. O VALOR passa a ser a razão social,
+    // que é quem assume a obrigação; `razao_social_coordenadora_vendas` existe e é a variável certa
+    // para as minutas novas. O fantasia fica de reserva: 19 das 590 entidades PJ não têm razão
+    // social cadastrada (medido em 08/09/2026), e bloco sem nome é pior do que nome comercial.
+    nome:
+      texto(entidade.legal_name) || texto(entidade.trade_name) || texto(entidade.display_name),
     numero: texto(endereco?.numero),
     razaoSocial: texto(entidade.legal_name) || texto(entidade.display_name),
     // Ver `RUIDO_DE_CARGA`: "Endereco cadastral" está na coluna `street` de 4.633 linhas e já saiu
@@ -2388,6 +2405,22 @@ function dataBR(valor: string): string {
  * unir os dois em bloco traria o órgão sozinho, e `rg_cliente` voltaria a imprimir "portador da
  * cédula de identidade nº SSP/MG" — o defeito que a trava do número fechou hoje de manhã.
  */
+/**
+ * O CRECI de uma entidade: a COLUNA primeiro, o cadastro do wizard depois.
+ *
+ * ⚠️ A COLUNA GANHA porque é ela que o sync do C2X mantém e o Setup edita; o `metadata.cadastro`
+ * é o que o wizard gravou uma vez, e envelhece. Quando os dois faltam, devolve vazio — e o contrato
+ * imprime `[creci_vinculado]` e trava a geração, que é o aviso proposital.
+ */
+function creciDaEntidade(
+  entidade: LinhaDaEntidade | null | undefined,
+  ficha: null | Record<string, unknown> = null,
+): string {
+  const daColuna = texto(entidade?.creci);
+  if (daColuna) return daColuna;
+  return texto(cadastroDaEntidade(ficha, entidade)?.creci) ?? "";
+}
+
 function cadastroDaEntidade(
   ficha: null | Record<string, unknown>,
   entidade: LinhaDaEntidade | null | undefined,

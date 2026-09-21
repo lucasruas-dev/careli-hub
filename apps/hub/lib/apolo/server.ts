@@ -24,6 +24,7 @@ import {
 import { C2X_PROFISSOES } from "./c2x-professions";
 import { normalizarProfissaoLivre } from "./profissao";
 import { documentoParaBusca } from "@/lib/iris/apolo/busca-por-numero";
+import { importarCreciDoC2x, type CreciDoC2x } from "@/lib/apolo/importar-creci";
 import type {
   ApoloAddress,
   ApoloAuditSignal,
@@ -696,6 +697,34 @@ export async function syncApoloIncrementalFromC2x(): Promise<SyncResult> {
       rowsWritten,
       claimedRunId,
     );
+
+    // ⚠️ O CRECI VEM JUNTO, E É DE PROPÓSITO QUE ELE MORA NUMA COLUNA. A ficha ao vivo do C2X (mais
+    // abaixo neste arquivo) serve só para EXIBIR — o gerador de contrato lê o Panteon, e o número
+    // nunca chegava lá: o contrato do Vale do Ouro imprimiu "CRECI: [creci_vinculado]" para a Flat
+    // enquanto a tela mostrava 53964 (21/09/2026). Aqui ele é trazido para `apolo_entities.creci`,
+    // que é o que o documento alcança. Ver `lib/apolo/importar-creci.ts`.
+    //
+    // ⚠️ E A FALHA DELE NÃO DERRUBA O SYNC: a sincronização de cadastro é o que a operação inteira
+    // depende; o CRECI é um enriquecimento e pode esperar a próxima rodada.
+    try {
+      const creci = await importarCreciDoC2x({
+        adminClient,
+        consultarC2x: async () => {
+          const [linhas] = await pool.query(
+            `select id, creci_number, creci_validate
+               from users
+              where creci_number is not null and trim(creci_number) <> ''`,
+          );
+          return linhas as CreciDoC2x[];
+        },
+      });
+
+      if (creci.entidadesAtualizadas > 0) {
+        console.info("[apolo:incremental] creci importado", creci);
+      }
+    } catch (erro) {
+      console.error("[apolo:incremental] creci nao importado", apoloSafeErrorMessage(erro));
+    }
 
     return { ok: true, rowsWritten, syncRunId: claimedRunId ?? "incremental" };
   } catch (error) {

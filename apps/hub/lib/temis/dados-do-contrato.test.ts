@@ -1730,10 +1730,15 @@ describe("a comissão de corretagem e a coordenadora de vendas", () => {
   // ⚠️ O NOME QUE OBRIGA É A RAZÃO SOCIAL. Lucas, 20/09/2026, no contrato do Vale do Ouro: *"O nome
   // da Gurgel está incompleto"* — a linha do beneficiário saía com o FANTASIA, que na ficha real é
   // "GURGEL LANÇAMENTOS" para a razão social "FABRICIO GURGEL NEGOCIOS IMOBILIARIOS LTDA".
-  it("a coordenadora sai com o fantasia E com a razão social, cada um na sua variável", async () => {
+  // ⚠️ A COORDENADORA SAI PELA RAZÃO SOCIAL NAS DUAS VARIÁVEIS. Lucas, 21/09/2026: *"lembrando
+  // trazer as razões sociais em vez de fantasia"*. Quem assume obrigação no contrato é a pessoa
+  // jurídica registrada; o nome comercial só vale como reserva para quem não tem razão social
+  // cadastrada. A variável `nome_fantasia_coordenadora_vendas` mantém o nome por herança das
+  // minutas já publicadas — trocá-la exigiria reeditar todas —, mas o VALOR é a razão social.
+  it("a coordenadora sai pela razão social, mesmo na variável de nome herdada", async () => {
     const g = (await dadosDaProposta("p1", cliente({ ajustes: AJUSTES })))!.dados.gerais;
 
-    expect(g.nome_fantasia_coordenadora_vendas).toBe("Careli Vendas");
+    expect(g.nome_fantasia_coordenadora_vendas).toBe("CARELI VENDAS E INTERMEDIACAO LTDA");
     expect(g.razao_social_coordenadora_vendas).toBe("CARELI VENDAS E INTERMEDIACAO LTDA");
   });
 
@@ -1791,7 +1796,8 @@ describe("a comissão de corretagem e a coordenadora de vendas", () => {
   it("os nove campos da coordenadora saem do cadastro dela no Apolo", async () => {
     const g = (await dadosDaProposta("p1", cliente({ ajustes: AJUSTES })))!.dados.gerais;
 
-    expect(g.nome_fantasia_coordenadora_vendas).toBe("Careli Vendas");
+    // A razão social, e não o fantasia — ver a nota do teste acima.
+    expect(g.nome_fantasia_coordenadora_vendas).toBe("CARELI VENDAS E INTERMEDIACAO LTDA");
     expect(g.cnpj_coordenadora_vendas).toBe("11.115.899/0001-04");
     expect(g.rua_coordenadora_vendas).toBe("Avenida Central");
     expect(g.numero_coordenadora_vendas).toBe("1000");
@@ -1804,17 +1810,35 @@ describe("a comissão de corretagem e a coordenadora de vendas", () => {
     expect(g.email_coordenadora_vendas).toBe("vendas@careli.adm.br");
   });
 
-  it("entidade sem `trade_name` cai no `display_name` — 19 das 590 PJ estão assim", async () => {
-    const sb = clienteFalso({
+  // ⚠️ SEM RAZÃO SOCIAL, O NOME COMERCIAL SALVA O BLOCO. 19 das 590 entidades PJ do Apolo não têm
+  // `legal_name` (medido em 08/09/2026): para elas o contrato sai com o fantasia, porque bloco de
+  // beneficiário sem nome nenhum é pior do que nome comercial.
+  it("entidade sem razão social cai no fantasia, e depois no `display_name`", async () => {
+    const semRazao = clienteFalso({
       apolo_entities: (f: Record<string, unknown>) =>
-        f.id === COORDENADORA ? { ...ENTIDADE_COORDENADORA, trade_name: null } : [ENTIDADE_THIAGO],
+        f.id === COORDENADORA ? { ...ENTIDADE_COORDENADORA, legal_name: null } : [ENTIDADE_THIAGO],
       apolo_enterprise_settings: AJUSTES,
       hercules_empreendimentos: EMPREENDIMENTO,
       hercules_propostas: proposta(),
       hercules_unidades: UNIDADE,
     });
-    const g = (await dadosDaProposta("p1", sb))!.dados.gerais;
-    expect(g.nome_fantasia_coordenadora_vendas).toBe("CARELI VENDAS LTDA");
+    expect(
+      (await dadosDaProposta("p1", semRazao))!.dados.gerais.nome_fantasia_coordenadora_vendas,
+    ).toBe("Careli Vendas");
+
+    const semNada = clienteFalso({
+      apolo_entities: (f: Record<string, unknown>) =>
+        f.id === COORDENADORA
+          ? { ...ENTIDADE_COORDENADORA, legal_name: null, trade_name: null }
+          : [ENTIDADE_THIAGO],
+      apolo_enterprise_settings: AJUSTES,
+      hercules_empreendimentos: EMPREENDIMENTO,
+      hercules_propostas: proposta(),
+      hercules_unidades: UNIDADE,
+    });
+    expect(
+      (await dadosDaProposta("p1", semNada))!.dados.gerais.nome_fantasia_coordenadora_vendas,
+    ).toBe("CARELI VENDAS LTDA");
   });
 
   // ⚠️ NULO NÃO É ZERO, e esta é a metade "nulo": a variável NÃO entra no dicionário, o motor

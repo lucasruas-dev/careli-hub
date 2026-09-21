@@ -1100,8 +1100,12 @@ describe("o par que atravessa parágrafos DENTRO de uma célula", () => {
       gerais: {},
     });
 
-    expect(texto(r.nos)).toBe("(Assinado eletronicamente)");
+    // ⚠️ O RÓTULO DA ASSINATURA SOME JUNTO. Nívea, 21/09/2026: *"ainda está saindo a parte do
+    // Assinado eletronicamente do conjuge"*. Ele vem ANTES do marcador na minuta, então a regra do
+    // "o que está fora fica" o preservava — anunciando a assinatura de quem não existe.
+    expect(texto(r.nos)).toBe("");
     expect(texto(r.nos)).not.toContain("CÔNJUGE");
+    expect(texto(r.nos)).not.toContain("Assinado");
     expect(r.semValor).not.toContain("nome_conjuge");
   });
 
@@ -1299,5 +1303,65 @@ describe("os marcadores de montagem", () => {
     });
     expect(texto(r.nos)).toBe("[anexo_da_planta] [anexo_0]");
     expect(r.semValor).toEqual(["anexo_0", "anexo_da_planta"]);
+  });
+});
+
+// ── O RÓTULO DE ASSINATURA QUE FICAVA ÓRFÃO ──────────────────────────────────
+//
+// Nívea, 21/09/2026, lendo o contrato de uma compradora solteira: *"ainda está saindo a parte do
+// Assinado eletronicamente do conjuge. Saiu a parte do conjuge."* Na minuta do Vale do Ouro o fecho
+// é `<p>(Assinado eletronicamente)[inicio_dados_conjuge]</p>`: o rótulo está FORA do marcador, e a
+// regra geral — o que está fora do bloco é texto do contrato — o preservava.
+describe("o rótulo de assinatura de quem não assina", () => {
+  it("⚠️ solteiro: some o bloco do cônjuge E o '(Assinado eletronicamente)' dele", () => {
+    const r = preencherContrato(
+      [
+        p("COMPROMISSÁRIO(A) COMPRADOR(A)"),
+        p("(Assinado eletronicamente)", v("inicio_dados_conjuge")),
+        p(v("nome_conjuge")),
+        p("CÔNJUGE", v("fim_dados_conjuge")),
+      ],
+      { compradores: [comprador("VITORIA")], gerais: {} },
+    );
+
+    expect(texto(r.nos)).toBe("COMPROMISSÁRIO(A) COMPRADOR(A)");
+  });
+
+  it("casado: o rótulo e o cônjuge ficam", () => {
+    const r = preencherContrato(
+      [
+        p("(Assinado eletronicamente)", v("inicio_dados_conjuge")),
+        p(v("nome_conjuge")),
+        p("CÔNJUGE", v("fim_dados_conjuge")),
+      ],
+      {
+        compradores: [
+          comprador("VITORIA", {
+            temConjuge: true,
+            valores: { nome_cliente: "VITORIA", nome_conjuge: "JOÃO" },
+          }),
+        ],
+        gerais: {},
+      },
+    );
+
+    expect(texto(r.nos)).toBe("(Assinado eletronicamente) JOÃO CÔNJUGE");
+  });
+
+  // ⚠️ A REGRA NÃO PODE COMER A ASSINATURA DE QUEM ASSINA. No mesmo fecho, o rótulo do COMPRADOR
+  // vem antes do laço e do `[inicio_dados_cliente_pf]`, com o nome logo em seguida no mesmo
+  // parágrafo — ali o pedaço tem variável e nunca é tratado como rótulo solto.
+  it("texto com variável junto não é rótulo solto", () => {
+    const r = preencherContrato(
+      [
+        p("(Assinado eletronicamente) ", v("nome_cliente"), v("inicio_dados_conjuge")),
+        p("CÔNJUGE", v("fim_dados_conjuge")),
+      ],
+      { compradores: [comprador("VITORIA SILVA")], gerais: {} },
+    );
+
+    expect(texto(r.nos)).toContain("(Assinado eletronicamente)");
+    expect(texto(r.nos)).toContain("VITORIA SILVA");
+    expect(texto(r.nos)).not.toContain("CÔNJUGE");
   });
 });

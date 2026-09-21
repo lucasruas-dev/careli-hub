@@ -36,6 +36,46 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-21-contrato-com-creci-razao-social-e-sem-assinatura-orfa",
+    deployedAt: "2026-09-21T12:10:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O CRECI da imobiliária passa a sair no contrato.** O número existia no sistema antigo e aparecia na ficha do Apolo, mas o contrato não alcançava e imprimia o código no lugar. Agora ele mora no cadastro do Panteon e entra sozinho.",
+              "**As partes saem pela razão social, não pelo nome fantasia** — é a pessoa jurídica registrada que assume a obrigação. Quem não tem razão social cadastrada continua saindo pelo nome comercial, para o bloco não ficar sem nome.",
+              "**Some o \"(Assinado eletronicamente)\" do cônjuge que não existe.** Para comprador solteiro, o bloco do cônjuge já sumia, mas a linha da assinatura dele ficava sozinha no fecho.",
+            ],
+            screen: "Contrato · Prévia e geração",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O CRECI passa a ser cadastro de verdade**, gravado no Panteon e atualizado sozinho a partir do sistema antigo a cada poucos minutos. Antes ele só era exibido na tela, lido do legado na hora.",
+            ],
+            screen: "CRM 360 · Cadastro",
+          },
+        ],
+      },
+    ],
+    rollback: "f0fd6873",
+    technical: {
+      done:
+        "Lucas (21/09/2026): *\"tudo que precisa estar dentro do contrato (ou seja as variaveis) tem que estar dentro do panteon\"*, *\"pode corrigir de uma vez... preciso enviar contrato hoje\"* e *\"lembrando trazer as razões sociais em vez de fantasia\"*. (1) MIGRATION 0183 APLICADA em produção: `apolo_entities` ganhou `creci`, `creci_uf`, `creci_validade` e `natureza_juridica`, com índice parcial e comentários. Coluna, e não `metadata`, porque o sync do C2X substitui o jsonb inteiro (foi o que obrigou a criar `apolo_esteira` na 0057). Backfill imediato: 31 CRECIs e 26 naturezas promovidos de `metadata.cadastro`. (2) Novo `lib/apolo/importar-creci.ts` (10 testes) chamado ao fim de `syncApoloIncrementalFromC2x` (cron de 5 min): lê `users.creci_number` do C2X, casa por `apolo_source_links` (4.778 vínculos) e NÃO por documento, grava em lotes de 100 (`.in()` com centenas de ids estoura a URL do PostgREST), só preenche o que está nulo (nunca sobrescreve cadastro manual) e não derruba o sync se falhar. `creciLimpo` recusa o lixo do legado (\"0\", \"-\", \"NAO TEM\"): CRECI inventado no papel é pior que o colchete. (3) `dados-do-contrato.ts` lê a coluna com queda para o cadastro antigo (`creciDaEntidade`), e o nome das partes passou a ser `legal_name` primeiro, com fantasia de reserva — inclusive na variável `nome_fantasia_coordenadora_vendas`, que mantém o nome por herança das minutas publicadas mas carrega a razão social. (4) `preencher-contrato.ts`: `soRotuloDeAssinatura` descarta o \"(Assinado eletronicamente)\" que sobrava antes de um par desligado; a regra é estreita (texto puro, sem variável, casando só o rótulo) para não comer a assinatura de quem assina. Medido antes de mexer: das 62 variáveis que a minuta do VOL usa, todas têm montador — o único buraco de DADO era o CRECI. 488 arquivos e 7.679 testes, typecheck limpo. ⚠️ EM ABERTO: a data do fecho sai curta porque a minuta escreve `[data_emissao_contrato]`; a variável por extenso já existe (`data_emissao_contrato_extenso`) e a troca é no texto da minuta, não no código.",
+      motivation:
+        "Nívea (21/09/2026), sobre o contrato gerado: *\"A data tem que ser por extenso e ainda está saindo a parte do Assinado eletronicamente do conjuge\"*; e o contrato do Vale do Ouro saindo com `[creci_vinculado]` para a Flat Imobiliária enquanto a ficha do Apolo mostrava CRECI 53964.",
+    },
+    title: "Contrato: CRECI no cadastro, razão social nas partes e fecho limpo",
+    type: "correcao",
+    version: "1.353.2",
+  },
+  {
     buildTag: "2026-09-21-financeiro-do-portal-filtra-de-verdade",
     deployedAt: "2026-09-21T11:50:00-03:00",
     modules: [
