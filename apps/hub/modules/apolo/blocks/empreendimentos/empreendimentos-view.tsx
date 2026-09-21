@@ -7,7 +7,8 @@ import {
 } from "@/lib/supabase/client";
 import { AdicionarUnidades } from "@/modules/apolo/blocks/empreendimentos/adicionar-unidades";
 import { AcaoDeBloqueio } from "@/modules/apolo/blocks/empreendimentos/bloqueio-da-unidade";
-import { AcaoDeCategoria } from "@/modules/apolo/blocks/empreendimentos/categoria-da-unidade";
+import { CadastroDaUnidade } from "@/modules/apolo/blocks/empreendimentos/cadastro-da-unidade";
+import { CategoriasTab } from "@/modules/apolo/blocks/empreendimentos/categorias-tab";
 import { LinksTab } from "@/modules/apolo/blocks/empreendimentos/links-tab";
 import { MinutasTab } from "@/modules/apolo/blocks/empreendimentos/minutas-tab";
 import { OrdemDeAssinaturaCard } from "@/modules/apolo/blocks/empreendimentos/ordem-de-assinatura-card";
@@ -25,7 +26,7 @@ import type { ReactNode } from "react";
 
 import { CLASSES_DO_SELO, situacaoConhecida } from "@/lib/hercules/cores-de-situacao";
 import type { LinkPublico } from "@/lib/hercules/links-do-empreendimento";
-import { rotuloDaSituacao, rotuloDoBalde } from "@/lib/hercules/situacao-da-unidade";
+import { rotuloDoBalde } from "@/lib/hercules/situacao-da-unidade";
 import {
   ehIdDoPanteon,
   type TipoProduto,
@@ -55,9 +56,6 @@ import {
   // algum dia entrar neste arquivo.
   Link2 as LinkIcon,
   Loader2,
-  // Alias pra não sombrear o `Map` global neste arquivo de 4 mil linhas (convenção já usada
-  // em squadops/address-catalog).
-  Map as MapIcon,
   MapPinned,
   Network,
   Percent,
@@ -65,7 +63,6 @@ import {
   Search,
   Settings,
   Tag,
-  TrendingUp,
   WalletCards,
   X,
 } from "lucide-react";
@@ -98,19 +95,9 @@ import type {
   ApoloUnitCobranca,
 } from "@/lib/apolo/cobranca";
 import type { GuardianCompromissoDetail } from "@/lib/guardian/compromissos";
-import type {
-  ApoloEnterpriseVendas,
-  ApoloVendaMovement,
-  ApoloVendaProposta,
-  ApoloVendaStage,
-  ApoloVendaTerminal,
-  ApoloVendaTerminalItem,
-  ApoloVendaUnit,
-} from "@/lib/apolo/vendas";
 import { toTitleCase } from "@/lib/format/name-case";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
-import { MapaTab } from "./masterplan-mapa";
 import { fileToBase64 } from "../../lib/document-capture";
 import { FilhosTab } from "@/modules/apolo/blocks/empreendimentos/filhos-tab";
 import {
@@ -167,15 +154,13 @@ const detailTabs = [
   { icon: Layers, id: "resumo", label: "Resumo" },
   { icon: ContactRound, id: "cadastro", label: "Cadastro" },
   { icon: MapPinned, id: "unidades", label: "Unidades" },
-  // Mapa entra logo depois de Unidades: é a MESMA informação de estoque, vista na planta.
-  { icon: MapIcon, id: "mapa", label: "Mapa" },
-  // ⚠️ SÓ APARECE NO PRODUTO AGRUPADO (Lucas, 07/09/2026: *"acho que pode até vir aqui uma aba
-  // filhos"*, *"trazer os filhos com suas respectivas unidades"*). A ficha consolidada esconde de
-  // onde vem o número: o Lagoa Bonita diz 412 unidades, e esse 412 é a soma de LBF, LBP e LBR —
-  // três empreendimentos no C2X que a tela junta numa linha. Num produto simples a aba não existe,
-  // porque uma aba vazia é uma pergunta que a tela faz e responde sozinha.
-  { icon: Layers, id: "filhos", label: "Etapas" },
-  { icon: TrendingUp, id: "vendas", label: "Vendas" },
+  // ⚠️ MAPA E VENDAS SAÍRAM DAQUI EM 21/09/2026 (Lucas: *"no apolo empreendimento, pode tirar o mapa
+  // e vendas, não precisa mais dessas telas ali"*). O mapa do produto continua no espelho e nos
+  // links públicos; o kanban de vendas por produto continua no portal do incorporador, que tem a
+  // cópia dele. Quem chegar por um link salvo naquelas abas cai no Resumo — ver `ABA_APOSENTADA`.
+  //
+  // ⚠️ E "FILHOS" VIROU SUB-ABA DO SETUP no mesmo dia (*"categoria - filhos tem que está dentro do
+  // setup"*): a estrutura do produto (o filho e a categoria) se cadastra num lugar só.
   // "Carteira" com o ícone de carteira do Hades (WalletCards).
   { icon: WalletCards, id: "carteira", label: "Carteira" },
   { icon: Network, id: "relacionamentos", label: "Relacionamentos" },
@@ -205,8 +190,26 @@ const detailTabs = [
   { icon: Settings, id: "setup", label: "Setup" },
 ] as const;
 
+/** As sub-abas do Setup: a estrutura do produto e a configuração de como ele opera. */
+type SubAbaDoSetup = "assinatura" | "categorias" | "credenciamento" | "filhos";
+
 // A aba é controlada pelo ApoloPage (o tipo canônico mora no lib).
 type DetailTab = ApoloEnterpriseTab;
+
+/**
+ * Para onde vai quem chega numa aba que não existe mais na ficha.
+ *
+ * ⚠️ O TIPO CONTINUA ACEITANDO AS TRÊS, e isso não é resíduo: `ApoloEnterpriseTab` é o que o
+ * ApoloPage guarda entre telas, e apagar os nomes só trocaria o link velho por um erro de
+ * compilação em quem o guardou.
+ */
+const ABA_APOSENTADA: Partial<Record<DetailTab, DetailTab>> = {
+  // O filho virou sub-aba do Setup (Lucas, 21/09/2026: *"categoria - filhos tem que está dentro do
+  // setup"*).
+  filhos: "setup",
+  mapa: "resumo",
+  vendas: "resumo",
+};
 
 // O `coordenador_id` do C2X está com dado ERRADO (o MESMO player nos 24 empreendimentos), então
 // a tela não o exibe — ele só viaja no payload, pro Lucas corrigir no C2X depois.
@@ -607,7 +610,7 @@ function EnterpriseRows({
           <div className="flex items-center gap-2">
             {hasStages ? (
               <button
-                aria-label={expanded ? "Recolher etapas" : "Expandir etapas"}
+                aria-label={expanded ? "Recolher filhos" : "Expandir filhos"}
                 className="flex size-5 shrink-0 items-center justify-center rounded-md border border-line bg-subtle text-ink-muted transition-colors hover:border-[#A07C3B]/40 hover:text-[#7A5E2C]"
                 onClick={(event) => {
                   event.stopPropagation();
@@ -628,7 +631,7 @@ function EnterpriseRows({
                 {toTitleCase(row.name)}
                 {hasStages ? (
                   <span className="ml-1.5 text-[11px] font-medium text-ink-muted">
-                    ({row.stages.length} etapas)
+                    ({row.stages.length} filhos)
                   </span>
                 ) : null}
               </p>
@@ -728,6 +731,12 @@ function EnterpriseDetail({
 }) {
   const setTab = onTabChange;
 
+  // ⚠️ AS ABAS APOSENTADAS AINDA CHEGAM AQUI. O ApoloPage guarda a última aba aberta para o "voltar"
+  // do CRM devolver a pessoa onde ela estava, e há links salvos apontando para as antigas. Em vez de
+  // dar tela em branco a quem chegar por um deles, cada uma cai onde o assunto mora hoje: o filho
+  // virou sub-aba do Setup, e o mapa e as vendas saíram da ficha (21/09/2026).
+  const aba: DetailTab = ABA_APOSENTADA[tab] ?? tab;
+
   // A porta do APOLO para os links públicos. `useCallback` porque a LinksTab a tem como
   // dependência do efeito: uma função nova a cada render refaria o fetch em laço.
   //
@@ -788,11 +797,7 @@ function EnterpriseDetail({
 
       <nav className="flex shrink-0 flex-wrap gap-1.5 rounded-xl border border-line bg-subtle/70 p-1.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         {detailTabs.map((item) => {
-          const active = tab === item.id;
-
-          // ⚠️ "Etapas" SÓ NO PRODUTO AGRUPADO. Num empreendimento simples ela abriria para dizer
-          // "não tem etapa" — uma pergunta que a tela faz e responde sozinha.
-          if (item.id === "filhos" && row.stages.length === 0) return null;
+          const active = aba === item.id;
 
           return (
             <button
@@ -820,51 +825,46 @@ function EnterpriseDetail({
           // cabeçalho da tabela grudar; em Minutas é para o editor ocupar a altura da tela — dentro
           // de um container que rola, ele encolhe para a altura mínima e a folha fica um talho.
           // Arquivos entra junto: a grade rola por dentro (`.arq` tem flex: 1 e overflow: auto).
-          tab === "unidades" || tab === "minutas" || tab === "arquivos"
+          aba === "unidades" || aba === "minutas" || aba === "arquivos"
             ? "flex min-h-0 flex-1 flex-col overflow-hidden"
             : "min-h-0 flex-1 overflow-auto"
         }
       >
-        {tab === "cadastro" ? <CadastroTab row={row} /> : null}
-        {tab === "relacionamentos" ? (
+        {aba === "cadastro" ? <CadastroTab row={row} /> : null}
+        {aba === "relacionamentos" ? (
           <RelacionamentosTab onOpenEntity={onOpenEntity} row={row} />
         ) : null}
-        {tab === "resumo" ? <ResumoTab row={row} /> : null}
-        {tab === "mapa" ? <MapaTab row={row} /> : null}
-        {tab === "unidades" ? (
+        {aba === "resumo" ? <ResumoTab row={row} /> : null}
+        {aba === "unidades" ? (
           // ⚠️ BLOQUEAR E DESBLOQUEAR MORAM AQUI, NO APOLO (Lucas, 18/09/2026: *"eu posso por
           // exemplo, bloquear uma unidade dentro do apolo e isso tem que refletir no hercules"*).
           // A ação entra pela prop `acaoDaUnidade`, e não dentro da UnidadesTab, porque a mesma aba
           // é montada pelo portal do cliente, que tem a ação dele e não bloqueia por esta porta.
           <UnidadesTab
-            // ⚠️ A CATEGORIA E A DIVISÃO ENTRAM AO LADO DO BLOQUEIO, e pelo mesmo motivo: o cadastro
-            // do lote é do Apolo (Lucas, 18/09/2026: *"cadastro apolo, interações comerciais
-            // hercules"*), e em 21/09/2026 *"eu preciso também vincular as unidades no filho,
-            // categoria (quando existir)"*. A ação de UMA unidade chama a MESMA rota do vínculo em
-            // massa, com um id só — ver `categoria-da-unidade.tsx`.
             acaoDaUnidade={(unidade, recarregar) => (
-              <div className="inline-flex items-center gap-1.5">
-                <AcaoDeCategoria
-                  codigo={row.code}
-                  enterpriseId={row.id}
-                  recarregar={recarregar}
-                  unidade={unidade}
-                />
-                <AcaoDeBloqueio recarregar={recarregar} unidade={unidade} />
-              </div>
+              <AcaoDeBloqueio recarregar={recarregar} unidade={unidade} />
+            )}
+            // ⚠️ O CADASTRO DO LOTE É A SEGUNDA SUB-ABA, E SÓ NO APOLO (Lucas, 21/09/2026: *"dentro
+            // da unidade eu preciso ter as abas de resumo (...) e preciso ter a aba cadastro de
+            // unidade"*). A prop desce o painel pronto porque ele fala com portas do HUB (o Bearer
+            // do Apolo e a Têmis); a mesma tabela é montada pelo portal do cliente, que não tem
+            // nenhuma delas.
+            cadastroDaUnidade={(unidade, recarregar) => (
+              <CadastroDaUnidade
+                codigo={row.codes?.[0] ?? row.code}
+                enterpriseId={row.id}
+                recarregar={recarregar}
+                unidade={unidade}
+              />
             )}
             onOpenEntity={onOpenEntity}
             row={row}
           />
         ) : null}
-        {tab === "carteira" ? (
+        {aba === "carteira" ? (
           <CarteiraTab onOpenEntity={onOpenEntity} row={row} />
         ) : null}
-        {tab === "filhos" ? <FilhosTab row={row} /> : null}
-        {tab === "vendas" ? (
-          <VendasTab onOpenEntity={onOpenEntity} row={row} />
-        ) : null}
-        {tab === "politica" ? (
+        {aba === "politica" ? (
           <PoliticaComercialTab
             code={row.code}
             codes={row.codes}
@@ -876,7 +876,7 @@ function EnterpriseDetail({
             é o que o ApoloPage guarda para o "voltar" trazer a pessoa de volta à aba onde estava, e
             há links salvos apontando para ela. Em vez de dar tela em branco a quem chegar por um
             deles, cai na política — que é onde os planos moram agora. */}
-        {tab === "planos" ? (
+        {aba === "planos" ? (
           <PoliticaComercialTab
             abaInicial="planos"
             code={row.code}
@@ -885,11 +885,11 @@ function EnterpriseDetail({
             name={row.name}
           />
         ) : null}
-        {tab === "minutas" ? (
+        {aba === "minutas" ? (
           <MinutasTab codigo={row.codes?.[0] ?? row.code} enterpriseId={row.id} name={row.name} />
         ) : null}
-        {tab === "links" ? <LinksTab buscar={buscarLinks} /> : null}
-        {tab === "arquivos" ? (
+        {aba === "links" ? <LinksTab buscar={buscarLinks} /> : null}
+        {aba === "arquivos" ? (
           // `podeEditar` liga o botão; quem decide de verdade é o servidor: o GET devolve
           // `podeEnviar` pelo papel de escrita do hub, e o POST/DELETE reconferem.
           <ArquivosDoProduto
@@ -898,8 +898,14 @@ function EnterpriseDetail({
             podeEditar
           />
         ) : null}
-        {tab === "setup" ? (
-          <SetupTab code={row.code} enterpriseId={row.id} name={row.name} />
+        {aba === "setup" ? (
+          <SetupTab
+            code={row.code}
+            codigoDasCategorias={row.codes?.[0] ?? row.code}
+            enterpriseId={row.id}
+            name={row.name}
+            row={row}
+          />
         ) : null}
       </section>
     </div>
@@ -1526,21 +1532,32 @@ async function uploadEnterpriseLogo(
  *
  * ⚠️ A ORDEM DAS ABAS SEGUE A VENDA, da esquerda para a direita — a mesma razão pela qual os cards
  * estavam nessa ordem quando eram uma pilha só.
+ *
+ * ⚠️ E O SETUP VIROU A CASA DA ESTRUTURA DO PRODUTO em 21/09/2026: a categoria (que morava dentro de
+ * Políticas comerciais) e o filho (que era aba de primeiro nível) passaram a ser sub-abas daqui.
  */
 function SetupTab({
   code,
+  codigoDasCategorias,
   enterpriseId,
   name,
+  row,
 }: {
   code: string;
+  /** UM código real da família (a ficha consolidada não tem id), como a CategoriasTab precisa. */
+  codigoDasCategorias: string;
   enterpriseId: string;
   name: string;
+  row: ApoloEnterpriseRow;
 }) {
-  const [subAba, setSubAba] = useState<"assinatura" | "credenciamento">(
-    "credenciamento",
-  );
+  const [subAba, setSubAba] = useState<SubAbaDoSetup>("categorias");
 
-  const abas: { id: "assinatura" | "credenciamento"; rotulo: string }[] = [
+  // ⚠️ A ESTRUTURA VEM PRIMEIRO, e é a ordem de quem monta um produto: o filho e a categoria são o
+  // que o produto É; credenciamento e assinatura são como ele opera. Por isso a aba abre em
+  // Categorias, que é o que o Lucas disse ir buscar aqui (*"é lá que abro essas categorias"*).
+  const abas: { id: SubAbaDoSetup; rotulo: string }[] = [
+    { id: "categorias", rotulo: "Categorias" },
+    { id: "filhos", rotulo: "Filho" },
     { id: "credenciamento", rotulo: "Credenciamento" },
     { id: "assinatura", rotulo: "Assinatura" },
   ];
@@ -1563,6 +1580,19 @@ function SetupTab({
           </button>
         ))}
       </div>
+
+      {/* ⚠️ CATEGORIA E FILHO MUDARAM DE CASA EM 21/09/2026 (Lucas: *"categoria - filhos tem que
+          está dentro do setup é lá que abro essas categorias"*). A categoria vinha de dentro de
+          Políticas comerciais e o filho era aba de primeiro nível: eram dois lugares para dizer como
+          o produto é dividido, e nenhum deles era onde se procura por isso. */}
+      {subAba === "categorias" ? (
+        <CategoriasTab codigo={codigoDasCategorias} enterpriseId={enterpriseId} name={name} />
+      ) : null}
+
+      {/* ⚠️ O FILHO APARECE MESMO NO PRODUTO SIMPLES, e isso mudou junto: antes a aba só existia no
+          agrupado, porque ela só listava. Agora ela também é onde o filho NASCE, e esconder a porta
+          de quem ainda não tem nenhum é esconder justamente de quem precisa dela. */}
+      {subAba === "filhos" ? <FilhosTab row={row} /> : null}
 
       {subAba === "credenciamento" ? (
         <CredenciamentoCard code={code} enterpriseId={enterpriseId} name={name} />
@@ -2020,8 +2050,10 @@ export function ResumoTab({ row }: { row: ApoloEnterpriseRow }) {
             label="Incorporador"
             value={row.incorporador ?? "Não informado"}
           />
+          {/* "Filho" é a nomenclatura da casa (Lucas, 21/09/2026: *"em vez etapas, pode deixar
+              Filho"*, *"essa é a nossa nomenclatura"*). O legado chamava de etapa. */}
           <Fact
-            label="Etapas"
+            label="Filhos"
             value={row.stages.length ? String(row.stages.length) : "1"}
           />
         </dl>
@@ -2049,6 +2081,7 @@ const ROTA_DAS_UNIDADES_DO_PANTEON_NO_HUB =
 export function UnidadesTab({
   acaoDaUnidade,
   api,
+  cadastroDaUnidade,
   onOpenEntity,
   row,
 }: {
@@ -2057,6 +2090,16 @@ export function UnidadesTab({
    * final "Ações"; sem ela, nada muda. `recarregar` relê as unidades depois de a ação gravar.
    */
   acaoDaUnidade?: (unidade: ApoloEnterpriseUnit, recarregar: () => void) => ReactNode;
+  /**
+   * O CADASTRO DE UMA UNIDADE. Com a prop, a aba ganha as duas sub-abas que o Lucas pediu em
+   * 21/09/2026 (*"dentro da unidade eu preciso ter as abas de resumo (...) e preciso ter a aba
+   * cadastro de unidade"*): Resumo, que é esta tabela, e Cadastro, que é a ficha do lote escolhido.
+   *
+   * ⚠️ O PAINEL VEM DE FORA, como a `acaoDaUnidade`, porque ele fala com portas do HUB (o Bearer do
+   * Apolo, a Têmis) e esta mesma tabela é montada pelo portal do cliente, que não tem nenhuma delas.
+   * Sem a prop, a aba continua sendo só a tabela.
+   */
+  cadastroDaUnidade?: (unidade: ApoloEnterpriseUnit, recarregar: () => void) => ReactNode;
   /** A porta do portal: rota pronta (com o `?emp=`) e sem o Bearer do Apolo. */
   api?: { rota: string; semToken: boolean };
   onOpenEntity: (name: string, entityId: string) => void;
@@ -2087,6 +2130,9 @@ export function UnidadesTab({
   // O canal do lançamento em andamento, quando há um. Vem junto das unidades.
   const [topicoDoEvento, setTopicoDoEvento] = useState<null | string>(null);
   const [statusFilter, setStatusFilter] = useState<UnitFilter>("todos");
+  // A sub-aba e o lote aberto nela. O id é o do C2X (`unit.id`), que é a chave da linha na tabela.
+  const [subAba, setSubAba] = useState<"cadastro" | "resumo">("resumo");
+  const [lote, setLote] = useState<null | string>(null);
   const [sort, setSort] = useState<UnitSort>({
     column: "codigo",
     direction: "asc",
@@ -2238,9 +2284,42 @@ export function UnidadesTab({
 
   const visible = sortUnits(filterUnits(units, search, statusFilter), sort);
   const semCadastro = units.filter((unit) => unit.semCadastroNoPanteon).length;
+  // ⚠️ SAI DE `units`, E NÃO DE `visible`: mexer na busca não pode fechar a ficha que está aberta.
+  const loteAberto = lote ? (units.find((unit) => unit.id === lote) ?? null) : null;
+
+  const abrirCadastro = (unit: ApoloEnterpriseUnit) => {
+    setLote(unit.id);
+    setSubAba("cadastro");
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
+      {/* ⚠️ AS SUB-ABAS SÓ EXISTEM NO APOLO (é a `cadastroDaUnidade` que as liga). No portal do
+          cliente a aba continua sendo a tabela e nada muda de lugar. */}
+      {cadastroDaUnidade ? (
+        <div className="flex shrink-0 flex-wrap gap-1 border-b border-line">
+          {(
+            [
+              { id: "resumo", rotulo: "Resumo" },
+              { id: "cadastro", rotulo: "Cadastro da unidade" },
+            ] as const
+          ).map((x) => (
+            <button
+              className={`rounded-t-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+                subAba === x.id
+                  ? "bg-surface text-ink shadow-[inset_0_-2px_0_0_currentColor]"
+                  : "text-ink-muted hover:text-ink"
+              }`}
+              key={x.id}
+              onClick={() => setSubAba(x.id)}
+              type="button"
+            >
+              {x.rotulo}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {/* Filtro + busca */}
       <div className="flex shrink-0 flex-wrap items-center gap-2">
         <label className="flex h-9 min-w-[240px] flex-1 items-center gap-2 rounded-lg border border-line bg-surface px-3">
@@ -2339,6 +2418,7 @@ export function UnidadesTab({
       ) : null}
 
       {/* Cabeçalho TRAVADO: só os dados rolam. */}
+      {subAba === "resumo" || !cadastroDaUnidade ? (
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-surface">
         <div className="min-h-0 flex-1 overflow-auto">
           <table className="w-full min-w-[1080px] border-collapse text-sm">
@@ -2386,7 +2466,7 @@ export function UnidadesTab({
                   sort={sort}
                 />
                 <th className="px-4 py-2.5">Última movimentação</th>
-                {acaoDaUnidade ? (
+                {acaoDaUnidade || cadastroDaUnidade ? (
                   <th className="px-4 py-2.5 text-right">Ações</th>
                 ) : null}
               </tr>
@@ -2433,9 +2513,24 @@ export function UnidadesTab({
                       onOpenEntity={api ? null : onOpenEntity}
                     />
                   </td>
-                  {acaoDaUnidade ? (
+                  {acaoDaUnidade || cadastroDaUnidade ? (
                     <td className="px-4 py-2 text-right">
-                      {acaoDaUnidade(unit, recarregar)}
+                      <div className="inline-flex items-center gap-1.5">
+                        {/* ⚠️ O ATALHO LEVA PARA A SUB-ABA, e não abre uma segunda janela de
+                            cadastro: uma porta só para o mesmo assunto. */}
+                        {cadastroDaUnidade ? (
+                          <button
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-xs font-semibold text-ink transition-colors hover:border-ink/40 hover:bg-subtle"
+                            onClick={() => abrirCadastro(unit)}
+                            title="Abrir o cadastro desta unidade"
+                            type="button"
+                          >
+                            <FileText aria-hidden="true" className="size-3.5" />
+                            Cadastro
+                          </button>
+                        ) : null}
+                        {acaoDaUnidade ? acaoDaUnidade(unit, recarregar) : null}
+                      </div>
                     </td>
                   ) : null}
                 </tr>
@@ -2449,6 +2544,46 @@ export function UnidadesTab({
           </p>
         ) : null}
       </div>
+      ) : (
+        // ⚠️ A LISTA DA ESQUERDA OBEDECE À MESMA BUSCA E AO MESMO FILTRO DA TABELA. Duas réguas de
+        // filtro na mesma aba fariam a pessoa procurar na sub-aba de cadastro um lote que ela
+        // acabou de achar no Resumo.
+        <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+          <div className="flex max-h-56 min-h-0 w-full shrink-0 flex-col overflow-auto rounded-xl border border-line bg-surface lg:max-h-none lg:w-64">
+            {visible.map((unit) => (
+              <button
+                className={`flex items-center justify-between gap-2 border-b border-line/70 px-3 py-2 text-left last:border-b-0 ${
+                  lote === unit.id
+                    ? "bg-[#A07C3B]/10 text-ink"
+                    : "text-ink-soft hover:bg-subtle hover:text-ink"
+                }`}
+                key={unit.id}
+                onClick={() => setLote(unit.id)}
+                type="button"
+              >
+                <span className="text-sm font-semibold tabular-nums">{unit.code}</span>
+                <span className="shrink-0 text-[11px] text-ink-muted">{unit.status}</span>
+              </button>
+            ))}
+            {visible.length === 0 ? (
+              <p className="m-0 p-4 text-center text-xs text-ink-muted">
+                Nenhuma unidade encontrada.
+              </p>
+            ) : null}
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-auto">
+            {loteAberto ? (
+              cadastroDaUnidade(loteAberto, recarregar)
+            ) : (
+              <p className="m-0 rounded-xl border border-dashed border-line p-6 text-center text-sm text-ink-muted">
+                Escolha um lote na lista para abrir o cadastro dele: filho, categoria, dados do lote
+                e os anexos que só ele leva para o contrato.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2682,877 +2817,6 @@ function UnitStatusPill({ unit }: { unit: ApoloEnterpriseUnit }) {
 
 // Carteira financeira do empreendimento: espelha o cenário do Hades (cards) + a visão NOVA por
 // UNIDADE (o Hades é por comprador). Ver [[project-apolo-crm-grafo]].
-// --- Vendas: funil por estágio + tabela por unidade ---
-
-const VENDA_STAGE_ORDER: ApoloVendaStage[] = [
-  "disponivel",
-  "reservado",
-  "proposta",
-  "contrato",
-  "assinatura",
-  "faturado",
-];
-
-// O texto de cada coluna é o da régua (`rotuloDaSituacao`), o mesmo da aba Unidades e da Venda do
-// Hércules. Até 18/09/2026 aqui se escrevia "Proposta emitida", "Contrato gerado" e "Em assinatura".
-const VENDA_STAGE_LABELS: Record<ApoloVendaStage, string> = {
-  assinatura: rotuloDaSituacao("assinatura"),
-  contrato: rotuloDaSituacao("contrato"),
-  disponivel: rotuloDaSituacao("disponivel"),
-  faturado: rotuloDaSituacao("faturado"),
-  proposta: rotuloDaSituacao("proposta"),
-  reservado: rotuloDaSituacao("reservado"),
-};
-
-const VENDA_TERMINAL_LABELS: Record<ApoloVendaTerminal, string> = {
-  cancelado: "Cancelado",
-  distrato: "Distrato",
-};
-
-const VENDA_STAGE_PILL: Record<ApoloVendaStage, string> = {
-  assinatura:
-    "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/12 dark:text-blue-300",
-  contrato:
-    "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/12 dark:text-violet-300",
-  disponivel: "border-line bg-subtle text-ink-soft",
-  faturado:
-    "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/12 dark:text-emerald-300",
-  proposta:
-    "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/12 dark:text-sky-300",
-  reservado:
-    "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/12 dark:text-amber-300",
-};
-
-function VendasTab({
-  onOpenEntity,
-  row,
-}: {
-  onOpenEntity: (name: string, entityId: string) => void;
-  row: ApoloEnterpriseRow;
-}) {
-  const [data, setData] = useState<ApoloEnterpriseVendas | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [detailUnit, setDetailUnit] = useState<ApoloVendaUnit | null>(null);
-  const [terminalModal, setTerminalModal] = useState<ApoloVendaTerminal | null>(
-    null,
-  );
-
-  useEffect(() => {
-    let active = true;
-
-    async function load() {
-      try {
-        setError(null);
-
-        const accessToken = await getApoloAccessToken();
-        const response = await fetch(
-          `/api/apolo/empreendimentos/vendas?codes=${encodeURIComponent(row.codes.join(","))}`,
-          {
-            cache: "no-store",
-            headers: { Authorization: `Bearer ${accessToken}` },
-          },
-        );
-        const payload = (await response.json()) as {
-          data?: ApoloEnterpriseVendas;
-          error?: string;
-        };
-
-        if (!response.ok || !payload.data) {
-          throw new Error(
-            payload.error ?? "Nao foi possivel carregar as vendas.",
-          );
-        }
-
-        if (active) {
-          setData(payload.data);
-        }
-      } catch (loadError) {
-        if (active) {
-          setError(
-            loadError instanceof Error
-              ? loadError.message
-              : "Falha ao carregar as vendas.",
-          );
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      active = false;
-    };
-  }, [row.codes]);
-
-  if (error) {
-    return (
-      <div className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-sm font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
-        {error}
-      </div>
-    );
-  }
-
-  if (!data) {
-    return (
-      <div className="h-72 animate-pulse rounded-xl border border-line bg-subtle" />
-    );
-  }
-
-  const totalVgv = data.funnel.reduce((sum, bucket) => sum + bucket.vgv, 0);
-  const disponivel = data.funnel.find(
-    (bucket) => bucket.stage === "disponivel",
-  );
-  const query = search.trim().toLowerCase();
-  const matches = (unit: ApoloVendaUnit) =>
-    !query ||
-    [unit.code, unit.client?.name, unit.imobiliaria?.name]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase()
-      .includes(query);
-  const movements = query
-    ? data.movements.filter((movement) =>
-        [movement.code, movement.client, movement.imobiliaria]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase()
-          .includes(query),
-      )
-    : data.movements;
-
-  return (
-    <div className="grid gap-3">
-      {/* Topo: total + busca. */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="m-0 text-sm font-semibold text-ink">
-          Pipeline de vendas
-          <span className="ml-1.5 text-xs font-medium text-ink-muted">
-            {data.totalUnits} unidades · VGV {formatCurrency(totalVgv)}
-          </span>
-        </p>
-        <label className="flex h-9 min-w-[220px] items-center gap-2 rounded-lg border border-line bg-subtle px-3">
-          <Search aria-hidden="true" className="size-4 text-ink-muted" />
-          <input
-            className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted"
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Unidade, cliente, imobiliária..."
-            value={search}
-          />
-        </label>
-      </div>
-
-      {/* Board (colunas por estágio, sem Disponível) + movimentação ao lado. */}
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_400px]">
-        <div className="min-w-0">
-          <div className="overflow-x-auto pb-1">
-            <div className="flex gap-2">
-              {VENDA_STAGE_ORDER.filter((stage) => stage !== "disponivel").map(
-                (stage) => (
-                  <KanbanColumn
-                    key={stage}
-                    onOpenUnit={setDetailUnit}
-                    stage={stage}
-                    units={data.units.filter(
-                      (unit) => unit.stage === stage && matches(unit),
-                    )}
-                  />
-                ),
-              )}
-            </div>
-          </div>
-          {/* Estoque + terminais (por proposta), cluster à parte. */}
-          <div className="mt-2 flex flex-wrap gap-2">
-            {disponivel && disponivel.units > 0 ? (
-              <div className="inline-flex items-center gap-2 rounded-lg border border-line bg-subtle px-3 py-1.5">
-                <span className="text-xs font-semibold text-ink-soft">
-                  Disponível
-                </span>
-                <span className="text-sm font-semibold tabular-nums text-ink">
-                  {disponivel.units}
-                </span>
-              </div>
-            ) : null}
-            {data.terminals.map((terminal) => (
-              <button
-                className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50/60 px-3 py-1.5 transition-colors hover:bg-rose-100/70 disabled:cursor-default disabled:opacity-60 dark:border-rose-500/30 dark:bg-rose-500/10 dark:hover:bg-rose-500/20"
-                disabled={terminal.proposals === 0}
-                key={terminal.terminal}
-                onClick={() => setTerminalModal(terminal.terminal)}
-                title="Ver as propostas"
-                type="button"
-              >
-                <span className="text-xs font-semibold text-rose-700 dark:text-rose-300">
-                  {VENDA_TERMINAL_LABELS[terminal.terminal]}
-                </span>
-                <span className="text-sm font-semibold tabular-nums text-rose-700 dark:text-rose-300">
-                  {terminal.proposals}
-                </span>
-                <span className="text-[11px] text-ink-muted">propostas</span>
-              </button>
-            ))}
-            {data.bloqueadas.units > 0 ? (
-              // ⚠️ A SITUAÇÃO AQUI É A DO PANTEON (18/09/2026): o bloqueio feito no Hércules ou na
-              // aba Unidades conta, e a unidade sem cadastro no Panteon entra como ocupada. O hover
-              // separa as duas, para a pessoa não procurar bloqueio onde falta cadastro.
-              <div
-                className="inline-flex items-center gap-2 rounded-lg border border-line bg-subtle px-3 py-1.5"
-                title={
-                  (data.semCadastroNoPanteon?.units ?? 0) > 0
-                    ? `${data.bloqueadas.units - (data.semCadastroNoPanteon?.units ?? 0)} bloqueadas e ${data.semCadastroNoPanteon?.units ?? 0} sem cadastro no Panteon (ocupadas até o sync).`
-                    : undefined
-                }
-              >
-                <Ban aria-hidden="true" className="size-3.5 text-ink-muted" />
-                <span className="text-xs font-semibold text-ink-soft">
-                  Bloqueadas
-                </span>
-                <span className="text-sm font-semibold tabular-nums text-ink">
-                  {data.bloqueadas.units}
-                </span>
-                {(data.semCadastroNoPanteon?.units ?? 0) > 0 ? (
-                  <CircleAlert aria-hidden="true" className="size-3.5 text-ink-muted" />
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        {/* Movimentação recente (o "o que mudou"), respeitando a busca. */}
-        <div className="min-w-0">
-          <VendasMovimentacao movements={movements} />
-        </div>
-      </div>
-
-      {detailUnit ? (
-        <VendaPropostaModal
-          onClose={() => setDetailUnit(null)}
-          onOpenEntity={onOpenEntity}
-          unit={detailUnit}
-        />
-      ) : null}
-      {terminalModal ? (
-        <VendaTerminaisModal
-          items={data.terminalItems.filter(
-            (item) => item.terminal === terminalModal,
-          )}
-          onClose={() => setTerminalModal(null)}
-          terminal={terminalModal}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-// Lista das propostas canceladas/distratadas (o "apontar" das perdas).
-function VendaTerminaisModal({
-  items,
-  onClose,
-  terminal,
-}: {
-  items: ApoloVendaTerminalItem[];
-  onClose: () => void;
-  terminal: ApoloVendaTerminal;
-}) {
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-
-    window.addEventListener("keydown", onKey);
-
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  const totalVgv = items.reduce((sum, item) => sum + item.vgv, 0);
-
-  return (
-    <div className="fixed inset-0 z-[var(--uix-z-modal)] grid place-items-center bg-black/40 p-4">
-      <button
-        aria-label="Fechar"
-        className="absolute inset-0 cursor-default"
-        onClick={onClose}
-        type="button"
-      />
-      <div className="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
-        <header className="flex items-start justify-between gap-3 border-b border-line px-5 py-3.5">
-          <div className="min-w-0">
-            <p className="m-0 flex items-center gap-2 text-sm font-semibold text-ink">
-              <Ban aria-hidden="true" className="size-4 text-rose-500" />
-              {VENDA_TERMINAL_LABELS[terminal]}
-              <span className="text-xs font-medium text-ink-muted">
-                {items.length} · {formatCurrency(totalVgv)}
-              </span>
-            </p>
-          </div>
-          <button
-            aria-label="Fechar"
-            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
-            onClick={onClose}
-            type="button"
-          >
-            <X aria-hidden="true" className="size-4" />
-          </button>
-        </header>
-        <div className="min-h-0 flex-1 overflow-auto">
-          {items.length === 0 ? (
-            <p className="m-0 p-6 text-center text-sm font-medium text-ink-muted">
-              Nenhuma proposta.
-            </p>
-          ) : (
-            <div className="divide-y divide-line/70">
-              {items.map((item) => (
-                <div className="flex items-start gap-3 px-5 py-3" key={item.id}>
-                  <span className="mt-0.5 w-16 shrink-0 text-[11px] tabular-nums text-ink-muted">
-                    {formatShortDate(item.at ?? "")}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-bold tabular-nums text-ink">
-                        {item.code}
-                      </span>
-                      <span className="text-[11px] font-medium tabular-nums text-ink-soft">
-                        {formatCurrency(item.vgv)}
-                      </span>
-                    </div>
-                    <p className="m-0 mt-0.5 truncate text-[11px] text-ink-muted">
-                      {[
-                        item.client ? toTitleCase(item.client) : null,
-                        item.imobiliaria ? toTitleCase(item.imobiliaria) : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ") || "—"}
-                    </p>
-                    {item.reason ? (
-                      <p className="m-0 mt-1 rounded-md border border-line bg-subtle/50 px-2 py-1 text-[11px] text-ink-soft">
-                        {item.reason}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Coluna do board = um estágio; conta e VGV saem das unidades visíveis (respeita a busca).
-function KanbanColumn({
-  onOpenUnit,
-  stage,
-  units,
-}: {
-  onOpenUnit: (unit: ApoloVendaUnit) => void;
-  stage: ApoloVendaStage;
-  units: ApoloVendaUnit[];
-}) {
-  const vgv = units.reduce((sum, unit) => sum + unit.vgv, 0);
-
-  return (
-    <div className="flex w-56 shrink-0 flex-col rounded-xl border border-line bg-subtle/40">
-      <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
-        <span
-          className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${VENDA_STAGE_PILL[stage]}`}
-        >
-          {VENDA_STAGE_LABELS[stage]}
-        </span>
-        <span className="text-xs font-semibold tabular-nums text-ink">
-          {units.length}
-        </span>
-      </div>
-      <p className="m-0 px-3 pt-1.5 text-[11px] tabular-nums text-ink-muted">
-        VGV {formatCurrency(vgv)}
-      </p>
-      <div className="flex max-h-[52vh] flex-col gap-1.5 overflow-auto p-2">
-        {units.length === 0 ? (
-          <p className="m-0 py-6 text-center text-[11px] text-ink-muted">
-            Vazio
-          </p>
-        ) : (
-          units.map((unit) => (
-            <VendaCard key={unit.id} onOpenUnit={onOpenUnit} unit={unit} />
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Card clicável: abre a proposta (plano comercial + parcelamento + movimentação).
-function VendaCard({
-  onOpenUnit,
-  unit,
-}: {
-  onOpenUnit: (unit: ApoloVendaUnit) => void;
-  unit: ApoloVendaUnit;
-}) {
-  // Faturado é venda concluída: mostra a DATA do faturamento (o stageSince), não um
-  // contador "há X dias" que cresceria pra sempre. Estágios ativos mostram o tempo parado.
-  const footer =
-    unit.stage === "faturado"
-      ? unit.stageSince
-        ? `faturado em ${formatDate(unit.stageSince)}`
-        : null
-      : formatTimeInStage(unit.stageSince);
-
-  return (
-    <button
-      className="w-full rounded-lg border border-line bg-surface p-2.5 text-left transition-colors hover:border-[#A07C3B]/45 hover:bg-[#A07C3B]/5"
-      onClick={() => onOpenUnit(unit)}
-      title="Ver a proposta desta unidade"
-      type="button"
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-bold tabular-nums text-ink">
-          {unit.code}
-        </span>
-        <span className="text-[11px] font-medium tabular-nums text-ink-soft">
-          {formatCurrency(unit.vgv)}
-        </span>
-      </div>
-      {unit.client ? (
-        <p className="m-0 mt-1 truncate text-[11px] font-semibold text-ink">
-          {toTitleCase(unit.client.name)}
-        </p>
-      ) : null}
-      {unit.imobiliaria ? (
-        <p className="m-0 truncate text-[11px] text-ink-muted">
-          {toTitleCase(unit.imobiliaria.name)}
-        </p>
-      ) : null}
-      {footer ? (
-        <p className="m-0 mt-0.5 text-[10px] text-ink-muted">{footer}</p>
-      ) : null}
-    </button>
-  );
-}
-
-// Modal da proposta: plano comercial + parcelamento + movimentação da unidade ("tudo").
-function VendaPropostaModal({
-  onClose,
-  onOpenEntity,
-  unit,
-}: {
-  onClose: () => void;
-  onOpenEntity: (name: string, entityId: string) => void;
-  unit: ApoloVendaUnit;
-}) {
-  const [proposta, setProposta] = useState<ApoloVendaProposta | null>(null);
-  const [loaded, setLoaded] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let active = true;
-
-    async function load() {
-      try {
-        setError(null);
-        setLoaded(false);
-
-        const accessToken = await getApoloAccessToken();
-        const response = await fetch(
-          `/api/apolo/empreendimentos/vendas/proposta?unitId=${encodeURIComponent(unit.id)}`,
-          {
-            cache: "no-store",
-            headers: { Authorization: `Bearer ${accessToken}` },
-          },
-        );
-        const payload = (await response.json()) as {
-          data?: ApoloVendaProposta | null;
-          error?: string;
-        };
-
-        if (!response.ok) {
-          throw new Error(
-            payload.error ?? "Nao foi possivel carregar a proposta.",
-          );
-        }
-
-        if (active) {
-          setProposta(payload.data ?? null);
-          setLoaded(true);
-        }
-      } catch (loadError) {
-        if (active) {
-          setError(
-            loadError instanceof Error
-              ? loadError.message
-              : "Falha ao carregar a proposta.",
-          );
-          setLoaded(true);
-        }
-      }
-    }
-
-    void load();
-
-    return () => {
-      active = false;
-    };
-  }, [unit.id]);
-
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-
-    window.addEventListener("keydown", onKey);
-
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  const pct = (value: number | null) =>
-    value == null
-      ? "-"
-      : `${value.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
-
-  return (
-    <div className="fixed inset-0 z-[var(--uix-z-modal)] grid place-items-center bg-black/40 p-4">
-      <button
-        aria-label="Fechar"
-        className="absolute inset-0 cursor-default"
-        onClick={onClose}
-        type="button"
-      />
-      <div className="relative z-10 flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
-        <header className="flex items-start justify-between gap-3 border-b border-line px-5 py-3.5">
-          <div className="min-w-0">
-            <p className="m-0 flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
-              <TrendingUp
-                aria-hidden="true"
-                className="size-4 text-[#A07C3B]"
-              />
-              Proposta {proposta?.plan.code ? `· ${proposta.plan.code}` : ""} ·{" "}
-              {unit.code}
-              <span
-                className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${VENDA_STAGE_PILL[unit.stage]}`}
-              >
-                {VENDA_STAGE_LABELS[unit.stage]}
-              </span>
-            </p>
-            {unit.client ? (
-              <button
-                className="mt-0.5 block max-w-full truncate text-left text-xs font-semibold text-[#7A5E2C] hover:underline dark:text-[#d9b877]"
-                onClick={() =>
-                  onOpenEntity(unit.client!.name, unit.client!.entityId)
-                }
-                type="button"
-              >
-                {toTitleCase(unit.client.name)}
-                {unit.imobiliaria
-                  ? ` · ${toTitleCase(unit.imobiliaria.name)}`
-                  : ""}
-              </button>
-            ) : null}
-          </div>
-          <button
-            aria-label="Fechar"
-            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
-            onClick={onClose}
-            type="button"
-          >
-            <X aria-hidden="true" className="size-4" />
-          </button>
-        </header>
-
-        <div className="min-h-0 flex-1 overflow-auto p-4">
-          {error ? (
-            <p className="m-0 p-6 text-center text-sm font-semibold text-rose-600 dark:text-rose-400">
-              {error}
-            </p>
-          ) : !loaded ? (
-            <div className="h-48 animate-pulse rounded-xl border border-line bg-subtle" />
-          ) : !proposta ? (
-            <p className="m-0 p-6 text-center text-sm font-medium text-ink-muted">
-              Esta unidade não tem proposta registrada.
-            </p>
-          ) : (
-            <div className="grid gap-4">
-              {/* ⚠️ A COLUNA É DO PANTEON, O DETALHE É DO C2X (18/09/2026). Quando o processo desta
-                  unidade está no Hércules (reserva ou proposta nova) e a última proposta do C2X já
-                  morreu, o que aparece abaixo é história: sem este aviso, alguém leria o plano do
-                  comprador antigo como se fosse o de agora. */}
-              {unit.vendaNoC2x === false ? (
-                <p className="m-0 rounded-lg border border-dashed border-line bg-subtle/60 px-3 py-2 text-xs font-medium text-ink-soft">
-                  A situação desta unidade vem do Panteon. Abaixo, a última proposta registrada no C2X, que já não está ativa.
-                </p>
-              ) : null}
-              {/* Plano comercial. */}
-              <section>
-                <p className="m-0 mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                  Plano comercial
-                </p>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  <MiniFact
-                    label="Plano"
-                    value={
-                      proposta.plan.planName ??
-                      (proposta.plan.isCustom ? "Personalizado" : "-")
-                    }
-                  />
-                  <MiniFact
-                    label="VGV"
-                    value={formatCurrency(proposta.plan.vgv)}
-                  />
-                  <MiniFact
-                    label="Entrada"
-                    value={pct(proposta.plan.entrada)}
-                  />
-                  <MiniFact
-                    label="Parcelas"
-                    value={
-                      proposta.plan.parcels != null
-                        ? String(proposta.plan.parcels)
-                        : "-"
-                    }
-                  />
-                  <MiniFact
-                    label="Juros"
-                    value={pct(proposta.plan.interestRate)}
-                  />
-                  <MiniFact
-                    label="Correção"
-                    value={pct(proposta.plan.correctionRate)}
-                  />
-                  <MiniFact
-                    label="Sinal"
-                    value={
-                      proposta.plan.signalParcels
-                        ? `${proposta.plan.signalParcels}x · ${formatDate(proposta.plan.firstSignalAt)}`
-                        : "-"
-                    }
-                  />
-                  <MiniFact
-                    label="Ato"
-                    value={formatDate(proposta.plan.atoAt)}
-                  />
-                  <MiniFact
-                    label="Assinatura"
-                    value={formatDate(proposta.plan.signAt)}
-                  />
-                  <MiniFact
-                    label="Faturamento"
-                    value={formatDate(proposta.plan.billingAt)}
-                  />
-                  <MiniFact
-                    label="Corretor"
-                    value={
-                      proposta.plan.corretor
-                        ? toTitleCase(proposta.plan.corretor)
-                        : "-"
-                    }
-                  />
-                </div>
-                {proposta.plan.observacao ? (
-                  <p className="m-0 mt-2 rounded-lg border border-line bg-subtle/50 px-3 py-2 text-xs text-ink-soft">
-                    {proposta.plan.observacao}
-                  </p>
-                ) : null}
-              </section>
-
-              {/* Parcelamento. */}
-              <section>
-                <p className="m-0 mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                  Parcelamento
-                  <span className="ml-1.5 font-medium normal-case text-ink-muted">
-                    ({proposta.parcelamento.length})
-                  </span>
-                </p>
-                {proposta.parcelamento.length === 0 ? (
-                  <p className="m-0 rounded-lg border border-line bg-subtle/50 px-3 py-2 text-xs text-ink-muted">
-                    Sem parcelas registradas.
-                  </p>
-                ) : (
-                  <div className="max-h-52 overflow-auto rounded-lg border border-line">
-                    {proposta.parcelamento.map((installment) => (
-                      <div
-                        className="flex items-center justify-between gap-2 border-b border-line/70 px-3 py-1.5 text-xs last:border-b-0"
-                        key={installment.id}
-                      >
-                        <span className="w-20 shrink-0 tabular-nums text-ink-soft">
-                          {installment.number}
-                        </span>
-                        <span className="flex-1 tabular-nums text-ink-muted">
-                          {installment.type ?? "-"}
-                        </span>
-                        <span className="tabular-nums text-ink-soft">
-                          {formatDate(installment.dueDate)}
-                        </span>
-                        <span className="w-24 shrink-0 text-right font-medium tabular-nums text-ink">
-                          {formatCurrency(installment.amount)}
-                        </span>
-                        <InstallmentStatusPill installment={installment} />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </section>
-
-              {/* Movimentação da unidade. */}
-              <section>
-                <p className="m-0 mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                  Movimentação da unidade
-                </p>
-                {proposta.movimentacao.length === 0 ? (
-                  <p className="m-0 rounded-lg border border-line bg-subtle/50 px-3 py-2 text-xs text-ink-muted">
-                    Sem movimentação registrada.
-                  </p>
-                ) : (
-                  <div className="grid gap-1">
-                    {proposta.movimentacao.map((movement, index) => (
-                      <div
-                        className="flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs"
-                        key={`${movement.at}-${index}`}
-                      >
-                        <span className="w-16 shrink-0 tabular-nums text-ink-muted">
-                          {formatShortDate(movement.at)}
-                        </span>
-                        <span className="text-ink-muted">
-                          {movement.fromStage ?? "Novo"}
-                        </span>
-                        <ChevronRight
-                          aria-hidden="true"
-                          className="size-3 shrink-0 text-ink-muted"
-                        />
-                        <span className="font-semibold text-ink">
-                          {movement.toStage}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </section>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Rótulos C2X de estágios terminais (cancelamento/distrato), para destacar no feed.
-const TERMINAL_STAGE_LABELS = new Set([
-  "Cancelado",
-  "Reprovado análise",
-  "Em distrato",
-  "Distratado",
-]);
-
-function isTerminalStageLabel(label: string | null): boolean {
-  return label != null && TERMINAL_STAGE_LABELS.has(label);
-}
-
-// "há X dias/meses" desde que a unidade entrou no estágio atual.
-function formatTimeInStage(iso: string | null): string | null {
-  if (!iso) {
-    return null;
-  }
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) {
-    return null;
-  }
-
-  const days = Math.max(0, Math.floor((Date.now() - then) / 86_400_000));
-  if (days === 0) {
-    return "há poucas horas";
-  }
-  if (days === 1) {
-    return "há 1 dia";
-  }
-  if (days < 30) {
-    return `há ${days} dias`;
-  }
-  const months = Math.floor(days / 30);
-  if (months < 12) {
-    return months === 1 ? "há 1 mês" : `há ${months} meses`;
-  }
-  const years = Math.floor(days / 365);
-  return years === 1 ? "há 1 ano" : `há ${years} anos`;
-}
-
-// Feed cronológico das transições de estágio (o "o que mudou").
-function VendasMovimentacao({
-  movements,
-}: {
-  movements: ApoloVendaMovement[];
-}) {
-  return (
-    <section className="overflow-hidden rounded-xl border border-line bg-surface">
-      <div className="flex items-center gap-2 border-b border-line px-4 py-2.5">
-        <TrendingUp aria-hidden="true" className="size-4 text-[#A07C3B]" />
-        <p className="m-0 text-sm font-semibold text-ink">
-          Movimentação recente
-        </p>
-      </div>
-      {movements.length === 0 ? (
-        <p className="m-0 p-6 text-center text-sm font-medium text-ink-muted">
-          Nenhuma movimentação.
-        </p>
-      ) : (
-        <div className="max-h-[64vh] divide-y divide-line/70 overflow-auto">
-          {movements.map((movement, index) => (
-            <div
-              className="flex items-start gap-3 px-4 py-3"
-              key={`${movement.code}-${movement.at}-${index}`}
-            >
-              <span className="mt-0.5 w-16 shrink-0 text-[11px] tabular-nums text-ink-muted">
-                {formatShortDate(movement.at)}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold tabular-nums text-ink">
-                    {movement.code}
-                  </span>
-                  <span className="text-[11px] font-medium tabular-nums text-ink-soft">
-                    {formatCurrency(movement.vgv)}
-                  </span>
-                </div>
-                <p className="m-0 mt-0.5 flex items-center gap-1.5 text-xs">
-                  <span className="text-ink-muted">
-                    {movement.fromStage ?? "Novo"}
-                  </span>
-                  <ChevronRight
-                    aria-hidden="true"
-                    className="size-3 shrink-0 text-ink-muted"
-                  />
-                  <span
-                    className={`font-semibold ${
-                      isTerminalStageLabel(movement.toStage)
-                        ? "text-rose-600 dark:text-rose-400"
-                        : "text-ink"
-                    }`}
-                  >
-                    {movement.toStage}
-                  </span>
-                </p>
-                {movement.client || movement.imobiliaria ? (
-                  <p className="m-0 mt-0.5 truncate text-[11px] text-ink-muted">
-                    {[
-                      movement.client ? toTitleCase(movement.client) : null,
-                      movement.imobiliaria
-                        ? toTitleCase(movement.imobiliaria)
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                ) : null}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
 function CarteiraTab({
   onOpenEntity,
   row,

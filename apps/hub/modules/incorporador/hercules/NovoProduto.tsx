@@ -81,6 +81,12 @@ type Props = {
    * operador é o da sessão, e a lista não é passada.
    */
   operadores?: readonly OperadorPossivel[];
+  /**
+   * O pai JÁ ESCOLHIDO: a janela abre com "É etapa de outro empreendimento?" aberto e o campo
+   * preenchido. É o caminho do Setup do empreendimento (Apolo > Setup > Filho), onde quem clica já
+   * está dentro do pai e não deveria ter de lembrar o código dele.
+   */
+  paiInicial?: null | string;
   /** Quem pode ser pai. Com a lista, o campo vira seletor; sem ela, código digitado. */
   pais?: readonly PaiPossivel[];
   /** `false` = porta do hub (Bearer do Apolo). Padrão: portal, pelo cookie da sessão. */
@@ -157,6 +163,7 @@ function FormularioDoProdutoNovo({
   codigosExistentes,
   endpoint = ROTA_DO_PRODUTO_NOVO,
   operadores,
+  paiInicial,
   pais,
   semToken = true,
 }: Props) {
@@ -165,8 +172,10 @@ function FormularioDoProdutoNovo({
   const [codigo, setCodigo] = useState("");
   const [cidade, setCidade] = useState("");
   const [uf, setUf] = useState("");
-  const [temPai, setTemPai] = useState(false);
-  const [paiCodigo, setPaiCodigo] = useState("");
+  // ⚠️ O ESTADO INICIAL BASTA (e não há efeito de sincronia): o formulário só monta quando a janela
+  // abre (`if (!props.aberto) return null`), então cada abertura já nasce com o pai que veio.
+  const [temPai, setTemPai] = useState(Boolean(paiInicial));
+  const [paiCodigo, setPaiCodigo] = useState(paiInicial ? codigoDoProduto(paiInicial) : "");
   // O slug do portal que vai operar (só no hub). Vazio = a Careli.
   const [operador, setOperador] = useState("");
   const [tentou, setTentou] = useState(false);

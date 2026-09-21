@@ -7,13 +7,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ApoloEnterpriseUnit } from "@/lib/apolo/empreendimentos";
 
-// A CATEGORIA NA FICHA DA UNIDADE — o caminho UNITÁRIO.
+import type { Universo } from "./vinculo-de-unidades";
+
+// O FILHO E A CATEGORIA NA FICHA DA UNIDADE — o caminho UNITÁRIO.
 //
 // ⚠️ O QUE ESTE ARQUIVO TRAVA:
-//   • a unidade sem linha no Panteon não oferece o botão (não há o que vincular);
+//   • a unidade sem linha no Panteon não oferece formulário (não há o que vincular);
 //   • a ficha chama a MESMA rota do vínculo em massa, com UM id e a origem "ficha";
 //   • a prévia vem antes de salvar;
-//   • RECUSA NÃO FECHA A JANELA: o operador precisa ler o motivo, senão descobriria no contrato.
+//   • RECUSA NÃO É SUCESSO: o motivo fica na tela e a tabela não é relida, senão o operador
+//     descobriria no contrato.
 
 (globalThis as unknown as { React: typeof React }).React = React;
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -24,7 +27,7 @@ vi.mock("@/modules/apolo/data/apolo-operations", () => ({
   getApoloAccessToken: () => simulado.getApoloAccessToken(),
 }));
 
-const { AcaoDeCategoria } = await import("./categoria-da-unidade");
+const { VinculoDaUnidade } = await import("./categoria-da-unidade");
 
 const PANTEON_ID = "aaaaaaaa-0000-4000-8000-000000000001";
 const CONDOMINIO = "cat-condominio";
@@ -51,7 +54,7 @@ const UNIVERSO = {
       vinculo: null,
     },
   ],
-};
+} as unknown as Universo;
 
 const PREVIA = {
   avisos: [],
@@ -96,38 +99,42 @@ type Chamada = { corpo: null | Record<string, unknown>; metodo: string; url: str
 
 const chamadas: Chamada[] = [];
 
-function montarFetch(respostaDoPost: unknown = { data: PREVIA }) {
+function montarFetch(resposta: unknown = { data: PREVIA }) {
   globalThis.fetch = vi.fn(async (url: unknown, init?: { body?: string; method?: string }) => {
-    const metodo = init?.method ?? "GET";
     chamadas.push({
       corpo: init?.body ? (JSON.parse(init.body) as Record<string, unknown>) : null,
-      metodo,
+      metodo: init?.method ?? "GET",
       url: String(url),
     });
-    return {
-      json: async () => (metodo === "GET" ? { data: UNIVERSO } : respostaDoPost),
-      ok: true,
-    } as unknown as Response;
+    return { json: async () => resposta, ok: true } as unknown as Response;
   }) as unknown as typeof fetch;
 }
 
 let container: HTMLDivElement;
 let root: Root;
 let recarregou = 0;
+let releuOUniverso = 0;
 
-async function montar(unidade: ApoloEnterpriseUnit = UNIDADE) {
+async function montar(
+  unidade: ApoloEnterpriseUnit = UNIDADE,
+  universo: null | Universo = UNIVERSO,
+) {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
   await act(async () => {
     root.render(
-      <AcaoDeCategoria
-        codigo="LBR"
-        enterpriseId="27"
-        recarregar={() => {
+      <VinculoDaUnidade
+        aoGravar={() => {
           recarregou += 1;
         }}
+        codigo="LBR"
+        enterpriseId="27"
+        recarregarUniverso={async () => {
+          releuOUniverso += 1;
+        }}
         unidade={unidade}
+        universo={universo}
       />,
     );
   });
@@ -160,6 +167,7 @@ async function escolherCategoria(valor: string) {
 beforeEach(() => {
   chamadas.length = 0;
   recarregou = 0;
+  releuOUniverso = 0;
   vi.clearAllMocks();
   montarFetch();
 });
@@ -169,23 +177,21 @@ afterEach(() => {
   container.remove();
 });
 
-describe("AcaoDeCategoria", () => {
+describe("VinculoDaUnidade", () => {
   // ⚠️ SEM LINHA NO PANTEON NÃO HÁ O QUE VINCULAR: a unidade nem existe no cadastro.
-  it("a unidade sem cadastro no Panteon não oferece o botão", async () => {
+  it("a unidade sem cadastro no Panteon não oferece o formulário", async () => {
     await montar({ ...UNIDADE, panteonId: null } as ApoloEnterpriseUnit);
-    expect(container.querySelector("button")).toBeNull();
+    expect(document.querySelector("#categoria-da-unidade")).toBeNull();
+    expect(container.textContent).toContain("ainda não entrou no cadastro do Panteon");
   });
 
-  it("abre mostrando a divisão e a categoria de hoje", async () => {
+  it("mostra o filho e a categoria de hoje", async () => {
     await montar();
-    await clicar("Categoria");
-    expect(chamadas[0]?.metodo).toBe("GET");
-    expect(document.body.textContent).toContain("Lagoa Bonita Residencial · sem categoria");
+    expect(container.textContent).toContain("Lagoa Bonita Residencial · sem categoria");
   });
 
   it("salvar só liga depois de conferir, e manda UM id com a origem ficha", async () => {
     await montar();
-    await clicar("Categoria");
     expect(botao("Salvar").disabled).toBe(true);
 
     await escolherCategoria(CONDOMINIO);
@@ -216,13 +222,13 @@ describe("AcaoDeCategoria", () => {
     });
     await clicar("Salvar");
     expect(chamadas.at(-1)?.corpo).toMatchObject({ acao: "aplicar", origem: "ficha" });
+    expect(releuOUniverso).toBe(1);
     expect(recarregou).toBe(1);
   });
 
-  // ⚠️ RECUSA NÃO É SUCESSO: fechar a janela faria a tela parecer que deu certo.
-  it("recusa do servidor mantém a janela aberta com o motivo", async () => {
+  // ⚠️ RECUSA NÃO É SUCESSO: limpar a tela faria parecer que deu certo.
+  it("recusa do servidor deixa o motivo na tela e não relê a tabela", async () => {
     await montar();
-    await clicar("Categoria");
     await escolherCategoria(CONDOMINIO);
     await clicar("Conferir");
 
@@ -236,7 +242,7 @@ describe("AcaoDeCategoria", () => {
         porParentesco: 0,
         recusas: [
           {
-            motivo: "LBRC01 tem venda em andamento: mudar a divisão trocaria a minuta.",
+            motivo: "LBRC01 tem venda em andamento: mudar o filho trocaria a minuta.",
             rotulo: "LBRC01",
             unidadeId: PANTEON_ID,
           },
@@ -248,6 +254,6 @@ describe("AcaoDeCategoria", () => {
     await clicar("Salvar");
 
     expect(recarregou).toBe(0);
-    expect(document.body.textContent).toContain("venda em andamento");
+    expect(container.textContent).toContain("venda em andamento");
   });
 });

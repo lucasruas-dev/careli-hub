@@ -51,6 +51,15 @@ type Props = {
   codigo?: null | string;
   /** O alcance de partida. A lista de alcances possíveis vem da própria rota. */
   enterpriseId: string;
+  /**
+   * A UNIDADE, quando a tela é o cadastro de UM lote. Com ela o alcance é fixo (aquela unidade) e
+   * o seletor de alcance some: quem abriu a ficha do lote já disse de quem é a peça.
+   *
+   * ⚠️ É O `hercules_unidades.id` (o `panteonId` da linha), que é o que `temis_anexos.unidade_id`
+   * referencia desde a 0156. O id do C2X aqui gravaria um alcance que a cadeia do contrato nunca
+   * leria, sem erro e sem aviso.
+   */
+  unidade?: null | { id: string; rotulo: string };
 };
 
 const RASCUNHO_VAZIO = { nome: "", posicao: "" };
@@ -61,7 +70,11 @@ function tamanhoLegivel(bytes: null | number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function AnexosDoContrato({ codigo, enterpriseId }: Props) {
+export function AnexosDoContrato({ codigo, enterpriseId, unidade }: Props) {
+  // ⚠️ PRIMITIVOS, E NÃO O OBJETO: quem chama monta `unidade={{ ... }}` no render, e o objeto novo
+  // a cada render refaria o fetch em laço (a mesma armadilha que a `api` da UnidadesTab documenta).
+  const unidadeId = unidade?.id ?? null;
+  const rotuloDaUnidade = unidade?.rotulo ?? null;
   const [anexos, setAnexos] = useState<AnexoDoContrato[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<null | string>(null);
@@ -90,18 +103,21 @@ export function AnexosDoContrato({ codigo, enterpriseId }: Props) {
    */
   const doAlcance = useCallback(
     (): Record<string, string> =>
-      alcance?.tipo === "categoria"
-        ? { categoriaId: alcance.id }
-        : { enterpriseId: alcance?.id ?? enterpriseId, ...(codigo ? { codigo } : {}) },
-    [alcance, codigo, enterpriseId],
+      unidadeId
+        ? { unidadeId }
+        : alcance?.tipo === "categoria"
+          ? { categoriaId: alcance.id }
+          : { enterpriseId: alcance?.id ?? enterpriseId, ...(codigo ? { codigo } : {}) },
+    [alcance, codigo, enterpriseId, unidadeId],
   );
 
   const carregar = useCallback(async () => {
     setCarregando(true);
     try {
       const qs = new URLSearchParams(doAlcance());
-      // O `codigo` só serve para o servidor resolver a ficha consolidada e montar os alcances.
-      if (codigo && !qs.has("codigo")) qs.set("codigo", codigo);
+      // O `codigo` só serve para o servidor resolver a ficha consolidada e montar os alcances —
+      // e no alcance fixo da unidade não há alcance a montar.
+      if (!unidadeId && codigo && !qs.has("codigo")) qs.set("codigo", codigo);
       const r = await temisFetch(`/anexos?${qs.toString()}`, { cache: "no-store" });
       const corpo = (await r.json()) as {
         alcances?: AlcancePossivel[];
@@ -120,7 +136,7 @@ export function AnexosDoContrato({ codigo, enterpriseId }: Props) {
     } finally {
       setCarregando(false);
     }
-  }, [codigo, doAlcance, temisFetch]);
+  }, [codigo, doAlcance, temisFetch, unidadeId]);
 
   useEffect(() => {
     void carregar();
@@ -231,11 +247,23 @@ export function AnexosDoContrato({ codigo, enterpriseId }: Props) {
       <header className="flex items-start gap-3 border-b border-line bg-subtle/40 px-4 py-3">
         <FileText aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-ink-muted" />
         <div>
-          <h3 className="m-0 font-semibold text-ink text-sm">Anexos do contrato</h3>
+          <h3 className="m-0 font-semibold text-ink text-sm">
+            {rotuloDaUnidade ? `Anexos só de ${rotuloDaUnidade}` : "Anexos do contrato"}
+          </h3>
           <p className="m-0 text-ink-muted text-xs">
-            PDFs prontos que entram no contrato montado. Na minuta, a posição é citada como{" "}
-            <code className="rounded bg-subtle px-1">[anexo_1]</code>, e o nome sai sozinho em{" "}
-            <code className="rounded bg-subtle px-1">[anexo_1_nome]</code>.
+            {rotuloDaUnidade ? (
+              <>
+                A peça cadastrada aqui entra SÓ no contrato deste lote, somada às do empreendimento,
+                às da divisão e às da categoria dele. A posição é única na cadeia inteira: se o
+                empreendimento já usa a 1, esta peça precisa de outro número.
+              </>
+            ) : (
+              <>
+                PDFs prontos que entram no contrato montado. Na minuta, a posição é citada como{" "}
+                <code className="rounded bg-subtle px-1">[anexo_1]</code>, e o nome sai sozinho em{" "}
+                <code className="rounded bg-subtle px-1">[anexo_1_nome]</code>.
+              </>
+            )}
           </p>
         </div>
       </header>
@@ -245,7 +273,7 @@ export function AnexosDoContrato({ codigo, enterpriseId }: Props) {
         é esta peça", depois "em que lugar do contrato ela entra". Invertido, o operador escolhe a
         posição e sobe o arquivo antes de reparar que está no nível errado.
       */}
-      {alcances.length > 1 ? (
+      {alcances.length > 1 && !unidadeId ? (
         <div className="flex flex-wrap items-end gap-3 border-b border-line px-4 py-3">
           <label className="flex min-w-[260px] flex-1 flex-col gap-1">
             <span className="font-medium text-ink-muted text-xs">De quem é este anexo</span>

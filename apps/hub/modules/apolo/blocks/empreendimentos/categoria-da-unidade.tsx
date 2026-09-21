@@ -1,7 +1,7 @@
 "use client";
 
-import { AlertTriangle, FolderTree, Loader2, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { AlertTriangle, FolderTree, Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
 
 // Só TIPOS do lib do Apolo: `empreendimentos.ts` é server-side (mysql2).
 import type { ApoloEnterpriseUnit } from "@/lib/apolo/empreendimentos";
@@ -10,7 +10,6 @@ import {
   type Aplicacao,
   aplicar,
   conferir,
-  lerUniverso,
   type Previsao,
   type Universo,
 } from "./vinculo-de-unidades";
@@ -20,6 +19,17 @@ import {
 // Lucas (15/09/2026): *"teremos cenários que precisamos cadastrar uma unidade nova e apontar essa
 // estrutura, ou até mesmo atualizar"*. E em 21/09/2026: *"eu preciso também vincular as unidades no
 // filho, categoria (quando existir)"*.
+//
+// ⚠️ ISTO É UM BLOCO DA FICHA DO LOTE, E NÃO MAIS UMA JANELA. Nasceu como modal aberto por um botão
+// na linha da tabela e virou bloco em 21/09/2026, quando o Lucas pediu a aba de cadastro da
+// unidade: *"preciso ter a aba cadastro de unidade a qual vai ter o cadastro daquela unidade a qual
+// eu posso fazer a vinculação das categorias, inserir os anexos se for o caso"*. Duas portas para o
+// mesmo vínculo (o botão da linha e a aba) seriam duas réguas na cabeça de quem opera.
+//
+// ⚠️ O UNIVERSO VEM DE FORA (`CadastroDaUnidade`), e não de um fetch daqui. A mesma resposta diz a
+// categoria de hoje, as divisões da família E de qual divisão a unidade é — e é essa divisão que a
+// edição dos dados do lote precisa para falar com a porta do cadastro. Buscar duas vezes traria a
+// lista inteira de unidades duas vezes (907 no Lagoa Bonita) para responder à mesma pergunta.
 //
 // ⚠️ UMA UNIDADE É O CAMINHO EM MASSA COM UM ITEM SÓ, e é por isso que esta tela chama a MESMA rota
 // (/api/apolo/empreendimentos/unidades/vinculo). De graça ela ganha o alcance por terreno (o gêmeo
@@ -32,66 +42,32 @@ import {
 // o bloqueio já fez, com rota própria.
 
 type Props = {
+  /** Relê a tabela de unidades lá em cima depois de a gravação entrar inteira. */
+  aoGravar: () => void;
   /** O código do produto na tela, para o servidor resolver a ficha consolidada. */
   codigo?: null | string;
   /** O id do produto como a ficha o conhece ("31", "pai:<uuid>" ou "group:Lagoa Bonita"). */
   enterpriseId: string;
-  recarregar: () => void;
+  /** Relê o universo depois de gravar: é dele que sai o carimbo de quem vinculou. */
+  recarregarUniverso: () => Promise<void>;
   unidade: ApoloEnterpriseUnit;
+  /** Nulo enquanto carrega. */
+  universo: null | Universo;
 };
 
 const CAMPO =
   "h-9 w-full rounded-lg border border-line bg-surface px-2.5 text-xs text-ink outline-none";
 
-export function AcaoDeCategoria({ codigo, enterpriseId, recarregar, unidade }: Props) {
-  const [aberto, setAberto] = useState(false);
-
-  // Sem linha no Panteon não há o que vincular: a unidade nem existe no cadastro.
-  if (!unidade.panteonId || unidade.semCadastroNoPanteon) return null;
-
-  return (
-    <>
-      <button
-        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-xs font-semibold text-ink transition-colors hover:border-ink/40 hover:bg-subtle"
-        onClick={() => setAberto(true)}
-        title="Categoria e divisão desta unidade"
-        type="button"
-      >
-        <FolderTree aria-hidden="true" className="size-3.5" />
-        Categoria
-      </button>
-
-      {aberto ? (
-        <ModalDaCategoria
-          aoFechar={() => setAberto(false)}
-          aoGravar={() => {
-            setAberto(false);
-            recarregar();
-          }}
-          codigo={codigo}
-          enterpriseId={enterpriseId}
-          unidade={unidade}
-        />
-      ) : null}
-    </>
-  );
-}
-
-function ModalDaCategoria({
-  aoFechar,
+export function VinculoDaUnidade({
   aoGravar,
   codigo,
   enterpriseId,
+  recarregarUniverso,
   unidade,
-}: {
-  aoFechar: () => void;
-  aoGravar: () => void;
-  codigo?: null | string;
-  enterpriseId: string;
-  unidade: ApoloEnterpriseUnit;
-}) {
-  const panteonId = String(unidade.panteonId);
-  const [universo, setUniverso] = useState<null | Universo>(null);
+  universo,
+}: Props) {
+  const panteonId = unidade.panteonId ? String(unidade.panteonId) : "";
+  const semCadastro = !panteonId || unidade.semCadastroNoPanteon === true;
   const [erro, setErro] = useState<null | string>(null);
   const [categoriaId, setCategoriaId] = useState<string>("");
   const [divisaoDestino, setDivisaoDestino] = useState("");
@@ -100,33 +76,17 @@ function ModalDaCategoria({
   const [resultado, setResultado] = useState<null | Aplicacao>(null);
   const [ocupado, setOcupado] = useState(false);
 
-  useEffect(() => {
-    const aoTeclar = (e: KeyboardEvent) => {
-      if (e.key === "Escape") aoFechar();
-    };
-    window.addEventListener("keydown", aoTeclar);
-    return () => window.removeEventListener("keydown", aoTeclar);
-  }, [aoFechar]);
-
-  const carregar = useCallback(async () => {
-    setErro(null);
-    const r = await lerUniverso({ codigo, enterpriseId });
-    if ("erro" in r) {
-      setErro(r.erro);
-      return;
-    }
-    setUniverso(r.data);
-    const atual = r.data.unidades.find((u) => u.id === panteonId);
-    setCategoriaId(atual?.categoriaId ?? "");
-  }, [codigo, enterpriseId, panteonId]);
-
-  useEffect(() => {
-    void carregar();
-  }, [carregar]);
-
   const linha = universo?.unidades.find((u) => u.id === panteonId) ?? null;
   const atualId = linha?.categoriaId ?? "";
   const divisaoAtual = linha?.enterpriseId ?? "";
+
+  // O que está gravado manda no campo sempre que o universo chega ou volta a chegar (depois de
+  // salvar): sem isto, o select continuaria mostrando a escolha antiga como se fosse o gravado.
+  useEffect(() => {
+    setCategoriaId(atualId);
+    setDivisaoDestino("");
+  }, [atualId, divisaoAtual]);
+
   const mudouCategoria = categoriaId !== atualId;
   const mudouDivisao = divisaoDestino !== "" && divisaoDestino !== divisaoAtual;
   const podeConferir = mudouCategoria || mudouDivisao;
@@ -166,9 +126,14 @@ function ModalDaCategoria({
     }
     setResultado(r.data);
     // ⚠️ RECUSA NÃO É SUCESSO. Se o servidor recusou a mudança de divisão (venda viva, gêmea no
-    // destino), a janela fica aberta com o motivo: fechar e recarregar faria a tela parecer que deu
+    // destino), o bloco fica na tela com o motivo: limpar e recarregar faria a tela parecer que deu
     // certo, e o operador só descobriria no contrato.
-    if (r.data.recusas.length === 0 && r.data.naoMovidas === 0) aoGravar();
+    if (r.data.recusas.length === 0 && r.data.naoMovidas === 0) {
+      setPrevisao(null);
+      setConfirmouDivisao(false);
+      await recarregarUniverso();
+      aoGravar();
+    }
   }
 
   const nomeDaCategoria = (id: null | string) =>
@@ -176,206 +141,190 @@ function ModalDaCategoria({
   const nomeDaDivisao = (id: string) =>
     universo?.divisoes.find((d) => d.enterpriseId === id)?.nome ?? id;
 
-  return (
-    <div className="fixed inset-0 z-[var(--uix-z-modal)] grid place-items-center bg-black/40 p-4 text-left">
-      <button
-        aria-label="Fechar"
-        className="absolute inset-0 cursor-default"
-        onClick={aoFechar}
-        type="button"
-      />
-      <div
-        aria-modal="true"
-        className="relative z-10 flex max-h-[86vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl"
-        role="dialog"
-      >
-        <header className="flex items-start justify-between gap-3 border-b border-line px-5 py-3.5">
-          <div className="min-w-0">
-            <p className="m-0 flex items-center gap-2 text-sm font-semibold text-ink">
-              <FolderTree aria-hidden="true" className="size-4 text-ink-muted" />
-              {unidade.code}
-            </p>
-            <p className="m-0 mt-0.5 text-xs text-ink-muted">
-              {linha
-                ? `${nomeDaDivisao(divisaoAtual)} · ${atualId ? nomeDaCategoria(atualId) : "sem categoria"}`
-                : "Carregando…"}
-            </p>
-          </div>
-          <button
-            aria-label="Voltar"
-            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
-            onClick={aoFechar}
-            type="button"
-          >
-            <X aria-hidden="true" className="size-4" />
-          </button>
-        </header>
+  // ⚠️ SEM LINHA NO PANTEON NÃO HÁ O QUE VINCULAR, e dizer isso é melhor que um formulário morto: a
+  // unidade existe no C2X e o sync ainda não a trouxe.
+  if (semCadastro) {
+    return (
+      <p className="m-0 rounded-xl border border-dashed border-line px-3 py-2.5 text-xs text-ink-muted">
+        Esta unidade ainda não entrou no cadastro do Panteon, então não há linha para vincular.
+        Depois da próxima sincronização ela aceita divisão e categoria.
+      </p>
+    );
+  }
 
-        <div className="grid min-h-0 gap-4 overflow-auto p-5">
-          {erro ? (
-            <p className="m-0 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300">
-              {erro}
+  return (
+    <section className="overflow-hidden rounded-2xl border border-line bg-surface">
+      <header className="flex items-start gap-3 border-b border-line bg-subtle/40 px-4 py-3">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-inverse text-brand-ink">
+          <FolderTree aria-hidden="true" className="size-4" />
+        </span>
+        <div className="min-w-0">
+          <h4 className="m-0 text-sm font-semibold text-ink">Filho e categoria</h4>
+          <p className="m-0 mt-0.5 text-xs text-ink-muted">
+            {linha
+              ? `Hoje: ${nomeDaDivisao(divisaoAtual)} · ${atualId ? nomeDaCategoria(atualId) : "sem categoria"}`
+              : "Carregando…"}
+          </p>
+        </div>
+      </header>
+
+      <div className="grid gap-4 p-4">
+        {erro ? (
+          <p className="m-0 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300">
+            {erro}
+          </p>
+        ) : null}
+
+        <div>
+          <label
+            className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted"
+            htmlFor="categoria-da-unidade"
+          >
+            Categoria
+          </label>
+          <select
+            className={CAMPO}
+            disabled={!universo || ocupado}
+            id="categoria-da-unidade"
+            onChange={(e) => {
+              setCategoriaId(e.target.value);
+              setPrevisao(null);
+              setResultado(null);
+            }}
+            value={categoriaId}
+          >
+            <option value="">Sem categoria</option>
+            {(universo?.categorias ?? []).map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome}
+              </option>
+            ))}
+          </select>
+          {/* ⚠️ SEM CATEGORIA É O ESTADO NORMAL, e a frase existe para ninguém cadastrar uma "por
+              segurança": são 5.540 unidades vivas e a maioria esmagadora assina a minuta do
+              produto. */}
+          <p className="m-0 mt-1 text-[11px] text-ink-muted">
+            {(universo?.categorias.length ?? 0) === 0
+              ? "Este empreendimento não tem categorias. Sem categoria, o lote segue a minuta do produto, e a categoria nova se cadastra no Setup do empreendimento."
+              : "Sem categoria, o lote segue a minuta do produto. O registro antigo do mesmo terreno é carimbado junto."}
+          </p>
+          {linha?.vinculo ? (
+            <p className="m-0 mt-1 text-[11px] text-ink-muted">
+              Vinculado por {linha.vinculo.por ?? "alguém"} em{" "}
+              {new Date(linha.vinculo.em).toLocaleDateString("pt-BR")}
+              {linha.vinculo.origem ? ` (${linha.vinculo.origem})` : ""}.
             </p>
           ) : null}
+        </div>
 
-          <section>
+        {(universo?.divisoes.length ?? 0) > 1 ? (
+          <div className="rounded-xl border border-dashed border-line p-3">
             <label
               className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted"
-              htmlFor="categoria-da-unidade"
+              htmlFor="divisao-da-unidade"
             >
-              Categoria
+              Filho
             </label>
             <select
               className={CAMPO}
               disabled={!universo || ocupado}
-              id="categoria-da-unidade"
+              id="divisao-da-unidade"
               onChange={(e) => {
-                setCategoriaId(e.target.value);
+                setDivisaoDestino(e.target.value);
                 setPrevisao(null);
                 setResultado(null);
+                setConfirmouDivisao(false);
               }}
-              value={categoriaId}
+              value={divisaoDestino || divisaoAtual}
             >
-              <option value="">Sem categoria</option>
-              {(universo?.categorias ?? []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
+              {(universo?.divisoes ?? []).map((d) => (
+                <option key={d.enterpriseId} value={d.enterpriseId}>
+                  {d.pai ? `${d.nome} (o conjunto)` : d.nome}
                 </option>
               ))}
             </select>
-            {/* ⚠️ SEM CATEGORIA É O ESTADO NORMAL, e a frase existe para ninguém cadastrar uma "por
-                segurança": são 5.540 unidades vivas e a maioria esmagadora assina a minuta do
-                produto. */}
             <p className="m-0 mt-1 text-[11px] text-ink-muted">
-              {(universo?.categorias.length ?? 0) === 0
-                ? "Este empreendimento não tem categorias. Sem categoria, o lote segue a minuta do produto."
-                : "Sem categoria, o lote segue a minuta do produto. O registro antigo do mesmo terreno é carimbado junto."}
+              Mudar o filho muda quem enxerga o lote no portal, a minuta do contrato e a comissão. Só
+              vale para lote livre.
             </p>
-            {linha?.vinculo ? (
-              <p className="m-0 mt-1 text-[11px] text-ink-muted">
-                Vinculado por {linha.vinculo.por ?? "alguém"} em{" "}
-                {new Date(linha.vinculo.em).toLocaleDateString("pt-BR")}
-                {linha.vinculo.origem ? ` (${linha.vinculo.origem})` : ""}.
-              </p>
+          </div>
+        ) : null}
+
+        {previsao ? (
+          <div className="rounded-xl border border-line bg-subtle/50 p-3 text-xs text-ink">
+            <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+              O que vai mudar
+            </p>
+            {previsao.resumo.linhas === 0 && previsao.resumo.movem === 0 ? (
+              <p className="m-0 mt-1">Nada muda: a unidade já está assim.</p>
             ) : null}
-          </section>
-
-          {(universo?.divisoes.length ?? 0) > 1 ? (
-            <section className="rounded-xl border border-dashed border-line p-3">
-              <label
-                className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted"
-                htmlFor="divisao-da-unidade"
-              >
-                Divisão
-              </label>
-              <select
-                className={CAMPO}
-                disabled={!universo || ocupado}
-                id="divisao-da-unidade"
-                onChange={(e) => {
-                  setDivisaoDestino(e.target.value);
-                  setPrevisao(null);
-                  setResultado(null);
-                  setConfirmouDivisao(false);
-                }}
-                value={divisaoDestino || divisaoAtual}
-              >
-                {(universo?.divisoes ?? []).map((d) => (
-                  <option key={d.enterpriseId} value={d.enterpriseId}>
-                    {d.pai ? `${d.nome} (o conjunto)` : d.nome}
-                  </option>
-                ))}
-              </select>
-              <p className="m-0 mt-1 text-[11px] text-ink-muted">
-                Mudar a divisão muda quem enxerga o lote no portal, a minuta do contrato e a
-                comissão. Só vale para lote livre.
+            {previsao.categorias.map((g) => (
+              <p className="m-0 mt-1" key={g.categoriaId ?? "sem"}>
+                {g.previa.terrenos - g.previa.jaEstao > 0
+                  ? `O terreno passa para ${g.categoriaId ? g.nome : "sem categoria"}`
+                  : "A categoria não muda"}
+                {g.previa.porParentesco > 0
+                  ? `, e o registro antigo do mesmo terreno vai junto`
+                  : ""}
+                .
               </p>
-            </section>
-          ) : null}
-
-          {previsao ? (
-            <section className="rounded-xl border border-line bg-subtle/50 p-3 text-xs text-ink">
-              <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                O que vai mudar
-              </p>
-              {previsao.resumo.linhas === 0 && previsao.resumo.movem === 0 ? (
-                <p className="m-0 mt-1">Nada muda: a unidade já está assim.</p>
-              ) : null}
-              {previsao.categorias.map((g) => (
-                <p className="m-0 mt-1" key={g.categoriaId ?? "sem"}>
-                  {g.previa.terrenos - g.previa.jaEstao > 0
-                    ? `O terreno passa para ${g.categoriaId ? g.nome : "sem categoria"}`
-                    : "A categoria não muda"}
-                  {g.previa.porParentesco > 0
-                    ? `, e o registro antigo do mesmo terreno vai junto`
-                    : ""}
-                  .
+            ))}
+            {previsao.avisos.length > 0 ? (
+              <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                <p className="m-0 flex items-center gap-1 font-semibold">
+                  <AlertTriangle aria-hidden="true" className="size-3.5" />
+                  Leia antes de confirmar
                 </p>
-              ))}
-              {previsao.avisos.length > 0 ? (
-                <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-                  <p className="m-0 flex items-center gap-1 font-semibold">
-                    <AlertTriangle aria-hidden="true" className="size-3.5" />
-                    Leia antes de confirmar
-                  </p>
-                  <ul className="m-0 mt-1 list-disc pl-4">
-                    {previsao.avisos.map((a) => (
-                      <li key={a}>{a}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              {previsao.recusas.length > 0 ? (
-                <ul className="m-0 mt-2 list-disc pl-4 text-rose-700 dark:text-rose-300">
-                  {previsao.recusas.map((r) => (
-                    <li key={r.unidadeId}>{r.motivo}</li>
+                <ul className="m-0 mt-1 list-disc pl-4">
+                  {previsao.avisos.map((a) => (
+                    <li key={a}>{a}</li>
                   ))}
                 </ul>
-              ) : null}
-            </section>
-          ) : null}
+              </div>
+            ) : null}
+            {previsao.recusas.length > 0 ? (
+              <ul className="m-0 mt-2 list-disc pl-4 text-rose-700 dark:text-rose-300">
+                {previsao.recusas.map((r) => (
+                  <li key={r.unidadeId}>{r.motivo}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
 
-          {(previsao?.resumo.movem ?? 0) > 0 ? (
-            <label className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-              <input
-                checked={confirmouDivisao}
-                className="mt-0.5"
-                onChange={(e) => setConfirmouDivisao(e.target.checked)}
-                type="checkbox"
-              />
-              <span>Li os avisos e quero mover esta unidade de divisão.</span>
-            </label>
-          ) : null}
+        {(previsao?.resumo.movem ?? 0) > 0 ? (
+          <label className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+            <input
+              checked={confirmouDivisao}
+              className="mt-0.5"
+              onChange={(e) => setConfirmouDivisao(e.target.checked)}
+              type="checkbox"
+            />
+            <span>Li os avisos e quero mover esta unidade de filho.</span>
+          </label>
+        ) : null}
 
-          {resultado ? (
-            <section className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
-              <p className="m-0 font-semibold">
-                {resultado.recusas.length > 0 || resultado.naoMovidas > 0
-                  ? "Parte não entrou."
-                  : "Pronto."}
+        {resultado ? (
+          <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
+            <p className="m-0 font-semibold">
+              {resultado.recusas.length > 0 || resultado.naoMovidas > 0
+                ? "Parte não entrou."
+                : "Pronto."}
+            </p>
+            {resultado.recusas.map((r) => (
+              <p className="m-0 mt-1" key={r.unidadeId}>
+                {r.motivo}
               </p>
-              {resultado.recusas.map((r) => (
-                <p className="m-0 mt-1" key={r.unidadeId}>
-                  {r.motivo}
-                </p>
-              ))}
-              {resultado.naoMovidas > 0 ? (
-                <p className="m-0 mt-1">
-                  A unidade mudou entre a conferência e o clique. Recarregue e tente de novo.
-                </p>
-              ) : null}
-            </section>
-          ) : null}
-        </div>
+            ))}
+            {resultado.naoMovidas > 0 ? (
+              <p className="m-0 mt-1">
+                A unidade mudou entre a conferência e o clique. Recarregue e tente de novo.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
-        <footer className="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
-          <button
-            className="h-9 rounded-lg border border-line bg-surface px-3.5 text-sm font-semibold text-ink-soft transition-colors hover:bg-subtle hover:text-ink"
-            onClick={aoFechar}
-            type="button"
-          >
-            Voltar
-          </button>
+        <div className="flex items-center justify-end gap-2">
           <button
             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line bg-surface px-3.5 text-sm font-semibold text-ink disabled:opacity-50"
             disabled={!podeConferir || ocupado}
@@ -394,8 +343,8 @@ function ModalDaCategoria({
             {ocupado ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : null}
             Salvar
           </button>
-        </footer>
+        </div>
       </div>
-    </div>
+    </section>
   );
 }
