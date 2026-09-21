@@ -4,6 +4,7 @@ import {
   categoriaPorNome,
   chaveDoTerreno,
   comparavel,
+  identidadeDoTerreno,
   type LinhaParaVincular,
   planoDeVinculo,
 } from "./vinculo-da-unidade";
@@ -13,7 +14,8 @@ const linha = (
   quadra: string,
   lote: string,
   enterprise: string,
-): LinhaParaVincular => ({ enterprise_id: enterprise, id, lote, quadra });
+  espelhoDe: null | string = null,
+): LinhaParaVincular => ({ enterprise_id: enterprise, espelho_de: espelhoDe, id, lote, quadra });
 
 // O caso REAL do Lagoa Bonita: o mesmo terreno existe no pai (31) e na gleba (27).
 const PAI = "31";
@@ -43,11 +45,34 @@ describe("chaveDoTerreno", () => {
   });
 });
 
+// ⚠️ QUEM LIGA AS DUAS LINHAS É `espelho_de`, E NÃO A QUADRA COM O LOTE (revisão de 21/09/2026). O
+// registro antigo do pai APONTA para a linha viva que ele espelha desde a 0161, e é esse ponteiro
+// que diz "mesmo chão". Agrupar por quadra + lote juntava também duas glebas VIVAS com o mesmo
+// número de lote — 17 chaves em produção (VOC × VOR e RDP × RPC, medido em 21/09/2026) —, e aí um
+// clique carimbava a minuta de um lote que o operador nunca viu. Ver `identidadeDoTerreno`.
+describe("identidadeDoTerreno", () => {
+  it("o registro antigo tem a identidade da linha VIVA que ele espelha", () => {
+    expect(identidadeDoTerreno({ espelho_de: "lbr-c101", id: "pai-c101" })).toBe("lbr-c101");
+  });
+
+  it("a linha viva responde por si", () => {
+    expect(identidadeDoTerreno({ espelho_de: null, id: "lbr-c101" })).toBe("lbr-c101");
+  });
+
+  it("duas linhas VIVAS com a mesma quadra e o mesmo lote são DOIS terrenos", () => {
+    // Q12/L06 do Vale do Ouro: VOC1206 e VOR1206, duas glebas, dois donos no portal, duas minutas.
+    const voc = linha("voc-1206", "12", "06", "37");
+    const vor = linha("vor-1206", "12", "06", "41");
+    expect(chaveDoTerreno(voc)).toBe(chaveDoTerreno(vor));
+    expect(identidadeDoTerreno(voc)).not.toBe(identidadeDoTerreno(vor));
+  });
+});
+
 describe("planoDeVinculo", () => {
   const universo = [
-    linha("pai-c101", "C", "0101", PAI),
+    linha("pai-c101", "C", "0101", PAI, "lbr-c101"),
     linha("lbr-c101", "C", "101", LBR),
-    linha("pai-c102", "C", "0102", PAI),
+    linha("pai-c102", "C", "0102", PAI, "lbr-c102"),
     linha("lbr-c102", "C", "102", LBR),
   ];
 
@@ -97,11 +122,13 @@ describe("planoDeVinculo", () => {
     expect(r.porParentesco).toBe(0);
   });
 
-  it("lote sem quadra nem lote não arrasta os outros iguais por engano", () => {
-    // Duas linhas órfãs têm a mesma chave "|", então escolher uma alcança a outra. É o preço de
-    // não ter chave — e o teste existe para que a rota AVISE em vez de o operador descobrir depois.
+  it("lote sem quadra nem lote carimba só ele, e não os outros iguais", () => {
+    // ⚠️ ANTES DE 21/09/2026 ESTE CASO ARRASTAVA. Duas linhas órfãs têm a MESMA chave de quadra e
+    // lote ("|"), então escolher uma alcançava a outra — e por isso a rota precisava de uma trava
+    // que RECUSAVA a seleção inteira com 409. A identidade é por linha: o cadastro continua torto,
+    // mas o carimbo não escorrega, e a trava deixou de ser necessária.
     const orfas = [linha("a", "", "", PAI), linha("b", "", "", LBR)];
-    expect(planoDeVinculo(["a"], orfas).ids.sort()).toEqual(["a", "b"]);
+    expect(planoDeVinculo(["a"], orfas).ids).toEqual(["a"]);
   });
 });
 

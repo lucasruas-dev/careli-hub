@@ -16,18 +16,59 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
 
+import {
+  type AnexoDaVenda,
+  anexosParaOMotor,
+  lerAnexosDaVenda,
+} from "./anexos-da-venda";
+import {
+  type DegrauDoContrato,
+  NOME_DO_DEGRAU,
+  resolverCadeiaDoContrato,
+} from "./cadeia-do-contrato";
 import { type IdentidadeDoContrato, identidadeDoContrato } from "./contrato-guardado";
 import { dadosDaProposta } from "./dados-do-contrato";
 import { documentoParaHtml, type NoDoDocumento } from "./documento-html";
-import { preencherContrato } from "./preencher-contrato";
+import {
+  type EscolhaDaMinuta,
+  escolherMinutaDaCadeia,
+  fraseDaOrigem,
+  minutaFoiHerdada,
+} from "./minuta-da-cadeia";
+import { type DadosDoContrato, preencherContrato } from "./preencher-contrato";
 
 export type MinutaDoContrato = {
+  /** A capa cadastrada nesta minuta. Vazio = o contrato começa no corpo. */
+  capaNome: string;
+  capaPath: string;
+  /**
+   * O modelo veio de um degrau ACIMA do mais específico que a venda tinha?
+   *
+   * ⚠️ É O QUE A TELA DESTACA. No caso normal a linha fica discreta e ninguém precisa ler nada;
+   * quando o modelo foi herdado, ela fica em evidência, porque é aí que a herança pode estar
+   * errada e é aí que quem emite tem de olhar antes de clicar.
+   */
+  herdada: boolean;
   id: string;
   nome: string;
+  /** O degrau que respondeu: categoria, divisão, empreendimento, pai. */
+  origem: DegrauDoContrato | "pedida";
+  /** A frase pronta: "modelo herdado do Vale do Ouro". Montada no servidor, de propósito. */
+  origemFrase: string;
+  /** O nome humano do degrau: "Condomínio", "Vale do Ouro VOL". Nunca um id. */
+  rotulo: string;
   versao: null | number;
 };
 
 export type ContratoMontado = {
+  /**
+   * As peças que vão junto com o corpo, na ordem em que entram no PDF.
+   *
+   * ⚠️ ELAS VÊM PARA A PRÉVIA TAMBÉM, e não só para a geração. A prévia é a CONFERÊNCIA do papel,
+   * e ela não mostra páginas de PDF: sem esta lista, quem confere fica cego justamente na peça que
+   * o texto promete em cláusula.
+   */
+  anexos: AnexoDaVenda[];
   /** O que a proposta não tinha, em frases curtas. */
   avisos: string[];
   /** As chaves gerais do preenchimento — nem toda variável mora aqui: ver `identidade`. */
@@ -41,6 +82,8 @@ export type ContratoMontado = {
    * quem só tivesse `gerais` geraria um arquivo sem o nome de ninguém.
    */
   identidade: IdentidadeDoContrato;
+  /** Os marcadores de montagem que a minuta usou: `capa_contrato`, `anexo_3`. Ver `preencher-contrato`. */
+  marcadores: string[];
   minuta: MinutaDoContrato;
   ok: true;
   /** Variáveis que o texto pedia e o dado não respondeu. Saem impressas como `[nome]` no corpo. */
@@ -57,8 +100,8 @@ export type FalhaAoMontar = {
 /**
  * Monta o contrato desta proposta.
  *
- * `minutaId` força uma minuta específica (ainda precisa estar publicada); sem ele vale a minuta
- * publicada mais recente do empreendimento.
+ * `minutaId` força uma minuta específica (ainda precisa estar publicada e servir à proposta); sem
+ * ele vale a CADEIA — categoria da unidade, divisão da unidade, empreendimento da proposta, pai.
  */
 export async function montarContratoDaProposta(
   sb: SupabaseClient,
@@ -69,37 +112,72 @@ export async function montarContratoDaProposta(
     return { erro: "Proposta não encontrada.", ok: false, status: 404 };
   }
 
-  const doEmpreendimento = resolvido.dados.gerais.__empreendimento_id ?? "";
-  const daUnidade = resolvido.dados.gerais.__unidade_enterprise_id ?? "";
+  const gerais = resolvido.dados.gerais;
+  const doEmpreendimento = gerais.__empreendimento_id ?? "";
+  const daUnidade = gerais.__unidade_enterprise_id ?? "";
+
+  // ⚠️ A CADEIA VEM ANTES DA MINUTA, E ELA SERVE AOS DOIS LADOS. É ela que sabe a categoria do
+  // lote, a divisão onde ele mora e o pai da divisão — e é a MESMA travessia que escolhe o modelo
+  // e soma os anexos. Duas travessias diferentes fariam o contrato sair com o texto de um degrau e
+  // os anexos de outro, que é a dívida que a 0156 nomeia como PAN-070.
+  const cadeia = await resolverCadeiaDoContrato(sb, {
+    categoriaId: gerais.__unidade_categoria_id ?? "",
+    divisaoId: daUnidade,
+    empreendimentoId: doEmpreendimento,
+    empreendimentoNome: gerais.empreendimento_nome ?? "",
+    unidadeId: gerais.__unidade_id ?? "",
+  });
+  if (!cadeia.ok) return { erro: cadeia.erro, ok: false, status: 409 };
+
   // ⚠️ DOIS CAMINHOS PARA O MESMO ID, e o segundo salvou o primeiro teste real. A minuta é indexada
   // por `enterprise_id` (o id do C2X), e três empreendimentos do Hércules — LOX, PDX e RDX — têm
   // esse campo NULO: para eles a busca ia com string vazia e NENHUMA minuta seria achada nunca. A
   // unidade guarda o mesmo id na sua própria coluna, e ela costuma estar preenchida quando a do
-  // empreendimento não está, porque veio de outra carga.
-  const minuta = await acharMinuta(sb, {
-    empreendimentoId: doEmpreendimento || daUnidade,
-    pedida: minutaId,
-  });
+  // empreendimento não está, porque veio de outra carga. Na cadeia isso deixou de ser remendo: a
+  // divisão da unidade é um degrau de verdade, e vem ANTES.
+  const escolha = minutaId
+    ? await minutaPedida(sb, { empreendimentoId: doEmpreendimento || daUnidade, pedida: minutaId })
+    : await escolherMinutaDaCadeia(sb, cadeia.cadeia);
 
-  if (!minuta) {
-    // ⚠️ A MENSAGEM DIZ O QUE ELE PROCUROU. "Não há minuta publicada" era verdadeiro para causas
-    // MUITO diferentes — a minuta não existe, ou a proposta não sabe a que empreendimento pertence
-    // — e mandar publicar de novo uma minuta que JÁ ESTÁ publicada é o caminho mais curto para
-    // alguém achar que o sistema está quebrado. Foi o que aconteceu no primeiro teste, em
-    // 08/09/2026: a minuta do Veredas estava publicada e a tela mandou publicar.
-    const alvo = doEmpreendimento || daUnidade;
-    const causa = alvo
-      ? `Procurei a minuta publicada do empreendimento ${alvo} e não achei nenhuma do tipo "contrato". Publique a minuta na Têmis e tente de novo.`
-      : "O empreendimento desta proposta não tem o código que liga às minutas (é o caso de LOX, PDX e RDX). Sem ele não há por onde procurar — e não adianta publicar de novo.";
+  if (!escolha.ok) return { erro: escolha.erro, ok: false, status: 409 };
+
+  if (!escolha.minuta) {
+    // ⚠️ A MENSAGEM DIZ ONDE ELE PROCUROU, E AGORA SÃO VÁRIOS LUGARES. "Não há minuta publicada"
+    // era verdadeiro para causas MUITO diferentes — a minuta não existe, ou a proposta não sabe a
+    // que empreendimento pertence — e mandar publicar de novo uma minuta que JÁ ESTÁ publicada é o
+    // caminho mais curto para alguém achar que o sistema está quebrado. Foi o que aconteceu no
+    // primeiro teste, em 08/09/2026: a minuta do Veredas estava publicada e a tela mandou publicar.
+    // Com a cadeia, dizer só o empreendimento da proposta esconderia que a divisão do lote também
+    // foi consultada — e é lá que o jurídico costuma ter publicado.
+    const procurados = cadeia.cadeia.niveis
+      .filter((n) => n.degrau !== "unidade")
+      .map((n) => `${NOME_DO_DEGRAU[n.degrau]} ${n.rotulo}`);
+    const causa =
+      procurados.length > 0
+        ? `Procurei minuta publicada do tipo "contrato" em ${listar(procurados)} e não achei nenhuma. Publique a minuta na Têmis e tente de novo.`
+        : "O empreendimento desta proposta não tem o código que liga às minutas (é o caso de LOX, PDX e RDX) e a unidade também não. Sem ele não há por onde procurar — e não adianta publicar de novo.";
     return { erro: `Não consegui montar o contrato. ${causa}`, ok: false, status: 409 };
   }
 
+  const minuta = escolha.minuta;
   const conteudo = Array.isArray(minuta.conteudo) ? (minuta.conteudo as NoDoDocumento[]) : [];
   if (conteudo.length === 0) {
     return { erro: "A minuta publicada está vazia.", ok: false, status: 409 };
   }
 
-  const preenchido = preencherContrato(conteudo, resolvido.dados);
+  // ⚠️ OS ANEXOS SOMAM OS NÍVEIS, e é aqui que eles chegam ao motor pela primeira vez. `dados.anexos`
+  // existia no tipo desde 07/09/2026 e NUNCA era preenchido em produção: o bloco
+  // `[inicio_tem_anexo_1]` da minuta publicada do VOL v6 era removido em silêncio, sem entrar em
+  // `semValor` e sem aviso na prévia. Ver `anexos-da-venda.ts`.
+  const somados = await lerAnexosDaVenda(sb, cadeia.cadeia);
+  if (!somados.ok) return { erro: somados.erro, ok: false, status: 409 };
+
+  const dados: DadosDoContrato =
+    somados.anexos.length > 0
+      ? { ...resolvido.dados, anexos: anexosParaOMotor(somados.anexos) }
+      : resolvido.dados;
+
+  const preenchido = preencherContrato(conteudo, dados);
 
   // ⚠️ O TITULAR É O PRIMEIRO COMPRADOR, pela ordem do contrato (ver `DadosDoContrato.compradores`:
   // *"na ordem do contrato. O primeiro é o titular"*). Com dois compradores o arquivo leva o nome de
@@ -108,89 +186,113 @@ export async function montarContratoDaProposta(
   const titular = resolvido.dados.compradores[0]?.valores.nome_cliente ?? "";
 
   return {
-    avisos: resolvido.avisos,
+    anexos: somados.anexos,
+    // ⚠️ O QUE A CADEIA DEIXOU DE FORA VIAJA JUNTO COM O QUE O CADASTRO DEIXOU EM BRANCO. São a
+    // mesma coisa para quem confere: um recado que precisa ser lido antes de o papel ir para a
+    // assinatura. Ver `resolverCadeiaDoContrato`.
+    avisos: [...resolvido.avisos, ...(cadeia.cadeia.avisos ?? [])],
     gerais: resolvido.dados.gerais,
     // ⚠️ UM SERIALIZADOR SÓ, e é esta linha que a prévia e o PDF compartilham. Ver o topo.
     html: documentoParaHtml(preenchido.nos),
     identidade: identidadeDoContrato(resolvido.dados.gerais, titular),
-    minuta: { id: minuta.id, nome: minuta.nome, versao: minuta.versao },
+    marcadores: preenchido.marcadores,
+    minuta: {
+      capaNome: minuta.capaNome,
+      capaPath: minuta.capaPath,
+      herdada: minutaFoiHerdada(cadeia.cadeia, minuta),
+      id: minuta.id,
+      nome: minuta.nome,
+      origem: minuta.origem,
+      origemFrase: fraseDaOrigem(minuta),
+      rotulo: minuta.rotulo,
+      versao: minuta.versao,
+    },
     ok: true,
     semValor: preenchido.semValor,
     vezesDoLaco: preenchido.vezesDoLaco,
   };
 }
 
-type MinutaEncontrada = MinutaDoContrato & { conteudo: unknown; situacao?: string };
+function listar(itens: readonly string[]): string {
+  if (itens.length <= 1) return itens[0] ?? "";
+  return `${itens.slice(0, -1).join(", ")} e ${itens[itens.length - 1]}`;
+}
 
 /**
- * A minuta que vale para esta proposta.
+ * A minuta que alguém PEDIU pelo id — o caminho que nenhuma tela usa, e que por isso precisa de
+ * trava própria.
  *
  * ⚠️ SÓ PUBLICADA. Rascunho é trabalho em andamento: gerar contrato de rascunho é como imprimir um
  * documento que alguém ainda está escrevendo — e a `temis_minutas` tem a checagem que só exige
  * `conteudo_html` quando a situação é `publicada`, justamente porque publicar é o ato de dizer "esta
  * pode ser usada".
  *
- * ⚠️ A CATEGORIA DEVERIA MANDAR, e ainda não manda. O desenho é `unidade → categoria →
- * temis_categorias.minuta_id`, e é o que permite dois contratos diferentes no mesmo empreendimento.
- * Enquanto não houver categoria cadastrada na unidade, cai-se na minuta publicada mais recente do
- * empreendimento — que é o comportamento certo para quem tem uma minuta só, e é o caso de todos
- * hoje. Quando a categoria entrar, este é o único lugar a mudar.
+ * ⚠️ E A CADEIA NÃO SUBSTITUI ESTA CONFERÊNCIA. A cadeia decide qual minuta VALE quando ninguém
+ * pediu nenhuma; quando alguém pede, o que importa é se aquela minuta SERVE à proposta — e a régua
+ * disso é `empreendimentosQueServem`, que é mais larga (inclui o consolidado do catálogo) e existe
+ * para fechar um vazamento, não para escolher modelo.
  */
-async function acharMinuta(
+async function minutaPedida(
   sb: SupabaseClient,
   { empreendimentoId, pedida }: { empreendimentoId: string; pedida: string },
-): Promise<MinutaEncontrada | null> {
-  if (pedida) {
-    // ⚠️ PRIMEIRO O DONO DA MINUTA, DEPOIS O TEXTO. O id vem do corpo do pedido, e até 16/09/2026
-    // qualquer minuta publicada servia para qualquer proposta: bastava trocar o `minutaId` para
-    // imprimir o contrato de um loteamento com o modelo (e as cláusulas) de outro. A conferência
-    // vem ANTES de o conteúdo sair do banco, na mesma disciplina de `unidadeNoEscopo`.
-    const { data: cabecalho } = await sb
-      .from("temis_minutas")
-      .select("id, enterprise_id, situacao")
-      .eq("id", pedida)
-      .maybeSingle();
-    const dona = cabecalho as null | { enterprise_id: null | string; id: string; situacao: string };
+): Promise<EscolhaDaMinuta> {
+  // ⚠️ PRIMEIRO O DONO DA MINUTA, DEPOIS O TEXTO. O id vem do corpo do pedido, e até 16/09/2026
+  // qualquer minuta publicada servia para qualquer proposta: bastava trocar o `minutaId` para
+  // imprimir o contrato de um loteamento com o modelo (e as cláusulas) de outro. A conferência
+  // vem ANTES de o conteúdo sair do banco, na mesma disciplina de `unidadeNoEscopo`.
+  const { data: cabecalho } = await sb
+    .from("temis_minutas")
+    .select("id, enterprise_id, situacao")
+    .eq("id", pedida)
+    .maybeSingle();
+  const dona = cabecalho as null | { enterprise_id: null | string; id: string; situacao: string };
 
-    // ⚠️ A MINUTA PEDIDA TAMBÉM PRECISA ESTAR PUBLICADA. Aceitar um id de rascunho pela porta dos
-    // fundos derrubaria a regra inteira.
-    if (!dona || dona.situacao !== "publicada") return null;
+  // ⚠️ A MINUTA PEDIDA TAMBÉM PRECISA ESTAR PUBLICADA. Aceitar um id de rascunho pela porta dos
+  // fundos derrubaria a regra inteira.
+  if (!dona || dona.situacao !== "publicada") return { minuta: null, ok: true };
 
-    // ⚠️ E ELA PRECISA SERVIR A ESTA PROPOSTA: ser do empreendimento dela, do PAI dela no cadastro
-    // do Panteon (VOC 37 → VLO 35) ou do CONSOLIDADO do catálogo (LBF 33 → `group:Lagoa Bonita`). É
-    // correção de vazamento, e vale para o hub também: nenhuma tela manda `minutaId` na prévia nem
-    // na geração (medido em 16/09/2026), então o único caminho que isto fecha é o de quem chama a
-    // rota direto. Proposta sem empreendimento não tem a quem pertencer, e fica sem minuta pedida.
-    const servem = await empreendimentosQueServem(sb, empreendimentoId);
-    if (!servem.has(String(dona.enterprise_id ?? "").trim())) {
-      console.warn(
-        `[temis][contrato] minuta ${dona.id} recusada: é do empreendimento ${dona.enterprise_id ?? "(nenhum)"} e a proposta é do ${empreendimentoId || "(nenhum)"}.`,
-      );
-      return null;
-    }
-
-    const { data } = await sb
-      .from("temis_minutas")
-      .select("id, nome, versao, conteudo, situacao")
-      .eq("id", dona.id)
-      .maybeSingle();
-    const linha = data as MinutaEncontrada | null;
-    if (linha && linha.situacao === "publicada") return linha;
-    return null;
+  // ⚠️ E ELA PRECISA SERVIR A ESTA PROPOSTA: ser do empreendimento dela, do PAI dela no cadastro
+  // do Panteon (VOC 37 → VLO 35) ou do CONSOLIDADO do catálogo (LBF 33 → `group:Lagoa Bonita`). É
+  // correção de vazamento, e vale para o hub também: nenhuma tela manda `minutaId` na prévia nem
+  // na geração (medido em 16/09/2026), então o único caminho que isto fecha é o de quem chama a
+  // rota direto. Proposta sem empreendimento não tem a quem pertencer, e fica sem minuta pedida.
+  const servem = await empreendimentosQueServem(sb, empreendimentoId);
+  if (!servem.has(String(dona.enterprise_id ?? "").trim())) {
+    console.warn(
+      `[temis][contrato] minuta ${dona.id} recusada: é do empreendimento ${dona.enterprise_id ?? "(nenhum)"} e a proposta é do ${empreendimentoId || "(nenhum)"}.`,
+    );
+    return { minuta: null, ok: true };
   }
-
-  if (!empreendimentoId) return null;
 
   const { data } = await sb
     .from("temis_minutas")
-    .select("id, nome, versao, conteudo")
-    .eq("enterprise_id", empreendimentoId)
-    .eq("situacao", "publicada")
-    .eq("tipo", "contrato")
-    .order("atualizado_em", { ascending: false })
-    .limit(1);
+    .select("capa_nome, capa_path, id, nome, versao, conteudo, situacao")
+    .eq("id", dona.id)
+    .maybeSingle();
+  const linha = data as null | {
+    capa_nome: null | string;
+    capa_path: null | string;
+    conteudo: unknown;
+    id: string;
+    nome: null | string;
+    situacao: string;
+    versao: null | number;
+  };
+  if (!linha || linha.situacao !== "publicada") return { minuta: null, ok: true };
 
-  return (data?.[0] as MinutaEncontrada | undefined) ?? null;
+  return {
+    minuta: {
+      capaNome: String(linha.capa_nome ?? "").trim(),
+      capaPath: String(linha.capa_path ?? "").trim(),
+      conteudo: linha.conteudo,
+      id: linha.id,
+      nome: String(linha.nome ?? "").trim(),
+      origem: "pedida",
+      rotulo: "escolha manual",
+      versao: typeof linha.versao === "number" ? linha.versao : null,
+    },
+    ok: true,
+  };
 }
 
 /**

@@ -125,8 +125,17 @@ function responder(ctx: Contexto): { data: unknown; error: null | { message: str
               type: "p",
             },
           ],
+          // ⚠️ AS TRÊS COLUNAS DA CADEIA (21/09/2026). `escolherMinutaDaCadeia` pede
+          // `enterprise_id`, `situacao` e `tipo` no SELECT e casa o `enterprise_id` com o degrau em
+          // memória — é assim que a divisão da unidade ganha do empreendimento da proposta numa
+          // consulta só. Sem elas o stub devolvia uma minuta que não pertence a degrau nenhum.
+          capa_nome: null,
+          capa_path: null,
+          enterprise_id: "9001",
           id: "minuta-1",
           nome: "Teste Minuta",
+          situacao: "publicada",
+          tipo: "contrato",
           versao: 1,
         },
       ],

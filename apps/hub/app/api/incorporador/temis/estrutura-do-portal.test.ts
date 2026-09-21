@@ -760,24 +760,29 @@ describe("vincular apartamentos a categoria (onda 2, achado 28)", () => {
     });
   });
 
-  it("escolher um apartamento carimba só ele, e não o prédio inteiro", async () => {
+  // ⚠️ O PATCH DESTA ROTA FOI APOSENTADO EM 21/09/2026 (410, apontando para
+  // `/api/apolo/empreendimentos/unidades/vinculo`). Ele não conferia de que empreendimento a
+  // categoria era, e desde a cadeia do contrato a categoria escolhe a MINUTA do lote: um pedido
+  // carimbava até 500 lotes com o contrato de outro loteamento. O que ele media — o apartamento
+  // carimbado sozinho e o lote sem quadra e sem lote — passou para
+  // `lib/apolo/vinculo-de-unidades-servidor.test.ts`, que é quem responde por isso hoje.
+  it("vincular pelo hub responde 410 e manda para a porta nova, sem tocar no banco", async () => {
     const r = await hubUnidades.PATCH(
       hub("categorias/unidades", "", "PATCH", { categoriaId: CATEGORIA, unidadeIds: [APTO_101] }),
     );
-    expect(r.status).toBe(200);
-    expect(((await r.json()) as { data: { gravadas: number; terrenos: number } }).data).toMatchObject({
-      gravadas: 1,
-      terrenos: 1,
-    });
-    expect(linha("hercules_unidades", APTO_101)?.categoria_id).toBe(CATEGORIA);
-    expect(linha("hercules_unidades", APTO_102)?.categoria_id).toBeNull();
+    expect(r.status).toBe(410);
+    expect(((await r.json()) as { porta: string }).porta).toBe(
+      "/api/apolo/empreendimentos/unidades/vinculo",
+    );
+    expect(linha("hercules_unidades", APTO_101)?.categoria_id).toBeNull();
+    expect(gravacoesEm(banco(), "hercules_unidades")).toHaveLength(0);
   });
 
-  it("a trava de 'sem quadra e sem lote' continua valendo para o loteamento", async () => {
+  it("e o mesmo 410 vale para o lote sem quadra e sem lote", async () => {
     const r = await hubUnidades.PATCH(
       hub("categorias/unidades", "", "PATCH", { categoriaId: CATEGORIA, unidadeIds: [LOTE_SEM_CHAVE] }),
     );
-    expect(r.status).toBe(409);
+    expect(r.status).toBe(410);
     expect(gravacoesEm(banco(), "hercules_unidades")).toHaveLength(0);
   });
 
@@ -792,5 +797,121 @@ describe("vincular apartamentos a categoria (onda 2, achado 28)", () => {
       apartamento: "101",
       torre: "A",
     });
+  });
+});
+
+// ── O ALCANCE DO ANEXO E A MINUTA DA CATEGORIA (21/09/2026) ─────────────────
+//
+// Lucas: *"preciso garantir que consigamos vincular os anexos por filho, categoria. também as
+// minutas"*. As duas pontas do pedido passaram a ter porta; aqui se trava o que cada uma aceita.
+
+describe("os alcances possíveis de um anexo", () => {
+  it("a leitura devolve o pai, as divisões e as categorias da família", async () => {
+    const r = await hubAnexos.GET(hub("anexos", "?enterpriseId=35"));
+    expect(r.status).toBe(200);
+    const corpo = (await r.json()) as {
+      alcances: { id: string; nome: string; tipo: string }[];
+    };
+
+    // ⚠️ A DIVISÃO SEM `c2x_enterprise_id` NÃO ENTRARIA: a unidade guarda esse id, e sem ele a
+    // cadeia do contrato nunca chegaria à peça. Todas as quatro do Vale do Ouro têm.
+    expect(corpo.alcances.filter((a) => a.tipo === "empreendimento").map((a) => a.id).sort()).toEqual(
+      ["35", "36", "37", "41"],
+    );
+    expect(corpo.alcances.find((a) => a.tipo === "categoria")).toMatchObject({
+      id: CATEGORIA,
+      nome: "Condomínio",
+    });
+  });
+
+  it("a ficha CONSOLIDADA não vira alcance cru: o upload é recusado com a saída escrita", async () => {
+    // ⚠️ `group:<nome>` É RÓTULO DO CATÁLOGO, e não chave: não existe `enterprise_id` igual a isso
+    // em tabela nenhuma. Até 21/09/2026 o anexo era gravado com esse alcance, a MESMA tela o
+    // listava (ela filtra pelo id cru) e o contrato saía sem a peça — sem erro e sem aviso.
+    const r = await hubAnexos.POST(
+      hub("anexos", "", "POST", {
+        acao: "upload",
+        contentType: "application/pdf",
+        enterpriseId: "group:Nao Existe No Cadastro",
+        fileName: "convencao.pdf",
+        size: 1024,
+      }),
+    );
+    expect(r.status).toBe(400);
+    expect(((await r.json()) as { error: string }).error).toContain("Escolha a divisão");
+    expect(gravacoesEm(banco(), "temis_anexos")).toHaveLength(0);
+  });
+});
+
+describe("a minuta que a categoria aponta", () => {
+  const MINUTA_DO_VLO = "99999999-9999-4999-8999-000000000035";
+  const MINUTA_DE_OUTRO = "99999999-9999-4999-8999-000000000020";
+
+  const publicada = (id: string, enterpriseId: string, nome: string) => ({
+    enterprise_id: enterpriseId,
+    id,
+    nome,
+    situacao: "publicada",
+    tipo: "contrato",
+    versao: 2,
+    workspace_id: "careli",
+  });
+
+  beforeEach(() => {
+    banco().tabelas.temis_minutas = [
+      publicada(MINUTA_DO_VLO, "35", "VLO-COMPRA-E-VENDA"),
+      publicada(MINUTA_DE_OUTRO, "20", "JDG-COMPRA-E-VENDA"),
+    ];
+  });
+
+  it("a lista de categorias oferece só as minutas publicadas do DONO delas", async () => {
+    const r = await hubCategorias.GET(hub("categorias", "?enterpriseId=37&nome=VOC"));
+    expect(r.status).toBe(200);
+    const corpo = (await r.json()) as {
+      data: { minutasDisponiveis: { id: string }[] };
+    };
+    // ⚠️ SÓ AS DO DONO. A categoria mora no PAI, e o pai está na cadeia de todo lote da família —
+    // oferecer a minuta de uma divisão irmã seria propor o que o motor recusaria ao imprimir
+    // (`minuta-da-cadeia.ts`, a régua de família).
+    expect(corpo.data.minutasDisponiveis.map((m) => m.id)).toEqual([MINUTA_DO_VLO]);
+  });
+
+  it("vincular a minuta do próprio empreendimento grava, e a lista passa a mostrá-la", async () => {
+    const r = await hubCategorias.PATCH(
+      hub("categorias", `?enterpriseId=37&id=${CATEGORIA}`, "PATCH", { minutaId: MINUTA_DO_VLO }),
+    );
+    expect(r.status).toBe(200);
+    expect(linha("temis_categorias", CATEGORIA)?.minuta_id).toBe(MINUTA_DO_VLO);
+
+    const lista = await hubCategorias.GET(hub("categorias", "?enterpriseId=37&nome=VOC"));
+    const corpo = (await lista.json()) as {
+      data: { categorias: { minuta: null | { nome: string; versao: null | number } }[] };
+    };
+    // O NOME vem junto do id: uma tela de herança que mostra só um uuid manda o operador abrir
+    // outra aba para saber o que está vinculado — e é assim que ele deixa como está.
+    expect(corpo.data.categorias[0]?.minuta).toMatchObject({ nome: "VLO-COMPRA-E-VENDA", versao: 2 });
+  });
+
+  it("a minuta de OUTRO empreendimento é recusada na porta, nomeando-a", async () => {
+    // ⚠️ ESTE CAMPO É O PRIMEIRO DEGRAU DA CADEIA: ele vence a divisão e o empreendimento. Um id de
+    // outro produto aqui imprimiria o contrato do loteamento errado, e a venda só descobriria no
+    // 409 da geração — semanas depois e longe desta tela.
+    const r = await hubCategorias.PATCH(
+      hub("categorias", `?enterpriseId=37&id=${CATEGORIA}`, "PATCH", { minutaId: MINUTA_DE_OUTRO }),
+    );
+    expect(r.status).toBe(409);
+    expect(((await r.json()) as { error: string }).error).toContain("JDG-COMPRA-E-VENDA");
+    expect(linha("temis_categorias", CATEGORIA)?.minuta_id).toBeUndefined();
+  });
+
+  it("mandar `null` limpa o vínculo, e a categoria volta a herdar", async () => {
+    await hubCategorias.PATCH(
+      hub("categorias", `?enterpriseId=37&id=${CATEGORIA}`, "PATCH", { minutaId: MINUTA_DO_VLO }),
+    );
+    const r = await hubCategorias.PATCH(
+      hub("categorias", `?enterpriseId=37&id=${CATEGORIA}`, "PATCH", { minutaId: null }),
+    );
+    expect(r.status).toBe(200);
+    expect(linha("temis_categorias", CATEGORIA)?.minuta_id).toBeNull();
   });
 });

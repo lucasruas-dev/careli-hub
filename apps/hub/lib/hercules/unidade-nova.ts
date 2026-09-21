@@ -70,6 +70,17 @@ export type EntradaDeUnidade = {
 export type CampoDaUnidade = keyof EntradaDeUnidade;
 export type ErrosDaUnidade = Partial<Record<CampoDaUnidade, string>>;
 
+/**
+ * As colunas que a PLANILHA aceita: os campos da unidade mais o vínculo.
+ *
+ * ⚠️ `categoria` NÃO É PROPRIEDADE DA UNIDADE, É UM VÍNCULO — por isso ela fica fora de
+ * `EntradaDeUnidade` e `validarUnidade` não a conhece. Quem resolve o NOME digitado para um id é o
+ * servidor, contra as categorias da FAMÍLIA do empreendimento (a categoria mora no pai e vale para
+ * as glebas), porque só lá se sabe quais existem. Pô-la dentro da unidade faria o formulário de
+ * edição e a validação de área e preço terem de decidir sobre ela sem nada para decidir.
+ */
+export type CampoDaPlanilhaDeUnidades = "categoria" | CampoDaUnidade;
+
 type ComumDaUnidade = {
   matricula: null | string;
   /** Só preenchido quando `situacao` é `bloqueada`. */
@@ -538,6 +549,38 @@ const COLUNAS_COMUNS: readonly ColunaDaPlanilhaDeUnidades[] = [
   { chave: "motivoDoBloqueio", exemplo: "Permuta", obrigatoria: false, rotulo: "Motivo do bloqueio" },
 ];
 
+/**
+ * A coluna do VÍNCULO na planilha de importação: a unidade já nasce apontando para a categoria.
+ *
+ * Lucas (15/09/2026): *"normalmente vamos subir em massa essa configuração na importação de
+ * unidades"*. Coluna em branco = sem categoria, que é o estado normal de 36 dos 37 produtos; nome
+ * que não existe recusa a LINHA, nunca entra calado como "sem categoria".
+ *
+ * ⚠️ FORA DE `colunasDaPlanilha`, E ISSO É DELIBERADO. Aquela lista também desenha o FORMULÁRIO de
+ * uma unidade só (`CadastroDeUnidades.tsx` monta um campo por coluna e valida por
+ * `CampoDaUnidade`). A categoria não é propriedade da unidade e não passa por `validarUnidade`:
+ * enfiada lá, ela viraria um campo de texto livre no formulário, sem lista e sem conferência.
+ *
+ * ⚠️ E NÃO EXISTE COLUNA DE DIVISÃO. A divisão da unidade É o produto em que a planilha está sendo
+ * importada, e `produtoRecebeUnidade` já recusa importar em produto com glebas: o operador escolhe a
+ * gleba ANTES de importar. Mudar a divisão de unidade que JÁ EXISTE é outra operação, com trava de
+ * venda viva — ver `lib/apolo/vinculo-de-unidades-servidor.ts`.
+ */
+export const COLUNA_DE_CATEGORIA = {
+  chave: "categoria",
+  exemplo: "Condomínio",
+  obrigatoria: false,
+  rotulo: "Categoria",
+} as const;
+
+/** O cabeçalho da planilha é a coluna de categoria? Vazio = não é. */
+export function chaveDeVinculoDaColuna(bruto: string): "" | "categoria" {
+  const limpo = normalizar(bruto)
+    .replace(/\(.*?\)/g, "")
+    .replace(/[^a-z0-9]/g, "");
+  return limpo.startsWith("categoria") ? "categoria" : "";
+}
+
 export const COLUNAS_DA_PLANILHA_DE_LOTEAMENTO: readonly ColunaDaPlanilhaDeUnidades[] = [
   { chave: "quadra", exemplo: "01", obrigatoria: true, rotulo: "Quadra" },
   { chave: "lote", exemplo: "07", obrigatoria: true, rotulo: "Lote" },
@@ -592,7 +635,7 @@ export function chaveDaColunaDeUnidades(tipoProduto: TipoProduto, bruto: string)
   return "";
 }
 
-export type LinhaDaPlanilhaDeUnidades = Partial<Record<CampoDaUnidade, unknown>>;
+export type LinhaDaPlanilhaDeUnidades = Partial<Record<CampoDaPlanilhaDeUnidades, unknown>>;
 
 /**
  * Lê um CSV em linhas já com as chaves da validação.
@@ -612,7 +655,11 @@ export function lerCsvDeUnidades(tipoProduto: TipoProduto, conteudo: string): Li
   const virgula = (primeira.match(/,/g) ?? []).length;
   const separador = pontoEVirgula >= virgula ? ";" : ",";
 
-  const cabecalho = primeira.split(separador).map((c) => chaveDaColunaDeUnidades(tipoProduto, c));
+  // A categoria entra pelo mapeador do VÍNCULO (ver `COLUNA_DE_CATEGORIA`): ela não é campo da
+  // unidade, mas precisa sobreviver à leitura do arquivo para o servidor resolver o nome depois.
+  const cabecalho = primeira
+    .split(separador)
+    .map((c) => chaveDaColunaDeUnidades(tipoProduto, c) || chaveDeVinculoDaColuna(c));
 
   return linhas
     .slice(1)
@@ -638,6 +685,15 @@ export type ProblemaDaLinhaDeUnidade = {
 };
 
 export type UnidadeConferida = {
+  /**
+   * O NOME da categoria como veio da planilha. Nulo = a coluna estava em branco.
+   *
+   * ⚠️ O NOME, E NÃO O ID. Quem sabe quais categorias existem é o servidor, que lê as da FAMÍLIA do
+   * empreendimento (a categoria mora no pai e vale para as glebas). Esta camada não tem banco.
+   */
+  categoria?: null | string;
+  /** O id resolvido pelo servidor a partir de `categoria`. Ausente = a linha não pediu categoria. */
+  categoriaId?: null | string;
   codigo: string;
   linha: number;
   rotulo: string;
@@ -771,7 +827,7 @@ export function conferirPlanilhaDeUnidades(
       });
     }
 
-    unidades.push({ codigo, linha, rotulo, unidade });
+    unidades.push({ categoria: texto(bruta.categoria), codigo, linha, rotulo, unidade });
   });
 
   return { problemas, unidades };

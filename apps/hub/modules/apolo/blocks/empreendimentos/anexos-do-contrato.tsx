@@ -24,12 +24,32 @@ import { useApiDaTemis } from "@/modules/temis/api-da-temis";
 // publicada passaria a imprimir a peça errada — sem erro, sem log e sem ninguém perceber. Por isso
 // o campo de posição é obrigatório e vem antes do arquivo na leitura da linha.
 //
-// ⚠️ E A POSIÇÃO PODE SE REPETIR ENTRE NÍVEIS, de propósito. Unidade vence categoria, que vence
-// empreendimento — é o que permite "planta é do lote, convenção é de todos" sem cadastrar a
-// convenção 400 vezes. O banco só impede repetir DENTRO do mesmo nível.
+// ⚠️ A POSIÇÃO É ÚNICA NA CADEIA INTEIRA desde 21/09/2026, e não mais por nível. Os anexos passaram
+// a SOMAR os níveis (Lucas: *"o contrato leva os anexos do pai MAIS os da divisão MAIS os da
+// categoria"*), então duas peças na posição 1 apontariam para dois arquivos no mesmo `[anexo_1]`.
+// O banco só impede repetir dentro do mesmo nível; quem recusa a montagem nomeando as duas é
+// `somarAnexosDaCadeia`.
+//
+// ⚠️ O ALCANCE É ESCOLHIDO AQUI, E ESSA É A OUTRA METADE DO PEDIDO. Lucas (21/09/2026):
+// *"preciso garantir que consigamos vincular os anexos por filho, categoria"*. Até essa data a
+// tela recebia UM `enterpriseId` e mandava só ele: a rota e o banco aceitavam os três alcances
+// (empreendimento, categoria, unidade) desde a 0156, e não havia porta para os outros dois. Quem
+// monta a lista de alcances possíveis é o SERVIDOR (`alcancesDoAnexo`): a ficha consolidada manda
+// `group:<nome>`, as categorias moram no pai e as divisões são do cadastro — se a tela decidisse
+// isso, ela e o motor passariam a discordar sobre onde a peça mora.
+
+/** Um lugar onde a peça pode ser pendurada, como o servidor o devolve. */
+type AlcancePossivel = { id: string; nome: string; tipo: "categoria" | "empreendimento" };
 
 type Props = {
-  /** O empreendimento é o alcance padrão desta tela; categoria e unidade entram pela lista. */
+  /**
+   * O código de UMA etapa, quando a ficha é a consolidada.
+   *
+   * ⚠️ A FICHA CONSOLIDADA NÃO TEM ID DE EMPREENDIMENTO (`group:Lagoa Bonita` é rótulo, não
+   * chave). O código é o caminho de volta ao cadastro, a mesma saída que `CategoriasTab` usa.
+   */
+  codigo?: null | string;
+  /** O alcance de partida. A lista de alcances possíveis vem da própria rota. */
   enterpriseId: string;
 };
 
@@ -41,35 +61,66 @@ function tamanhoLegivel(bytes: null | number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function AnexosDoContrato({ enterpriseId }: Props) {
+export function AnexosDoContrato({ codigo, enterpriseId }: Props) {
   const [anexos, setAnexos] = useState<AnexoDoContrato[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<null | string>(null);
   const [enviando, setEnviando] = useState(false);
   const [rascunho, setRascunho] = useState(RASCUNHO_VAZIO);
   const [recarregar, setRecarregar] = useState(0);
+  const [alcances, setAlcances] = useState<AlcancePossivel[]>([]);
+  /**
+   * O alcance escolhido. Vazio = o de partida (o empreendimento da ficha).
+   *
+   * ⚠️ ELE É O ID CRU, e o TIPO dele decide qual parâmetro vai para a rota: `categoriaId` é uuid
+   * e `enterpriseId` é o id do C2X. Mandar o uuid no campo errado gravaria um alcance que a cadeia
+   * do contrato nunca leria — sem erro e sem aviso.
+   */
+  const [alcance, setAlcance] = useState<null | AlcancePossivel>(null);
   const campoDeArquivo = useRef<HTMLInputElement>(null);
   // Sem provedor, `/api/temis` com o Bearer do hub (o Apolo e a Têmis de sempre); nas minutas do
   // portal que confecciona, `/api/incorporador/temis` com o cookie. Ver `api-da-temis.tsx`.
   const { temisFetch } = useApiDaTemis();
 
+  /**
+   * Os parâmetros do alcance escolhido, no campo certo de cada tipo.
+   *
+   * ⚠️ UM SÓ, SEMPRE. O banco exige exatamente um alcance por linha
+   * (`temis_anexos_um_alcance`, 0156) e a rota recusa antes: mandar dois é 400.
+   */
+  const doAlcance = useCallback(
+    (): Record<string, string> =>
+      alcance?.tipo === "categoria"
+        ? { categoriaId: alcance.id }
+        : { enterpriseId: alcance?.id ?? enterpriseId, ...(codigo ? { codigo } : {}) },
+    [alcance, codigo, enterpriseId],
+  );
+
   const carregar = useCallback(async () => {
     setCarregando(true);
     try {
-      const r = await temisFetch(
-        `/anexos?enterpriseId=${encodeURIComponent(enterpriseId)}`,
-        { cache: "no-store" },
-      );
-      const corpo = (await r.json()) as { anexos?: AnexoDoContrato[]; error?: string };
+      const qs = new URLSearchParams(doAlcance());
+      // O `codigo` só serve para o servidor resolver a ficha consolidada e montar os alcances.
+      if (codigo && !qs.has("codigo")) qs.set("codigo", codigo);
+      const r = await temisFetch(`/anexos?${qs.toString()}`, { cache: "no-store" });
+      const corpo = (await r.json()) as {
+        alcances?: AlcancePossivel[];
+        anexos?: AnexoDoContrato[];
+        error?: string;
+      };
       if (!r.ok) throw new Error(corpo.error ?? "Falha ao ler os anexos.");
       setAnexos(corpo.anexos ?? []);
+      // ⚠️ A LISTA SÓ É SUBSTITUÍDA QUANDO VEM CHEIA. Ler uma categoria não devolve os alcances da
+      // família (o servidor só os monta a partir do empreendimento), e zerar a lista aqui deixaria o
+      // operador preso na categoria em que ele acabou de entrar, sem caminho de volta.
+      if (corpo.alcances && corpo.alcances.length > 0) setAlcances(corpo.alcances);
       setErro(null);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao ler os anexos.");
     } finally {
       setCarregando(false);
     }
-  }, [enterpriseId, temisFetch]);
+  }, [codigo, doAlcance, temisFetch]);
 
   useEffect(() => {
     void carregar();
@@ -105,9 +156,9 @@ export function AnexosDoContrato({ enterpriseId }: Props) {
       // 1. a URL assinada
       const assinar = await temisFetch("/anexos", {
         body: JSON.stringify({
+          ...doAlcance(),
           acao: "upload",
           contentType: arquivo.type,
-          enterpriseId,
           fileName: arquivo.name,
           size: arquivo.size,
         }),
@@ -138,8 +189,8 @@ export function AnexosDoContrato({ enterpriseId }: Props) {
       // 3. o registro
       const confirmar = await temisFetch("/anexos", {
         body: JSON.stringify({
+          ...doAlcance(),
           acao: "confirmar",
-          enterpriseId,
           nome: rascunho.nome.trim(),
           path: dadosDaUrl.path,
           posicao,
@@ -188,6 +239,57 @@ export function AnexosDoContrato({ enterpriseId }: Props) {
           </p>
         </div>
       </header>
+
+      {/*
+        ⚠️ O ALCANCE VEM ANTES DA POSIÇÃO E DO ARQUIVO, e a ordem é a da decisão: primeiro "de quem
+        é esta peça", depois "em que lugar do contrato ela entra". Invertido, o operador escolhe a
+        posição e sobe o arquivo antes de reparar que está no nível errado.
+      */}
+      {alcances.length > 1 ? (
+        <div className="flex flex-wrap items-end gap-3 border-b border-line px-4 py-3">
+          <label className="flex min-w-[260px] flex-1 flex-col gap-1">
+            <span className="font-medium text-ink-muted text-xs">De quem é este anexo</span>
+            <select
+              className="h-9 rounded-lg border border-line bg-surface px-2 text-ink text-sm"
+              onChange={(e) => {
+                const escolhido = alcances.find((a) => a.id === e.target.value) ?? null;
+                setAlcance(escolhido);
+                setErro(null);
+              }}
+              value={alcance?.id ?? alcances[0]?.id ?? ""}
+            >
+              {alcances
+                .filter((a) => a.tipo === "empreendimento")
+                .map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.nome}
+                  </option>
+                ))}
+              {alcances.some((a) => a.tipo === "categoria") ? (
+                <optgroup label="Categorias">
+                  {alcances
+                    .filter((a) => a.tipo === "categoria")
+                    .map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.nome}
+                      </option>
+                    ))}
+                </optgroup>
+              ) : null}
+            </select>
+          </label>
+          {/*
+            ⚠️ A SOMA PRECISA ESTAR ESCRITA NA TELA. Até 21/09/2026 a regra era "só o nível mais
+            específico vale", e quem cadastrou anexo sob a regra antiga vai ler esta lista esperando
+            que a peça da categoria SUBSTITUA a do empreendimento. Ela não substitui: as duas vão.
+          */}
+          <p className="m-0 flex-1 basis-full text-ink-muted text-xs">
+            O contrato leva as peças de TODOS os níveis somadas — as do empreendimento, as da divisão
+            do lote e as da categoria dele —, na ordem da posição. A lista abaixo mostra as deste
+            alcance.
+          </p>
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap items-end gap-3 border-b border-line px-4 py-3">
         <label className="flex flex-col gap-1">

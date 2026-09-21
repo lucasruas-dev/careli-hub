@@ -43,6 +43,7 @@ const estado = vi.hoisted(() => ({
   com0170: true,
   comSupabase: true,
   erroNaLeituraDe: null as null | string,
+  categorias: [] as Record<string, unknown>[],
   erroNoInsert: null as null | { code: string; message: string },
   propostas: [] as Record<string, unknown>[],
   reservas: [] as Record<string, unknown>[],
@@ -72,7 +73,9 @@ vi.mock("@/lib/apolo/server", () => {
           ? estado.propostas
           : tabela === "hercules_reservas"
             ? estado.reservas
-            : [];
+            : tabela === "temis_categorias"
+              ? estado.categorias
+              : [];
 
     const casa = (linha: Linha) =>
       reg.filtros.every(([tipo, coluna, valor]) => {
@@ -301,6 +304,7 @@ const updates = () => chamadas().filter((c) => c.operacao === "update");
 beforeEach(() => {
   estado.cadastro = CADASTRO;
   estado.cadastroFora = false;
+  estado.categorias = [];
   estado.chamadas = [];
   estado.com0170 = true;
   estado.comSupabase = true;
@@ -519,7 +523,14 @@ describe("conferirContraOBanco", () => {
     expect(c.linhas[4]?.problemas[0]?.motivo).toContain("(SOLAR-Q9-L9)");
     expect(c.linhas[5]?.unidade).toBeNull();
     expect(c.prontas.map((u) => u.codigo)).toEqual(["SOL0301", "SOL0302"]);
-    expect(c.resumo).toEqual({ comAviso: 1, comErro: 4, jaExistem: 2, prontas: 2, total: 6 });
+    expect(c.resumo).toEqual({
+      comAviso: 1,
+      comCategoria: 0,
+      comErro: 4,
+      jaExistem: 2,
+      prontas: 2,
+      total: 6,
+    });
   });
 
   it("⚠️ loteamento: o terreno que já existe na gleba irmã ou no pai não entra de novo", () => {
@@ -1173,3 +1184,113 @@ describe("executarCadastroDeUnidades: D2, o Garden da Cecílio (produto do C2X c
     expect(r.ok).toBe(true);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// A COLUNA CATEGORIA NA PLANILHA — a unidade já nasce vinculada
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Lucas (15/09/2026): *"normalmente vamos subir em massa essa configuração na importação de
+// unidades"*. O caso real é o VSA (100021), gleba do VSP (100020): a categoria mora no PAI e a
+// planilha da gleba precisa achá-la.
+
+const CONDOMINIO = "cccccccc-0000-4000-8000-000000000001";
+
+function comCategoriasNoPai() {
+  estado.categorias = [
+    { ativa: true, enterprise_id: "100020", id: CONDOMINIO, nome: "Condomínio", workspace_id: "careli" },
+  ];
+}
+
+describe("importar com a coluna Categoria", () => {
+  // ⚠️ A CATEGORIA MORA NO PAI E VALE PARA A GLEBA (medido: 907 unidades do Lagoa Bonita apontam
+  // para categoria cadastrada no pai 31). Ler só o `enterprise_id` do produto faria a planilha da
+  // gleba dizer "não existe" para a categoria que carimba 750 lotes.
+  it("a categoria cadastrada no PAI casa na planilha da gleba, e vai no insert", async () => {
+    comCategoriasNoPai();
+    const r = await executar("100021", {
+      acao: "importar",
+      csv: "Quadra;Lote;Área (m²);Valor (R$);Categoria\n9;1;300,00;150.000,00;CONDOMINIO\n",
+    });
+
+    expect(r.ok).toBe(true);
+    const enviadas = inserts()[0]?.payload as Linha[];
+    expect(enviadas[0]).toMatchObject({ categoria_id: CONDOMINIO, codigo: "VSA0901" });
+  });
+
+  // ⚠️ NOME QUE NÃO EXISTE É ERRO DA LINHA, NUNCA "ENTRA SEM CATEGORIA": a unidade entraria calada
+  // no lugar errado, e é a categoria que decide qual minuta o lote assina.
+  it("categoria desconhecida recusa a planilha, diz o nome e não grava nada", async () => {
+    comCategoriasNoPai();
+    const r = await executar("100021", {
+      acao: "importar",
+      csv: "Quadra;Lote;Área (m²);Valor (R$);Categoria\n9;2;300,00;150.000,00;Caução\n",
+    });
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(422);
+    const linhas = (r.data as { linhas: LinhaConferidaNoTeste[] }).linhas;
+    expect(linhas[0]?.problemas.map((p) => p.motivo).join(" ")).toContain('"Caução" não existe');
+    expect(inserts()).toHaveLength(0);
+  });
+
+  it("sem categoria cadastrada, a frase diz o que falta fazer", async () => {
+    const r = await executar("100021", {
+      acao: "importar",
+      csv: "Quadra;Lote;Área (m²);Valor (R$);Categoria\n9;3;300,00;150.000,00;Condomínio\n",
+    });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    const linhas = (r.data as { linhas: LinhaConferidaNoTeste[] }).linhas;
+    expect(linhas[0]?.problemas.map((p) => p.motivo).join(" ")).toContain(
+      "não tem categorias cadastradas",
+    );
+  });
+
+  // ⚠️ CHAVE AUSENTE NÃO É CITADA NO INSERT (a mesma disciplina das colunas da 0171).
+  it("coluna em branco não manda categoria_id nenhum", async () => {
+    comCategoriasNoPai();
+    const r = await executar("100021", {
+      acao: "importar",
+      csv: "Quadra;Lote;Área (m²);Valor (R$);Categoria\n9;4;300,00;150.000,00;\n",
+    });
+    expect(r.ok).toBe(true);
+    expect(inserts()[0]?.payload).toEqual([expect.not.objectContaining({ categoria_id: expect.anything() })]);
+  });
+
+  it("a conferência devolve, por linha, com qual categoria a unidade casou", async () => {
+    comCategoriasNoPai();
+    const r = await executar("100021", {
+      acao: "conferir",
+      csv: "Quadra;Lote;Área (m²);Valor (R$);Categoria\n9;5;300,00;150.000,00;condominio\n",
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const data = r.data as {
+      categorias: { nome: string }[];
+      linhas: LinhaConferidaNoTeste[];
+      resumo: { comCategoria: number };
+    };
+    expect(data.linhas[0]?.categoria).toBe("Condomínio");
+    expect(data.resumo.comCategoria).toBe(1);
+    // A lista de nomes aceitos sai junto: sem ela, "a categoria X não existe" manda o operador
+    // adivinhar quais existem.
+    expect(data.categorias.map((c) => c.nome)).toEqual(["Condomínio"]);
+  });
+
+  it("a régua pura resolve o nome sem caixa nem acento", () => {
+    const c = conferirContraOBanco(
+      "loteamento",
+      [{ area: "300", categoria: "CONDOMINIO", lote: "1", preco: "1", quadra: "9" }],
+      { categorias: [{ id: CONDOMINIO, nome: "Condomínio" }], prefixo: "VSA" },
+    );
+    expect(c.prontas[0]?.categoriaId).toBe(CONDOMINIO);
+    expect(c.resumo.comCategoria).toBe(1);
+  });
+});
+
+/** A linha da conferência, como o teste a lê da resposta. */
+type LinhaConferidaNoTeste = {
+  categoria: null | string;
+  problemas: { motivo: string }[];
+};

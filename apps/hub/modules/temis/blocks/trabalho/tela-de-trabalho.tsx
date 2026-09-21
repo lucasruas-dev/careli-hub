@@ -34,6 +34,7 @@ import {
 } from "@/lib/temis/conclusao-do-cancelamento";
 import { contratoVigente } from "@/lib/temis/contrato-guardado";
 import { MOTIVOS } from "@/lib/temis/indeferimento";
+import { recadoDaGeracao } from "@/lib/temis/minuta-da-cadeia";
 import { pedidoDoTrabalho } from "@/lib/temis/pedido-do-trabalho";
 import {
   caminhoDoCard,
@@ -282,6 +283,17 @@ export function TelaDeTrabalho({
   const [concluindo, setConcluindo] = useState(false);
   /** A falha da última ação disparada pelo topo. */
   const [erroDaAcao, setErroDaAcao] = useState<null | string>(null);
+  /**
+   * O que a geração respondeu, quando deu certo: de qual modelo o papel saiu e o que foi junto.
+   *
+   * ⚠️ ATÉ 21/09/2026 O JURÍDICO CLICAVA EM GERAR SEM VER DE QUAL MINUTA O PDF SAIRIA — esta tela
+   * não mostra a minuta em lugar nenhum, e o único jeito de saber era abrir a prévia antes. Com a
+   * herança isso deixou de ser aceitável: dois contratos do mesmo empreendimento podem sair de
+   * modelos de níveis diferentes (um pela categoria do lote, outro pela divisão), e nada na tela
+   * denunciaria a troca. A frase vem PRONTA do servidor (`minuta.origemFrase`): recalcular a
+   * cadeia aqui é como a tela e o motor passam a discordar sobre o mesmo papel.
+   */
+  const [recadoDaAcao, setRecadoDaAcao] = useState<null | string>(null);
   // ⚠️ A PORTA VEM DO PROVEDOR: no hub, `/api/temis` com Bearer; no portal que confecciona,
   // `/api/incorporador/temis` com o cookie. Ver `modules/temis/api-da-temis.tsx`.
   const { temisFetch } = useApiDaTemis();
@@ -337,7 +349,14 @@ export function TelaDeTrabalho({
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
-      const j = (await r.json().catch(() => ({}))) as { erro?: string; faltando?: string[] };
+      const j = (await r.json().catch(() => ({}))) as {
+        data?: {
+          anexos?: { nome: string }[];
+          minuta?: { herdada?: boolean; nome?: string; origemFrase?: string; versao?: null | number };
+        };
+        erro?: string;
+        faltando?: string[];
+      };
       if (!r.ok) {
         // ⚠️ A LISTA DE LACUNAS VEM JUNTO. A geração recusa quando falta variável obrigatória, e
         // dizer só "falhou" mandaria o operador procurar no escuro.
@@ -345,6 +364,7 @@ export function TelaDeTrabalho({
           ? `Falta preencher: ${j.faltando.join(", ")}.`
           : (j.erro ?? `Não consegui gerar (${r.status}).`);
       }
+      setRecadoDaAcao(recadoDaGeracao(j.data));
       await carregar();
       aoMudar();
       return null;
@@ -754,6 +774,7 @@ export function TelaDeTrabalho({
                 icone={FilePlus2}
                 onClick={async () => {
                   setErroDaAcao(null);
+                  setRecadoDaAcao(null);
                   const falha = await gerarContrato();
                   if (falha) setErroDaAcao(falha);
                 }}
@@ -777,6 +798,15 @@ export function TelaDeTrabalho({
           </div>
         ) : null}
       </div>
+
+      {/* ⚠️ O RECADO DA GERAÇÃO FICA NO TOPO, JUNTO DO BOTÃO QUE O PRODUZIU, e não some sozinho:
+          quem emite precisa poder conferir a frase depois de a tela recarregar. Ele só aparece
+          quando houve geração nesta sessão da tela; o próximo clique o limpa. */}
+      {recadoDaAcao ? (
+        <p className="mt-2 rounded-lg border border-emerald-500/30 bg-emerald-500/8 px-3 py-2 text-[13px] leading-snug text-emerald-800 dark:text-emerald-300">
+          {recadoDaAcao}
+        </p>
+      ) : null}
 
       {/* ── DUAS COLUNAS: o trabalho da etapa · chat, documentos e histórico ──
           ⚠️ A ALTURA SÓ É TRAVADA A PARTIR DE `lg`, e não em toda largura. Em janela estreita as

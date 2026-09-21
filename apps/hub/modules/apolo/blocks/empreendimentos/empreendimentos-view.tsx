@@ -7,6 +7,7 @@ import {
 } from "@/lib/supabase/client";
 import { AdicionarUnidades } from "@/modules/apolo/blocks/empreendimentos/adicionar-unidades";
 import { AcaoDeBloqueio } from "@/modules/apolo/blocks/empreendimentos/bloqueio-da-unidade";
+import { AcaoDeCategoria } from "@/modules/apolo/blocks/empreendimentos/categoria-da-unidade";
 import { LinksTab } from "@/modules/apolo/blocks/empreendimentos/links-tab";
 import { MinutasTab } from "@/modules/apolo/blocks/empreendimentos/minutas-tab";
 import { OrdemDeAssinaturaCard } from "@/modules/apolo/blocks/empreendimentos/ordem-de-assinatura-card";
@@ -836,8 +837,21 @@ function EnterpriseDetail({
           // A ação entra pela prop `acaoDaUnidade`, e não dentro da UnidadesTab, porque a mesma aba
           // é montada pelo portal do cliente, que tem a ação dele e não bloqueia por esta porta.
           <UnidadesTab
+            // ⚠️ A CATEGORIA E A DIVISÃO ENTRAM AO LADO DO BLOQUEIO, e pelo mesmo motivo: o cadastro
+            // do lote é do Apolo (Lucas, 18/09/2026: *"cadastro apolo, interações comerciais
+            // hercules"*), e em 21/09/2026 *"eu preciso também vincular as unidades no filho,
+            // categoria (quando existir)"*. A ação de UMA unidade chama a MESMA rota do vínculo em
+            // massa, com um id só — ver `categoria-da-unidade.tsx`.
             acaoDaUnidade={(unidade, recarregar) => (
-              <AcaoDeBloqueio recarregar={recarregar} unidade={unidade} />
+              <div className="inline-flex items-center gap-1.5">
+                <AcaoDeCategoria
+                  codigo={row.code}
+                  enterpriseId={row.id}
+                  recarregar={recarregar}
+                  unidade={unidade}
+                />
+                <AcaoDeBloqueio recarregar={recarregar} unidade={unidade} />
+              </div>
             )}
             onOpenEntity={onOpenEntity}
             row={row}
@@ -872,7 +886,7 @@ function EnterpriseDetail({
           />
         ) : null}
         {tab === "minutas" ? (
-          <MinutasTab enterpriseId={row.id} name={row.name} />
+          <MinutasTab codigo={row.codes?.[0] ?? row.code} enterpriseId={row.id} name={row.name} />
         ) : null}
         {tab === "links" ? <LinksTab buscar={buscarLinks} /> : null}
         {tab === "arquivos" ? (

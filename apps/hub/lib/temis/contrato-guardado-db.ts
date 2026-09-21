@@ -155,10 +155,21 @@ export type PedidoDeGuarda = {
    * justamente para quem não estava na sala.
    */
   alteradoAMaoPor?: null | string;
+  /** Os nomes das peças que o montador costurou depois do corpo, na ordem em que entraram. */
+  anexos?: readonly string[];
   /** Empreendimento, unidade e titular — o nome do arquivo sai daqui. Vem de `ContratoMontado`. */
   identidade: IdentidadeDoContrato;
   geradoPor?: null | string;
   geradoPorNome?: null | string;
+  /**
+   * A minuta que virou este papel, e de que DEGRAU da cadeia ela veio.
+   *
+   * ⚠️ SEM ISTO A HERANÇA FICA SEM RASTRO. Enquanto havia uma minuta publicada por empreendimento,
+   * dava para reconstruir de qual delas um PDF saiu; com a cadeia (21/09/2026) não dá: dois
+   * contratos do MESMO empreendimento, no mesmo dia, podem sair de minutas de níveis diferentes —
+   * um pela categoria do lote, outro pela divisão — e nada os distinguiria numa auditoria.
+   */
+  minuta?: null | { id: string; nome: string; origemFrase: string; versao: null | number };
   /** Os bytes do PDF, já prontos. */
   pdf: Uint8Array;
   propostaId: string;
@@ -228,31 +239,45 @@ export async function guardarContrato(
     return { erro: "Não foi possível guardar o arquivo do contrato.", ok: false, status: 503 };
   }
 
-  const { data: criado, error } = await sb
-    .from("hercules_documentos")
-    .insert({
-      caminho,
-      cliente_documento_hash: hashDoCpf(proposta.cliente_documento),
-      cliente_entity_id: proposta.cliente_entity_id,
-      empreendimento_codigo: proposta.empreendimento_codigo,
-      enviado_por: pedido.geradoPor ?? null,
-      enviado_por_nome: pedido.geradoPorNome ?? null,
-      mime: "application/pdf",
-      nome,
-      // ⚠️ A OBSERVAÇÃO DIZ DE ONDE O PAPEL VEIO. Ela é o único campo livre que os dois leitores já
-      // mostram, e sem ela um PDF na aba não se distingue de um que alguém subiu à mão.
-      observacao: pedido.alteradoAMaoPor
-        ? `Gerado pelo Panteon (versão ${versao}) a partir da minuta publicada COM ALTERAÇÃO MANUAL de ${pedido.alteradoAMaoPor}.`
-        : `Gerado pelo Panteon a partir da minuta publicada (versão ${versao}).`,
-      proposta_id: pedido.propostaId,
-      protocolo_numero: proposta.protocolo_numero,
-      tamanho_bytes: pedido.pdf.byteLength,
-      tipo: TIPO_CONTRATO,
-      unidade_id: proposta.unidade_id,
-      workspace_id: WORKSPACE,
-    })
-    .select("id")
-    .maybeSingle();
+  const linha: Record<string, unknown> = {
+    caminho,
+    cliente_documento_hash: hashDoCpf(proposta.cliente_documento),
+    cliente_entity_id: proposta.cliente_entity_id,
+    empreendimento_codigo: proposta.empreendimento_codigo,
+    enviado_por: pedido.geradoPor ?? null,
+    enviado_por_nome: pedido.geradoPorNome ?? null,
+    mime: "application/pdf",
+    nome,
+    // ⚠️ A OBSERVAÇÃO DIZ DE ONDE O PAPEL VEIO. Ela é o único campo livre que os dois leitores já
+    // mostram, e sem ela um PDF na aba não se distingue de um que alguém subiu à mão.
+    observacao: observacaoDoContrato(pedido, versao),
+    proposta_id: pedido.propostaId,
+    protocolo_numero: proposta.protocolo_numero,
+    tamanho_bytes: pedido.pdf.byteLength,
+    tipo: TIPO_CONTRATO,
+    unidade_id: proposta.unidade_id,
+    workspace_id: WORKSPACE,
+  };
+
+  // ⚠️ AS DUAS COLUNAS DA AUDITORIA VÃO ANTES DA MIGRATION, E A AUSÊNCIA DELAS NÃO DERRUBA NADA. A
+  // 0181 (`minuta_id`, `minuta_origem` em `hercules_documentos`) está escrita e NÃO aplicada; sem
+  // ela o insert volta com 42703/PGRST204 e a segunda tentativa grava a linha sem os dois campos.
+  // A frase da `observacao` já diz a mesma coisa em português desde hoje — a coluna é o que torna a
+  // pergunta "quais contratos saíram da minuta do VOL v6?" respondível por consulta, e não por leitura.
+  const comAuditoria = Boolean(pedido.minuta);
+  if (pedido.minuta) {
+    linha.minuta_id = pedido.minuta.id;
+    linha.minuta_origem = pedido.minuta.origemFrase;
+  }
+
+  const gravar = (corpo: Record<string, unknown>) =>
+    sb.from("hercules_documentos").insert(corpo).select("id").maybeSingle();
+
+  let { data: criado, error } = await gravar(linha);
+  if (error && comAuditoria && ehColunaDaMinutaAusente(error)) {
+    const { minuta_id: _id, minuta_origem: _origem, ...semAuditoria } = linha;
+    ({ data: criado, error } = await gravar(semAuditoria));
+  }
 
   if (error || !criado) {
     // ⚠️ O ARQUIVO SAI JUNTO QUANDO A LINHA NÃO ENTRA. Objeto no bucket sem linha na tabela é um
@@ -398,4 +423,51 @@ async function lerProposta(
 function hashDoCpf(bruto: null | string): null | string {
   const digitos = String(bruto ?? "").replace(/\D/g, "");
   return digitos.length >= 11 ? hashIdentifier("cpf", digitos) : null;
+}
+
+/**
+ * A frase que fica na gaveta dizendo de onde este papel saiu.
+ *
+ * ⚠️ ELA PASSOU A CARREGAR O DEGRAU (21/09/2026). Antes dizia "a partir da minuta publicada (versão
+ * N)", onde esse N é a versão do DOCUMENTO na gaveta, não a da MINUTA — e, com uma minuta por
+ * empreendimento, dava para reconstruir o resto. Com a cadeia não dá: dois contratos do mesmo
+ * empreendimento, no mesmo dia, podem sair de minutas de níveis diferentes, e a auditoria de um
+ * contrato assinado ficaria impossível daqui a um ano. Custa uma string.
+ *
+ * ⚠️ E AS PEÇAS ANEXAS ENTRAM NA MESMA FRASE, porque a partir de hoje o PDF guardado não é mais só
+ * o corpo: quem abrir o arquivo precisa saber o que estava dentro dele quando foi assinado.
+ */
+export function observacaoDoContrato(
+  pedido: Pick<PedidoDeGuarda, "alteradoAMaoPor" | "anexos" | "minuta">,
+  versao: number,
+): string {
+  const daMinuta = pedido.minuta
+    ? `a partir de ${pedido.minuta.nome}${pedido.minuta.versao === null ? "" : ` v${pedido.minuta.versao}`} (${pedido.minuta.origemFrase})`
+    : "a partir da minuta publicada";
+
+  const alteracao = pedido.alteradoAMaoPor
+    ? ` COM ALTERAÇÃO MANUAL de ${pedido.alteradoAMaoPor}`
+    : "";
+
+  const anexos = pedido.anexos?.length
+    ? ` Leva junto: ${pedido.anexos.join(", ")}.`
+    : "";
+
+  return `Gerado pelo Panteon (versão ${versao}) ${daMinuta}${alteracao}.${anexos}`;
+}
+
+/**
+ * O erro do Supabase é "as colunas `minuta_id`/`minuta_origem` ainda não existem" (0181 pendente)?
+ *
+ * ⚠️ SÓ PARA ESTAS COLUNAS, E PELO NOME DELAS NA MENSAGEM — a mesma cautela de
+ * `ehColunaDoDonoAusente`. `42703` (Postgres) e `PGRST204` (cache de schema) dizem "coluna não
+ * existe" para QUALQUER coluna: engolir os dois sem olhar o nome faria um erro de digitação em
+ * outra coluna virar, calado, um contrato gravado sem metade dos campos.
+ */
+export function ehColunaDaMinutaAusente(erro: unknown): boolean {
+  if (!erro || typeof erro !== "object") return false;
+  const { code, message } = erro as { code?: unknown; message?: unknown };
+  const mensagem = typeof message === "string" ? message.toLowerCase() : "";
+  const codigoDeColuna = code === "42703" || code === "PGRST204";
+  return codigoDeColuna && (mensagem.includes("minuta_id") || mensagem.includes("minuta_origem"));
 }

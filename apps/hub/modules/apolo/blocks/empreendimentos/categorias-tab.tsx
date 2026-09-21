@@ -59,9 +59,23 @@ type Categoria = {
   ordemHerdada: null | (Ordem & { origem: "categoria" | "empreendimento" | "padrao"; rotulo: string });
   /** O que ESTA categoria decide por si. `null` = herda — é o estado das duas que existem hoje. */
   ordemPropria: null | Ordem;
+  /**
+   * A minuta que ESTA categoria aponta. `null` = ela herda o modelo de cima.
+   *
+   * ⚠️ É O PRIMEIRO DEGRAU DA CADEIA DO CONTRATO (`lib/temis/cadeia-do-contrato.ts`): quando
+   * preenchido, vence a minuta da divisão E a do empreendimento. Lucas (21/09/2026): *"vincular os
+   * anexos por filho, categoria. também as minutas"*.
+   */
+  minuta: null | MinutaDaLista;
   /** Quantos lotes já apontam para ela. É o que diz se dá para desmontar sem dor. */
   unidades?: number;
 };
+
+/** Uma minuta publicada do empreendimento, como a lista da rota a devolve. */
+type MinutaDaLista = { id: string; nome: string; versao: null | number };
+
+const rotuloDaMinuta = (m: MinutaDaLista): string =>
+  typeof m.versao === "number" ? `${m.nome} · v${m.versao}` : m.nome;
 
 /** O rascunho do painel de ordem: o que o operador está mexendo antes de salvar. */
 type RascunhoDaOrdem = {
@@ -113,6 +127,10 @@ export function CategoriasTab({ codigo, enterpriseId, name }: Props) {
   const [recarregar, setRecarregar] = useState(0);
   /** As divisões do empreendimento discordam entre si? Cada frase é a regra de uma delas. */
   const [divergencia, setDivergencia] = useState<null | string[]>(null);
+  /** As minutas publicadas deste empreendimento: o que a categoria pode apontar. */
+  const [minutas, setMinutas] = useState<MinutaDaLista[]>([]);
+  /** Qual categoria está gravando a minuta agora. */
+  const [salvandoMinuta, setSalvandoMinuta] = useState<null | string>(null);
 
   /** Qual categoria está com o painel de ordem aberto, e o rascunho dela. */
   const [ordemAberta, setOrdemAberta] = useState<null | string>(null);
@@ -147,7 +165,11 @@ export function CategoriasTab({ codigo, enterpriseId, name }: Props) {
         headers: { Authorization: `Bearer ${token}` },
       });
       const corpo = (await r.json().catch(() => ({}))) as {
-        data?: { categorias: Categoria[]; divergenciaDoEmpreendimento?: null | string[] };
+        data?: {
+          categorias: Categoria[];
+          divergenciaDoEmpreendimento?: null | string[];
+          minutasDisponiveis?: MinutaDaLista[];
+        };
         error?: string;
       };
       if (!r.ok || !corpo.data) {
@@ -157,6 +179,7 @@ export function CategoriasTab({ codigo, enterpriseId, name }: Props) {
       }
       setCategorias(corpo.data.categorias);
       setDivergencia(corpo.data.divergenciaDoEmpreendimento ?? null);
+      setMinutas(corpo.data.minutasDisponiveis ?? []);
     } catch {
       setErro("Falha de rede ao carregar as categorias.");
       setCategorias([]);
@@ -496,6 +519,43 @@ export function CategoriasTab({ codigo, enterpriseId, name }: Props) {
   );
 
   /**
+   * Liga (ou desliga) a minuta desta categoria.
+   *
+   * ⚠️ VAZIO NÃO É "SEM CONTRATO", É "HERDA" — e a tela precisa dizer isso, senão o operador
+   * cadastra uma cópia da minuta do empreendimento "por segurança" e a categoria para de seguir o
+   * produto sem ninguem perceber. É a mesma disciplina de `origemDaHeranca`, na ordem de assinatura.
+   */
+  const ligarMinuta = async (categoria: Categoria, minutaId: string) => {
+    setSalvandoMinuta(categoria.id);
+    setErro(null);
+    setAviso(null);
+    try {
+      const token = await getApoloAccessToken();
+      const r = await fetch(`/api/temis/categorias?${params({ id: categoria.id })}`, {
+        body: JSON.stringify({ minutaId: minutaId || null }),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        method: "PATCH",
+      });
+      const corpo = (await r.json().catch(() => ({}))) as { error?: string };
+      if (!r.ok) {
+        setErro(corpo.error ?? "Não consegui vincular a minuta.");
+        return;
+      }
+      const escolhida = minutas.find((m) => m.id === minutaId);
+      setAviso(
+        escolhida
+          ? `"${categoria.nome}" passa a usar ${rotuloDaMinuta(escolhida)}.`
+          : `"${categoria.nome}" volta a herdar o modelo do empreendimento.`,
+      );
+      setRecarregar((n) => n + 1);
+    } catch {
+      setErro("Falha de rede ao vincular a minuta.");
+    } finally {
+      setSalvandoMinuta(null);
+    }
+  };
+
+  /**
    * ⚠️ A ÁRVORE SE DESENHA SOZINHA, e a profundidade é do negócio: condomínio dentro de loteamento,
    * fase dentro de condomínio, caucionados dentro da fase. Limitar em dois níveis obrigaria o Lucas
    * a inventar nome composto no dia em que precisasse do terceiro.
@@ -541,6 +601,41 @@ export function CategoriasTab({ codigo, enterpriseId, name }: Props) {
               ? origemDaHeranca(categoria.ordemHerdada)
               : "Ordem não apurada"}
         </span>
+
+        {/*
+          ⚠️ O MODELO DO CONTRATO FICA NA LINHA, e não atrás de um botão. Numa árvore de recortes
+          que existe justamente para *"ter uma minuta específica"* (Lucas, 07/09/2026), qual minuta
+          cada um assina é a informação principal — escondê-la faria a aba responder tudo menos a
+          pergunta que a criou.
+        */}
+        <label className="flex items-center gap-1.5">
+          <span className="sr-only">Minuta de {categoria.nome}</span>
+          <select
+            className="h-8 max-w-56 rounded-lg border border-line bg-surface px-2 text-xs text-ink outline-none focus:border-line-strong disabled:opacity-40"
+            disabled={salvandoMinuta === categoria.id || minutas.length === 0}
+            onChange={(e) => void ligarMinuta(categoria, e.target.value)}
+            title={
+              categoria.minuta
+                ? `Esta categoria assina ${rotuloDaMinuta(categoria.minuta)}.`
+                : "Sem minuta própria: esta categoria usa a do empreendimento (ou a da divisão do lote)."
+            }
+            value={categoria.minuta?.id ?? ""}
+          >
+            <option value="">
+              {minutas.length === 0
+                ? "Nenhuma minuta publicada aqui"
+                : "Herda o modelo do empreendimento"}
+            </option>
+            {minutas.map((m) => (
+              <option key={m.id} value={m.id}>
+                {rotuloDaMinuta(m)}
+              </option>
+            ))}
+          </select>
+          {salvandoMinuta === categoria.id ? (
+            <Loader2 aria-hidden="true" className="size-3.5 animate-spin text-ink-muted" />
+          ) : null}
+        </label>
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <button

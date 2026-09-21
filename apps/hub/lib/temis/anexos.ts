@@ -12,6 +12,13 @@
 // anexar uma peça nova empurraria as outras, e toda minuta já publicada que diga `[anexo_2]`
 // passaria a imprimir a peça errada — sem erro, sem log, sem ninguém perceber.
 //
+// ⚠️ E DESDE 21/09/2026 A POSIÇÃO É GLOBAL NA CADEIA, não por nível. Os anexos passaram a SOMAR os
+// níveis (pai + divisão + categoria + unidade), e os índices da 0156 são por nível: o pai e a
+// categoria podem, os dois, gravar a posição 1, e somando o `[anexo_1]` apontaria para dois
+// arquivos. O banco não alcança essa regra — a hierarquia mora em `hercules_empreendimentos`, não
+// na linha do anexo —, então quem a aplica é `somarAnexosDaCadeia`, recusando a montagem e
+// nomeando as duas peças.
+//
 // ⚠️ SÓ PDF. As outras peças do contrato são texto; o anexo é página pronta que o montador costura
 // no PDF final. Aceitar .docx ou imagem aqui empurraria a conversão para o montador, que é
 // justamente onde ela fica cara e falha calada. Quem tem .docx converte antes.
@@ -86,8 +93,15 @@ export function caminhoDeAnexoValido(caminho: string): boolean {
 /**
  * O rótulo do alcance, para a tela dizer de onde o anexo vem sem o operador precisar decorar ids.
  *
- * ⚠️ A ORDEM DA PRECEDÊNCIA APARECE AQUI DE PROPÓSITO: unidade vence categoria, que vence
- * empreendimento. Quem olha a lista precisa entender por que duas peças na posição 2 não brigam.
+ * ⚠️ ISTO NÃO É MAIS PRECEDÊNCIA, É PROCEDÊNCIA (21/09/2026). Até esta data o rótulo existia para
+ * explicar que "unidade vence categoria, que vence empreendimento" — um nível só valia, e duas
+ * peças na posição 2 não brigavam porque uma anulava a outra. O Lucas inverteu a regra: os anexos
+ * dos níveis SOMAM (*"o contrato leva os anexos do pai MAIS os da divisão MAIS os da categoria"*).
+ * Agora o rótulo serve para o operador saber de onde cada peça do PDF veio — e duas peças na mesma
+ * posição BRIGAM, e a montagem recusa nomeando as duas. Ver `anexos-da-venda.ts`.
+ *
+ * ⚠️ A PRECEDÊNCIA CONTINUA VALENDO PARA A MINUTA, e só para ela: dois contratos não somam. Ver
+ * `minuta-da-cadeia.ts`.
  */
 export function rotuloDoAlcance(anexo: {
   categoriaId: null | string;

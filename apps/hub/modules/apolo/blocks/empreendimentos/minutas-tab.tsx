@@ -56,6 +56,14 @@ const EditorDeMinuta = dynamic(() => import("@/modules/temis/editor-de-minuta"),
 });
 
 type Props = {
+  /**
+   * O código de UMA etapa, quando a ficha é a consolidada.
+   *
+   * ⚠️ A FICHA CONSOLIDADA NÃO TEM ID DE EMPREENDIMENTO: o Apolo monta `id: "group:Lagoa Bonita"`,
+   * que é rótulo e não chave. Quem precisa dele aqui é `AnexosDoContrato`, para o servidor resolver
+   * a família e oferecer as divisões e as categorias como alcance da peça.
+   */
+  codigo?: null | string;
   enterpriseId: string;
   name: string;
   /**
@@ -131,7 +139,7 @@ const SITUACOES: Record<string, { cor: string; rotulo: string }> = {
   },
 };
 
-export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
+export function MinutasTab({ codigo, enterpriseId, name, tipo = "contrato" }: Props) {
   const [minutas, setMinutas] = useState<LinhaDeMinuta[] | null>(null);
   const [erro, setErro] = useState<null | string>(null);
   const [aviso, setAviso] = useState<null | string>(null);
@@ -575,7 +583,7 @@ export function MinutasTab({ enterpriseId, name, tipo = "contrato" }: Props) {
       {/* ⚠️ OS ANEXOS FICAM AQUI, JUNTO DA MINUTA, e não numa aba própria. O contrato é capa +
           corpo + anexos, e quem está marcando `[anexo_1]` no texto precisa ver, na mesma tela, qual
           peça está na posição 1. Separar em abas faria a posição virar decoreba. */}
-      <AnexosDoContrato enterpriseId={enterpriseId} />
+      <AnexosDoContrato codigo={codigo} enterpriseId={enterpriseId} />
 
       {/* ── A JANELA DA MINUTA NOVA ──────────────────────────────────────── */}
       {abrindoNova ? (

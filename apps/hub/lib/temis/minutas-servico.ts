@@ -389,7 +389,7 @@ export async function salvarMinuta(ator: AtorDaTemis, request: Request): Promise
   const { data: atual, error: erroLeitura } = await admin
     .from("temis_minutas")
     .select(
-      "id, enterprise_id, nome, descricao, tipo, situacao, versao, conteudo, conteudo_html, origem_arquivo_nome, criado_por_nome",
+      "id, enterprise_id, nome, descricao, tipo, situacao, versao, conteudo, conteudo_html, origem_arquivo_nome, criado_por_nome, capa_path, capa_nome",
     )
     .eq("workspace_id", "careli")
     .eq("id", id)
@@ -509,8 +509,32 @@ export async function salvarMinuta(ator: AtorDaTemis, request: Request): Promise
       planosMigrados = (planos ?? []).length;
     }
 
+    // ⚠️ AS CATEGORIAS TAMBÉM SEGUEM, PELA MESMA RAZÃO DOS PLANOS. Desde 21/09/2026 a categoria
+    // aponta a minuta dela (`temis_categorias.minuta_id`) e esse é o PRIMEIRO degrau da cadeia
+    // (`cadeia-do-contrato.ts`): sem o repasse, publicar a v2 deixaria a categoria apontando para a
+    // v1 recém-arquivada — e aí não é "texto antigo", é recusa, porque `escolherMinutaDaCadeia` se
+    // nega a usar minuta arquivada e NÃO herda por cima dela (quem decidiu, decidiu).
+    let categoriasMigradas = 0;
+    if (idsAnteriores.length > 0) {
+      const { data: categorias, error: erroCategorias } = await admin
+        .from("temis_categorias")
+        .update({ atualizado_em: agora, minuta_id: id })
+        .in("minuta_id", idsAnteriores)
+        .select("id");
+      if (erroCategorias) {
+        return NextResponse.json(
+          {
+            error:
+              "A minuta foi publicada, mas não consegui repassar as categorias que usavam a versão anterior. Confira o vínculo na aba Categorias.",
+          },
+          { status: 502 },
+        );
+      }
+      categoriasMigradas = (categorias ?? []).length;
+    }
+
     return NextResponse.json({
-      data: { arquivadas: idsAnteriores.length, id, planosMigrados },
+      data: { arquivadas: idsAnteriores.length, categoriasMigradas, id, planosMigrados },
     });
   }
 
@@ -538,6 +562,15 @@ export async function salvarMinuta(ator: AtorDaTemis, request: Request): Promise
         // um documento novo: quem escreveu a v1 continua sendo o autor da v2, e quem abriu a v2
         // aparece como quem alterou por último.
         atualizado_por_nome: await autorDaGravacao(admin, ator),
+        // ⚠️ A CAPA É DA MINUTA, E ACOMPANHA A VERSÃO NOVA. Sem estas duas linhas a capa morria a
+        // cada publicação, e o rastro do dado mostra que morreu mesmo: das 11 minutas de produção,
+        // 3 têm `capa_path` e as 3 estão ARQUIVADAS (VOL v1, VOL v4, RVP v1); as 3 publicadas não
+        // têm nenhuma (medido em 21/09/2026). No VOL a capa foi enviada, perdida na v2, enviada de
+        // novo na v4 e perdida de novo na v5 — e o ramo da capa do montador nunca rodou em
+        // produção, enquanto quem subiu achava que ela estava lá. É a mesma razão do repasse dos
+        // planos, logo acima: a v2 é a MESMA minuta um passo adiante.
+        capa_nome: (atual as { capa_nome?: null | string }).capa_nome ?? null,
+        capa_path: (atual as { capa_path?: null | string }).capa_path ?? null,
         conteudo: corpo.conteudo ?? atual.conteudo,
         conteudo_html: html,
         criado_por_nome: (atual as { criado_por_nome?: null | string }).criado_por_nome ?? null,

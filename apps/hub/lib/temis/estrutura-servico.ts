@@ -50,6 +50,7 @@ import {
   somenteLeituraNoPortal,
 } from "./alcance-da-estrutura";
 import { type AtorDaTemis, enterpriseNoAlcance, idDoAutor } from "./ator";
+import { PREFIXO_DO_CONSOLIDADO } from "./cadeia-do-contrato";
 import {
   COLUNAS_DA_0173,
   gravarComAutoria,
@@ -302,9 +303,15 @@ export async function lerAnexos(ator: AtorDaTemis, request: Request): Promise<Ne
     if (!visiveis.has(categoriaId)) return foraDoEscopo();
   }
 
-  // ⚠️ OS TRÊS NÍVEIS VÊM JUNTOS quando a tela pede os três, porque a precedência
-  // (unidade > categoria > empreendimento) é resolvida por quem MONTA o contrato, não pelo banco.
-  // Devolver só um nível esconderia do operador que a unidade dele sobrescreve a categoria.
+  // ⚠️ OS TRÊS NÍVEIS VÊM JUNTOS quando a tela pede os três, porque quem decide o que entra no
+  // contrato é quem o MONTA, não o banco.
+  //
+  // ⚠️ E O QUE ELE DECIDE MUDOU EM 21/09/2026: os níveis SOMAM. Até aqui a nota dizia que a
+  // precedência era "unidade > categoria > empreendimento" e que devolver um nível só esconderia
+  // do operador que a unidade sobrescreve a categoria. Não sobrescreve mais: o contrato leva as
+  // peças dos quatro degraus juntas, na ordem da POSIÇÃO, e a posição passou a ser única na cadeia
+  // inteira. Ver `anexos-da-venda.ts`. A lista completa continua vindo pelo mesmo motivo — agora
+  // para o operador ver tudo o que vai junto no papel.
   let consulta = admin.from("temis_anexos").select(COLUNAS_DO_ANEXO).eq("ativo", true);
   const alvos: string[] = [];
   if (enterpriseId) alvos.push(`enterprise_id.eq.${enterpriseId}`);
@@ -322,6 +329,17 @@ export async function lerAnexos(ator: AtorDaTemis, request: Request): Promise<Ne
 
   return NextResponse.json(
     {
+      // ⚠️ OS ALCANCES POSSÍVEIS VIAJAM JUNTO, e é isso que dá porta ao pedido do Lucas
+      // (21/09/2026): *"preciso garantir que consigamos vincular os anexos por filho, categoria"*.
+      // A tela de anexos recebia só um `enterpriseId` e mandava só ele: `temis_anexos` aceita os
+      // três alcances desde a 0156 e o banco EXIGE exatamente um, mas não havia como criar linha de
+      // categoria — medido em 21/09/2026, `temis_anexos` tinha ZERO linhas e continuaria sem
+      // nenhuma de categoria, porque não havia porta.
+      //
+      // ⚠️ QUEM RESOLVE É O SERVIDOR, e não a tela. A ficha consolidada manda `group:Lagoa Bonita`,
+      // as categorias moram no PAI e as divisões são do cadastro: se a tela montasse essa lista, ela
+      // e o motor discordariam sobre onde a peça mora.
+      alcances: await alcancesDoAnexo(admin, ator, request, enterpriseId),
       // ⚠️ O CAMINHO DO ARQUIVO NÃO SAI PARA O PORTAL. A tela não o usa (abre pelo id), o portal não
       // abre o bucket por caminho, e a chave do Storage só serve para mapear o que existe na casa.
       anexos:
@@ -329,6 +347,73 @@ export async function lerAnexos(ator: AtorDaTemis, request: Request): Promise<Ne
     },
     { headers: SEM_CACHE },
   );
+}
+
+/** Um lugar onde um anexo pode ser pendurado, com o nome que o operador conhece. */
+type AlcancePossivel = { id: string; nome: string; tipo: "categoria" | "empreendimento" };
+
+/**
+ * Onde este anexo pode ser pendurado: o pai, cada divisão e cada categoria da família.
+ *
+ * ⚠️ BEST-EFFORT: falha aqui devolve lista vazia, e a tela cai no alcance único de sempre. É uma
+ * lista de ESCOLHA, não um recorte de segurança — quem confere se o alcance escolhido é do ator
+ * continua sendo `alcanceDaPasta`, na gravação.
+ */
+async function alcancesDoAnexo(
+  admin: Admin,
+  ator: AtorDaTemis,
+  request: Request,
+  enterpriseId: string,
+): Promise<AlcancePossivel[]> {
+  if (!enterpriseId) return [];
+  try {
+    const codigo = new URL(request.url).searchParams.get("codigo");
+    const dono = (await empreendimentoDasCategorias(admin, ator, enterpriseId, codigo)) ?? enterpriseId;
+    if (dono.startsWith(PREFIXO_DO_CONSOLIDADO)) return [];
+
+    const { data: produtos } = await admin
+      .from("hercules_empreendimentos")
+      .select("c2x_enterprise_id,id,nome,pai_id")
+      .eq("workspace_id", WORKSPACE)
+      .eq("c2x_enterprise_id", dono)
+      .maybeSingle();
+    const raiz = produtos as null | { id: string; nome: null | string };
+    if (!raiz) return [];
+
+    const { data: irmas } = await admin
+      .from("hercules_empreendimentos")
+      .select("c2x_enterprise_id,id,nome")
+      .eq("workspace_id", WORKSPACE)
+      .eq("pai_id", raiz.id)
+      .order("nome", { ascending: true });
+
+    const lista: AlcancePossivel[] = [
+      { id: dono, nome: raiz.nome ?? dono, tipo: "empreendimento" },
+    ];
+    for (const d of (irmas ?? []) as Array<{ c2x_enterprise_id: null | string; nome: null | string }>) {
+      const id = texto(d.c2x_enterprise_id);
+      // ⚠️ DIVISÃO SEM `c2x_enterprise_id` NÃO ENTRA: a unidade guarda esse id, e sem ele a cadeia
+      // do contrato nunca chegaria à peça. Oferecer seria prometer o que o motor não cumpre.
+      if (!id || id === dono) continue;
+      lista.push({ id, nome: d.nome ?? id, tipo: "empreendimento" });
+    }
+
+    const { data: categorias } = await admin
+      .from("temis_categorias")
+      .select("id,nome,ativa")
+      .eq("workspace_id", WORKSPACE)
+      .eq("enterprise_id", dono)
+      .order("nome", { ascending: true });
+    for (const c of (categorias ?? []) as Array<{ ativa: boolean | null; id: string; nome: null | string }>) {
+      if (c.ativa === false) continue;
+      lista.push({ id: c.id, nome: c.nome ?? "categoria sem nome", tipo: "categoria" });
+    }
+
+    return lista;
+  } catch (erro) {
+    console.error("[temis/anexos] não consegui montar os alcances possíveis", erro);
+    return [];
+  }
 }
 
 export async function gravarAnexo(ator: AtorDaTemis, request: Request): Promise<NextResponse> {
@@ -384,6 +469,36 @@ export async function gravarAnexo(ator: AtorDaTemis, request: Request): Promise<
     }
     registrarAtoDoPortal(ator, path ? "capa trocada" : "capa retirada", { minutaId, path });
     return NextResponse.json({ ok: true }, { headers: SEM_CACHE });
+  }
+
+  // ⚠️ O CONSOLIDADO NÃO VIRA ALCANCE CRU. A ficha agrupada do Apolo manda `group:Lagoa Bonita`,
+  // que é RÓTULO do catálogo e não chave: não existe `enterprise_id` igual a isso em tabela nenhuma.
+  // Até 21/09/2026 este alcance era gravado como veio, a tela LISTAVA o anexo (ela filtra pelo mesmo
+  // id cru) e o contrato saa sem a peça, sem erro e sem aviso. Resolver aqui, na GRAVAÇÃO, é a
+  // mesma coisa que `criarCategoria` e `editarCategoria` já faziam — a assimetria era só do anexo.
+  //
+  // ⚠️ E QUANDO NÃO RESOLVE, RECUSA. Três famílias têm a raiz sem `c2x_enterprise_id` (LOX, PDX,
+  // RDX, medido na mesma data): para elas não existe id de empreendimento nenhum, e a cadeia do
+  // contrato nunca alcançaria a peça. Recusar nomeando a saída é melhor do que aceitar um arquivo
+  // que ninguém vai ver no papel.
+  const cruDoCorpo = texto(corpo.enterpriseId);
+  if (cruDoCorpo.startsWith(PREFIXO_DO_CONSOLIDADO)) {
+    const resolvido = await empreendimentoDasCategorias(
+      admin,
+      ator,
+      cruDoCorpo,
+      typeof corpo.codigo === "string" ? corpo.codigo : null,
+    );
+    if (!resolvido || resolvido.startsWith(PREFIXO_DO_CONSOLIDADO)) {
+      return NextResponse.json(
+        {
+          error:
+            "Esta ficha é a visão consolidada do produto e não tem id de empreendimento. Escolha a divisão (ou a categoria) a que este anexo pertence.",
+        },
+        { status: 400 },
+      );
+    }
+    corpo.enterpriseId = resolvido;
   }
 
   const alcance = lerAlcance(corpo);
@@ -1531,7 +1646,7 @@ export async function lerCategorias(ator: AtorDaTemis, request: Request): Promis
 
   const { data, error } = await admin
     .from("temis_categorias")
-    .select("id,nome,categoria_pai_id,ordem,assinatura_ordenada,assinatura_ordem")
+    .select("id,nome,categoria_pai_id,ordem,assinatura_ordenada,assinatura_ordem,minuta_id")
     .eq("workspace_id", WORKSPACE)
     .eq("enterprise_id", dono)
     .order("ordem", { ascending: true })
@@ -1546,6 +1661,7 @@ export async function lerCategorias(ator: AtorDaTemis, request: Request): Promis
     assinatura_ordenada: boolean | null;
     categoria_pai_id: null | string;
     id: string;
+    minuta_id?: null | string;
     nome: string;
   }>;
 
@@ -1595,6 +1711,26 @@ export async function lerCategorias(ator: AtorDaTemis, request: Request): Promis
     new URL(request.url).searchParams.get("nome")?.trim() || "o empreendimento",
   );
 
+  // ⚠️ AS MINUTAS QUE A CATEGORIA PODE APONTAR SÃO AS DO DONO DELA, e só. Lucas (21/09/2026):
+  // *"vincular os anexos por filho, categoria. também as minutas"*. A cadeia do contrato lê
+  // `temis_categorias.minuta_id` como PRIMEIRO degrau (`cadeia-do-contrato.ts`) e a escolha passa
+  // pela régua de família (`minuta-da-cadeia.ts`): a minuta tem de ser de um produto que esteja na
+  // cadeia da venda. O dono da categoria é o PAI da família, e o pai está na cadeia de todo lote
+  // dela — oferecer a minuta de uma divisão irmã deixaria a tela propor algo que o motor recusaria
+  // na hora de imprimir.
+  const { data: publicadas } = await admin
+    .from("temis_minutas")
+    .select("id,nome,versao")
+    .eq("workspace_id", WORKSPACE)
+    .eq("enterprise_id", dono)
+    .eq("situacao", "publicada")
+    .eq("tipo", "contrato")
+    .order("nome", { ascending: true });
+
+  const minutas = ((publicadas ?? []) as Array<{ id: string; nome: null | string; versao: null | number }>)
+    .map((m) => ({ id: m.id, nome: m.nome ?? "minuta sem nome", versao: m.versao ?? null }));
+  const porMinuta = new Map(minutas.map((m) => [m.id, m]));
+
   // ⚠️ A SUBCATEGORIA NÃO HERDA DA MÃE, E A TELA NÃO PODE PROMETER QUE HERDA. Quem manda o contrato é
   // `regraDeOrdemDaVenda` (`lib/assinatura/ordem-db.ts`) e ele vai da categoria DIRETO ao
   // empreendimento. Se esta tela mostrasse "Fase 1 herda de Loteamento", o envio ignoraria a mãe e o
@@ -1616,12 +1752,18 @@ export async function lerCategorias(ator: AtorDaTemis, request: Request): Promis
         };
         const propria = temOrdemPropria(nivelDaCategoria) ? regraDoNivel(nivelDaCategoria) : null;
 
+        const minutaId = c.minuta_id ?? null;
         return {
           categoriaPaiId:
             ator.tipo === "hub" || (c.categoria_pai_id && visiveis.has(c.categoria_pai_id))
               ? c.categoria_pai_id
               : null,
           id: c.id,
+          // ⚠️ O NOME VEM JUNTO DO ID. Uma tela de herança que mostra só um uuid faz o operador
+          // abrir outra aba para saber o que está vinculado — e é assim que ele deixa como está.
+          minuta: minutaId
+            ? (porMinuta.get(minutaId) ?? { id: minutaId, nome: "minuta que não está publicada aqui", versao: null })
+            : null,
           nome: c.nome,
           ordemHerdada:
             // ⚠️ SÓ AFIRMA "PADRÃO DA CASA" SE A LEITURA DO EMPREENDIMENTO DEU CERTO. Com a leitura
@@ -1642,6 +1784,8 @@ export async function lerCategorias(ator: AtorDaTemis, request: Request): Promis
       }),
       // A divergência é do EMPREENDIMENTO, e não de uma categoria: vale para todas de uma vez.
       divergenciaDoEmpreendimento: heranca.divergencia,
+      /** As minutas publicadas que a categoria pode apontar. Vazio = não há o que escolher. */
+      minutasDisponiveis: minutas,
     },
   });
 }
@@ -1720,6 +1864,8 @@ export async function editarCategoria(ator: AtorDaTemis, request: Request): Prom
     // ordem; `assinaturaOrdem: null` = limpou, e a categoria volta a herdar do empreendimento.
     assinaturaOrdem?: null | unknown;
     assinaturaOrdenada?: unknown;
+    // Ausente = não mexeu na minuta; `null` = limpou, e a categoria volta a HERDAR o modelo de cima.
+    minutaId?: null | string;
     nome?: string;
     ordem?: number;
   };
@@ -1760,6 +1906,56 @@ export async function editarCategoria(ator: AtorDaTemis, request: Request): Prom
       enterpriseId,
       new URL(request.url).searchParams.get("codigo"),
     )) ?? enterpriseId;
+
+  // ⚠️ A MINUTA DA CATEGORIA É CONFERIDA NA PORTA, e não só na hora de imprimir. Lucas
+  // (21/09/2026): *"vincular os anexos por filho, categoria. também as minutas"*. Este campo é o
+  // PRIMEIRO degrau da cadeia do contrato: ele vence a divisão e o empreendimento. Deixar entrar um
+  // id qualquer aqui faria a venda descobrir o problema no 409 da geração, semanas depois e longe
+  // desta tela — e um id de OUTRO produto imprimiria o contrato do loteamento errado, que é
+  // exatamente o que `empreendimentosQueServem` passou a impedir em 16/09/2026 no caminho irmão.
+  if (corpo.minutaId !== undefined) {
+    const pedida = String(corpo.minutaId ?? "").trim();
+    if (!pedida) {
+      mudancas.minuta_id = null;
+    } else {
+      const { data: minuta, error: erroDaMinuta } = await admin
+        .from("temis_minutas")
+        .select("id,nome,situacao,tipo,enterprise_id")
+        .eq("workspace_id", WORKSPACE)
+        .eq("id", pedida)
+        .maybeSingle();
+
+      if (erroDaMinuta) {
+        return NextResponse.json({ error: "Não consegui ler a minuta escolhida." }, { status: 502 });
+      }
+      const linha = minuta as null | {
+        enterprise_id: null | string;
+        nome: null | string;
+        situacao: null | string;
+        tipo: null | string;
+      };
+      if (!linha) {
+        return NextResponse.json({ error: "Minuta não encontrada." }, { status: 404 });
+      }
+      if (String(linha.enterprise_id ?? "") !== dono) {
+        return NextResponse.json(
+          {
+            error: `A minuta "${linha.nome ?? pedida}" é de outro empreendimento e não serve para esta categoria.`,
+          },
+          { status: 409 },
+        );
+      }
+      if (linha.situacao !== "publicada" || linha.tipo !== "contrato") {
+        return NextResponse.json(
+          {
+            error: `A minuta "${linha.nome ?? pedida}" está ${linha.situacao ?? "sem situação"} e não pode virar contrato. Publique-a antes de vincular.`,
+          },
+          { status: 409 },
+        );
+      }
+      mudancas.minuta_id = pedida;
+    }
+  }
 
   const { data: salvas, error } = await admin
     .from("temis_categorias")

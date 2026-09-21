@@ -103,13 +103,40 @@ type EdicaoNaTela = {
 };
 
 type Resposta = {
+  /**
+   * As peças que vão JUNTO do corpo no PDF montado, já somadas pela cadeia e na ordem da posição.
+   *
+   * ⚠️ O SERVIDOR JÁ MANDAVA ISTO E A TELA NÃO LIA. Até 21/09/2026 esta tela tipava a resposta com
+   * `minuta` e nada mais: `anexos`, `marcadores`, `minuta.origemFrase` e `minuta.herdada` chegavam
+   * prontos de `contrato-servico.ts` e eram descartados na porta. Ela não é só do portal — é
+   * montada nas duas pontas (`modules/temis/blocks/trabalho/tela-de-trabalho.tsx` e `TelaVenda`),
+   * ou seja, a conferência do jurídico também era cega.
+   */
+  anexos?: { nome: string; posicao: number; rotuloDoNivel: string }[];
   avisos?: string[];
   /** sha-256 do contrato montado agora; volta no salvamento. Ver `contrato-editado.ts`. */
   baseImpressao?: string;
   edicao?: EdicaoNaTela | null;
   erro?: string;
   html?: string;
-  minuta?: { id: string; nome: string; versao: null | number };
+  /** Os marcadores de montagem que a minuta usou: `capa_contrato`, `anexo_3`. */
+  marcadores?: string[];
+  minuta?: {
+    /**
+     * A frase pronta do degrau de onde o modelo veio: "modelo da divisão Vale do Ouro VOL".
+     *
+     * ⚠️ MONTADA NO SERVIDOR, e nunca recalculada aqui. Regra do Lucas (21/09/2026): quando a
+     * divisão ou a categoria não tem minuta própria, ela HERDA do nível de cima e *"a TELA MOSTRA
+     * DE ONDE VEIO"*. Se a tela refizesse a travessia, ela e o motor passariam a discordar sobre o
+     * mesmo contrato — e a discordância não apareceria no dia em que fosse escrita.
+     */
+    origemFrase?: string;
+    /** `true` = veio de um degrau ACIMA do mais específico que a venda tinha. Aí a linha destaca. */
+    herdada?: boolean;
+    id: string;
+    nome: string;
+    versao: null | number;
+  };
   semValor?: string[];
   vezesDoLaco?: number;
 };
@@ -447,6 +474,42 @@ export function PreviaDoContrato({
                 </>
               ) : null}
             </div>
+
+            {/*
+              ⚠️ DE ONDE VEIO O MODELO, E O QUE VAI JUNTO. É a regra do Lucas de 21/09/2026 dita por
+              extenso: quando a divisão ou a categoria não tem minuta própria ela HERDA, e *"a TELA
+              MOSTRA DE ONDE VEIO"*. Até essa data isso só aparecia DEPOIS de gerar, no recado da
+              tela de trabalho — ou seja, a conferência acontecia sem saber qual contrato estava
+              sendo conferido. As 189 propostas que mudam de comportamento (Vale do Ouro com lote no
+              VOL) são exatamente estas: o cabeçalho diz "Vale do Ouro" e o modelo vem do VOL.
+            */}
+            {resposta?.minuta?.origemFrase ? (
+              <div
+                style={{
+                  color: resposta.minuta.herdada ? T.gold : T.muted,
+                  fontSize: 11,
+                  fontWeight: resposta.minuta.herdada ? 700 : 400,
+                  marginTop: 2,
+                }}
+              >
+                {resposta.minuta.origemFrase}
+                {resposta.minuta.herdada ? " — herdado de um nível acima" : ""}
+              </div>
+            ) : null}
+
+            {/*
+              ⚠️ AS PEÇAS ANEXAS SÃO PARTE DO CONTRATO, e o corpo que está na tela NÃO as mostra: o
+              montador as costura no PDF final (`montar-pdf-do-contrato.ts`). Sem esta linha, quem
+              confere lê o texto inteiro sem saber que a convenção de condomínio vai atrás dele.
+            */}
+            {resposta?.anexos && resposta.anexos.length > 0 ? (
+              <div style={{ color: T.muted, fontSize: 11, marginTop: 2 }}>
+                Vai junto:{" "}
+                {resposta.anexos
+                  .map((a) => `${a.nome} (${a.rotuloDoNivel})`)
+                  .join(", ")}
+              </div>
+            ) : null}
           </div>
           <button
             aria-label="Fechar"

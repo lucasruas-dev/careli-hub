@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
+import { APOLO_DOCS_BUCKET, lerDocumentoDoStorage } from "@/lib/apolo/documentos";
 import { foraDoEscopo } from "@/lib/apolo/incorporador/escopo";
 import { MENSAGEM_PRODUTO_SO_CONSULTA } from "@/lib/apolo/incorporador/operacao-do-produto";
 import { createApoloAdminClient } from "@/lib/apolo/server";
@@ -29,6 +30,11 @@ import {
   guardarContrato,
 } from "./contrato-guardado-db";
 import { gerarPdfDoHtml } from "./html-para-pdf";
+import {
+  montarPdfDoContrato,
+  type PecaDoContrato,
+  recusaPorTetoDaMontagem,
+} from "./montar-pdf-do-contrato";
 import { ehColunaDoDonoAusente } from "./trabalhos-db";
 
 // O CONTRATO DA PROPOSTA, PARA QUEM ESTIVER OPERANDO — a prévia, a geração, a edição à mão e o PDF.
@@ -408,11 +414,76 @@ export async function previaDoContrato(ator: AtorDaTemis, request: Request): Pro
           html: edicao.html,
         }
       : null,
+    // ⚠️ AS PEÇAS ANEXAS VÊM PARA A CONFERÊNCIA, E O CAMINHO DO ARQUIVO NÃO. A prévia não abre o
+    // bucket (a tela mostra a LISTA: "vão junto — anexo 1, do empreendimento Lagoa Bonita"), e a
+    // chave do Storage só serve para mapear o que existe na casa. É a mesma régua de `lerAnexos`.
+    anexos: montado.anexos.map(({ storagePath: _caminho, ...peca }) => peca),
     html: montado.html,
+    // Os marcadores de montagem que a minuta usou (`capa_contrato`, `anexo_3`). A tela pode dizer
+    // que o texto pede uma peça que o cadastro ainda não tem.
+    marcadores: montado.marcadores,
     minuta: montado.minuta,
     semValor,
     vezesDoLaco: montado.vezesDoLaco,
   });
+}
+
+// ── AS PEÇAS QUE VÃO JUNTO ──────────────────────────────────────────────────
+
+/**
+ * Baixa a capa e os anexos do bucket para o montador.
+ *
+ * ⚠️ ARQUIVO QUE NÃO BAIXA RECUSA A GERAÇÃO, e não vira contrato sem a peça. É a mesma régua de
+ * `podeGerarContrato`: um PDF que anuncia em cláusula uma convenção de condomínio que não está
+ * dentro dele é pior do que um contrato que não saiu — o primeiro vai a cartório e ninguém percebe.
+ *
+ * ⚠️ E AS DUAS ORIGENS SÃO O MESMO BUCKET. A capa mora em `temis-capas/` e o anexo em
+ * `temis-anexos/`, os dois dentro do `apolo-documents` (ver `gravarAnexo`).
+ */
+async function baixarPecasDoContrato(
+  sb: SupabaseClient,
+  montado: {
+    anexos: readonly { arquivoBytes: null | number; nome: string; storagePath: string }[];
+    minuta: { capaNome: string; capaPath: string };
+  },
+): Promise<{ anexos: PecaDoContrato[]; capa: null | PecaDoContrato; ok: true } | { erro: string; ok: false }> {
+  const capaPath = montado.minuta.capaPath;
+  let capa: null | PecaDoContrato = null;
+
+  if (capaPath) {
+    const bytes = await lerDocumentoDoStorage(sb, capaPath).catch(() => null);
+    if (!bytes) {
+      console.error("[temis][contrato] capa não baixou", { bucket: APOLO_DOCS_BUCKET, capaPath });
+      return {
+        erro: `Não consegui baixar a capa "${montado.minuta.capaNome || "do contrato"}" para montar o PDF. Reenvie a capa na minuta e gere de novo.`,
+        ok: false,
+      };
+    }
+    // ⚠️ O TIPO NÃO É MAIS ADIVINHADO PELA EXTENSÃO (21/09/2026). `mimeDoCaminho` só conhecia
+    // `.png`, `.jpg` e `.jpeg` e devolvia `application/pdf` para o resto — e `.jfif` é a extensão
+    // que o Chrome dá a um JPEG salvo pela área de trabalho. O upload aceitava o arquivo (o
+    // navegador declarou `image/jpeg`), a montagem o tratava como PDF, e TODO contrato daquele
+    // empreendimento passava a devolver 409 mandando tirar a senha de uma imagem sem senha. Quem
+    // decide agora é `formatoDosBytes`, que lê os primeiros bytes do arquivo.
+    capa = { bytes, nome: montado.minuta.capaNome || "capa do contrato" };
+  }
+
+  const anexos: PecaDoContrato[] = [];
+  for (const anexo of montado.anexos) {
+    const bytes = await lerDocumentoDoStorage(sb, anexo.storagePath).catch(() => null);
+    if (!bytes) {
+      console.error("[temis][contrato] anexo não baixou", { path: anexo.storagePath });
+      return {
+        erro: `Não consegui baixar o anexo "${anexo.nome}" para montar o PDF. Reenvie o arquivo no cadastro de anexos e gere de novo.`,
+        ok: false,
+      };
+    }
+    // ⚠️ O ANEXO É SEMPRE PDF por decisão de `anexos.ts` (*"o anexo é página pronta"*); só a CAPA
+    // aceita imagem. Quem CONFERE isso é o montador, pelos bytes — e a recusa dele diz o formato.
+    anexos.push({ arquivoBytes: anexo.arquivoBytes, bytes, nome: anexo.nome });
+  }
+
+  return { anexos, capa, ok: true };
 }
 
 // ── A GERAÇÃO ───────────────────────────────────────────────────────────────
@@ -478,9 +549,9 @@ export async function gerarContratoDaProposta(
     );
   }
 
-  let pdf: Uint8Array;
+  let corpoDoPdf: Uint8Array;
   try {
-    pdf = await gerarPdfDoHtml(html);
+    corpoDoPdf = await gerarPdfDoHtml(html);
   } catch (e) {
     // A mensagem real vai para o log: o erro do Chromium cita caminho de binário e flag de linha de
     // comando — infraestrutura, que não ajuda quem está emitindo um contrato e não deve vazar.
@@ -489,6 +560,40 @@ export async function gerarContratoDaProposta(
       { erro: "Não foi possível gerar o PDF do contrato. Tente de novo." },
       { status: 502 },
     );
+  }
+
+  // ⚠️ CAPA + CORPO + ANEXOS, E A COSTURA ENTRA ANTES DA GAVETA. É o desenho de 07/09/2026
+  // (`variaveis.ts`: *"o contrato é uma montagem, não um documento só"*), e montar aqui — e não na
+  // hora de baixar — é o que faz o PDF guardado, o que vai assinar e o que o cliente recebe serem o
+  // MESMO arquivo. Sem capa e sem anexo o corpo sai intocado, byte a byte: ver `montarPdfDoContrato`.
+  let pdf = corpoDoPdf;
+  if (montado.minuta.capaPath || montado.anexos.length > 0) {
+    // ⚠️ O TETO DECIDE ANTES DO PRIMEIRO DOWNLOAD, com o tamanho que o cadastro já tinha. Ver
+    // `recusaPorTetoDaMontagem`: até 21/09/2026 as peças eram TODAS trazidas para a memória da
+    // função e só então a soma era comparada — 27MB transferidos para responder o que a coluna
+    // `arquivo_bytes` já dizia. A segunda conferência continua dentro do montador, porque esta aqui
+    // pode subestimar (linha antiga sem `arquivo_bytes`, capa sem tamanho em canto nenhum).
+    const cedo = recusaPorTetoDaMontagem(
+      corpoDoPdf.byteLength,
+      montado.anexos.map((a) => ({ bytes: a.arquivoBytes, nome: a.nome })),
+    );
+    if (cedo) {
+      return NextResponse.json({ avisos: montado.avisos, erro: cedo }, { status: 409 });
+    }
+
+    const pecas = await baixarPecasDoContrato(sb, montado);
+    if (!pecas.ok) {
+      return NextResponse.json({ avisos: montado.avisos, erro: pecas.erro }, { status: 409 });
+    }
+    const montagem = await montarPdfDoContrato({
+      anexos: pecas.anexos,
+      capa: pecas.capa,
+      corpo: corpoDoPdf,
+    });
+    if (!montagem.ok) {
+      return NextResponse.json({ avisos: montado.avisos, erro: montagem.erro }, { status: 409 });
+    }
+    pdf = montagem.pdf;
   }
 
   // ⚠️ UMA IDENTIDADE SÓ PARA OS DOIS USOS. O autor vai para a gaveta (`guardarContrato`) e para a
@@ -500,9 +605,16 @@ export async function gerarContratoDaProposta(
   const guardado = await guardarContrato(sb, {
     // Quem lê a gaveta precisa saber que este PDF não é o texto puro da minuta.
     alteradoAMaoPor: edicao ? (edicao.editadoPorNome ?? "alguém da equipe") : null,
+    // ⚠️ AS PEÇAS ANEXAS VÃO PARA O REGISTRO. Com a montagem, o PDF guardado deixou de ser só o
+    // corpo, e quem abrir o arquivo daqui a um ano precisa saber o que estava dentro dele.
+    anexos: montado.anexos.map((a) => a.nome),
     geradoPor: autor.id,
     geradoPorNome: autor.nome,
     identidade: montado.identidade,
+    // ⚠️ DE QUAL MINUTA ESTE PAPEL SAIU, E DE QUE DEGRAU. Sem herança dava para reconstruir (uma
+    // minuta por empreendimento); com ela, não: dois contratos do MESMO empreendimento, no mesmo
+    // dia, podem sair de minutas de níveis diferentes, e nada no registro os distinguia.
+    minuta: montado.minuta,
     pdf,
     propostaId,
   });
@@ -528,6 +640,9 @@ export async function gerarContratoDaProposta(
 
   return NextResponse.json({
     data: {
+      // ⚠️ AS PEÇAS ANEXAS VOLTAM NOMEADAS. Quem gerou precisa saber o que entrou no papel, e é a
+      // única confirmação que a tela de trabalho tem — ela não abre a prévia antes de emitir.
+      anexos: montado.anexos.map(({ storagePath: _caminho, ...peca }) => peca),
       avisos: montado.avisos,
       documentoId: guardado.documentoId,
       minuta: montado.minuta,

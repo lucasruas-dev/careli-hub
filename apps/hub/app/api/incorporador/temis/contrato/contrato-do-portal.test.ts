@@ -58,11 +58,25 @@ const espioes = vi.hoisted(() => ({
   })),
   lerEdicao: vi.fn(async () => null),
   montarContratoDaProposta: vi.fn(async () => ({
+    // Desde 21/09/2026 a montagem devolve também as peças que vão junto e o degrau de onde o
+    // modelo veio. Este contrato não tem capa nem anexo: o PDF continua sendo só o corpo.
+    anexos: [],
     avisos: [],
     gerais: {},
     html: "<p>Comprador: Henrique</p>",
     identidade: { comprador: "Henrique", empreendimento: "VOC", unidade: "Q01 L05" },
-    minuta: { id: "minuta-voc", nome: "Minuta VOC", versao: 1 },
+    marcadores: [],
+    minuta: {
+      capaNome: "",
+      capaPath: "",
+      herdada: false,
+      id: "minuta-voc",
+      nome: "Minuta VOC",
+      origem: "empreendimento" as const,
+      origemFrase: "modelo do empreendimento VALE DO OURO VOC",
+      rotulo: "VALE DO OURO VOC",
+      versao: 1,
+    },
     ok: true,
     semValor: [],
     vezesDoLaco: 1,

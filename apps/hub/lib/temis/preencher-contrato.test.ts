@@ -1247,3 +1247,57 @@ describe("a poda de vazios não desmonta a grade", () => {
     expect((html.match(/<td/g) ?? []).length).toBe(2);
   });
 });
+
+// ── OS MARCADORES DE MONTAGEM ───────────────────────────────────────────────
+//
+// `[capa_contrato]`, `[anexos_do_contrato]` e `[anexo_N]` não são variáveis de TEXTO: eles dizem
+// ONDE um arquivo entra, e quem põe o arquivo é `montar-pdf-do-contrato.ts`.
+//
+// ⚠️ ATÉ 21/09/2026 OS TRÊS CAÍAM EM `semValor` E DERRUBAVAM A GERAÇÃO COM 409. E dois deles
+// (`capa_contrato` e `anexos_do_contrato`) estão na paleta do editor desde 07/09/2026: um clique
+// publicava uma minuta que recusava TODO contrato daquele empreendimento, e a frase do erro
+// mandava preencher um cadastro que não tinha o campo.
+
+describe("os marcadores de montagem", () => {
+  it("a capa e o curinga saem do texto e NÃO entram em semValor", () => {
+    const r = preencherContrato([p(v("capa_contrato"), "TEXTO", v("anexos_do_contrato"))], {
+      compradores: [comprador("X")],
+      gerais: {},
+    });
+    expect(texto(r.nos)).toBe("TEXTO");
+    expect(r.semValor).toHaveLength(0);
+    expect(r.marcadores).toEqual(["anexos_do_contrato", "capa_contrato"]);
+  });
+
+  it("[anexo_2] no meio da cláusula fica registrado, e o texto ao redor continua inteiro", () => {
+    const r = preencherContrato([p("antes ", v("anexo_2"), " depois")], {
+      anexos: { 2: "Memorial descritivo" },
+      compradores: [comprador("X")],
+      gerais: {},
+    });
+    expect(texto(r.nos)).toBe("antes depois");
+    expect(r.semValor).toHaveLength(0);
+    expect(r.marcadores).toEqual(["anexo_2"]);
+  });
+
+  it("[anexo_2_nome] continua sendo TEXTO, e não vira marcador", () => {
+    const r = preencherContrato([p(v("anexo_2_nome"))], {
+      anexos: { 2: "Memorial descritivo" },
+      compradores: [comprador("X")],
+      gerais: {},
+    });
+    expect(texto(r.nos)).toBe("Memorial descritivo");
+    expect(r.marcadores).toHaveLength(0);
+  });
+
+  it("erro de digitação parecido com anexo CONTINUA saltando aos olhos", () => {
+    // ⚠️ A FAMÍLIA É FECHADA DE PROPÓSITO. Reconhecer qualquer coisa que comece com "anexo" faria
+    // `[anexo_da_planta]` sumir do contrato calado, que é o oposto da decisão deste motor.
+    const r = preencherContrato([p(v("anexo_da_planta"), " ", v("anexo_0"))], {
+      compradores: [comprador("X")],
+      gerais: {},
+    });
+    expect(texto(r.nos)).toBe("[anexo_da_planta] [anexo_0]");
+    expect(r.semValor).toEqual(["anexo_0", "anexo_da_planta"]);
+  });
+});

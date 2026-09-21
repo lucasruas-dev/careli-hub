@@ -31,6 +31,8 @@
 //    empreendimento, unidade, comprador, data e versão. "contrato.pdf" na pasta de downloads de
 //    quem baixou três é indistinguível.
 
+import { posicaoDoAnexo } from "./preencher-contrato";
+
 /** O `tipo` da linha em `hercules_documentos`. É o mesmo que a aba pinta como "gerado pelo sistema". */
 export const TIPO_CONTRATO = "contrato";
 
@@ -47,17 +49,38 @@ export type Veredito = { ok: true } | { erro: string; ok: false };
 export function podeGerarContrato(semValor: readonly string[]): Veredito {
   if (semValor.length === 0) return { ok: true };
 
-  const quantas =
-    semValor.length === 1
-      ? "1 variável ficou sem valor"
-      : `${semValor.length} variáveis ficaram sem valor`;
+  // ⚠️ A PEÇA QUE FALTA NÃO SE CONSERTA NO CADASTRO DO COMPRADOR, e por isso ela tem frase própria
+  // (21/09/2026). "Preencha o cadastro" manda quem emite procurar um campo em branco na ficha do
+  // cliente quando o que falta é um PDF que ninguém subiu na aba de anexos — duas telas de
+  // distância. `[anexo_3]` é o lugar onde uma página pronta entra: ou a peça 3 existe, ou o texto
+  // promete em cláusula um documento que não vai junto. Ver `preencher-contrato.ts`.
+  const pecas = semValor.filter((nome) => posicaoDoAnexo(nome) !== null);
+  const dados = semValor.filter((nome) => posicaoDoAnexo(nome) === null);
 
-  return {
-    erro:
-      `${quantas} e o contrato não foi gerado: ${semValor.join(", ")}. ` +
-      "Preencha o cadastro ou ajuste a minuta e gere de novo — a prévia continua aberta para conferir.",
-    ok: false,
-  };
+  const frases: string[] = [];
+  if (dados.length > 0) {
+    const quantas =
+      dados.length === 1 ? "1 variável ficou sem valor" : `${dados.length} variáveis ficaram sem valor`;
+    frases.push(
+      `${quantas}: ${dados.join(", ")}. ` +
+        "Preencha o cadastro ou ajuste a minuta e gere de novo — a prévia continua aberta para conferir.",
+    );
+  }
+  if (pecas.length > 0) {
+    const posicoes = pecas
+      .map((nome) => posicaoDoAnexo(nome))
+      .filter((n): n is number => n !== null)
+      .sort((a, b) => a - b);
+    const lista = posicoes.join(", ");
+    frases.push(
+      (posicoes.length === 1
+        ? `A minuta cita a peça [anexo_${lista}] e não há anexo cadastrado nessa posição`
+        : `A minuta cita peças que não têm anexo cadastrado nas posições ${lista}`) +
+        ". Cadastre o anexo na posição certa (no empreendimento, na divisão ou na categoria do lote) ou tire o marcador do texto.",
+    );
+  }
+
+  return { erro: `O contrato não foi gerado. ${frases.join(" ")}`, ok: false };
 }
 
 // ── 2. VERSÃO ───────────────────────────────────────────────────────────────

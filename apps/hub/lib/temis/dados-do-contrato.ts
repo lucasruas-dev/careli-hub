@@ -129,6 +129,19 @@ type LinhaDaUnidade = {
   apartamento?: null | string;
   area: null | number | string;
   area_extenso: null | string;
+  /**
+   * O recorte comercial do lote (`temis_categorias`, migration 0139). Nulo na maioria: 907 das
+   * 5.541 unidades estão carimbadas, todas do Lagoa Bonita (medido em 21/09/2026).
+   *
+   * ⚠️ ELE É O PRIMEIRO DEGRAU DA CADEIA DO CONTRATO. É por ele que a categoria pode ter minuta
+   * própria e anexos próprios — ver `cadeia-do-contrato.ts`. Até 21/09/2026 esta coluna não saía
+   * do banco, e por isso a categoria simplesmente NÃO EXISTIA para o motor do contrato.
+   *
+   * ⚠️ E A CATEGORIA MORA NO PAI. As duas categorias com lote estão cadastradas no 31 (LAB) e
+   * carimbam unidades de quatro produtos (27, 31, 32, 33): a unidade do FILHO aponta para a
+   * categoria do PAI, de propósito, e nada no banco exige que os dois `enterprise_id` batam.
+   */
+  categoria_id: null | string;
   codigo: null | string;
   /** O id do C2X, o MESMO que `temis_minutas.enterprise_id` usa. Ver a nota em `__unidade_enterprise_id`. */
   enterprise_id: null | string;
@@ -382,7 +395,7 @@ export async function dadosDaProposta(
             sb
               .from("hercules_unidades")
               .select(
-                `area, area_extenso, codigo, enterprise_id, lote, matricula, matricula_livro, preco_extenso, preco_tabela, quadra, tipo_unidade${extras}`,
+                `area, area_extenso, categoria_id, codigo, enterprise_id, lote, matricula, matricula_livro, preco_extenso, preco_tabela, quadra, tipo_unidade${extras}`,
               )
               .eq("id", proposta.unidade_id)
               .maybeSingle(),
@@ -1979,6 +1992,23 @@ function gerais(
   // `__` pelo mesmo motivo do outro: nenhuma minuta escreve `[__unidade_enterprise_id]`.
   const unidadeEnterpriseId = texto(unidade?.enterprise_id);
   if (unidadeEnterpriseId) por("__unidade_enterprise_id", unidadeEnterpriseId);
+
+  // ⚠️ OS DOIS QUE FALTAVAM PARA A CADEIA DO CONTRATO EXISTIR (21/09/2026). Mesmo prefixo `__` e
+  // mesmo motivo dos outros: nenhuma minuta escreve `[__unidade_categoria_id]`, então eles viajam
+  // em `gerais` sem virar texto no papel.
+  //
+  // ⚠️ SEM A CATEGORIA AQUI, O DEGRAU MAIS ESPECÍFICO DA CADEIA NÃO EXISTE. O comentário de
+  // `contrato-da-proposta.ts` já dizia, desde 08/09, que *"a CATEGORIA DEVERIA MANDAR, e ainda não
+  // manda"*, e apontava para lá como "o único lugar a mudar" — mas o dado nem chegava ao motor, e
+  // o primeiro lugar a mudar era este.
+  //
+  // ⚠️ E O ID DA UNIDADE É O ALCANCE MAIS FINO DOS ANEXOS. `temis_anexos.unidade_id` guarda o uuid
+  // de `hercules_unidades`, que é o mesmo `proposta.unidade_id`: a planta daquele lote e só dele.
+  const unidadeCategoriaId = texto(unidade?.categoria_id);
+  if (unidadeCategoriaId) por("__unidade_categoria_id", unidadeCategoriaId);
+
+  const unidadeId = texto(proposta.unidade_id);
+  if (unidadeId) por("__unidade_id", unidadeId);
 
   // ── EMPREENDIMENTO ──
   if (empreendimento) {

@@ -65,6 +65,16 @@ export type DadosDoContrato = {
 };
 
 export type ResultadoDoPreenchimento = {
+  /**
+   * Os marcadores de MONTAGEM que a minuta usou: `capa_contrato`, `anexo_3`, `anexos_do_contrato`.
+   *
+   * ⚠️ ELES NÃO SÃO VARIÁVEIS, E NÃO PODEM ENTRAR EM `semValor`. Não existe texto para pôr no
+   * lugar deles — eles dizem ONDE um arquivo entra, e quem põe o arquivo é o montador do PDF. Até
+   * 21/09/2026 os três caíam em `semValor` e derrubavam a geração com 409, e dois deles
+   * (`capa_contrato` e `anexos_do_contrato`) estão na paleta do editor desde 07/09: um clique
+   * publicava uma minuta que recusava todo contrato daquele empreendimento.
+   */
+  marcadores: string[];
   /** O documento pronto, para serializar em HTML e virar PDF. */
   nos: NoDoDocumento[];
   /** Nomes que o texto pedia e o preenchimento não soube responder. É o que a prévia precisa avisar. */
@@ -72,6 +82,36 @@ export type ResultadoDoPreenchimento = {
   /** Quantas vezes o laço de comprador rodou. Zero significa minuta sem laço, o que é legítimo. */
   vezesDoLaco: number;
 };
+
+/** O que a travessia junta pelo caminho. Um objeto só para não engordar a lista de parâmetros. */
+type ColetaDoPreenchimento = {
+  marcadores: Set<string>;
+  semValor: Set<string>;
+};
+
+/**
+ * É marcador de montagem (e não variável de texto)?
+ *
+ * ⚠️ A FAMÍLIA É FECHADA DE PROPÓSITO: a capa, o curinga e `anexo_N` com N de 1 a 99. Reconhecer
+ * qualquer coisa que comece com "anexo" faria `[anexo_da_planta]` — que é erro de digitação —
+ * sumir do contrato calado, que é o oposto da decisão de `preencherContrato`.
+ */
+export function ehMarcadorDeMontagem(nome: string): boolean {
+  return nome === "capa_contrato" || nome === "anexos_do_contrato" || posicaoDoAnexo(nome) !== null;
+}
+
+/**
+ * `"anexo_3"` → 3. `null` para qualquer outra coisa, inclusive `anexos_do_contrato`.
+ *
+ * ⚠️ UMA RÉGUA SÓ PARA "QUAL PEÇA ESTE MARCADOR PEDE", e quem também precisa dela é
+ * `podeGerarContrato`: a frase da recusa muda conforme o que falta seja um DADO do cadastro ou uma
+ * PEÇA do contrato. Duas expressões regulares para a mesma pergunta divergiriam no dia em que a
+ * família mudasse de forma.
+ */
+export function posicaoDoAnexo(nome: string): null | number {
+  const achado = /^anexo_([1-9][0-9]?)$/.exec(nome);
+  return achado?.[1] ? Number(achado[1]) : null;
+}
 
 const PREFIXO_INICIO = "inicio_";
 const PREFIXO_FIM = "fim_";
@@ -89,16 +129,17 @@ export function preencherContrato(
   minuta: readonly NoDoDocumento[],
   dados: DadosDoContrato,
 ): ResultadoDoPreenchimento {
-  const semValor = new Set<string>();
+  const coleta: ColetaDoPreenchimento = { marcadores: new Set(), semValor: new Set() };
 
   const comLaco = expandirLaco(minuta, dados);
   const comPares = paresEntreBlocos(comLaco.nos, dados);
   const comGerados = inserirGerados(comPares, dados);
-  const nos = comGerados.map((no) => resolverNo(no, dados, semValor, null));
+  const nos = comGerados.map((no) => resolverNo(no, dados, coleta, null));
 
   return {
+    marcadores: [...coleta.marcadores].sort(),
     nos: podarVazios(nos),
-    semValor: [...semValor].sort(),
+    semValor: [...coleta.semValor].sort(),
     vezesDoLaco: comLaco.vezes,
   };
 }
@@ -621,7 +662,7 @@ function marcarDono(no: NoDoDocumento, indice: number, _c: DadosDoComprador): No
 function resolverNo(
   no: NoDoDocumento,
   dados: DadosDoContrato,
-  semValor: Set<string>,
+  coleta: ColetaDoPreenchimento,
   donoHerdado: null | number,
 ): NoDoDocumento {
   const dono = typeof (no as Record<string, unknown>)[DONO] === "number"
@@ -650,10 +691,10 @@ function resolverNo(
     const alvo = filho as NoDoDocumento;
     const nome = nomeDaVariavel(alvo);
     if (nome) {
-      finais.push(textoDaVariavel(alvo, nome, dados, semValor, donoDoNo(alvo) ?? dono));
+      finais.push(textoDaVariavel(alvo, nome, dados, coleta, donoDoNo(alvo) ?? dono));
       continue;
     }
-    const resolvido = resolverNo(alvo, dados, semValor, donoDoNo(alvo) ?? dono);
+    const resolvido = resolverNo(alvo, dados, coleta, donoDoNo(alvo) ?? dono);
     // O filho que esvaziou no corte não entra: um `<li>` vazio abre o mesmo vão que o parágrafo, e
     // aqui é o único lugar que sabe que ele existiu.
     //
@@ -919,7 +960,7 @@ function textoDaVariavel(
   no: NoDoDocumento,
   nome: string,
   dados: DadosDoContrato,
-  semValor: Set<string>,
+  coleta: ColetaDoPreenchimento,
   dono: null | number,
 ): NoDeTexto {
   const marcas = marcasDoNo(no);
@@ -933,10 +974,34 @@ function textoDaVariavel(
     return { ...marcas, text: "" };
   }
 
+  // ⚠️ O MARCADOR DE MONTAGEM TAMBÉM SAI DO TEXTO — mas fica REGISTRADO, e é essa a diferença.
+  // `[anexo_2]` não é um dado que falta: é o lugar onde uma PÁGINA PRONTA entra, e página não cabe
+  // num nó de texto. Quem a põe é o montador do PDF (`montar-pdf-do-contrato.ts`), que recebe esta
+  // lista. Deixá-lo cair em `semValor` SEMPRE — o que acontecia até 21/09/2026 — recusava o
+  // contrato inteiro com 409 por causa de uma peça que ESTÁ cadastrada.
+  //
+  // ⚠️ E A PRÉVIA PRECISA DIZER QUE ELE EXISTE, senão a conferência do papel fica cega justamente
+  // na peça que o texto promete. Ver `montarContratoDaProposta`, que devolve `anexos` junto.
+  //
+  // ⚠️ AS DUAS FAMÍLIAS DE MARCADOR NÃO TÊM O MESMO PESO, e a revisão de 21/09/2026 separou as
+  // duas. `capa_contrato` e `anexos_do_contrato` são CURINGAS: eles dizem "o que houver entra
+  // aqui", e não haver nada é resposta legítima — saem calados. `anexo_N` é uma PROMESSA de peça
+  // numerada: o texto diz "fica fazendo parte deste contrato o [anexo_3]", e sem peça na posição 3
+  // o papel promete em cláusula um documento que não existe, sai assim e ninguém é avisado. Por
+  // isso o `anexo_N` órfão volta para `semValor` — a mesma trava de `[cpf_cliente]`, pela mesma
+  // razão. Custo medido em 21/09/2026: ZERO. Nenhuma das 11 minutas usa `anexo_N` (a v6 do VOL usa
+  // `[inicio_tem_anexo_1]`/`[anexo_1_nome]`, que são bloco e texto, e continuam como estavam).
+  if (ehMarcadorDeMontagem(nome)) {
+    coleta.marcadores.add(nome);
+    const posicao = posicaoDoAnexo(nome);
+    if (posicao !== null && !dados.anexos?.[posicao]) coleta.semValor.add(nome);
+    return { ...marcas, text: "" };
+  }
+
   const valor = valorDaVariavel(nome, dados, dono);
 
   if (valor === null) {
-    semValor.add(nome);
+    coleta.semValor.add(nome);
     // Ver a nota de `preencherContrato`: o que falta VOLTA a aparecer, para saltar aos olhos.
     return { ...marcas, text: `[${nome}]` };
   }

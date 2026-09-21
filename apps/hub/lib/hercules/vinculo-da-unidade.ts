@@ -30,6 +30,8 @@ export type LinhaParaVincular = {
   apartamento?: null | string;
   categoria_id?: null | string;
   enterprise_id?: null | string;
+  /** 0161: o `id` da linha VIVA que este registro antigo espelha. Nulo = esta linha é a que vende. */
+  espelho_de?: null | string;
   id: string;
   lote: null | string;
   quadra: null | string;
@@ -69,6 +71,28 @@ export function chaveDoTerreno(linha: {
   return `${limpa(linha.quadra)}|${limpa(linha.lote)}`;
 }
 
+/**
+ * A IDENTIDADE do chão — quais LINHAS são o mesmo terreno, para efeito de carimbo.
+ *
+ * ⚠️ NÃO É `chaveDoTerreno`, E A DIFERENÇA CUSTOU UM LOTE CARIMBADO SEM NINGUÉM VER. `chaveDoTerreno`
+ * é quadra + lote: é o que o operador escreve no Excel, e é a única chave que a planilha tem. Só que
+ * ela COLIDE entre glebas VIVAS da mesma família. Medido em 21/09/2026: 17 chaves têm duas linhas
+ * com `espelho_de` nulo em divisões diferentes — 4 no Vale do Ouro (VOC × VOR, por exemplo Q12/L06:
+ * VLO1206 espelho, VOC1206 e VOR1206, as três com 239,88 m²) e 13 no Rio de Pedras (RDP × RPC). São
+ * DOIS terrenos, com dois donos no portal, duas minutas e duas vendas; carimbar um a partir do
+ * clique no outro é decidir o contrato de um lote que o operador nunca viu.
+ *
+ * A identidade usa o que a 0161 já guarda: o registro antigo APONTA para a linha viva que ele
+ * espelha. Mirror e viva compartilham identidade; duas vivas têm identidades diferentes.
+ *
+ * Medido na mesma data, sobre as 723 chaves com mais de uma linha: só 17 grupos (38 linhas) se
+ * partem com esta régua. Os 706 pares pai × gleba legítimos continuam andando juntos, que é o que a
+ * 0161 existe para garantir.
+ */
+export function identidadeDoTerreno(linha: { espelho_de?: null | string; id: string }): string {
+  return String(linha.espelho_de ?? "").trim() || linha.id;
+}
+
 export type PlanoDeVinculo = {
   /** Os ids que vão receber o carimbo — inclui os gêmeos dos escolhidos. */
   ids: string[];
@@ -96,15 +120,17 @@ export function planoDeVinculo(
   const escolhida = new Set(escolhidos.map((i) => String(i).trim()).filter(Boolean));
   if (escolhida.size === 0) return { ids: [], porParentesco: 0, terrenos: 0 };
 
+  // ⚠️ A IDENTIDADE, E NÃO A CHAVE DE QUADRA+LOTE. Ver `identidadeDoTerreno`: duas glebas vivas com
+  // o mesmo número de lote são dois terrenos, e só o registro antigo anda junto com a linha viva.
   const terrenosAlvo = new Set<string>();
   for (const linha of universo) {
-    if (escolhida.has(linha.id)) terrenosAlvo.add(chaveDoTerreno(linha));
+    if (escolhida.has(linha.id)) terrenosAlvo.add(identidadeDoTerreno(linha));
   }
 
   const ids: string[] = [];
   let porParentesco = 0;
   for (const linha of universo) {
-    if (!terrenosAlvo.has(chaveDoTerreno(linha))) continue;
+    if (!terrenosAlvo.has(identidadeDoTerreno(linha))) continue;
     ids.push(linha.id);
     if (!escolhida.has(linha.id)) porParentesco += 1;
   }

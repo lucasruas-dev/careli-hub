@@ -51,10 +51,13 @@ import { lerCadastroDeEmpreendimentos, type LinhaDoCadastro } from "./cadastro";
 import { ehIdDoPai, PREFIXO_DO_PAI } from "./expandir-id-do-painel";
 import { codigoDoProduto, ehIdDoPanteon, tipoProdutoDe, type TipoProduto } from "./produto-novo";
 import {
+  type CampoDaPlanilhaDeUnidades,
   type CampoDaUnidade,
   chaveDaColunaDeUnidades,
+  chaveDeVinculoDaColuna,
   chaveDaUnidade,
   type ColunaDaPlanilhaDeUnidades,
+  COLUNA_DE_CATEGORIA,
   colunasDaPlanilha,
   conferirPlanilhaDeUnidades,
   ehColunaDaUnidadeVerticalAusente,
@@ -72,6 +75,7 @@ import {
   type UnidadeNova,
   validarUnidade,
 } from "./unidade-nova";
+import { categoriaPorNome, comparavel } from "./vinculo-da-unidade";
 
 // ⚠️ "careli", A STRING. `hercules_unidades.workspace_id` é text com default 'careli' (0112). Um uuid
 // aqui não dá erro de tipo: casa zero linhas em silêncio, e a checagem de duplicado diria "nenhuma
@@ -143,6 +147,14 @@ export type UnidadeGravada = { codigo: string; id: string; rotulo: string; situa
 
 /** Uma linha da planilha (ou o formulário), julgada. */
 export type LinhaConferida = {
+  /**
+   * A categoria que esta linha CASOU, pelo nome cadastrado (não o que o operador digitou).
+   *
+   * ⚠️ É O RELATÓRIO DO VÍNCULO, e é por isso que ela sai por linha: o operador precisa ver "esta
+   * entrou em Condomínio" e "esta não casou com nada", sem abrir o arquivo de novo. Nulo = a coluna
+   * veio em branco (o estado normal) ou a linha não entra.
+   */
+  categoria: null | string;
   codigo: null | string;
   /** Linha como o operador vê no Excel: a 1 é o cabeçalho. */
   linha: number;
@@ -157,7 +169,15 @@ export type ConferenciaDoCadastro = {
   linhas: LinhaConferida[];
   /** As que podem ser gravadas (com ou sem aviso). */
   prontas: UnidadeConferida[];
-  resumo: { comAviso: number; comErro: number; jaExistem: number; prontas: number; total: number };
+  resumo: {
+    comAviso: number;
+    /** Quantas linhas prontas nascem com categoria. */
+    comCategoria: number;
+    comErro: number;
+    jaExistem: number;
+    prontas: number;
+    total: number;
+  };
 };
 
 type ProdutoPublico = Pick<ProdutoDoCadastro, "codigo" | "enterpriseId" | "nome" | "tipoProduto">;
@@ -323,12 +343,19 @@ export function produtoNoRecorteDoPortal(
 export function linhaNaChaveDoTipo(tipoProduto: TipoProduto, bruta: unknown): LinhaDaPlanilhaDeUnidades {
   if (!bruta || typeof bruta !== "object" || Array.isArray(bruta)) return {};
 
-  const campos = new Set<string>(colunasDaPlanilha(tipoProduto).map((c) => c.chave));
+  // A categoria entra junto: ela não é campo da unidade (`colunasDaPlanilha` desenha o formulário),
+  // mas é coluna da planilha e precisa chegar ao servidor para virar `categoria_id`.
+  const campos = new Set<string>([
+    ...colunasDaPlanilha(tipoProduto).map((c) => c.chave),
+    COLUNA_DE_CATEGORIA.chave,
+  ]);
   const saida: LinhaDaPlanilhaDeUnidades = {};
 
   for (const [chaveCrua, valor] of Object.entries(bruta as Record<string, unknown>)) {
     const exata = campos.has(chaveCrua);
-    const chave = exata ? (chaveCrua as CampoDaUnidade) : chaveDaColunaDeUnidades(tipoProduto, chaveCrua);
+    const chave = exata
+      ? (chaveCrua as CampoDaPlanilhaDeUnidades)
+      : chaveDaColunaDeUnidades(tipoProduto, chaveCrua) || chaveDeVinculoDaColuna(chaveCrua);
     if (!chave || !campos.has(chave)) continue;
     if (exata || saida[chave] === undefined) saida[chave] = valor;
   }
@@ -385,11 +412,22 @@ function chaveCompleta(tipoProduto: TipoProduto, chave: string): boolean {
  *   • na família (pai e glebas irmãs), SÓ NO LOTEAMENTO: a numeração de quadra e lote é do
  *     loteamento inteiro (é a chave com que a 0161 casou pai e gleba). Prédio não compartilha
  *     numeração: o 101 de uma torre não é o 101 de outra.
+ *
+ * ⚠️ E A CATEGORIA DA PLANILHA É RESOLVIDA AQUI, contra as categorias da FAMÍLIA (Lucas, 15/09/2026:
+ * *"normalmente vamos subir em massa essa configuração na importação de unidades"*). Nome que não
+ * existe é ERRO DA LINHA, nunca "entra sem categoria": a unidade entraria calada no lugar errado, e
+ * a categoria é o que decide qual minuta o lote assina.
  */
 export function conferirContraOBanco(
   tipoProduto: TipoProduto,
   linhas: LinhaDaPlanilhaDeUnidades[],
-  opcoes: { familia?: UnidadeExistente[]; prefixo: string; proprias?: UnidadeExistente[] },
+  opcoes: {
+    /** As categorias da FAMÍLIA (a categoria mora no pai e vale para as glebas). */
+    categorias?: readonly { id: string; nome: string }[];
+    familia?: UnidadeExistente[];
+    prefixo: string;
+    proprias?: UnidadeExistente[];
+  },
 ): ConferenciaDoCadastro {
   const base = conferirPlanilhaDeUnidades(tipoProduto, linhas, { prefixo: opcoes.prefixo });
   const campoDaChave = tipoProduto === "vertical" ? "torre/apartamento" : "quadra/lote";
@@ -450,6 +488,36 @@ export function conferirContraOBanco(
     prontas.push(conferida);
   }
 
+  // ⚠️ A CATEGORIA CASA POR NOME, IGNORANDO CAIXA E ACENTO (`categoriaPorNome`): o operador digita
+  // "CONDOMINIO" no Excel, e recusar por causa do acento faria a importação falhar por um detalhe de
+  // teclado. Nome que NÃO existe tira a linha da gravação e diz qual é — as outras entram.
+  const porNome = categoriaPorNome(opcoes.categorias ?? []);
+  const nomePeloId = new Map((opcoes.categorias ?? []).map((c) => [c.id, c.nome]));
+  const problemasDaCategoria = new Map<number, ProblemaDaLinhaDeUnidade>();
+  const prontasComVinculo: UnidadeConferida[] = [];
+
+  for (const conferida of prontas) {
+    const pedida = texto(conferida.categoria);
+    if (!pedida) {
+      prontasComVinculo.push(conferida);
+      continue;
+    }
+    const id = porNome.get(comparavel(pedida));
+    if (!id) {
+      problemasDaCategoria.set(conferida.linha, {
+        campo: "categoria",
+        linha: conferida.linha,
+        motivo:
+          (opcoes.categorias ?? []).length === 0
+            ? `Este empreendimento não tem categorias cadastradas, e a planilha pede "${pedida}". Cadastre a categoria antes, ou deixe a coluna em branco.`
+            : `A categoria "${pedida}" não existe neste empreendimento.`,
+        valor: pedida,
+      });
+      continue;
+    }
+    prontasComVinculo.push({ ...conferida, categoriaId: id });
+  }
+
   const problemasPorLinha = new Map<number, ProblemaDaLinhaDeUnidade[]>();
   const anotar = (p: ProblemaDaLinhaDeUnidade) => {
     const lista = problemasPorLinha.get(p.linha) ?? [];
@@ -459,8 +527,9 @@ export function conferirContraOBanco(
   // O aviso de uma linha que não vai entrar (ex.: "sem preço" numa unidade que já existe) só polui.
   for (const p of base.problemas) if (!(p.soAviso && jaExistem.has(p.linha))) anotar(p);
   for (const p of jaExistem.values()) anotar(p);
+  for (const p of problemasDaCategoria.values()) anotar(p);
 
-  const prontaPorLinha = new Map(prontas.map((u) => [u.linha, u]));
+  const prontaPorLinha = new Map(prontasComVinculo.map((u) => [u.linha, u]));
   const conferidaPorLinha = new Map(base.unidades.map((u) => [u.linha, u]));
 
   const saida: LinhaConferida[] = linhas.map((_, indice) => {
@@ -470,6 +539,7 @@ export function conferirContraOBanco(
     const conferida = conferidaPorLinha.get(linha);
     const temErro = !pronta || problemas.some((p) => !p.soAviso);
     return {
+      categoria: temErro || !pronta?.categoriaId ? null : (nomePeloId.get(pronta.categoriaId) ?? null),
       codigo: conferida?.codigo ?? null,
       linha,
       problemas,
@@ -481,12 +551,13 @@ export function conferirContraOBanco(
 
   return {
     linhas: saida,
-    prontas,
+    prontas: prontasComVinculo,
     resumo: {
       comAviso: saida.filter((l) => l.resultado === "aviso").length,
+      comCategoria: prontasComVinculo.filter((u) => u.categoriaId).length,
       comErro: saida.filter((l) => l.resultado === "erro").length,
       jaExistem: jaExistem.size,
-      prontas: prontas.length,
+      prontas: prontasComVinculo.length,
       total: saida.length,
     },
   };
@@ -504,6 +575,8 @@ export function autorGravavel(autor: AutorDoCadastro | null | undefined): AutorD
 }
 
 export type LinhaParaGravar = LinhaDeUnidadeNova & {
+  /** Só quando a planilha pediu categoria: chave ausente não é citada no insert. */
+  categoria_id?: string;
   origem_c2x_id: null;
   tipo_unidade: "apartamento" | "lote";
 };
@@ -517,7 +590,7 @@ export type LinhaParaGravar = LinhaDeUnidadeNova & {
  * para não tocar na linha, e o que a atualização usa para saber que o cadastro é daqui.
  */
 export function linhaParaGravar(
-  conferida: Pick<UnidadeConferida, "unidade">,
+  conferida: Pick<UnidadeConferida, "categoriaId" | "unidade">,
   contexto: { agora: Date; autor: AutorDoCadastro; produto: Pick<ProdutoDoCadastro, "codigo" | "enterpriseId"> },
 ): LinhaParaGravar {
   const linha = linhaDaUnidadeNova(conferida.unidade, {
@@ -528,6 +601,10 @@ export function linhaParaGravar(
   });
   return {
     ...linha,
+    // ⚠️ SÓ QUANDO A PLANILHA PEDIU. Mandar `categoria_id: null` seria igual em efeito, mas a chave
+    // ausente é o que faz o insert continuar funcionando se um dia a coluna não estiver lá — a
+    // mesma disciplina das colunas da 0171.
+    ...(conferida.categoriaId ? { categoria_id: conferida.categoriaId } : {}),
     origem_c2x_id: null,
     tipo_unidade: conferida.unidade.tipoProduto === "vertical" ? "apartamento" : "lote",
   };
@@ -821,6 +898,39 @@ async function lerExistentes(
   return { colunasVerticaisAusentes, ok: true, unidades };
 }
 
+/**
+ * As categorias da FAMÍLIA (o produto mais o pai e as glebas irmãs).
+ *
+ * ⚠️ DA FAMÍLIA, E NÃO DO PRODUTO. Medido em 21/09/2026: as 907 unidades com categoria apontam para
+ * as duas categorias cadastradas no Lagoa Bonita PAI (31), e 412 delas são linhas das glebas. Ler só
+ * o `enterprise_id` do produto faria a planilha da gleba dizer "a categoria Condomínio não existe"
+ * justamente para a categoria que carimba 750 lotes.
+ *
+ * ⚠️ FALHA NÃO DERRUBA O CADASTRO: devolve lista vazia, e a planilha que pediu categoria recusa a
+ * linha com "este empreendimento não tem categorias cadastradas". A unidade sem categoria entra —
+ * que é o estado normal de 36 dos 37 produtos.
+ */
+async function lerCategoriasDaFamilia(
+  admin: ClienteAdmin,
+  ids: string[],
+): Promise<{ id: string; nome: string }[]> {
+  try {
+    const { data, error } = await admin
+      .from("temis_categorias")
+      .select("id,nome,ativa")
+      .eq("workspace_id", WORKSPACE)
+      .in("enterprise_id", ids)
+      .order("nome", { ascending: true });
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as { ativa: boolean | null; id: string; nome: null | string }[])
+      .filter((c) => c.ativa !== false)
+      .map((c) => ({ id: c.id, nome: String(c.nome ?? "") }));
+  } catch (erro) {
+    console.warn("[hercules][cadastro-de-unidades] categorias da família indisponíveis", erro);
+    return [];
+  }
+}
+
 type GravadaCrua = {
   apartamento?: null | string;
   codigo: string;
@@ -975,7 +1085,17 @@ export async function executarCadastroDeUnidades(
   try {
     if (acao === "modelo") {
       return {
-        data: { colunas: colunasDaPlanilha(produto.tipoProduto), produto: produtoPublico(produto) },
+        data: {
+          // A planilha-modelo traz a coluna Categoria, e a tela precisa dos nomes aceitos para
+          // preencher o exemplo com uma categoria que existe de verdade neste empreendimento.
+          categorias: await lerCategoriasDaFamilia(admin, [produto.enterpriseId, ...familia]),
+          colunas: colunasDaPlanilha(produto.tipoProduto),
+          // ⚠️ A COLUNA DO VÍNCULO SAI SEPARADA das colunas da unidade. A tela do PORTAL monta um
+          // campo do formulário por item de `colunas`; a categoria não é campo da unidade e viraria
+          // um texto livre sem lista nem conferência. Quem monta a planilha-modelo junta as duas.
+          colunasDoVinculo: [COLUNA_DE_CATEGORIA],
+          produto: produtoPublico(produto),
+        },
         ok: true,
       };
     }
@@ -1001,7 +1121,9 @@ export async function executarCadastroDeUnidades(
     }
 
     const proprias = existentes.unidades.filter((u) => u.enterpriseId === produto.enterpriseId);
+    const categorias = await lerCategoriasDaFamilia(admin, [produto.enterpriseId, ...familia]);
     const conferencia = conferirContraOBanco(produto.tipoProduto, pedidoDeLinhas.linhas, {
+      categorias,
       familia: existentes.unidades.filter((u) => u.enterpriseId !== produto.enterpriseId),
       prefixo: produto.codigo,
       proprias,
@@ -1012,7 +1134,12 @@ export async function executarCadastroDeUnidades(
 
     const paraATela = {
       bloqueioDaGravacao: semColunasVerticais ? TEXTO_SEM_COLUNAS_VERTICAIS : null,
+      // ⚠️ A LISTA DE CATEGORIAS VAI JUNTO, e não é enfeite: sem ela a tela só saberia dizer "a
+      // categoria X não existe", e o operador teria de sair da importação para descobrir quais
+      // existem. Com ela, a conferência mostra os nomes aceitos ao lado do erro.
+      categorias,
       colunas: colunasDaPlanilha(produto.tipoProduto) as readonly ColunaDaPlanilhaDeUnidades[],
+      colunasDoVinculo: [COLUNA_DE_CATEGORIA],
       linhas: conferencia.linhas,
       produto: produtoPublico(produto),
       resumo: conferencia.resumo,
