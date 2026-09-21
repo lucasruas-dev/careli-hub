@@ -254,3 +254,23 @@ export function variaveisAindaEmBranco(html: string, semValor: readonly string[]
   const texto = String(html ?? "");
   return semValor.filter((nome) => texto.includes(`[${nome}]`));
 }
+
+/**
+ * O contrato ficou vazio — medindo o que o navegador realmente devolve.
+ *
+ * ⚠️ `html.trim()` NÃO RESPONDE ESTA PERGUNTA. Quem dá Ctrl+A e Backspace num `contenteditable`
+ * não deixa string vazia: o navegador mantém um `<br>`, e muitas vezes um `<p><br></p>`, porque
+ * precisa de um lugar para o cursor. Com a trava antiga isso era gravado como "alteração", o
+ * contrato ficava em branco e a mensagem que ensina a saída certa ("para voltar ao texto da
+ * minuta, use Descartar alterações") nunca chegava a aparecer.
+ *
+ * ⚠️ IMAGEM E TABELA VALEM SOZINHAS. A planta do lote e o quadro-resumo não têm uma letra, e
+ * recusar por falta de texto apagaria da tela um documento que existe.
+ */
+export function contratoFicouVazio(html: string): boolean {
+  const texto = String(html ?? "");
+  if (/<(img|table)\b/i.test(texto)) return false;
+  const semTags = texto.replace(/<[^>]*>/g, " ");
+  const semEspacoDuro = semTags.replace(/&nbsp;|&#0*160;|&#x0*a0;/gi, " ");
+  return semEspacoDuro.trim() === "";
+}

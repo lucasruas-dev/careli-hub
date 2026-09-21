@@ -19,6 +19,7 @@ import { montarContratoDaProposta } from "./contrato-da-proposta";
 import {
   baseMudou,
   impressaoDaBase,
+  contratoFicouVazio,
   sanitizarHtmlDoContrato,
   variaveisAindaEmBranco,
 } from "./contrato-editado";
@@ -732,9 +733,12 @@ export async function salvarEdicaoDoContrato(
   const propostaId = typeof corpo.propostaId === "string" ? corpo.propostaId : "";
   const html = typeof corpo.html === "string" ? corpo.html : "";
   if (!propostaId) return NextResponse.json({ erro: "Sem proposta." }, { status: 400 });
-  if (!html.trim()) {
+  if (contratoFicouVazio(html)) {
     // ⚠️ CONTRATO VAZIO NÃO É EDIÇÃO, É ACIDENTE — um "selecionar tudo + apagar" seguido de salvar.
     // Quem quer voltar ao texto da minuta usa o DELETE, que diz o que faz.
+    //
+    // ⚠️ E O VAZIO DO NAVEGADOR NÃO É STRING VAZIA: sobra um `<br>`, que passava pelo `trim()`.
+    // Ver `contratoFicouVazio`.
     return NextResponse.json(
       { erro: "O contrato ficou vazio. Para voltar ao texto da minuta, use “Descartar alterações”." },
       { status: 400 },

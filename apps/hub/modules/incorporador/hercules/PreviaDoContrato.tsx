@@ -218,6 +218,20 @@ export function PreviaDoContrato({
   /** O clique que fecha pelo fundo começou no fundo? Ver a nota do `onMouseDown` do fundo. */
   const gestoNoFundo = useRef(false);
   /**
+   * O que estava na folha quando a edição abriu.
+   *
+   * ⚠️ ABRIR PARA LER NÃO PODE VIRAR UMA ALTERAÇÃO. O texto salvo é uma FOTO (migration 0152):
+   * gravar uma "alteração" idêntica à minuta faz a tela passar a dizer "Alterado à mão por
+   * Fulano" e, pior, CONGELA o contrato — corrigir o CPF no Apolo ou publicar minuta nova
+   * deixa de alcançar aquele papel. Comparar com o que havia ao abrir é o que separa "li" de
+   * "reescrevi", e a comparação é justa porque os dois lados saem do MESMO `innerHTML`.
+   */
+  const textoAoAbrir = useRef<null | string>(null);
+  /** O último texto que NÓS escrevemos na folha, e em qual elemento. Ver `escreverNaFolha`. */
+  const ultimoEscrito = useRef<null | { alvo: HTMLDivElement; html: string }>(null);
+  /** Já há um fechamento em curso? Ver a nota da trava em `fechar`. */
+  const fechamentoEmCurso = useRef(false);
+  /**
    * A porta da Têmis.
    *
    * ⚠️ SEM PROVEDOR É O HUB, E É ASSIM QUE O PORTAL COMERCIAL CONTINUA. A Gurgel abre esta prévia
@@ -309,8 +323,19 @@ export function PreviaDoContrato({
    * ele também recalcula o que ficou sem valor sobre o texto novo. Sem a releitura, a tela mostra
    * uma coisa e o papel sai outra — exatamente o que esta tela existe para impedir.
    */
-  const salvar = useCallback(async (): Promise<boolean> => {
+  const salvar = useCallback(async (opcoes?: { recarregar?: boolean }): Promise<boolean> => {
     const html = folha.current?.innerHTML ?? "";
+
+    // ⚠️ SEM ALTERAÇÃO NÃO HÁ O QUE GRAVAR, e gravar assim mesmo tem preço: a linha nasce em
+    // `temis_contrato_edicoes`, a tela passa a dizer "Alterado à mão" e o contrato congela no
+    // texto daquele instante. Quem abriu para conferir uma cláusula não pediu isso.
+    if (textoAoAbrir.current !== null && html === textoAoAbrir.current) {
+      setEditando(false);
+      setSairSemSalvar(false);
+      textoAoAbrir.current = null;
+      return true;
+    }
+
     setSalvando(true);
     setErroDaGeracao(null);
     setFaxina([]);
@@ -344,6 +369,13 @@ export function PreviaDoContrato({
       setFaxina(j.data?.removeu ?? []);
       setEditando(false);
       setSairSemSalvar(false);
+      textoAoAbrir.current = null;
+      // ⚠️ QUEM VAI FECHAR NÃO ESPERA A PRÉVIA SER REMONTADA. Com a janela saindo da frente, o
+      // PUT mais a prévia mais a lista de guardados deixavam no lugar do contrato o esqueleto
+      // "Montando o contrato" e o botão em "Salvando…" — segundos de espera por uma tela que a
+      // pessoa já mandou sumir. Quem CONTINUA na tela recarrega, e aí a releitura é obrigatória:
+      // o servidor faxina o texto antes de gravar e recalcula o que ficou sem valor.
+      if (opcoes?.recarregar === false) return true;
       await carregar();
       return true;
     } catch (e) {
@@ -370,16 +402,61 @@ export function PreviaDoContrato({
    * fica aberta, com o texto na tela e o motivo escrito.
    */
   const fechar = useCallback(async () => {
-    if (!editando || sairSemSalvar) {
-      aoFechar();
-      return;
+    // ⚠️ DOIS CLIQUES NO X SÃO UM GESTO SÓ. Sem esta trava saem dois PUT concorrentes, dois
+    // registros de "alterou o contrato à mão" no log e um `aoFechar()` duplicado no pai.
+    //
+    // ⚠️ E A TRAVA É UM `ref`, NÃO O ESTADO `salvando`: os dois cliques chegam ANTES de o React
+    // re-renderizar, então o segundo ainda leria `salvando === false`. O `ref` muda na hora.
+    if (fechamentoEmCurso.current) return;
+    fechamentoEmCurso.current = true;
+    try {
+      if (!editando) {
+        aoFechar();
+        return;
+      }
+      // ⚠️ CLICAR DE NOVO É "TENTA OUTRA VEZ", e a queda mais comum é a rede piscando por dois
+      // segundos. Sair calado na segunda vez jogaria fora um texto que o servidor já estava
+      // pronto para aceitar. Só depois de falhar DE NOVO, e com o aviso na tela, a janela sai.
+      if (await salvar({ recarregar: false })) {
+        aoFechar();
+        return;
+      }
+      if (sairSemSalvar) {
+        aoFechar();
+        return;
+      }
+      setSairSemSalvar(true);
+    } finally {
+      fechamentoEmCurso.current = false;
     }
-    if (await salvar()) {
-      aoFechar();
-      return;
-    }
-    setSairSemSalvar(true);
   }, [aoFechar, editando, sairSemSalvar, salvar]);
+
+  /**
+   * O Esc é o TERCEIRO "fechar", e era o mais caro.
+   *
+   * ⚠️ QUEM ESCUTA O Esc NÃO É ESTA JANELA: é a MOLDURA da tela de trabalho, que fecha o CARD
+   * inteiro e volta para o quadro. Reescrever uma cláusula e apertar Esc — o reflexo de quem
+   * quer fechar uma janela — perdia o texto E a tela, de uma vez. Aqui o Esc vira o mesmo
+   * gesto do X: salva e fecha só a prévia.
+   *
+   * ⚠️ NA CAPTURA, E NÃO NA BOLHA: o evento nasce na folha e tem de ser interceptado na
+   * DESCIDA, antes de chegar a quem escuta lá embaixo. Com a janela do documento guardado
+   * aberta por cima, o Esc fecha ELA primeiro — a de cima é a que o Esc fecha.
+   */
+  useEffect(() => {
+    const aoTeclar = (evento: KeyboardEvent) => {
+      if (evento.key !== "Escape") return;
+      evento.stopPropagation();
+      evento.preventDefault();
+      if (contratoAberto) {
+        setContratoAberto(null);
+        return;
+      }
+      void fechar();
+    };
+    document.addEventListener("keydown", aoTeclar, true);
+    return () => document.removeEventListener("keydown", aoTeclar, true);
+  }, [contratoAberto, fechar]);
 
   /** Joga fora a alteração manual: o contrato volta a ser o texto da minuta. */
   const descartar = useCallback(async () => {
@@ -455,13 +532,23 @@ export function PreviaDoContrato({
    *
    * ⚠️ E RODA A CADA RENDER, DE PROPÓSITO: a folha só existe no DOM depois que a carga acaba,
    * e um efeito com lista de dependências poderia disparar antes do elemento existir e nunca
-   * mais — deixando a folha em branco. A escrita é condicionada à diferença, então o caso comum
-   * não toca no DOM.
+   * mais — deixando a folha em branco.
+   *
+   * ⚠️ E A GUARDA NÃO COMPARA COM O `innerHTML`: comparar os dois NUNCA dá igual num contrato
+   * real. O servidor serializa no estilo XHTML (`<br />`, `<hr />`, `&quot;` — ver
+   * `lib/temis/documento-html.ts`) e o getter do navegador devolve `<br>`, `<hr>`, `"`. A
+   * guarda antiga era sempre verdadeira, e as 27 páginas eram destruídas e reparseadas a cada
+   * render, levando junto a seleção de quem estava copiando um trecho. Guardar o que NÓS
+   * escrevemos, e em QUAL elemento, compara maçã com maçã — e o elemento entra na conta porque
+   * a folha é desmontada a cada carga (o esqueleto ocupa o lugar dela) e volta vazia.
    */
   const escreverNaFolha = () => {
     const alvo = folha.current;
     if (!alvo || editando) return;
-    if (alvo.innerHTML !== htmlDaFolha) alvo.innerHTML = htmlDaFolha;
+    const ultimo = ultimoEscrito.current;
+    if (ultimo && ultimo.alvo === alvo && ultimo.html === htmlDaFolha) return;
+    alvo.innerHTML = htmlDaFolha;
+    ultimoEscrito.current = { alvo, html: htmlDaFolha };
   };
   useEffect(escreverNaFolha);
   const semValor = resposta?.semValor ?? [];
@@ -897,6 +984,8 @@ export function PreviaDoContrato({
                     }
                     setFaxina([]);
                     setSairSemSalvar(false);
+                    // O ponto de partida da comparação — ver a nota de `textoAoAbrir`.
+                    textoAoAbrir.current = folha.current?.innerHTML ?? "";
                     setEditando(true);
                   }}
                   style={{

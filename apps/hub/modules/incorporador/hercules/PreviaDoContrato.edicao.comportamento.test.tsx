@@ -5,13 +5,17 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// A ALTERAÇÃO MANUAL DO CONTRATO TEM DE CHEGAR AO BANCO.
+// A ALTERAÇÃO MANUAL DO CONTRATO TEM DE CHEGAR AO BANCO — E SÓ ELA.
 //
 // Lucas, 21/09/2026: *"o time não está conseguindo editar manualmente o contrato... ela abre,
 // altera, fecha, depois que atualiza o valor que estava antes, ou seja, não está salvando"*.
 //
-// ⚠️ MEDIDO EM PRODUÇÃO NO MESMO DIA: `temis_contrato_edicoes` tem ZERO linhas, com o recurso no ar
-// desde 10/09. Nenhuma alteração manual jamais foi gravada.
+// ⚠️ MEDIDO EM PRODUÇÃO NO MESMO DIA: `temis_contrato_edicoes` tinha ZERO linhas, com o recurso no
+// ar desde 10/09. Nenhuma alteração manual jamais foi gravada.
+//
+// ⚠️ E O CONTRÁRIO TAMBÉM É DEFEITO: gravar sem ninguém ter alterado nada CONGELA o contrato. O
+// texto salvo é uma FOTO (ver a migration 0152): a partir dele, corrigir o CPF no Apolo ou publicar
+// minuta nova deixa de alcançar o papel. Abrir para ler não pode custar isso.
 
 (globalThis as unknown as { React: typeof React }).React = React;
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -27,10 +31,24 @@ const { PreviaDoContrato } = await import("./PreviaDoContrato");
 const DA_MINUTA = "<p>Contrato com o valor ANTIGO.</p>";
 const ESCRITO_A_MAO = "<p>Contrato com o valor NOVO, digitado pelo time.</p>";
 
+// ⚠️ O CONTRATO DE VERDADE TEM TAG VAZIA. O serializador do servidor escreve `<br />` (estilo
+// XHTML, `lib/temis/documento-html.ts`) e o `innerHTML` do navegador devolve `<br>` — as duas
+// formas nunca são iguais como texto. Um fixture sem tag vazia esconde isso.
+const COM_TAG_VAZIA = "<p>Cláusula primeira.</p><p><br /></p><p>Cláusula segunda.</p>";
+
 let chamadas: { body: unknown; metodo: string; url: string }[] = [];
+let container: HTMLDivElement;
+let root: Root;
+let fechou = 0;
+let recusar403 = false;
+let derrubarRede = false;
+let htmlDoServidor = DA_MINUTA;
+let salvamentosLentos: (() => void)[] = [];
+let segurarSalvamento = false;
 
 function montarFetch() {
   chamadas = [];
+  salvamentosLentos = [];
   globalThis.fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
     const endereco = String(url);
     chamadas.push({
@@ -42,6 +60,7 @@ function montarFetch() {
       return { json: async () => ({ data: { contratos: [] } }), ok: true } as unknown as Response;
     }
     if (endereco.includes("/contrato/edicao")) {
+      if (derrubarRede) throw new Error("Failed to fetch");
       if (recusar403) {
         return {
           json: async () => ({ error: "Usuario sem acesso ao Apolo." }),
@@ -49,12 +68,16 @@ function montarFetch() {
           status: 403,
         } as unknown as Response;
       }
-      return { json: async () => ({ data: { removeu: [] } }), ok: true } as unknown as Response;
+      const resposta = { json: async () => ({ data: { removeu: [] } }), ok: true } as unknown as Response;
+      if (segurarSalvamento) {
+        return new Promise<Response>((resolve) => salvamentosLentos.push(() => resolve(resposta)));
+      }
+      return resposta;
     }
     return {
       json: async () => ({
         baseImpressao: "a".repeat(64),
-        html: DA_MINUTA,
+        html: htmlDoServidor,
         minuta: { id: "m-1", nome: "MINUTA", versao: 6 },
         semValor: [],
       }),
@@ -63,16 +86,14 @@ function montarFetch() {
   }) as unknown as typeof fetch;
 }
 
-let container: HTMLDivElement;
-let root: Root;
-let fechou = 0;
-let recusar403 = false;
-
 function botao(rotulo: string): HTMLButtonElement {
   const achado = [...container.querySelectorAll("button")].find(
     (b) => (b.textContent ?? "").trim() === rotulo,
   );
-  if (!achado) throw new Error(`Sem botão "${rotulo}". Tem: ${[...container.querySelectorAll("button")].map((b) => `"${(b.textContent ?? "").trim()}"`).join(", ")}`);
+  if (!achado)
+    throw new Error(
+      `Sem botão "${rotulo}". Tem: ${[...container.querySelectorAll("button")].map((b) => `"${(b.textContent ?? "").trim()}"`).join(", ")}`,
+    );
   return achado as HTMLButtonElement;
 }
 
@@ -99,6 +120,14 @@ function fecharNoX() {
   });
 }
 
+function salvamentos() {
+  return chamadas.filter((c) => c.url.includes("/contrato/edicao") && c.metodo === "PUT");
+}
+
+function previas() {
+  return chamadas.filter((c) => c.url.includes("/contrato/previa"));
+}
+
 async function rerenderizar() {
   await act(async () => {
     root.render(
@@ -117,22 +146,14 @@ async function rerenderizar() {
 beforeEach(async () => {
   fechou = 0;
   recusar403 = false;
+  derrubarRede = false;
+  segurarSalvamento = false;
+  htmlDoServidor = DA_MINUTA;
   montarFetch();
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
-  await act(async () => {
-    root.render(
-      <PreviaDoContrato
-        aoFechar={() => {
-          fechou += 1;
-        }}
-        podeEditar
-        podeGerar
-        propostaId="proposta-1"
-      />,
-    );
-  });
+  await rerenderizar();
 });
 
 afterEach(async () => {
@@ -144,17 +165,47 @@ describe("alterar o contrato à mão e fechar", () => {
   it("manda para o servidor o texto QUE FOI DIGITADO, e não o da minuta", async () => {
     await clicar("Abrir o contrato");
 
-    const folha = container.querySelector(".previa-do-contrato") as HTMLDivElement;
+    const folha = folhaDoContrato();
     expect(folha.getAttribute("contenteditable")).toBe("true");
     // O navegador é quem escreve no `contentEditable`; aqui isso é o innerHTML mudando fora do React.
     folha.innerHTML = ESCRITO_A_MAO;
 
     await clicar("Fechar o contrato");
 
-    const salvamento = chamadas.find((c) => c.url.includes("/contrato/edicao"));
+    const salvamento = salvamentos()[0];
     expect(salvamento, "nenhum PUT para /contrato/edicao").toBeTruthy();
-    expect(salvamento?.metodo).toBe("PUT");
     expect((salvamento?.body as { html?: string })?.html).toBe(ESCRITO_A_MAO);
+  });
+});
+
+// ── ABRIR PARA LER NÃO PODE VIRAR UMA ALTERAÇÃO ─────────────────────────────
+//
+// ⚠️ O TEXTO SALVO É UMA FOTO, E A FOTO CONGELA O CONTRATO. Gravar uma "alteração" idêntica à
+// minuta faz a tela passar a dizer "Alterado à mão por Fulano" e, pior, desliga a atualização do
+// cadastro: corrigir o CPF no Apolo ou publicar minuta nova deixa de alcançar aquele contrato.
+// Quem abriu só para conferir uma cláusula não pediu nada disso.
+describe("abrir e fechar sem digitar nada", () => {
+  it("não grava alteração nenhuma", async () => {
+    await clicar("Abrir o contrato");
+    await clicar("Fechar o contrato");
+
+    expect(salvamentos(), "gravou uma edição que ninguém fez").toHaveLength(0);
+  });
+
+  it("pelo X também não grava, e a janela fecha", async () => {
+    await clicar("Abrir o contrato");
+    await fecharNoX();
+
+    expect(salvamentos()).toHaveLength(0);
+    expect(fechou).toBe(1);
+  });
+
+  it("mas uma vírgula a mais já é alteração", async () => {
+    await clicar("Abrir o contrato");
+    folhaDoContrato().innerHTML = `${DA_MINUTA}<p>,</p>`;
+    await clicar("Fechar o contrato");
+
+    expect(salvamentos()).toHaveLength(1);
   });
 });
 
@@ -172,7 +223,7 @@ describe("fechar a janela no meio da edição", () => {
 
     await fecharNoX();
 
-    const salvamento = chamadas.find((c) => c.url.includes("/contrato/edicao"));
+    const salvamento = salvamentos()[0];
     expect(salvamento, "o X fechou sem mandar o texto para o servidor").toBeTruthy();
     expect((salvamento?.body as { html?: string })?.html).toBe(ESCRITO_A_MAO);
     expect(fechou).toBe(1);
@@ -180,7 +231,7 @@ describe("fechar a janela no meio da edição", () => {
 
   it("fora da edição o X fecha na hora, sem inventar salvamento", async () => {
     await fecharNoX();
-    expect(chamadas.some((c) => c.url.includes("/contrato/edicao"))).toBe(false);
+    expect(salvamentos()).toHaveLength(0);
     expect(fechou).toBe(1);
   });
 
@@ -207,9 +258,66 @@ describe("fechar a janela no meio da edição", () => {
       overlay().dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect((chamadas.find((c) => c.url.includes("/contrato/edicao"))?.body as { html?: string })?.html).toBe(
-      ESCRITO_A_MAO,
-    );
+    expect((salvamentos()[0]?.body as { html?: string })?.html).toBe(ESCRITO_A_MAO);
+    expect(fechou).toBe(1);
+  });
+
+  // ⚠️ O Esc É O TERCEIRO "FECHAR", e o mais traiçoeiro: quem escuta é a MOLDURA da tela de
+  // trabalho (`modules/temis/blocks/trabalho`), que fecha o card inteiro e volta para o quadro.
+  // Sem parar o Esc aqui, reescrever uma cláusula e apertar Esc perdia o texto E a tela.
+  it("o Esc salva e fecha só a prévia, sem deixar a tecla chegar na tela de trás", async () => {
+    const naTelaDeTras = vi.fn();
+    document.addEventListener("keydown", naTelaDeTras);
+    try {
+      await clicar("Abrir o contrato");
+      folhaDoContrato().innerHTML = ESCRITO_A_MAO;
+
+      await act(async () => {
+        // O Esc nasce onde o cursor esta: na folha. Quem escuta la embaixo e a Moldura da tela.
+        folhaDoContrato().dispatchEvent(
+          new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }),
+        );
+      });
+
+      expect((salvamentos()[0]?.body as { html?: string })?.html).toBe(ESCRITO_A_MAO);
+      expect(fechou).toBe(1);
+      expect(naTelaDeTras, "o Esc vazou para quem está atrás").not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener("keydown", naTelaDeTras);
+    }
+  });
+
+  // ⚠️ FECHAR É FECHAR. Esperar a prévia inteira ser remontada (PUT + prévia + lista de guardados)
+  // deixava a janela aberta mostrando o esqueleto "Montando o contrato" com o botão em "Salvando…"
+  // — em contrato grande, segundos olhando uma tela que a pessoa já mandou sair.
+  it("não espera a prévia recarregar para sair da frente", async () => {
+    await clicar("Abrir o contrato");
+    folhaDoContrato().innerHTML = ESCRITO_A_MAO;
+
+    await fecharNoX();
+
+    expect(fechou).toBe(1);
+    expect(previas(), "recarregou a prévia de uma janela que já fechou").toHaveLength(1);
+  });
+
+  // ⚠️ DOIS CLIQUES NO X SÃO UM GESTO SÓ. Sem trava, saem dois PUT concorrentes, dois registros de
+  // "alterou o contrato à mão" no log e um `aoFechar()` duplicado no pai.
+  it("clique duplo no X manda um salvamento só", async () => {
+    segurarSalvamento = true;
+    await clicar("Abrir o contrato");
+    folhaDoContrato().innerHTML = ESCRITO_A_MAO;
+
+    const x = container.querySelector('button[aria-label="Fechar"]') as HTMLButtonElement;
+    await act(async () => {
+      x.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      x.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(salvamentos()).toHaveLength(1);
+
+    await act(async () => {
+      salvamentosLentos.forEach((liberar) => liberar());
+    });
     expect(fechou).toBe(1);
   });
 });
@@ -217,8 +325,8 @@ describe("fechar a janela no meio da edição", () => {
 // ── QUANDO O SERVIDOR RECUSA ────────────────────────────────────────────────
 //
 // ⚠️ A TELA OFERECE A EDIÇÃO A QUEM O SERVIDOR NÃO DEIXA EDITAR. `podeEditar` na Têmis olha só a
-// etapa do card; quem grava é `autorizarEmissaoDeContrato` (admin + leader). Medido em 21/09/2026:
-// existem 2 `operator` ATIVOS (entraram em 16/09), e para eles o PUT volta 403 — a nota de 08/09 em
+// etapa do card; quem grava é `autorizarEmissaoDeContrato`. Medido em 21/09/2026: existem 2
+// `operator` ATIVOS (entraram em 16/09), e para eles o PUT volta 403 — a nota de 08/09 em
 // `lib/temis/autorizacao.ts` dizia "hoje isto não tira ninguém de dentro" porque naquela data havia
 // ZERO operators. A premissa venceu.
 describe("o servidor recusa a alteração", () => {
@@ -243,6 +351,24 @@ describe("o servidor recusa a alteração", () => {
     expect(container.textContent).toContain("fechar de novo");
 
     await fecharNoX();
+    expect(fechou).toBe(1);
+  });
+
+  // ⚠️ CLICAR DE NOVO É "TENTA OUTRA VEZ", e a queda mais comum é a rede piscando. Sair calado na
+  // segunda tentativa jogaria fora um texto que o servidor já estava pronto para aceitar.
+  it("com a rede de volta, o segundo clique TENTA salvar antes de desistir", async () => {
+    derrubarRede = true;
+    await clicar("Abrir o contrato");
+    folhaDoContrato().innerHTML = ESCRITO_A_MAO;
+
+    await fecharNoX();
+    expect(fechou).toBe(0);
+
+    derrubarRede = false;
+    await fecharNoX();
+
+    expect(salvamentos(), "o segundo clique saiu sem tentar de novo").toHaveLength(2);
+    expect((salvamentos().at(-1)?.body as { html?: string })?.html).toBe(ESCRITO_A_MAO);
     expect(fechou).toBe(1);
   });
 });
@@ -272,9 +398,7 @@ describe("a folha sob re-render", () => {
     await rerenderizar();
     await clicar("Fechar o contrato");
 
-    expect(
-      (chamadas.find((c) => c.url.includes("/contrato/edicao"))?.body as { html?: string })?.html,
-    ).toBe(ESCRITO_A_MAO);
+    expect((salvamentos()[0]?.body as { html?: string })?.html).toBe(ESCRITO_A_MAO);
   });
 
   it("fora da edição, o texto do servidor continua mandando na folha", async () => {
@@ -283,5 +407,30 @@ describe("a folha sob re-render", () => {
     expect(folhaDoContrato().innerHTML).toBe(DA_MINUTA);
     await rerenderizar();
     expect(folhaDoContrato().innerHTML).toBe(DA_MINUTA);
+  });
+
+  // ⚠️ COMPARAR `innerHTML` COM O HTML DO SERVIDOR NUNCA DÁ IGUAL num contrato real: o servidor
+  // escreve `<br />` e o navegador devolve `<br>`. Uma guarda que nunca fecha faz a folha inteira
+  // (27 páginas) ser destruída e reparseada a cada render, e leva junto a seleção de quem estava
+  // copiando um trecho.
+  it("em leitura, um render novo NÃO recria os nós da folha", async () => {
+    htmlDoServidor = COM_TAG_VAZIA;
+    await act(async () => root.unmount());
+    container.remove();
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await rerenderizar();
+
+    const primeiroParagrafo = folhaDoContrato().firstElementChild;
+    expect(primeiroParagrafo?.textContent).toContain("Cláusula primeira");
+
+    await rerenderizar();
+    await rerenderizar();
+
+    expect(
+      folhaDoContrato().firstElementChild,
+      "a folha foi reescrita e os nós trocaram de identidade",
+    ).toBe(primeiroParagrafo);
   });
 });

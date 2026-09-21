@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   baseMudou,
+  contratoFicouVazio,
   impressaoDaBase,
   sanitizarHtmlDoContrato,
   variaveisAindaEmBranco,
@@ -130,5 +131,32 @@ describe("variaveisAindaEmBranco — a trava mede o papel, não a montagem", () 
     // ⚠️ POR ISSO A LISTA VEM DO MOTOR. Uma regex de `[algo]` acusaria "[sic]" e "[assinatura]" —
     // colchetes que alguém escreveu de propósito — e travaria a emissão de um contrato correto.
     expect(variaveisAindaEmBranco("<p>conforme [sic] o item [assinatura]</p>", [])).toEqual([]);
+  });
+});
+
+// ⚠️ "SELECIONAR TUDO E APAGAR" NÃO DEIXA A FOLHA VAZIA: o navegador guarda um `<br>` (ou um
+// `<p><br></p>`) para ter onde pôr o cursor. A trava antiga era `html.trim()`, e um `<br>` passa
+// por ela — gravava-se um contrato em branco e a mensagem que ensina a saída certa
+// ("use Descartar alterações") nunca aparecia.
+describe("contratoFicouVazio — o que o navegador deixa depois de apagar tudo", () => {
+  it("o resto do Ctrl+A + Backspace conta como vazio", () => {
+    expect(contratoFicouVazio("")).toBe(true);
+    expect(contratoFicouVazio("   ")).toBe(true);
+    expect(contratoFicouVazio("<br>")).toBe(true);
+    expect(contratoFicouVazio("<p><br></p>")).toBe(true);
+    expect(contratoFicouVazio("<p><br /></p>")).toBe(true);
+    expect(contratoFicouVazio("<div><p>&nbsp;</p><p><br></p></div>")).toBe(true);
+  });
+
+  it("uma letra que seja já é contrato", () => {
+    expect(contratoFicouVazio("<p>a</p>")).toBe(false);
+    expect(contratoFicouVazio("<p>Cláusula primeira.</p><p><br /></p>")).toBe(false);
+  });
+
+  // ⚠️ CONTRATO TEM PEÇA SEM TEXTO. A planta do lote e o quadro-resumo são imagem e tabela; um
+  // anúncio de "ficou vazio" ali apagaria da tela um documento que existe.
+  it("imagem e tabela contam como conteúdo, mesmo sem uma letra", () => {
+    expect(contratoFicouVazio('<p><img src="https://x/planta.png" /></p>')).toBe(false);
+    expect(contratoFicouVazio("<table><tr><td></td></tr></table>")).toBe(false);
   });
 });

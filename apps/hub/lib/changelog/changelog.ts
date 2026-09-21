@@ -36,6 +36,38 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-21-abrir-o-contrato-para-ler-nao-altera-nada",
+    deployedAt: "2026-09-21T13:55:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Abrir o contrato só para ler deixa de contar como alteração.** Quem abria e fechava sem digitar nada gravava uma alteração igual à minuta, e isso CONGELAVA o contrato: dali em diante, corrigir um dado no cadastro ou publicar minuta nova não chegava mais naquele papel, e a tela passava a dizer \"Alterado à mão\" sem ninguém ter alterado.",
+              "**O Esc agora fecha só a prévia, salvando o que foi escrito.** Antes ele fechava o card inteiro e voltava para o quadro, levando junto a cláusula que estava sendo reescrita.",
+              "**Fechar sai da frente na hora**, em vez de segurar a janela mostrando \"Montando o contrato\" enquanto o texto era guardado.",
+              "**Se a internet piscar, clicar em fechar de novo tenta salvar de novo** em vez de desistir calado. E dois cliques seguidos no X viram um só.",
+              "**Apagar o contrato inteiro sem querer não é mais gravado.** Selecionar tudo e apagar deixa um resto invisível na folha que passava pela trava de \"contrato vazio\".",
+              "**A folha para de ser remontada a cada atualização da tela**, o que apagava a seleção de quem estava copiando um trecho e refazia as 27 páginas sem necessidade.",
+            ],
+            screen: "Contrato · Prévia e edição",
+          },
+        ],
+      },
+    ],
+    rollback: "f156c0ff",
+    technical: {
+      done:
+        "Saída da revisão adversarial da 1.353.3 (32 agentes, quatro lentes, dois céticos por achado): 12 achados sobreviveram à verificação, e os mais graves eram regressão do próprio commit anterior. (1) FECHAR PASSOU A GRAVAR SEMPRE, inclusive quando ninguém alterou nada — e a edição é uma FOTO (migration 0152), ou seja, abrir para conferir congelava o contrato e desligava a atualização pelo cadastro. Agora `textoAoAbrir` guarda o `innerHTML` do instante em que a edição abriu e o salvamento compara maçã com maçã (os dois lados saem do mesmo getter); igual = nada vai ao servidor. Medido antes de corrigir: `temis_contrato_edicoes` ainda com 0 linhas, nenhum contrato chegou a congelar. (2) A GUARDA DE `escreverNaFolha` NUNCA FECHAVA: o servidor serializa em estilo XHTML (`<br />`, `<hr />`, `&quot;` — `documento-html.ts`) e o getter do navegador devolve `<br>`, `<hr>`, `\"`, então `innerHTML !== htmlDaFolha` era sempre verdadeiro e as 27 páginas eram destruídas e reparseadas a cada render, matando a seleção de quem copiava. Passou a comparar com o que NÓS escrevemos (`ultimoEscrito`, guardando também o elemento, porque a folha é desmontada a cada carga). (3) O Esc era o TERCEIRO \"fechar\", e o pior: quem o escuta é a Moldura da tela de trabalho, que fecha o card. Agora a prévia intercepta na CAPTURA, salva e fecha só a si mesma (com a janela do documento guardado aberta, o Esc fecha a de cima). (4) `fechar()` ganhou trava de `ref` (dois cliques = dois PUT e dois `aoFechar`, porque o estado `salvando` só vale no render seguinte), deixou de esperar `carregar()` quando a janela vai sumir, e o segundo clique passou a TENTAR salvar de novo antes de desistir (rede que pisca). (5) Servidor: nova `contratoFicouVazio` em `contrato-editado.ts` — `html.trim()` deixava passar o `<br>` que o navegador guarda depois de Ctrl+A + Backspace; imagem e tabela contam como conteúdo, porque a planta do lote e o quadro-resumo não têm uma letra. 23 testes de comportamento na prévia (era 10) e 6 na trava de vazio; 489 arquivos e 7.700 testes, typecheck limpo. ⚠️ ACHADO FORA DESTE commit, para tratar depois: o Esc sobre o VisorDeDocumento (`visor-de-documento.tsx`) fecha o visor E a tela de trabalho junto.",
+      motivation:
+        "A própria 1.353.3, que consertou o salvamento, criou o defeito oposto: fechar passou a gravar mesmo sem alteração, e uma alteração gravada congela o contrato no texto daquele instante. Achado pela revisão adversarial do commit, antes de alguém na operação tropecar nele.",
+    },
+    title: "Contrato: abrir para ler não altera mais nada",
+    type: "correcao",
+    version: "1.353.4",
+  },
+  {
     buildTag: "2026-09-21-contrato-alterado-a-mao-salva-de-verdade",
     deployedAt: "2026-09-21T13:05:00-03:00",
     modules: [
