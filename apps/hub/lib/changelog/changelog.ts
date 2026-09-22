@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-22-a-apresentacao-entra-na-aba",
+    deployedAt: "2026-09-22T10:30:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "**A apresentação comercial em PDF agora fica na aba Arquivos**, ao lado do vídeo e das fotos. Ela abre na própria tela, em tela cheia, com as páginas e o zoom do navegador — sem baixar nada e sem sair do portal. Até 200 MB.",
+              "**Foto e vídeo passaram a abrir JÁ em tela cheia**, sem o segundo clique no botão de expandir.",
+              "**E a mídia ocupa a tela toda.** O vídeo do Cecílio Rocha é 1024×512 e abria num quadradinho no meio do preto, porque o visualizador nunca passava do tamanho original do arquivo.",
+              "**No Garden Resort já estão lá:** o vídeo, a apresentação de 70 páginas e as 45 cenas, nessa ordem.",
+            ],
+            screen: "Produto · Arquivos",
+          },
+        ],
+      },
+    ],
+    rollback: "01fb887e",
+    technical: {
+      done:
+        "`documento` é um TIPO NOVO, e nao um \"outro\": o `tipo` decide o que a tela desenha e como o visualizador abre. Migration 0185 (aplicada e conferida): CHECK do tipo aceita `documento` e `application/pdf` entra no `allowed_mime_types` do bucket -- as duas camadas andam juntas, senao a permissao assinada sai e a gravacao falha com um erro que nao diz nada na tela. A regua ganhou o formato com teto de 200 MB (a apresentacao do Garden tem 124 MB, com 70 renders de 4396x2472); SO PDF, porque DOCX e PPTX nao abrem no navegador sem converter. O visualizador abre o PDF num `iframe` com a URL assinada, usando o leitor do proprio navegador -- SEM `sandbox`, que faria o Chrome desligar o leitor e BAIXAR o arquivo. Os rotulos por tipo viraram MAPA (`ROTULO_DO_TIPO`, `ARTIGO_DO_TIPO`) e `resumoDaGaleria` passou a contar cada tipo: enquanto eram dois, `tipo === \"video\" ? ... : ...` e \"o resto e video\" funcionavam, e com o terceiro cada um desses vira um lugar onde o PDF se chama foto. A abertura em tela cheia pede ao montar, UMA vez por abertura (`jaPediuTelaCheia`), e NAO cai para o modo imersivo: o imersivo e o consolo de quem PEDIU tela cheia num navegador que nao a da, e esconde os botoes -- na abertura automatica seria popup sem botoes e dois Esc para sair. `.vdm-midia` passou de so `max-*` para `width`/`height` 100% com `object-fit: contain`. Dois testes usavam PDF como exemplo de formato recusado e viraram .zip/.xlsx. 7.802 testes verdes, typecheck limpo. NAO VERIFICADO EM TELA (o hub exige login): quanto um PDF de 124 MB demora para aparecer no iframe na primeira abertura.",
+      motivation:
+        "Lucas, 22/09/2026, subindo o material do Garden Resort: \"tem uma apresentacao tambem sobe ela\", \"um arquivo so: o PDF\", \"tem que abrir em full\" e, com o print do video num quadradinho, \"o video tem que abrir em fulltela\".",
+    },
+    title: "A apresentação em PDF na aba Arquivos, e a mídia abrindo em tela cheia",
+    type: "novidade",
+    version: "1.360.3",
+  },
+  {
     buildTag: "2026-09-22-a-linha-do-quadro",
     deployedAt: "2026-09-22T09:29:51-03:00",
     modules: [
