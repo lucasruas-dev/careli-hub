@@ -74,6 +74,8 @@ export type ApoloEnterpriseBucket =
   | "disponivel"
   | "reservado"
   | "negociacao"
+  /** A venda pedindo para sair, desde 21/09/2026. Ver `em_cancelamento` na régua da situação. */
+  | "em_cancelamento"
   | "vendido"
   | "bloqueado";
 
@@ -86,6 +88,26 @@ export type ApoloEnterpriseScenario = Record<
   ApoloEnterpriseBucket | "total",
   ApoloEnterpriseTally
 >;
+
+/**
+ * Os baldes do cenário, na ordem em que as telas os leem — e a lista ÚNICA de quem monta um cenário
+ * do zero.
+ *
+ * ⚠️ TRÊS LUGARES MONTAVAM O CENÁRIO COM A PRÓPRIA CÓPIA DESTA LISTA (`sumScenarios` aqui,
+ * `cenarioVazio` do painel de produtos e o helper do teste da rota), e os três com
+ * `{} as ApoloEnterpriseScenario`: o tipo prometia a chave e o objeto saía sem ela. Quando o balde
+ * `em_cancelamento` nasceu, em 21/09/2026, `cenario.em_cancelamento.units` quebraria em tempo de
+ * execução sem um aviso sequer do typecheck. Balde novo entra aqui, uma vez.
+ */
+export const BALDES_DO_CENARIO: ReadonlyArray<ApoloEnterpriseBucket | "total"> = [
+  "total",
+  "disponivel",
+  "reservado",
+  "negociacao",
+  "em_cancelamento",
+  "vendido",
+  "bloqueado",
+];
 
 export type ApoloEnterpriseRow = {
   city: string | null;
@@ -230,6 +252,7 @@ function cenarioZerado(): ApoloEnterpriseScenario {
   const zero = (): ApoloEnterpriseTally => ({ units: 0, value: 0 });
   return {
     bloqueado: zero(),
+    em_cancelamento: zero(),
     disponivel: zero(),
     negociacao: zero(),
     reservado: zero(),
@@ -1219,16 +1242,7 @@ function groupEnterpriseRows(rows: ApoloEnterpriseRow[]): ApoloEnterpriseRow[] {
 }
 
 function sumScenarios(rows: ApoloEnterpriseRow[]): ApoloEnterpriseScenario {
-  const buckets: Array<ApoloEnterpriseBucket | "total"> = [
-    "total",
-    "disponivel",
-    "reservado",
-    "negociacao",
-    "vendido",
-    "bloqueado",
-  ];
-
-  return buckets.reduce((accumulator, bucket) => {
+  return BALDES_DO_CENARIO.reduce((accumulator, bucket) => {
     accumulator[bucket] = rows.reduce(
       (tally, row) => ({
         units: tally.units + row.scenario[bucket].units,
@@ -1269,6 +1283,9 @@ export function mapEnterpriseRow(row: EnterpriseQueryRow): ApoloEnterpriseRow {
     scenario: {
       bloqueado: tally(row.bloqueado_units, row.bloqueado_value),
       disponivel: tally(row.disponivel_units, row.disponivel_value),
+      // ⚠️ ZERO, E NÃO UM NÚMERO DO LEGADO: o pedido de cancelamento nasce no Panteon e o C2X não
+      // sabe dele. Quem conta este balde de verdade é a régua (`cenariosPelaRegua`).
+      em_cancelamento: tally(0, 0),
       negociacao: tally(row.negociacao_units, row.negociacao_value),
       reservado: tally(row.reservado_units, row.reservado_value),
       total: tally(row.total_units, row.total_value),

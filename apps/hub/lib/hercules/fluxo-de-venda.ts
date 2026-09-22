@@ -14,6 +14,7 @@
 import type { FaixaDePrazo } from "@/lib/hercules/premissa-do-prazo";
 import { periodicidadeDaTaxa } from "@/lib/apolo/periodicidade-da-taxa";
 
+import { DEPOIS_DO_CONTRATO } from "./acao-de-cancelamento";
 import { codigoDaVenda } from "./codigo-da-venda";
 import { tipoDaUnidade } from "./nome-da-unidade";
 import type { TipoProduto } from "./produto-novo";
@@ -60,7 +61,24 @@ export type EtapaDoEspelho =
    */
   | "vendida"
   /** O par de `vendida`: reservada no cadastro, sem proposta que sustente. Hoje, zero casos. */
-  | "reservada";
+  | "reservada"
+  /**
+   * ⚠️ A VENDA COM CANCELAMENTO (OU DISTRATO) PEDIDO, esperando o jurídico. Lucas (21/09/2026):
+   * *"hoje ele aponta para contrato e polui nossos indicadores, acho que devemos separar, pode
+   * trazer uma cor nova para cancelamento"* e *"e um card novo"*.
+   *
+   * ⚠️ ELA NÃO É ETAPA DA PROPOSTA, E ISSO É DE PROPÓSITO. No banco a venda continua em
+   * `contrato`/`assinatura`/`faturado` — a etapa só muda quando o jurídico conclui, e é essa
+   * decisão que a 0134 registrou (*"a etapa NÃO muda, quem desfaz é o jurídico, e mexer nela
+   * devolveria o lote ao estoque com o contrato ainda de pé"*). Quem depende disso: a trava do
+   * lote, que procura outro dono por `etapa in (ETAPAS_DO_FLUXO)`. Tirar a venda dali soltaria o
+   * lote para uma segunda venda enquanto o contrato ainda existe.
+   *
+   * Aqui ela é SITUAÇÃO DE TELA, derivada da marca `cancelamento_pedido_em` com card vivo na
+   * Têmis. Medido em 21/09/2026: 9 vendas, R$ 1.702.143 — 7 delas em `assinatura` e não em
+   * `contrato`, e 8 são distrato.
+   */
+  | "em_cancelamento";
 
 /**
  * A faixa do fluxo, com o estoque na frente: é dele que a venda começa.
@@ -69,10 +87,44 @@ export type EtapaDoEspelho =
  * lote bloqueado está fora da oferta, e somá-lo ao pipeline daria ao coordenador um estoque que
  * ele não pode vender.
  */
-export const ETAPAS_DA_FAIXA: readonly ("disponivel" | EtapaDoFluxo)[] = [
+export type EtapaDaFaixa = "disponivel" | "em_cancelamento" | EtapaDoFluxo;
+
+export const ETAPAS_DA_FAIXA: readonly EtapaDaFaixa[] = [
   "disponivel",
   ...ETAPAS_DO_FLUXO,
+  // ⚠️ NO FIM, E FORA DA FILA: o cancelamento não é o passo seguinte ao faturado, é a saída. No
+  // meio, entre contrato e assinatura, o cartão diria ao coordenador que a venda anda para lá.
+  "em_cancelamento",
 ];
+
+/**
+ * A venda que já teve o cancelamento PEDIDO: ela sai da etapa dela na faixa e passa a contar
+ * sozinha.
+ *
+ * ⚠️ A MARCA SÓ VALE DEPOIS DO CONTRATO. Antes dele o cancelamento é ato do coordenador e a etapa
+ * muda na hora (a proposta vira `cancelado`); a marca que fica é a do pedido ao jurídico, e é só
+ * essa que tira a venda do número de contrato.
+ *
+ * ⚠️ E A MARCA JÁ CHEGA PENEIRADA. Quem monta a carga passa antes por `soltarMarcasQueSobraram`
+ * (`marca-de-pedido.ts`), que solta a marca sem card vivo na Têmis — ler a coluna crua contaria
+ * como "em cancelamento" a venda de um pedido indeferido meses atrás.
+ */
+export const ehVendaEmCancelamento = (p: {
+  cancelamento_pedido_em?: null | string;
+  etapa: string;
+}): boolean => Boolean(p.cancelamento_pedido_em) && DEPOIS_DO_CONTRATO.has(p.etapa);
+
+/**
+ * A MESMA pergunta, na linha da lista — que é o que a tela tem na mão.
+ *
+ * ⚠️ DUAS FORMAS DO MESMO DADO, e por isso duas funções e não duas regras: a carga vem do banco em
+ * `cancelamento_pedido_em` e a lista sai daqui em `cancelamentoPedidoEm`. O que não pode existir é
+ * uma segunda RÉGUA — o cartão contaria uma coisa e a lista mostraria outra.
+ */
+export const linhaEmCancelamento = (l: {
+  cancelamentoPedidoEm?: null | string;
+  etapa: string;
+}): boolean => Boolean(l.cancelamentoPedidoEm) && DEPOIS_DO_CONTRATO.has(l.etapa);
 
 export type PropostaDaCarga = {
   cliente_documento: null | string;
@@ -707,6 +759,8 @@ export function agregarFluxo({
 
   let canceladas = 0;
   let distratos = 0;
+  let emCancelamento = 0;
+  let vgvEmCancelamento = 0;
   let vgvCancelado = 0;
   let vgvFaturado = 0;
 
@@ -721,7 +775,15 @@ export function agregarFluxo({
     const valor = numero(p.valor);
 
     // A FAIXA: estado atual, sem janela.
-    if (ehDoFluxo(p.etapa)) {
+    //
+    // ⚠️ A VENDA EM CANCELAMENTO SAI DA ETAPA DELA, e é o ponto de tudo isto (Lucas, 21/09/2026:
+    // *"hoje ele aponta para contrato e polui nossos indicadores"*). Ela não é somada duas vezes
+    // nem fica nas duas: o cartão de contrato passa a contar só o que o jurídico não está
+    // desfazendo, que é o que o coordenador quer saber ao olhar para ele.
+    if (ehVendaEmCancelamento(p)) {
+      emCancelamento += 1;
+      vgvEmCancelamento += valor;
+    } else if (ehDoFluxo(p.etapa)) {
       const atual = porEtapa.get(p.etapa)!;
       atual.propostas += 1;
       atual.vgv += valor;
@@ -837,19 +899,21 @@ export function agregarFluxo({
     faixasDePrazo: {},
     paiPorEmpreendimento: {},
     planos: [],
-    fluxo: ETAPAS_DA_FAIXA.map((etapa) =>
-      etapa === "disponivel"
-        ? {
-            etapa,
-            quantidade: disponiveis,
-            vgv: Math.round(vgvDisponivel * 100) / 100,
-          }
-        : {
-            etapa,
-            quantidade: porEtapa.get(etapa)!.propostas,
-            vgv: Math.round(porEtapa.get(etapa)!.vgv * 100) / 100,
-          },
-    ),
+    fluxo: ETAPAS_DA_FAIXA.map((etapa) => {
+      if (etapa === "disponivel")
+        return { etapa, quantidade: disponiveis, vgv: Math.round(vgvDisponivel * 100) / 100 };
+      if (etapa === "em_cancelamento")
+        return {
+          etapa,
+          quantidade: emCancelamento,
+          vgv: Math.round(vgvEmCancelamento * 100) / 100,
+        };
+      return {
+        etapa,
+        quantidade: porEtapa.get(etapa)!.propostas,
+        vgv: Math.round(porEtapa.get(etapa)!.vgv * 100) / 100,
+      };
+    }),
     lista: propostas.map((p) => ({
       cliente: p.cliente_nome,
       codigo: p.protocolo_numero ? codigoDaVenda(p.protocolo_numero) : null,
@@ -955,6 +1019,8 @@ export function agregarFluxo({
 
 /** O mínimo que a decisão precisa de uma linha da lista (`LinhaDaLista` serve). */
 export type LinhaDaFicha = {
+  /** A marca do pedido de cancelamento. É ela, e não a etapa, que sustenta `em_cancelamento`. */
+  cancelamentoPedidoEm?: null | string;
   etapa: string;
   id: string;
   origem: null | string;
@@ -1019,6 +1085,17 @@ export function processoDaFicha<L extends LinhaDaFicha>(
   lista: readonly L[],
 ): ProcessoDaFicha<L> {
   const vivas = lista.filter((l) => l.unidadeId === unidade.id && ehDoFluxo(l.etapa));
+
+  // ⚠️ EM CANCELAMENTO A COR VEM DA MARCA, E NÃO DA ETAPA DA LINHA. No banco a venda continua em
+  // contrato, assinatura ou faturado (é a etapa que segura o lote), então procurar uma linha "na
+  // etapa em_cancelamento" não acharia nenhuma e a ficha apagaria os botões dizendo que a situação
+  // do lote não bate com a lista — sobre o lote em que ela bate.
+  if (unidade.etapa === "em_cancelamento") {
+    const marcada = vivas.find(linhaEmCancelamento);
+    return marcada
+      ? { linha: marcada, tipo: "na-lista" }
+      : { causa: "divergente", frase: FRASE_DIVERGENTE, tipo: "apagado" };
+  }
 
   if (!ehDoFluxo(unidade.etapa)) {
     // ⚠️ LIVRE (OU FORA DO FLUXO) PELA RÉGUA E COM PROCESSO VIVO NA LISTA. A rota lê a lista e a
@@ -1113,6 +1190,10 @@ export function baldeDaEtapa(etapa: EtapaDoEspelho): BaldeDoProduto {
       return "negociacao";
     case "bloqueada":
       return "bloqueado";
+    // ⚠️ EM CANCELAMENTO É VENDIDO AQUI, E NUNCA DISPONÍVEL. Enquanto o jurídico não desfaz, o
+    // contrato existe e o lote tem dono: o `default` desta função devolve `disponivel`, e sem este
+    // caso a tela Produtos contaria como estoque livre um lote que a trava recusa vender.
+    case "em_cancelamento":
     case "faturado":
     case "vendida":
       return "vendido";

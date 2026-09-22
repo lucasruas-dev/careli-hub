@@ -60,8 +60,8 @@ import { reservasVivasPorCodigo } from "./reservas-vivas";
 
 const COLUNAS: Record<string, readonly string[]> = {
   hercules_propostas: [
-    "aberta", "atualizado_em", "codigo", "criado_em", "criado_em_c2x", "etapa", "etapa_desde", "id",
-    "origem", "reserva_id", "unidade_id", "workspace_id",
+    "aberta", "atualizado_em", "cancelamento_pedido_em", "codigo", "criado_em", "criado_em_c2x",
+    "etapa", "etapa_desde", "id", "origem", "reserva_id", "unidade_id", "workspace_id",
   ],
   // 0125 + 0129 + 0130.
   hercules_reservas: [

@@ -71,6 +71,9 @@ const BALDE_POR_ESTAGIO: Record<ApoloVendaStage, BaldeDeVenda> = {
   assinatura: "negociacao",
   contrato: "negociacao",
   disponivel: "disponivel",
+  // ⚠️ NO RESUMO DO CLIENTE ELE CONTINUA VENDIDO: são quatro baldes, o contrato está de pé e a
+  // saída ainda não aconteceu. Quem precisa ver o pedido separado é a operação, na tela Venda.
+  em_cancelamento: "vendido",
   faturado: "vendido",
   proposta: "negociacao",
   reservado: "reservado",

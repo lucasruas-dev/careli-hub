@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ApoloEnterpriseRow, ApoloEnterpriseScenario } from "@/lib/apolo/empreendimentos";
+import {
+  type ApoloEnterpriseRow,
+  type ApoloEnterpriseScenario,
+  BALDES_DO_CENARIO,
+} from "@/lib/apolo/empreendimentos";
 import type { SituacaoDasUnidades, SituacaoDaUnidade } from "@/lib/hercules/situacao-da-unidade";
 
 // OS CARDS DE ESTOQUE DO PAINEL DE PRODUTOS PELA RÉGUA ÚNICA DA SITUAÇÃO (18/09/2026).
@@ -120,7 +124,7 @@ function requisicao(): Request {
 }
 
 function cenario(parcial: Partial<Record<keyof ApoloEnterpriseScenario, [number, number]>>): ApoloEnterpriseScenario {
-  const baldes = ["total", "disponivel", "reservado", "negociacao", "vendido", "bloqueado"] as const;
+  const baldes = BALDES_DO_CENARIO;
   return Object.fromEntries(
     baldes.map((balde) => {
       const [units, value] = parcial[balde] ?? [0, 0];

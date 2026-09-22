@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { DEPOIS_DO_CONTRATO } from "./acao-de-cancelamento";
 import { type EtapaDoEspelho, type EtapaDoFluxo, ETAPAS_DO_FLUXO } from "./fluxo-de-venda";
+import { soltarMarcasQueSobraram } from "./marca-de-pedido";
 
 // A SITUAÇÃO DA UNIDADE — UM LUGAR SÓ.
 //
@@ -45,21 +47,35 @@ const DO_FLUXO = new Set<string>(ETAPAS_DO_FLUXO);
 export type SinaisDoTerreno = {
   /** `hercules_unidades.situacao` da linha VIVA. */
   cadastro: null | string;
-  /** Propostas vivas de QUALQUER linha do terreno. `desde` ordena: a mais recente manda. */
-  propostasVivas: Array<{ desde: string; etapa: string }>;
+  /**
+   * Propostas vivas de QUALQUER linha do terreno. `desde` ordena: a mais recente manda.
+   *
+   * ⚠️ `emCancelamento` É A MARCA JÁ PENEIRADA: pedido carimbado E card vivo na Têmis. Quem monta
+   * os sinais é que faz a peneira, porque ler a coluna crua mente — medido em 21/09/2026, 1 das 9
+   * marcas era órfã (carimbo no TST sem card nenhum aberto).
+   */
+  propostasVivas: Array<{ desde: string; emCancelamento?: boolean; etapa: string }>;
   /** Existe reserva viva (Hércules ou evento) em alguma linha do terreno? */
   reservada: boolean;
 };
 
 /** A régua, pura. É ESTA função que decide; o resto do arquivo só junta os sinais. */
 export function situacaoDoTerreno(sinais: SinaisDoTerreno): SituacaoDaUnidade {
-  let maisRecente: null | { desde: string; etapa: EtapaDoFluxo } = null;
+  let maisRecente: null | { desde: string; emCancelamento: boolean; etapa: EtapaDoFluxo } = null;
   for (const p of sinais.propostasVivas) {
     if (!DO_FLUXO.has(p.etapa)) continue;
     if (!maisRecente || p.desde > maisRecente.desde) {
-      maisRecente = { desde: p.desde, etapa: p.etapa as EtapaDoFluxo };
+      maisRecente = {
+        desde: p.desde,
+        emCancelamento: p.emCancelamento === true,
+        etapa: p.etapa as EtapaDoFluxo,
+      };
     }
   }
+  // ⚠️ O PEDIDO DE CANCELAMENTO VENCE A ETAPA NA TELA, e só na tela: a proposta continua em
+  // contrato (ou assinatura, que é onde estão 7 dos 9 casos de hoje). É o que tira essas vendas do
+  // número de contrato sem soltar o lote, que continua ocupado para todo mundo que pergunta.
+  if (maisRecente?.emCancelamento) return "em_cancelamento";
   if (maisRecente) return maisRecente.etapa;
 
   if (sinais.reservada) return "reservado";
@@ -88,6 +104,10 @@ const ROTULO: Record<SituacaoDaUnidade, string> = {
   bloqueada: "Bloqueado",
   contrato: "Contrato",
   disponivel: "Disponível",
+  // ⚠️ UMA PALAVRA PARA OS DOIS TIPOS (Lucas, 21/09/2026, escolhendo o card: cancelamento e
+  // distrato contam juntos). Qual dos dois é cada caso continua escrito na ficha da venda, que é
+  // onde alguém decide algo a respeito; no selo do lote, a informação útil é que ela está saindo.
+  em_cancelamento: "Em cancelamento",
   faturado: "Faturado",
   proposta: "Proposta",
   reservada: "Reservado",
@@ -109,7 +129,14 @@ export function rotuloDaSituacao(situacao: SituacaoDaUnidade): string {
  * negociação": o mesmo lote com dois nomes, que é a queixa do Lucas em outra roupa. Daqui em
  * diante: proposta, contrato e assinatura são NEGOCIAÇÃO; faturado e vendida sem proposta, VENDIDO.
  */
-export type BaldeDaSituacao = "bloqueado" | "disponivel" | "negociacao" | "reservado" | "vendido";
+export type BaldeDaSituacao =
+  | "bloqueado"
+  | "disponivel"
+  /** O sexto balde, de 21/09/2026: a venda pedindo para sair. Ver `em_cancelamento`. */
+  | "em_cancelamento"
+  | "negociacao"
+  | "reservado"
+  | "vendido";
 
 export function baldeDaSituacao(situacao: SituacaoDaUnidade): BaldeDaSituacao {
   switch (situacao) {
@@ -122,6 +149,12 @@ export function baldeDaSituacao(situacao: SituacaoDaUnidade): BaldeDaSituacao {
     case "contrato":
     case "assinatura":
       return "negociacao";
+    // ⚠️ BALDE PRÓPRIO, E NÃO UM APELIDO DE "NEGOCIAÇÃO" OU DE "VENDIDO". Era esse o pedido: o
+    // número tinha de sair de onde estava. Misturá-lo de novo em qualquer balde existente troca
+    // uma poluição por outra. E o `case` é EXPLÍCITO porque o `default` abaixo devolve "vendido":
+    // sem ele, o lote em cancelamento viraria vendido no Apolo, nos Produtos e no telão, calado.
+    case "em_cancelamento":
+      return "em_cancelamento";
     case "bloqueada":
       return "bloqueado";
     default:
@@ -132,6 +165,7 @@ export function baldeDaSituacao(situacao: SituacaoDaUnidade): BaldeDaSituacao {
 const ROTULO_DO_BALDE: Record<BaldeDaSituacao, string> = {
   bloqueado: "Bloqueado",
   disponivel: "Disponível",
+  em_cancelamento: "Em cancelamento",
   negociacao: "Em negociação",
   reservado: "Reservado",
   vendido: "Vendido",
@@ -403,14 +437,16 @@ export async function lerSituacaoDasUnidades(
   // estourando ou dezenas de idas ao banco.
   const [propostasTodas, reservasTodas, reservasDoEvento] = await Promise.all([
     emPaginas<{
+      cancelamento_pedido_em: null | string;
       criado_em_c2x: null | string;
       etapa: string;
       etapa_desde: null | string;
+      id: string;
       unidade_id: null | string;
     }>((de, ate) =>
       client
         .from("hercules_propostas")
-        .select("unidade_id,etapa,etapa_desde,criado_em_c2x")
+        .select("id,unidade_id,etapa,etapa_desde,criado_em_c2x,cancelamento_pedido_em")
         .eq("workspace_id", "careli")
         .in("etapa", [...ETAPAS_DO_FLUXO])
         .order("id")
@@ -437,12 +473,26 @@ export async function lerSituacaoDasUnidades(
     ),
   ]);
 
-  const propostasPorGrupo = new Map<string, Array<{ desde: string; etapa: string }>>();
+  // ⚠️ A MARCA CRUA MENTE, E POR ISSO ELA PASSA PELA PENEIRA ANTES (21/09/2026). Medido em
+  // produção: das 9 vendas com `cancelamento_pedido_em`, uma era resto de um pedido indeferido, sem
+  // card nenhum vivo na Têmis. Pintar essa de magenta tiraria do número de contrato uma venda que
+  // segue firme. `soltarMarcasQueSobraram` limpa o resto NA MEMÓRIA (nada é escrito no banco) e só
+  // vai ao banco quando existe marca — hoje, uma leitura a mais por carga de tela.
+  await soltarMarcasQueSobraram(client, propostasTodas);
+
+  const propostasPorGrupo = new Map<
+    string,
+    Array<{ desde: string; emCancelamento: boolean; etapa: string }>
+  >();
   for (const p of propostasTodas) {
     const grupo = p.unidade_id ? grupoDe.get(p.unidade_id) : undefined;
     if (!grupo) continue;
     const lista = propostasPorGrupo.get(grupo) ?? [];
-    lista.push({ desde: String(p.etapa_desde ?? p.criado_em_c2x ?? ""), etapa: p.etapa });
+    lista.push({
+      desde: String(p.etapa_desde ?? p.criado_em_c2x ?? ""),
+      emCancelamento: Boolean(p.cancelamento_pedido_em) && DEPOIS_DO_CONTRATO.has(p.etapa),
+      etapa: p.etapa,
+    });
     propostasPorGrupo.set(grupo, lista);
   }
 

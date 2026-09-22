@@ -46,7 +46,12 @@ export type SituacaoDoLote =
  */
 export function situacaoNoTelao(situacao: SituacaoDaUnidade): SituacaoDoLote {
   const balde = baldeDaSituacao(situacao);
-  return balde === "bloqueado" ? "indisponivel" : balde;
+  if (balde === "bloqueado") return "indisponivel";
+  // ⚠️ NO TELÃO A VENDA EM CANCELAMENTO CONTINUA VENDIDA, e de propósito. O telão é do salão de
+  // vendas: enquanto o jurídico não desfaz, aquele lote tem dono e não pode ser oferecido. Um
+  // estado a mais ali só ensinaria o corretor a perguntar o que ele significa.
+  if (balde === "em_cancelamento") return "vendido";
+  return balde;
 }
 
 /**

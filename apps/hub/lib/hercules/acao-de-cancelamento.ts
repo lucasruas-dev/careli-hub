@@ -71,6 +71,18 @@ export function acaoDeCancelamento(u: SituacaoDaUnidade): AcaoDeCancelamento {
     }
   }
 
+  // ⚠️ A RÉGUA JÁ DIZ QUE O PEDIDO EXISTE (21/09/2026). A situação `em_cancelamento` é a marca já
+  // peneirada — pedido carimbado E card vivo na Têmis —, e a ficha chega aqui com ela no lugar da
+  // etapa. Sem este caso, o lote em cancelamento caía no fim da função e mostrava "Não há reserva
+  // nem proposta para cancelar nesta unidade", que manda procurar defeito onde não há.
+  if (etapa === "em_cancelamento") {
+    return {
+      motivo: "Já existe um pedido de cancelamento na Têmis para esta venda.",
+      rotulo: "Cancelamento pedido",
+      tipo: null,
+    };
+  }
+
   if (DEPOIS_DO_CONTRATO.has(etapa)) {
     // ⚠️ O CONTRATO QUE VEIO DO C2X TAMBÉM SE CANCELA AQUI. Até 16/09/2026 só a venda nativa abria
     // pedido, porque o Panteon não escreve no legado. O Lucas decidiu, olhando um contrato da

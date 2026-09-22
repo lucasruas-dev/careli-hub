@@ -61,7 +61,8 @@ type Banco = {
 
 const COLUNAS: Record<string, readonly string[]> = {
   hercules_propostas: [
-    "aberta", "atualizado_em", "cancelada_em", "codigo", "criado_em", "criado_em_c2x", "etapa",
+    "aberta", "atualizado_em", "cancelada_em", "cancelamento_pedido_em", "codigo", "criado_em",
+    "criado_em_c2x", "etapa",
     "etapa_desde", "id", "origem", "protocolo_numero", "reserva_id", "unidade_id", "workspace_id",
   ],
   hercules_reservas: [

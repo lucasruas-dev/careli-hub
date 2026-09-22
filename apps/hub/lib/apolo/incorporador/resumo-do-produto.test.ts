@@ -150,6 +150,7 @@ describe("contarPorEstagio", () => {
       assinatura: 1,
       contrato: 1,
       disponivel: 1,
+      em_cancelamento: 0,
       faturado: 3,
       proposta: 2,
       reservado: 1,

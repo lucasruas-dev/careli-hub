@@ -23,6 +23,16 @@ describe("acaoDeCancelamento", () => {
     expect(a.motivo).toContain("C2X");
   });
 
+  it("⚠️ na situação em_cancelamento, a ficha diz que o pedido JÁ EXISTE", () => {
+    // Desde 21/09/2026 a régua troca a etapa por `em_cancelamento` na tela. Sem este caso a função
+    // caía no fim e respondia "não há reserva nem proposta para cancelar" — sobre uma venda cujo
+    // cancelamento está na fila do jurídico.
+    const a = acaoDeCancelamento({ ...base, etapa: "em_cancelamento" });
+    expect(a.tipo).toBeNull();
+    expect(a.rotulo).toBe("Cancelamento pedido");
+    expect(a.motivo).toContain("Têmis");
+  });
+
   it("⚠️ depois do contrato, o que existe é PEDIDO — e o rótulo não promete desfazer", () => {
     // A venda em contrato não tinha saída nenhuma: os quatro botões apagados numa ficha que mostra
     // cliente, valor e plano. Quem despachou por engano ficava sem um botão sequer.

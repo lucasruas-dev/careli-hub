@@ -111,6 +111,7 @@ describe("o estágio do funil", () => {
     assinatura: "negociacao",
     contrato: "negociacao",
     disponivel: "disponivel",
+    em_cancelamento: "em_cancelamento",
     faturado: "vendido",
     proposta: "negociacao",
     reservado: "reservado",
@@ -168,6 +169,7 @@ describe("contarEstoque", () => {
     expect(estoque.get("37")).toEqual({
       bloqueado: { units: 1, value: 500 },
       disponivel: { units: 1, value: 300 },
+      em_cancelamento: { units: 0, value: 0 },
       negociacao: { units: 1, value: 200 },
       reservado: { units: 1, value: 100 },
       total: { units: 5, value: 1500 },

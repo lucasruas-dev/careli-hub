@@ -6,6 +6,7 @@ import {
   Ban,
   Bookmark,
   Check,
+  CircleSlash,
   FileSignature,
   FileText,
   Grid2x2,
@@ -18,8 +19,10 @@ import type { LucideIcon } from "lucide-react";
 import { acaoDeCancelamento } from "@/lib/hercules/acao-de-cancelamento";
 import {
   andaresDoGrupo,
+  ETAPAS_DA_FAIXA,
   ETAPAS_DO_FLUXO,
   linhaDaFicha,
+  linhaEmCancelamento,
   processoDaFicha,
   vocabularioDoEstoque,
 } from "@/lib/hercules/fluxo-de-venda";
@@ -34,6 +37,7 @@ import {
   unidadeEmFoco as acharUnidadeEmFoco,
 } from "@/lib/hercules/unidade-em-foco";
 import type {
+  EtapaDaFaixa,
   EtapaDoEspelho,
   EtapaDoFluxo,
   FluxoDeVenda,
@@ -188,12 +192,20 @@ type Foco =
   | { proposta: Proposta; tipo: "proposta" }
   | { tipo: "unidade"; unidade: UnidadeNoMapa };
 
+/**
+ * ⚠️ MAGENTA PARA O CANCELAMENTO (Lucas, 21/09/2026: *"pode trazer uma cor nova para
+ * cancelamento"*). É o único arco largo livre do círculo: cerca de 100 graus entre o violeta do
+ * contrato (263 graus) e o vermelho do faturado (6 graus). E é ESCURO de propósito — a queixa era a
+ * venda em cancelamento se confundir com o contrato, e um magenta claro voltaria a confundir.
+ */
+const MAGENTA = "#a8326d";
+
 // ⚠️ O ESTOQUE ABRE A FAIXA (Lucas, 03/09/2026: *"aproveitar trazer aqui também disponível"*). É
 // de onde a venda começa, e ver o pipeline sem saber quanto sobra para vender conta metade da
 // história. Ele é o único passo contado em UNIDADES — nos outros, cada unidade tem uma proposta.
 const FLUXO: ReadonlyArray<{
   cor: string;
-  etapa: "disponivel" | EtapaDoFluxo;
+  etapa: EtapaDaFaixa;
   icone: LucideIcon;
   rotulo: string;
 }> = [
@@ -219,6 +231,16 @@ const FLUXO: ReadonlyArray<{
   // ("este lote está faturado"), e não o departamento nem o ato de faturar — a própria chave
   // interna da etapa sempre foi `faturado`; era só o texto na tela que discordava dela.
   { cor: "#9b2c22", etapa: "faturado", icone: Receipt, rotulo: rotuloDaSituacao("faturado") },
+  // ⚠️ O CARTÃO DO CANCELAMENTO É O ÚLTIMO, E É UM CARTÃO E NÃO UM PASSO (Lucas, 21/09/2026:
+  // *"hoje ele aponta para contrato e polui nossos indicadores, acho que devemos separar"* e *"e um
+  // card novo"*). A venda que está aqui saiu do cartão de contrato ou de assinatura: ela conta num
+  // lugar só, senão o coordenador somaria os cartões e acharia mais vendas do que existem.
+  {
+    cor: MAGENTA,
+    etapa: "em_cancelamento",
+    icone: CircleSlash,
+    rotulo: rotuloDaSituacao("em_cancelamento"),
+  },
 ];
 
 // ⚠️ A GRADE PINTA POR ETAPA, NÃO POR SITUAÇÃO (Lucas, 03/09/2026: *"em vez de vendida, ter
@@ -272,6 +294,7 @@ const COR_DA_ETAPA: Record<EtapaDoEspelho, string> = {
   bloqueada: "#454c5c",
   contrato: "#9b7ed0",
   disponivel: VERDE,
+  em_cancelamento: MAGENTA,
   faturado: VERMELHO,
   proposta: "#5b8dd6",
   reservada: listrado(AMARELO, "#d9a833"),
@@ -296,6 +319,8 @@ const LEGENDA: ReadonlyArray<{ etapa: EtapaDoEspelho; rotulo: string }> = (
     "contrato",
     "assinatura",
     "faturado",
+    // ⚠️ DEPOIS DO FATURADO, porque não é um passo a caminho dele: é a saída.
+    "em_cancelamento",
     "vendida",
     "reservada",
     "bloqueada",
@@ -338,6 +363,9 @@ const ROTULO_DA_ETAPA: Record<EtapaDoEspelho, string> = Object.fromEntries(
  */
 const FUNDO_ESCURO = new Set<EtapaDoEspelho>([
   "bloqueada",
+  // ⚠️ O MAGENTA É ESCURO: sem entrar aqui, o número do lote sai preto sobre ele e some num
+  // quadradinho de 12px.
+  "em_cancelamento",
   "faturado",
   "vendida",
 ]);
@@ -539,7 +567,7 @@ export function TelaVenda() {
   const [emp, setEmp] = useState<string>("");
   const [recorte, setRecorte] = useState<string>("");
   const [visao, setVisao] = useState<"mesa" | "panorama">("panorama");
-  const [etapa, setEtapa] = useState<"disponivel" | EtapaDoFluxo>("reservado");
+  const [etapa, setEtapa] = useState<EtapaDaFaixa>("reservado");
   /**
    * O lugar guardado já foi lido? Só depois disso a tela consulta o servidor.
    *
@@ -845,11 +873,10 @@ export function TelaVenda() {
     }
     if (lugar.janela && JANELAS.some((j) => j.id === lugar.janela))
       setJanela(lugar.janela);
-    if (
-      lugar.etapa === "disponivel" ||
-      (lugar.etapa && ETAPAS_DO_FLUXO.some((e) => e === lugar.etapa))
-    ) {
-      setEtapa(lugar.etapa as "disponivel" | EtapaDoFluxo);
+    // A lista válida é a da FAIXA (o estoque, as cinco etapas e o cancelamento), e não só as
+    // cinco: guardado o cartão novo, ele voltava como estado impossível e a tela abria no de sempre.
+    if (lugar.etapa && ETAPAS_DA_FAIXA.some((e) => e === lugar.etapa)) {
+      setEtapa(lugar.etapa as EtapaDaFaixa);
     }
     if (lugar.emp) setEmp(lugar.emp);
     if (lugar.recorte) setRecorte(lugar.recorte);
@@ -944,13 +971,15 @@ export function TelaVenda() {
 
   // Nas cinco etapas do fluxo a lista é de PROPOSTAS; no estoque não existe proposta, e o que o
   // coordenador precisa ver é a lista de lotes livres para vender.
-  const daEtapa = useMemo(
-    () =>
-      etapa === "disponivel"
-        ? []
-        : (dados?.lista ?? []).filter((l) => l.etapa === etapa),
-    [dados, etapa],
-  );
+  // ⚠️ A VENDA EM CANCELAMENTO SAI DA LISTA DA ETAPA DELA, como sai do cartão: a mesma venda nas
+  // duas listas faria o coordenador contar duas. A régua é uma só (`linhaEmCancelamento`), a mesma
+  // que a agregação usa para o número do cartão — lista e cartão têm de fechar.
+  const daEtapa = useMemo(() => {
+    if (etapa === "disponivel") return [];
+    const lista = dados?.lista ?? [];
+    if (etapa === "em_cancelamento") return lista.filter(linhaEmCancelamento);
+    return lista.filter((l) => l.etapa === etapa && !linhaEmCancelamento(l));
+  }, [dados, etapa]);
 
   const livres = useMemo(
     () =>
@@ -1640,7 +1669,7 @@ function Mesa({
   /** O código do produto que TEM masterplan publicado. `null` esconde o botão "Espelho". */
   codeDoEspelho: null | string;
   dados: DadosDaVenda | null;
-  etapa: "disponivel" | EtapaDoFluxo;
+  etapa: EtapaDaFaixa;
   foco: null | Foco;
   lista: FluxoDeVenda["lista"];
   livres: (UnidadeNoMapa & { grupo: string })[];
@@ -3010,8 +3039,26 @@ function TrilhaDoFluxo({
 }) {
   // Fora do caminho (disponível, bloqueada, vendida sem proposta) não há trilha para mostrar: a
   // venda não começou, ou não passou por aqui. Um traço todo apagado só ocuparia espaço.
+  const pedido = Boolean(pedidoDeCancelamento) || etapa === "em_cancelamento";
   const atual = ETAPAS_DO_FLUXO.indexOf(etapa as EtapaDoFluxo);
-  if (atual < 0) return null;
+  if (atual < 0 && !pedido) return null;
+
+  /**
+   * ⚠️ O CANCELAMENTO É O ÚLTIMO DEGRAU, E O CAMINHO ACABA NELE. Lucas (21/09/2026), com o print da
+   * ficha do VOC 03 06: *"o ideal quando cancelado não ter as outras etapas, ela ser a última"*. A
+   * trilha mostrava os cinco passos com a venda parada no terceiro e Assinatura e Faturado à
+   * frente, como se ainda fossem acontecer — e eles não vão: o que vem depois do pedido é o
+   * jurídico desfazer. Os passos ANDADOS ficam (é a história da venda, e ela aconteceu); o que
+   * estava por vir dá lugar ao fim.
+   *
+   * ⚠️ A ETAPA DA VENDA NÃO MUDA POR CAUSA DISTO. É desenho de tela: no banco ela segue em
+   * contrato, assinatura ou faturado, que é o que segura o lote enquanto o contrato existe.
+   */
+  const andados = atual < 0 ? [] : ETAPAS_DO_FLUXO.slice(0, atual + 1);
+  const passos: EtapaDoEspelho[] = pedido
+    ? [...andados, "em_cancelamento"]
+    : [...ETAPAS_DO_FLUXO];
+  const posicao = pedido ? passos.length - 1 : atual;
 
   // A ponta da seta, em pixels. Entra duas vezes em cada degrau: o recorte da direita (a ponta que
   // avança) e o da esquerda (o encaixe que recebe a ponta do anterior).
@@ -3046,9 +3093,9 @@ function TrilhaDoFluxo({
       ) : null}
 
       <div style={{ display: "flex", margin: "0 0 12px" }}>
-        {ETAPAS_DO_FLUXO.map((passo, i) => {
+        {passos.map((passo, i) => {
           const primeiro = i === 0;
-          const ultimo = i === ETAPAS_DO_FLUXO.length - 1;
+          const ultimo = i === passos.length - 1;
 
           // ⚠️ FATURADO É O FIM, E NÃO UMA ETAPA EM ANDAMENTO. Lucas (14/09/2026), com o print
           // da D160 do Recanto: *"quando faturado, todos tem que estar verdes com o v"*.
@@ -3058,9 +3105,13 @@ function TrilhaDoFluxo({
           // terminado. Pintá-la como as demais deixava a venda concluída com a mesma cara de venda
           // parada no meio, e o último degrau — justo o que diz que acabou — era o único sem o
           // sinal de cumprido.
-          const noFim = atual === ETAPAS_DO_FLUXO.length - 1;
-          const cumprida = i < atual || (noFim && i === atual);
-          const ehAtual = i === atual && !noFim;
+          //
+          // ⚠️ E O CANCELAMENTO TAMBÉM NÃO É FIM CUMPRIDO: a venda está parada nele esperando o
+          // jurídico. Ele é o degrau ATUAL — pintado, sem check —, e por isso `noFim` o exclui.
+          const noFim = !pedido && atual === ETAPAS_DO_FLUXO.length - 1;
+          const cumprida = i < posicao || (noFim && i === posicao);
+          const ehAtual = i === posicao && !noFim;
+          const ehOFimDoCancelamento = pedido && ultimo;
 
           // ⚠️ O DEGRAU AVANÇA SOBRE O PRÓXIMO, e é isso que faz a seta ler como caminho: o recorte
           // da direita é uma ponta, o da esquerda é o encaixe dela, e a margem negativa junta os
@@ -3085,12 +3136,27 @@ function TrilhaDoFluxo({
                 // fluxo de cinco passos lido de relance, o que responde "até onde essa venda chegou"
                 // é a COR, não o ícone: agora o caminho andado se separa do que falta sem precisar
                 // procurar. O verde é o mesmo `ok` do resto do portal, em fundo lavado.
-                background: ehAtual ? T.gold : cumprida ? T.okBg : T.card,
+                // ⚠️ O ÚLTIMO DEGRAU DO CANCELAMENTO É MAGENTA, a mesma cor do cartão da faixa e do
+                // lote na grade: quem vê o quadradinho magenta no quadro reconhece o fim da trilha
+                // sem legenda. O dourado continua sendo "está aqui, falta terminar".
+                background: ehOFimDoCancelamento
+                  ? MAGENTA
+                  : ehAtual
+                    ? T.gold
+                    : cumprida
+                      ? T.okBg
+                      : T.card,
                 border: ehAtual
                   ? "none"
                   : `1px solid ${cumprida ? T.ok : T.border}`,
                 clipPath: recorte,
-                color: ehAtual ? T.btnFg : cumprida ? T.ok : T.muted,
+                color: ehOFimDoCancelamento
+                  ? "#ffffff"
+                  : ehAtual
+                    ? T.btnFg
+                    : cumprida
+                      ? T.ok
+                      : T.muted,
                 display: "flex",
                 flex: 1,
                 fontSize: 10,

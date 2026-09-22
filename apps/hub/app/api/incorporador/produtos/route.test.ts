@@ -171,6 +171,7 @@ describe("GET /api/incorporador/produtos: o estoque do card do Panteon pela rég
     expect(doCard(corpo, "100001")?.estoque).toEqual({
       bloqueado: { units: 0, value: 0 },
       disponivel: { units: 1, value: 300 },
+      em_cancelamento: { units: 0, value: 0 },
       negociacao: { units: 1, value: 200 },
       reservado: { units: 1, value: 100 },
       total: { units: 4, value: 1000 },

@@ -210,6 +210,7 @@ export function contarPorEstagio(
     assinatura: 0,
     contrato: 0,
     disponivel: 0,
+    em_cancelamento: 0,
     faturado: 0,
     proposta: 0,
     reservado: 0,

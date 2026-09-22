@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { agregarFluxo, ETAPAS_DO_FLUXO, type PropostaDaCarga, type UnidadeDoMapa,
+import { agregarFluxo, type PropostaDaCarga, type UnidadeDoMapa,
   andaresDoGrupo,
   baldeDaEtapa,
+  ETAPAS_DA_FAIXA,
+  linhaEmCancelamento,
   compararApartamentos,
   type EtapaDoEspelho,
   type LinhaDaFicha,
@@ -78,16 +80,17 @@ describe("agregarFluxo", () => {
       unidades: [],
     });
 
-    // Seis passos agora: o estoque na frente (zero aqui, porque o teste não passa unidades).
-    expect(r.fluxo.map((f) => f.quantidade)).toEqual([0, 0, 0, 0, 0, 1]);
+    // Sete passos agora: o estoque na frente (zero aqui, porque o teste não passa unidades) e o
+    // cancelamento no fim.
+    expect(r.fluxo.map((f) => f.quantidade)).toEqual([0, 0, 0, 0, 0, 1, 0]);
     expect(r.fluxo.reduce((a, f) => a + f.vgv, 0)).toBe(100);
     expect(r.perdas).toEqual({ canceladas: 1, distratos: 1, vgvCancelado: 120 });
   });
 
-  it("mantém os seis passos mesmo quando não há nada neles", () => {
+  it("mantém os sete passos mesmo quando não há nada neles", () => {
     // A faixa é o PROCESSO: uma etapa que some da tela faria o coordenador achar que ela não existe.
     const r = agregarFluxo({ propostas: [], unidades: [] });
-    expect(r.fluxo.map((f) => f.etapa)).toEqual(["disponivel", ...ETAPAS_DO_FLUXO]);
+    expect(r.fluxo.map((f) => f.etapa)).toEqual([...ETAPAS_DA_FAIXA]);
     expect(r.fluxo.every((f) => f.quantidade === 0)).toBe(true);
   });
 
@@ -597,6 +600,27 @@ describe("processoDaFicha", () => {
   const propostaNativa = linha({ etapa: "proposta", id: "p-nativa", origem: "panteon" });
   const propostaDoC2x = linha({ etapa: "proposta", id: "p-c2x", origem: "c2x" });
 
+  it("⚠️ em cancelamento, quem sustenta a cor é a linha MARCADA, e não a etapa", () => {
+    // No banco a venda segue em contrato/assinatura/faturado. Procurar uma linha "na etapa
+    // em_cancelamento" não acharia nenhuma, e a ficha apagaria os botões dizendo que a situação do
+    // lote não bate com a lista — sobre o lote em que ela bate.
+    const pedida = linha({
+      cancelamentoPedidoEm: "2026-09-18T12:00:00Z",
+      etapa: "assinatura",
+      id: "p-pedida",
+    });
+    expect(processoDaFicha(lote("em_cancelamento"), [pedida])).toEqual({
+      linha: pedida,
+      tipo: "na-lista",
+    });
+  });
+
+  it("em cancelamento sem a linha marcada na lista: botões apagados, e não um palpite", () => {
+    expect(processoDaFicha(lote("em_cancelamento"), [linha({ etapa: "assinatura", id: "p-1" })])).toMatchObject(
+      { causa: "divergente", tipo: "apagado" },
+    );
+  });
+
   it("fora do fluxo e sem processo na lista: os botões de sempre", () => {
     for (const etapa of ["disponivel", "bloqueada", "vendida", "reservada"] as const) {
       expect(processoDaFicha(lote(etapa), [])).toEqual({ tipo: "sem-processo" });
@@ -719,6 +743,63 @@ describe("linhaDaFicha", () => {
   });
 });
 
+// A VENDA EM CANCELAMENTO (21/09/2026). Lucas: *"hoje ele aponta para contrato e polui nossos
+// indicadores, acho que devemos separar"* · *"e um card novo"*.
+describe("a venda com cancelamento pedido", () => {
+  const marcada = (p: Partial<PropostaDaCarga> & { etapa: string }) =>
+    proposta({ cancelamento_pedido_em: "2026-09-18T12:00:00Z", ...p });
+
+  it("sai do cartão da etapa dela e conta no cartão do cancelamento", () => {
+    const r = agregarFluxo({
+      propostas: [
+        marcada({ etapa: "assinatura", valor: 200 }),
+        proposta({ etapa: "assinatura", valor: 300 }),
+      ],
+      unidades: [],
+    });
+
+    expect(r.fluxo.find((f) => f.etapa === "assinatura")).toEqual({
+      etapa: "assinatura",
+      quantidade: 1,
+      vgv: 300,
+    });
+    expect(r.fluxo.find((f) => f.etapa === "em_cancelamento")).toEqual({
+      etapa: "em_cancelamento",
+      quantidade: 1,
+      vgv: 200,
+    });
+  });
+
+  it("⚠️ conta UMA vez só: a soma dos cartões é o número de vendas vivas", () => {
+    // Somar a mesma venda nos dois cartões seria o defeito oposto ao que este trabalho conserta:
+    // em vez de poluir o contrato, inflaria o total.
+    const r = agregarFluxo({
+      propostas: [marcada({ etapa: "contrato", valor: 50 }), proposta({ etapa: "proposta", valor: 10 })],
+      unidades: [],
+    });
+    expect(r.fluxo.reduce((a, f) => a + f.quantidade, 0)).toBe(2);
+    expect(r.fluxo.reduce((a, f) => a + f.vgv, 0)).toBe(60);
+  });
+
+  it("⚠️ a marca SÓ vale depois do contrato", () => {
+    // Antes dele o cancelamento é ato do coordenador e a etapa muda na hora; a marca que sobra numa
+    // reserva ou proposta é história, e tirá-la do cartão esconderia venda viva.
+    const r = agregarFluxo({
+      propostas: [marcada({ etapa: "proposta", valor: 10 }), marcada({ etapa: "reservado", valor: 20 })],
+      unidades: [],
+    });
+    expect(r.fluxo.find((f) => f.etapa === "em_cancelamento")?.quantidade).toBe(0);
+    expect(r.fluxo.find((f) => f.etapa === "proposta")?.quantidade).toBe(1);
+    expect(r.fluxo.find((f) => f.etapa === "reservado")?.quantidade).toBe(1);
+  });
+
+  it("a linha da lista responde pela MESMA régua do cartão", () => {
+    expect(linhaEmCancelamento({ cancelamentoPedidoEm: "2026-09-18", etapa: "contrato" })).toBe(true);
+    expect(linhaEmCancelamento({ cancelamentoPedidoEm: "2026-09-18", etapa: "proposta" })).toBe(false);
+    expect(linhaEmCancelamento({ cancelamentoPedidoEm: null, etapa: "contrato" })).toBe(false);
+  });
+});
+
 describe("baldeDaEtapa", () => {
   it("proposta, contrato e assinatura são negociação; faturado e vendida, vendido", () => {
     expect(
@@ -736,5 +817,12 @@ describe("baldeDaEtapa", () => {
       "vendido",
       "bloqueado",
     ]);
+  });
+
+  it("⚠️ em cancelamento é VENDIDO, e nunca disponível", () => {
+    // O `default` desta função devolve `disponivel`: sem o caso próprio, a tela Produtos contaria
+    // como estoque livre um lote cujo contrato ainda está de pé — e a trava recusaria a venda.
+    expect(baldeDaEtapa("em_cancelamento")).toBe("vendido");
+    expect(baldeDaEtapa("em_cancelamento")).not.toBe("disponivel");
   });
 });

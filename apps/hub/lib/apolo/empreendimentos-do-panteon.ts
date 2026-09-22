@@ -27,6 +27,7 @@ function cenarioZerado(): ApoloEnterpriseScenario {
   return {
     bloqueado: zero(),
     disponivel: zero(),
+    em_cancelamento: zero(),
     negociacao: zero(),
     reservado: zero(),
     total: zero(),

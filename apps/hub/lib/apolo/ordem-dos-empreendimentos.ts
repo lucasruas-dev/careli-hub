@@ -14,6 +14,7 @@
 export type ColunaDaOrdem =
   | "bloqueado"
   | "disponivel"
+  | "em_cancelamento"
   | "negociacao"
   | "nome"
   | "reservado"
@@ -53,6 +54,7 @@ export type LinhaOrdenavel = {
   scenario: {
     bloqueado: { units: number };
     disponivel: { units: number };
+    em_cancelamento: { units: number };
     negociacao: { units: number };
     reservado: { units: number };
     total: { units: number; value: number };
@@ -66,6 +68,8 @@ function valorDaColuna(linha: LinhaOrdenavel, coluna: ColunaDaOrdem): number {
       return linha.scenario.bloqueado.units;
     case "disponivel":
       return linha.scenario.disponivel.units;
+    case "em_cancelamento":
+      return linha.scenario.em_cancelamento.units;
     case "negociacao":
       return linha.scenario.negociacao.units;
     case "reservado":

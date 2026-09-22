@@ -12,6 +12,7 @@ const linha = (name: string, n: Partial<Record<string, number>> = {}): LinhaOrde
   scenario: {
     bloqueado: { units: n.bloqueado ?? 0 },
     disponivel: { units: n.disponivel ?? 0 },
+    em_cancelamento: { units: n.em_cancelamento ?? 0 },
     negociacao: { units: n.negociacao ?? 0 },
     reservado: { units: n.reservado ?? 0 },
     total: { units: n.unidades ?? 0, value: n.vgv ?? 0 },

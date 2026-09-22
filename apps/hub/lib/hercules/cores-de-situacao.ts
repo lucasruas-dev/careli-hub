@@ -21,6 +21,15 @@ import { rotuloDoBalde } from "./situacao-da-unidade";
 export type SituacaoDaUnidade =
   | "bloqueado"
   | "disponivel"
+  /**
+   * A venda com o cancelamento pedido ao jurídico (21/09/2026). Lucas: *"pode trazer uma cor nova
+   * para cancelamento"*.
+   *
+   * ⚠️ ELA PRECISA DE COR PRÓPRIA JUSTAMENTE POR NÃO SER LIVRE. Sem entrar aqui, o selo da lista
+   * cairia no `disponivel` de `situacaoConhecida` e o lote apareceria VERDE — que é a cor que faz
+   * alguém tentar vender um lote cujo contrato ainda está de pé.
+   */
+  | "em_cancelamento"
   | "negociacao"
   | "reservado"
   | "vendido";
@@ -39,6 +48,8 @@ export type ParDeCores = {
 export const CORES_DA_SITUACAO: Record<SituacaoDaUnidade, ParDeCores> = {
   bloqueado: { claro: "#c24135", escuro: "#e08278" },
   disponivel: { claro: "#2f7d59", escuro: "#7cc4a1" },
+  // O magenta da grade da Venda (`COR_DA_ETAPA`), com o par claro para o tema escuro.
+  em_cancelamento: { claro: "#a8326d", escuro: "#e879b9" },
   negociacao: { claro: "#6d28d9", escuro: "#a78bfa" },
   reservado: { claro: "#b45309", escuro: "#fbbf24" },
   vendido: { claro: "#1d4ed8", escuro: "#60a5fa" },
@@ -51,6 +62,7 @@ export const CORES_DA_SITUACAO: Record<SituacaoDaUnidade, ParDeCores> = {
 export const ROTULO_DA_SITUACAO: Record<SituacaoDaUnidade, string> = {
   bloqueado: rotuloDoBalde("bloqueado"),
   disponivel: rotuloDoBalde("disponivel"),
+  em_cancelamento: rotuloDoBalde("em_cancelamento"),
   negociacao: rotuloDoBalde("negociacao"),
   reservado: rotuloDoBalde("reservado"),
   vendido: rotuloDoBalde("vendido"),
@@ -99,6 +111,8 @@ export const CLASSES_DO_SELO: Record<SituacaoDaUnidade, string> = {
     "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/12 dark:text-rose-300",
   disponivel:
     "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/12 dark:text-emerald-300",
+  em_cancelamento:
+    "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700 dark:border-fuchsia-500/30 dark:bg-fuchsia-500/12 dark:text-fuchsia-300",
   negociacao:
     "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/12 dark:text-violet-300",
   reservado:

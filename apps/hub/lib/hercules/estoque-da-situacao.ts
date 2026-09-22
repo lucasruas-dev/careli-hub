@@ -81,6 +81,8 @@ export function estagioDaSituacao(situacao: SituacaoDaUnidade): ApoloVendaStage 
       return "reservado";
     case "negociacao":
       return situacao === "contrato" || situacao === "assinatura" ? situacao : "proposta";
+    case "em_cancelamento":
+      return "em_cancelamento";
     case "vendido":
       return "faturado";
   }

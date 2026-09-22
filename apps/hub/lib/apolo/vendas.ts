@@ -30,6 +30,8 @@ export type ApoloVendaStage =
   | "assinatura"
   | "contrato"
   | "disponivel"
+  /** A venda com cancelamento ou distrato pedido, esperando o jurídico (21/09/2026). */
+  | "em_cancelamento"
   | "faturado"
   | "proposta"
   | "reservado";
@@ -45,6 +47,9 @@ export const APOLO_VENDA_STAGE_ORDER: ApoloVendaStage[] = [
   "contrato",
   "assinatura",
   "faturado",
+  // ⚠️ NO FIM, E FORA DA LINHA DO FUNIL: não é um passo a caminho do faturamento, é a saída. Quem
+  // desenha o funil em ordem lê daqui, e pôr no meio faria a venda parecer que anda para lá.
+  "em_cancelamento",
 ];
 
 // ⚠️ O TEXTO DE CADA COLUNA É O DA RÉGUA (`rotuloDaSituacao`), o mesmo da aba Unidades e da Venda
@@ -55,6 +60,7 @@ export const APOLO_VENDA_STAGE_LABELS: Record<ApoloVendaStage, string> = {
   assinatura: rotuloDaSituacao("assinatura"),
   contrato: rotuloDaSituacao("contrato"),
   disponivel: rotuloDaSituacao("disponivel"),
+  em_cancelamento: rotuloDaSituacao("em_cancelamento"),
   faturado: rotuloDaSituacao("faturado"),
   proposta: rotuloDaSituacao("proposta"),
   reservado: rotuloDaSituacao("reservado"),
@@ -630,6 +636,8 @@ export function estagioPelaSituacao(
         blocked: false,
         stage: situacao === "contrato" || situacao === "assinatura" ? situacao : "proposta",
       };
+    case "em_cancelamento":
+      return { blocked: false, stage: "em_cancelamento" };
     case "vendido":
       return { blocked: false, stage: "faturado" };
   }

@@ -145,6 +145,10 @@ export async function lerLotesDoEscopo(codes: string[]): Promise<LoteDoC2x[] | n
 const COR_DO_BALDE: Record<ReturnType<typeof baldeDaSituacao>, number> = {
   bloqueado: MAPA.BLOQUEADO,
   disponivel: MAPA.DISPONIVEL,
+  // ⚠️ O CANCELAMENTO PEDIDO PINTA DE VENDIDO no mapa, e não ganha cor própria: o arquivo do
+  // masterplan só tem quatro slots, e enquanto o jurídico não desfaz o contrato aquele lote tem
+  // dono. Pintar de bloqueado apagaria o nome do comprador e zeraria o valor no painel do lote.
+  em_cancelamento: MAPA.VENDIDO,
   negociacao: MAPA.VENDIDO,
   reservado: MAPA.RESERVADO,
   vendido: MAPA.VENDIDO,

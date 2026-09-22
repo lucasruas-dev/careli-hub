@@ -5,6 +5,7 @@ import {
   BadgeDollarSign,
   Ban,
   ChevronRight,
+  CircleSlash,
   Handshake,
   LandPlot,
   Layers,
@@ -40,7 +41,17 @@ import { TelaVendas } from "./TelaVendas";
 // TelaVendas ("pai:<uuid>" ou o id do C2X) é um que a própria rota acabou de devolver, e a rota de
 // vendas cruza com o escopo de novo do outro lado (fail-closed: fora do escopo = 403).
 
-type ChaveDoCenario = "bloqueado" | "disponivel" | "negociacao" | "reservado" | "total" | "vendido";
+type ChaveDoCenario =
+  | "bloqueado"
+  | "disponivel"
+  // ⚠️ O SÉTIMO NÚMERO (21/09/2026). A venda com cancelamento pedido saiu do balde de negociação e
+  // do de vendido: sem uma coluna própria, ela sumiria da tabela e os seis números deixariam de
+  // somar o total — o tipo de furo que faz o coordenador desconfiar da tela inteira.
+  | "em_cancelamento"
+  | "negociacao"
+  | "reservado"
+  | "total"
+  | "vendido";
 
 type Contagem = { units: number; value: number };
 
@@ -86,6 +97,7 @@ const BALDES: Array<{ chave: ChaveDoCenario; icone: LucideIcon; rotulo: string }
   { chave: "disponivel", icone: LandPlot, rotulo: rotuloDoBalde("disponivel") },
   { chave: "reservado", icone: Tag, rotulo: rotuloDoBalde("reservado") },
   { chave: "negociacao", icone: Handshake, rotulo: rotuloDoBalde("negociacao") },
+  { chave: "em_cancelamento", icone: CircleSlash, rotulo: rotuloDoBalde("em_cancelamento") },
   { chave: "vendido", icone: BadgeDollarSign, rotulo: rotuloDoBalde("vendido") },
   { chave: "bloqueado", icone: Ban, rotulo: rotuloDoBalde("bloqueado") },
 ];
@@ -100,6 +112,7 @@ const BALDES: Array<{ chave: ChaveDoCenario; icone: LucideIcon; rotulo: string }
 const COR_DO_BALDE: Record<ChaveDoCenario, string> = {
   bloqueado: "var(--prd-bloqueado)",
   disponivel: "var(--prd-disponivel)",
+  em_cancelamento: "var(--prd-cancelamento)",
   negociacao: "var(--prd-negociacao)",
   reservado: "var(--prd-reservado)",
   total: T.text,
@@ -108,12 +121,12 @@ const COR_DO_BALDE: Record<ChaveDoCenario, string> = {
 
 const CORES_CLARAS = `
     --prd-disponivel:#2f7d59; --prd-reservado:#b45309; --prd-negociacao:#6d28d9;
-    --prd-vendido:#1d4ed8; --prd-bloqueado:#c24135;
+    --prd-vendido:#1d4ed8; --prd-bloqueado:#c24135; --prd-cancelamento:#a8326d;
 `;
 
 const CORES_ESCURAS = `
     --prd-disponivel:#7cc4a1; --prd-reservado:#fbbf24; --prd-negociacao:#a78bfa;
-    --prd-vendido:#60a5fa; --prd-bloqueado:#e08278;
+    --prd-vendido:#60a5fa; --prd-bloqueado:#e08278; --prd-cancelamento:#e879b9;
 `;
 
 const CSS_PRODUTOS = `
@@ -296,6 +309,7 @@ export function TelaProdutosComercial() {
                 <Cabecalho>Disponível</Cabecalho>
                 <Cabecalho>Reservado</Cabecalho>
                 <Cabecalho>Negociação</Cabecalho>
+                <Cabecalho>{rotuloDoBalde("em_cancelamento")}</Cabecalho>
                 <Cabecalho>Vendido</Cabecalho>
                 <Cabecalho>Bloqueado</Cabecalho>
                 <Cabecalho>VGV</Cabecalho>
@@ -475,6 +489,9 @@ function CelulasDoCenario({ forte = false, scenario }: { forte?: boolean; scenar
       </td>
       <td style={{ ...numero, color: COR_DO_BALDE.negociacao }}>
         {inteiro(scenario.negociacao.units)}
+      </td>
+      <td style={{ ...numero, color: COR_DO_BALDE.em_cancelamento }}>
+        {inteiro(scenario.em_cancelamento.units)}
       </td>
       {/* Vendido em negrito: é o número que o coordenador procura primeiro. */}
       <td style={{ ...numero, color: COR_DO_BALDE.vendido, fontWeight: 700 }}>

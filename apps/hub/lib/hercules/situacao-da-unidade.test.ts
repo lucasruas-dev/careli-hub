@@ -73,6 +73,44 @@ describe("a ordem da régua", () => {
     );
   });
 
+  // ⚠️ O PEDIDO DE CANCELAMENTO (21/09/2026). Lucas: *"hoje ele aponta para contrato e polui
+  // nossos indicadores"*. A etapa da proposta NÃO muda no banco; muda o que a tela mostra.
+  it("o pedido de cancelamento vence a etapa da proposta", () => {
+    expect(
+      situacaoDoTerreno({
+        cadastro: "vendida",
+        propostasVivas: [{ desde: "2026-09-10", emCancelamento: true, etapa: "assinatura" }],
+        reservada: false,
+      }),
+    ).toBe("em_cancelamento");
+  });
+
+  it("vale a marca da proposta MAIS RECENTE, como tudo o mais nesta régua", () => {
+    expect(
+      situacaoDoTerreno({
+        cadastro: "disponivel",
+        propostasVivas: [
+          { desde: "2026-01-02", emCancelamento: true, etapa: "faturado" },
+          { desde: "2026-09-15", etapa: "contrato" },
+        ],
+        reservada: false,
+      }),
+    ).toBe("contrato");
+  });
+
+  it("⚠️ o lote em cancelamento NÃO volta para o estoque", () => {
+    // O contrato ainda existe: sair livre aqui seria o convite à segunda venda.
+    expect(
+      estaLivre(
+        situacaoDoTerreno({
+          cadastro: "disponivel",
+          propostasVivas: [{ desde: "2026-09-10", emCancelamento: true, etapa: "contrato" }],
+          reservada: true,
+        }),
+      ),
+    ).toBe(false);
+  });
+
   it("valor de cadastro desconhecido não vira livre", () => {
     expect(situacaoDoTerreno({ cadastro: "permutada", propostasVivas: [], reservada: false })).toBe(
       "bloqueada",
@@ -100,6 +138,14 @@ describe("como as telas escrevem", () => {
     expect(baldeDaSituacao("faturado")).toBe("vendido");
     expect(baldeDaSituacao("vendida")).toBe("vendido");
     expect(rotuloDoBalde("negociacao")).toBe("Em negociação");
+  });
+
+  it("⚠️ em cancelamento é um balde PRÓPRIO, e não cai em negociação nem em vendido", () => {
+    // É o ponto do trabalho de 21/09/2026: tirar essas vendas do número de contrato sem soltar o
+    // lote. Se ele caísse num balde existente, o indicador continuaria poluído.
+    expect(baldeDaSituacao("em_cancelamento")).toBe("em_cancelamento");
+    expect(rotuloDaSituacao("em_cancelamento")).toBe("Em cancelamento");
+    expect(estaLivre("em_cancelamento")).toBe(false);
   });
 
   it("um rótulo por situação", () => {

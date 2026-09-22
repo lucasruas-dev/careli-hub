@@ -22,7 +22,7 @@ const doC2x = (p: Partial<ApoloEnterpriseRow> & { code: string; id: string }): A
   mirrorLabel: null,
   mirrorNote: null,
   name: p.code,
-  scenario: { bloqueado: zero, disponivel: zero, negociacao: zero, reservado: zero, total: zero, vendido: zero },
+  scenario: { bloqueado: zero, disponivel: zero, em_cancelamento: zero, negociacao: zero, reservado: zero, total: zero, vendido: zero },
   state: null,
   stages: [],
   ...p,

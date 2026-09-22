@@ -36,6 +36,58 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-21-cancelamento-como-situacao-propria",
+    deployedAt: "2026-09-21T23:09:17-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**A venda com cancelamento pedido ganhou cartão próprio e cor própria (magenta).** Ela contava como Contrato ou Assinatura e inflava esses números: hoje são 9 vendas, R$ 1.702.143, e 7 delas apareciam como assinatura. Agora saem do cartão onde estavam e contam só no cartão Em cancelamento — a soma dos cartões continua sendo o total de vendas vivas.",
+              "**Clicar no cartão novo lista essas vendas**, e elas deixam de aparecer na lista da etapa antiga: cada venda em um lugar só.",
+              "**O lote continua ocupado em todo lugar.** A cor muda, a trava não: no banco a venda segue na etapa dela até o jurídico concluir, e ninguém reserva nem vende o lote enquanto isso.",
+              "**Na ficha do lote, a trilha agora termina no cancelamento.** Ela mostrava Assinatura e Faturado à frente, como se ainda fossem acontecer; agora os passos já andados ficam com o visto e o último degrau é Em cancelamento.",
+            ],
+            screen: "Venda · faixa do fluxo, grade e ficha do lote",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Card e coluna novos em Empreendimentos**, na mesma conta: o que está em cancelamento sai de Em negociação e de Vendido e aparece separado. A lista de unidades ganhou o filtro e o selo magenta.",
+            ],
+            screen: "Empreendimentos",
+          },
+        ],
+      },
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "**A tabela de produtos ganhou a coluna Em cancelamento**, para os números continuarem somando o total.",
+            ],
+            screen: "Produtos",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "`EtapaDoEspelho` e `BaldeDaSituacao` ganharam `em_cancelamento`, derivada em `situacaoDoTerreno` da marca `cancelamento_pedido_em` da proposta viva mais recente -- e SÓ depois do contrato (`DEPOIS_DO_CONTRATO`). A marca entra PENEIRADA: `lerSituacaoDasUnidades` passa a chamar `soltarMarcasQueSobraram` (marca-de-pedido.ts), que solta a marca sem card vivo na Têmis; medido em producao, 1 das 9 marcas era orfa (TST). `agregarFluxo` separa a venda marcada num contador proprio e `ETAPAS_DA_FAIXA` ganhou o setimo passo; a lista da tela filtra pela mesma regua (`linhaEmCancelamento`), entao cartao e lista fecham. Varri os LEITORES: `baldeDaEtapa` ganhou caso explicito (o `default` dele devolve `disponivel` -- sem isso o lote sairia como estoque livre na tela Produtos), `processoDaFicha` passa a achar a linha pela MARCA e nao pela etapa (senao a ficha apagava os botoes com \"nao bate com a lista\"), `acaoDeCancelamento` responde \"Cancelamento pedido\", `situacao-do-lote` mantem VENDIDO no telao e o espelho publico segue com duas cores (`estaLivre`). Cor: magenta #a8326d (claro) / #e879b9 (escuro) em `cores-de-situacao.ts`, `COR_DA_ETAPA` e `--prd-cancelamento`, com `FUNDO_ESCURO` atualizado. `BALDES_DO_CENARIO` nasceu em empreendimentos.ts porque TRES lugares montavam o cenario com `{} as ApoloEnterpriseScenario` e a propria copia da lista de baldes -- a chave nova existiria no tipo e faltaria no objeto. typecheck e lint limpos; 7.721 testes verdes (491 arquivos), com casos novos para a soma unica, a marca antes do contrato, o balde que nao pode ser disponivel e a ficha em cancelamento.",
+      motivation:
+        "Lucas, 21/09/2026: \"eu queria trazer esse fluxo diferente para o que esta em cancelamento, hoje ele aponta para contrato e polui nossos indicadores, acho que devemos separar, pode trazer um cor nova para cancelamento\" + \"e um card novo\". Sobre o espelho publico: \"no espelho nao precisa\", \"espelho tem duas, disponivel e nao disponivel\". E, com o print da ficha do VOC 03 06: \"o ideal quando cancelado nao ter as outras etapas, ela ser a ultima\".",
+    },
+    rollback: "1924123e",
+    title: "O cancelamento saiu do contrato: cartão, cor e trilha próprios",
+    type: "novidade",
+    version: "1.356.0",
+  },
+  {
     buildTag: "2026-09-21-termo-de-acordo-liberado",
     deployedAt: "2026-09-21T15:00:00-03:00",
     modules: [

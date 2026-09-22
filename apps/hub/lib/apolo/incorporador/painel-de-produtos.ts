@@ -22,10 +22,10 @@
 // Fernando (LBF) vê "Lagoa Bonita" com 1 etapa e os números dela — não os do Raposo.
 //
 // Função pura: a rota carrega cadastro, C2X e sessão e chama daqui.
-import type {
-  ApoloEnterpriseBucket,
-  ApoloEnterpriseRow,
-  ApoloEnterpriseScenario,
+import {
+  type ApoloEnterpriseRow,
+  type ApoloEnterpriseScenario,
+  BALDES_DO_CENARIO,
 } from "@/lib/apolo/empreendimentos";
 import { findEnterpriseMirror } from "@/lib/guardian/c2x-analytics";
 import type { LinhaDoCadastro } from "@/lib/hercules/cadastro";
@@ -157,14 +157,8 @@ export function decidirPainelDeProdutos(entrada: {
   return { ok: true, painel: { ...painel, avisoDaFonte: AVISO_DE_PAINEL_PARCIAL } };
 }
 
-const BALDES: Array<ApoloEnterpriseBucket | "total"> = [
-  "total",
-  "disponivel",
-  "reservado",
-  "negociacao",
-  "vendido",
-  "bloqueado",
-];
+/** A lista é a do cadastro (`BALDES_DO_CENARIO`): cenário montado aqui tem as mesmas chaves. */
+const BALDES = BALDES_DO_CENARIO;
 
 // Texto para o coordenador (externo): diz o EFEITO, sem nomear sistema. Usado só quando o C2X não
 // traz o `mirrorLabel` da linha (o VLO traz; um espelho cadastrado no Panteon que o

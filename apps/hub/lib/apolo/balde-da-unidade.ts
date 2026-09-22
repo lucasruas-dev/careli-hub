@@ -31,6 +31,13 @@ import { rotuloDoBalde as rotuloDoBaldeDaRegua } from "@/lib/hercules/situacao-d
 export type BaldeDaUnidade =
   | "bloqueado"
   | "disponivel"
+  /**
+   * ⚠️ ELE ENTRA AQUI SÓ PARA O VOCABULÁRIO CONTINUAR FECHANDO. A régua ganhou o sexto balde em
+   * 21/09/2026 e o teste deste arquivo trava o invariante "todo balde de `baldeDaSituacao` é um
+   * `BaldeDaUnidade` com palavra". A função `baldeDaUnidade`, que lê o C2X, NUNCA devolve este
+   * valor: o legado não sabe de pedido de cancelamento feito no Panteon.
+   */
+  | "em_cancelamento"
   | "negociacao"
   | "reservado"
   | "vendido";

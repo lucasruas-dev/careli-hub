@@ -40,6 +40,7 @@ import {
   ChevronRight,
   ChevronUp,
   CircleAlert,
+  CircleSlash,
   ContactRound,
   ExternalLink,
   FileSignature,
@@ -129,6 +130,9 @@ type BucketKey = keyof ApoloEnterpriseScenario;
 export const bucketText: Record<BucketKey, string> = {
   bloqueado: "text-rose-600 dark:text-rose-400",
   disponivel: "text-emerald-600 dark:text-emerald-400",
+  // ⚠️ MAGENTA, e é a única família livre da paleta: o violeta já é negociação, o rose é bloqueado
+  // e o vermelho é o faturado da grade. Ver a nota da cor em `cores-de-situacao.ts`.
+  em_cancelamento: "text-fuchsia-600 dark:text-fuchsia-400",
   negociacao: "text-violet-600 dark:text-violet-400",
   reservado: "text-amber-600 dark:text-amber-400",
   total: "text-ink",
@@ -147,6 +151,10 @@ export const buckets: Array<{
   { icon: Handshake, key: "negociacao", label: rotuloDoBalde("negociacao") },
   // Vendido = a venda fechada.
   { icon: BadgeDollarSign, key: "vendido", label: rotuloDoBalde("vendido") },
+  // ⚠️ O CARD DO CANCELAMENTO (Lucas, 21/09/2026: *"e um card novo"*). Ele fica DEPOIS de vendido
+  // porque não é um passo do funil: é a saída. E ele existe para tirar essas vendas de onde
+  // estavam — medido no dia: 9 vendas, 7 delas contando como assinatura e 2 como contrato.
+  { icon: CircleSlash, key: "em_cancelamento", label: rotuloDoBalde("em_cancelamento") },
   { icon: Ban, key: "bloqueado", label: rotuloDoBalde("bloqueado") },
 ];
 
@@ -403,7 +411,9 @@ export function EmpreendimentosScreen({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
-      <section className="grid shrink-0 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+      {/* Sete cartões desde 21/09/2026 (o cancelamento entrou): a grade larga passou de 6 para 7
+          colunas, senão o último cai sozinho numa segunda linha do lado de seis vazias. */}
+      <section className="grid shrink-0 gap-2 sm:grid-cols-3 xl:grid-cols-7">
         {buckets.map((bucket) => (
           <KpiCard
             icon={bucket.icon}
@@ -482,6 +492,7 @@ export function EmpreendimentosScreen({
                 <Coluna aoOrdenar={ordenarPor} coluna="disponivel" numerica ordem={ordem} rotulo={rotuloDoBalde("disponivel")} />
                 <Coluna aoOrdenar={ordenarPor} coluna="reservado" numerica ordem={ordem} rotulo={rotuloDoBalde("reservado")} />
                 <Coluna aoOrdenar={ordenarPor} coluna="negociacao" numerica ordem={ordem} rotulo={rotuloDoBalde("negociacao")} />
+                <Coluna aoOrdenar={ordenarPor} coluna="em_cancelamento" numerica ordem={ordem} rotulo={rotuloDoBalde("em_cancelamento")} />
                 <Coluna aoOrdenar={ordenarPor} coluna="vendido" numerica ordem={ordem} rotulo={rotuloDoBalde("vendido")} />
                 <Coluna aoOrdenar={ordenarPor} coluna="bloqueado" numerica ordem={ordem} rotulo={rotuloDoBalde("bloqueado")} />
                 <Coluna aoOrdenar={ordenarPor} coluna="vgv" numerica ordem={ordem} rotulo="VGV" />
@@ -784,7 +795,9 @@ function EnterpriseDetail({
       </header>
 
       {/* KPIs do empreendimento selecionado (os cards "filtram" pelo que foi aberto). */}
-      <section className="grid shrink-0 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+      {/* Sete cartões desde 21/09/2026 (o cancelamento entrou): a grade larga passou de 6 para 7
+          colunas, senão o último cai sozinho numa segunda linha do lado de seis vazias. */}
+      <section className="grid shrink-0 gap-2 sm:grid-cols-3 xl:grid-cols-7">
         {buckets.map((bucket) => (
           <KpiCard
             icon={bucket.icon}
@@ -2345,6 +2358,7 @@ export function UnidadesTab({
           <option value="disponivel">{rotuloDoBalde("disponivel")}</option>
           <option value="reservado">{rotuloDoBalde("reservado")}</option>
           <option value="negociacao">{rotuloDoBalde("negociacao")}</option>
+          <option value="em_cancelamento">{rotuloDoBalde("em_cancelamento")}</option>
           <option value="vendido">{rotuloDoBalde("vendido")}</option>
           <option value="bloqueado">{rotuloDoBalde("bloqueado")}</option>
         </select>
@@ -4414,6 +4428,11 @@ function ScenarioCells({
         className={`px-3 py-2.5 text-right font-medium tabular-nums ${bucketText.negociacao}`}
       >
         {scenario.negociacao.units}
+      </td>
+      <td
+        className={`px-3 py-2.5 text-right font-medium tabular-nums ${bucketText.em_cancelamento}`}
+      >
+        {scenario.em_cancelamento.units}
       </td>
       <td
         className={`px-3 py-2.5 text-right font-bold tabular-nums ${bucketText.vendido}`}
