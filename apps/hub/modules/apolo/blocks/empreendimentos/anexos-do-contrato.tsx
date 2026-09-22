@@ -171,18 +171,41 @@ export function AnexosDoContrato({ aoSaberDaFamilia, codigo, enterpriseId, unida
    * assinada; um PDF de 20MB atravessando a função serverless estoura o limite de corpo da Vercel.
    * A rota só assina o caminho (passo 1) e grava o registro depois que o objeto já existe (passo 3).
    */
+  // A linha está pronta para receber o arquivo? Posição válida e nome escrito.
+  //
+  // ⚠️ É O QUE TIRA O ERRO DO CAMINHO NORMAL. O envio dispara no `onChange` do campo de arquivo, e
+  // não num botão de salvar: quem clica em "Escolher PDF" com a linha pela metade só descobre que
+  // faltava alguma coisa DEPOIS de navegar na pasta e escolher o arquivo. Travar o botão põe a
+  // ordem certa na tela — preenche, depois escolhe — em vez de explicar o erro quando já é tarde.
+  const posicaoDoRascunho = Number(rascunho.posicao);
+  const linhaPronta =
+    Number.isInteger(posicaoDoRascunho) &&
+    posicaoDoRascunho >= 1 &&
+    posicaoDoRascunho <= POSICAO_MAXIMA &&
+    rascunho.nome.trim() !== "";
+
   const enviar = async (arquivo: File) => {
+    // ⚠️ RECUSAR SEM LIMPAR O CAMPO TRAVA A TELA. O `<input type="file">` só dispara `onChange`
+    // quando o valor MUDA: recusado o envio com o arquivo ainda selecionado, escolher O MESMO PDF
+    // de novo não dispara nada, e o botão passa a parecer quebrado. Foi o que aconteceu com a
+    // Nívea em 22/09/2026 ("não consigo colocar dessa forma"): ela clicou em Escolher PDF antes de
+    // preencher a posição, corrigiu, escolheu o mesmo arquivo e a tela não reagiu mais.
+    const recusar = (motivo: string) => {
+      setErro(motivo);
+      if (campoDeArquivo.current) campoDeArquivo.current.value = "";
+    };
+
     const posicao = Number(rascunho.posicao);
     if (!Number.isInteger(posicao) || posicao < 1 || posicao > POSICAO_MAXIMA) {
-      setErro(`A posição vai de 1 a ${POSICAO_MAXIMA}, e é ela que o texto cita como [anexo_N].`);
+      recusar(`A posição vai de 1 a ${POSICAO_MAXIMA}, e é ela que o texto cita como [anexo_N].`);
       return;
     }
     if (!rascunho.nome.trim()) {
-      setErro("Dê um nome ao anexo: ele vira o título da linha no contrato.");
+      recusar("Dê um nome ao anexo: ele vira o título da linha no contrato.");
       return;
     }
     if (arquivo.size > LIMITE_ANEXO_BYTES) {
-      setErro(`O arquivo passa de ${LIMITE_ANEXO_ROTULO}.`);
+      recusar(`O arquivo passa de ${LIMITE_ANEXO_ROTULO}.`);
       return;
     }
 
@@ -347,7 +370,10 @@ export function AnexosDoContrato({ aoSaberDaFamilia, codigo, enterpriseId, unida
           <input
             className="h-9 w-20 rounded-lg border border-line bg-surface px-2 text-ink text-sm"
             inputMode="numeric"
-            onChange={(e) => setRascunho((r) => ({ ...r, posicao: e.target.value }))}
+            onChange={(e) => {
+              setErro(null);
+              setRascunho((r) => ({ ...r, posicao: e.target.value }));
+            }}
             placeholder="1"
             value={rascunho.posicao}
           />
@@ -359,7 +385,10 @@ export function AnexosDoContrato({ aoSaberDaFamilia, codigo, enterpriseId, unida
           </span>
           <input
             className="h-9 rounded-lg border border-line bg-surface px-2 text-ink text-sm"
-            onChange={(e) => setRascunho((r) => ({ ...r, nome: e.target.value }))}
+            onChange={(e) => {
+              setErro(null);
+              setRascunho((r) => ({ ...r, nome: e.target.value }));
+            }}
             placeholder="Convenção de condomínio"
             value={rascunho.nome}
           />
@@ -377,8 +406,9 @@ export function AnexosDoContrato({ aoSaberDaFamilia, codigo, enterpriseId, unida
         />
         <button
           className="inline-flex h-9 items-center gap-2 rounded-lg border border-line bg-subtle px-4 font-semibold text-ink text-sm transition-colors hover:bg-subtle/70 disabled:cursor-not-allowed disabled:opacity-40"
-          disabled={enviando}
+          disabled={enviando || !linhaPronta}
           onClick={() => campoDeArquivo.current?.click()}
+          title={linhaPronta ? undefined : "Preencha a posição e o nome antes de escolher o PDF."}
           type="button"
         >
           {enviando ? (
@@ -388,6 +418,12 @@ export function AnexosDoContrato({ aoSaberDaFamilia, codigo, enterpriseId, unida
           )}
           {enviando ? "Enviando…" : "Escolher PDF"}
         </button>
+
+        {linhaPronta ? null : (
+          <span className="pb-2 text-ink-muted text-xs">
+            Preencha a posição e o nome para liberar o envio.
+          </span>
+        )}
       </div>
 
       {erro ? (
@@ -466,6 +502,9 @@ export function CapaDaMinuta({
   const enviar = async (arquivo: File) => {
     if (arquivo.size > LIMITE_ANEXO_BYTES) {
       setErro(`O arquivo passa de ${LIMITE_ANEXO_ROTULO}.`);
+      // Ver a nota de `AnexosDoContrato`: recusar com o arquivo ainda selecionado impede que
+      // escolher O MESMO arquivo de novo dispare o `onChange`.
+      if (campo.current) campo.current.value = "";
       return;
     }
     setEnviando(true);
@@ -546,6 +585,9 @@ export function CapaDaMinuta({
       setErro(e instanceof Error ? e.message : "Falha ao tirar a capa.");
     } finally {
       setEnviando(false);
+      // Trocar a capa pelo MESMO arquivo (redesenhado no canvas, mesmo nome) é rotina aqui; sem
+      // zerar o campo, o segundo envio não dispara.
+      if (campo.current) campo.current.value = "";
     }
   };
 

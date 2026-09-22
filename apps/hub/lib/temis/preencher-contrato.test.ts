@@ -1483,3 +1483,43 @@ describe("o rótulo de assinatura de quem não assina", () => {
     expect(texto(r.nos)).not.toContain("CÔNJUGE");
   });
 });
+
+describe("a unidade de área não sai duas vezes", () => {
+  // O caso real: VOL Q11 L07, 22/09/2026. A minuta escrevia "[area_lote] m²" e `area_lote` já vem
+  // com o "m²", então o papel saiu com "área de 365,09 m² m²".
+  it("apara o m² que a minuta repete depois da variável", () => {
+    const r = preencherContrato([p("com área de ", v("area_lote"), " m² (trezentos).")], {
+      compradores: [],
+      gerais: { area_lote: "365,09 m²" },
+    });
+    expect(texto(r.nos)).toBe("com área de 365,09 m² (trezentos).");
+  });
+
+  it("apara o 'metros quadrados' repetido depois do extenso", () => {
+    const r = preencherContrato([p("(", v("area_lote_extenso"), " metros quadrados)")], {
+      compradores: [],
+      gerais: {
+        area_lote_extenso: "trezentos e sessenta e cinco metros quadrados e nove decímetros quadrados",
+      },
+    });
+    expect(texto(r.nos)).toBe(
+      "(trezentos e sessenta e cinco metros quadrados e nove decímetros quadrados)",
+    );
+  });
+
+  it("não mexe quando a minuta NÃO repete", () => {
+    const r = preencherContrato([p("com área de ", v("area_lote"), ", integrante do bairro.")], {
+      compradores: [],
+      gerais: { area_lote: "365,09 m²" },
+    });
+    expect(texto(r.nos)).toBe("com área de 365,09 m², integrante do bairro.");
+  });
+
+  it("não come o m² que vem depois de uma variável que NÃO é de área", () => {
+    const r = preencherContrato([p("R$ ", v("preco_do_metro"), " m² de terreno.")], {
+      compradores: [],
+      gerais: { preco_do_metro: "366,00" },
+    });
+    expect(texto(r.nos)).toBe("R$ 366,00 m² de terreno.");
+  });
+});

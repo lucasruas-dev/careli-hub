@@ -722,7 +722,8 @@ function resolverNo(
     const alvo = filho as NoDoDocumento;
     const nome = nomeDaVariavel(alvo);
     if (nome) {
-      finais.push(textoDaVariavel(alvo, nome, dados, coleta, donoDoNo(alvo) ?? dono));
+      const escrito = textoDaVariavel(alvo, nome, dados, coleta, donoDoNo(alvo) ?? dono);
+      finais.push({ ...escrito, [VEIO_DE_VARIAVEL]: true } as NoDeTexto);
       continue;
     }
     const resolvido = resolverNo(alvo, dados, coleta, donoDoNo(alvo) ?? dono);
@@ -735,7 +736,7 @@ function resolverNo(
     if (!esvaziouNoCorte(resolvido) || ehCelulaDaGrade(resolvido)) finais.push(resolvido);
   }
 
-  const pronto = limpar({ ...no, children: finais });
+  const pronto = limpar({ ...no, children: semUnidadeRepetida(finais) });
   const ficouVazio = finais.every((f) => ehTexto(f) && f.text === "");
   return tinhaConteudo && ficouVazio ? marcarVazioPorCorte(pronto) : pronto;
 }
@@ -1135,6 +1136,54 @@ function marcarVazioPorCorte(no: NoDoDocumento): NoDoDocumento {
 
 function esvaziouNoCorte(no: unknown): boolean {
   return (no as Record<symbol, unknown>)?.[VAZIO_POR_CORTE] === true;
+}
+
+/**
+ * Este no saiu de uma VARIAVEL, e nao da minuta.
+ *
+ * Marca irma de `VAZIO_POR_CORTE`: Symbol, some no `JSON.stringify` e nao vaza para o HTML. Serve
+ * a `semUnidadeRepetida`, que so pode aparar o que o DADO ja disse -- texto que a minuta escreveu
+ * duas vezes e escolha de quem escreveu, e nao cabe a este motor adivinhar.
+ */
+const VEIO_DE_VARIAVEL = Symbol("veioDeVariavel");
+
+/** O valor terminou de dizer a area: "365,09 m2", "...e nove decimetros quadrados". */
+const JA_DISSE_A_AREA = /(m²|quadrados)\s*$/i;
+
+/** A unidade repetida logo depois, no texto que a minuta escreveu. */
+const UNIDADE_REPETIDA = /^\s*(?:m²|metros quadrados)/i;
+
+/**
+ * Apara a unidade de area que a minuta repete depois da variavel.
+ *
+ * ⚠️ AS VARIAVEIS DE AREA JA TRAZEM A UNIDADE. `dados-do-contrato` entrega `area_lote` como
+ * "365,09 m²" e `area_lote_extenso` como "trezentos e sessenta e cinco metros quadrados e nove
+ * decimetros quadrados" -- o comentario de la ja avisa disso desde o Villa Paris. So que quem
+ * escreve a minuta le "[area_lote]" e naturalmente escreve "m²" em seguida, e o defeito nasce de
+ * novo a cada modelo novo: em 22/09/2026 o contrato do VOL Q11 L07 saiu com "area de 365,09 m² m²
+ * (trezentos e sessenta e cinco metros quadrados e nove decimetros quadrados metros quadrados)".
+ *
+ * Corrigir a minuta conserta UM modelo. A trava fica aqui porque o erro e da classe "invisivel ate
+ * o papel sair": ninguem revisa 11 minutas procurando um "m²" a mais, e a proxima minuta escrita
+ * repete a armadilha. Aparar so o que veio colado a uma variavel que JA disse a area mantem o
+ * corte estreito -- nenhum texto legitimo diz "m² m²".
+ */
+function semUnidadeRepetida(
+  nos: readonly (NoDeTexto | NoDoDocumento)[],
+): (NoDeTexto | NoDoDocumento)[] {
+  let saida: (NoDeTexto | NoDoDocumento)[] | null = null;
+  for (let i = 1; i < nos.length; i += 1) {
+    const antes = nos[i - 1];
+    const agora = nos[i];
+    if (!ehTexto(antes) || !ehTexto(agora)) continue;
+    if ((antes as Record<symbol, unknown>)[VEIO_DE_VARIAVEL] !== true) continue;
+    if (!JA_DISSE_A_AREA.test(antes.text)) continue;
+    const repetida = agora.text.match(UNIDADE_REPETIDA);
+    if (!repetida) continue;
+    saida ??= [...nos];
+    saida[i] = { ...agora, text: agora.text.slice(repetida[0].length) };
+  }
+  return saida ?? [...nos];
 }
 
 /**

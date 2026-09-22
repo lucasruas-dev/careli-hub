@@ -60,7 +60,10 @@ const CABECALHO = ["Parcela", "Correção", "Juros", "1º vencimento", "Qtde.", 
  *
  * Devolve `null` quando não há cronograma: sem parcela não há quadro.
  */
-export function tabelaGeralDePagamentos(condicoes: unknown): NoDoDocumento | null {
+export function tabelaGeralDePagamentos(
+  condicoes: unknown,
+  comissaoEmCentavos: null | number = null,
+): NoDoDocumento | null {
   const dados = (condicoes ?? null) as CondicoesGravadas | null;
   if (!dados) return null;
 
@@ -73,46 +76,77 @@ export function tabelaGeralDePagamentos(condicoes: unknown): NoDoDocumento | nul
   const juros = rotuloDosJuros(dados.plano?.jurosTaxa, dados.plano?.jurosPeriodicidade);
   const totais = dados.totais ?? {};
 
+  // ⚠️ O QUADRO DESTE CONTRATO É O DO LOTEADOR, e a comissão sai dele.
+  //
+  // Lucas (22/09/2026): *"o fluxo da tabela deve trazer somente o valor do incorporador, ou seja, o
+  // valor do lote negociado menos o valor de comissão, pois temos o contrato de corretagem que traz
+  // o valor de comissão. os dois valores é o valor negociado do lote, mas eles são separados nos
+  // contratos"*. Nívea, no mesmo dia: *"o fluxo do sinal deve ser da incorporadora"*.
+  //
+  // ⚠️ E SAI DA ENTRADA, NÃO DAS MENSAIS. É o que o próprio contrato promete em cláusula: a
+  // corretagem "será paga em conformidade com o fluxo financeiro das parcelas de SINAL/ATO". As
+  // mensais amortizam o preço do lote inteiras.
+  //
+  // ⚠️ PROPORCIONAL ENTRE AS PARCELAS DE ENTRADA, com o resto no último centavo. Jogar a comissão
+  // toda na primeira parcela faria a Entrada 1 despencar (às vezes para baixo de zero) enquanto as
+  // seguintes seguiriam cheias — o quadro passaria a descrever um fluxo que ninguém combinou.
+  const abatimento = abaterDaEntrada(entrada, comissaoEmCentavos);
+
   const linhas: LinhaDoQuadro[] = [];
 
   // ⚠️ A ENTRADA NÃO LEVA CORREÇÃO NEM JUROS, e isso não é omissão: ela é paga à vista ou em poucas
   // parcelas dentro do mesmo fluxo, antes de existir saldo devedor. Repetir o IPCA na linha dela
   // faria o contrato prometer correção sobre um valor que ninguém corrige.
-  if (entrada.length > 0) {
+  // ⚠️ A ENTRADA VAI UMA LINHA POR PARCELA, cada uma com o seu vencimento. É o desenho do quadro
+  // que o jurídico já usa (Lucas, 22/09/2026, com o modelo na mão), onde as três parcelas de
+  // abertura aparecem separadas porque têm datas e valores próprios. O nome é ENTRADA, e não
+  // "sinal": *"nao gosto da palavra sinal, acho que 1 Entrada, ou algo do tipo"*.
+  //
+  // ⚠️ A ENTRADA NÃO LEVA CORREÇÃO NEM JUROS, e isso não é omissão: ela é paga à vista ou em poucas
+  // parcelas dentro do mesmo fluxo, antes de existir saldo devedor. Repetir o IPCA na linha dela
+  // faria o contrato prometer correção sobre um valor que ninguém corrige.
+  entrada.forEach((parcela, i) => {
+    const valor = abatimento === null ? numero(parcela.valor) : abatimento[i] ?? null;
     linhas.push({
       correcao: "—",
       juros: "—",
-      quantidade: quantidadeDaSerie(entrada),
-      tipo: quantidadeDaSerie(entrada) > 1 ? "Entrada (parcelada)" : "Entrada",
-      total: numero(totais.entrada) ?? somaDe(entrada),
-      valor: valorDaSerie(entrada),
-      vencimento: dataBr(entrada[0]?.vencimento),
+      quantidade: 1,
+      tipo: entrada.length > 1 ? `Entrada ${i + 1}` : "Entrada",
+      total: valor,
+      valor: valor === null ? "—" : dinheiro(valor),
+      vencimento: dataBr(parcela.vencimento),
+    });
+  });
+
+  if (mensais.length > 0) {
+    linhas.push({
+      correcao,
+      juros,
+      quantidade: quantidadeDaSerie(mensais),
+      tipo: "Mensal",
+      total: numero(totais.mensais) ?? somaDe(mensais),
+      valor: valorDaSerie(mensais),
+      vencimento: dataBr(mensais[0]?.vencimento),
     });
   }
 
-  if (mensais.length > 0) {
-    linhas.push(
-      ...emDegraus(mensais, "Mensais", {
-        correcao,
-        juros,
-        total: numero(totais.mensais) ?? somaDe(mensais),
-      }),
-    );
-  }
-
   if (anuais.length > 0) {
-    linhas.push(
-      ...emDegraus(anuais, "Anuais", {
-        correcao,
-        juros,
-        total: numero(totais.anuais) ?? somaDe(anuais),
-      }),
-    );
+    linhas.push({
+      correcao,
+      juros,
+      quantidade: quantidadeDaSerie(anuais),
+      tipo: "Anual",
+      total: numero(totais.anuais) ?? somaDe(anuais),
+      valor: valorDaSerie(anuais),
+      vencimento: dataBr(anuais[0]?.vencimento),
+    });
   }
 
-  const totalGeral =
-    numero(totais.geral) ??
-    linhas.reduce((soma, linha) => soma + (linha.total ?? 0), 0);
+  // ⚠️ O TOTAL SEGUE AS LINHAS QUANDO A COMISSÃO SAIU. `totais.geral` é o negociado cheio, e
+  // repeti-lo embaixo de uma entrada já líquida faria a coluna não fechar com a soma da própria
+  // tabela — exatamente a contradição que o contrato do VOL trouxe de volta do jurídico.
+  const somaDasLinhas = linhas.reduce((soma, linha) => soma + (linha.total ?? 0), 0);
+  const totalGeral = abatimento === null ? numero(totais.geral) ?? somaDasLinhas : somaDasLinhas;
 
   return {
     children: [
@@ -139,6 +173,39 @@ export function tabelaGeralDePagamentos(condicoes: unknown): NoDoDocumento | nul
     ],
     type: "table",
   };
+}
+
+/**
+ * A entrada, parcela a parcela, já sem a comissão de corretagem.
+ *
+ * Devolve `null` quando não há o que abater — e é `null` também no caso anômalo em que a comissão
+ * alcança a entrada inteira. Um quadro com entrada zerada (ou negativa) descreve um negócio que não
+ * existe e esconde o defeito do cadastro atrás de um número plausível; melhor o quadro cheio, que
+ * bate com a proposta e deixa a divergência visível para quem confere.
+ */
+function abaterDaEntrada(
+  entrada: readonly ParcelaGravada[],
+  comissaoEmCentavos: null | number,
+): null | number[] {
+  if (comissaoEmCentavos === null || comissaoEmCentavos <= 0 || entrada.length === 0) return null;
+
+  const valores = entrada.map((parcela) => numero(parcela.valor));
+  if (valores.some((v) => v === null)) return null;
+
+  const centavos = valores.map((v) => Math.round((v as number) * 100));
+  const totalEmCentavos = centavos.reduce((soma, c) => soma + c, 0);
+  if (totalEmCentavos <= comissaoEmCentavos) return null;
+
+  // Proporcional ao peso de cada parcela; o resto da divisão cai na última, que é a que fecha.
+  const liquidos = centavos.map((c) =>
+    c - Math.round((comissaoEmCentavos * c) / totalEmCentavos),
+  );
+  const alvo = totalEmCentavos - comissaoEmCentavos;
+  const sobra = alvo - liquidos.reduce((soma, c) => soma + c, 0);
+  const ultima = liquidos.length - 1;
+  liquidos[ultima] = (liquidos[ultima] ?? 0) + sobra;
+
+  return liquidos.map((c) => c / 100);
 }
 
 function linhaDaTabela(valores: readonly string[], cabecalho = false): NoDoDocumento {

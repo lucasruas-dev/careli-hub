@@ -155,8 +155,8 @@ async function escalaDaPagina(bytes: Uint8Array, indice: number): Promise<{ x: n
   let texto = "";
   for (const ref of fluxos) {
     if (!ref) continue;
-    const fluxo = doc.context.lookupMaybe(ref, PDFRawStream);
-    if (!fluxo) continue;
+    const fluxo = doc.context.lookup(ref) as null | PDFRawStream;
+    if (!fluxo?.contents) continue;
     const cru = Buffer.from(fluxo.contents);
     const filtro = String(fluxo.dict.get(PDFName.of("Filter")) ?? "");
     try {

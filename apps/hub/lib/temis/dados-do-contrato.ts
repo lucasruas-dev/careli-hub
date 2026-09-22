@@ -522,7 +522,10 @@ export async function dadosDaProposta(
   // manda conferir o que foi gravado na proposta; esta precisa dizer que a carteira já tem as
   // parcelas e que, mesmo assim, o quadro do CONTRATO depende do cronograma da proposta — senão o
   // operador vai procurar defeito na carteira, que está certa.
-  const quadro = tabelaGeralDePagamentos(proposta.condicoes);
+  const quadro = tabelaGeralDePagamentos(
+    proposta.condicoes,
+    comissaoTotalEmCentavos(numero(proposta.valor), comissao.percentuais),
+  );
   const temCronogramaGravado = objeto(proposta.condicoes) !== null;
   if (!quadro && (temCronogramaGravado || carteira?.situacao === "ok")) {
     avisos.push(
@@ -2584,6 +2587,30 @@ function emReais(valor: number): string {
  */
 function parteEmCentavos(valorEmCentavos: number, taxa: number): number {
   return Math.round((valorEmCentavos * taxa) / 100);
+}
+
+/**
+ * A comissão total da venda, em CENTAVOS INTEIROS — ou `null` quando ela é desconhecida.
+ *
+ * ⚠️ UMA FONTE SÓ, porque agora ela responde a DUAS perguntas do mesmo contrato: quanto vale
+ * `[valor_total_comissao]` no item VIII e quanto sai do fluxo de entrada no quadro de pagamento
+ * (`tabelaGeralDePagamentos`). Dois cálculos paralelos do mesmo número são exatamente o jeito de o
+ * papel se contradizer entre duas páginas — foi assim que o custo total e o Quadro-Resumo
+ * divergiram em R$ 8.013,06 no contrato do VOL.
+ *
+ * ⚠️ NULO NÃO É ZERO: sem as duas pontas cadastradas o total é DESCONHECIDO. Ver a nota longa em
+ * `gerais`, que é a dona da regra.
+ */
+export function comissaoTotalEmCentavos(
+  valorNegociado: null | number,
+  percentuais: { comissao_coordenadora_percentual?: unknown; comissao_imobiliaria_percentual?: unknown } | null,
+): null | number {
+  if (valorNegociado === null) return null;
+  const pctCoordenadora = numero(percentuais?.comissao_coordenadora_percentual);
+  const pctVinculado = numero(percentuais?.comissao_imobiliaria_percentual);
+  if (pctCoordenadora === null || pctVinculado === null) return null;
+  const emCentavos = Math.round(valorNegociado * 100);
+  return parteEmCentavos(emCentavos, pctCoordenadora) + parteEmCentavos(emCentavos, pctVinculado);
 }
 
 /** `300` → `300,00`. O número sem unidade nenhuma — quem escreve "m²" é quem chama. */

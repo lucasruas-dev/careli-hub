@@ -69,45 +69,69 @@ const MENSAIS_COMPLETAS = DEGRAUS.flatMap(([valor, vencimento], degrau) =>
 );
 
 describe("tabelaGeralDePagamentos", () => {
-  // ⚠️ O CONTRATO DIZIA SACOC E DESENHAVA PRICE. Nívea, 22/09/2026: *"Está gerando tabela PRICE"*.
-  // A linha "Mensais" anunciava 156 x R$ 770,49 e, ao lado, R$ 204.417,00 de total — e 156 x 770,49
-  // dá R$ 120.196,44. Faltavam R$ 84 mil na conta de quem conferisse com a calculadora, porque a
-  // coluna mostrava só a PRIMEIRA parcela de uma série que sobe.
-  it("⚠️ com o cronograma completo, a série sai em DEGRAUS e cada linha fecha", () => {
-    const saida = texto(
-      tabelaGeralDePagamentos({ ...CONDICOES, mensais: MENSAIS_COMPLETAS }),
-    );
+  // ⚠️ UMA MENÇÃO SÓ, A DA PRIMEIRA PARCELA — e não um degrau por ciclo de reajuste. Lucas,
+  // 22/09/2026, com o modelo do quadro que o jurídico usa: *"no quadro, tabela de pagamento e para
+  // vir somente a mencao da primeira parcela, igual ao plano"*.
+  //
+  // ⚠️ O QUADRO EM DEGRAUS DUROU UM DIA, e a lição fica escrita aqui. De manhã eu quebrei a série
+  // em 13 linhas para os números fecharem (156 x 770,49 não dá os R$ 204.417,00 do total), e a
+  // Nívea recusou: *"nao da para ter a tabela com a projecao dos juros"*. A leitura dela partia de
+  // uma premissa errada — medido no dia, os degraus são JUROS CONTRATADOS, (1+0,007207)^12 = 9% ao
+  // ano, e não projeção de IPCA — mas o desconforto era justo: um quadro com o valor de 2038 impresso
+  // convida a ler aquilo como promessa.
+  //
+  // ⚠️ E O TOTAL CONTINUA SENDO O REAL. Lucas escolheu assim entre as três opções: a linha mostra a
+  // primeira parcela e o total que o comprador vai pagar de verdade. Multiplicar a primeira pelo
+  // prazo daria R$ 120.196,44 e esconderia R$ 84 mil de juros já contratados na cláusula VII.
+  it("⚠️ a série mensal sai em UMA linha, com a primeira parcela e o total REAL", () => {
+    const saida = texto(tabelaGeralDePagamentos({ ...CONDICOES, mensais: MENSAIS_COMPLETAS }));
 
-    // O primeiro degrau e o último, com o intervalo de parcelas e o vencimento de cada um.
-    expect(saida).toContain("Mensais 1 a 12");
+    expect(saida).toContain("Mensal");
+    expect(saida).not.toContain("Mensais 1 a 12");
+    expect(saida).not.toContain("Mensais 145 a 156");
+
+    // A primeira parcela e o primeiro vencimento; o valor de 2038 não entra no papel.
     expect(saida).toContain("R$ 770,49");
     expect(saida).toContain("10/10/2026");
-    expect(saida).toContain("Mensais 145 a 156");
-    expect(saida).toContain("R$ 2.083,74");
-    expect(saida).toContain("10/10/2038");
+    expect(saida).not.toContain("R$ 2.083,74");
+    expect(saida).not.toContain("10/10/2038");
 
-    // Cada linha fecha sozinha: 12 x 770,49 = 9.245,88.
-    expect(saida).toContain("R$ 9.245,88");
-    // E o total geral continua o mesmo que a proposta congelou.
-    expect(saida).toContain("R$ 217.772,10");
+    // O total é o que será pago, e não 156 x 770,49.
+    expect(saida).toContain("R$ 204.417,00");
+    expect(saida).not.toContain("R$ 120.196,44");
   });
 
-  it("os treze degraus somam o total das mensais, ao centavo", () => {
-    const tabela = tabelaGeralDePagamentos({ ...CONDICOES, mensais: MENSAIS_COMPLETAS });
-    const linhas = (tabela?.children ?? []) as { children?: unknown[] }[];
-    // Cabeçalho + 1 entrada + 13 degraus + total.
-    expect(linhas).toHaveLength(16);
+  // ⚠️ A ENTRADA VAI UMA LINHA POR PARCELA, com o vencimento de cada uma, e o nome é ENTRADA.
+  // Lucas, 22/09/2026, sobre o modelo que usa "SINAL": *"nao gosto da palavra sinal, acho que 1
+  // Entrada, ou algo do tipo"*.
+  it("entrada parcelada vira uma linha por parcela, numerada", () => {
+    const saida = texto(
+      tabelaGeralDePagamentos({
+        ...CONDICOES,
+        entrada: [
+          { numero: 1, total: 3, valor: 2400, vencimento: "2026-09-04" },
+          { numero: 2, total: 3, valor: 2385, vencimento: "2026-10-20" },
+          { numero: 3, total: 3, valor: 2385, vencimento: "2026-11-20" },
+        ],
+      }),
+    );
 
-    const somaDosDegraus = DEGRAUS.reduce((soma, [valor]) => soma + Math.round(valor * 100) * 12, 0);
-    expect(somaDosDegraus).toBe(20441700);
+    expect(saida).toContain("Entrada 1");
+    expect(saida).toContain("Entrada 2");
+    expect(saida).toContain("Entrada 3");
+    expect(saida).toContain("04/09/2026");
+    expect(saida).toContain("20/10/2026");
+    expect(saida).toContain("20/11/2026");
+    expect(saida).toContain("R$ 2.400,00");
+    expect(saida).toContain("R$ 2.385,00");
+    // Entrada nao leva correcao nem juros: ela e paga antes de existir saldo devedor.
+    expect(saida).not.toContain("Entrada (parcelada)");
   });
 
-  // ⚠️ CRONOGRAMA CORTADO VOLTA À LINHA ÚNICA: com menos parcelas gravadas do que o prazo
-  // contratado, os degraus não somariam 156, e um quadro que não fecha é pior do que um resumido.
-  it("cronograma incompleto continua em uma linha só", () => {
+  it("entrada de uma parcela só não ganha número", () => {
     const saida = texto(tabelaGeralDePagamentos(CONDICOES));
-    expect(saida).toContain("Mensais");
-    expect(saida).not.toContain("Mensais 1 a");
+    expect(saida).toContain("Entrada");
+    expect(saida).not.toContain("Entrada 1");
   });
 
   it("traz uma linha por tipo de parcela, com o que o contrato precisa dizer", () => {
@@ -129,7 +153,7 @@ describe("tabelaGeralDePagamentos", () => {
     expect(saida).toContain("R$ 13.355,10");
 
     // As mensais: a quantidade do plano, a primeira parcela e o primeiro vencimento.
-    expect(saida).toContain("Mensais");
+    expect(saida).toContain("Mensal");
     expect(saida).toContain("156");
     expect(saida).toContain("10/10/2026");
     expect(saida).toContain("R$ 770,49");
@@ -151,7 +175,7 @@ describe("tabelaGeralDePagamentos", () => {
   });
 
   it("sem parcela anual, a linha das anuais não existe", () => {
-    expect(texto(tabelaGeralDePagamentos(CONDICOES))).not.toContain("Anuais");
+    expect(texto(tabelaGeralDePagamentos(CONDICOES))).not.toContain("Anual");
   });
 
   it("com parcelas anuais, elas entram no quadro", () => {
@@ -164,7 +188,7 @@ describe("tabelaGeralDePagamentos", () => {
       totais: { ...CONDICOES.totais, anuais: 10000 },
     };
     const saida = texto(tabelaGeralDePagamentos(comAnuais));
-    expect(saida).toContain("Anuais");
+    expect(saida).toContain("Anual");
     expect(saida).toContain("R$ 5.000,00");
     expect(saida).toContain("R$ 10.000,00");
     expect(saida).toContain("10/09/2027");
@@ -181,5 +205,60 @@ describe("tabelaGeralDePagamentos", () => {
     expect(tabelaGeralDePagamentos(null)).toBeNull();
     expect(tabelaGeralDePagamentos({})).toBeNull();
     expect(tabelaGeralDePagamentos({ mensais: [], entrada: [] })).toBeNull();
+  });
+});
+
+// ── A COMISSÃO SAI DO QUADRO ──────────────────────────────────────────────────
+//
+// Lucas (22/09/2026): *"o fluxo da tabela deve trazer somente o valor do incorporador, ou seja, o
+// valor do lote negociado menos o valor de comissão"*. Na venda da VITORIA a comissão é de 6% sobre
+// os R$ 133.551,00 (2% da coordenadora + 4% da imobiliária) = R$ 8.013,06, em centavos 801306.
+const COMISSAO = 801306;
+
+describe("a comissão sai do fluxo da entrada", () => {
+  it("deixa na entrada só o que é do loteador", () => {
+    const quadro = tabelaGeralDePagamentos(CONDICOES, COMISSAO);
+    // 13.355,10 de entrada menos 8.013,06 de comissão = 5.342,04.
+    expect(texto(quadro)).toContain("R$ 5.342,04");
+    expect(texto(quadro)).not.toContain("R$ 13.355,10");
+  });
+
+  it("as mensais NÃO são tocadas: a comissão sai do sinal", () => {
+    expect(texto(tabelaGeralDePagamentos(CONDICOES, COMISSAO))).toContain("R$ 204.417,00");
+  });
+
+  it("o total desce junto, e fecha com a soma das linhas", () => {
+    // 5.342,04 + 204.417,00 = 209.759,04 — e não os 217.772,10 de `totais.geral`.
+    const quadro = texto(tabelaGeralDePagamentos(CONDICOES, COMISSAO));
+    expect(quadro).toContain("R$ 209.759,04");
+    expect(quadro).not.toContain("R$ 217.772,10");
+  });
+
+  it("divide a comissão entre as parcelas de entrada, sem perder centavo", () => {
+    const tres = {
+      ...CONDICOES,
+      entrada: [
+        { numero: 1, total: 3, valor: 5000, vencimento: "2026-09-18" },
+        { numero: 2, total: 3, valor: 5000, vencimento: "2026-10-18" },
+        { numero: 3, total: 3, valor: 3355.1, vencimento: "2026-11-18" },
+      ],
+    };
+    const quadro = texto(tabelaGeralDePagamentos(tres, COMISSAO));
+    // 13.355,10 - 8.013,06 = 5.342,04 repartidos na proporção 5000 / 5000 / 3355,10.
+    expect(quadro).toContain("R$ 2.000,00");
+    expect(quadro).toContain("R$ 1.342,04");
+    expect(quadro).toContain("R$ 209.759,04");
+  });
+
+  it("sem comissão conhecida, o quadro fica como a proposta congelou", () => {
+    const quadro = texto(tabelaGeralDePagamentos(CONDICOES, null));
+    expect(quadro).toContain("R$ 13.355,10");
+    expect(quadro).toContain("R$ 217.772,10");
+  });
+
+  it("comissão que engole a entrada inteira NÃO é abatida", () => {
+    // Um quadro com entrada zerada esconde o defeito do cadastro atrás de um número plausível.
+    const quadro = texto(tabelaGeralDePagamentos(CONDICOES, 1_400_000));
+    expect(quadro).toContain("R$ 13.355,10");
   });
 });
