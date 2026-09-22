@@ -36,6 +36,74 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-21-etapa-pelo-fato-quadros-e-tres-criticos",
+    deployedAt: "2026-09-21T23:40:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Agora é um quadro por serviço.** Contrato novo, Cancelamento e distrato, Cessão de direitos e Correção de fluxo têm cada um as suas colunas, as mesmas que já estavam desenhadas: cancelamento e distrato não têm Faturado, e a última coluna deles deixou de se chamar assim.",
+              "**A aba Todos dá a visão geral da operação**, com três seções só: Novo, Em andamento e Finalizado. É a leitura de cima, sem trocar nenhum estágio gravado.",
+              "**Card indeferido volta a aparecer.** Ele era carregado e descartado no desenho do quadro, e só abria por link direto: são 4 hoje, 2 contratos e 2 cancelamentos. Agora tem coluna própria, no fim.",
+              "Cancelamento e distrato dividem o quadro porque o serviço é o mesmo. A coluna de assinatura existe ali por causa do distrato; o cancelamento passa direto e nunca tem card nela.",
+            ],
+            screen: "Trabalhos · quadros",
+          },
+        ],
+      },
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**O lote que faturou aparece como faturado.** A tela lia o rótulo do legado, que para de chegar quando a linha não é mais recarregada, e não a data do faturamento, que chega sempre: VOC 07/19, VOC 06/07 e VOC 05/01 faturaram em 17/09 e a tela dizia \"Em assinatura\" nos três. Na base inteira eram 60 vendas nessa situação, a mais antiga de setembro de 2025. O legado conta 86 faturados no VOC; a tela mostrava 83.",
+              "**O faturamento entra no histórico do lote**, inclusive nas vendas que vieram importadas, que é onde o caso acontece.",
+              "**Os dois contadores da tela de Venda voltaram a bater.** Os cards do topo diziam Reservado 0, Assinatura 6 e Faturado 83 e a legenda da grade, logo abaixo, dizia 2, 7 e 85: a faixa contava proposta e a grade contava lote. A diferença eram 5 propostas gravadas sob o código antigo de lotes que mudaram de gleba. Agora as duas contam LOTE.",
+              "Faturamento com data futura não promove nada, e venda cancelada ou distratada não volta a faturado.",
+            ],
+            screen: "Venda · faixa, grade e ficha do lote",
+          },
+        ],
+      },
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "**Abrir atendimento volta a falar com o cliente.** Com a janela de 24h aberta, a abertura não enviava nem gravava nada: o ticket nascia mudo, o operador via sucesso e o cliente nunca era procurado. Foram 37 tickets sem uma linha, 31 clientes, entre 28/06 e 18/09, e 28 deles encerrados como sem interação. Agora a mensagem escolhida sai como texto, fica no histórico e o ticket nasce aguardando o cliente. Era o TI-000139 e o TI-000140.",
+              "**O modal deixou de ter dois passos.** Você pede para falar com o cliente e o sistema escolhe a forma, template ou texto, conforme a janela.",
+            ],
+            screen: "Atendimento · abrir",
+          },
+        ],
+      },
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "**A tela de cobrança não cai mais** para quem não enxerga a fila Cobrança. Era o TI-000135: uma comparação inválida derrubava a consulta inteira e levava a tela de atendimento junto, não um pedaço dela.",
+              "**O acordo diz de qual unidade ele é**, na aba Propostas, onde não havia nada, e na Central do gestor, onde aparecia a primeira matrícula da carteira. Isso mentia em quem tem mais de uma unidade: 14 dos 40 acordos vivos, e 6 clientes com acordos de contratos diferentes rotulados igual. Era o TI-000149.",
+            ],
+            screen: "Cobrança · Acordos",
+          },
+        ],
+      },
+    ],
+    rollback: "4d12595b",
+    technical: {
+      done:
+        "QUATRO frentes. (1) `lib/hercules/etapa-pelo-fato.ts` (11 testes): regua pura que promove a etapa para `faturado` quando `data_faturamento` esta no PASSADO -- comparacao de TEXTO, porque `new Date(\"2026-09-21\")` nasce em UTC e viraria o dia 20 em Brasilia. Aplicada na REGUA UNICA (`situacao-da-unidade.ts`, que passou a ler a coluna) e na entrada de `agregarFluxo`, o que conserta faixa, grade, lista e VGV de uma vez. `historico-da-unidade.ts` ganhou evento derivado do faturamento, sem autor de proposito (quem faturou esta no legado e nao vem junto) e sem duplicar quando a etapa ja e `faturado`. (2) A faixa de `agregarFluxo` passou a contar UNIDADE pela mesma regua que ja alimentava `disponivel`, com fallback por proposta quando a chamada nao traz grade; o valor vem da proposta achada pelo TERRENO (`terrenoDe`), decisao do Lucas: \"valor sempre sera o que esta na proposta\", \"o disponivel sempre sera o que esta no cadastro\". Medido antes: das 2.534 propostas vivas, zero sem unidade e zero apontando para unidade inexistente; 49 apontam para a linha antiga do pai. (3) `lib/temis/quadros.ts` (11 testes): QUADROS por tipo de servico, `COLUNAS_DO_RESUMO` para o Todos, `colunaDoCard`. As colunas deixaram de vir do `data.estagios` do servidor porque dependem do quadro aberto; `nomeDoEstagio` ja existia e o quadro nao usava, imprimindo \"Faturado\" num cancelamento; indeferido virou coluna no fim. \"Termo aditivo\" NAO entrou: o CHECK do banco so aceita contrato, cessao, distrato, cancelamento e cancelamento_correcao. (4) Iris/Hades: `DecisaoDaAbertura` ganhou `enviarTextoLivre` (template pedido + janela aberta), a rota grava em `caredesk_messages` e nasce `waiting_customer`; `iris-data-client.ts` trocou `.eq(\"queue_id\", \"__iris_queue_scope_not_found__\")` -- uuid comparado com texto, erro 22P02 -- por `.in()` com lista vazia, com teste que impede a terceira copia; nova `unidadeDoAcordo` em `lib/guardian/acordo-por-unidade.ts`. Typecheck limpo e 2.790 testes verdes nas areas tocadas, com os dubles de banco de 4 testes ganhando `data_faturamento`. Nao verificado em tela: o hub exige login.",
+      motivation:
+        "Lucas, 21/09/2026, em quatro pedidos: os tres criticos do helpdesk (\"pode seguir com a correcao dos tickets\"); a divergencia da tela de Venda, com print do portal da Gurgel (\"olha o porque dessa divergencia de informacao\"); os quadros da Temis (\"vamos ter Kanbans por tipo de servico (...) e nesse todos a gente tera tres sessoes somente\"); e o faturamento, com tres prints do VOC: \"esse foi faturado no dia 17\", \"se tem no panteon tinha que esta refletindo aqui. porque nao esta?\" e \"lembrando que tem que ter isso no historico\".",
+    },
+    title: "A etapa segue o fato, um quadro por serviço na Têmis e três críticos do helpdesk",
+    type: "novidade",
+    version: "1.357.0",
+  },
+  {
     buildTag: "2026-09-21-cancelamento-como-situacao-propria",
     deployedAt: "2026-09-21T23:09:17-03:00",
     modules: [
