@@ -36,6 +36,54 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-22-o-quadro-fecha-com-o-preco",
+    deployedAt: "2026-09-22T12:53:41-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O quadro de pagamento passou a mostrar só o que é do loteador.** A entrada vinha com a comissão dentro; agora ela sai líquida, e a corretagem continua discriminada no item VIII e no contrato de corretagem.",
+              "**A linha das mensais parou de projetar o índice.** Ela traz a primeira parcela e o total nominal, e a correção e os juros seguem declarados nas colunas e detalhados na cláusula VII.",
+              "**O rodapé do quadro virou o PREÇO DO LOTE.** Antes o quadro somava um número que não existia em nenhum outro lugar do contrato.",
+            ],
+            screen: "Contrato · Quadro-Resumo",
+          },
+          {
+            items: [
+              "**A área parou de sair com a unidade repetida.** O contrato imprimia \"365,09 m² m²\" e \"metros quadrados metros quadrados\".",
+            ],
+            screen: "Contrato · descrição do imóvel",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Dá para anexar de novo.** Escolher o PDF antes de preencher a posição deixava o botão travado: o mesmo arquivo não entrava mais e a tela não reagia.",
+              "**O botão só libera com a posição e o nome preenchidos**, e o aviso vermelho some assim que você corrige o campo.",
+            ],
+            screen: "Empreendimento · Anexos do contrato",
+          },
+        ],
+      },
+    ],
+    rollback: "bd6bd8b1",
+    technical: {
+      done:
+        "QUADRO DE PAGAMENTO, tres correcoes medidas contra o contrato do Villa Paris no C2X (venda 4834, lote RVPA01, `acquisition_request_contracts` 3011), que e o desenho que o juridico ja usa. (1) A comissao sai do fluxo da entrada, rateada proporcionalmente entre as parcelas; as mensais nao sao tocadas, que e o que a propria clausula promete (\"a comissao sera paga em conformidade com o fluxo financeiro das parcelas de SINAL/ATO\"). Comissao >= entrada NAO e abatida: quadro com entrada zerada esconde defeito de cadastro atras de um numero plausivel. A comissao ganhou fonte unica (`comissaoTotalEmCentavos`), porque agora ela responde ao item VIII E ao quadro VI. (2) As series financiadas saem pelo NOMINAL. A linha mensal do VOL anunciava 156 x R$ 770,49 com total de R$ 204.417,00 (a soma do cronograma com o indice projetado): quem multiplicasse achava R$ 120.196,44. Com uma serie so, o total vem de `totais.financiado` e nao de quantidade x valor, porque a parcela sai arredondada (120.195,90 / 156 = 770,4865) e multiplicar a arredondada daria 54 centavos a mais do que o preco prometido duas linhas acima; com duas series, cada uma vale o seu proprio nominal. (3) O total geral e SEMPRE a soma das linhas, nunca `totais.geral`. Resultado na venda da VITORIA: 5.342,04 + 120.195,90 = R$ 125.537,94, que e o 6.1 impresso logo acima -- antes dava R$ 209.759,04 embaixo de um 6.1 de R$ 125.537,94. UNIDADE DE AREA: trava em `preencher-contrato`, aparando a unidade que a minuta repete depois de uma variavel que ja a trouxe; a trava fica no motor e nao na minuta porque corrigir a minuta conserta um modelo e o erro renasce no proximo. ANEXOS: o envio dispara no `onChange` do campo de arquivo e a validacao recusava SEM limpar o campo, entao escolher o MESMO PDF de novo nao disparava nada; toda recusa agora devolve o campo ao zero, digitar limpa o erro e o botao so libera com a linha pronta. A capa da minuta tinha o mesmo defeito, inclusive no caminho de sucesso. Leitura do legado foi SOMENTE SELECT. 1189 testes da Temis passando, typecheck limpo.",
+      motivation:
+        "Nivea, 22/09/2026, sobre o contrato do VOL Q11 L07: \"a tabela tambem nao esta trazendo somente a parte do loteador, esta trazendo tambem comissao\", \"a parte de area tambem esta duplicando a informacao\" e \"nao consigo colocar dessa forma\" (anexos). Lucas: \"o fluxo da tabela deve trazer somente o valor do incorporador, ou seja, o valor do lote negociado menos o valor de comissao, pois temos o contrato de corretagem que traz o valor de comissao\" e, depois de mandar analisar o contrato do Villa Paris, a escolha do total nominal.",
+    },
+    title: "O quadro do contrato fecha com o preço do lote",
+    type: "correcao",
+    version: "1.360.5",
+  },
+  {
     buildTag: "2026-09-22-o-pagamento-mora-aqui",
     deployedAt: "2026-09-22T14:00:00-03:00",
     internal: true,
