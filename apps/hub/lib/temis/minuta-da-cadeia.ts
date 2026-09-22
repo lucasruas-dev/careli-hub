@@ -271,10 +271,15 @@ export function recadoDaGeracao(
   const origem = minuta.origemFrase ? ` (${minuta.origemFrase})` : "";
   const herdou = minuta.herdada ? ", herdado de um nível acima" : "";
 
+  // ⚠️ "SEM ANEXOS" SOZINHO NÃO AJUDA NINGUÉM. Lucas, 22/09/2026: *"não estamos conseguindo colocar
+  // os anexos"*, com o print desta frase. Ela estava CERTA — medido no dia, `temis_anexos` tinha
+  // zero linhas no sistema inteiro —, mas era a única pista que o operador recebia, e não dizia
+  // onde resolver. O lugar é o bloco "Anexos do contrato", na aba Minutas do empreendimento (ver
+  // `minutas-tab.tsx`), o mesmo card que recebe a capa.
   const anexos = data?.anexos ?? [];
   const peças =
     anexos.length === 0
-      ? " Sem anexos."
+      ? " Sem anexos: eles se cadastram no empreendimento, na aba Minutas, no bloco Anexos do contrato."
       : ` Foram junto: ${anexos.map((a) => a.nome).join(", ")}.`;
 
   return `Contrato gerado com ${minuta.nome}${versao}${origem}${herdou}.${peças}`;

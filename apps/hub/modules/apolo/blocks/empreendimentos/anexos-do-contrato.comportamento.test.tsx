@@ -138,6 +138,22 @@ describe("o seletor de alcance dos anexos", () => {
     expect(leitura?.url).not.toContain("categoriaId=");
   });
 
+  // ⚠️ A TELA MOSTRAVA UM NÍVEL E GRAVAVA OUTRO. Lucas, 22/09/2026: *"não estamos conseguindo
+  // colocar os anexos"*. Enquanto ninguém mexia no select, `alcance` era nulo: o campo exibia
+  // `alcances[0]` e a requisição levava o `enterpriseId` da ficha — que na consolidada é um
+  // `group:<nome>`, justamente o que a gravação recusa com "escolha a divisão".
+  it("⚠️ depois de carregar, o que está NA TELA é o que vai ser gravado", async () => {
+    await montar();
+
+    // O seletor adotou um alcance de verdade, e não o rótulo da ficha consolidada.
+    expect(seletor().value).toBe("31");
+    expect(seletor().value).not.toContain("group:");
+
+    // E a leitura seguinte já vai com esse mesmo id: tela e requisição leem a mesma variável.
+    const ultima = [...chamadas].reverse().find((c) => c.metodo === "GET");
+    expect(ultima?.url).toContain("enterpriseId=31");
+  });
+
   it("no primeiro carregamento manda a ficha como veio, com o código que resolve o consolidado", async () => {
     await montar();
 

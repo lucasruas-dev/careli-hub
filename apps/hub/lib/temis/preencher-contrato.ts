@@ -1154,7 +1154,7 @@ function esvaziouNoCorte(no: unknown): boolean {
  * `resolverNo`, que é o único ponto que viu o antes e o depois.
  */
 function podarVazios(nos: readonly NoDoDocumento[]): NoDoDocumento[] {
-  return nos.filter((no) => {
+  const vivos = nos.filter((no) => {
     if (esvaziouNoCorte(no)) return false;
     if (!Array.isArray(no.children)) return true;
     if (no.children.length > 0) return true;
@@ -1163,6 +1163,34 @@ function podarVazios(nos: readonly NoDoDocumento[]): NoDoDocumento[] {
     // ele vira um parágrafo com texto vazio em vez de sumir.
     return false;
   });
+  return semQuebraSobrando(vivos);
+}
+
+const ehQuebraDePagina = (no: unknown): boolean =>
+  typeof no === "object" && no !== null && (no as NoDoDocumento).type === "quebra_pagina";
+
+/**
+ * A quebra de página que ficou sem nada depois dela vira FOLHA EM BRANCO no papel.
+ *
+ * ⚠️ MEDIDO NO CONTRATO DO VALE DO OURO (22/09/2026): a minuta VOL v7 termina com
+ * `quebra_pagina` seguida do parágrafo `[inicio_tem_anexo_1][anexo_1_nome][fim_tem_anexo_1]`. Sem
+ * anexo cadastrado o bloco cai, a quebra fica, e o PDF sai com uma página 33 de stream vazio. Um
+ * contrato que vai a cartório com folha em branco no fim faz quem confere procurar o que sumiu.
+ *
+ * ⚠️ DUAS QUEBRAS COLADAS TÊM O MESMO EFEITO: o bloco que morava entre elas caiu. A segunda não
+ * separa nada de nada, então só a primeira fica.
+ *
+ * ⚠️ E A QUEBRA QUE SEPARA CONTEÚDO NÃO SE TOCA: ela é diagramação, e o jurídico a pôs ali de
+ * propósito (a mesma regra da linha em branco entre cláusulas, na nota acima).
+ */
+function semQuebraSobrando(nos: readonly NoDoDocumento[]): NoDoDocumento[] {
+  const saida: NoDoDocumento[] = [];
+  for (const no of nos) {
+    if (ehQuebraDePagina(no) && ehQuebraDePagina(saida[saida.length - 1])) continue;
+    saida.push(no);
+  }
+  while (saida.length > 0 && ehQuebraDePagina(saida[saida.length - 1])) saida.pop();
+  return saida;
 }
 
 // ── AJUDANTES ───────────────────────────────────────────────────────────────

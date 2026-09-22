@@ -93,7 +93,10 @@ describe("recadoDaGeracao", () => {
       },
     });
     expect(frase).toContain("herdado de um nível acima");
-    expect(frase).toContain("Sem anexos.");
+    // ⚠️ A FRASE DIZ ONDE CADASTRAR. "Sem anexos." sozinho estava certo e não ajudava: em
+    // 22/09/2026 não havia um único anexo no sistema e o operador não sabia por onde começar.
+    expect(frase).toContain("Sem anexos");
+    expect(frase).toContain("aba Minutas");
   });
 
   it("resposta sem minuta não inventa nada", () => {

@@ -138,8 +138,19 @@ export function AnexosDoContrato({ aoSaberDaFamilia, codigo, enterpriseId, unida
       // família (o servidor só os monta a partir do empreendimento), e zerar a lista aqui deixaria o
       // operador preso na categoria em que ele acabou de entrar, sem caminho de volta.
       if (corpo.alcances && corpo.alcances.length > 0) {
-        setAlcances(corpo.alcances);
-        aoSaberDaFamilia?.(corpo.alcances);
+        const lista = corpo.alcances;
+        setAlcances(lista);
+        // ⚠️ A TELA MOSTRAVA UM NÍVEL E GRAVAVA OUTRO. Lucas, 22/09/2026: *"não estamos conseguindo
+        // colocar os anexos"*. Enquanto ninguém mexia no select, `alcance` era nulo: o campo exibia
+        // `alcances[0]` (que o servidor monta começando pelo PAI) e a requisição levava
+        // `enterpriseId` (o filho aberto na tela). No Vale do Ouro os dois são diferentes de
+        // propósito, então o operador lia "Vale do Ouro" e a peça ia para o VOL.
+        //
+        // ⚠️ E QUANDO O ID DA TELA NÃO ESTÁ NA LISTA, quem manda é a lista. É o caso da ficha
+        // consolidada, onde o id é um `group:<nome>` que a gravação recusa: adotando o primeiro
+        // alcance de verdade, a tela para de oferecer um nível que o servidor não aceita.
+        setAlcance((atual) => atual ?? lista.find((a) => a.id === enterpriseId) ?? lista[0] ?? null);
+        aoSaberDaFamilia?.(lista);
       }
       setErro(null);
     } catch (e) {
@@ -147,7 +158,7 @@ export function AnexosDoContrato({ aoSaberDaFamilia, codigo, enterpriseId, unida
     } finally {
       setCarregando(false);
     }
-  }, [aoSaberDaFamilia, codigo, doAlcance, temisFetch, unidadeId]);
+  }, [aoSaberDaFamilia, codigo, doAlcance, enterpriseId, temisFetch, unidadeId]);
 
   useEffect(() => {
     void carregar();
@@ -295,7 +306,7 @@ export function AnexosDoContrato({ aoSaberDaFamilia, codigo, enterpriseId, unida
                 setAlcance(escolhido);
                 setErro(null);
               }}
-              value={alcance?.id ?? alcances[0]?.id ?? ""}
+              value={alcance?.id ?? ""}
             >
               {alcances
                 .filter((a) => a.tipo === "empreendimento")

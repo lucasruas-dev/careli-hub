@@ -1312,6 +1312,50 @@ describe("os marcadores de montagem", () => {
 // Assinado eletronicamente do conjuge. Saiu a parte do conjuge."* Na minuta do Vale do Ouro o fecho
 // é `<p>(Assinado eletronicamente)[inicio_dados_conjuge]</p>`: o rótulo está FORA do marcador, e a
 // regra geral — o que está fora do bloco é texto do contrato — o preservava.
+// ⚠️ A FOLHA EM BRANCO NO FIM DO CONTRATO. Medido no PDF do Vale do Ouro em 22/09/2026: 33
+// páginas, e a última com stream vazio. A minuta termina com uma quebra de página seguida do bloco
+// do anexo; sem anexo cadastrado o bloco cai e a quebra fica.
+describe("a quebra de página que ficou sem nada depois", () => {
+  const quebra = (): NoDoDocumento => ({ children: [{ text: "" }], type: "quebra_pagina" });
+
+  it("⚠️ bloco que cai no fim leva a quebra de página junto", () => {
+    const r = preencherContrato(
+      [
+        p("CLÁUSULA FINAL"),
+        quebra(),
+        p(v("inicio_tem_anexo_1"), v("anexo_1_nome"), v("fim_tem_anexo_1")),
+      ],
+      { compradores: [comprador("VITORIA")], gerais: {} },
+    );
+
+    expect(r.nos.map((n) => n.type)).toEqual(["p"]);
+  });
+
+  it("duas quebras coladas viram uma: o que morava entre elas caiu", () => {
+    const r = preencherContrato(
+      [
+        p("ANTES"),
+        quebra(),
+        p(v("inicio_tem_anexo_1"), v("anexo_1_nome"), v("fim_tem_anexo_1")),
+        quebra(),
+        p("DEPOIS"),
+      ],
+      { compradores: [comprador("VITORIA")], gerais: {} },
+    );
+
+    expect(r.nos.map((n) => n.type)).toEqual(["p", "quebra_pagina", "p"]);
+  });
+
+  it("a quebra que separa conteúdo NÃO se toca: ela é diagramação", () => {
+    const r = preencherContrato([p("PRIMEIRA"), quebra(), p("SEGUNDA")], {
+      compradores: [comprador("VITORIA")],
+      gerais: {},
+    });
+
+    expect(r.nos.map((n) => n.type)).toEqual(["p", "quebra_pagina", "p"]);
+  });
+});
+
 describe("o rótulo de assinatura de quem não assina", () => {
   // ⚠️ O CASO DA MINUTA REAL DO VOL, e o que faltava: o par INTEIRO cabe num parágrafo só. Medido em
   // 22/09/2026 na VOL-MINUTA-COMPRA-VENDA-NORMAL v7 (parágrafos 115, 260 e 277, idênticos):
