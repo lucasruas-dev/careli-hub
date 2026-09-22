@@ -95,6 +95,39 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Temis/Apolo] O quadro do contrato fecha com o preco do lote (v1.360.5)`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-09-22 12:53:41 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK explicito do Lucas ("pode subir", 22/09/2026), apos analise do contrato do Villa Paris no C2X e escolha do total nominal`.
+- Escopo publicado:
+  - `quadro de pagamento: a comissao sai do fluxo da entrada, rateada proporcionalmente entre as parcelas; as mensais nao sao tocadas`;
+  - `quadro de pagamento: as series financiadas saem pelo NOMINAL (totais.financiado com uma serie; nominal proprio com duas) e o total geral e SEMPRE a soma das linhas`;
+  - `motor do contrato: trava que apara a unidade de area repetida depois de uma variavel que ja a trouxe ("365,09 m2 m2")`;
+  - `tela de anexos do empreendimento: recusa passa a limpar o campo de arquivo, digitar limpa o erro e o botao so libera com posicao e nome preenchidos`.
+- Commit publicado: `aff21ebb90120fa627874f53aed52d49a4280ce5`.
+- Deployment anterior: `dpl_HoTU2LryZp9wSx6uMGW3QjQvtU5W` (commit `bd6bd8b1`, v1.360.4).
+- Deployment novo: `dpl_Cs1ZkNAJiK4XW7Pfc94e6oCXkmVx`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Arquivos/modulos incluidos: `lib/temis/tabela-de-pagamentos.ts`, `lib/temis/preencher-contrato.ts`, `lib/temis/dados-do-contrato.ts`, `modules/apolo/blocks/empreendimentos/anexos-do-contrato.tsx`, testes correspondentes, `lib/changelog/changelog.ts`.
+- Arquivos/modulos excluidos: `nenhuma migration nesta rodada; nenhuma escrita no legado C2X (leitura foi SOMENTE SELECT); minutas do banco nao foram alteradas`.
+- Validacoes executadas:
+  - `npm --prefix apps/hub run check-types`: `limpo`;
+  - `npx vitest run` (suite completa): `500 arquivos, 7.829 testes passando`;
+  - `prova no contrato real da VITORIA (proposta c5855a63, minuta VOL v10) montado pelo motor`: `6.1 R$ 125.537,94, 6.2 R$ 133.551,00, entrada R$ 5.342,04, mensal 156 x R$ 770,49 = R$ 120.195,90, rodape R$ 125.537,94 (igual ao 6.1)`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200 apos o build ficar READY`.
+- Logs recentes: `sem erro critico`.
+- Rollback definido: `Instant Rollback para dpl_HoTU2LryZp9wSx6uMGW3QjQvtU5W (commit bd6bd8b1)`.
+- Riscos conhecidos: `o desenho do quadro mudou para TODO contrato novo, nao so para o VOL. Contratos ja gerados nao sao reprocessados. O rateio da comissao entre as parcelas de entrada e proporcional, e nao le split por parcela como o C2X faz -- no Panteon a comissao e a soma de imobiliaria + coordenadora (Lucas, 22/09/2026) e nao existe split por parcela.`
+- Pendencias: `validacao visual do Lucas e da Nivea em um contrato novo; decidir se o quadro leva uma linha explicando que os valores sao os devidos a VENDEDORA (a corretagem fica no item VIII); orientar a Nivea sobre o cadastro de anexos agora que a tela destravou`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas validar gerando um contrato novo do VOL`.
+
+Registro de producao:
+
 - Assunto: `[Temis] A linha do quadro de assinatura para de convidar ao erro (v1.360.2)`.
 - Squad/agente responsavel: `Zeus`.
 - Data e hora local: `2026-09-22T09:29:51-03:00` (push na main).
