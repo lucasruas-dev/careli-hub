@@ -866,28 +866,34 @@ async function representanteDoCadastro(
   papel: PapelDoQuadro,
 ): Promise<AssinanteDoQuadro | null> {
   try {
-    // ⚠️ DUAS COLUNAS, TRÊS PAPÉIS. `vendedor_entity_id` é a incorporadora; `coordenador_entity_id`
-    // (0159) é o COORDENADOR daquele empreendimento — e nenhum dos dois é `coordenadora_entity_id`,
-    // que é a Coordenação de Vendas da casa. Trocar essas três já pôs o captador no lugar do
-    // coordenador uma vez.
+    // ⚠️ TRÊS COLUNAS, TRÊS PAPÉIS. `vendedor_entity_id` é a incorporadora;
+    // `coordenadora_entity_id` é a Coordenação de Vendas da casa (a Gurgel, a mesma em todos os
+    // produtos); `coordenador_entity_id` (0159) é quem o C2X registrou como coordenador daquele
+    // empreendimento. Trocar essas três já pôs o captador no lugar do coordenador uma vez.
+    //
+    // ⚠️ O PAPEL `coordenador` HERDA DA COORDENADORA — Lucas, 22/09/2026: *"a gurgel assina sim"*.
+    // Até esta data a TELA herdava de `coordenador_entity_id` e o CONTRATO imprimia
+    // `coordenadora_entity_id`: no Vale do Ouro o papel dizia HUBER (que não tem representante legal
+    // cadastrado, então o quadro mostrava "Ninguém aqui") enquanto o contrato imprimia a Gurgel. As
+    // duas leituras passam a ser a mesma, e `coordenador_entity_id` fica como QUEDA para o produto
+    // que ainda não teve a coordenação apontada (o ACP e o LOS, medidos no dia).
     //
     // ⚠️ `termos_vendedora` HERDA DA MESMA EMPRESA QUE `vendedora`, e por isso está do lado de cá do
     // ternário. É a mesma incorporadora: o que muda é o DOCUMENTO que aquela pessoa assina. Deixá-lo
     // cair no `else` (como um terceiro papel faria por descuido) mostraria no campo dos termos o
     // representante da COORDENADORA de vendas — outra empresa, outra pessoa, e ninguém olhando a
     // tela teria como desconfiar.
-    const coluna =
-      papel === "vendedora" || papel === "termos_vendedora"
-        ? "vendedor_entity_id"
-        : "coordenador_entity_id";
+    const daVendedora = papel === "vendedora" || papel === "termos_vendedora";
 
     const { data: settings } = await admin
       .from("apolo_enterprise_settings")
-      .select(coluna)
+      .select("vendedor_entity_id, coordenadora_entity_id, coordenador_entity_id")
       .eq("enterprise_id", enterpriseId)
       .maybeSingle<Record<string, null | string>>();
 
-    const empresa = settings?.[coluna];
+    const empresa = daVendedora
+      ? settings?.vendedor_entity_id
+      : (settings?.coordenadora_entity_id ?? settings?.coordenador_entity_id);
     if (!empresa) return null;
 
     const { data: vinculo } = await admin
