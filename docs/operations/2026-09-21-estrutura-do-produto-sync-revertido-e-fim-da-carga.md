@@ -82,3 +82,28 @@ livre aqui com contrato andando lá, que é o convite à segunda venda.
 (incorporador e comercial): na casca do Hércules quem rola é o `<main>` (100dvh) e a tabela ainda
 tinha rolagem própria de pouco mais da metade da altura, deixando faixa morta embaixo. E a ordem das
 sub-abas do Setup virou Credenciamento, Filho, Categoria, Assinatura.
+
+## 6. v1.356.0 — o cancelamento saiu do contrato
+
+Lucas: *"eu queria trazer esse fluxo diferente para o que está em cancelamento, hoje ele aponta para
+contrato e polui nossos indicadores"*, *"e um card novo"* e, com o print da ficha do VOC 03 06, *"o
+ideal quando cancelado não ter as outras etapas, ela ser a última"*.
+
+`em_cancelamento` nasceu como **situação de tela**, derivada na régua única a partir da marca
+`cancelamento_pedido_em` da proposta viva mais recente, e só depois do contrato. **A etapa no banco
+não muda** (é ela que segura o lote enquanto o contrato existe), e nenhuma migration foi precisa.
+
+⚠️ **A marca crua mente.** Das 9 vendas marcadas em produção, 1 era resto de pedido indeferido, sem
+card vivo na Têmis. A régua passou a peneirar pela `soltarMarcasQueSobraram`, que já existia para o
+botão da Venda desde 18/09.
+
+⚠️ **O risco que a varredura dos leitores achou:** `baldeDaEtapa` tem `default: "disponivel"`. Sem um
+caso próprio, o lote em cancelamento apareceria como **estoque livre** na tela Produtos. Está travado
+por teste. Na mesma varredura nasceu `BALDES_DO_CENARIO`: três lugares montavam o cenário com
+`{} as ApoloEnterpriseScenario` e a própria cópia da lista de baldes, então a chave nova existiria no
+tipo e faltaria no objeto, sem o typecheck acusar.
+
+Números do dia: 9 vendas, R$ 1.702.143 — 7 contavam como assinatura e 2 como contrato; 8 são distrato.
+
+A subida atravessou a v1.355.1 da outra sessão (o termo de acordo): rebase em cima da main, conflito
+só no changelog, typecheck e suíte rodados depois do rebase (7.721 testes em 491 arquivos).
