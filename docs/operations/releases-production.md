@@ -95,6 +95,30 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Temis/Apolo] A revisao do contrato: precos, tabela, conjuge, capa, anexos e quem assina (v1.360.0) + as minutas VOL v10 e RVP v3`.
+- Squad/agente responsavel: `Zeus` (workflow de 7 frentes com cetico por achado, 61 agentes).
+- Data e hora local: `2026-09-22T09:00:55-03:00` (push na main) e `2026-09-22T09:10-03:00` (edicao das minutas).
+- Ambiente: `producao`.
+- Origem: OK explicito do Lucas em 22/09/2026 ("pode subir") e, para a edicao das minutas, "tem o meu ok". Pedido: "revisa por favor a estrutura do contrato, esta dando muito erro (...) as variaveis estao ruins". Nivea: "Preco do lote e o 6.1 menos comissao. O preco total da aquisicao e R$133.551,00", "Esta gerando tabela PRICE", "Continua saindo o (Assinado eletronicamente) depois do comprador", "Ele nao esta aceitando 02 testemunhas". Lucas: "nao estamos conseguindo colocar os anexos", "capa esta ficando desproporcional", "a parte da tabela de pagamento, voce precisa entender a proposta, ela e a base desses valores, vencimentos", "a gurgel assina sim".
+- Migrations: NENHUMA.
+- Escopo publicado (codigo):
+  - PRECOS: `valor_custo_total_aquisicao` deixou de somar a comissao por cima e virou o valor negociado; nasceu `preco_do_lote` (negociado menos comissao, em centavos inteiros). O molde de corretagem (blocos-prontos 4.1) passou a usa-la.
+  - CONJUGE: `aplicarPares` descarta o rotulo de assinatura orfao quando o bloco cai, com a mesma regra estreita que o caminho entre paragrafos ja usava.
+  - CAPA E ANEXOS NO PDF: o corpo da o papel do documento; capa e anexos entram por `embedPage` desenhados dentro dele, com escala uniforme e centralizados.
+  - ANEXOS (tela): o seletor adota o alcance que casa com o id aberto, ou o primeiro valido; tela e requisicao passam a ler a mesma variavel. `podarVazios` derruba a quebra de pagina orfa.
+  - TABELA: `emDegraus` imprime uma linha por faixa de parcelas com o mesmo valor, do cronograma congelado; `plano_sistema_amortizacao` passou a ser preenchida.
+  - COORDENADORA: envelope e tela do quadro passaram a herdar de `coordenadora_entity_id`, com `coordenador_entity_id` como queda.
+- Escrita em PRODUCAO (com OK): as minutas publicadas passaram a usar `[preco_do_lote]` no 6.1 do Quadro-Resumo e no 4.1 da corretagem. Feito pelo CAMINHO DO SISTEMA (`salvarMinuta`), e nao por UPDATE: VOL v9 -> **v10 publicada** (v9 arquivada) e RVP v2 -> **v3 publicada** (v2 arquivada), as duas com a capa preservada. ⚠️ NO RVP DUAS OCORRENCIAS DE `valor_imovel_venda` FICARAM DE PROPOSITO: sao da clausula XI (alienacao fiduciaria), onde o valor do imovel e o negociado mesmo.
+- Prova final, no contrato real da VITORIA SILVA ARAUJO (VOL Q11 L07, proposta c5855a63): minuta v10, ZERO avisos e ZERO variaveis sem valor; "6.1. PRECO DO LOTE: R$ 125.537,94" e "6.2. PRECO TOTAL DA AQUISICAO: R$ 133.551,00" -- e 125.537,94 + 8.013,06 de comissao = 133.551,00, o mesmo principal que o Quadro-Resumo cobra.
+- Commit publicado: `ea3feb2e` (deployment `dpl_DbK5mYw7BhTjiWMK3Ta9g6Epj4F1`).
+- Deployment anterior: commit `8ca9e681` (a carga que nao escreve onde o Hercules registrou, da outra sessao) / `dpl_3Mc3qZdjLaBHaSR8YUbniJAtNyh6`. ⚠️ ESTA SUBIDA ATRAVESSOU TRES PUBLICACOES DA OUTRA SESSAO; rebase limpo, sem conflito, e a suite rodou DEPOIS.
+- Dominio alvo autorizado: `https://c2x.app.br`. `https://ops.c2x.app.br`: NAO TOCADO.
+- Validacoes executadas: typecheck limpo; 7.792 testes em 498 arquivos, verdes depois do rebase. HTML regenerado do jsonb conferido byte a byte contra o salvo ANTES de mexer nas minutas (identico nas duas), e o ensaio da troca rodou sem gravar antes do `--gravar`.
+- Rollback definido: `8ca9e681` / `dpl_3Mc3qZdjLaBHaSR8YUbniJAtNyh6`. ⚠️ O ROLLBACK DO CODIGO NAO DESFAZ AS MINUTAS: com o codigo antigo e a v10 publicada, `[preco_do_lote]` ficaria sem valor e a geracao TRAVA. Voltando o codigo, republicar a v9 (ou a v2 no RVP) pela tela da Temis.
+- Pendencias: o contrato ainda imprime DOIS NOMES FIXOS de testemunha (VALERIO MANCUZO DE FIGUEIREDO e PAOLA CARLA DE CASTRO LINHARES, em `blocos-prontos.ts:482`), diferentes de quem o quadro convida; o quadro do VOL nao tem ninguem apontado (a LINO E CECILIO nao tem representante legal cadastrado); o 4.3 da corretagem usa `preco_venda`, que hoje vale o mesmo que `valor_custo_total_aquisicao` e por isso imprime certo por coincidencia.
+
+Registro de producao:
+
 - Assunto: `[Hercules/Apolo/Portal] A cor do cancelamento virou preto (v1.357.1)`.
 - Squad/agente responsavel: `Zeus`.
 - Data e hora local: `2026-09-21T23:58:16-03:00` (push na main).
