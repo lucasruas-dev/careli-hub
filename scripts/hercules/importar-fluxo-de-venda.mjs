@@ -56,7 +56,14 @@ const env = Object.fromEntries(
 //   empreendimento para caber. Trazer isso para ca do jeito que esta ensinaria o Panteon a errar o
 //   modelo. ⚠️ A consequencia esta aceita e registrada: essas 31 propostas, as duas faturadas
 //   inclusive, NAO existem no Panteon — quem procurar por elas aqui nao acha.
-const FORA_DO_PANTEON = ["ADT", "SDT", "TSC"];
+//   ⚠️ VLO e LAB sao os PAIS de produto dividido, e no Panteon o pai nao e fonte: ele e o
+//   retrato dos filhos. Lucas (22/09/2026): *"Nao precisa olhar o VLO no c2x, vc vai ler o VOR -
+//   VOC - VOL, esses 3 deve ser o retrato do VLO dentro do Panteon"* e *"no lagoa bonita, e para
+//   trazer somente LBF - LBP - LBR"*. O legado ainda deixa pendurar pedido no pai (105 vivos no
+//   VLO e 48 no LAB, medidos em 22/09), e cada carga trazia isso para ca: como a regua do terreno
+//   pega a proposta viva mais recente, uma reserva de 18/09 no pai ganhava de uma venda faturada
+//   do filho de 09/09, e o VOC mostrou Faturado 68 e Reservado 19 onde o legado conta 86 e ZERO.
+const FORA_DO_PANTEON = ["ADT", "LAB", "SDT", "TSC", "VLO"];
 const iExceto = process.argv.indexOf("--exceto");
 const EXCETO = new Set(
   iExceto > 0
