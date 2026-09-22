@@ -466,36 +466,6 @@ export function historicoDaUnidade(
       });
     }
 
-    // O FATURAMENTO QUE A DATA CONTA E O MOVIMENTO NÃO CONTOU.
-    //
-    // ⚠️ VALE PARA A PROPOSTA IMPORTADA TAMBÉM, ao contrário da derivação de etapa abaixo. É
-    // justamente na importada que isto acontece: a venda fatura no legado, a data vem na carga e
-    // a transição não, porque a linha não é recarregada depois. Sem este evento, o histórico da
-    // unidade termina em "Enviada para assinatura" numa venda que já faturou.
-    //
-    // ⚠️ SEM AUTOR, DE PROPÓSITO. Quem faturou está no legado e não vem junto; escrever um nome
-    // aqui seria inventar. A observação diz de onde o fato saiu, para quem lê não achar que
-    // alguem clicou no Panteon.
-    const faturouEm = texto(p.data_faturamento);
-    if (
-      faturouEm &&
-      faturouEm.slice(0, 10) <= hojeEmTexto &&
-      !destinosJaGravados.has(`${p.id}:faturado`)
-    ) {
-      eventos.push({
-        cliente: texto(p.cliente_nome),
-        codigo: nativa ? codigoDaVenda(p.protocolo_numero) || null : null,
-        fato: "Faturada",
-        id: `faturamento:${p.id}`,
-        observacao: "Faturamento registrado na venda",
-        propostaId: p.id,
-        quando: faturouEm,
-        quem: null,
-        tipo: "etapa",
-        valor: null,
-      });
-    }
-
     // O PASSO QUE A ETAPA CONTA E O MOVIMENTO NÃO CONTOU — ver `ETAPA_DERIVADA`.
     //
     // ⚠️ SÓ NA PROPOSTA NASCIDA AQUI. A importada chega do C2X com as transições dela em
@@ -510,9 +480,7 @@ export function historicoDaUnidade(
       fatoDaEtapa &&
       quandoDaEtapa &&
       !jaContadaPelaQueda &&
-      !destinosJaGravados.has(`${p.id}:${etapaAgora}`) &&
-      // O evento do faturamento acima já contou esta linha.
-      !(etapaAgora === "faturado" && texto(p.data_faturamento))
+      !destinosJaGravados.has(`${p.id}:${etapaAgora}`)
     ) {
       eventos.push({
         cliente: texto(p.cliente_nome),

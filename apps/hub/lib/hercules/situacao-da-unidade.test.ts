@@ -224,3 +224,66 @@ describe("lerSituacaoDasUnidades: as bordas que não precisam de cadastro", () =
     await expect(lerSituacaoDasUnidades(bancoQueCai, ["37"])).rejects.toThrow("conexão perdida");
   });
 });
+
+// ⚠️ A LINHA BLOQUEADA NÃO HERDA A VENDA DA IRMÃ (22/09/2026).
+//
+// Medido em produção: os lotes 13/01, 13/02 e 12/06 do Vale do Ouro existem TRÊS vezes no cadastro
+// — VLO bloqueada, VOC bloqueada e VOR com a venda. A régua juntava o terreno e trazia a venda do
+// VOR para dentro do VOC, e o card de Faturado do VOC dizia 88 onde o legado (e a Nívea) contavam
+// 86; a lista, que é por proposta do empreendimento, mostrava os 86 certos. Bloquear é como a
+// operação escreve "este lote não se vende aqui" — é a carteira de onde o lote saiu, exatamente
+// como já está escrito na regra da irmã com dono no cadastro, dez linhas acima na leitura.
+describe("a linha bloqueada do terreno", () => {
+  it("não recebe a venda que vive na outra gleba", () => {
+    expect(
+      situacaoDoTerreno({
+        cadastro: "bloqueada",
+        propostasVivas: [{ daLinha: false, desde: "2026-09-09", etapa: "faturado" }],
+        reservada: false,
+      }),
+    ).toBe("bloqueada");
+  });
+
+  it("nem a reserva que vive na outra gleba", () => {
+    expect(
+      situacaoDoTerreno({
+        cadastro: "bloqueada",
+        propostasVivas: [{ daLinha: false, desde: "2026-09-01", etapa: "reservado" }],
+        reservada: true,
+      }),
+    ).toBe("bloqueada");
+  });
+
+  it("mas a venda DA PRÓPRIA linha continua valendo, bloqueio ou não", () => {
+    // Bloquear um lote que tem venda viva na própria linha é contradição do cadastro, e aí quem
+    // manda é o processo: existe dono, com proposta.
+    expect(
+      situacaoDoTerreno({
+        cadastro: "bloqueada",
+        propostasVivas: [{ daLinha: true, desde: "2026-09-09", etapa: "faturado" }],
+        reservada: false,
+      }),
+    ).toBe("faturado");
+  });
+
+  it("a linha NÃO bloqueada segue herdando o terreno, que é o que impede vender duplicado", () => {
+    // O caso do VOC 03/05: disponível no cadastro do VOC, com reserva viva gravada na gleba velha.
+    expect(
+      situacaoDoTerreno({
+        cadastro: "disponivel",
+        propostasVivas: [{ daLinha: false, desde: "2026-09-08", etapa: "reservado" }],
+        reservada: false,
+      }),
+    ).toBe("reservado");
+  });
+
+  it("sem dizer de qual linha veio, a proposta continua valendo (o padrão de antes)", () => {
+    expect(
+      situacaoDoTerreno({
+        cadastro: "bloqueada",
+        propostasVivas: [{ desde: "2026-09-09", etapa: "faturado" }],
+        reservada: false,
+      }),
+    ).toBe("faturado");
+  });
+});

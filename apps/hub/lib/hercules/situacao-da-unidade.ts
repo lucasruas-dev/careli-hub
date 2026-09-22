@@ -54,16 +54,40 @@ export type SinaisDoTerreno = {
    * os sinais é que faz a peneira, porque ler a coluna crua mente — medido em 21/09/2026, 1 das 9
    * marcas era órfã (carimbo no TST sem card nenhum aberto).
    */
-  propostasVivas: Array<{ desde: string; emCancelamento?: boolean; etapa: string }>;
+  /**
+   * `true` = a proposta é DESTA linha; `false` = de uma irmã do terreno (outra gleba, ou a linha
+   * velha do pai). Ausente = não se sabe, e aí ela vale como valia antes.
+   *
+   * ⚠️ ISTO EXISTE POR CAUSA DA LINHA BLOQUEADA. Ver o comentário da régua.
+   */
+  propostasVivas: Array<{
+    daLinha?: boolean;
+    desde: string;
+    emCancelamento?: boolean;
+    etapa: string;
+  }>;
   /** Existe reserva viva (Hércules ou evento) em alguma linha do terreno? */
   reservada: boolean;
 };
 
 /** A régua, pura. É ESTA função que decide; o resto do arquivo só junta os sinais. */
 export function situacaoDoTerreno(sinais: SinaisDoTerreno): SituacaoDaUnidade {
+  // ⚠️ A LINHA BLOQUEADA NÃO HERDA A VENDA DA IRMÃ (22/09/2026). Bloquear é como a operação
+  // escreve "este lote não se vende aqui": ele saiu desta carteira e vive na outra gleba. Medido em
+  // produção: os lotes 13/01, 13/02 e 12/06 do Vale do Ouro existem TRÊS vezes no cadastro (VLO
+  // bloqueada, VOC bloqueada, VOR com a venda), e a régua trazia a venda do VOR para dentro do
+  // VOC — o card de Faturado dizia 88 onde o legado contava 86, e a lista da tela, que é por
+  // proposta do empreendimento, mostrava os 86. É a MESMA regra já escrita para a irmã com dono no
+  // cadastro (18/09/2026, em `lerSituacaoDasUnidades`): "bloqueada na irmã NÃO prende".
+  //
+  // O bloqueio não vence a proposta DESTA linha: lote bloqueado com venda viva na própria linha é
+  // contradição do cadastro, e aí quem manda é o processo, que tem dono e data.
+  const bloqueadaNoCadastro = String(sinais.cadastro ?? "").trim().toLowerCase() === "bloqueada";
+
   let maisRecente: null | { desde: string; emCancelamento: boolean; etapa: EtapaDoFluxo } = null;
   for (const p of sinais.propostasVivas) {
     if (!DO_FLUXO.has(p.etapa)) continue;
+    if (bloqueadaNoCadastro && p.daLinha === false) continue;
     if (!maisRecente || p.desde > maisRecente.desde) {
       maisRecente = {
         desde: p.desde,
@@ -77,6 +101,9 @@ export function situacaoDoTerreno(sinais: SinaisDoTerreno): SituacaoDaUnidade {
   // número de contrato sem soltar o lote, que continua ocupado para todo mundo que pergunta.
   if (maisRecente?.emCancelamento) return "em_cancelamento";
   if (maisRecente) return maisRecente.etapa;
+
+  // Sem processo DESTA linha, o bloqueio responde antes da reserva do terreno, pelo mesmo motivo.
+  if (bloqueadaNoCadastro) return "bloqueada";
 
   if (sinais.reservada) return "reservado";
 
@@ -190,7 +217,6 @@ export type UnidadeComSituacao = {
   situacao: SituacaoDaUnidade;
 };
 
-import { etapaPeloFato } from "./etapa-pelo-fato";
 
 export type SituacaoDasUnidades = {
   /** Por id de QUALQUER linha do terreno: a viva e as antigas que apontam para ela. */
@@ -441,7 +467,6 @@ export async function lerSituacaoDasUnidades(
     emPaginas<{
       cancelamento_pedido_em: null | string;
       criado_em_c2x: null | string;
-      data_faturamento: null | string;
       etapa: string;
       etapa_desde: null | string;
       id: string;
@@ -449,11 +474,7 @@ export async function lerSituacaoDasUnidades(
     }>((de, ate) =>
       client
         .from("hercules_propostas")
-        // A marca do pedido de cancelamento (21/09) e a data do faturamento (21/09) entram
-        // juntas: as duas respondem "em que ponto esta venda está de verdade".
-        .select(
-          "id,unidade_id,etapa,etapa_desde,criado_em_c2x,cancelamento_pedido_em,data_faturamento",
-        )
+        .select("id,unidade_id,etapa,etapa_desde,criado_em_c2x,cancelamento_pedido_em")
         .eq("workspace_id", "careli")
         .in("etapa", [...ETAPAS_DO_FLUXO])
         .order("id")
@@ -489,21 +510,20 @@ export async function lerSituacaoDasUnidades(
 
   const propostasPorGrupo = new Map<
     string,
-    Array<{ desde: string; emCancelamento: boolean; etapa: string }>
+    Array<{ desde: string; emCancelamento: boolean; etapa: string; unidadeId: string }>
   >();
-  const agoraDaLeitura = new Date();
   for (const p of propostasTodas) {
     const grupo = p.unidade_id ? grupoDe.get(p.unidade_id) : undefined;
     if (!grupo) continue;
     const lista = propostasPorGrupo.get(grupo) ?? [];
-    // ⚠️ A ETAPA SEGUE O FATO, E A MARCA DO PEDIDO VEM JUNTO. `data_faturamento` chega na carga
-    // e a transição para `faturado` não, quando a linha deixa de ser recarregada: sem isto a grade
-    // pinta de "assinatura" um lote que já faturou (3 no VOC em 21/09/2026). A venda pedindo para
-    // sair continua com situação própria, que é decidida depois desta linha.
+    // ⚠️ A ETAPA É A ETAPA. `data_faturamento` guarda a data PREVISTA do legado
+    // (`billing_date`), não o faturamento: em 22/09/2026, 36 das 60 vendas que ela promoveria
+    // seguiam em assinatura no C2X. Quem traz a etapa nova é a carga, e nada mais.
     lista.push({
       desde: String(p.etapa_desde ?? p.criado_em_c2x ?? ""),
       emCancelamento: Boolean(p.cancelamento_pedido_em) && DEPOIS_DO_CONTRATO.has(p.etapa),
-      etapa: etapaPeloFato(p.etapa, p.data_faturamento, agoraDaLeitura),
+      etapa: p.etapa,
+      unidadeId: String(p.unidade_id ?? ""),
     });
     propostasPorGrupo.set(grupo, lista);
   }
@@ -578,7 +598,14 @@ export async function lerSituacaoDasUnidades(
     const grupo = grupoDe.get(l.id) ?? `linha:${l.id}`;
     let situacao = situacaoDoTerreno({
       cadastro: l.situacao,
-      propostasVivas: propostasPorGrupo.get(grupo) ?? [],
+      // `daLinha` diz à régua se a proposta é desta linha ou da irmã de outra gleba — o que decide
+      // se o bloqueio do cadastro vale. Ver o comentário de `situacaoDoTerreno`.
+      propostasVivas: (propostasPorGrupo.get(grupo) ?? []).map((p) => ({
+        daLinha: p.unidadeId === l.id,
+        desde: p.desde,
+        emCancelamento: p.emCancelamento,
+        etapa: p.etapa,
+      })),
       reservada: gruposReservados.has(grupo),
     });
     // ⚠️ A IRMÃ DA OUTRA GLEBA COM DONO NO CADASTRO PRENDE ESTA (18/09/2026, achado da revisão).

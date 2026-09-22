@@ -318,7 +318,13 @@ const propostas = linhasUteis.map((l) => {
     criado_em_c2x: data(l.created_at),
     data_assinatura: dia(l.sign_date),
     data_ato: dia(l.act_date),
-    data_faturamento: dia(l.billing_date),
+    // ⚠️ SÓ QUANDO O LEGADO CONFIRMA O FATURAMENTO (22/09/2026). `billing_date` é a data
+    // PREVISTA, preenchida quando a venda é montada: medido nos dois bancos, das 60 vendas vivas
+    // com ela no passado, 36 seguiam em assinatura no C2X (35 do CDJ, previstas para set/2025, e
+    // 1 do RDP, de dez/2024). Gravar a previsão num campo chamado "data_faturamento" fez a tela
+    // pintar de Faturado quem nunca faturou (v1.357.0, revertida no mesmo dia). Com o estágio 4
+    // como porteiro, o campo passa a guardar FATO: quem lê pode confiar nele.
+    data_faturamento: etapaC2x === 4 ? dia(l.billing_date) : null,
     dia_vencimento: numero(l.dia_vencimento),
     empreendimento_codigo: codigoEmp || null,
     empreendimento_id: emp?.id ?? null,

@@ -15,7 +15,6 @@ import type { FaixaDePrazo } from "@/lib/hercules/premissa-do-prazo";
 import { periodicidadeDaTaxa } from "@/lib/apolo/periodicidade-da-taxa";
 
 import { DEPOIS_DO_CONTRATO } from "./acao-de-cancelamento";
-import { etapaPeloFato } from "./etapa-pelo-fato";
 import { codigoDaVenda } from "./codigo-da-venda";
 import { tipoDaUnidade } from "./nome-da-unidade";
 import type { TipoProduto } from "./produto-novo";
@@ -757,18 +756,12 @@ export function agregarFluxo({
   tiposDeProduto?: Readonly<Record<string, TipoProduto>>;
   unidades: UnidadeDoMapa[];
 }): FluxoDeVenda {
-  // ⚠️ A ETAPA SEGUE O FATO, ANTES DE QUALQUER CONTA. `data_faturamento` chega na carga e a
-  // transição para `faturado` não, quando a linha deixa de ser recarregada: medido em
-  // 21/09/2026, 59 vendas em `assinatura` e 1 em `contrato` com o faturamento já gravado, três
-  // delas do VOC (Erilene, Adilson e Natanael, faturadas em 17/09). Normalizar aqui conserta de
-  // uma vez a faixa, a grade, a lista e o VGV, em vez de espalhar a mesma pergunta por cinco
-  // lugares. Ver `etapa-pelo-fato.ts`.
-  const agora = new Date();
-  propostas = propostas.map((p) =>
-    p.etapa === etapaPeloFato(p.etapa, p.data_faturamento, agora)
-      ? p
-      : { ...p, etapa: etapaPeloFato(p.etapa, p.data_faturamento, agora) },
-  );
+  // ⚠️ A ETAPA É A ETAPA: `data_faturamento` NÃO PROMOVE NADA (revertido em 22/09/2026).
+  // Entre 21 e 22/09 esta função promovia a `faturado` toda venda com `data_faturamento` no
+  // passado, e o campo não é o fato: ele guarda `acquisition_requests.billing_date`, que é a data
+  // PREVISTA. Medido nos dois bancos: das 60 vendas que a promoção alcançava, **36 não tinham
+  // faturado** no legado (35 do CDJ em assinatura, com previsão de set/2025, e 1 do RDP em
+  // contrato gerado, de dez/2024). Ver `data-faturamento-e-previsao.test.ts`.
   const de = periodo?.de ?? null;
   const ate = periodo?.ate ?? null;
   /** A proposta caiu na janela? Sem janela, tudo cai. */
