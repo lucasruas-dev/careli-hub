@@ -113,6 +113,7 @@ Registro de producao:
 - Deployment anterior: commit `1924123e` (v1.355.1, o termo de acordo, da outra sessao) / `dpl_DAUp2s1pejvf26DgD59AeZMEKeRt`. ⚠️ ESTA SUBIDA ATRAVESSOU UMA PUBLICACAO DA OUTRA SESSAO: rebase em cima da main, com conflito so no changelog (as duas entradas no indice 0), resolvido mantendo a 1.356.0 na frente e a 1.355.1 logo abaixo. Typecheck e suite completa rodaram DEPOIS do rebase.
 - Dominio alvo autorizado: `https://c2x.app.br`. `https://ops.c2x.app.br`: NAO TOCADO.
 - Validacoes executadas: typecheck limpo; lint sem aviso novo nos arquivos tocados; suite completa 7.721 testes em 491 arquivos, verde depois do rebase. Testes novos para a soma unica (a venda conta num cartao so), a marca antes do contrato que nao vale, `baldeDaEtapa("em_cancelamento")` que nao pode ser `disponivel` (o `default` dele devolve estoque livre) e a ficha em cancelamento achando a linha pela marca.
+- Healthcheck final: deployment `READY` as 23:15:03 -03:00, com o alias `c2x.app.br` apontado para ele e `aliasError: null`; `https://c2x.app.br` respondeu 200 com `Age: 0` (conteudo servido pela build nova, e nao pelo cache da anterior).
 - Rollback definido: `1924123e` / `dpl_DAUp2s1pejvf26DgD59AeZMEKeRt`. Nada a desfazer no banco.
 - Pendencias: validacao visual do Lucas na tela da Venda (cartao, grade e trilha).
 
