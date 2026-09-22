@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-22-o-anexo-nao-nasce-orfao",
+    deployedAt: "2026-09-22T14:35:36-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O anexo cadastrado agora chega mesmo ao contrato.** Havia um caminho em que a peça era gravada, aparecia na lista da tela e nunca saía no papel, sem erro nenhum.",
+              "**Repetir a posição entre o empreendimento e a divisão passou a avisar na hora.** Antes o cadastro aceitava, e quem descobria era quem tentava emitir o contrato dias depois: ele simplesmente não saía. Divisões irmãs seguem livres para usar a mesma posição, porque elas nunca entram no mesmo contrato.",
+            ],
+            screen: "Empreendimento · Anexos do contrato",
+          },
+        ],
+      },
+    ],
+    rollback: "aff21ebb",
+    technical: {
+      done:
+        "Duas travas em `gravarAnexo` (`lib/temis/estrutura-servico.ts`), achadas exercitando as rotas contra o banco de PRODUCAO a pedido do Lucas (\"testa as rotas, verifica se conseguimos anexar\"). As rotas em si funcionam: upload 200, storage ok, confirmar 200, e a peca entra no contrato real da VITORIA. (1) A CHAVE: `temis_anexos.enterprise_id` guarda o ID DO C2X -- o mesmo que a unidade carrega e que `temis_minutas` usa -- mas a coluna e texto e aceitava qualquer coisa. Mandar o uuid do Panteon gravava com 200, a peca aparecia na lista da propria tela e o contrato saia SEM ELA, para sempre e sem aviso; medido com a venda da VITORIA, pelo uuid o contrato trouxe 0 anexos e pelo id do C2X (36) trouxe 1. Agora CONVERTE antes de recusar (mesmo padrao do bloco do consolidado logo acima) e recusa com 400 nomeando a saida o que nao resolve. ⚠️ SO o que tem cara de UUID e conferido: o cadastro do Panteon NAO e a lista completa dos ids do C2X -- 2, 30 e 34 carregam unidades e nao tem linha em `hercules_empreendimentos`, e a cadeia os alcanca do mesmo jeito porque `filtroDaCadeia` sai do empreendimento da PROPOSTA. Recusar "o que nao esta cadastrado" barraria anexo legitimo desses tres, sem saida na tela. ⚠️ A CAPA fica de fora da conferencia porque ali `enterpriseId` carrega o ID DA MINUTA, nao um empreendimento -- tres testes do portal pegaram isso. (2) A POSICAO: os indices unicos da 0156 sao POR NIVEL, entao o banco aceitava posicao 1 no pai e 1 na divisao sem um pio; quem soma os niveis e a montagem do contrato, e la a colisao e RECUSA TOTAL (409) com a conta chegando dias depois, longe da causa, sobre uma venda pronta para assinar. Agora a LINHAGEM e conferida na GRAVACAO, e ela nao e simetrica: quem cadastra num FILHO so concorre com o pai; quem cadastra na RAIZ concorre com todos os filhos, um de cada vez. As IRMAS ficam livres, e isso e o ponto -- a cadeia do contrato e unidade + categoria + divisao da unidade + empreendimento da proposta + PAI, e a irma nunca entra. Uma trava por familia quebraria o caso central: as duas unicas minutas publicadas que citam `[anexo_1]` sao a do VOL (36) e a do VOC (37), IRMAS sob o Vale do Ouro, e as duas precisam da peca na posicao 1. O insert passou a gravar `ativo: true` explicitamente, e nao pelo default da coluna. Provado contra producao: uuid convertido para 36 com o contrato levando a peca; posicao 97 repetida no pai recusada com 409; posicao 96 livre aceita com o contrato somando pai (VLO 35) e filho (VOL 36); `temis_anexos` de volta a zero ao fim. Tres comentarios desatualizados corrigidos -- o mais enganoso dizia que NENHUMA das 11 minutas usava `[anexo_N]`, quando sao 18 minutas e QUATRO usam (em 100% delas o marcador esta no ULTIMO bloco, 280 de 280, o que torna barata a decisao do Lucas de deixar o anexo ir para o fim). 12 testes novos; 502 arquivos, 7.843 testes, typecheck limpo. ⚠️ As duas travas nasceram erradas e foram corrigidas por revisao adversarial ANTES do deploy: a da posicao pegava IRMAS (que nunca colidem) e a da chave recusava id do C2X legitimo fora do cadastro. E a primeira conferencia do segundo caso deu "nenhum" porque li `hercules_unidades` com `.limit(20000)` -- o PostgREST corta em 1.000 SEM AVISAR, a mesma armadilha que o diario ja registra.",
+      motivation:
+        "Lucas, 22/09/2026: \"entao a ideia e ter esses anexo por empreendimento, filho, categoria que serao juntados ao contrato na hora do envio para assinatura\" e \"eu so preciso subir\". Antes de ele subir os PDFs, testei as rotas de ponta a ponta e achei os dois defeitos: os dois so apareceriam depois, com a peca ja cadastrada e o contrato emitido errado ou travado.",
+    },
+    title: "O anexo do contrato para de nascer órfão",
+    type: "correcao",
+    version: "1.360.6",
+  },
+  {
     buildTag: "2026-09-22-o-quadro-fecha-com-o-preco",
     deployedAt: "2026-09-22T12:53:41-03:00",
     internal: true,
