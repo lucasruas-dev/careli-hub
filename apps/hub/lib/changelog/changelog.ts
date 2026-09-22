@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-22-carteira-casa-pelo-pedido",
+    deployedAt: "2026-09-22T00:30:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "**Cada comprador com a sua parcela.** Quando o mesmo lote tem uma reserva cancelada ao lado da venda que vingou, a tela mostrava as parcelas de ato e sinal do lote INTEIRO em cada linha, com o nome do comprador daquela linha. No VOC 12/21 as 9 parcelas, R$ 14.980, apareciam três vezes, e o boleto de R$ 3.710 vencido em 20/09, que é do comprador faturado, saía cobrado no nome de quem teve a reserva cancelada.",
+              "**Os cards pararam de contar duas vezes.** Eram 21 lotes em 5 loteamentos nessa situação (Vale do Ouro Central 10, Vale do Ouro Leste 6, Recanto do Pará 3, mais 2), somando R$ 298.066,63 contados em duplicidade, dos quais R$ 17.985,19 de vencido. Só no Vale do Ouro Central, o ato e sinal cai de R$ 1.447.016,71 para R$ 1.286.427,74 e o vencido de R$ 71.435,58 para R$ 53.550,39 — o número certo, que sempre foi esse.",
+              "**A coluna Valor líquido também.** Ela repetia o líquido do lote inteiro em cada linha, então quem somava a lista somava o mesmo dinheiro duas vezes.",
+            ],
+            screen: "Financeiro · Parcelas por unidade",
+          },
+        ],
+      },
+    ],
+    rollback: "1bb42faa",
+    technical: {
+      done:
+        "A LINHA DA CARTEIRA NASCE POR PEDIDO (`group by eu.id, ..., ar.id` em lib/apolo/carteira.ts) e dois dados externos eram casados nela pela UNIDADE: o balde de ato e sinal (`atoESinalPorUnitId.get(unit.id)`) e o liquido (`liquidoPorUnitId.get(unit.id)`). Nova regua pura `lib/apolo/incorporador/ato-e-sinal.ts` (6 testes) agrupa por `ar_id`, decide o perfil por `perfilDaParcela` e numera por `numeroDaParcela`; o laco saiu da rota, que agora so le. `ApoloCarteiraUnit` ganhou `pedidoId`, e o tipo passou a dizer em caixa alta que `id` NAO e chave unica da linha -- foi assim que o dado colou no dono errado. Em carteira-liquida.ts, `agregarPorUnidade` virou `agregarPorPedido` e `CarteiraPorUnidade` virou `CarteiraPorPedido` (chave `pedidoId`, `unitId` rebaixado a rotulo), com `ar_id` novo em `LinhaCruaDaCarteira` e no select. Teste que amarra a rota a regua (`ato-e-sinal-ligado.test.ts`) FALHOU PRIMEIRO nos quatro casos, porque typecheck nao prova conexao. Medido no legado antes de mexer: 21 unidades com mais de um pedido com ato/sinal (23 pedidos cancelados, 19 faturados, 1 com contrato gerado -- nenhuma unidade com duas vendas vivas) e ZERO pedidos fechados com ato ou sinal vencido em aberto, o que significa que cobranca vencida em nome de quem teve o pedido cancelado deixa de existir na tela. 7.772 testes verdes, typecheck limpo. Nao verificado em tela: o hub exige login.",
+      motivation:
+        "Lucas, 21/09/2026, com o print da carteira do Vale do Ouro filtrada por \"niv\": \"outros erros, tem alguns boletos vencidos que estao em nome da nivea, isso deve ser erro\". Era erro, e nao era da Nivea: as reservas dela naqueles lotes sao de teste (R$ 30, R$ 50, R$ 1.000, todas pagas), e o que aparecia no nome dela era o boleto do comprador de verdade.",
+    },
+    title: "A carteira casa pelo pedido: cada comprador com a sua parcela",
+    type: "correcao",
+    version: "1.358.0",
+  },
+  {
     buildTag: "2026-09-21-cancelamento-em-preto",
     deployedAt: "2026-09-21T23:58:16-03:00",
     modules: [
