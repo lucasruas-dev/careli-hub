@@ -1,4 +1,4 @@
-import { PDFDocument } from "pdf-lib";
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFStream } from "pdf-lib";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // OS ANEXOS ATÉ O PAPEL — a revisão do elo inteiro: cadeia → bucket → montador → gaveta.
@@ -239,13 +239,38 @@ async function pdfComTamanhos(
   tamanhos: readonly (readonly [number, number])[],
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
-  for (const [largura, altura] of tamanhos) doc.addPage([largura, altura]);
+  // O risco dá conteúdo à página: folha sem `/Contents` entra como branco e não carrega marca.
+  for (const [largura, altura] of tamanhos) {
+    doc.addPage([largura, altura]).drawRectangle({ height: 1, width: 1, x: 0, y: 0 });
+  }
   return doc.save();
 }
 
 async function tamanhosDoPdf(bytes: Uint8Array): Promise<string[]> {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   return doc.getPages().map((p) => `${Math.round(p.getWidth())}x${Math.round(p.getHeight())}`);
+}
+
+/**
+ * De que PEÇA veio cada página — a marca é o tamanho ORIGINAL, preservado na BBox do XObject.
+ *
+ * ⚠️ DESDE 22/09/2026 TODA PÁGINA DO CONTRATO SAI NO PAPEL DO CORPO (a capa do Vale do Ouro vinha
+ * no dobro do A4 e o documento saía desproporcional). Então o tamanho da página deixou de
+ * identificar a peça, e quem identifica agora é a arte embutida. Página copiada, sem XObject, é o
+ * corpo. Ver `montar-pdf-do-contrato.revisao.test.ts`, onde a mesma leitura está explicada.
+ */
+async function origensDoPdf(bytes: Uint8Array): Promise<string[]> {
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  return doc.getPages().map((pagina) => {
+    const xobjects = pagina.node.Resources()?.lookupMaybe(PDFName.of("XObject"), PDFDict);
+    const primeiro = xobjects ? [...xobjects.entries()][0] : undefined;
+    if (!primeiro) return "corpo";
+    const forma = doc.context.lookupMaybe(primeiro[1], PDFStream);
+    const bbox = forma?.dict.lookupMaybe(PDFName.of("BBox"), PDFArray);
+    if (!bbox) return "imagem";
+    const n = (i: number) => bbox.lookupMaybe(i, PDFNumber)?.asNumber() ?? 0;
+    return `${Math.round(n(2) - n(0))}x${Math.round(n(3) - n(1))}`;
+  });
 }
 
 /** O parágrafo simples da minuta. `variaveis` vira um nó de variável para cada nome. */
@@ -312,17 +337,21 @@ describe("o PDF guardado", () => {
     const r = await gerar();
     expect(r.status).toBe(200);
 
-    // ⚠️ A ORDEM É CONFERIDA NO ARQUIVO, e cada página carrega um tamanho próprio para poder ser
+    // ⚠️ A ORDEM É CONFERIDA NO ARQUIVO, e cada peça carrega um tamanho próprio para poder ser
     // reconhecida. A posição 1 (Convenção, 222x222) vem antes da posição 2 (Memorial, 333x333),
     // mesmo tendo sido cadastrada depois.
     expect(estado.guardados).toHaveLength(1);
-    expect(await tamanhosDoPdf(estado.guardados[0]!.bytes)).toEqual([
+    expect(await origensDoPdf(estado.guardados[0]!.bytes)).toEqual([
       "111x111",
-      "595x842",
-      "595x842",
+      "corpo",
+      "corpo",
       "222x222",
       "333x333",
     ]);
+    // E o papel é um só do começo ao fim.
+    expect(await tamanhosDoPdf(estado.guardados[0]!.bytes)).toEqual(
+      Array.from({ length: 5 }, () => "595x842"),
+    );
 
     const linha = estado.inseridos[0] as Record<string, unknown>;
     expect(String(linha.observacao)).toContain("Convenção de condomínio");
@@ -430,8 +459,9 @@ describe("a capa exportada como .jfif", () => {
 
     expect(corpo.erro).toBeUndefined();
     expect(r.status).toBe(200);
-    // A capa vira a PRIMEIRA página, do tamanho da própria imagem (1x1 neste JPEG mínimo).
-    expect(await tamanhosDoPdf(estado.guardados[0]!.bytes)).toEqual(["1x1", "595x842", "595x842"]);
+    // A capa vira a PRIMEIRA página, encaixada no papel do corpo (o JPEG mínimo tem 1x1 px).
+    expect(await tamanhosDoPdf(estado.guardados[0]!.bytes)).toEqual(["595x842", "595x842", "595x842"]);
+    expect((await origensDoPdf(estado.guardados[0]!.bytes))[0]).toBe("imagem");
   });
 });
 
@@ -447,11 +477,7 @@ describe("o anexo apagado depois de o contrato já ter saído", () => {
 
     const primeira = await gerar();
     expect(primeira.status).toBe(200);
-    expect(await tamanhosDoPdf(estado.guardados[0]!.bytes)).toEqual([
-      "595x842",
-      "595x842",
-      "222x222",
-    ]);
+    expect(await origensDoPdf(estado.guardados[0]!.bytes)).toEqual(["corpo", "corpo", "222x222"]);
 
     estado.anexos[0]!.ativo = false;
     estado.jaGuardados = [{ criado_em: "2026-09-21T10:00:00Z", id: "doc-1", nome: "v1" }];

@@ -154,13 +154,18 @@ export async function montarPdfDoContrato(pedido: PedidoDeMontagem): Promise<Mon
   try {
     const destino = await PDFDocument.create();
 
+    // ⚠️ O CORPO É LIDO ANTES DA CAPA, e a ordem importa: é dele que sai o tamanho do papel do
+    // documento inteiro (ver `folhaDoCorpo`). A capa continua sendo a PRIMEIRA página do PDF; o que
+    // mudou é só o momento da leitura.
+    const corpo = await PDFDocument.load(pedido.corpo, { ignoreEncryption: true });
+    const folha = folhaDoCorpo(corpo);
+
     if (pedido.capa) {
       // A capa pode ser imagem por decisão do cadastro (`TIPOS_DA_CAPA`): ela é desenhada no Canva.
-      const falha = await acrescentar(destino, pedido.capa, { aceitaImagem: true });
+      const falha = await acrescentar(destino, pedido.capa, { aceitaImagem: true, folha });
       if (falha) return { erro: falha, ok: false };
     }
 
-    const corpo = await PDFDocument.load(pedido.corpo, { ignoreEncryption: true });
     for (const pagina of await destino.copyPages(corpo, corpo.getPageIndices())) {
       destino.addPage(pagina);
     }
@@ -168,7 +173,7 @@ export async function montarPdfDoContrato(pedido: PedidoDeMontagem): Promise<Mon
     for (const anexo of pedido.anexos) {
       // ⚠️ O ANEXO É SEMPRE PDF, por decisão de `anexos.ts` (*"o anexo é página pronta"*). Aceitar
       // imagem aqui empurraria a conversão para dentro da montagem, que é onde ela fica cara.
-      const falha = await acrescentar(destino, anexo, { aceitaImagem: false });
+      const falha = await acrescentar(destino, anexo, { aceitaImagem: false, folha });
       if (falha) return { erro: falha, ok: false };
     }
 
@@ -183,17 +188,54 @@ export async function montarPdfDoContrato(pedido: PedidoDeMontagem): Promise<Mon
   }
 }
 
+/** O papel do documento: a primeira página do corpo manda, e todas as peças se encaixam nela. */
+type Folha = { altura: number; largura: number };
+
+/**
+ * O tamanho do papel do contrato.
+ *
+ * ⚠️ QUEM MANDA É O CORPO, e não um A4 escrito aqui: o corpo nasce do Chromium
+ * (`html-para-pdf.ts`, `format: "A4"`), e se um dia ele mudar de papel a montagem acompanha sozinha.
+ * Corpo sem página nenhuma (que não existe hoje) cai no A4 nominal.
+ */
+function folhaDoCorpo(corpo: PDFDocument): Folha {
+  const primeira = corpo.getPageCount() > 0 ? corpo.getPage(0) : null;
+  if (!primeira) return { altura: 841.89, largura: 595.28 };
+  const { height, width } = primeira.getSize();
+  return { altura: height, largura: width };
+}
+
+/** Onde desenhar a peça dentro da folha: maior escala que cabe, centralizada. */
+function encaixar(
+  peca: { altura: number; largura: number },
+  folha: Folha,
+): { altura: number; largura: number; x: number; y: number } {
+  const escala = Math.min(folha.largura / peca.largura, folha.altura / peca.altura);
+  const largura = peca.largura * escala;
+  const altura = peca.altura * escala;
+  return { altura, largura, x: (folha.largura - largura) / 2, y: (folha.altura - altura) / 2 };
+}
+
 /**
  * Uma peça vira páginas do destino. Devolve a frase da recusa, ou vazio quando deu certo.
  *
- * ⚠️ A IMAGEM VIRA UMA PÁGINA DO TAMANHO DELA, e não uma página A4 com a imagem dentro. É o mesmo
- * que `juntarEmPdf` faz no CAD, e é o certo para uma capa desenhada no Canva: esticar ou encolher
- * para A4 deformaria a arte que alguém aprovou.
+ * ⚠️ TODA PÁGINA DO CONTRATO SAI NO PAPEL DO CORPO. Lucas, 22/09/2026, com o print do contrato do
+ * Vale do Ouro: *"capa está ficando desproporcional"*. Medida a capa cadastrada: 1190 x 1684 pt,
+ * exatamente o DOBRO do A4 do corpo (595 x 842). A montagem copiava a página como ela era, e o
+ * documento saía com uma folha gigante na frente de 32 folhas normais — no leitor, a capa aparece
+ * enorme e o contrato minúsculo, na mesma tela.
+ *
+ * ⚠️ ENCAIXAR NÃO É ESTICAR, e era isso que a nota anterior confundia. A escala é a MESMA nos dois
+ * eixos (`encaixar`), então a arte aprovada no Canva não deforma: ela só passa a caber na folha, e
+ * sobra tarja apenas quando a proporção da peça difere da do papel. A capa do Vale do Ouro tem a
+ * proporção exata do A4, então ela cobre a folha inteira, sem tarja e sem corte.
+ *
+ * ⚠️ PEÇA QUE JÁ VEM NO TAMANHO DA FOLHA NÃO MUDA: a escala dá 1 e o deslocamento dá zero.
  */
 async function acrescentar(
   destino: PDFDocument,
   peca: PecaDoContrato,
-  regra: { aceitaImagem: boolean },
+  regra: { aceitaImagem: boolean; folha: Folha },
 ): Promise<string> {
   const nome = peca.nome || "a peça anexada";
   // O `mime` declarado no cadastro é PISTA; quem decide é o conteúdo. Ver `formatoDosBytes`.
@@ -211,8 +253,11 @@ async function acrescentar(
         formato === "png"
           ? await destino.embedPng(peca.bytes)
           : await destino.embedJpg(peca.bytes);
-      const pagina = destino.addPage([imagem.width, imagem.height]);
-      pagina.drawImage(imagem, { height: imagem.height, width: imagem.width, x: 0, y: 0 });
+      // ⚠️ PIXEL NÃO É PONTO. `addPage([imagem.width, imagem.height])` tratava a medida em PIXELS
+      // como medida em PONTOS: uma capa de 2480 px (A4 a 300 dpi) virava uma folha de 2480 pt, mais
+      // de quatro vezes o A4. Agora a imagem se encaixa na folha do corpo.
+      const pagina = destino.addPage([regra.folha.largura, regra.folha.altura]);
+      pagina.drawImage(imagem, encaixar({ altura: imagem.height, largura: imagem.width }, regra.folha));
       return "";
     }
 
@@ -242,8 +287,20 @@ async function acrescentar(
       );
     }
 
-    const paginas = await destino.copyPages(origem, origem.getPageIndices());
-    for (const pagina of paginas) destino.addPage(pagina);
+    // ⚠️ EMBUTIR E DESENHAR, e não copiar: `copyPages` preserva o MediaBox da origem, e era ele que
+    // trazia a capa A2 para dentro de um contrato A4. `embedPage` transforma a página num objeto
+    // desenhável, que cabe onde a gente mandar.
+    //
+    // ⚠️ PÁGINA SEM CONTEÚDO NÃO SE EMBUTE. O `pdf-lib` recusa `embedPage` numa página sem
+    // `/Contents` (a folha realmente em branco), e a recusa derrubaria a montagem inteira por causa
+    // de uma página vazia no meio de um anexo digitalizado. Ela entra como folha em branco, que é o
+    // que ela é.
+    for (const dePagina of origem.getPages()) {
+      const pagina = destino.addPage([regra.folha.largura, regra.folha.altura]);
+      if (!dePagina.node.Contents()) continue;
+      const embutida = await destino.embedPage(dePagina);
+      pagina.drawPage(embutida, encaixar({ altura: embutida.height, largura: embutida.width }, regra.folha));
+    }
     return "";
   } catch (e) {
     console.error(`[temis][contrato] peça "${nome}" não abriu`, e instanceof Error ? e.message : e);

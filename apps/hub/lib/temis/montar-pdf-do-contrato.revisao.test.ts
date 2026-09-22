@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { PDFDocument } from "pdf-lib";
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFStream } from "pdf-lib";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { montarPdfDoContrato, type PecaDoContrato } from "./montar-pdf-do-contrato";
@@ -111,17 +111,50 @@ function pdfCifrado(texto: string): { bytes: Uint8Array; cifrado: Buffer; plano:
   return { bytes: new Uint8Array(Buffer.concat(partes)), cifrado, plano };
 }
 
-/** Um PDF cujas páginas têm tamanhos escolhidos — a marca que identifica cada página depois. */
+/**
+ * Um PDF cujas páginas têm tamanhos escolhidos — a marca que identifica cada página depois.
+ *
+ * ⚠️ CADA PÁGINA NASCE COM UM RISCO DESENHADO, e isso não é enfeite: página sem `/Contents` é folha
+ * realmente em branco, e a montagem a trata como tal (não dá para embutir o que não tem conteúdo).
+ * Sem o risco, todas as peças do teste chegariam em branco e a prova da ORDEM não teria o que ler.
+ */
 async function pdfComTamanhos(tamanhos: readonly (readonly [number, number])[]): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
-  for (const [largura, altura] of tamanhos) doc.addPage([largura, altura]);
+  for (const [largura, altura] of tamanhos) {
+    doc.addPage([largura, altura]).drawRectangle({ height: 1, width: 1, x: 0, y: 0 });
+  }
   return doc.save();
 }
 
-/** A sequência de tamanhos do PDF montado. É a ORDEM das páginas, lida do arquivo. */
+/** A sequência de tamanhos do PDF montado. Desde 22/09/2026 é sempre o papel do corpo. */
 async function tamanhosDoPdf(bytes: Uint8Array): Promise<string[]> {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   return doc.getPages().map((p) => `${Math.round(p.getWidth())}x${Math.round(p.getHeight())}`);
+}
+
+/**
+ * De que PEÇA veio cada página do PDF montado.
+ *
+ * ⚠️ A MARCA MUDOU DE LUGAR, E FOI DE PROPÓSITO. Até 22/09/2026 a ordem era provada pelo TAMANHO
+ * da página (a capa 111x111, o anexo 222x222…), o que só funcionava porque a montagem copiava o
+ * papel da origem — justamente o defeito que o Lucas viu no print (*"capa está ficando
+ * desproporcional"*). Agora toda página sai no papel do corpo, e o tamanho original da peça
+ * sobrevive na BBox do XObject que a `drawPage` embute: é ele que identifica a peça.
+ *
+ * Página sem XObject é página COPIADA, e no contrato montado isso é o corpo.
+ */
+async function origensDoPdf(bytes: Uint8Array): Promise<string[]> {
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  return doc.getPages().map((pagina) => {
+    const xobjects = pagina.node.Resources()?.lookupMaybe(PDFName.of("XObject"), PDFDict);
+    const primeiro = xobjects ? [...xobjects.entries()][0] : undefined;
+    if (!primeiro) return "corpo";
+    const forma = doc.context.lookupMaybe(primeiro[1], PDFStream);
+    const bbox = forma?.dict.lookupMaybe(PDFName.of("BBox"), PDFArray);
+    if (!bbox) return "imagem";
+    const n = (i: number) => (bbox.lookupMaybe(i, PDFNumber)?.asNumber() ?? 0);
+    return `${Math.round(n(2) - n(0))}x${Math.round(n(3) - n(1))}`;
+  });
 }
 
 function peca(nome: string, bytes: Uint8Array, mime = "application/pdf"): PecaDoContrato {
@@ -145,14 +178,19 @@ describe("a ordem das páginas no PDF montado", () => {
 
     expect(montagem.ok).toBe(true);
     if (!montagem.ok) return;
-    expect(await tamanhosDoPdf(montagem.pdf)).toEqual([
+
+    // A ORDEM, pela peça de origem de cada página.
+    expect(await origensDoPdf(montagem.pdf)).toEqual([
       "111x111",
-      "595x842",
-      "595x842",
+      "corpo",
+      "corpo",
       "222x222",
       "333x333",
       "334x334",
     ]);
+
+    // ⚠️ E O PAPEL É UM SÓ, do começo ao fim: é o defeito da capa desproporcional, travado.
+    expect(await tamanhosDoPdf(montagem.pdf)).toEqual(Array.from({ length: 6 }, () => "595x842"));
   });
 
   it("sem capa, o corpo continua na frente dos anexos", async () => {
@@ -162,7 +200,7 @@ describe("a ordem das páginas no PDF montado", () => {
       corpo: await pdfComTamanhos([[595, 842]]),
     });
     expect(montagem.ok).toBe(true);
-    if (montagem.ok) expect(await tamanhosDoPdf(montagem.pdf)).toEqual(["595x842", "222x222"]);
+    if (montagem.ok) expect(await origensDoPdf(montagem.pdf)).toEqual(["corpo", "222x222"]);
   });
 
   it("vinte anexos entram todos, na ordem que chegaram", async () => {
@@ -178,14 +216,16 @@ describe("a ordem das páginas no PDF montado", () => {
     });
     expect(montagem.ok).toBe(true);
     if (!montagem.ok) return;
-    const tamanhos = await tamanhosDoPdf(montagem.pdf);
-    expect(tamanhos).toHaveLength(21);
-    expect(tamanhos.slice(1)).toEqual(
+    const origens = await origensDoPdf(montagem.pdf);
+    expect(origens).toHaveLength(21);
+    expect(origens.slice(1)).toEqual(
       Array.from({ length: 20 }, (_, i) => `${200 + i}x${200 + i}`),
     );
+    // Todas no papel do corpo, inclusive os vinte anexos.
+    expect(await tamanhosDoPdf(montagem.pdf)).toEqual(Array.from({ length: 21 }, () => "595x842"));
   });
 
-  it("a capa em imagem fica na PRIMEIRA página, com o tamanho da própria imagem", async () => {
+  it("a capa em imagem fica na PRIMEIRA página, encaixada no papel do corpo", async () => {
     // PNG 2x2 válido, o mesmo do arquivo de entrega — aqui o que se confere é a POSIÇÃO.
     const png = Uint8Array.from(
       Buffer.from(
@@ -199,7 +239,50 @@ describe("a ordem das páginas no PDF montado", () => {
       corpo: await pdfComTamanhos([[595, 842]]),
     });
     expect(montagem.ok).toBe(true);
-    if (montagem.ok) expect(await tamanhosDoPdf(montagem.pdf)).toEqual(["2x2", "595x842", "222x222"]);
+    if (!montagem.ok) return;
+    // ⚠️ PIXEL NÃO VIRA PONTO: a capa de 2x2 px não faz mais uma folha de 2x2 pt. Ela entra
+    // desenhada na folha do corpo, na primeira página.
+    expect(await tamanhosDoPdf(montagem.pdf)).toEqual(["595x842", "595x842", "595x842"]);
+    expect((await origensDoPdf(montagem.pdf))[0]).toBe("imagem");
+  });
+});
+
+// ⚠️ A CAPA DESPROPORCIONAL DO VALE DO OURO, com a medida real do arquivo cadastrado.
+//
+// Lucas, 22/09/2026, com o print do contrato: *"capa está ficando desproporcional"*. Medida a capa
+// que a minuta VOL v7 aponta no Storage: 1190,3 x 1683,7 pt — exatamente o DOBRO do A4 do corpo.
+// A montagem copiava a página como ela era, e o leitor mostrava uma folha gigante na frente de 32
+// folhas normais.
+describe("a capa que vem em outro papel", () => {
+  it("capa do DOBRO do tamanho entra na folha do corpo, sem deformar e sem tarja", async () => {
+    const montagem = await montarPdfDoContrato({
+      anexos: [],
+      capa: peca("VALE-DO-OURO-CAPA-CONTRATO.pdf", await pdfComTamanhos([[1190.3, 1683.7]])),
+      corpo: await pdfComTamanhos([[595.28, 841.89]]),
+    });
+
+    expect(montagem.ok).toBe(true);
+    if (!montagem.ok) return;
+
+    // As duas páginas no mesmo papel.
+    expect(await tamanhosDoPdf(montagem.pdf)).toEqual(["595x842", "595x842"]);
+    // E a capa continua sendo a capa: a arte original de 1190x1684 está lá, embutida.
+    expect((await origensDoPdf(montagem.pdf))[0]).toBe("1190x1684");
+  });
+
+  it("capa de proporção diferente cabe inteira, centralizada — e a arte NÃO deforma", async () => {
+    // Uma capa quadrada num papel retrato: ela cabe pela largura e sobra tarja em cima e embaixo.
+    // O que não pode é esticar, que é o que a nota antiga deste arquivo temia.
+    const montagem = await montarPdfDoContrato({
+      anexos: [],
+      capa: peca("Capa quadrada", await pdfComTamanhos([[1000, 1000]])),
+      corpo: await pdfComTamanhos([[595.28, 841.89]]),
+    });
+
+    expect(montagem.ok).toBe(true);
+    if (!montagem.ok) return;
+    expect(await tamanhosDoPdf(montagem.pdf)).toEqual(["595x842", "595x842"]);
+    expect((await origensDoPdf(montagem.pdf))[0]).toBe("1000x1000");
   });
 });
 
