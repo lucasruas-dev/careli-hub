@@ -296,20 +296,58 @@ const daUnidadeDoPai = (l) => {
   const u = l.unidade_c2x ? unidadePorC2x.get(Number(l.unidade_c2x)) : null;
   return Boolean(u?.espelho_de);
 };
-const doPai = linhasUteis.filter(daUnidadeDoPai);
+// ⚠️ O AVISO OLHA `linhas`, E NAO `linhasUteis` -- ESTA ORDEM E O AVISO INTEIRO. O corte por
+// CODIGO (FORA_DO_PANTEON, com VLO e LAB) acontece antes, e a unidade do pai pertence ao
+// enterprise do pai: filtrando `linhasUteis`, `doPai` sai sempre VAZIO e esta lista nunca
+// imprime. Foi o que aconteceu entre 08:17 e 08:22 de 22/09/2026 -- o aviso nasceu e foi
+// silenciado no mesmo lote de commits, achado pela revisao adversarial. `espelho_de` so e
+// gravado em linha de LAB (31) ou VLO (35), pela migration 0162, entao os dois filtros miram o
+// mesmo conjunto e o do codigo chega primeiro.
+const doPai = linhas.filter(daUnidadeDoPai);
 const linhasDosFilhos = linhasUteis.filter((l) => !daUnidadeDoPai(l));
 if (doPai.length > 0) {
   const vivasDoPai = doPai.filter((l) => Number(l.open) === 1);
+
+  // ⚠️ O QUE IMPORTA NAO E O TOTAL, E QUEM FICOU SO NO PAI. A viva do pai que TEM pedido vivo no
+  // filho do mesmo lote nao precisa de ninguem: o filho ja guarda o lote. A que nao tem e lote com
+  // negocio andando no legado que o Panteon nao vai enxergar -- e essa precisa ser movida para o
+  // filho, no C2X, por quem opera. Medido em 22/09/2026: das 153 vivas no pai, 150 tinham par no
+  // filho e TRES nao (VLO 07/10, 11/02 e 14/01). Listar as 153 esconderia as 3.
+  //
+  // ⚠️ O PAR SE ACHA POR `espelho_de`, E NAO POR QUADRA/LOTE. A unidade do pai aponta para a do
+  // filho; casar por "04/02" varreria o Panteon inteiro e daria par com o lote 04/02 de OUTRO
+  // loteamento -- foi o que aconteceu na primeira versao deste aviso, que devolveu zero orfas onde
+  // o banco tem tres.
+  const unidadePorId = new Map(unidades.map((u) => [String(u.id), u]));
+  const comPedidoVivo = new Set(
+    linhas
+      .filter((l) => Number(l.open) === 1 && !daUnidadeDoPai(l) && l.unidade_c2x)
+      .map((l) => Number(l.unidade_c2x)),
+  );
+  const orfas = vivasDoPai.filter((l) => {
+    const noPai = l.unidade_c2x ? unidadePorC2x.get(Number(l.unidade_c2x)) : null;
+    const filha = noPai?.espelho_de ? unidadePorId.get(String(noPai.espelho_de)) : null;
+    // Sem filha casada, ninguem guarda o lote: trata como orfa, que e o lado seguro.
+    if (!filha?.origem_c2x_id) return true;
+    return !comPedidoVivo.has(Number(filha.origem_c2x_id));
+  });
+
   console.log(
     `
-⚠️ ${doPai.length} proposta(s) penduradas na unidade do PAI ficam FORA (${vivasDoPai.length} viva(s)).`,
+⚠️ ${doPai.length} proposta(s) penduradas na unidade do PAI ficam FORA (${vivasDoPai.length} viva(s), ${vivasDoPai.length - orfas.length} com pedido vivo no filho).`,
   );
-  // As VIVAS merecem nome e sobrenome: elas sao lote com negocio andando no legado que o Panteon
-  // nao vai enxergar. Quem opera precisa mover o pedido para o filho, la no C2X.
-  for (const l of vivasDoPai.slice(0, 40)) {
-    console.log(`   viva no pai: pedido ${l.id} - ${l.emp_code} ${l.block}/${l.lot} - ${l.cli_nome ?? "sem cliente"}`);
+
+  if (orfas.length > 0) {
+    console.log(
+      `
+⚠️ ${orfas.length} VIVA(S) SO NO PAI — o lote fica sem dono aqui ate alguem mover o pedido para o filho no C2X:`,
+    );
+    for (const l of orfas) {
+      console.log(
+        `   pedido ${l.id} · ${l.emp_code} ${l.block}/${l.lot} · ${l.cli_nome ?? "sem cliente"}`,
+      );
+    }
   }
-  if (vivasDoPai.length > 40) console.log(`   ... e mais ${vivasDoPai.length - 40}`);
 }
 
 const propostas = linhasDosFilhos.map((l) => {
