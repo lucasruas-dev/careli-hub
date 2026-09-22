@@ -36,6 +36,49 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-22-revisao-do-contrato",
+    deployedAt: "2026-09-22T09:00:55-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O preço do lote e o preço total da aquisição pararam de brigar.** A comissão está DENTRO do valor negociado, e não em cima dele: o total da aquisição passou a ser o valor da venda, e o preço do lote é ele menos a corretagem. No contrato do Vale do Ouro o total saía R$ 141.564,06 sobre uma venda de R$ 133.551,00, enquanto o Quadro-Resumo da mesma página cobrava os R$ 133.551,00: o documento se contradizia sozinho.",
+              "**A tabela de pagamento mostra a escada que o contrato contrata.** A linha única dizia 156 parcelas de R$ 770,49 com total de R$ 204.417,00, e 156 vezes 770,49 dá R$ 120.196,44. Agora sai um degrau por faixa de parcelas com o mesmo valor, com o vencimento e a soma de cada um, direto do cronograma que a proposta congelou: 13 degraus, de R$ 770,49 a R$ 2.083,74, que fecham exatamente nos R$ 204.417,00.",
+              "**O “(Assinado eletronicamente)” do cônjuge sumiu de quem não tem cônjuge.** Some o bloco inteiro, rótulo junto. Quem é casado continua com os dois.",
+              "**O contrato parou de sair com uma folha em branco no fim.** Era a quebra de página que sobrava quando o bloco do anexo caía.",
+              "**A capa entrou na medida do contrato.** A do Vale do Ouro tem o dobro do tamanho da folha, e o PDF saía com uma página gigante na frente de 32 normais. Agora toda página sai no mesmo papel, com a arte encaixada sem deformar.",
+            ],
+            screen: "Contrato gerado",
+          },
+          {
+            items: [
+              "**Os anexos passam a entrar.** A tela mostrava um nível e gravava outro: você lia “Vale do Ouro” e a peça ia para o VOL; pela ficha consolidada, a gravação recusava mandando escolher a divisão, sem oferecer divisão nenhuma para escolher. E o aviso “Sem anexos” agora diz onde cadastrar.",
+            ],
+            screen: "Empreendimento · Minutas",
+          },
+          {
+            items: [
+              "**O Coordenador de Vendas vem preenchido com quem o contrato imprime.** O quadro mostrava “Ninguém aqui” e o contrato imprimia a Gurgel: eram duas empresas diferentes, lidas de lugares diferentes. Agora é a mesma, e o representante legal dela entra sozinho.",
+            ],
+            screen: "Empreendimento · Quadro de assinatura",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "SEIS DEFEITOS, todos medidos na venda real do VOL Q11 L07. (1) PRECOS: `valor_custo_total_aquisicao` deixou de somar a comissao por cima e virou o negociado; nasceu `preco_do_lote` (negociado menos comissao, em centavos inteiros), que nao existia -- por isso a minuta nao tinha o que por no 6.1. O molde de corretagem (blocos-prontos 4.1) passou a usa-la, e a frase do proprio 4.3 (\"corresponde a soma\") virou verdade. ⚠️ AS MINUTAS PUBLICADAS AINDA APONTAM [valor_imovel_venda] NO 6.1: ate a edicao do juridico, 6.1 e 6.2 saem com o MESMO numero (o negociado), que e menos errado do que hoje mas contraria o pedido de 20/09. (2) CONJUGE: `aplicarPares` passou a descartar o rotulo de assinatura orfao quando o bloco cai, usando a mesma `soRotuloDeAssinatura` que o caminho entre paragrafos ja usava -- na VOL v7 os 6 pares do conjuge cabem num paragrafo so, e por isso escapavam. (3) CAPA: o corpo passou a dar o papel do documento e capa e anexos entram por `embedPage` desenhados dentro dele, com escala uniforme e centralizados; pagina sem /Contents entra em branco. (4) ANEXOS: o seletor adota o alcance que casa com o id aberto (ou o primeiro valido), entao tela e requisicao leem a mesma variavel; `podarVazios` derruba a quebra de pagina que ficou sem nada depois. (5) TABELA: `emDegraus` agrupa a serie por valor e imprime uma linha por faixa, com teto de 16 degraus e queda para linha unica quando o cronograma esta cortado; `plano_sistema_amortizacao` passou a ser preenchida do plano congelado. (6) COORDENADORA: o envelope (`quadro-db`) e a tela (`estrutura-servico`) passaram a herdar de `coordenadora_entity_id`, com `coordenador_entity_id` como queda. typecheck e lint limpos; 7.789 testes em 498 arquivos.",
+      motivation:
+        "Lucas, 22/09/2026: \"revisa por favor a estrutura do contrato, esta dando muito erro (...) as variaveis estao ruins\". Nivea, no mesmo dia: \"Preco do lote e o 6.1 menos comissao. O preco total da aquisicao e R$133.551,00\", \"Esta gerando tabela PRICE\" e \"Continua saindo o (Assinado eletronicamente) depois do comprador\". Lucas: \"nao estamos conseguindo colocar os anexos\", \"capa esta ficando desproporcional\", \"a parte da tabela de pagamento, voce precisa entender a proposta, ela e a base desses valores, vencimentos\" e \"a gurgel assina sim\".",
+    },
+    rollback: "8ca9e681",
+    title: "A revisão do contrato: preços, tabela, cônjuge, capa, anexos e quem assina",
+    type: "correcao",
+    version: "1.360.0",
+  },
+  {
     buildTag: "2026-09-22-o-pai-e-reflexo",
     deployedAt: "2026-09-22T08:30:00-03:00",
     modules: [
