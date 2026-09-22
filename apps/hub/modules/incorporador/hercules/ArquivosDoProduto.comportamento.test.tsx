@@ -204,7 +204,8 @@ describe("ArquivosDoProduto", () => {
     await montar(<ArquivosDoProduto emp="37" podeEditar />);
 
     const campo = hospedeiro.querySelector<HTMLInputElement>('input[type="file"]');
-    const pdf = new File(["x"], "tabela.pdf", { type: "application/pdf" });
+    // ⚠️ NÃO USE PDF AQUI: ele passou a ser ACEITO em 22/09/2026 (tipo `documento`).
+    const pdf = new File(["x"], "tabela.zip", { type: "application/zip" });
     await act(async () => {
       Object.defineProperty(campo, "files", { configurable: true, value: [pdf] });
       campo?.dispatchEvent(new Event("change", { bubbles: true }));
@@ -294,7 +295,7 @@ describe("ArquivosDoProduto", () => {
     });
 
     const campo = hospedeiro.querySelector<HTMLInputElement>('input[type="file"]');
-    expect(campo?.getAttribute("accept")).toBe("image/*,video/*");
+    expect(campo?.getAttribute("accept")).toBe("image/*,video/*,application/pdf");
     // Sem `type`: o tipo tem de ir no blob pelo MIME que a rota devolveu.
     const foto = new File(["conteudo"], "Portaria.JPG", { type: "" });
     await act(async () => {

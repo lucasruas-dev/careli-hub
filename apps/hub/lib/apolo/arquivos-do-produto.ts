@@ -17,7 +17,7 @@
 /** O bucket privado criado pela migration 0169. */
 export const BUCKET_DO_PRODUTO = "produto-arquivos";
 
-export type TipoDeArquivo = "imagem" | "video";
+export type TipoDeArquivo = "documento" | "imagem" | "video";
 
 const MIB = 1024 * 1024;
 
@@ -33,11 +33,16 @@ const MIB = 1024 * 1024;
  * exportado em 1080p, fica bem abaixo.
  */
 export const LIMITE_EM_BYTES: Readonly<Record<TipoDeArquivo, number>> = {
+  // ⚠️ 200 MB DE PDF PORQUE A APRESENTAÇÃO É FEITA DE RENDER. A do Garden Resort, que motivou o
+  // tipo (22/09/2026), tem 70 páginas e 124 MB: cada página carrega uma foto de 4396x2472. Um PDF
+  // de texto do mesmo tamanho não existe, e o teto do bucket (500 MB) continua sendo o do vídeo.
+  documento: 200 * MIB,
   imagem: 25 * MIB,
   video: 500 * MIB,
 };
 
 export const LIMITE_ESCRITO: Readonly<Record<TipoDeArquivo, string>> = {
+  documento: "200 MB",
   imagem: "25 MB",
   video: "500 MB",
 };
@@ -56,6 +61,9 @@ export const LADO_MAIOR_DA_MINIATURA = 480;
  * porque é o que o iPhone grava; a tela sabe que o Chrome não o desenha (ver `miniatura_path`).
  */
 const FORMATOS: Readonly<Record<string, { extensao: string; tipo: TipoDeArquivo }>> = {
+  // ⚠️ SÓ PDF COMO DOCUMENTO, de propósito. DOCX e PPTX não abrem no navegador sem converter, e
+  // uma apresentação que baixa em vez de abrir na frente do cliente é pior do que não estar lá.
+  "application/pdf": { extensao: "pdf", tipo: "documento" },
   "image/heic": { extensao: "heic", tipo: "imagem" },
   "image/heif": { extensao: "heif", tipo: "imagem" },
   "image/jpeg": { extensao: "jpg", tipo: "imagem" },
@@ -69,6 +77,7 @@ const FORMATOS: Readonly<Record<string, { extensao: string; tipo: TipoDeArquivo 
 /** Extensão → MIME, para quando o navegador não diz o tipo (HEIC no Windows chega com `type` vazio). */
 const PELA_EXTENSAO: Readonly<Record<string, string>> = {
   heic: "image/heic",
+  pdf: "application/pdf",
   heif: "image/heif",
   jpeg: "image/jpeg",
   jpg: "image/jpeg",
@@ -453,12 +462,18 @@ export function tamanhoEscrito(bytes: null | number | undefined): string {
   return `${(n / (1024 * MIB)).toFixed(1).replace(".", ",")} GB`;
 }
 
-/** "3 fotos · 1 vídeo" (ou "Nenhum arquivo"). */
+/** "3 fotos · 1 vídeo · 1 documento" (ou "Nenhum arquivo"). */
 export function resumoDaGaleria(lista: ReadonlyArray<{ tipo: TipoDeArquivo }>): string {
   const fotos = lista.filter((item) => item.tipo === "imagem").length;
-  const videos = lista.length - fotos;
+  const videos = lista.filter((item) => item.tipo === "video").length;
+  // ⚠️ CONTADO POR TIPO, E NÃO PELO QUE SOBRA. Enquanto eram dois tipos, "o resto é vídeo"
+  // funcionava; com o documento (22/09/2026), a mesma linha passaria a chamar PDF de vídeo.
+  const documentos = lista.filter((item) => item.tipo === "documento").length;
   const partes: string[] = [];
   if (fotos > 0) partes.push(`${fotos} ${fotos === 1 ? "foto" : "fotos"}`);
   if (videos > 0) partes.push(`${videos} ${videos === 1 ? "vídeo" : "vídeos"}`);
+  if (documentos > 0) {
+    partes.push(`${documentos} ${documentos === 1 ? "documento" : "documentos"}`);
+  }
   return partes.length > 0 ? partes.join(" · ") : "Nenhum arquivo";
 }

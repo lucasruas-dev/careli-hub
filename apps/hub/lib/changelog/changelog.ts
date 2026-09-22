@@ -36,6 +36,65 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-22-o-pagamento-mora-aqui",
+    deployedAt: "2026-09-22T14:00:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "**O Panteon passou a guardar quem pagou cada boleto.** Até agora essa informação só existia no Asaas e era consultada na hora, a cada abertura de tela: não dava para responder \"quanto entrou em setembro\" sem abrir a tela, nem cruzar o pagamento com a carteira do cliente.",
+              "**Nenhuma tela mudou.** A aba Boletos continua lendo o Asaas ao vivo, porque o status muda lá sem avisar. O que nasceu é o registro, que se atualiza sozinho de hora em hora.",
+            ],
+            screen: "Boletos · registro de pagamentos",
+          },
+        ],
+      },
+    ],
+    rollback: "78075f41",
+    technical: {
+      done:
+        "Migration 0186 (aplicada): `boletos_pagamentos`, uma linha por COBRANCA do Asaas -- nao por parcela, porque a mesma unidade pode ter duas no mes (mensal e entrada, que a referencia separa com `:2`). RLS ligada sem policy. Regua pura `lib/apolo/boletos/pagamento-do-asaas.ts` (14 testes) converte a cobranca na linha e serve as DUAS portas: o webhook e a varredura. O que e \"pago\" esta escrito por extenso (RECEIVED, CONFIRMED, RECEIVED_IN_CASH) e nunca e `valor > 0` -- o Asaas mantem `paymentDate` depois do estorno, e ler valor marcaria como quitada uma parcela devolvida. Webhook em `/api/publico/asaas/boletos/webhook?conta=<slug>`: idempotente por `cobranca_id`, 200 no que ignora (4xx viraria fila de reentrega eterna) e FAIL-CLOSED, respondendo 503 enquanto `ASAAS_BOLETOS_WEBHOOK_TOKEN` nao existir, porque e rota publica que grava. Varredura em `/api/boletos/pagamentos/sincronizar`, no cron `10 * * * *`: a rede de seguranca para o evento que se perde, porque tabela que envelhece em silencio e o que ninguem percebe numa conciliacao. ⚠️ Bug meu que o teste pegou antes do ar: `Number(\"\")` e ZERO, entao cobranca sem valor virava linha de R$ 0,00. NAO FEITO: configurar o webhook nas 7 contas do Asaas e criar a env (o Lucas nao tem acesso as contas agora); ate la quem alimenta e a varredura. 7.819 testes verdes.",
+      motivation:
+        "Lucas, 22/09/2026: \"vamos trazer essa informacoes de pago para dentro do panteon, nao faz sentido, vamos colocar uma tabela para organizar esses pagamentos\" e \"esses status tem que ser registrados via webhook, temos que comecar ter uma inteligencia de gestao de notificacao e atualizacao\". O pedido que abriu a frente era refletir no LSoft as parcelas de setembro, e a analise mostrou que faltava o primeiro degrau: ninguem aqui sabia quem tinha pago.",
+    },
+    title: "O pagamento do boleto passa a morar no Panteon",
+    type: "melhoria",
+    version: "1.360.4",
+  },
+  {
+    buildTag: "2026-09-22-a-apresentacao-entra-na-aba",
+    deployedAt: "2026-09-22T10:30:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "**A apresentação comercial em PDF agora fica na aba Arquivos**, ao lado do vídeo e das fotos. Ela abre na própria tela, em tela cheia, com as páginas e o zoom do navegador — sem baixar nada e sem sair do portal. Até 200 MB.",
+              "**Foto e vídeo passaram a abrir JÁ em tela cheia**, sem o segundo clique no botão de expandir.",
+              "**E a mídia ocupa a tela toda.** O vídeo do Cecílio Rocha é 1024×512 e abria num quadradinho no meio do preto, porque o visualizador nunca passava do tamanho original do arquivo.",
+              "**No Garden Resort já estão lá:** o vídeo, a apresentação de 70 páginas e as 45 cenas, nessa ordem.",
+            ],
+            screen: "Produto · Arquivos",
+          },
+        ],
+      },
+    ],
+    rollback: "01fb887e",
+    technical: {
+      done:
+        "`documento` é um TIPO NOVO, e nao um \"outro\": o `tipo` decide o que a tela desenha e como o visualizador abre. Migration 0185 (aplicada e conferida): CHECK do tipo aceita `documento` e `application/pdf` entra no `allowed_mime_types` do bucket -- as duas camadas andam juntas, senao a permissao assinada sai e a gravacao falha com um erro que nao diz nada na tela. A regua ganhou o formato com teto de 200 MB (a apresentacao do Garden tem 124 MB, com 70 renders de 4396x2472); SO PDF, porque DOCX e PPTX nao abrem no navegador sem converter. O visualizador abre o PDF num `iframe` com a URL assinada, usando o leitor do proprio navegador -- SEM `sandbox`, que faria o Chrome desligar o leitor e BAIXAR o arquivo. Os rotulos por tipo viraram MAPA (`ROTULO_DO_TIPO`, `ARTIGO_DO_TIPO`) e `resumoDaGaleria` passou a contar cada tipo: enquanto eram dois, `tipo === \"video\" ? ... : ...` e \"o resto e video\" funcionavam, e com o terceiro cada um desses vira um lugar onde o PDF se chama foto. A abertura em tela cheia pede ao montar, UMA vez por abertura (`jaPediuTelaCheia`), e NAO cai para o modo imersivo: o imersivo e o consolo de quem PEDIU tela cheia num navegador que nao a da, e esconde os botoes -- na abertura automatica seria popup sem botoes e dois Esc para sair. `.vdm-midia` passou de so `max-*` para `width`/`height` 100% com `object-fit: contain`. Dois testes usavam PDF como exemplo de formato recusado e viraram .zip/.xlsx. 7.802 testes verdes, typecheck limpo. NAO VERIFICADO EM TELA (o hub exige login): quanto um PDF de 124 MB demora para aparecer no iframe na primeira abertura.",
+      motivation:
+        "Lucas, 22/09/2026, subindo o material do Garden Resort: \"tem uma apresentacao tambem sobe ela\", \"um arquivo so: o PDF\", \"tem que abrir em full\" e, com o print do video num quadradinho, \"o video tem que abrir em fulltela\".",
+    },
+    title: "A apresentação em PDF na aba Arquivos, e a mídia abrindo em tela cheia",
+    type: "novidade",
+    version: "1.360.3",
+  },
+  {
     buildTag: "2026-09-22-a-linha-do-quadro",
     deployedAt: "2026-09-22T09:29:51-03:00",
     modules: [
