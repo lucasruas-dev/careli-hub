@@ -795,3 +795,49 @@ describe("o pedido de cancelamento e o que a Têmis decidiu", () => {
     expect(semPedido.map((e) => e.fato)).toContain("Proposta cancelada");
   });
 });
+
+// ── O FATURAMENTO QUE O MOVIMENTO NÃO CONTOU ────────────────────────────────
+//
+// Lucas, 21/09/2026, sobre as vendas faturadas em 17/09 que a tela mostrava em assinatura:
+// *"lembrando que tem que ter isso no historico"*. A `data_faturamento` chega na carga; a transição
+// para `faturado` fica em `hercules_proposta_etapas` e só aparece quando a linha é recarregada.
+// Sem este evento o histórico da unidade termina em "Enviada para assinatura" numa venda que já
+// faturou.
+describe("o faturamento registrado na venda", () => {
+  it("entra no histórico mesmo sem movimento, na data do faturamento", () => {
+    const eventos = historicoDaUnidade(
+      [proposta({ data_faturamento: "2026-09-17", etapa: "assinatura", id: "p1" })],
+      [],
+    );
+
+    const faturou = eventos.find((e) => e.fato === "Faturada");
+    expect(faturou, "o faturamento não apareceu no histórico").toBeTruthy();
+    expect(faturou?.quando.slice(0, 10)).toBe("2026-09-17");
+    // ⚠️ SEM AUTOR: quem faturou está no legado e não vem junto. Escrever um nome seria inventar.
+    expect(faturou?.quem).toBeNull();
+    expect(faturou?.observacao).toBe("Faturamento registrado na venda");
+  });
+
+  it("faturamento marcado para o futuro não entra", () => {
+    const eventos = historicoDaUnidade(
+      [proposta({ data_faturamento: "2099-01-01", etapa: "assinatura", id: "p1" })],
+      [],
+    );
+    expect(eventos.some((e) => e.fato === "Faturada")).toBe(false);
+  });
+
+  it("sem data de faturamento, o histórico não inventa o evento", () => {
+    const eventos = historicoDaUnidade([proposta({ etapa: "assinatura", id: "p1" })], []);
+    expect(eventos.some((e) => e.fato === "Faturada")).toBe(false);
+  });
+
+  // ⚠️ UMA LINHA SÓ. Com a etapa já em `faturado`, a derivação do passo também produziria
+  // "Faturada": duas linhas no mesmo histórico para o mesmo fato.
+  it("não duplica quando a etapa já é faturado", () => {
+    const eventos = historicoDaUnidade(
+      [proposta({ data_faturamento: "2026-09-17", etapa: "faturado", id: "p1" })],
+      [],
+    );
+    expect(eventos.filter((e) => e.fato === "Faturada")).toHaveLength(1);
+  });
+});

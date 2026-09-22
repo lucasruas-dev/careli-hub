@@ -75,6 +75,17 @@ export type PropostaDoHistorico = {
   /** Quando a linha nasceu no Panteon. Só serve de data quando `criado_em_c2x` é nulo. */
   criado_em?: null | string;
   criado_em_c2x: null | string;
+  /**
+   * O DIA EM QUE A VENDA FATUROU, como a carga do C2X o gravou.
+   *
+   * ⚠️ ELE CHEGA SEM O MOVIMENTO. A transição para `faturado` mora em
+   * `hercules_proposta_etapas`, e ela só aparece quando a linha é recarregada; a data chega por
+   * outro caminho e fica sozinha. Medido em 21/09/2026: 59 vendas em `assinatura` e 1 em
+   * `contrato` com data de faturamento preenchida. Três delas são do VOC e faturaram em 17/09
+   * (Erilene, Adilson e Natanael), com o legado no estágio 4 e a tela do Panteon dizendo "Em
+   * assinatura". Lucas, no mesmo dia: *"lembrando que tem que ter isso no historico"*.
+   */
+  data_faturamento?: null | string;
   /** Quem gerou a proposta aqui. O C2X não guarda quem abriu as dele. */
   criado_por_nome?: null | string;
   etapa: string;
@@ -350,6 +361,11 @@ export function historicoDaUnidade(
   // Quando a linha existe ela é melhor do que a derivada — traz autor e motivo —, então é ela que
   // fica. Só o formato do Panteon entra aqui: a proposta importada não é derivada (ela chegou com
   // a linha do tempo inteira do legado), e por isso `para_c2x` não precisa ser traduzido.
+  // A data de hoje em texto `AAAA-MM-DD`: comparar texto com texto não escorrega de fuso, e
+  // `new Date("2026-09-21")` nasce em UTC (viraria dia 20 no horário de Brasília).
+  const agora = new Date();
+  const hojeEmTexto = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, "0")}-${String(agora.getDate()).padStart(2, "0")}`;
+
   const destinosJaGravados = new Set(
     movimentos.map((m) => `${m.proposta_id}:${String(m.para ?? "").trim().toLowerCase()}`),
   );
@@ -450,6 +466,36 @@ export function historicoDaUnidade(
       });
     }
 
+    // O FATURAMENTO QUE A DATA CONTA E O MOVIMENTO NÃO CONTOU.
+    //
+    // ⚠️ VALE PARA A PROPOSTA IMPORTADA TAMBÉM, ao contrário da derivação de etapa abaixo. É
+    // justamente na importada que isto acontece: a venda fatura no legado, a data vem na carga e
+    // a transição não, porque a linha não é recarregada depois. Sem este evento, o histórico da
+    // unidade termina em "Enviada para assinatura" numa venda que já faturou.
+    //
+    // ⚠️ SEM AUTOR, DE PROPÓSITO. Quem faturou está no legado e não vem junto; escrever um nome
+    // aqui seria inventar. A observação diz de onde o fato saiu, para quem lê não achar que
+    // alguem clicou no Panteon.
+    const faturouEm = texto(p.data_faturamento);
+    if (
+      faturouEm &&
+      faturouEm.slice(0, 10) <= hojeEmTexto &&
+      !destinosJaGravados.has(`${p.id}:faturado`)
+    ) {
+      eventos.push({
+        cliente: texto(p.cliente_nome),
+        codigo: nativa ? codigoDaVenda(p.protocolo_numero) || null : null,
+        fato: "Faturada",
+        id: `faturamento:${p.id}`,
+        observacao: "Faturamento registrado na venda",
+        propostaId: p.id,
+        quando: faturouEm,
+        quem: null,
+        tipo: "etapa",
+        valor: null,
+      });
+    }
+
     // O PASSO QUE A ETAPA CONTA E O MOVIMENTO NÃO CONTOU — ver `ETAPA_DERIVADA`.
     //
     // ⚠️ SÓ NA PROPOSTA NASCIDA AQUI. A importada chega do C2X com as transições dela em
@@ -464,7 +510,9 @@ export function historicoDaUnidade(
       fatoDaEtapa &&
       quandoDaEtapa &&
       !jaContadaPelaQueda &&
-      !destinosJaGravados.has(`${p.id}:${etapaAgora}`)
+      !destinosJaGravados.has(`${p.id}:${etapaAgora}`) &&
+      // O evento do faturamento acima já contou esta linha.
+      !(etapaAgora === "faturado" && texto(p.data_faturamento))
     ) {
       eventos.push({
         cliente: texto(p.cliente_nome),

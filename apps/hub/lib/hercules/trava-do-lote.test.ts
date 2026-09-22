@@ -55,7 +55,9 @@ type Banco = {
 const COLUNAS: Record<string, readonly string[]> = {
   hercules_propostas: [
     "aberta", "atualizado_em", "cancelada_em", "cancelamento_pedido_em", "codigo", "criado_em",
-    "criado_em_c2x", "etapa",
+    "criado_em_c2x",
+    // A régua lê o FATO do faturamento junto da etapa, desde 21/09/2026 (`etapa-pelo-fato.ts`).
+    "data_faturamento", "etapa",
     "etapa_desde", "id", "origem", "protocolo_numero", "reserva_id", "unidade_id", "workspace_id",
   ],
   hercules_reservas: [

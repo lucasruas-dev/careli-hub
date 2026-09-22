@@ -190,6 +190,8 @@ export type UnidadeComSituacao = {
   situacao: SituacaoDaUnidade;
 };
 
+import { etapaPeloFato } from "./etapa-pelo-fato";
+
 export type SituacaoDasUnidades = {
   /** Por id de QUALQUER linha do terreno: a viva e as antigas que apontam para ela. */
   porLinha: Map<string, UnidadeComSituacao>;
@@ -439,6 +441,7 @@ export async function lerSituacaoDasUnidades(
     emPaginas<{
       cancelamento_pedido_em: null | string;
       criado_em_c2x: null | string;
+      data_faturamento: null | string;
       etapa: string;
       etapa_desde: null | string;
       id: string;
@@ -446,7 +449,11 @@ export async function lerSituacaoDasUnidades(
     }>((de, ate) =>
       client
         .from("hercules_propostas")
-        .select("id,unidade_id,etapa,etapa_desde,criado_em_c2x,cancelamento_pedido_em")
+        // A marca do pedido de cancelamento (21/09) e a data do faturamento (21/09) entram
+        // juntas: as duas respondem "em que ponto esta venda está de verdade".
+        .select(
+          "id,unidade_id,etapa,etapa_desde,criado_em_c2x,cancelamento_pedido_em,data_faturamento",
+        )
         .eq("workspace_id", "careli")
         .in("etapa", [...ETAPAS_DO_FLUXO])
         .order("id")
@@ -484,14 +491,19 @@ export async function lerSituacaoDasUnidades(
     string,
     Array<{ desde: string; emCancelamento: boolean; etapa: string }>
   >();
+  const agoraDaLeitura = new Date();
   for (const p of propostasTodas) {
     const grupo = p.unidade_id ? grupoDe.get(p.unidade_id) : undefined;
     if (!grupo) continue;
     const lista = propostasPorGrupo.get(grupo) ?? [];
+    // ⚠️ A ETAPA SEGUE O FATO, E A MARCA DO PEDIDO VEM JUNTO. `data_faturamento` chega na carga
+    // e a transição para `faturado` não, quando a linha deixa de ser recarregada: sem isto a grade
+    // pinta de "assinatura" um lote que já faturou (3 no VOC em 21/09/2026). A venda pedindo para
+    // sair continua com situação própria, que é decidida depois desta linha.
     lista.push({
       desde: String(p.etapa_desde ?? p.criado_em_c2x ?? ""),
       emCancelamento: Boolean(p.cancelamento_pedido_em) && DEPOIS_DO_CONTRATO.has(p.etapa),
-      etapa: p.etapa,
+      etapa: etapaPeloFato(p.etapa, p.data_faturamento, agoraDaLeitura),
     });
     propostasPorGrupo.set(grupo, lista);
   }
