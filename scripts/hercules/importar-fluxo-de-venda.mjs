@@ -174,7 +174,11 @@ async function lerTudo(tabela, colunas) {
 }
 
 console.log("Lendo o que o Panteon já tem…");
-const unidades = await lerTudo("hercules_unidades", "id,origem_c2x_id,codigo,enterprise_id");
+const unidades = await lerTudo(
+  "hercules_unidades",
+  // `espelho_de` diz se a unidade e do PAI: e por ele que as propostas do pai ficam de fora.
+  "id,origem_c2x_id,codigo,enterprise_id,espelho_de",
+);
 const empreendimentos = await lerTudo("hercules_empreendimentos", "id,codigo,c2x_enterprise_id,pai_id");
 
 const unidadePorC2x = new Map(
@@ -268,7 +272,39 @@ if (EXCETO.size > 0) {
 `);
 }
 
-const propostas = linhasUteis.map((l) => {
+// ⚠️ PROPOSTA DO PAI NAO ENTRA, NEM UMA (Lucas, 22/09/2026: "nada de trazer proposta do VLO do
+// c2x, ja cansei de falar que la e os filhos que gravam propostas").
+//
+// No produto dividido (VLO -> VOC + VOL + VOR; LAB -> LBF, LBP, LBR) a venda mora no FILHO e o pai
+// e a soma. O legado ainda deixa pendurar pedido no pai, e cada carga trazia isso para ca: em
+// 22/09/2026 foram 105 do VLO e 48 do LAB, TODAS em unidade espelho. Como a regua do terreno pega
+// a proposta viva mais recente, uma reserva de 18/09 no pai ganhava de uma venda faturada do filho
+// de 09/09 -- o VOC mostrou Faturado 68 e Reservado 19, onde o legado conta 86 e ZERO. Ja tinha
+// sido limpo a mao em 21/09 e a carga ressuscitou; agora nem entra.
+//
+// A MARCA E `espelho_de`: a unidade do pai aponta para a do filho (298 de 298 no VLO). Vale para
+// qualquer produto dividido, hoje e no que for dividido depois, sem lista de codigos a manter.
+const daUnidadeDoPai = (l) => {
+  const u = l.unidade_c2x ? unidadePorC2x.get(Number(l.unidade_c2x)) : null;
+  return Boolean(u?.espelho_de);
+};
+const doPai = linhasUteis.filter(daUnidadeDoPai);
+const linhasDosFilhos = linhasUteis.filter((l) => !daUnidadeDoPai(l));
+if (doPai.length > 0) {
+  const vivasDoPai = doPai.filter((l) => Number(l.open) === 1);
+  console.log(
+    `
+⚠️ ${doPai.length} proposta(s) penduradas na unidade do PAI ficam FORA (${vivasDoPai.length} viva(s)).`,
+  );
+  // As VIVAS merecem nome e sobrenome: elas sao lote com negocio andando no legado que o Panteon
+  // nao vai enxergar. Quem opera precisa mover o pedido para o filho, la no C2X.
+  for (const l of vivasDoPai.slice(0, 40)) {
+    console.log(`   viva no pai: pedido ${l.id} - ${l.emp_code} ${l.block}/${l.lot} - ${l.cli_nome ?? "sem cliente"}`);
+  }
+  if (vivasDoPai.length > 40) console.log(`   ... e mais ${vivasDoPai.length - 40}`);
+}
+
+const propostas = linhasDosFilhos.map((l) => {
   const unidade = l.unidade_c2x ? unidadePorC2x.get(Number(l.unidade_c2x)) : null;
   if (!unidade && l.unidade_c2x) semUnidade.push(l.id);
 
