@@ -910,11 +910,49 @@ function aplicarPares(
     const doMarcador = donoDoNo(filho) ?? dono;
     if (condicaoLigada(chave, dados, doMarcador)) {
       saida.push(...aplicarPares(filhos.slice(i + 1, fim), dados, doMarcador));
+    } else {
+      descartarRotuloOrfao(saida);
     }
     i = fim;
   }
 
   return saida;
+}
+
+/**
+ * O bloco caiu: o rótulo de assinatura que vinha logo ANTES dele cai junto.
+ *
+ * ⚠️ O DEFEITO QUE ISTO CONSERTA (Nívea, 22/09/2026, com o print do contrato da VITORIA, solteira):
+ * *"Continua saindo o (Assinado eletronicamente) depois do comprador"*. O fecho da minuta escreve o
+ * rótulo ANTES do nome de quem assina, sempre:
+ *
+ *     (Assinado eletronicamente) LINO E CECÍLIO ... Vendedora
+ *     (Assinado eletronicamente) [nome_cliente] COMPROMISSÁRIO(A) COMPRADOR(A)
+ *     (Assinado eletronicamente) [inicio_dados_conjuge][nome_conjuge] CONJUGE[fim_dados_conjuge]
+ *
+ * Como o rótulo do cônjuge está FORA do par, cortar o bloco levava o nome e a palavra CONJUGE e
+ * deixava o rótulo sozinho na página, anunciando a assinatura de alguém que não existe.
+ *
+ * ⚠️ A TRAVA JÁ EXISTIA, MAS SÓ NO OUTRO CAMINHO. `paresEntreBlocos` (o par que atravessa
+ * parágrafos) já usava `soRotuloDeAssinatura`; na VOL v7 nenhum dos seis pares do cônjuge atravessa
+ * parágrafo, então o corte passava por aqui, onde a regra não existia. Agora os dois caminhos
+ * compartilham a MESMA função, e é por isso que ela não foi duplicada.
+ *
+ * ⚠️ E A REGRA CONTINUA ESTREITA: só o rabo de nós de TEXTO, e só quando o texto inteiro é o rótulo.
+ * O rótulo do COMPRADOR mora no parágrafo anterior, antes de `[inicio_cada_comprador]`, e o laço
+ * nunca chega a este ramo (ele sai antes, em `chave === LACO`). Alargar isto apagaria a assinatura
+ * de quem assina.
+ */
+function descartarRotuloOrfao(saida: (NoDeTexto | NoDoDocumento)[]): void {
+  let inicio = saida.length;
+  while (inicio > 0) {
+    const anterior = saida[inicio - 1];
+    if (!anterior || !ehTexto(anterior)) break;
+    inicio -= 1;
+  }
+  if (inicio === saida.length) return;
+  if (!soRotuloDeAssinatura(saida.slice(inicio))) return;
+  saida.length = inicio;
 }
 
 function acharFim(

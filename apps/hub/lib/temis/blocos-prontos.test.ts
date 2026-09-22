@@ -274,11 +274,18 @@ describe("o contrato de corretagem", () => {
   // (`hercules_vendas.valor_negociado`). O contrato sairia com o custo total igual ao preço do lote,
   // logo abaixo da frase que promete "a soma do preço do lote e da comissão". Nenhum motor acusaria:
   // os dois números existem e são válidos.
+  // ⚠️ E A COMISSÃO ESTÁ DENTRO DO NEGOCIADO (Nívea, 22/09/2026): o 4.1 passou a usar
+  // `[preco_do_lote]` (negociado menos comissão) e o 4.3 continua com `[valor_custo_total_aquisicao]`,
+  // que agora vale o negociado. Só assim a frase do próprio 4.3 ("corresponde à soma do preço do
+  // lote e da comissão") é verdadeira, e as cláusulas 7.1 e 7.2, que separam o que é do lote do que
+  // é de corretagem, param de brigar com o quadro logo acima.
   it("não confunde o custo total com o preço do lote", () => {
     const texto = textoDoBloco(bloco());
-    expect(texto).toContain("[valor_imovel_venda]");
+    expect(texto).toContain("[preco_do_lote]");
     expect(texto).toContain("[valor_custo_total_aquisicao]");
     expect(texto).not.toContain("[preco_venda]");
+    // O negociado não entra no quadro da corretagem: quem representa o lote ali é o líquido.
+    expect(texto).not.toContain("[valor_imovel_venda]");
   });
 
   it("não repete o empreendimento nem a comarca escritos à mão", () => {

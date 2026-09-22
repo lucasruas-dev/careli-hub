@@ -708,8 +708,20 @@ const CORRETAGEM: VariavelDoContrato[] = [
   // Preenchida desde 20/09/2026 (`dados-do-contrato.ts`): preço negociado + comissão total, somados
   // em centavos inteiros. Antes disto era PENDENTE, e a minuta repetia o preço do lote na linha do
   // custo total.
-  { exemplo: "R$ 196.524,00", fonte: SISTEMA("valor negociado + comissão total, somados em centavos"), grupo: "corretagem", nome: "valor_custo_total_aquisicao", origem: "Preço da unidade mais a comissão", rotulo: "Custo total da aquisição", tipo: "dinheiro" },
+  // ⚠️ O CUSTO TOTAL É O VALOR NEGOCIADO, e a comissão está DENTRO dele (Nívea, 22/09/2026:
+  // *"O preço total da aquisição é R$ 133.551,00"*, sobre uma venda de R$ 133.551,00). Até esta data
+  // esta variável somava a comissão por cima e o contrato do VOL imprimia R$ 141.564,06 de custo
+  // total enquanto o Quadro-Resumo da mesma página cobrava R$ 133.551,00.
+  { exemplo: "R$ 196.524,00", fonte: SISTEMA("o valor negociado da venda (a comissão já está dentro dele)"), grupo: "corretagem", nome: "valor_custo_total_aquisicao", origem: "Valor negociado da venda", rotulo: "Custo total da aquisição", tipo: "dinheiro" },
   { exemplo: "cento e noventa e seis mil quinhentos e vinte e quatro reais", extensoDe: "valor_custo_total_aquisicao", fonte: EXTENSO_DE("valor_custo_total_aquisicao"), grupo: "corretagem", nome: "valor_custo_total_aquisicao_extenso", origem: "Escrito pelo sistema", rotulo: "Custo total por extenso", tipo: "extenso" },
+  // ⚠️ O QUE VAI NA LINHA "PREÇO DO LOTE" DO CONTRATO, e não é o valor negociado: é ele menos a
+  // comissão de corretagem (Nívea, 22/09/2026: *"Preço do lote é o 6.1 menos comissão"*). Quem
+  // editar minuta procura por este nome, que é o mesmo do título da cláusula.
+  //
+  // ⚠️ NÃO CONFUNDIR com `valor_imovel_venda` e `preco_venda`, que são o valor NEGOCIADO (o mesmo
+  // campo com dois nomes) e continuam servindo à garantia fiduciária e às cláusulas de mora.
+  { exemplo: "R$ 185.000,00", fonte: SISTEMA("valor negociado menos a comissão total, em centavos"), grupo: "corretagem", nome: "preco_do_lote", origem: "Valor negociado menos a comissão", rotulo: "Preço do lote (sem a comissão)", tipo: "dinheiro" },
+  { exemplo: "cento e oitenta e cinco mil reais", extensoDe: "preco_do_lote", fonte: EXTENSO_DE("preco_do_lote"), grupo: "corretagem", nome: "preco_do_lote_extenso", origem: "Escrito pelo sistema", rotulo: "Preço do lote por extenso", tipo: "extenso" },
   // Novos em 02/09/2026: imobiliária e corretor separados, cada um pelo seu vínculo na venda.
   { exemplo: "IMOBILIÁRIA CENTRAL LTDA.", fonte: ENTIDADE("display_name (imobiliaria_entity_id da venda)"), grupo: "corretagem", nome: "imobiliaria_nome", origem: "Imobiliária da venda", rotulo: "Nome da imobiliária", tipo: "texto" },
   { exemplo: "11.222.333/0001-44", fonte: ENTIDADE("document_masked (imobiliaria_entity_id da venda)"), grupo: "corretagem", nome: "imobiliaria_cnpj", origem: "Imobiliária da venda", rotulo: "CNPJ da imobiliária", tipo: "texto" },

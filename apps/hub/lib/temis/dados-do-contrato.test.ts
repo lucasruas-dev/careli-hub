@@ -1745,14 +1745,38 @@ describe("a comissão de corretagem e a coordenadora de vendas", () => {
   // ⚠️ PREÇO DO LOTE E CUSTO DA AQUISIÇÃO SÃO NÚMEROS DIFERENTES. Lucas, 20/09/2026: *"O preço do
   // lote e da aquisição não podem ser os mesmos"* — a minuta repetia `preco_venda` nas duas linhas
   // porque `valor_custo_total_aquisicao` estava no catálogo e ninguém a preenchia.
-  it("o custo total da aquisição é o lote mais a comissão", async () => {
+  //
+  // ⚠️ E A COMISSÃO ESTÁ DENTRO DO NEGOCIADO, NÃO EM CIMA. Nívea, 22/09/2026, sobre o contrato do
+  // VOL Q11 L07: *"Preço do lote é o 6.1 menos comissão. O preço total da aquisição é
+  // R$ 133.551,00"* — e R$ 133.551,00 era o valor negociado daquela venda. Até esta data o custo
+  // total saía `negociado + comissão` e o contrato imprimia R$ 141.564,06 em cima de um
+  // Quadro-Resumo que, na mesma página, cobrava R$ 133.551,00.
+  it("o custo total da aquisição é o valor NEGOCIADO, com a comissão dentro", async () => {
     const g = (await dadosDaProposta("p1", cliente({ ajustes: AJUSTES })))!.dados.gerais;
 
-    // 185.400,00 do lote + 12.051,00 de comissão.
     expect(g.preco_venda).toBe("R$ 185.400,00");
-    expect(g.valor_custo_total_aquisicao).toBe("R$ 197.451,00");
+    expect(g.valor_custo_total_aquisicao).toBe("R$ 185.400,00");
     expect(g.valor_custo_total_aquisicao_extenso).toBe(
-      "cento e noventa e sete mil quatrocentos e cinquenta e um reais",
+      "cento e oitenta e cinco mil e quatrocentos reais",
+    );
+  });
+
+  // ⚠️ O PREÇO DO LOTE É O NEGOCIADO MENOS A COMISSÃO, e a soma tem de FECHAR: é isso que a frase
+  // do molde ("o custo total corresponde à soma do preço do lote e da comissão") promete a quem
+  // assina. Antes de 22/09/2026 esta variável nem existia, e a minuta não tinha o que pôr no 6.1.
+  it("o preço do lote é o negociado menos a comissão, e as três linhas fecham em centavos", async () => {
+    const g = (await dadosDaProposta("p1", cliente({ ajustes: AJUSTES })))!.dados.gerais;
+
+    // 185.400,00 negociado − 12.051,00 de comissão = 173.349,00 de preço do lote.
+    expect(g.preco_do_lote).toBe("R$ 173.349,00");
+    expect(g.preco_do_lote_extenso).toBe(
+      "cento e setenta e três mil trezentos e quarenta e nove reais",
+    );
+
+    const emCentavos = (rotulo: string) =>
+      Math.round(Number(rotulo.replace("R$ ", "").replace(/\./g, "").replace(",", ".")) * 100);
+    expect(emCentavos(g.preco_do_lote!) + emCentavos(g.valor_total_comissao!)).toBe(
+      emCentavos(g.valor_custo_total_aquisicao!),
     );
   });
 

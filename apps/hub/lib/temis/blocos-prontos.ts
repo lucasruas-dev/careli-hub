@@ -339,7 +339,11 @@ const CONTRATO_CORRETAGEM: BlocoPronto = {
     { estilo: "corpo", texto: "3.3. A atuação dos INTERMEDIADORES não lhes confere poderes para assumir obrigações em nome da VENDEDORA, modificar condições do negócio, conceder descontos, alterar preço, fluxo financeiro, características do imóvel, prazos, condições de entrega ou qualquer disposição do Instrumento Particular de Venda e Compra de Imóvel com Alienação Fiduciária em Garantia e Outras Avenças, salvo mediante autorização expressa da VENDEDORA." },
     { estilo: "titulo", texto: "IV – QUADRO-RESUMO DA CORRETAGEM" },
     { estilo: "titulo", texto: "4.1. PREÇO DO LOTE" },
-    { estilo: "corpo", texto: "[valor_imovel_venda] ([valor_imovel_venda_extenso])." },
+    // ⚠️ O PREÇO DO LOTE É O NEGOCIADO MENOS A COMISSÃO (Nívea, 22/09/2026). Com `valor_imovel_venda`
+    // aqui, o 4.1 trazia o valor negociado e o 4.3 trazia negociado + comissão: a frase do próprio
+    // 4.3 ("corresponde à soma do preço do lote e da comissão") ficava falsa, e a 7.1 e a 7.2, que
+    // falam em separar o que é do lote do que é de corretagem, brigavam com o quadro logo acima.
+    { estilo: "corpo", texto: "[preco_do_lote] ([preco_do_lote_extenso])." },
     { estilo: "titulo", texto: "4.2. VALOR TOTAL DA COMISSÃO DE CORRETAGEM" },
     { estilo: "corpo", texto: "[valor_total_comissao] ([valor_total_comissao_extenso])" },
     { estilo: "titulo", texto: "4.3. CUSTO TOTAL DA AQUISIÇÃO" },

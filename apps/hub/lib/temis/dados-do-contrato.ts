@@ -2166,11 +2166,26 @@ function gerais(
     if (daCoordenadora !== null && doVinculadoEmCentavos !== null) {
       const comissaoEmCentavos = daCoordenadora + doVinculadoEmCentavos;
       parDeDinheiro("valor_total_comissao", comissaoEmCentavos / 100);
-      // ⚠️ O CUSTO TOTAL É O LOTE MAIS A COMISSÃO, e sem ele a minuta repete o preço do lote nas duas
-      // linhas: Lucas, 20/09/2026, no contrato do Vale do Ouro — *"O preço do lote e da aquisição não
-      // podem ser os mesmos"*. A soma é em CENTAVOS INTEIROS, pela mesma razão da nota acima: em
-      // reais ela erra um centavo para cima e o documento se contradiz sozinho.
-      parDeDinheiro("valor_custo_total_aquisicao", (emCentavos + comissaoEmCentavos) / 100);
+
+      // ⚠️ A COMISSÃO ESTÁ DENTRO DO VALOR NEGOCIADO, E NÃO EM CIMA DELE. A regra é da Nívea
+      // (22/09/2026, sobre o contrato do VOL Q11 L07): *"Preço do lote é o 6.1 menos comissão. O
+      // preço total da aquisição é R$ 133.551,00"* — 133.551,00 é o negociado.
+      //
+      // ⚠️ O QUE HAVIA AQUI ATÉ 22/09/2026 SOMAVA. O custo total saía `negociado + comissão`, e o
+      // contrato do Vale do Ouro imprimia R$ 141.564,06 de custo total sobre uma venda de
+      // R$ 133.551,00 — R$ 8.013,06 a mais do que o próprio Quadro-Resumo, logo abaixo, cobra
+      // (13.355,10 de entrada + 120.195,90 financiados = 133.551,00). O documento se contradizia
+      // numa página.
+      //
+      // ⚠️ E O PEDIDO DE 20/09 CONTINUA DE PÉ. Lucas, no mesmo contrato: *"O preço do lote e da
+      // aquisição não podem ser os mesmos"*. Eles seguem diferentes, só que para o lado certo: o
+      // custo total é o negociado e o preço do lote é ele MENOS a comissão.
+      //
+      // ⚠️ EM CENTAVOS INTEIROS, pela mesma razão da nota acima: assim `preco_do_lote +
+      // valor_total_comissao` fecha exatamente em `valor_custo_total_aquisicao`, que é o que a
+      // frase do molde ("corresponde à soma do preço do lote e da comissão") promete ao leitor.
+      parDeDinheiro("valor_custo_total_aquisicao", emCentavos / 100);
+      parDeDinheiro("preco_do_lote", (emCentavos - comissaoEmCentavos) / 100);
     }
   }
 

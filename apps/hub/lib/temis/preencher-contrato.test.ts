@@ -1313,6 +1313,80 @@ describe("os marcadores de montagem", () => {
 // é `<p>(Assinado eletronicamente)[inicio_dados_conjuge]</p>`: o rótulo está FORA do marcador, e a
 // regra geral — o que está fora do bloco é texto do contrato — o preservava.
 describe("o rótulo de assinatura de quem não assina", () => {
+  // ⚠️ O CASO DA MINUTA REAL DO VOL, e o que faltava: o par INTEIRO cabe num parágrafo só. Medido em
+  // 22/09/2026 na VOL-MINUTA-COMPRA-VENDA-NORMAL v7 (parágrafos 115, 260 e 277, idênticos):
+  //
+  //     (Assinado eletronicamente)[inicio_dados_conjuge][nome_conjuge] CONJUGE[fim_dados_conjuge][fim_cada_comprador]
+  //
+  // A trava do rótulo só existia no caminho que ATRAVESSA parágrafos, então este corte passava por
+  // outra função e o rótulo ficava na página. Nívea, 22/09/2026, com o print: *"Continua saindo o
+  // (Assinado eletronicamente) depois do comprador. Está iniciando o conjuge"*.
+  it("⚠️ solteiro: o par no MESMO parágrafo também leva o rótulo embora", () => {
+    const r = preencherContrato(
+      [
+        p(
+          "(Assinado eletronicamente) ",
+          v("inicio_cada_comprador"),
+          v("nome_cliente"),
+          " COMPROMISSÁRIO(A) COMPRADOR(A)",
+        ),
+        p(
+          "(Assinado eletronicamente)",
+          v("inicio_dados_conjuge"),
+          v("nome_conjuge"),
+          " CONJUGE",
+          v("fim_dados_conjuge"),
+          v("fim_cada_comprador"),
+        ),
+        p("Testemunhas:"),
+      ],
+      { compradores: [comprador("VITORIA SILVA ARAUJO")], gerais: {} },
+    );
+
+    // O rótulo do COMPRADOR fica: ele assina. O do cônjuge some com o bloco.
+    expect(texto(r.nos)).toBe(
+      "(Assinado eletronicamente) VITORIA SILVA ARAUJO COMPROMISSÁRIO(A) COMPRADOR(A) Testemunhas:",
+    );
+    expect(texto(r.nos)).not.toContain("CONJUGE");
+  });
+
+  it("casado: no mesmo parágrafo, o rótulo e o cônjuge ficam", () => {
+    const r = preencherContrato(
+      [
+        p(
+          "(Assinado eletronicamente)",
+          v("inicio_dados_conjuge"),
+          v("nome_conjuge"),
+          " CONJUGE",
+          v("fim_dados_conjuge"),
+        ),
+      ],
+      {
+        compradores: [
+          comprador("VITORIA", {
+            temConjuge: true,
+            valores: { nome_cliente: "VITORIA", nome_conjuge: "JOÃO DA SILVA" },
+          }),
+        ],
+        gerais: {},
+      },
+    );
+
+    // Sem espaço entre o rótulo e o nome porque a minuta real não tem: o marcador encosta no texto.
+    expect(texto(r.nos)).toBe("(Assinado eletronicamente)JOÃO DA SILVA CONJUGE");
+  });
+
+  // ⚠️ A REGRA NÃO PODE ALARGAR: texto que NÃO é só o rótulo fica onde está, mesmo colado ao bloco
+  // que caiu. Apagar aqui seria comer cláusula do contrato.
+  it("texto comum antes do bloco que cai NÃO é apagado", () => {
+    const r = preencherContrato(
+      [p("O comprador declara que ", v("inicio_dados_conjuge"), "tem cônjuge", v("fim_dados_conjuge"))],
+      { compradores: [comprador("VITORIA")], gerais: {} },
+    );
+
+    expect(texto(r.nos)).toBe("O comprador declara que");
+  });
+
   it("⚠️ solteiro: some o bloco do cônjuge E o '(Assinado eletronicamente)' dele", () => {
     const r = preencherContrato(
       [
