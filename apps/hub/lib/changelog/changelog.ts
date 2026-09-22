@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-22-o-pai-do-c2x-nao-conta",
+    deployedAt: "2026-09-22T10:00:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**O lote parou de ficar preso por proposta velha do loteamento-pai.** No Vale do Ouro e no Lagoa Bonita, o C2X deixa pendurar pedido no pai (VLO, LAB), e a carga trazia isso para cá: 153 propostas que faziam o lote do filho aparecer ocupado. Agora elas não contam nem na tela nem na hora de bloquear ou reservar.",
+              "**Antes ficava pela metade:** a tela mostrava o lote livre e o bloqueio recusava, olhando a proposta velha do pai. Pior, o bloqueio chegava a ser gravado e desfeito em seguida, com a mensagem errada.",
+              "**No Panteon o pai continua sendo fonte:** proposta criada aqui no loteamento-pai vale normalmente. O que deixou de valer é só o que veio do legado pendurado nele.",
+            ],
+            screen: "Venda · grade, espelho, bloqueio e reserva",
+          },
+        ],
+      },
+    ],
+    rollback: "ea3feb2e",
+    technical: {
+      done:
+        "A regra tem DUAS metades, e as duas ficaram escritas: proposta em unidade espelho (a do pai) E com `origem_c2x_id` preenchido nao decide nada; proposta NASCIDA aqui no pai continua valendo, porque no Panteon o pai e fonte (medido: as 153 vivas em unidade de pai -- 105 VLO, 48 LAB -- vieram TODAS do C2X, zero nasceram aqui). Mudou em dois lugares: a LEITURA (`situacao-da-unidade.ts`, campo `noPai`, e a excecao \"o pai manda quando o filho cala\" saiu, a pedido do Lucas: \"esquece esses 3 casos\") e a PORTA DE ESCRITA (`trava-do-lote.ts`, `outrosDonosDoLote`), que sem isto recusava bloqueio e reserva de lote que a tela mostrava livre -- e gravava o bloqueio antes de desfazer, com a frase \"ganhou um dono enquanto voce bloqueava\". `terreno()` ganhou `linhasDoPai`; `linhas` continua inteiro porque dele sai a CHAVE do terreno em `criar-reserva.ts`, e mudar o conjunto mudaria a identidade das reservas gravadas. Medido antes: ZERO reservas (Hercules ou Prometeu) penduradas em unidade de pai, entao a mudanca toca so propostas importadas. 162 testes quebraram de uma vez no caminho, porque o select da regua passou a pedir `origem_c2x_id` e os dubles de banco conferem as colunas (a MESMA armadilha de `data_faturamento`, de ontem): 7 dubles corrigidos. Os testes que diziam \"proposta viva em qualquer linha do terreno e dona\" passaram a dizer o que a regra diz, com um caso para cada metade. 7.782 testes verdes, typecheck limpo.",
+      motivation:
+        "Lucas, 22/09/2026: \"pode esquecer o pai no c2x\", depois de \"esquece esses 3 casos\" e de \"o pai e a fonte dentro do panteon\", \"ele nao e no c2x\".",
+    },
+    title: "O pai do C2X não conta: nem na tela, nem na hora de bloquear",
+    type: "correcao",
+    version: "1.360.1",
+  },
+  {
     buildTag: "2026-09-22-revisao-do-contrato",
     deployedAt: "2026-09-22T09:00:55-03:00",
     modules: [
