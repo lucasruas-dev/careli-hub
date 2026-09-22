@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-22-o-pai-e-reflexo",
+    deployedAt: "2026-09-22T08:30:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**A reserva pendurada no loteamento-pai parou de mandar no lote do filho.** No Vale do Ouro, o VOC mostrava 19 reservados e 68 faturados, com a lista de reservados vazia — o legado conta zero reservados e 86 vendidos. O que estava pintando de amarelo eram 105 propostas velhas do VLO (e 48 do Lagoa Bonita), todas penduradas no cadastro do pai, que a carga da manhã trouxe de volta.",
+              "**Agora o VOC mostra Faturado 86, Assinatura 2, Contrato 1 e Reservado 1**, que é o número do legado.",
+              "**O lote livre continua protegido:** quando o filho não tem nenhuma proposta, a do pai segue valendo. São os casos 11/02 e 14/01, com reserva viva no VLO desde 10/09 — mostrá-los como disponíveis seria convite para vender o mesmo lote duas vezes.",
+            ],
+            screen: "Venda · faixa, grade e espelho",
+          },
+        ],
+      },
+    ],
+    rollback: "8a763e39",
+    technical: {
+      done:
+        "A régua do terreno (`situacaoDoTerreno`) escolhe a proposta viva mais RECENTE, e uma reserva de 18/09 pendurada no pai ganhava de uma venda faturada do filho de 09/09. `propostasVivas` ganhou `noPai` (a unidade do pai é espelho, `espelho_de` preenchido) e a regra: **o pai cala quando o filho fala** -- se algum filho do terreno tem proposta viva, as do pai saem da disputa; sem nada no filho, a do pai continua mandando, e isso protege 11/02 (Antonio Xavier) e 14/01 (Stefany), com reserva viva no VLO e lote livre no filho. Medido: 105 propostas vivas no VLO e 48 no LAB, TODAS em unidade espelho, nenhuma em unidade de filho; elas ja tinham sido apagadas a mao em 21/09 e a carga as ressuscitou, por isso a regra passou a viver no codigo. Simulado contra o dado real no VOC: 86 faturado, 2 assinatura, 1 contrato, 1 reservado, 5 disponivel, 62 bloqueado. E a carga (`importar-fluxo-de-venda.mjs`) ganhou a segunda peneira: alem das vendas encerradas aqui, pula toda proposta com `etapa_por` preenchido -- o carimbo de quem moveu na tela. 7.776 testes verdes, typecheck limpo.",
+      motivation:
+        "Lucas, 22/09/2026, vendo o VOC depois da carga: \"ficou errado\", \"VLO e reflexo\" e \"lembrando que nao podemos substituir aquilo que o coordenador ja trabalhou\".",
+    },
+    title: "O pai é reflexo: proposta pendurada nele não manda no lote do filho",
+    type: "correcao",
+    version: "1.359.1",
+  },
+  {
     buildTag: "2026-09-22-a-etapa-volta-a-ser-a-etapa",
     deployedAt: "2026-09-22T01:30:00-03:00",
     modules: [
