@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-22-o-contrato-nao-gasta-envelope-a-toa",
+    deployedAt: "2026-09-22T17:41:55-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Contrato grande demais para assinar passou a avisar antes.** A Clicksign aceita no máximo 10MB por arquivo, e até agora o Panteon descobria isso só depois de criar o envelope na conta, que fica lá mesmo depois de falhar.",
+              "**O contrato com anexos de texto ficou menor.** Um memorial ou regulamento anexado engordava o PDF sem motivo; agora não engorda mais.",
+            ],
+            screen: "Contrato · geração e envio",
+          },
+        ],
+      },
+    ],
+    rollback: "1c8d9c71",
+    technical: {
+      done:
+        "DUAS ENTREGAS, as duas saidas da pergunta do Lucas sobre subir o anexo de 20MB para 60MB. (1) TRAVA DE TAMANHO NO ENVIO: a apuracao da corrente inteira mostrou que o MENOR teto nao e nosso -- a Clicksign aceita 10MB por arquivo (FAQ oficial), menos que os 20MB do anexo e menos que os 24MB da montagem. E nada media o PDF antes de mandar: ele sobe em base64 no PASSO 2 de 6, e o envelope do passo 1 JA EXISTE na conta de PRODUCAO quando essa chamada falha (envelope ativado nao se apaga, so se cancela, e o cancelado fica na lista para sempre). `recusaPorTamanhoDoArquivo` agora roda ANTES da primeira chamada, pela mesma disciplina de `conferirSignatarios`, e devolve `envelopeId: null` porque nada chegou a existir. (2) BLINDAGEM DO INCHACO: `montarPdfDoContrato` chamava `embedPage` uma vez POR PAGINA, e cada chamada abre um `PDFObjectCopier` novo com cache proprio -- as fontes compartilhadas entre as paginas da peca eram recopiadas a cada pagina. `embedPages` em lote usa um copier so. Medido com pecas reais: anexo de contrato 9,104 para 8,415MB (menos 7,6 por cento); matricula mais dois anexos 16,288 para 14,873MB (menos 8,7 por cento); peca DIGITALIZADA quase zero, porque escaneado nao compartilha nada -- e e por isso que o contrato de hoje nao inchava e ninguem tinha percebido. A geometria nao muda (mesmo embedPage mais drawPage, mesmo encaixar); trocar por copyPages renderia mais mas mexe no MediaBox, e as capas de producao tem MediaBox deslocado. O filtro do /Contents passou a vir ANTES da chamada em lote, para a folha em branco continuar entrando na posicao dela. ⚠️ ARMADILHA MEDIDA: a primeira medicao deu zero porque a peca sintetica usava StandardFonts, que nao embute FontFile -- so PDF de fonte embutida mostra o ganho. NAO FEITO: subir o anexo para 60MB (com 10MB por arquivo na Clicksign seria trocar recusa barata por falha cara) e comprimir imagem (a maior alavanca medida e a CAPA, 2,45 para 0,21MB, mas depende de declarar o sharp -- decisao do Lucas). 6 testes novos; 502 arquivos, 7.849 testes, typecheck limpo.",
+      motivation:
+        "Lucas, 22/09/2026: \"tem como subir para 60mb os anexos?\" e, depois de ver que o teto e da Clicksign, \"o cliente tem que assinar um documento somente. teriamos que compactar o pdf\". Antes de comprimir qualquer coisa, a medicao achou desperdicio que se desfaz sem custo de qualidade -- e um buraco que ja existia hoje, gastando envelope pago para descobrir um tamanho que dava para medir de graca.",
+    },
+    title: "O contrato avisa antes de gastar envelope, e para de engordar à toa",
+    type: "correcao",
+    version: "1.360.7",
+  },
+  {
     buildTag: "2026-09-22-o-anexo-nao-nasce-orfao",
     deployedAt: "2026-09-22T14:35:36-03:00",
     internal: true,
