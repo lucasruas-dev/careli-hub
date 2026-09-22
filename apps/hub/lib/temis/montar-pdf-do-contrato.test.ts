@@ -19,6 +19,20 @@ async function pdfCom(paginas: number): Promise<Uint8Array> {
   return doc.save();
 }
 
+/**
+ * Um PDF cujas páginas TÊM `/Contents`.
+ *
+ * ⚠️ `pdfCom` devolve folhas realmente vazias, e elas caem no filtro do `/Contents` antes de
+ * qualquer `embed`. Para exercitar a montagem é preciso desenhar alguma coisa.
+ */
+async function pdfDesenhado(paginas: number): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  for (let i = 0; i < paginas; i += 1) {
+    doc.addPage([595, 842]).drawRectangle({ height: 40, width: 120, x: 40, y: 700 });
+  }
+  return doc.save();
+}
+
 async function contarPaginas(bytes: Uint8Array): Promise<number> {
   return (await PDFDocument.load(bytes, { ignoreEncryption: true })).getPageCount();
 }
@@ -128,5 +142,61 @@ describe("montarPdfDoContrato", () => {
     });
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.paginas).toBe(7);
+  });
+});
+
+// ── A BLINDAGEM DO INCHAÇO ───────────────────────────────────────────────────
+//
+// ⚠️ UMA CHAMADA POR PEÇA, E NÃO UMA POR PÁGINA. `embedPage` abre um `PDFObjectCopier` NOVO a cada
+// chamada, e cada copier tem o próprio cache: tudo o que as páginas de uma peça COMPARTILHAM — as
+// fontes, acima de tudo — era copiado de novo a cada página.
+//
+// Medido em 22/09/2026 com peças reais do bucket: com anexos de contrato (fonte embutida, que é o
+// que o Chromium gera), 16,288MB caíam para 14,873MB, -8,7%. Com peça DIGITALIZADA o ganho é ZERO,
+// porque cada página é uma imagem própria e não há o que compartilhar — e é por isso que o contrato
+// que sai hoje não inchava e ninguém tinha percebido. O preço aparece no dia em que o anexo for um
+// memorial, um regulamento ou uma minuta.
+describe("⚠️ os recursos da peça não se duplicam página a página", () => {
+  it("chama embedPages UMA VEZ por peça, e nunca embedPage", async () => {
+    const emLote = vi.spyOn(PDFDocument.prototype, "embedPages");
+    const umPorUm = vi.spyOn(PDFDocument.prototype, "embedPage");
+
+    const r = await montarPdfDoContrato({
+      anexos: [
+        peca("de 10 páginas", await pdfDesenhado(10)),
+        peca("de 4 páginas", await pdfDesenhado(4)),
+      ],
+      capa: peca("a capa", await pdfDesenhado(1)),
+      corpo: await pdfCom(3),
+    });
+
+    expect(r.ok).toBe(true);
+    // Três peças: a capa e os dois anexos. O corpo entra por `copyPages`, não por aqui.
+    expect(emLote).toHaveBeenCalledTimes(3);
+    expect(umPorUm).not.toHaveBeenCalled();
+
+    emLote.mockRestore();
+    umPorUm.mockRestore();
+  });
+
+  it("a página em branco no meio do anexo continua entrando, na posição dela", async () => {
+    // O filtro do `/Contents` passou a acontecer ANTES da chamada em lote. A folha em branco não se
+    // embute, mas continua sendo uma folha do contrato: some daqui e o anexo digitalizado sai com
+    // menos páginas do que tem.
+    const doc = await PDFDocument.create();
+    doc.addPage([595, 842]).drawText("primeira");
+    doc.addPage([595, 842]);
+    doc.addPage([595, 842]).drawText("terceira");
+    const comVazia = await doc.save();
+
+    const r = await montarPdfDoContrato({
+      anexos: [peca("com uma folha vazia", comVazia)],
+      capa: null,
+      corpo: await pdfCom(2),
+    });
+
+    if (!r.ok) throw new Error(r.erro);
+    expect(await contarPaginas(r.pdf)).toBe(5);
+    expect(r.paginas).toBe(5);
   });
 });

@@ -307,11 +307,33 @@ async function acrescentar(
     // ⚠️ PÁGINA SEM CONTEÚDO NÃO SE EMBUTE. O `pdf-lib` recusa `embedPage` numa página sem
     // `/Contents` (a folha realmente em branco), e a recusa derrubaria a montagem inteira por causa
     // de uma página vazia no meio de um anexo digitalizado. Ela entra como folha em branco, que é o
-    // que ela é.
-    for (const dePagina of origem.getPages()) {
+    // que ela é — e por isso o filtro vem ANTES da chamada, e não com um `continue` no meio dela.
+    const daPeca = origem.getPages();
+    const comConteudo = daPeca.filter((pagina) => pagina.node.Contents());
+
+    // ⚠️ UMA CHAMADA SÓ, E NÃO UMA POR PÁGINA. `embedPage` cria um `PDFObjectCopier` NOVO a cada
+    // chamada (pdf-lib, `PDFDocument.embedPages`), e cada copier tem o próprio cache: tudo o que as
+    // páginas da peça COMPARTILHAM — as fontes, acima de tudo — era copiado de novo a cada página.
+    // `embedPages` em lote usa um copier só e deduplica.
+    //
+    // ⚠️ O QUE ISSO CUSTAVA, MEDIDO EM 22/09/2026: num anexo de texto de 120 páginas, 242 streams
+    // de fonte somando 2,402MB contra 62 somando 0,615MB — fonte duplicada explicava 79% do
+    // inchaço daquele arquivo. Em peça DIGITALIZADA o ganho é ZERO, porque cada página é uma imagem
+    // própria e não há o que compartilhar: é por isso que o contrato que sai hoje (capa + corpo +
+    // matrícula escaneada) não inchava e ninguém tinha percebido. O preço aparecia no dia em que o
+    // anexo fosse um memorial, um regulamento ou uma minuta: +37% a +62% medidos, e +723% numa peça
+    // que repete a mesma imagem em várias páginas.
+    //
+    // ⚠️ A GEOMETRIA NÃO MUDA. Continua `embedPage` + `drawPage` com o mesmo `encaixar`: o que
+    // muda é só quantos copiers o pdf-lib abre. Trocar por `copyPages` renderia mais, e foi medido,
+    // mas mexe no MediaBox, no `/Rotate`, no clip do BBox e nas anotações — outra entrega.
+    const embutidas = comConteudo.length > 0 ? await destino.embedPages(comConteudo) : [];
+    const porPagina = new Map(comConteudo.map((pagina, i) => [pagina, embutidas[i]]));
+
+    for (const dePagina of daPeca) {
       const pagina = destino.addPage([regra.folha.largura, regra.folha.altura]);
-      if (!dePagina.node.Contents()) continue;
-      const embutida = await destino.embedPage(dePagina);
+      const embutida = porPagina.get(dePagina);
+      if (!embutida) continue;
       pagina.drawPage(embutida, encaixar({ altura: embutida.height, largura: embutida.width }, regra.folha));
     }
     return "";
