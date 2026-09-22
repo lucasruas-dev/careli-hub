@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-22-o-pagamento-mora-aqui",
+    deployedAt: "2026-09-22T14:00:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "**O Panteon passou a guardar quem pagou cada boleto.** Até agora essa informação só existia no Asaas e era consultada na hora, a cada abertura de tela: não dava para responder \"quanto entrou em setembro\" sem abrir a tela, nem cruzar o pagamento com a carteira do cliente.",
+              "**Nenhuma tela mudou.** A aba Boletos continua lendo o Asaas ao vivo, porque o status muda lá sem avisar. O que nasceu é o registro, que se atualiza sozinho de hora em hora.",
+            ],
+            screen: "Boletos · registro de pagamentos",
+          },
+        ],
+      },
+    ],
+    rollback: "78075f41",
+    technical: {
+      done:
+        "Migration 0186 (aplicada): `boletos_pagamentos`, uma linha por COBRANCA do Asaas -- nao por parcela, porque a mesma unidade pode ter duas no mes (mensal e entrada, que a referencia separa com `:2`). RLS ligada sem policy. Regua pura `lib/apolo/boletos/pagamento-do-asaas.ts` (14 testes) converte a cobranca na linha e serve as DUAS portas: o webhook e a varredura. O que e \"pago\" esta escrito por extenso (RECEIVED, CONFIRMED, RECEIVED_IN_CASH) e nunca e `valor > 0` -- o Asaas mantem `paymentDate` depois do estorno, e ler valor marcaria como quitada uma parcela devolvida. Webhook em `/api/publico/asaas/boletos/webhook?conta=<slug>`: idempotente por `cobranca_id`, 200 no que ignora (4xx viraria fila de reentrega eterna) e FAIL-CLOSED, respondendo 503 enquanto `ASAAS_BOLETOS_WEBHOOK_TOKEN` nao existir, porque e rota publica que grava. Varredura em `/api/boletos/pagamentos/sincronizar`, no cron `10 * * * *`: a rede de seguranca para o evento que se perde, porque tabela que envelhece em silencio e o que ninguem percebe numa conciliacao. ⚠️ Bug meu que o teste pegou antes do ar: `Number(\"\")` e ZERO, entao cobranca sem valor virava linha de R$ 0,00. NAO FEITO: configurar o webhook nas 7 contas do Asaas e criar a env (o Lucas nao tem acesso as contas agora); ate la quem alimenta e a varredura. 7.819 testes verdes.",
+      motivation:
+        "Lucas, 22/09/2026: \"vamos trazer essa informacoes de pago para dentro do panteon, nao faz sentido, vamos colocar uma tabela para organizar esses pagamentos\" e \"esses status tem que ser registrados via webhook, temos que comecar ter uma inteligencia de gestao de notificacao e atualizacao\". O pedido que abriu a frente era refletir no LSoft as parcelas de setembro, e a analise mostrou que faltava o primeiro degrau: ninguem aqui sabia quem tinha pago.",
+    },
+    title: "O pagamento do boleto passa a morar no Panteon",
+    type: "melhoria",
+    version: "1.360.4",
+  },
+  {
     buildTag: "2026-09-22-a-apresentacao-entra-na-aba",
     deployedAt: "2026-09-22T10:30:00-03:00",
     modules: [
