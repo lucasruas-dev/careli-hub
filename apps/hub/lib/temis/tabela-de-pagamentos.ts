@@ -40,7 +40,13 @@ type CondicoesGravadas = {
     jurosPeriodicidade?: unknown;
     jurosTaxa?: unknown;
   } | null;
-  totais?: { anuais?: unknown; entrada?: unknown; geral?: unknown; mensais?: unknown } | null;
+  totais?: {
+    anuais?: unknown;
+    entrada?: unknown;
+    financiado?: unknown;
+    geral?: unknown;
+    mensais?: unknown;
+  } | null;
 };
 
 type LinhaDoQuadro = {
@@ -92,6 +98,30 @@ export function tabelaGeralDePagamentos(
   // seguintes seguiriam cheias — o quadro passaria a descrever um fluxo que ninguém combinou.
   const abatimento = abaterDaEntrada(entrada, comissaoEmCentavos);
 
+  // ⚠️ AS SÉRIES FINANCIADAS SAEM PELO NOMINAL, NÃO PELA PROJEÇÃO DO ÍNDICE.
+  //
+  // Nívea (22/09/2026), vendo o quadro com a projeção: *"não dá para ter a tabela com a projeção
+  // dos juros"*. Lucas, no mesmo contrato: *"aplicando tabela price em que devia colocar sacoc"*.
+  //
+  // ⚠️ E O MOTIVO ESTÁ NO CONTRATO DO VILLA PARIS, que é o desenho que o jurídico já usa. Lido no
+  // C2X em 22/09/2026 (venda 4834, RVPA01): a linha MENSAL diz 180 parcelas de R$ 1.195,00 e total
+  // de R$ 215.100,00 — e 180 x 1.195,00 dá exatamente R$ 215.100,00. A correção e os juros não
+  // entram nos valores: eles são DECLARADOS nas colunas ("IPCA ANUAL", "0,64%") e detalhados no
+  // item VII. O quadro inteiro soma R$ 222.270,00, que é o próprio 6.1 PREÇO DO LOTE.
+  //
+  // ⚠️ O QUE O QUADRO FAZIA ATÉ AQUI NÃO FECHAVA COM NADA. A linha mensal do VOL anunciava 156
+  // parcelas de R$ 770,49 e um total de R$ 204.417,00, que é a soma do cronograma COM o IPCA
+  // projetado: quem multiplicasse achava R$ 120.196,44 e um buraco de R$ 84 mil. Pelo nominal, a
+  // mesma venda fecha em 5.342,04 + 120.195,90 = R$ 125.537,94, que é o 6.1 impresso logo acima.
+  //
+  // ⚠️ E O NOMINAL VEM DE `totais.financiado`, não de `quantidade x valor`. A parcela impressa é
+  // arredondada (120.195,90 / 156 = 770,4865 vira R$ 770,49), e multiplicar a parcela arredondada
+  // devolveria R$ 120.196,44 — 54 centavos a mais do que o preço que o próprio contrato promete
+  // duas linhas acima. Entre a coluna multiplicar na ponta do lápis e o documento não se
+  // contradizer, a casa escolhe não se contradizer.
+  const financiado = numero(totais.financiado);
+  const nominais = nominalDasSeries([mensais, anuais], financiado);
+
   const linhas: LinhaDoQuadro[] = [];
 
   // ⚠️ A ENTRADA NÃO LEVA CORREÇÃO NEM JUROS, e isso não é omissão: ela é paga à vista ou em poucas
@@ -124,7 +154,7 @@ export function tabelaGeralDePagamentos(
       juros,
       quantidade: quantidadeDaSerie(mensais),
       tipo: "Mensal",
-      total: numero(totais.mensais) ?? somaDe(mensais),
+      total: nominais[0] ?? null,
       valor: valorDaSerie(mensais),
       vencimento: dataBr(mensais[0]?.vencimento),
     });
@@ -136,17 +166,23 @@ export function tabelaGeralDePagamentos(
       juros,
       quantidade: quantidadeDaSerie(anuais),
       tipo: "Anual",
-      total: numero(totais.anuais) ?? somaDe(anuais),
+      total: nominais[1] ?? null,
       valor: valorDaSerie(anuais),
       vencimento: dataBr(anuais[0]?.vencimento),
     });
   }
 
-  // ⚠️ O TOTAL SEGUE AS LINHAS QUANDO A COMISSÃO SAIU. `totais.geral` é o negociado cheio, e
-  // repeti-lo embaixo de uma entrada já líquida faria a coluna não fechar com a soma da própria
-  // tabela — exatamente a contradição que o contrato do VOL trouxe de volta do jurídico.
-  const somaDasLinhas = linhas.reduce((soma, linha) => soma + (linha.total ?? 0), 0);
-  const totalGeral = abatimento === null ? numero(totais.geral) ?? somaDasLinhas : somaDasLinhas;
+  // ⚠️ O TOTAL É SEMPRE A SOMA DAS LINHAS, e nunca `totais.geral`.
+  //
+  // `totais.geral` é o cronograma inteiro com o índice projetado (R$ 217.772,10 na venda da
+  // VITORIA): ele não fecha nem com a entrada já líquida de corretagem, nem com as séries pelo
+  // nominal. Um rodapé que não soma as linhas que estão logo acima dele é o defeito mais fácil de
+  // achar com uma calculadora, e foi assim que o quadro voltou do jurídico em 22/09/2026.
+  //
+  // Somando as linhas, o rodapé vira o 6.1 PREÇO DO LOTE quando há comissão a abater
+  // (R$ 125.537,94) e o próprio valor negociado quando não há (R$ 133.551,00). Nos dois casos ele
+  // é um número que o contrato repete em outro lugar, que é o que se espera de um quadro-resumo.
+  const totalGeral = linhas.reduce((soma, linha) => soma + (linha.total ?? 0), 0);
 
   return {
     children: [
@@ -319,6 +355,40 @@ const TETO_DE_DEGRAUS = 16;
  * quadro, na coluna Correção ("IPCA anual"), e na cláusula VII do contrato, que é onde o reajuste é
  * contratado: a mensal do plano com correção anual sai de R$ 770,49 e chega a R$ 2.083,74 na 156ª.
  */
+/**
+ * O total NOMINAL de cada série financiada, na ordem em que elas entram.
+ *
+ * O próprio de cada série é `quantidade x valor da primeira parcela` — a conta que qualquer um
+ * refaz na ponta do lápis olhando a linha.
+ *
+ * ⚠️ COM UMA SÉRIE SÓ, QUEM MANDA É `financiado`. Ele é o saldo que a proposta congelou depois da
+ * entrada (na venda da VITORIA, 133.551,00 menos 13.355,10 = R$ 120.195,90) e é o número que fecha
+ * com o preço do lote impresso no 6.1. A parcela sai arredondada (120.195,90 / 156 = 770,4865 vira
+ * R$ 770,49), e multiplicar a parcela arredondada devolveria R$ 120.196,44: 54 centavos a mais do
+ * que o preço que o contrato promete duas linhas acima. Entre a coluna multiplicar exato e o
+ * documento não se contradizer, a casa escolhe não se contradizer.
+ *
+ * ⚠️ COM DUAS SÉRIES, CADA UMA VALE O SEU PRÓPRIO. `financiado` cobre as duas juntas, e reparti-lo
+ * proporcionalmente devolveria centavos que não são de ninguém (R$ 9.999,96 onde a proposta diz
+ * duas anuais de R$ 5.000,00). O nominal próprio erra por centavos no rodapé e acerta em cada
+ * linha, que é onde o comprador confere.
+ */
+function nominalDasSeries(
+  series: readonly (readonly ParcelaGravada[])[],
+  financiado: null | number,
+): (null | number)[] {
+  const proprios = series.map((serie) => {
+    if (serie.length === 0) return null;
+    const valor = numero(serie[0]?.valor);
+    return valor === null ? somaDe(serie) : quantidadeDaSerie(serie) * valor;
+  });
+
+  const vivas = proprios.filter((v) => v !== null);
+  if (financiado === null || vivas.length !== 1) return proprios;
+
+  return proprios.map((v) => (v === null ? null : financiado));
+}
+
 function valorDaSerie(serie: readonly ParcelaGravada[]): string {
   const primeira = numero(serie[0]?.valor);
   return primeira === null ? "—" : dinheiro(primeira);

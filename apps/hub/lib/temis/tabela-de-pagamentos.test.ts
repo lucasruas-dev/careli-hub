@@ -80,10 +80,18 @@ describe("tabelaGeralDePagamentos", () => {
   // ano, e não projeção de IPCA — mas o desconforto era justo: um quadro com o valor de 2038 impresso
   // convida a ler aquilo como promessa.
   //
-  // ⚠️ E O TOTAL CONTINUA SENDO O REAL. Lucas escolheu assim entre as três opções: a linha mostra a
-  // primeira parcela e o total que o comprador vai pagar de verdade. Multiplicar a primeira pelo
-  // prazo daria R$ 120.196,44 e esconderia R$ 84 mil de juros já contratados na cláusula VII.
-  it("⚠️ a série mensal sai em UMA linha, com a primeira parcela e o total REAL", () => {
+  // ⚠️ E O TOTAL É O NOMINAL, não a projeção. A decisão mudou no fim do dia 22/09/2026, depois de
+  // ler no C2X o contrato do Villa Paris que o jurídico já usa (venda 4834, lote RVPA01): lá a
+  // linha MENSAL diz 180 parcelas de R$ 1.195,00 e total de R$ 215.100,00 — e 180 x 1.195,00 dá
+  // exatamente R$ 215.100,00. A correção e os juros não entram nos valores: ficam DECLARADOS nas
+  // colunas ("IPCA ANUAL", "0,64%") e detalhados na cláusula VII. O quadro inteiro soma
+  // R$ 222.270,00, que é o próprio 6.1 PREÇO DO LOTE daquele contrato.
+  //
+  // ⚠️ E É ISSO QUE FAZ O NOSSO QUADRO FECHAR. Pelo nominal, a venda da VITORIA dá
+  // 5.342,04 + 120.195,90 = R$ 125.537,94, que é o 6.1 impresso duas linhas acima. Pela projeção
+  // dava R$ 209.759,04 embaixo de um 6.1 de R$ 125.537,94: o documento se contradizia na mesma
+  // página, que é o defeito que volta do jurídico.
+  it("⚠️ a série mensal sai em UMA linha, com a primeira parcela e o total NOMINAL", () => {
     const saida = texto(tabelaGeralDePagamentos({ ...CONDICOES, mensais: MENSAIS_COMPLETAS }));
 
     expect(saida).toContain("Mensal");
@@ -96,9 +104,9 @@ describe("tabelaGeralDePagamentos", () => {
     expect(saida).not.toContain("R$ 2.083,74");
     expect(saida).not.toContain("10/10/2038");
 
-    // O total é o que será pago, e não 156 x 770,49.
-    expect(saida).toContain("R$ 204.417,00");
-    expect(saida).not.toContain("R$ 120.196,44");
+    // O total é o saldo financiado nominal, e não a soma do cronograma com o IPCA projetado.
+    expect(saida).toContain("R$ 120.195,90");
+    expect(saida).not.toContain("R$ 204.417,00");
   });
 
   // ⚠️ A ENTRADA VAI UMA LINHA POR PARCELA, com o vencimento de cada uma, e o nome é ENTRADA.
@@ -159,10 +167,11 @@ describe("tabelaGeralDePagamentos", () => {
     expect(saida).toContain("R$ 770,49");
     expect(saida).toContain("IPCA anual");
     expect(saida).toContain("0,7207% a.m.");
-    expect(saida).toContain("R$ 204.417,00");
+    expect(saida).toContain("R$ 120.195,90");
 
-    // O total geral fecha o quadro.
-    expect(saida).toContain("R$ 217.772,10");
+    // O total geral fecha o quadro — e, sem comissão a abater, ele é o próprio valor negociado:
+    // 13.355,10 de entrada + 120.195,90 de saldo = R$ 133.551,00.
+    expect(saida).toContain("R$ 133.551,00");
   });
 
   it("⚠️ a coluna Valor é só o número, sem 'a partir de'", () => {
@@ -224,14 +233,18 @@ describe("a comissão sai do fluxo da entrada", () => {
   });
 
   it("as mensais NÃO são tocadas: a comissão sai do sinal", () => {
-    expect(texto(tabelaGeralDePagamentos(CONDICOES, COMISSAO))).toContain("R$ 204.417,00");
+    expect(texto(tabelaGeralDePagamentos(CONDICOES, COMISSAO))).toContain("R$ 120.195,90");
   });
 
-  it("o total desce junto, e fecha com a soma das linhas", () => {
-    // 5.342,04 + 204.417,00 = 209.759,04 — e não os 217.772,10 de `totais.geral`.
+  it("⚠️ o total desce junto, e bate com o 6.1 PREÇO DO LOTE", () => {
+    // 5.342,04 de entrada líquida + 120.195,90 de saldo = R$ 125.537,94, que é exatamente o
+    // `preco_do_lote` que `dados-do-contrato` imprime no 6.1 (133.551,00 menos 8.013,06 de
+    // corretagem). É a mesma coerência do contrato do Villa Paris, onde o rodapé do quadro
+    // (R$ 222.270,00) é o 6.1 daquele contrato.
     const quadro = texto(tabelaGeralDePagamentos(CONDICOES, COMISSAO));
-    expect(quadro).toContain("R$ 209.759,04");
+    expect(quadro).toContain("R$ 125.537,94");
     expect(quadro).not.toContain("R$ 217.772,10");
+    expect(quadro).not.toContain("R$ 209.759,04");
   });
 
   it("divide a comissão entre as parcelas de entrada, sem perder centavo", () => {
@@ -247,13 +260,13 @@ describe("a comissão sai do fluxo da entrada", () => {
     // 13.355,10 - 8.013,06 = 5.342,04 repartidos na proporção 5000 / 5000 / 3355,10.
     expect(quadro).toContain("R$ 2.000,00");
     expect(quadro).toContain("R$ 1.342,04");
-    expect(quadro).toContain("R$ 209.759,04");
+    expect(quadro).toContain("R$ 125.537,94");
   });
 
   it("sem comissão conhecida, o quadro fica como a proposta congelou", () => {
     const quadro = texto(tabelaGeralDePagamentos(CONDICOES, null));
     expect(quadro).toContain("R$ 13.355,10");
-    expect(quadro).toContain("R$ 217.772,10");
+    expect(quadro).toContain("R$ 133.551,00");
   });
 
   it("comissão que engole a entrada inteira NÃO é abatida", () => {
