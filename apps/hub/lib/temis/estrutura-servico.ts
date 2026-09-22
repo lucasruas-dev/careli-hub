@@ -360,17 +360,32 @@ type AlcancePossivel = { id: string; nome: string; tipo: "categoria" | "empreend
  * continua sendo `alcanceDaPasta`, na gravação.
  */
 /**
- * A FAMÍLIA INTEIRA de um empreendimento: a raiz, as divisões dela e as categorias de todas.
+ * A LINHAGEM de um empreendimento: ele mesmo, o pai dele e as categorias dos dois.
  *
- * ⚠️ SOBE ANTES DE DESCER. `alcancesDoAnexo` monta a lista a partir do DONO que a tela abriu, e
- * quando a tela está numa divisão (o VOL) ela não conhece o pai nem as irmãs. Para a trava da
- * posição isso não serve: a cadeia do contrato atravessa a família toda, e uma colisão entre o VOL
- * e o pai Vale do Ouro é exatamente a que derruba a emissão.
+ * ⚠️ LINHAGEM, E NÃO FAMÍLIA — as IRMÃS FICAM DE FORA, e isso é o ponto inteiro desta função.
+ * `resolverCadeiaDoContrato` monta a cadeia com a unidade, a categoria dela, a divisão da unidade,
+ * o empreendimento da proposta e o PAI. A irmã nunca entra. Conferir a posição contra as irmãs
+ * recusaria um cadastro que o contrato jamais veria colidir.
+ *
+ * ⚠️ E O CUSTO DISSO SERIA O CASO CENTRAL. Medido em 22/09/2026: as duas únicas minutas publicadas
+ * que citam `[anexo_1]` são a do VOL (36) e a do VOC (37), que são IRMÃS sob o Vale do Ouro (35).
+ * As duas precisam da peça na posição 1, e uma trava por família impediria a segunda — empurrando
+ * a peça do VOC para a posição 2 e deixando o `[anexo_1]` da minuta dele apontando para o vazio.
+ * O mesmo valeria para as três famílias cuja raiz não tem `c2x_enterprise_id` (LOX, PDX, RDX),
+ * onde a peça TEM de ser copiada etapa por etapa, sempre na mesma posição.
+ *
+ * ⚠️ E ELA NÃO É SIMÉTRICA, o que é fácil de errar. Quem cadastra num FILHO só concorre com o pai:
+ * a cadeia daquele contrato é filho + pai. Quem cadastra no PAI concorre com TODOS os filhos, um
+ * de cada vez — a peça do pai desce para a cadeia de cada um deles. Por isso a lista depende de o
+ * dono ter pai ou ser a raiz.
  *
  * Devolve os ids DO C2X dos empreendimentos e os uuid das categorias — as duas chaves que
  * `temis_anexos` guarda.
  */
-async function familiaDoEmpreendimento(
+/** O uuid do cadastro do Panteon — nunca é chave de `temis_anexos`, que guarda o id do C2X. */
+const UUID_DO_PANTEON = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function linhagemDoEmpreendimento(
   admin: Admin,
   dono: string,
 ): Promise<{ categorias: string[]; empreendimentos: string[] }> {
@@ -383,31 +398,36 @@ async function familiaDoEmpreendimento(
     .eq("workspace_id", WORKSPACE)
     .eq("c2x_enterprise_id", dono)
     .maybeSingle();
-  const atual = linha as null | { c2x_enterprise_id: null | string; id: string; pai_id: null | string };
-  if (!atual) return vazio;
+  const atual = linha as null | { id: string; pai_id: null | string };
 
-  // Sobe ao pai, quando houver: a raiz é quem tem os filhos pendurados.
-  let raizId = atual.id;
-  if (atual.pai_id) {
+  // ⚠️ SEM LINHA NO CADASTRO, A LINHAGEM É ELE MESMO. Três ids do C2X carregam unidades e não têm
+  // linha em `hercules_empreendimentos` (2, 30 e 34, medidos em 22/09/2026): devolver vazio aqui
+  // desligaria a trava em silêncio justamente para eles.
+  const empreendimentos = [dono];
+
+  if (atual?.pai_id) {
+    // Cadastrando num FILHO: só o pai concorre. As irmãs não entram na cadeia dele.
     const { data: pai } = await admin
       .from("hercules_empreendimentos")
-      .select("id")
+      .select("c2x_enterprise_id")
       .eq("workspace_id", WORKSPACE)
       .eq("id", atual.pai_id)
       .maybeSingle();
-    if (pai) raizId = (pai as { id: string }).id;
+    const doPai = texto((pai as null | { c2x_enterprise_id: null | string })?.c2x_enterprise_id);
+    if (doPai && doPai !== dono) empreendimentos.push(doPai);
+  } else if (atual) {
+    // Cadastrando na RAIZ: a peça dela desce para a cadeia de CADA filho, um de cada vez, e por
+    // isso concorre com todos eles — sem que os filhos concorram entre si.
+    const { data: filhos } = await admin
+      .from("hercules_empreendimentos")
+      .select("c2x_enterprise_id")
+      .eq("workspace_id", WORKSPACE)
+      .eq("pai_id", atual.id);
+    for (const f of (filhos ?? []) as Array<{ c2x_enterprise_id: null | string }>) {
+      const id = texto(f.c2x_enterprise_id);
+      if (id && id !== dono) empreendimentos.push(id);
+    }
   }
-
-  const { data: todos } = await admin
-    .from("hercules_empreendimentos")
-    .select("c2x_enterprise_id,id")
-    .eq("workspace_id", WORKSPACE)
-    .or(`id.eq.${raizId},pai_id.eq.${raizId}`);
-
-  const empreendimentos = ((todos ?? []) as Array<{ c2x_enterprise_id: null | string }>)
-    .map((e) => texto(e.c2x_enterprise_id))
-    .filter(Boolean);
-  if (empreendimentos.length === 0) return vazio;
 
   const { data: categorias } = await admin
     .from("temis_categorias")
@@ -593,39 +613,37 @@ export async function gravarAnexo(ator: AtorDaTemis, request: Request): Promise<
     corpo.enterpriseId = resolvido;
   }
 
-  // ⚠️ O ID DO EMPREENDIMENTO PRECISA SER O QUE A CADEIA DO CONTRATO PROCURA, e não o uuid interno.
+  // ⚠️ O UUID DO PANTEON NÃO É CHAVE DE ANEXO, E É O ÚNICO CASO QUE ESTA TRAVA PEGA.
   //
-  // `temis_anexos.enterprise_id` guarda o ID DO C2X — o mesmo que `temis_minutas.enterprise_id` e o
-  // mesmo que a unidade carrega. Só que a coluna é texto e aceita qualquer coisa: mandar o uuid do
-  // Panteon (`af45a402-…`) gravava com 200, a peça aparecia na lista da própria tela e o contrato
-  // saía SEM ELA, para sempre e sem um aviso. Medido em 22/09/2026 com a venda da VITORIA: pelo
-  // uuid o contrato trouxe 0 anexos; pelo id do C2X (36), trouxe 1.
+  // `temis_anexos.enterprise_id` guarda o ID DO C2X — o mesmo que a unidade carrega e que
+  // `temis_minutas` usa. A coluna é texto e aceitava qualquer coisa: mandar o uuid do Panteon
+  // (`af45a402-…`) gravava com 200, a peça aparecia na lista da própria tela e o contrato saía SEM
+  // ELA, para sempre e sem um aviso. Medido em 22/09/2026 com a venda da VITORIA: pelo uuid o
+  // contrato trouxe 0 anexos; pelo id do C2X (36), trouxe 1.
   //
-  // ⚠️ CONVERTE ANTES DE RECUSAR, que é o que o bloco do consolidado logo acima já faz: o uuid é um
-  // apontamento legítimo para o mesmo produto, e quem o mandou quis dizer aquele empreendimento.
-  // Recusar o que dá para resolver seria rigor sem serventia. O que não resolve, aí sim, sai pela
-  // porta com a frase do motivo.
+  // ⚠️ SÓ O QUE TEM CARA DE UUID É CONFERIDO, e essa estreiteza é deliberada. O cadastro do
+  // Panteon NÃO é a lista completa dos ids do C2X: três deles carregam unidades e não têm linha em
+  // `hercules_empreendimentos` (2, 30 e 34, medidos na mesma data), e a cadeia do contrato os
+  // alcança do mesmo jeito, porque `filtroDaCadeia` monta o filtro com o empreendimento da
+  // PROPOSTA e não com o cadastro. Recusar "o que não está cadastrado" barraria anexo legítimo
+  // desses três e deixaria quem está na tela sem saída nenhuma para escolher.
   //
-  // ⚠️ E A CAPA FICA DE FORA, porque ali `enterpriseId` NÃO É UM EMPREENDIMENTO: o campo carrega o
-  // ID DA MINUTA (ver a nota do ramo `capa` e o comentário de `CapaDaMinuta` na tela). Conferir o
-  // cadastro de empreendimento num id de minuta recusaria todo upload de capa — foi o que os três
-  // testes do portal pegaram antes desta linha existir.
+  // ⚠️ E A CAPA FICA DE FORA: ali `enterpriseId` NÃO é um empreendimento, e sim o ID DA MINUTA (ver
+  // o ramo `capa` e o `CapaDaMinuta` na tela). Conferir o cadastro num id de minuta recusaria todo
+  // upload de capa.
   const doCorpo = texto(corpo.enterpriseId);
-  if (doCorpo && corpo.capa !== true && !doCorpo.startsWith(PREFIXO_DO_CONSOLIDADO)) {
-    const { data: porC2x } = await admin
+  if (doCorpo && corpo.capa !== true && UUID_DO_PANTEON.test(doCorpo)) {
+    const { data: porUuid, error: falhaDoCadastro } = await admin
       .from("hercules_empreendimentos")
-      .select("c2x_enterprise_id")
+      .select("c2x_enterprise_id,nome")
       .eq("workspace_id", WORKSPACE)
-      .eq("c2x_enterprise_id", doCorpo)
+      .eq("id", doCorpo)
       .maybeSingle();
 
-    if (!porC2x) {
-      const { data: porUuid } = await admin
-        .from("hercules_empreendimentos")
-        .select("c2x_enterprise_id,nome")
-        .eq("workspace_id", WORKSPACE)
-        .eq("id", doCorpo)
-        .maybeSingle();
+    // Falha de leitura não vira recusa: o cadastro é a conferência, não a razão de ser da peça.
+    if (falhaDoCadastro) {
+      console.error("[temis/anexos] não consegui conferir o empreendimento no cadastro", falhaDoCadastro);
+    } else {
       const achado = porUuid as null | { c2x_enterprise_id: null | string; nome: null | string };
       const convertido = texto(achado?.c2x_enterprise_id);
 
@@ -759,11 +777,11 @@ export async function gravarAnexo(ator: AtorDaTemis, request: Request): Promise<
     // olhando a tela para corrigir. Uma consulta a mais por cadastro é barata: cadastrar anexo é
     // raro, emitir contrato não.
     const dono = await donoDoAlcance(admin, alcance.campos);
-    const familia = await familiaDoEmpreendimento(admin, dono);
-    if (familia.empreendimentos.length > 0) {
+    const linhagem = await linhagemDoEmpreendimento(admin, dono);
+    if (linhagem.empreendimentos.length > 0) {
       const alvos: string[] = [];
-      for (const id of familia.empreendimentos) alvos.push(`enterprise_id.eq.${id}`);
-      for (const id of familia.categorias) alvos.push(`categoria_id.eq.${id}`);
+      for (const id of linhagem.empreendimentos) alvos.push(`enterprise_id.eq.${id}`);
+      for (const id of linhagem.categorias) alvos.push(`categoria_id.eq.${id}`);
 
       const { data: vizinhos } = await admin
         .from("temis_anexos")
@@ -774,13 +792,13 @@ export async function gravarAnexo(ator: AtorDaTemis, request: Request): Promise<
 
       // O próprio alcance não conta: o índice único do banco já responde por ele, com a mensagem
       // de "posição ocupada neste alcance", que é mais precisa para esse caso.
-      const daFamilia = ((vizinhos ?? []) as LinhaDoAnexo[]).filter(
+      const daLinhagem = ((vizinhos ?? []) as LinhaDoAnexo[]).filter(
         (v) =>
           texto(v.enterprise_id) !== texto(alcance.campos?.enterprise_id) ||
           texto(v.categoria_id) !== texto(alcance.campos?.categoria_id),
       );
 
-      const conflito = daFamilia[0];
+      const conflito = daLinhagem[0];
       if (conflito) {
         await bucket.remove([path]);
         return NextResponse.json(
@@ -2634,7 +2652,7 @@ export async function lerUnidadesParaCategoria(
  *
  * ⚠️ SOBE E DESCE. Se a tela está no filho, o pai entra; se está no pai, os filhos entram. É o que
  * garante que o gêmeo do terreno esteja no universo — e é a mesma ideia de
- * `familiaDoEmpreendimento`, escrita aqui contra o cadastro do Panteon porque aqui a chave é o
+ * `linhagemDoEmpreendimento`, escrita aqui contra o cadastro do Panteon porque aqui a chave é o
  * `c2x_enterprise_id` e não o código.
  *
  * Falha devolve os próprios ids: sem cadastro, cada empreendimento responde por si — que é o caso
