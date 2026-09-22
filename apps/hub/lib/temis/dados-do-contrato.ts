@@ -61,6 +61,7 @@ import {
   inteiroPorExtenso,
   quantidadePorExtenso,
 } from "./por-extenso";
+import { rotuloDoSistema } from "./planos";
 import type { DadosDoComprador, DadosDoContrato } from "./preencher-contrato";
 import { tabelaGeralDePagamentos } from "./tabela-de-pagamentos";
 
@@ -337,6 +338,7 @@ function participacaoDoComprador(c: CompradorDaProposta): null | number {
 type CondicoesGravadas = {
   anuais?: { valor?: unknown }[];
   mensais?: unknown[];
+  plano?: { sistemaAmortizacao?: unknown } | null;
   totais?: { entrada?: unknown; financiado?: unknown };
 };
 
@@ -2234,6 +2236,17 @@ function gerais(
   por("plano_nome", texto(proposta.plano_nome));
 
   const condicoes = objeto(proposta.condicoes) as CondicoesGravadas | null;
+
+  // ⚠️ A TABELA DE AMORTIZAÇÃO SAI DO PLANO DA VENDA, e não da digitação. A variável
+  // `plano_sistema_amortizacao` estava no catálogo desde sempre e ninguém a preenchia: as minutas
+  // escreveram "Sistema de amortização: SACOC" à mão, e a frase acerta por COINCIDÊNCIA — todos os
+  // planos de hoje são sacoc. No dia em que um produto vender em Price, o contrato dele continuaria
+  // prometendo SACOC, com a tabela de pagamento desenhando outra coisa.
+  //
+  // ⚠️ O RÓTULO É O DA CASA (`rotuloDoSistema`): "Tabela SACOC — amortização pura". Lucas,
+  // 08/09/2026: *"aproveita e troca, em vez de sistema, tabela"*.
+  const sistema = texto(condicoes?.plano?.sistemaAmortizacao);
+  if (sistema) por("plano_sistema_amortizacao", rotuloDoSistema(sistema));
 
   // ── O PRAZO ──
   //

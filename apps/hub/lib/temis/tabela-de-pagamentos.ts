@@ -91,27 +91,23 @@ export function tabelaGeralDePagamentos(condicoes: unknown): NoDoDocumento | nul
   }
 
   if (mensais.length > 0) {
-    linhas.push({
-      correcao,
-      juros,
-      quantidade: quantidadeDaSerie(mensais),
-      tipo: "Mensais",
-      total: numero(totais.mensais) ?? somaDe(mensais),
-      valor: valorDaSerie(mensais),
-      vencimento: dataBr(mensais[0]?.vencimento),
-    });
+    linhas.push(
+      ...emDegraus(mensais, "Mensais", {
+        correcao,
+        juros,
+        total: numero(totais.mensais) ?? somaDe(mensais),
+      }),
+    );
   }
 
   if (anuais.length > 0) {
-    linhas.push({
-      correcao,
-      juros,
-      quantidade: quantidadeDaSerie(anuais),
-      tipo: "Anuais",
-      total: numero(totais.anuais) ?? somaDe(anuais),
-      valor: valorDaSerie(anuais),
-      vencimento: dataBr(anuais[0]?.vencimento),
-    });
+    linhas.push(
+      ...emDegraus(anuais, "Anuais", {
+        correcao,
+        juros,
+        total: numero(totais.anuais) ?? somaDe(anuais),
+      }),
+    );
   }
 
   const totalGeral =
@@ -162,6 +158,91 @@ function celula(
     type: opcoes.cabecalho ? "th" : "td",
   } as NoDoDocumento;
 }
+
+/**
+ * A série em DEGRAUS: uma linha por faixa de parcelas com o mesmo valor.
+ *
+ * ⚠️ O CONTRATO DIZIA SACOC E DESENHAVA PRICE. Nívea, 22/09/2026, sobre o contrato do VOL:
+ * *"Está gerando tabela PRICE"*; Lucas: *"aplicando tabela price em que devia colocar sacoc"*. A
+ * linha "Mensais" anunciava 156 parcelas de R$ 770,49 e, ao lado, um total de R$ 204.417,00 — mas
+ * 156 x 770,49 dá R$ 120.196,44. Quem conferisse com a calculadora (e o Lucas conferiu) achava um
+ * buraco de R$ 84 mil, porque a coluna mostrava só a PRIMEIRA parcela de uma série que sobe até
+ * R$ 2.083,74 com o IPCA anual, e nada no quadro dizia isso.
+ *
+ * ⚠️ OS NÚMEROS SÃO OS DA PROPOSTA, e nenhum deles é recalculado aqui. Lucas, 22/09/2026: *"a parte
+ * da tabela de pagamento, você precisa entender a proposta, ela é a base desses valores,
+ * vencimentos"*. Cada degrau sai do cronograma congelado em `hercules_propostas.condicoes`: o valor
+ * que se repete, quantas vezes ele se repete, o vencimento da primeira parcela do degrau e a soma
+ * real do degrau.
+ *
+ * ⚠️ SÉRIE DE VALOR ÚNICO CONTINUA EM UMA LINHA SÓ — o plano sem correção cai exatamente no quadro
+ * de antes. O degrau não é desenho novo: é o que a série sempre foi.
+ *
+ * ⚠️ DOIS CASOS VOLTAM À LINHA ÚNICA, de propósito:
+ *   • cronograma CORTADO (menos parcelas gravadas do que o prazo contratado): as faixas não
+ *     somariam o prazo, e um quadro que não fecha é pior do que um quadro resumido;
+ *   • degraus demais (correção mensal daria 156 linhas): o quadro-resumo viraria a tabela inteira.
+ */
+function emDegraus(
+  serie: readonly ParcelaGravada[],
+  tipo: string,
+  fixos: { correcao: string; juros: string; total: null | number },
+): LinhaDoQuadro[] {
+  const prazo = quantidadeDaSerie(serie);
+  const umaLinha = (): LinhaDoQuadro[] => [
+    {
+      correcao: fixos.correcao,
+      juros: fixos.juros,
+      quantidade: prazo,
+      tipo,
+      total: fixos.total,
+      valor: valorDaSerie(serie),
+      vencimento: dataBr(serie[0]?.vencimento),
+    },
+  ];
+
+  if (serie.length !== prazo) return umaLinha();
+
+  const faixas: { primeira: ParcelaGravada; quantidade: number; soma: number; valor: number }[] = [];
+  for (const parcela of serie) {
+    const valor = numero(parcela.valor);
+    if (valor === null) return umaLinha();
+    const atual = faixas[faixas.length - 1];
+    if (atual && Math.round(atual.valor * 100) === Math.round(valor * 100)) {
+      atual.quantidade += 1;
+      atual.soma += valor;
+      continue;
+    }
+    faixas.push({ primeira: parcela, quantidade: 1, soma: valor, valor });
+  }
+
+  if (faixas.length <= 1 || faixas.length > TETO_DE_DEGRAUS) return umaLinha();
+
+  let numeroDaParcela = 0;
+  return faixas.map((faixa) => {
+    const de = numeroDaParcela + 1;
+    numeroDaParcela += faixa.quantidade;
+    return {
+      correcao: fixos.correcao,
+      juros: fixos.juros,
+      quantidade: faixa.quantidade,
+      // O intervalo entra no rótulo porque é ele que liga o degrau à parcela do boleto.
+      tipo: `${tipo} ${de} a ${numeroDaParcela}`,
+      total: Math.round(faixa.soma * 100) / 100,
+      valor: dinheiro(faixa.valor),
+      vencimento: dataBr(faixa.primeira.vencimento),
+    };
+  });
+}
+
+/**
+ * Quantos degraus cabem no quadro-resumo.
+ *
+ * ⚠️ DEZESSEIS É O PRAZO MAIS LONGO QUE A CASA VENDE, em anos: com correção ANUAL, que é o que
+ * todos os planos usam hoje, o degrau é o ano. Passando disso, a correção não é anual e o quadro
+ * deixa de ser resumo.
+ */
+const TETO_DE_DEGRAUS = 16;
 
 /**
  * O valor da série: a PRIMEIRA parcela, sem nenhuma ressalva escrita junto.

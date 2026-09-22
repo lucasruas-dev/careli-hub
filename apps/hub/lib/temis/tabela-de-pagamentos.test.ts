@@ -39,7 +39,77 @@ const texto = (no: unknown) =>
     .replace(/\s+/g, " ")
     .trim();
 
+// OS TREZE DEGRAUS DA MESMA PROPOSTA, lidos do cronograma congelado em 22/09/2026. É o contrato do
+// print da Nívea: 156 mensais que começam em R$ 770,49 e terminam em R$ 2.083,74, subindo uma vez
+// por ano com o IPCA. A soma dos treze dá exatamente os R$ 204.417,00 que o quadro sempre mostrou.
+const DEGRAUS: readonly (readonly [number, string])[] = [
+  [770.49, "2026-10-10"],
+  [807.55, "2027-10-10"],
+  [880.23, "2028-10-10"],
+  [959.44, "2029-10-10"],
+  [1045.79, "2030-10-10"],
+  [1139.91, "2031-10-10"],
+  [1242.49, "2032-10-10"],
+  [1354.31, "2033-10-10"],
+  [1476.2, "2034-10-10"],
+  [1609.05, "2035-10-10"],
+  [1753.86, "2036-10-10"],
+  [1911.69, "2037-10-10"],
+  [2083.74, "2038-10-10"],
+] as const;
+
+/** As 156 mensais, uma a uma, como a proposta as congelou. */
+const MENSAIS_COMPLETAS = DEGRAUS.flatMap(([valor, vencimento], degrau) =>
+  Array.from({ length: 12 }, (_, i) => ({
+    numero: degrau * 12 + i + 1,
+    total: 156,
+    valor,
+    vencimento,
+  })),
+);
+
 describe("tabelaGeralDePagamentos", () => {
+  // ⚠️ O CONTRATO DIZIA SACOC E DESENHAVA PRICE. Nívea, 22/09/2026: *"Está gerando tabela PRICE"*.
+  // A linha "Mensais" anunciava 156 x R$ 770,49 e, ao lado, R$ 204.417,00 de total — e 156 x 770,49
+  // dá R$ 120.196,44. Faltavam R$ 84 mil na conta de quem conferisse com a calculadora, porque a
+  // coluna mostrava só a PRIMEIRA parcela de uma série que sobe.
+  it("⚠️ com o cronograma completo, a série sai em DEGRAUS e cada linha fecha", () => {
+    const saida = texto(
+      tabelaGeralDePagamentos({ ...CONDICOES, mensais: MENSAIS_COMPLETAS }),
+    );
+
+    // O primeiro degrau e o último, com o intervalo de parcelas e o vencimento de cada um.
+    expect(saida).toContain("Mensais 1 a 12");
+    expect(saida).toContain("R$ 770,49");
+    expect(saida).toContain("10/10/2026");
+    expect(saida).toContain("Mensais 145 a 156");
+    expect(saida).toContain("R$ 2.083,74");
+    expect(saida).toContain("10/10/2038");
+
+    // Cada linha fecha sozinha: 12 x 770,49 = 9.245,88.
+    expect(saida).toContain("R$ 9.245,88");
+    // E o total geral continua o mesmo que a proposta congelou.
+    expect(saida).toContain("R$ 217.772,10");
+  });
+
+  it("os treze degraus somam o total das mensais, ao centavo", () => {
+    const tabela = tabelaGeralDePagamentos({ ...CONDICOES, mensais: MENSAIS_COMPLETAS });
+    const linhas = (tabela?.children ?? []) as { children?: unknown[] }[];
+    // Cabeçalho + 1 entrada + 13 degraus + total.
+    expect(linhas).toHaveLength(16);
+
+    const somaDosDegraus = DEGRAUS.reduce((soma, [valor]) => soma + Math.round(valor * 100) * 12, 0);
+    expect(somaDosDegraus).toBe(20441700);
+  });
+
+  // ⚠️ CRONOGRAMA CORTADO VOLTA À LINHA ÚNICA: com menos parcelas gravadas do que o prazo
+  // contratado, os degraus não somariam 156, e um quadro que não fecha é pior do que um resumido.
+  it("cronograma incompleto continua em uma linha só", () => {
+    const saida = texto(tabelaGeralDePagamentos(CONDICOES));
+    expect(saida).toContain("Mensais");
+    expect(saida).not.toContain("Mensais 1 a");
+  });
+
   it("traz uma linha por tipo de parcela, com o que o contrato precisa dizer", () => {
     const saida = texto(tabelaGeralDePagamentos(CONDICOES));
 

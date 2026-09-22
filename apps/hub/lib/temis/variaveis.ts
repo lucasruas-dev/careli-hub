@@ -593,7 +593,10 @@ const PLANO_DA_VENDA: VariavelDoContrato[] = [
   { exemplo: "20%", fonte: PLANO("entrada_percentual (via hercules_vendas.plano_snapshot)"), grupo: "plano", nome: "plano_entrada_percentual", origem: "Plano da venda", rotulo: "Entrada (%) do plano", tipo: "texto" },
   { exemplo: "12% ao ano", fonte: PLANO("juros_taxa + juros_periodicidade (via hercules_vendas.plano_snapshot)"), grupo: "plano", nome: "plano_juros", origem: "Plano da venda", rotulo: "Juros do plano", tipo: "texto" },
   { exemplo: "IPCA anual", fonte: PLANO("indice_correcao (via hercules_vendas.plano_snapshot)"), grupo: "plano", nome: "plano_indice_correcao", origem: "Plano da venda", rotulo: "Índice de correção do plano", tipo: "texto" },
-  { exemplo: "SACOC", fonte: PLANO("sistema_amortizacao (via hercules_vendas.plano_snapshot)"), grupo: "plano", nome: "plano_sistema_amortizacao", origem: "Plano da venda", rotulo: "Sistema de amortização do plano", tipo: "texto" },
+  // ⚠️ PREENCHIDA DESDE 22/09/2026, e ela existia vazia desde sempre: as minutas escreveram
+  // "Sistema de amortização: SACOC" à mão e a frase acertava por coincidência. Sai do cronograma que
+  // a proposta congelou, com o rótulo da casa ("Tabela SACOC — amortização pura").
+  { exemplo: "Tabela SACOC — amortização pura", fonte: SISTEMA("o sistema de amortização do plano congelado na proposta"), grupo: "plano", nome: "plano_sistema_amortizacao", origem: "Plano da venda", rotulo: "Tabela de amortização do plano", tipo: "texto" },
   // AS ANUAIS (migration 0138). Lucas, ao ver o cadastro do plano: *"aqui faltou as anuais, pode ter
   // plano que já vem configurado isso"*. ⚠️ NEM TODO PLANO TEM — o par `inicio_tem_anuais`/
   // `fim_tem_anuais` é o que faz o parágrafo sumir quando não há, em vez de imprimir "0 parcelas de".
