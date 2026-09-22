@@ -121,12 +121,12 @@ const COR_DO_BALDE: Record<ChaveDoCenario, string> = {
 
 const CORES_CLARAS = `
     --prd-disponivel:#2f7d59; --prd-reservado:#b45309; --prd-negociacao:#6d28d9;
-    --prd-vendido:#1d4ed8; --prd-bloqueado:#c24135; --prd-cancelamento:#a8326d;
+    --prd-vendido:#1d4ed8; --prd-bloqueado:#c24135; --prd-cancelamento:#141414;
 `;
 
 const CORES_ESCURAS = `
     --prd-disponivel:#7cc4a1; --prd-reservado:#fbbf24; --prd-negociacao:#a78bfa;
-    --prd-vendido:#60a5fa; --prd-bloqueado:#e08278; --prd-cancelamento:#e879b9;
+    --prd-vendido:#60a5fa; --prd-bloqueado:#e08278; --prd-cancelamento:#d4d4d8;
 `;
 
 const CSS_PRODUTOS = `

@@ -36,6 +36,44 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-21-cancelamento-em-preto",
+    deployedAt: "2026-09-21T23:58:16-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**A cor do cancelamento virou PRETO**, no lugar do magenta que subiu há pouco. Vale no cartão, no lote da grade, na legenda e no último degrau da trilha da ficha.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Mesma cor no card, na coluna e no selo** de Empreendimentos, e na tabela de Produtos do portal: a cor do cancelamento mora num lugar só e mudou nos três de uma vez.",
+            ],
+            screen: "Empreendimentos",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "`MAGENTA` (#a8326d) virou `PRETO` (#141414) em `COR_DA_ETAPA`, no cartao da faixa e no degrau final da trilha (TelaVenda.tsx); `cores-de-situacao.ts`, `--prd-cancelamento` do portal e o `bucketText` do Apolo seguiram junto. ⚠️ O PAR DO TEMA ESCURO NAO E PRETO: nesses tres lugares a cor vira TEXTO (o numero da coluna, o selo), e preto sobre o fundo preto do tema escuro e texto invisivel -- o par e o mesmo neutro em tom claro (#d4d4d8 / zinc-200), que e a regra das outras cinco cores do mapa. Na grade a cor e FUNDO, entao la ela e preta nos dois temas, com o numero do lote em branco (`FUNDO_ESCURO` ja tinha a chave). O preto nao e o grafite do bloqueado (#454c5c): sao dois estados vizinhos no significado e opostos na origem, e num quadradinho de 12px o que os separa e o preto ser cheio. typecheck limpo, suite verde.",
+      motivation:
+        "Lucas, 21/09/2026, vendo o magenta na tela: \"pode colocar a cor preto\".",
+    },
+    rollback: "2385aafd",
+    title: "O cancelamento em preto",
+    type: "correcao",
+    version: "1.357.1",
+  },
+  {
     buildTag: "2026-09-21-etapa-pelo-fato-quadros-e-tres-criticos",
     deployedAt: "2026-09-21T23:40:00-03:00",
     modules: [

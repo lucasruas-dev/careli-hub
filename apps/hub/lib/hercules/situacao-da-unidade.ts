@@ -482,7 +482,7 @@ export async function lerSituacaoDasUnidades(
 
   // ⚠️ A MARCA CRUA MENTE, E POR ISSO ELA PASSA PELA PENEIRA ANTES (21/09/2026). Medido em
   // produção: das 9 vendas com `cancelamento_pedido_em`, uma era resto de um pedido indeferido, sem
-  // card nenhum vivo na Têmis. Pintar essa de magenta tiraria do número de contrato uma venda que
+  // card nenhum vivo na Têmis. Pintar essa de preto tiraria do número de contrato uma venda que
   // segue firme. `soltarMarcasQueSobraram` limpa o resto NA MEMÓRIA (nada é escrito no banco) e só
   // vai ao banco quando existe marca — hoje, uma leitura a mais por carga de tela.
   await soltarMarcasQueSobraram(client, propostasTodas);

@@ -48,8 +48,10 @@ export type ParDeCores = {
 export const CORES_DA_SITUACAO: Record<SituacaoDaUnidade, ParDeCores> = {
   bloqueado: { claro: "#c24135", escuro: "#e08278" },
   disponivel: { claro: "#2f7d59", escuro: "#7cc4a1" },
-  // O magenta da grade da Venda (`COR_DA_ETAPA`), com o par claro para o tema escuro.
-  em_cancelamento: { claro: "#a8326d", escuro: "#e879b9" },
+  // ⚠️ O PRETO DA GRADE DA VENDA, e o par dele NO ESCURO NÃO É PRETO. Aqui a cor vira TEXTO
+  // (o número da coluna, o selo), e preto sobre o fundo preto do tema escuro é texto invisível:
+  // o par é o mesmo neutro em tom claro, que é a regra de todas as outras cinco cores deste mapa.
+  em_cancelamento: { claro: "#141414", escuro: "#d4d4d8" },
   negociacao: { claro: "#6d28d9", escuro: "#a78bfa" },
   reservado: { claro: "#b45309", escuro: "#fbbf24" },
   vendido: { claro: "#1d4ed8", escuro: "#60a5fa" },
@@ -112,7 +114,7 @@ export const CLASSES_DO_SELO: Record<SituacaoDaUnidade, string> = {
   disponivel:
     "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/12 dark:text-emerald-300",
   em_cancelamento:
-    "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700 dark:border-fuchsia-500/30 dark:bg-fuchsia-500/12 dark:text-fuchsia-300",
+    "border-zinc-300 bg-zinc-100 text-zinc-900 dark:border-zinc-400/30 dark:bg-zinc-400/12 dark:text-zinc-200",
   negociacao:
     "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/12 dark:text-violet-300",
   reservado:

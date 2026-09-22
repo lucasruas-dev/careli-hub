@@ -130,9 +130,9 @@ type BucketKey = keyof ApoloEnterpriseScenario;
 export const bucketText: Record<BucketKey, string> = {
   bloqueado: "text-rose-600 dark:text-rose-400",
   disponivel: "text-emerald-600 dark:text-emerald-400",
-  // ⚠️ MAGENTA, e é a única família livre da paleta: o violeta já é negociação, o rose é bloqueado
-  // e o vermelho é o faturado da grade. Ver a nota da cor em `cores-de-situacao.ts`.
-  em_cancelamento: "text-fuchsia-600 dark:text-fuchsia-400",
+  // ⚠️ PRETO (Lucas, 21/09/2026: *"pode colocar a cor preto"*), e no tema escuro o mesmo neutro
+  // em tom claro, porque aqui a cor é TEXTO. Ver a nota em `cores-de-situacao.ts`.
+  em_cancelamento: "text-zinc-900 dark:text-zinc-200",
   negociacao: "text-violet-600 dark:text-violet-400",
   reservado: "text-amber-600 dark:text-amber-400",
   total: "text-ink",

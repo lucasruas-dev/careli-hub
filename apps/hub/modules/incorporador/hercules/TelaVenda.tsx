@@ -193,12 +193,15 @@ type Foco =
   | { tipo: "unidade"; unidade: UnidadeNoMapa };
 
 /**
- * ⚠️ MAGENTA PARA O CANCELAMENTO (Lucas, 21/09/2026: *"pode trazer uma cor nova para
- * cancelamento"*). É o único arco largo livre do círculo: cerca de 100 graus entre o violeta do
- * contrato (263 graus) e o vermelho do faturado (6 graus). E é ESCURO de propósito — a queixa era a
- * venda em cancelamento se confundir com o contrato, e um magenta claro voltaria a confundir.
+ * ⚠️ PRETO PARA O CANCELAMENTO (Lucas, 21/09/2026: *"pode trazer uma cor nova para cancelamento"*
+ * e, vendo o magenta na tela, *"pode colocar a cor preto"*). É a única cor do quadro que não é um
+ * matiz: ela não disputa com nenhuma etapa e diz sozinha que aquele lote saiu do caminho.
+ *
+ * ⚠️ NÃO É O GRAFITE DO BLOQUEADO (#454c5c), e a diferença tem de continuar visível: são dois
+ * estados vizinhos no significado (lote fora da oferta) e opostos na origem (um é decisão de
+ * estoque, o outro é venda caindo). Num quadradinho de 12px o que os separa é o preto ser CHEIO.
  */
-const MAGENTA = "#a8326d";
+const PRETO = "#141414";
 
 // ⚠️ O ESTOQUE ABRE A FAIXA (Lucas, 03/09/2026: *"aproveitar trazer aqui também disponível"*). É
 // de onde a venda começa, e ver o pipeline sem saber quanto sobra para vender conta metade da
@@ -236,7 +239,7 @@ const FLUXO: ReadonlyArray<{
   // card novo"*). A venda que está aqui saiu do cartão de contrato ou de assinatura: ela conta num
   // lugar só, senão o coordenador somaria os cartões e acharia mais vendas do que existem.
   {
-    cor: MAGENTA,
+    cor: PRETO,
     etapa: "em_cancelamento",
     icone: CircleSlash,
     rotulo: rotuloDaSituacao("em_cancelamento"),
@@ -294,7 +297,7 @@ const COR_DA_ETAPA: Record<EtapaDoEspelho, string> = {
   bloqueada: "#454c5c",
   contrato: "#9b7ed0",
   disponivel: VERDE,
-  em_cancelamento: MAGENTA,
+  em_cancelamento: PRETO,
   faturado: VERMELHO,
   proposta: "#5b8dd6",
   reservada: listrado(AMARELO, "#d9a833"),
@@ -363,8 +366,8 @@ const ROTULO_DA_ETAPA: Record<EtapaDoEspelho, string> = Object.fromEntries(
  */
 const FUNDO_ESCURO = new Set<EtapaDoEspelho>([
   "bloqueada",
-  // ⚠️ O MAGENTA É ESCURO: sem entrar aqui, o número do lote sai preto sobre ele e some num
-  // quadradinho de 12px.
+  // ⚠️ O PRETO PEDE NÚMERO CLARO: sem entrar aqui, o número do lote sai preto sobre preto e
+  // some num quadradinho de 12px.
   "em_cancelamento",
   "faturado",
   "vendida",
@@ -3136,11 +3139,11 @@ function TrilhaDoFluxo({
                 // fluxo de cinco passos lido de relance, o que responde "até onde essa venda chegou"
                 // é a COR, não o ícone: agora o caminho andado se separa do que falta sem precisar
                 // procurar. O verde é o mesmo `ok` do resto do portal, em fundo lavado.
-                // ⚠️ O ÚLTIMO DEGRAU DO CANCELAMENTO É MAGENTA, a mesma cor do cartão da faixa e do
-                // lote na grade: quem vê o quadradinho magenta no quadro reconhece o fim da trilha
-                // sem legenda. O dourado continua sendo "está aqui, falta terminar".
+                // ⚠️ O ÚLTIMO DEGRAU DO CANCELAMENTO É PRETO, a mesma cor do cartão da faixa e do
+                // lote na grade: quem vê o quadradinho preto no quadro reconhece o fim da trilha sem
+                // legenda. O dourado continua sendo "está aqui, falta terminar".
                 background: ehOFimDoCancelamento
-                  ? MAGENTA
+                  ? PRETO
                   : ehAtual
                     ? T.gold
                     : cumprida
