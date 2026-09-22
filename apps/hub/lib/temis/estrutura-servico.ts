@@ -1071,7 +1071,7 @@ export async function incluirAssinante(ator: AtorDaTemis, request: Request): Pro
     const recado = papelNaoLiberado
       ? `O banco ainda nao aceita o papel "${valores.papel}": falta aplicar a migration ${MIGRATION_DO_ASSINANTE_DE_TERMOS}. Avise quem cuida do banco; os outros papeis do quadro continuam funcionando.`
       : ocupada
-        ? `A posicao ${valores.posicao} ja esta ocupada em ${valores.papel} neste empreendimento.`
+        ? await fraseDaLinhaOcupada(admin, enterpriseId, valores)
         : "Nao foi possivel gravar o assinante.";
     return NextResponse.json(
       { error: recado },
@@ -1086,6 +1086,54 @@ export async function incluirAssinante(ator: AtorDaTemis, request: Request): Pro
   });
   return NextResponse.json({ assinante: assinanteParaATela(data) }, { headers: SEM_CACHE });
 }
+
+/**
+ * A frase da linha já ocupada, dizendo DE QUEM ela é e como sair do impasse.
+ *
+ * ⚠️ A FRASE ANTIGA FOI LIDA COMO OUTRA COISA. Ela dizia "A posicao 4 ja esta ocupada em
+ * testemunha neste empreendimento", com a chave interna do papel, e a Nívea entendeu que o sistema
+ * não aceitava uma segunda testemunha: *"Ele nao esta aceitando 02 testemunhas"* (22/09/2026).
+ * Cabem NOVE por papel; o que estava ocupado era a LINHA 4, onde já morava a YASMIN.
+ *
+ * ⚠️ O NOME DO OCUPANTE CUSTA UM SELECT, e ele só roda no caminho do erro. É o que transforma a
+ * recusa em instrução: quem lê sabe qual linha escolher sem abrir outra tela.
+ */
+async function fraseDaLinhaOcupada(
+  admin: Admin,
+  enterpriseId: string,
+  valores: { papel: string; posicao: number },
+): Promise<string> {
+  const rotulo = ROTULO_DO_PAPEL[valores.papel] ?? valores.papel;
+  let dono = "";
+  try {
+    const { data } = await admin
+      .from("temis_assinantes")
+      .select("nome")
+      .eq("workspace_id", WORKSPACE)
+      .eq("enterprise_id", enterpriseId)
+      .eq("papel", valores.papel)
+      .eq("posicao", valores.posicao)
+      .eq("ativo", true)
+      .maybeSingle<{ nome: null | string }>();
+    dono = String(data?.nome ?? "").trim();
+  } catch {
+    // Sem o nome a frase continua útil: o que resolve é a instrução do fim.
+  }
+
+  return (
+    `A linha ${valores.posicao} de ${rotulo} ` +
+    (dono ? `ja e de ${dono}. ` : "ja esta ocupada. ") +
+    "Cabem varias pessoas neste papel: use outra linha, ou deixe o campo Linha em branco que o quadro numera sozinho."
+  );
+}
+
+/** O nome do papel como a tela o escreve. A frase de erro fala com gente, nao com o banco. */
+const ROTULO_DO_PAPEL: Record<string, string> = {
+  coordenador: "Coordenador de Vendas",
+  termos_vendedora: "Assinatura de termos (vendedora)",
+  testemunha: "Testemunhas",
+  vendedora: "Vendedora",
+};
 
 /**
  * ⚠️ DESATIVA, NÃO APAGA. Um contrato já enviado carrega o nome no envelope e o diário da

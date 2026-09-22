@@ -169,6 +169,32 @@ export function QuadroDeAssinaturaCard({
 
   const doPapel = (papel: PapelDoQuadro) => lista.filter((a) => a.papel === papel);
 
+  /**
+   * ⚠️ O CAMPO LINHA NASCE PREENCHIDO, e até 22/09/2026 o número ali era só um PLACEHOLDER cinza.
+   * O campo ia vazio, e vazio significava "a próxima livre" só na hora de gravar — então a tela
+   * mostrava o número certo e aceitava qualquer número repetido por cima. Nívea, 22/09/2026, depois
+   * de digitar 4 numa linha que já era da YASMIN: *"Ele nao esta aceitando 02 testemunhas"*. Nos
+   * logs do Postgres daquela madrugada são QUATRO recusas, todas da mesma constraint de posição.
+   *
+   * Agora o rascunho de cada papel já vem com a próxima linha livre assim que a lista chega, e
+   * quem quiser outra troca o número de propósito.
+   */
+  useEffect(() => {
+    if (carregando) return;
+    setRascunhos((atuais) => {
+      let mudou = false;
+      const novos = { ...atuais };
+      for (const bloco of [...BLOCOS, BLOCO_DOS_TERMOS]) {
+        const atual = novos[bloco.papel] ?? RASCUNHO;
+        if (atual.posicao) continue;
+        const proxima = String(proximaPosicao(lista.filter((a) => a.papel === bloco.papel)));
+        novos[bloco.papel] = { ...atual, posicao: proxima };
+        mudou = true;
+      }
+      return mudou ? novos : atuais;
+    });
+  }, [carregando, lista]);
+
   const rascunho = (papel: PapelDoQuadro) => rascunhos[papel] ?? RASCUNHO;
 
   function mexer(papel: PapelDoQuadro, campo: keyof typeof RASCUNHO, valor: string) {
@@ -235,9 +261,34 @@ export function QuadroDeAssinaturaCard({
    * qualificação e tem fila fixa (comprador, incorporador, Careli). Oferecer os dois campos ali
    * prometeria um controle que o envio ignora.
    */
+  /**
+   * A testemunha vai assinar ANTES de alguem que ela deveria testemunhar?
+   *
+   * ⚠️ A TESTEMUNHA TESTEMUNHA UM DOCUMENTO JÁ ASSINADO, e é o que o próprio texto de ajuda do
+   * bloco diz. No VOC a única testemunha ficou com "Assina em 1", que a põe junto com a vendedora
+   * e o comprador — e a ordem está LIGADA naquele produto, então o convite sai assim. O quadro não
+   * conhece a ordem do comprador (ele vem da proposta), mas conhece a dos outros papéis: se a
+   * testemunha tem número menor ou igual ao de alguem de outro papel, ela assina antes.
+   */
+  function testemunhaNaFrente(): null | string {
+    const ordem = (a: AssinanteDoQuadro) => a.ordemAssinatura ?? null;
+    const testemunhas = lista.filter((a) => a.papel === "testemunha" && ordem(a) !== null);
+    const outros = lista.filter((a) => a.papel !== "testemunha" && ordem(a) !== null);
+    if (testemunhas.length === 0 || outros.length === 0) return null;
+
+    const maiorDosOutros = Math.max(...outros.map((a) => ordem(a) as number));
+    const adiantada = testemunhas.find((a) => (ordem(a) as number) <= maiorDosOutros);
+    if (!adiantada) return null;
+    return (
+      `${adiantada.nome} assina em ${String(ordem(adiantada))}, junto ou antes de quem ela testemunha. ` +
+      "Testemunha costuma assinar por último: deixe o campo Assina em vazio, ou ponha um número maior."
+    );
+  }
+
   function secaoDoBloco(bloco: Bloco) {
     const gente = doPapel(bloco.papel);
     const r = rascunho(bloco.papel);
+    const avisoDaOrdem = bloco.papel === "testemunha" ? testemunhaNaFrente() : null;
     const doContrato = bloco.papel !== "termos_vendedora";
     // ⚠️ O QUE A CAIXA MOSTRA NÃO É O QUE ESTÁ GRAVADO NAQUELE PAPEL, e só nos TERMOS. Ver
     // `filaDosTermos`: ali a tela tem de mostrar quem o ENVIO usaria, que pode ser a pessoa do bloco
@@ -251,6 +302,15 @@ export function QuadroDeAssinaturaCard({
       <section key={bloco.papel}>
         <p className="m-0 font-semibold text-ink text-sm">{bloco.titulo}</p>
         <p className="m-0 mb-1.5 text-ink-muted text-xs">{bloco.ajuda}</p>
+
+        {/* ⚠️ A TESTEMUNHA QUE VAI ASSINAR CEDO DEMAIS. Ela testemunha um documento já assinado
+            pelas partes; com um número baixo em "Assina em", o convite sai junto com o do comprador.
+            É aviso, e não trava: pode haver um caso em que a ordem seja proposital. */}
+        {avisoDaOrdem ? (
+          <p className="m-0 mb-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900 text-xs dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+            {avisoDaOrdem}
+          </p>
+        ) : null}
 
         {/* ⚠️ A QUEDA INTEIRA, NA ORDEM DE VERDADE, sempre que ninguém foi apontado. Ver
             `filaDosTermos`: a frase antiga citava dois degraus e o envio tem três. */}
@@ -389,6 +449,7 @@ export function QuadroDeAssinaturaCard({
                   inputMode="numeric"
                   onChange={(e) => mexer(bloco.papel, "posicao", e.target.value)}
                   placeholder={String(proximaPosicao(gente))}
+                  title="A linha do contrato em que esta pessoa aparece. Já vem com a próxima livre deste papel."
                   value={r.posicao}
                 />
               </label>
