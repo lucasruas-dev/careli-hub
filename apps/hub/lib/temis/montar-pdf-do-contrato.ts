@@ -205,15 +205,28 @@ function folhaDoCorpo(corpo: PDFDocument): Folha {
   return { altura: height, largura: width };
 }
 
-/** Onde desenhar a peça dentro da folha: maior escala que cabe, centralizada. */
+/**
+ * Onde desenhar a peça dentro da folha: maior escala que cabe, centralizada.
+ *
+ * ⚠️ AS CHAVES DE SAÍDA SÃO `height` E `width`, EM INGLÊS, e isso não é desleixo de idioma: é o
+ * contrato do `drawPage`/`drawImage` do pdf-lib. Nascidas em português (`altura`/`largura`), elas
+ * eram IGNORADAS — a biblioteca não achava o que ler, caía no tamanho original e desenhava a arte
+ * em 1:1 dentro de uma folha menor. Resultado medido no contrato do Vale do Ouro de 22/09/2026: a
+ * capa A2 entrou em escala 1 numa folha A4 e saiu CORTADA pela metade, com o texto partido na
+ * lateral. Nívea, no mesmo dia: *"A carta tambem esta ficando desconfigurada"*.
+ *
+ * ⚠️ E O TESTE NÃO PEGOU, porque ele conferia o tamanho da PÁGINA e a BBox do XObject, que
+ * continuavam certos: o que estava errado era a MATRIZ de desenho, que nenhuma das duas medidas
+ * enxerga. Por isso a suíte passou a afirmar a escala aplicada.
+ */
 function encaixar(
   peca: { altura: number; largura: number },
   folha: Folha,
-): { altura: number; largura: number; x: number; y: number } {
+): { height: number; width: number; x: number; y: number } {
   const escala = Math.min(folha.largura / peca.largura, folha.altura / peca.altura);
-  const largura = peca.largura * escala;
-  const altura = peca.altura * escala;
-  return { altura, largura, x: (folha.largura - largura) / 2, y: (folha.altura - altura) / 2 };
+  const width = peca.largura * escala;
+  const height = peca.altura * escala;
+  return { height, width, x: (folha.largura - width) / 2, y: (folha.altura - height) / 2 };
 }
 
 /**

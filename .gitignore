@@ -64,3 +64,6 @@ yarn-error.log*
 # num commit por engano.
 .tmp*/
 .tmpsvg-*
+
+# Rascunho de sessao (scripts de medicao, PDFs baixados para conferir): nunca entra no repo.
+scratchpad/

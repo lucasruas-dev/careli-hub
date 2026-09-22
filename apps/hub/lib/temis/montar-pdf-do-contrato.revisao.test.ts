@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
+import { inflateSync } from "node:zlib";
 
-import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFStream } from "pdf-lib";
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFRawStream, PDFStream } from "pdf-lib";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { montarPdfDoContrato, type PecaDoContrato } from "./montar-pdf-do-contrato";
@@ -130,6 +131,60 @@ async function pdfComTamanhos(tamanhos: readonly (readonly [number, number])[]):
 async function tamanhosDoPdf(bytes: Uint8Array): Promise<string[]> {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   return doc.getPages().map((p) => `${Math.round(p.getWidth())}x${Math.round(p.getHeight())}`);
+}
+
+/**
+ * A ESCALA com que a peça foi DESENHADA na página, lida do content stream.
+ *
+ * ⚠️ E POR QUE ISTO EXISTE. Em 22/09/2026 a capa saiu CORTADA pela metade no contrato do Vale do
+ * Ouro e os testes deste arquivo passaram verdes: eles conferiam o tamanho da PÁGINA e a BBox do
+ * XObject, e as duas medidas continuavam certas. O que estava errado era a MATRIZ de desenho —
+ * `encaixar` devolvia as chaves em português e o `drawPage` do pdf-lib, que lê `width`/`height`,
+ * caía no tamanho original: arte A2 em escala 1 dentro de uma folha A4. Nenhuma asserção de
+ * tamanho enxerga isso; só a escala aplicada.
+ *
+ * ⚠️ O `drawPage` EMITE QUATRO OPERADORES `cm` (translada, gira, inclina, escala), então o que
+ * vale é a matriz COMPOSTA, e não o último `cm` que aparecer.
+ */
+async function escalaDaPagina(bytes: Uint8Array, indice: number): Promise<{ x: number; y: number }> {
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pagina = doc.getPage(indice);
+  const conteudo = pagina.node.Contents();
+  const fluxos = conteudo instanceof PDFArray ? conteudo.asArray() : [conteudo];
+
+  let texto = "";
+  for (const ref of fluxos) {
+    if (!ref) continue;
+    const fluxo = doc.context.lookupMaybe(ref, PDFRawStream);
+    if (!fluxo) continue;
+    const cru = Buffer.from(fluxo.contents);
+    const filtro = String(fluxo.dict.get(PDFName.of("Filter")) ?? "");
+    try {
+      texto += filtro.includes("Flate") ? inflateSync(cru).toString("latin1") : cru.toString("latin1");
+    } catch {
+      texto += cru.toString("latin1");
+    }
+  }
+
+  const matrizes = [
+    ...texto.matchAll(/([-\d.e]+)\s+([-\d.e]+)\s+([-\d.e]+)\s+([-\d.e]+)\s+([-\d.e]+)\s+([-\d.e]+)\s+cm/g),
+  ].map((m) => m.slice(1).map(Number));
+
+  // Composição das matrizes [a b c d e f], na ordem em que aparecem.
+  let composta = [1, 0, 0, 1, 0, 0];
+  for (const m of matrizes) {
+    const [a, b, c, d, e, f] = m as [number, number, number, number, number, number];
+    const [A, B, C, D, E, F] = composta as [number, number, number, number, number, number];
+    composta = [
+      a * A + b * C,
+      a * B + b * D,
+      c * A + d * C,
+      c * B + d * D,
+      e * A + f * C + E,
+      e * B + f * D + F,
+    ];
+  }
+  return { x: composta[0] as number, y: composta[3] as number };
 }
 
 /**
@@ -268,6 +323,12 @@ describe("a capa que vem em outro papel", () => {
     expect(await tamanhosDoPdf(montagem.pdf)).toEqual(["595x842", "595x842"]);
     // E a capa continua sendo a capa: a arte original de 1190x1684 está lá, embutida.
     expect((await origensDoPdf(montagem.pdf))[0]).toBe("1190x1684");
+
+    // ⚠️ E FOI DESENHADA NA METADE, que é o que faz ela caber. Sem esta asserção o teste passa com a
+    // arte em 1:1, cortada pela folha — foi exatamente o que aconteceu em 22/09/2026.
+    const escala = await escalaDaPagina(montagem.pdf, 0);
+    expect(escala.x).toBeCloseTo(0.5, 3);
+    expect(escala.y).toBeCloseTo(0.5, 3);
   });
 
   it("capa de proporção diferente cabe inteira, centralizada — e a arte NÃO deforma", async () => {
@@ -283,6 +344,11 @@ describe("a capa que vem em outro papel", () => {
     if (!montagem.ok) return;
     expect(await tamanhosDoPdf(montagem.pdf)).toEqual(["595x842", "595x842"]);
     expect((await origensDoPdf(montagem.pdf))[0]).toBe("1000x1000");
+
+    // Quadrada em folha retrato: cabe pela LARGURA, e a escala é a mesma nos dois eixos.
+    const escala = await escalaDaPagina(montagem.pdf, 0);
+    expect(escala.x).toBeCloseTo(595.28 / 1000, 3);
+    expect(escala.y).toBeCloseTo(escala.x, 5);
   });
 });
 
