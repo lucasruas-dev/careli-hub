@@ -95,6 +95,29 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Hercules/Apolo/Portal] O cancelamento virou situacao propria, com cartao, cor e trilha (v1.356.0)`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-09-21T23:09:17-03:00` (push na main).
+- Ambiente: `producao`.
+- Origem: OK explicito do Lucas em 21/09/2026 ("pode"), depois dos pedidos "eu queria trazer esse fluxo diferente para o que esta em cancelamento, hoje ele aponta para contrato e polui nossos indicadores, acho que devemos seperar, pode trazer um cor nova para cancelamento", "e um card novo", "no espelho nao precisa", "espelho tem duas, disponivel e nao disponivel" e "o ideal quando cancelado nao ter as outras etapas, ela ser a ultima".
+- Migrations: NENHUMA. A situacao e derivada na leitura; o CHECK de `hercules_propostas.etapa` nao muda, e a etapa da venda no banco continua `contrato`, `assinatura` ou `faturado` ate o juridico concluir.
+- Escopo publicado:
+  - Regua unica (`lib/hercules/situacao-da-unidade.ts`): `EtapaDoEspelho` e `BaldeDaSituacao` ganharam `em_cancelamento`, derivada da marca `cancelamento_pedido_em` da proposta viva mais recente e so depois do contrato (`DEPOIS_DO_CONTRATO`).
+  - A marca entra PENEIRADA: `lerSituacaoDasUnidades` passou a chamar `soltarMarcasQueSobraram` (`marca-de-pedido.ts`), que solta a marca sem card vivo na Temis. Medido em producao: 1 das 9 marcas era orfa (TST, pedido indeferido).
+  - Hercules/Venda: cartao novo no fim da faixa, cor magenta na grade e na legenda, lista propria ao clicar no cartao e a venda saindo da lista da etapa antiga; trilha da ficha terminando no cancelamento; botao respondendo "Cancelamento pedido".
+  - Apolo/Empreendimentos e Portal/Produtos: card, coluna, filtro e selo novos, para os numeros continuarem somando o total.
+  - `BALDES_DO_CENARIO` nasceu em `lib/apolo/empreendimentos.ts`: tres lugares montavam o cenario com `{} as ApoloEnterpriseScenario` e a propria copia da lista de baldes, entao a chave nova existiria no tipo e faltaria no objeto.
+- O que NAO mudou, de proposito: a trava contra segunda venda (a venda segue na etapa dela, e e ela que segura o lote), o telao do salao (continua `vendido`) e o espelho publico (continua com duas cores, por `estaLivre`).
+- Numeros do dia: 9 vendas em cancelamento, R$ 1.702.143; 7 estavam contando como assinatura e 2 como contrato; 8 sao distrato.
+- Commit publicado: `4d12595b` (deployment `dpl_EWVi3PkUbLufZD9DdabWDrsrxc2Y`). Subiram junto os dois commits de docs da leva anterior (`739ac96d` e `49a37341`).
+- Deployment anterior: commit `1924123e` (v1.355.1, o termo de acordo, da outra sessao) / `dpl_DAUp2s1pejvf26DgD59AeZMEKeRt`. ⚠️ ESTA SUBIDA ATRAVESSOU UMA PUBLICACAO DA OUTRA SESSAO: rebase em cima da main, com conflito so no changelog (as duas entradas no indice 0), resolvido mantendo a 1.356.0 na frente e a 1.355.1 logo abaixo. Typecheck e suite completa rodaram DEPOIS do rebase.
+- Dominio alvo autorizado: `https://c2x.app.br`. `https://ops.c2x.app.br`: NAO TOCADO.
+- Validacoes executadas: typecheck limpo; lint sem aviso novo nos arquivos tocados; suite completa 7.721 testes em 491 arquivos, verde depois do rebase. Testes novos para a soma unica (a venda conta num cartao so), a marca antes do contrato que nao vale, `baldeDaEtapa("em_cancelamento")` que nao pode ser `disponivel` (o `default` dele devolve estoque livre) e a ficha em cancelamento achando a linha pela marca.
+- Rollback definido: `1924123e` / `dpl_DAUp2s1pejvf26DgD59AeZMEKeRt`. Nada a desfazer no banco.
+- Pendencias: validacao visual do Lucas na tela da Venda (cartao, grade e trilha).
+
+Registro de producao:
+
 - Assunto: `[Hades/Temis/Apolo/Hercules] Termo de acordo assinavel, card da Temis pelo Panteon e o pedido recusado que prendia a venda (v1.352.0 + v1.351.1)`.
 - Squad/agente responsavel: `Zeus` (quatro workflows com revisao adversarial em tres lentes cada).
 - Data e hora local: `2026-09-20T15:16:12-03:00` (push na main).
