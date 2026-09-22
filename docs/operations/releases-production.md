@@ -95,6 +95,23 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Hercules/Apolo/Portal] A cor do cancelamento virou preto (v1.357.1)`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-09-21T23:58:16-03:00` (push na main).
+- Ambiente: `producao`.
+- Origem: OK explicito do Lucas em 21/09/2026 ("sobe"), depois de ver o magenta na tela: "pode colocar a cor preto".
+- Migrations: NENHUMA.
+- Escopo publicado: `MAGENTA` (#a8326d) virou `PRETO` (#141414) na grade da Venda, no cartao da faixa, na legenda e no degrau final da trilha da ficha; `cores-de-situacao.ts`, `--prd-cancelamento` do portal comercial e o `bucketText` do Apolo seguiram junto.
+- ⚠️ O PAR DO TEMA ESCURO NAO E PRETO nos tres mapas em que a cor vira TEXTO (numero da coluna, selo): la o par e o mesmo neutro em tom claro (#d4d4d8 / zinc-200), que e a regra das outras cinco cores. Na grade a cor e FUNDO, entao e preta nos dois temas, com o numero do lote em branco (`FUNDO_ESCURO`).
+- Commit publicado: `1bb42faa` (deployment `dpl_E8YNJNuaBm58FgBifuWYT5NR7CcK`). Subiram junto os tres commits de docs da v1.356.0.
+- Deployment anterior: commit `2385aafd` (v1.357.0, da outra sessao: etapa pelo fato, quadros da Temis e tres criticos) / `dpl_BDPJEBsJyTz1iprUfEtKfwwdKQa1`. ⚠️ ESTA SUBIDA ATRAVESSOU A SEGUNDA PUBLICACAO DA OUTRA SESSAO NA MESMA NOITE, e a entrada de changelog foi RENUMERADA de 1.356.1 para 1.357.1 por causa disso. O rebase teve conflito so no changelog; `situacao-da-unidade.ts` fez auto-merge. ⚠️ A OUTRA SESSAO REESCREVEU A FAIXA (contagem por LOTE, e nao por proposta) JA COM O `em_cancelamento` DENTRO: o cartao novo passou a ser contado por lote junto com os demais, e o caminho antigo (sem grade) ficou como excecao explicita no codigo deles.
+- Dominio alvo autorizado: `https://c2x.app.br`. `https://ops.c2x.app.br`: NAO TOCADO.
+- Validacoes executadas: typecheck limpo e suite completa 7.761 testes em 495 arquivos, verde DEPOIS do rebase (a soma com o lote da outra sessao).
+- Medicao do dia, que explica o cartao em ZERO no print do Lucas: nao existe nenhuma venda viva com pedido de cancelamento aberto. Os 11 cards de cancelamento/distrato da Temis estao todos em `ESTAGIOS_ENCERRADOS` (9 `faturado`, 2 `indeferido`) e as propostas deles ja viraram `distrato`/`cancelado`; a unica marca `cancelamento_pedido_em` em venda viva e a do TST, orfa (zero cards), que a peneira solta. O zero esta correto.
+- Rollback definido: `2385aafd` / `dpl_BDPJEBsJyTz1iprUfEtKfwwdKQa1`. Nada a desfazer no banco.
+
+Registro de producao:
+
 - Assunto: `[Hercules/Apolo/Portal] O cancelamento virou situacao propria, com cartao, cor e trilha (v1.356.0)`.
 - Squad/agente responsavel: `Zeus`.
 - Data e hora local: `2026-09-21T23:09:17-03:00` (push na main).
