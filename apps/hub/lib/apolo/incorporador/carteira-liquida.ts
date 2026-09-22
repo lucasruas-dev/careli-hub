@@ -40,14 +40,23 @@ export type ParcelaDaCarteira = {
 };
 
 /** O líquido agregado de UMA unidade (bloco+lote), somando só as parcelas PAGAS dela. */
-export type CarteiraPorUnidade = {
+export type CarteiraPorPedido = {
   bruto: number;
   liquido: number;
   parcelasPagas: number;
+  /**
+   * `acquisition_requests.id` — a chave de casamento com `ApoloCarteiraUnit.pedidoId`.
+   *
+   * ⚠️ A CHAVE É O PEDIDO, E NÃO A UNIDADE (21/09/2026). A linha da carteira nasce por pedido, e
+   * a unidade com mais de um pedido (reserva cancelada ao lado da venda que vingou: 21 unidades
+   * medidas no legado) repetia o líquido da unidade INTEIRA em cada linha. O mesmo defeito de
+   * chave que colava o ato e sinal no comprador errado; ver ato-e-sinal.ts.
+   */
+  pedidoId: string;
   semLiquido: number;
-  /** Rótulo bloco+lote ("Q02 L18"). O id é a chave; isto é só para a tela. */
+  /** Rótulo bloco+lote ("Q02 L18"). A chave é `pedidoId`; isto é só para a tela. */
   unidade: string;
-  /** `enterprise_unities.id` — a MESMA chave de `ApoloCarteiraUnit.id`, para a rota casar. */
+  /** `enterprise_unities.id` — o lote desta linha. NÃO é chave: uma unidade pode ter várias. */
   unitId: string;
 };
 
@@ -222,13 +231,13 @@ export type CarteiraLiquida = {
   /** `true` quando a leitura bateu no teto e a lista NÃO é completa. A tela avisa. */
   parcial: boolean;
   parcelas: ParcelaDaCarteira[];
-  porUnidade: CarteiraPorUnidade[];
+  porPedido: CarteiraPorPedido[];
   semLiquido: number;
   total: number;
 };
 
 /**
- * Uma linha crua da consulta. Exportada porque as agregações (`agregarPorUnidade`,
+ * Uma linha crua da consulta. Exportada porque as agregações (`agregarPorPedido`,
  * `montarIndicadores`) são funções PURAS sobre ela — é assim que os testes rodam sem C2X.
  */
 export type LinhaCruaDaCarteira = {
@@ -253,8 +262,10 @@ export type LinhaCruaDaCarteira = {
   plano_personalizado: null | number;
   split_data: unknown;
   status_id: null | number;
+  /** `acquisition_requests.id` — a chave da agregação por pedido. */
+  ar_id: number | string;
   unit_block: null | string;
-  /** `enterprise_unities.id`, para casar com `ApoloCarteiraUnit.id` na rota. */
+  /** `enterprise_unities.id` — o lote da parcela. NÃO é chave de linha: ver `ar_id`. */
   unit_id: number | string;
   unit_lot: null | string;
   unit_price: null | number;
@@ -411,25 +422,28 @@ function rotuloDaUnidade(linha: Pick<LinhaCruaDaCarteira, "unit_block" | "unit_l
 }
 
 /**
- * Agrega o líquido POR UNIDADE, contando SÓ as parcelas pagas (carteira = o que já entrou).
+ * Agrega o líquido POR PEDIDO, contando SÓ as parcelas pagas (carteira = o que já entrou).
  *
  * Função pura de propósito: recebe as linhas cruas e devolve a lista pronta para a rota casar com
- * `ApoloCarteiraUnit.id`. Unidade sem parcela paga simplesmente não aparece — a rota trata a
+ * `ApoloCarteiraUnit.pedidoId`. Pedido sem parcela paga simplesmente não aparece — a rota trata a
  * ausência como "líquido ainda não apurado", nunca como R$ 0,00.
+ *
+ * ⚠️ AGREGAVA POR UNIDADE ATÉ 21/09/2026, e por isso a unidade com dois pedidos mostrava o mesmo
+ * líquido nas duas linhas (o da unidade inteira). Ver o comentário de `pedidoId` no tipo.
  */
-export function agregarPorUnidade(
+export function agregarPorPedido(
   linhas: LinhaCruaDaCarteira[],
   politicaPorCode: Map<string, PoliticaDoEmpreendimento>,
   nomeDoIncorporador?: null | string,
   hoje: string = isoDia(Date.now()),
-): CarteiraPorUnidade[] {
-  const porUnidade = new Map<string, CarteiraPorUnidade>();
+): CarteiraPorPedido[] {
+  const porPedido = new Map<string, CarteiraPorPedido>();
 
   for (const linha of linhas) {
     if (situacaoDaLinha(linha, hoje) !== "paga") continue;
 
-    const unitId = String(linha.unit_id ?? "").trim();
-    if (!unitId) continue;
+    const pedidoId = String(linha.ar_id ?? "").trim();
+    if (!pedidoId) continue;
 
     const valor = Number(linha.valor ?? 0);
     const resultado = liquidoDaParcela(
@@ -437,13 +451,14 @@ export function agregarPorUnidade(
       politicaDe(politicaPorCode, linha.enterprise_code),
     );
 
-    const alvo = porUnidade.get(unitId) ?? {
+    const alvo = porPedido.get(pedidoId) ?? {
       bruto: 0,
       liquido: 0,
       parcelasPagas: 0,
+      pedidoId,
       semLiquido: 0,
       unidade: rotuloDaUnidade(linha),
-      unitId,
+      unitId: String(linha.unit_id ?? "").trim(),
     };
 
     alvo.bruto += valor;
@@ -451,10 +466,10 @@ export function agregarPorUnidade(
     if (resultado.liquido === null) alvo.semLiquido += 1;
     else alvo.liquido += resultado.liquido;
 
-    porUnidade.set(unitId, alvo);
+    porPedido.set(pedidoId, alvo);
   }
 
-  return [...porUnidade.values()].sort((a, b) =>
+  return [...porPedido.values()].sort((a, b) =>
     a.unidade.localeCompare(b.unidade, "pt-BR", { numeric: true }),
   );
 }
@@ -777,6 +792,7 @@ async function lerLinhasDaCarteira(
     const [lote] = await pool.pool.query(
       `select
          p.id                                  as payment_id,
+         ar.id                                 as ar_id,
          e.code                                as enterprise_code,
          eu.id                                 as unit_id,
          eu.block                              as unit_block,
@@ -878,7 +894,7 @@ export async function carteiraLiquidaDoIncorporador(input: {
         parcial: false,
         parcelas: [],
         porSplit: 0,
-        porUnidade: [],
+        porPedido: [],
         semLiquido: 0,
         total: 0,
       },
@@ -963,7 +979,7 @@ export async function carteiraLiquidaDoIncorporador(input: {
           };
         }),
         porSplit,
-        porUnidade: agregarPorUnidade(
+        porPedido: agregarPorPedido(
           pagas,
           input.politicaPorCode,
           input.nomeDoIncorporador,

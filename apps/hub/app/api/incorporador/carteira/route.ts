@@ -10,7 +10,7 @@ import {
 } from "@/lib/apolo/incorporador/ato-e-sinal";
 import {
   carteiraLiquidaDoIncorporador,
-  type CarteiraPorUnidade,
+  type CarteiraPorPedido,
   type ColunaDoExtrato,
   type FiltroDoExtrato,
   type SituacaoDaParcela,
@@ -118,7 +118,7 @@ type UnidadeDoPortal = {
   id: string;
   imobiliaria: null | string;
   /** O líquido apurado da unidade, ou `null` quando ainda não há parcela paga apurada. */
-  liquido: null | Omit<CarteiraPorUnidade, "unidade" | "unitId">;
+  liquido: null | Omit<CarteiraPorPedido, "pedidoId" | "unidade" | "unitId">;
   lot: null | string;
   maxOverdueDays: number;
   overdueAmount: number;
@@ -211,10 +211,10 @@ async function parcelasDeAtoESinal(
 function unidadeParaOPortal(
   unit: ApoloCarteiraUnit,
   nomePorCode: Map<string, string>,
-  liquidoPorUnitId: Map<string, CarteiraPorUnidade>,
+  liquidoPorPedido: Map<string, CarteiraPorPedido>,
   atoESinalPorPedido: Map<string, ParcelaDeAtoESinal[]> | null,
 ): UnidadeDoPortal {
-  const liquido = liquidoPorUnitId.get(unit.id) ?? null;
+  const liquido = liquidoPorPedido.get(unit.pedidoId) ?? null;
 
   return {
     // O campo só NASCE na sessão comercial (`atoESinalPorPedido` é `null` fora dela): o payload
@@ -461,9 +461,11 @@ export async function GET(request: Request) {
     );
   }
 
-  // O líquido POR UNIDADE casa com as unidades do bruto pela MESMA chave: enterprise_unities.id.
-  const liquidoPorUnitId = new Map<string, CarteiraPorUnidade>(
-    liquida.ok ? liquida.data.porUnidade.map((u) => [u.unitId, u]) : [],
+  // ⚠️ O LÍQUIDO CASA PELO PEDIDO, NÃO PELA UNIDADE. A linha do bruto nasce por pedido; casar por
+  // `enterprise_unities.id` repetia o líquido da unidade inteira em cada linha dela (21 unidades
+  // medidas no legado em 21/09/2026). Ver ato-e-sinal.ts, o mesmo defeito de chave.
+  const liquidoPorPedido = new Map<string, CarteiraPorPedido>(
+    liquida.ok ? liquida.data.porPedido.map((p) => [p.pedidoId, p]) : [],
   );
 
   return NextResponse.json(
@@ -508,7 +510,7 @@ export async function GET(request: Request) {
           unidadeParaOPortal(
             unit,
             nomePorCode,
-            liquidoPorUnitId,
+            liquidoPorPedido,
             atoESinal ? atoESinal.porPedido : null,
           ),
         ),

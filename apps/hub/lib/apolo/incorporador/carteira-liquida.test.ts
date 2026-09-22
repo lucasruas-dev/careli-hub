@@ -4,7 +4,7 @@ import type { PoliticaDoEmpreendimento } from "@/lib/apolo/liquido-incorporador"
 
 import {
   EXTRATO_TETO,
-  agregarPorUnidade,
+  agregarPorPedido,
   lerSplit,
   type LinhaCruaDaCarteira,
   montarIndicadores,
@@ -32,6 +32,7 @@ const POLITICAS = new Map<string, PoliticaDoEmpreendimento>([["VAL", POLITICA]])
 /** Linha crua de fábrica: parcela mensal PAGA de R$ 1.000 na unidade Q01 L01. */
 function linha(sobrescreve: Partial<LinhaCruaDaCarteira> = {}): LinhaCruaDaCarteira {
   return {
+    ar_id: 900,
     cliente: "Maria da Silva",
     competence: "07/2026",
     due_date: "2026-07-10",
@@ -86,6 +87,7 @@ function cenario(): LinhaCruaDaCarteira[] {
       cliente: "João Pereira",
       due_date: "2026-09-10",
       payment_date: null,
+      ar_id: 910,
       payment_id: 3,
       status_id: 6,
       unit_block: "Q02",
@@ -97,6 +99,7 @@ function cenario(): LinhaCruaDaCarteira[] {
     // Ato pago em junho com split ÍNTEGRO SEM o incorporador: o rateio real diz que ele não
     // recebe nada nesta parcela — líquido 0 é FATO, não lacuna.
     linha({
+      ar_id: 910,
       cliente: "João Pereira",
       due_date: "2026-06-05",
       parcel_type: "Ato",
@@ -154,9 +157,9 @@ describe("situacaoDaLinha", () => {
   });
 });
 
-describe("agregarPorUnidade", () => {
-  it("soma o líquido POR unidade, contando só as pagas, ordenado pelo rótulo", () => {
-    const unidades = agregarPorUnidade(cenario(), POLITICAS, "Loteadora VAL", HOJE);
+describe("agregarPorPedido", () => {
+  it("soma o líquido POR pedido, contando só as pagas, ordenado pelo rótulo", () => {
+    const unidades = agregarPorPedido(cenario(), POLITICAS, "Loteadora VAL", HOJE);
 
     // As duas em aberto (payment_id 2 e 3) ficam de fora: carteira é o que já entrou.
     expect(unidades).toEqual([
@@ -164,6 +167,7 @@ describe("agregarPorUnidade", () => {
         bruto: 1000,
         liquido: 970,
         parcelasPagas: 1,
+        pedidoId: "900",
         semLiquido: 0,
         unidade: "Q01 L01",
         unitId: "10",
@@ -173,6 +177,7 @@ describe("agregarPorUnidade", () => {
         bruto: 2000,
         liquido: 0,
         parcelasPagas: 1,
+        pedidoId: "910",
         semLiquido: 0,
         unidade: "Q02 L05",
         unitId: "20",
@@ -180,15 +185,35 @@ describe("agregarPorUnidade", () => {
     ]);
   });
 
+  it("nao mistura os dois pedidos da MESMA unidade", () => {
+    // ⚠️ O CASO REAL (VOC 12/21, 21/09/2026): a reserva cancelada de R$ 110 e a venda faturada de
+    // R$ 14.840 dividem o lote no legado. Agregando por unidade, as DUAS linhas da tela mostravam
+    // o líquido dos dois juntos; o incorporador somava o mesmo dinheiro duas vezes.
+    const daUnidade = [
+      linha({ ar_id: 4770, payment_id: 30, valor: 110, valor_previsto: 110 }),
+      linha({ ar_id: 4807, payment_id: 31, valor: 14840, valor_previsto: 14840 }),
+    ];
+
+    const pedidos = agregarPorPedido(daUnidade, POLITICAS, "Loteadora VAL", HOJE);
+
+    expect(pedidos.map((p) => [p.pedidoId, p.bruto, p.parcelasPagas])).toEqual([
+      ["4770", 110, 1],
+      ["4807", 14840, 1],
+    ]);
+    // O lote é o mesmo nas duas: `unitId` continua servindo de rótulo, e não de chave.
+    expect(new Set(pedidos.map((p) => p.unitId))).toEqual(new Set(["10"]));
+  });
+
   it("parcela sem como calcular entra em semLiquido, nunca como R$ 0", () => {
     const semPolitica = new Map<string, PoliticaDoEmpreendimento>();
-    const unidades = agregarPorUnidade([linha()], semPolitica, null, HOJE);
+    const unidades = agregarPorPedido([linha()], semPolitica, null, HOJE);
 
     expect(unidades).toEqual([
       {
         bruto: 1000,
         liquido: 0,
         parcelasPagas: 1,
+        pedidoId: "900",
         semLiquido: 1,
         unidade: "Q01 L01",
         unitId: "10",
