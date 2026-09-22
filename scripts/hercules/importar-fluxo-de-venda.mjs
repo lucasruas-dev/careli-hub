@@ -184,7 +184,8 @@ console.log("Lendo o que o Panteon já tem…");
 const unidades = await lerTudo(
   "hercules_unidades",
   // `espelho_de` diz se a unidade e do PAI: e por ele que as propostas do pai ficam de fora.
-  "id,origem_c2x_id,codigo,enterprise_id,espelho_de",
+  // `bloqueado_em` e o carimbo do Hercules: unidade com ele e trabalho do time, e nao se toca.
+  "id,origem_c2x_id,codigo,enterprise_id,espelho_de,bloqueado_em",
 );
 const empreendimentos = await lerTudo("hercules_empreendimentos", "id,codigo,c2x_enterprise_id,pai_id");
 
@@ -461,10 +462,22 @@ for (let de = 0; ; de += 1000) {
   if (pagina.length < 1000) break;
 }
 
+// ⚠️ E NAO ESCREVE ONDE O HERCULES JA REGISTROU (Lucas, 22/09/2026: "tudo que foi registrado
+// pelos coordenadores no hercules nao pode ser subscrito"). O bloqueio de unidade e uma decisao
+// tomada NA TELA, com autor e data (`bloqueado_em` / `bloqueado_por_nome`), e o legado nao sabe
+// dela: gravar uma proposta viva por cima faria a regua mostrar venda onde o time mandou parar.
+// Medido em 22/09: 93 unidades do LBP bloqueadas por Lucas Ruas em 17/09 e 1 do VOC. Nenhuma
+// delas tem pedido vivo no legado hoje, entao esta peneira nao muda nada agora -- ela existe para
+// o dia em que mudar.
+const unidadesBloqueadasNoHercules = new Set(
+  unidades.filter((u) => u.bloqueado_em).map((u) => String(u.id)),
+);
+
 const paraGravar = propostas.filter(
   (p) =>
     !encerradasNoPanteon.has(Number(p.origem_c2x_id)) &&
-    !trabalhadasNoPanteon.has(Number(p.origem_c2x_id)),
+    !trabalhadasNoPanteon.has(Number(p.origem_c2x_id)) &&
+    !(p.unidade_id && unidadesBloqueadasNoHercules.has(String(p.unidade_id))),
 );
 if (paraGravar.length !== propostas.length) {
   console.log(
