@@ -89,7 +89,7 @@ export async function outrosDonosDoLote(
       .in("situacao", ["ativa", "proposta"]),
     client
       .from("hercules_propostas")
-      .select("id,etapa,reserva_id")
+      .select("id,etapa,reserva_id,unidade_id,origem_c2x_id")
       .eq("workspace_id", "careli")
       .in("unidade_id", terreno.linhas)
       .in("etapa", [...ETAPAS_DO_FLUXO]),
@@ -113,7 +113,25 @@ export async function outrosDonosDoLote(
     });
   }
 
-  for (const p of (propostas.data ?? []) as Array<{ etapa: string; id: string; reserva_id: null | string }>) {
+  // ⚠️ O QUE O C2X PENDUROU NO PAI NÃO É DONO (Lucas, 22/09/2026: *"pode esquecer o pai no
+  // c2x"*). No legado quem grava proposta são os FILHOS, e o que ficou no pai é resto que a carga
+  // trouxe: 153 propostas vivas em unidade de pai, TODAS importadas, nenhuma nascida aqui. Elas
+  // recusavam bloqueio e reserva de lote que no legado nem tem dono. Proposta NASCIDA no Panteon
+  // no pai continua contando: aqui o pai é fonte, e por isso a condição pede as duas metades.
+  const linhasDoPai = new Set(terreno.linhasDoPai ?? []);
+  const doPaiImportada = (p: { origem_c2x_id: null | number; unidade_id: null | string }): boolean =>
+    Boolean(p.unidade_id && linhasDoPai.has(p.unidade_id)) &&
+    p.origem_c2x_id !== null &&
+    p.origem_c2x_id !== undefined;
+
+  for (const p of (propostas.data ?? []) as Array<{
+    etapa: string;
+    id: string;
+    origem_c2x_id: null | number;
+    reserva_id: null | string;
+    unidade_id: null | string;
+  }>) {
+    if (doPaiImportada(p)) continue;
     // A proposta que nasceu da MINHA reserva é a mesma venda, não outro dono.
     if (minha && p.reserva_id === minha) continue;
     donos.push({ descricao: ROTULO_DA_ETAPA[p.etapa] ?? "proposta", id: p.id, tipo: "proposta" });

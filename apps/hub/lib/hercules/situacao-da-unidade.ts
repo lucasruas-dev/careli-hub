@@ -90,28 +90,18 @@ export function situacaoDoTerreno(sinais: SinaisDoTerreno): SituacaoDaUnidade {
   // contradição do cadastro, e aí quem manda é o processo, que tem dono e data.
   const bloqueadaNoCadastro = String(sinais.cadastro ?? "").trim().toLowerCase() === "bloqueada";
 
-  /** Algum FILHO do terreno tem proposta viva? É o que decide se o pai fala ou cala. */
-  const temPropostaNoFilho = sinais.propostasVivas.some(
-    (p) => p.noPai !== true && DO_FLUXO.has(p.etapa),
-  );
-
   let maisRecente: null | { desde: string; emCancelamento: boolean; etapa: EtapaDoFluxo } = null;
   for (const p of sinais.propostasVivas) {
     if (!DO_FLUXO.has(p.etapa)) continue;
-    // ⚠️ O PAI É REFLEXO, E CALA QUANDO O FILHO FALA (Lucas, 22/09/2026: *"VLO é reflexo"*).
-    // No produto dividido a venda mora no FILHO e o pai é a soma. Medido depois da carga de
-    // 22/09: 105 propostas vivas no VLO e 48 no LAB, TODAS em unidade espelho. Como a régua pega
-    // a proposta mais RECENTE do terreno, uma reserva de 18/09 pendurada no pai ganhava de uma
-    // venda faturada do filho de 09/09 -- o VOC mostrava 19 reservados, onde o legado conta
-    // ZERO, e o Faturado caia de 86 para 68. Isto já tinha sido limpo à mão em 21/09 e a carga
-    // trouxe de volta; por isso a regra vive aqui, e não numa faxina que a próxima carga desfaz.
+    // ⚠️ PROPOSTA PENDURADA NO PAI NÃO DECIDE NADA (Lucas, 22/09/2026: *"VLO é reflexo"*, e
+    // depois, sobre os três lotes que só tinham registro no pai: *"esquece esses 3 casos"*).
     //
-    // ⚠️ MAS SÓ QUANDO O FILHO TEM PROPOSTA. Sem nada no filho, a do pai continua mandando, e
-    // isso NÃO é detalhe: medido no legado em 22/09, os lotes 11/02 (Antônio Xavier) e 14/01
-    // (Stefany) têm RESERVA VIVA pendurada no VLO, de 10/09, com o lote livre no filho. Calar o
-    // pai nesses dois os mostraria disponíveis com negócio andando no legado, que é o convite à
-    // segunda venda -- a mesma exceção que ficou de pé na limpeza de 21/09 (o caso HERVE).
-    if (p.noPai === true && temPropostaNoFilho) continue;
+    // No produto dividido a venda mora no FILHO; o pai é a soma, e no C2X quem grava proposta são
+    // os filhos. Medido depois da carga de 22/09: 105 propostas vivas no VLO e 48 no LAB, TODAS
+    // em unidade espelho. Como a régua pega a proposta mais RECENTE do terreno, uma reserva de
+    // 18/09 pendurada no pai ganhava de uma venda faturada do filho de 09/09 -- o VOC mostrava 19
+    // reservados, onde o legado conta ZERO, e o Faturado caia de 86 para 68.
+    if (p.noPai === true) continue;
     if (bloqueadaNoCadastro && p.daLinha === false) continue;
     if (!maisRecente || p.desde > maisRecente.desde) {
       maisRecente = {
@@ -255,7 +245,17 @@ export type SituacaoDasUnidades = {
    * venda (`trava-do-lote.ts`) usa para procurar outro dono em qualquer uma delas.
    * `undefined` quando a linha não foi lida.
    */
-  terreno: (linhaId: string) => undefined | { codigos: string[]; linhas: string[]; origens: string[] };
+  /**
+   * As linhas do terreno.
+   *
+   * `linhas` e o conjunto INTEIRO, e continua assim porque dele sai a CHAVE do terreno
+   * (`criar-reserva.ts` ordena e pega a primeira): mudar o conjunto mudaria a identidade das
+   * reservas ja gravadas. `linhasDoPai` separa as espelho, para quem precisa descartar o que o
+   * legado pendurou no pai.
+   */
+  terreno: (
+    linhaId: string,
+  ) => undefined | { codigos: string[]; linhas: string[]; linhasDoPai: string[]; origens: string[] };
   /** As linhas vivas dos empreendimentos PEDIDOS (as irmãs lidas para compor o terreno ficam de fora). */
   unidades: UnidadeComSituacao[];
 };
@@ -495,11 +495,15 @@ export async function lerSituacaoDasUnidades(
       etapa: string;
       etapa_desde: null | string;
       id: string;
+      /** Nulo = a proposta nasceu AQUI. Preenchido = veio do C2X, e no pai isso e reflexo. */
+      origem_c2x_id: null | number;
       unidade_id: null | string;
     }>((de, ate) =>
       client
         .from("hercules_propostas")
-        .select("id,unidade_id,etapa,etapa_desde,criado_em_c2x,cancelamento_pedido_em")
+        .select(
+          "id,unidade_id,etapa,etapa_desde,criado_em_c2x,cancelamento_pedido_em,origem_c2x_id",
+        )
         .eq("workspace_id", "careli")
         .in("etapa", [...ETAPAS_DO_FLUXO])
         .order("id")
@@ -554,8 +558,15 @@ export async function lerSituacaoDasUnidades(
       desde: String(p.etapa_desde ?? p.criado_em_c2x ?? ""),
       emCancelamento: Boolean(p.cancelamento_pedido_em) && DEPOIS_DO_CONTRATO.has(p.etapa),
       etapa: p.etapa,
-      // A unidade do PAI é espelho (`espelho_de` preenchido): o que está pendurado nela é reflexo.
-      noPai: Boolean(p.unidade_id ? porId.get(p.unidade_id)?.espelho_de : false),
+      // ⚠️ UNIDADE DO PAI **E** VINDA DO C2X. A unidade do pai é espelho (`espelho_de`
+      // preenchido), e o que o legado pendurou nela e a carga trouxe é reflexo: lá quem grava
+      // proposta são os filhos. AQUI o pai é fonte, então proposta NASCIDA no Panteon no pai vale
+      // normalmente -- por isso a condição tem as duas metades. Medido em 22/09/2026: as 153 vivas
+      // em unidade de pai (105 VLO, 48 LAB) vieram TODAS do C2X, e nenhuma nasceu aqui.
+      noPai:
+        Boolean(p.unidade_id ? porId.get(p.unidade_id)?.espelho_de : false) &&
+        p.origem_c2x_id !== null &&
+        p.origem_c2x_id !== undefined,
       unidadeId: String(p.unidade_id ?? ""),
     });
     propostasPorGrupo.set(grupo, lista);
@@ -613,6 +624,7 @@ export async function lerSituacaoDasUnidades(
       return {
         codigos: [...new Set(linhas.map((l) => l.codigo.trim().toUpperCase()))],
         linhas: linhas.map((l) => l.id),
+        linhasDoPai: linhas.filter((l) => l.espelho_de).map((l) => l.id),
         origens: [
           ...new Set(
             linhas

@@ -25,7 +25,7 @@ const COLUNAS: Record<string, readonly string[]> = {
   ],
   hercules_propostas: [
     "atualizado_em", "cancelamento_pedido_em", "cancelamento_pedido_motivo", "cancelamento_pedido_por",
-    "cancelamento_pedido_tipo", "codigo", "data_faturamento", "etapa", "etapa_desde", "etapa_por", "id", "protocolo_numero",
+    "cancelamento_pedido_tipo", "codigo", "data_faturamento", "etapa", "etapa_desde", "etapa_por", "id", "origem_c2x_id", "protocolo_numero",
     "workspace_id",
   ],
   temis_envelopes: ["criado_em", "envelope_id", "estado", "falha", "id", "proposta_id", "provedor"],

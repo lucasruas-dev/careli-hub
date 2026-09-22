@@ -309,18 +309,18 @@ describe("a proposta pendurada no pai", () => {
     ).toBe("faturado");
   });
 
-  it("⚠️ MAS segura o lote livre quando o filho não tem NADA — senão é segunda venda", () => {
-    // Medido no legado em 22/09/2026: os lotes 11/02 (Antônio Xavier) e 14/01 (Stefany) têm
-    // reserva viva pendurada no VLO, de 10/09, e o lote está livre no filho. Mostrar disponível
-    // com negócio andando no legado é o convite à segunda venda — é a exceção que ficou de pé na
-    // limpeza de 21/09 (o caso HERVE).
+  it("nem segura o lote livre do filho, mesmo sendo a única do terreno", () => {
+    // ⚠️ SEM EXCEÇÃO (Lucas, 22/09/2026: *"esquece esses 3 casos"*). Chegou a existir uma: quando
+    // o filho não tinha nenhuma proposta, a do pai mandava, para não mostrar livre um lote com
+    // reserva viva no legado (VLO 07/10, 11/02 e 14/01). O Lucas dispensou: no Panteon quem
+    // responde pelo lote é o filho, e o pai não tem vida própria em nenhum caso.
     expect(
       situacaoDoTerreno({
         cadastro: "disponivel",
         propostasVivas: [{ daLinha: false, desde: "2026-09-18", etapa: "reservado", noPai: true }],
         reservada: false,
       }),
-    ).toBe("reservado");
+    ).toBe("disponivel");
   });
 
   it("a proposta do FILHO irmão continua valendo, que é o que impede vender duplicado", () => {

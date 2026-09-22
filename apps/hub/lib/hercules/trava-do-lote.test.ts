@@ -58,7 +58,7 @@ const COLUNAS: Record<string, readonly string[]> = {
     "criado_em_c2x",
     // A régua lê o FATO do faturamento junto da etapa, desde 21/09/2026 (`etapa-pelo-fato.ts`).
     "data_faturamento", "etapa",
-    "etapa_desde", "id", "origem", "protocolo_numero", "reserva_id", "unidade_id", "workspace_id",
+    "etapa_desde", "id", "origem", "origem_c2x_id", "protocolo_numero", "reserva_id", "unidade_id", "workspace_id",
   ],
   hercules_reservas: [
     "atualizado_em", "cancelada_em", "cancelada_motivo", "cancelada_por", "cancelada_por_nome",
@@ -436,6 +436,9 @@ const propostaImportada = (id: string, unidadeId: string, etapa: string, extra: 
   etapa_desde: "2026-09-10T12:00:00.000Z",
   id,
   origem: "c2x",
+  // ⚠️ A MARCA DE QUE VEIO DO LEGADO. Sem ela o duble nao representa a proposta importada, e o
+   // caso do pai (que depende dela) passaria batido.
+  origem_c2x_id: 90000 + Number(String(id).replace(/\D/g, "") || 0),
   reserva_id: null,
   unidade_id: unidadeId,
   workspace_id: "careli",
@@ -626,11 +629,35 @@ describe("outrosDonosDoLote: quem é dono", () => {
     ]);
   });
 
-  it.each([...ETAPAS_DO_FLUXO])("proposta viva em '%s' em qualquer linha do terreno é dona", async (etapa) => {
+  it.each([...ETAPAS_DO_FLUXO])("proposta viva em '%s' na linha de um FILHO é dona", async (etapa) => {
     const banco = novoBanco();
-    banco.semear("hercules_propostas", propostaImportada("p-1", "vlo-1206", etapa));
+    banco.semear("hercules_propostas", propostaImportada("p-1", "voc-1206", etapa));
     const donos = await donosDe(banco, "vor-1206", VOR);
     expect(donos?.map((d) => [d.id, d.tipo])).toEqual([["p-1", "proposta"]]);
+  });
+
+  // ⚠️ O QUE O C2X PENDUROU NO PAI NÃO É DONO (Lucas, 22/09/2026: *"pode esquecer o pai no c2x"*).
+  // No legado quem grava proposta são os FILHOS; o que sobrou no pai é resto que a carga trouxe —
+  // 153 propostas vivas em unidade de pai, todas importadas, nenhuma nascida aqui. Elas recusavam
+  // bloqueio e reserva de lote que no legado nem tem dono.
+  it.each([...ETAPAS_DO_FLUXO])(
+    "proposta importada em '%s' pendurada na linha do PAI não é dona",
+    async (etapa) => {
+      const banco = novoBanco();
+      banco.semear("hercules_propostas", propostaImportada("p-pai", "vlo-1206", etapa));
+      expect(await donosDe(banco, "vor-1206", VOR)).toEqual([]);
+    },
+  );
+
+  // ⚠️ A OUTRA METADE DA REGRA: aqui o pai É fonte. Proposta NASCIDA no Panteon na linha do pai
+  // (sem `origem_c2x_id`) continua sendo dona, e o lote segue preso.
+  it("proposta NASCIDA aqui na linha do pai continua sendo dona", async () => {
+    const banco = novoBanco();
+    banco.semear(
+      "hercules_propostas",
+      propostaImportada("p-nativa", "vlo-1206", "contrato", { criado_em_c2x: null, origem_c2x_id: null }),
+    );
+    expect(ids(await donosDe(banco, "vor-1206", VOR))).toEqual(["p-nativa"]);
   });
 
   it("proposta cancelada ou em distrato não prende", async () => {
@@ -666,7 +693,7 @@ describe("outrosDonosDoLote: quem é dono", () => {
 
     it("mas a proposta de OUTRA reserva, ou importada, é dona", async () => {
       const banco = montar();
-      banco.semear("hercules_propostas", propostaImportada("p-importada", "vlo-0305", "contrato"));
+      banco.semear("hercules_propostas", propostaImportada("p-importada", "voc-0305", "contrato"));
       banco.semear(
         "hercules_propostas",
         propostaImportada("p-outra", "voc-0305", "proposta", { origem: "panteon", reserva_id: "r-outra" }),

@@ -197,6 +197,13 @@ describe("bloquear: só lote livre, pela régua única", () => {
 
   it("⚠️ a pergunta é pelo TERRENO: proposta viva na linha antiga do pai trava a viva", async () => {
     // O caso medido em 14/09/2026: VOC0305 sem proposta, o gêmeo VLO0305 com proposta viva.
+    //
+    // ⚠️ AQUI O PAI CONTINUA SEGURANDO, E NA TELA NÃO (22/09/2026). A régua de LEITURA passou a
+    // ignorar a proposta pendurada no pai — era ela que fazia o VOC mostrar 19 reservados onde o
+    // legado conta zero. Esta é a porta de ESCRITA, e nela o lado seguro é o contrário: recusar
+    // bloqueio, reserva ou venda enquanto existir qualquer processo vivo no terreno, inclusive no
+    // pai. A incoerência é conhecida e minúscula (3 lotes em 22/09) e some quando a operação mover
+    // esses pedidos para o filho no C2X; solta-la aqui abriria a porta da segunda venda.
     estado.tabelas.hercules_propostas = [proposta("u-vlo", "proposta")];
     const { corpo, status } = await bloquear();
     expect(status).toBe(409);

@@ -71,7 +71,7 @@ const COLUNAS: Record<string, readonly string[]> = {
     "aberta", "atualizado_em", "cancelada_em", "cancelada_motivo", "cancelada_por", "cancelada_por_nome",
     "cancelamento_pedido_em", "cancelamento_pedido_motivo", "cancelamento_pedido_por",
     "cancelamento_pedido_tipo", "cliente_documento", "codigo", "criado_em", "criado_em_c2x", "data_assinatura", "data_ato",
-    "data_faturamento", "etapa", "etapa_desde", "etapa_por", "id", "origem", "protocolo_numero",
+    "data_faturamento", "etapa", "etapa_desde", "etapa_por", "id", "origem", "origem_c2x_id", "protocolo_numero",
     "reserva_id", "unidade_id", "workspace_id",
   ],
   hercules_reservas: [
