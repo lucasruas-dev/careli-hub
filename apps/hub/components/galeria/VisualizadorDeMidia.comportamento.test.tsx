@@ -219,15 +219,54 @@ describe("VisualizadorDeMidia", () => {
       value: pedir,
     });
 
+    // ⚠️ A PRIMEIRA CHAMADA É DA ABERTURA (22/09/2026). O visualizador pede tela cheia sozinho ao
+    // montar — Lucas: *"quando clicar abrir em full, estou tendo que clicar"* —, então o clique no
+    // botão é a SEGUNDA. Ver o efeito `jaPediuTelaCheia`.
     montar(<Harness inicial={0} />);
+    expect(pedir).toHaveBeenCalledTimes(1);
+
     act(() => {
       document.querySelector<HTMLButtonElement>('[aria-label="Ver em tela cheia"]')?.click();
     });
-    expect(pedir).toHaveBeenCalledTimes(1);
+    expect(pedir).toHaveBeenCalledTimes(2);
     expect(dialogo()?.classList.contains("vdm--imersiva")).toBe(false);
 
     if (original) Object.defineProperty(HTMLElement.prototype, "requestFullscreen", original);
     else delete (HTMLElement.prototype as unknown as { requestFullscreen?: unknown }).requestFullscreen;
+    delete (document as unknown as { fullscreenEnabled?: unknown }).fullscreenEnabled;
+  });
+
+  // ── ABRIR JÁ EM TELA CHEIA (Lucas, 22/09/2026) ──────────────────────────────────────────────
+  //
+  // *"quando clicar abrir em full, estou tendo que clicar"* e *"o video tem que abrir em
+  // fulltela"*. Quem está com o cliente na frente não quer dois cliques para ver a foto grande.
+  it("abre JÁ em tela cheia, sem ninguém clicar", () => {
+    const pedir = vi.fn(() => Promise.resolve());
+    Object.defineProperty(document, "fullscreenEnabled", { configurable: true, value: true });
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "requestFullscreen");
+    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
+      configurable: true,
+      value: pedir,
+    });
+
+    montar(<Harness inicial={0} />);
+    expect(pedir).toHaveBeenCalledTimes(1);
+
+    if (original) Object.defineProperty(HTMLElement.prototype, "requestFullscreen", original);
+    else delete (HTMLElement.prototype as unknown as { requestFullscreen?: unknown }).requestFullscreen;
+    delete (document as unknown as { fullscreenEnabled?: unknown }).fullscreenEnabled;
+  });
+
+  // ⚠️ E NÃO CAI NO MODO IMERSIVO QUANDO NÃO DÁ. O imersivo é o consolo de quem PEDIU tela cheia
+  // num navegador que não a dá; na abertura automática ele tiraria os botões de cena e exigiria
+  // DOIS Esc para fechar, sem ninguém ter pedido nada.
+  it("sem tela cheia disponível, a abertura NÃO deixa o visualizador imersivo", () => {
+    Object.defineProperty(document, "fullscreenEnabled", { configurable: true, value: false });
+
+    montar(<Harness inicial={0} />);
+    expect(dialogo()?.classList.contains("vdm--imersiva")).toBe(false);
+    expect(document.querySelector('[aria-label="Fechar"]')).not.toBeNull();
+
     delete (document as unknown as { fullscreenEnabled?: unknown }).fullscreenEnabled;
   });
 

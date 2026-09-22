@@ -237,7 +237,16 @@ function Modal({
     return () => document.removeEventListener("keydown", aoTeclar, true);
   }, []);
 
-  const alternarTelaCheia = useCallback(() => {
+  /**
+   * Entra ou sai da tela cheia.
+   *
+   * ⚠️ `automatica` é a abertura do modal, e ela NÃO CAI PARA O MODO IMERSIVO. O imersivo é o
+   * consolo para quem PEDIU tela cheia num navegador que não a dá (iPhone): esconde a barra e as
+   * setas, e o Esc passa a desfazer isso em vez de fechar. Na abertura automática isso seria uma
+   * surpresa: o visualizador abriria sem botões e exigiria DOIS Esc para sair, num lugar onde
+   * ninguém pediu nada. Sem tela cheia de verdade, fica o popup normal.
+   */
+  const alternarTelaCheia = useCallback((automatica = false) => {
     if (telaCheiaAtiva()) {
       sairDaTelaCheia();
       return;
@@ -259,7 +268,7 @@ function Modal({
         },
         () => {
           respondeu = true;
-          setImersiva(true);
+          if (!automatica) setImersiva(true);
         },
       );
       // ⚠️ A PROMESSA PODE FICAR PENDURADA PARA SEMPRE. Medido em 16/09/2026 num navegador
@@ -269,7 +278,7 @@ function Modal({
       if (relogioDaTelaCheia.current !== null) window.clearTimeout(relogioDaTelaCheia.current);
       relogioDaTelaCheia.current = window.setTimeout(() => {
         relogioDaTelaCheia.current = null;
-        if (!respondeu && !telaCheiaAtiva()) setImersiva(true);
+        if (!respondeu && !telaCheiaAtiva() && !automatica) setImersiva(true);
       }, 900);
       return;
     }
@@ -279,11 +288,35 @@ function Modal({
     }
     const player = video.current as null | VideoComWebkit;
     if (item?.tipo === "video" && player && typeof player.webkitEnterFullscreen === "function") {
-      player.webkitEnterFullscreen();
+      // ⚠️ SÓ A PEDIDO: o player nativo do iPhone cobre a tela e tira o popup de cena. Abrir
+      // assim sozinho tiraria a galeria (setas, contador) de quem só quis ver a primeira foto.
+      if (!automatica) player.webkitEnterFullscreen();
       return;
     }
-    setImersiva(true);
+    if (!automatica) setImersiva(true);
   }, [imersiva, item?.tipo]);
+
+  // ── ABRIR JÁ EM TELA CHEIA ───────────────────────────────────────────────────────────────────
+  //
+  // Lucas (22/09/2026), com o print do vídeo do Cecílio Rocha aberto num quadradinho: *"quando
+  // clicar abrir em full, estou tendo que clicar"* e *"o video tem que abrir em fulltela"*. Quem
+  // está com o cliente na frente não quer dois cliques para ver a foto grande.
+  //
+  // ⚠️ SÓ UMA VEZ POR ABERTURA, e é isso que impede o laço: quem sai da tela cheia (Esc, gesto do
+  // navegador, botão) fica fora, e trocar de foto não arrasta de volta. `jaPediu` mora num ref
+  // porque o efeito não pode depender dele sem rodar de novo.
+  //
+  // ⚠️ E DEPENDE DA ATIVAÇÃO DO CLIQUE QUE ABRIU O MODAL. `requestFullscreen` só é atendido dentro
+  // de um gesto; o navegador mantém a ativação por alguns segundos depois dele, e a montagem do
+  // modal cabe nessa janela. Quando não cabe (abertura por teclado, por exemplo), o pedido é
+  // recusado e o próprio `alternarTelaCheia` cai no modo imersivo — que é o mesmo resultado visual.
+  const jaPediuTelaCheia = useRef(false);
+  useEffect(() => {
+    if (jaPediuTelaCheia.current) return;
+    jaPediuTelaCheia.current = true;
+    if (telaCheiaAtiva()) return;
+    alternarTelaCheia(true);
+  }, [alternarTelaCheia]);
 
   const aoTocar = (evento: PointerEventDoReact<HTMLDivElement>) => {
     if (evento.pointerType === "mouse") return;
@@ -327,7 +360,7 @@ function Modal({
         <button
           aria-label={expandida ? "Sair da tela cheia" : "Ver em tela cheia"}
           className="vdm-botao"
-          onClick={alternarTelaCheia}
+          onClick={() => alternarTelaCheia()}
           title={expandida ? "Sair da tela cheia" : "Tela cheia"}
           type="button"
         >
@@ -503,8 +536,13 @@ const ESTILO = `
   pointer-events: none;
 }
 .vdm-palco > * { pointer-events: auto; }
+/* ⚠️ width/height 100%, E NAO SO max-* (22/09/2026). Com o teto sozinho, a midia MENOR que
+   o palco aparecia no tamanho natural: o video do Cecilio Rocha (1024x512) abria num
+   quadradinho no meio da tela preta, e o Lucas mandou print. object-fit: contain garante
+   que ampliar nao deforma nem corta. (Sem crase neste comentario: o CSS mora numa template
+   string, e a crase a fecharia.) */
 .vdm-midia {
-  display: block; max-width: 100%; max-height: 100%;
+  display: block; width: 100%; height: 100%; max-width: 100%; max-height: 100%;
   object-fit: contain; border-radius: 6px; background: transparent;
   user-select: none;
 }
