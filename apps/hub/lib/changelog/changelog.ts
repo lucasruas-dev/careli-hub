@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-22-a-linha-do-quadro",
+    deployedAt: "2026-09-22T09:29:51-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O campo Linha vem preenchido com a próxima livre.** Ele mostrava o número certo em cinza e mandava o campo vazio, então aceitava qualquer número repetido por cima — e era isso que fazia a inclusão ser recusada. Cabem nove pessoas por papel, e a numeração continua sendo de cada papel: uma testemunha na linha 4 não empurra a vendedora.",
+              "**A recusa agora diz de quem é a linha e o que fazer:** “A linha 4 de Testemunhas já é de FULANA. Use outra linha, ou deixe o campo em branco que o quadro numera sozinho.” A frase antiga citava o nome interno do papel e era lida como “já existe testemunha”.",
+              "**A testemunha que vai assinar cedo demais ganha aviso.** Ela testemunha um documento já assinado pelas partes; com um número baixo em Assina em, o convite dela sai junto com o do comprador.",
+            ],
+            screen: "Empreendimento · Quadro de assinatura",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Tres defeitos de TELA, nenhum de modelo -- o banco sempre aceitou nove por papel (indice unico por workspace+empreendimento+papel+posicao, migration 0158; CHECK de 1 a 9). (1) `quadro-de-assinatura-card.tsx`: o campo Linha era `placeholder={proximaPosicao(gente)}` com `value={r.posicao}` vazio; um efeito passa a semear o rascunho de cada papel com a proxima livre assim que a lista chega. (2) `estrutura-servico.ts`: o ramo 23505 ganhou `fraseDaLinhaOcupada`, que le o nome do ocupante (um SELECT que so roda no erro) e usa o rotulo da tela em vez da chave do banco. (3) o bloco Testemunhas avisa quando alguma testemunha tem `ordem_assinatura` menor ou igual a de alguem de outro papel. Teste novo de comportamento com o quadro real do VOC (YASMIN na 4, VITOR na 5, os dois com Assina em 1). typecheck limpo, 7.798 testes em 499 arquivos.",
+      motivation:
+        "Nivea, 22/09/2026, depois de digitar 4 na linha de uma segunda testemunha: \"Ele nao esta aceitando 02 testemunhas\". A linha 4 ja era da YASMIN; nos logs do Postgres daquela madrugada sao quatro recusas da mesma constraint de posicao, uma delas no bloco Vendedora. Lucas: \"tem que melhorar essas linhas, posicao\" e, depois do diagnostico, \"pode fechar os tres\".",
+    },
+    rollback: "7ada8028",
+    title: "A linha do quadro de assinatura para de convidar ao erro",
+    type: "correcao",
+    version: "1.360.2",
+  },
+  {
     buildTag: "2026-09-22-o-pai-do-c2x-nao-conta",
     deployedAt: "2026-09-22T10:00:00-03:00",
     modules: [
