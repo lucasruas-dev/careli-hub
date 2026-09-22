@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import { FalhaDaClicksign, type Opcoes } from "./cliente";
 import {
   acrescentarSignatario,
+  LIMITE_CLICKSIGN_ARQUIVO_BYTES,
   cancelarEnvelope,
   consultarEnvelope,
   enviarParaAssinatura,
   nomeDoEnvelope,
   notificarSignatario,
+  recusaPorTamanhoDoArquivo,
   removerSignatario,
 } from "./envelope";
 
@@ -55,8 +57,8 @@ const pessoa = (nome: string, email: string, papel: Signatario["papel"], ordem: 
   papel,
 });
 
-const pedido = (signatarios: Signatario[]) => ({
-  arquivo: { bytes: new Uint8Array([37, 80, 68, 70]), nome: "Contrato - TST - Q01 L05 - Henrique Sales do Vale v1.pdf" },
+const pedido = (signatarios: Signatario[], bytes = new Uint8Array([37, 80, 68, 70])) => ({
+  arquivo: { bytes, nome: "Contrato - TST - Q01 L05 - Henrique Sales do Vale v1.pdf" },
   identidade: {
     comprador: "Henrique Sales do Vale",
     documentoId: "doc-uuid",
@@ -815,5 +817,55 @@ describe("acrescentar um signatário a um envelope que já roda", () => {
 
     expect(r.ok).toBe(false);
     expect(chamadas).toEqual([]);
+  });
+});
+
+// ⚠️ O TETO DA CLICKSIGN É O MENOR DA CORRENTE INTEIRA: 10 MB por arquivo, contra 20 MB por anexo e
+// 24 MB na montagem do nosso lado. Conferido no FAQ oficial em 22/09/2026.
+//
+// ⚠️ E ELE SE CONFERE ANTES DA PRIMEIRA CHAMADA. O arquivo sobe no PASSO 2, quando o envelope do
+// passo 1 JÁ EXISTE na conta de produção: deixar a Clicksign recusar significava pagar um envelope
+// e deixar rascunho para trás, por um tamanho que dava para medir em casa. É a mesma disciplina de
+// `conferirSignatarios`.
+describe("o tamanho do arquivo é conferido antes de gastar envelope", () => {
+  const grande = new Uint8Array(LIMITE_CLICKSIGN_ARQUIVO_BYTES + 1);
+  const cabe = new Uint8Array(LIMITE_CLICKSIGN_ARQUIVO_BYTES);
+
+  it("⚠️ PDF acima de 10MB não chega a criar envelope nenhum", async () => {
+    const { chamadas, porta } = duplo();
+
+    const r = await enviarParaAssinatura(
+      pedido([pessoa("A Silva", "a@x.com", "comprador", 1)], grande),
+      porta,
+    );
+
+    expect(r.ok).toBe(false);
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("a recusa diz o tamanho, o limite e o que fazer", async () => {
+    const r = await enviarParaAssinatura(
+      pedido([pessoa("A Silva", "a@x.com", "comprador", 1)], grande),
+      duplo().porta,
+    );
+
+    if (r.ok) throw new Error("deveria ter recusado");
+    expect(r.erro).toContain("10MB");
+    expect(r.erro).toContain("10.0MB");
+    expect(r.erro).toContain("gere o contrato de novo");
+    // Nada ficou para trás: não há envelope a conferir na conta.
+    expect(r.envelopeId).toBeNull();
+    expect(r.rascunhoApagado).toBe(true);
+    expect(r.passo).toBe("criar");
+  });
+
+  it("exatamente no limite passa: o teto é inclusivo", () => {
+    expect(recusaPorTamanhoDoArquivo(cabe.byteLength)).toBeNull();
+    expect(recusaPorTamanhoDoArquivo(grande.byteLength)).not.toBeNull();
+  });
+
+  it("o contrato do tamanho de hoje passa sem ressalva", () => {
+    // O maior já gerado tem 6,35MB (o v3 da VITORIA, com capa), medido em 22/09/2026.
+    expect(recusaPorTamanhoDoArquivo(Math.round(6.35 * 1024 * 1024))).toBeNull();
   });
 });

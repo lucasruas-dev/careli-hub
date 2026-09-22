@@ -142,6 +142,44 @@ export type FalhaNoEnvio = {
   requestId: null | string;
 };
 
+/**
+ * O teto de tamanho da CLICKSIGN, e ele é o menor de toda a corrente do contrato.
+ *
+ * ⚠️ 10 MB POR ARQUIVO, MENOS QUE QUALQUER TETO NOSSO. O cadastro do anexo aceita 20 MB por peça e
+ * a montagem aceita 24 MB na soma (`LIMITE_ANEXO_BYTES`, `TETO_DA_MONTAGEM_BYTES`): os dois são
+ * MAIORES do que o que a Clicksign recebe. Conferido no FAQ oficial deles em 22/09/2026:
+ * "Até 10 MB por arquivo" e "100 MB por Envelope (soma dos arquivos)".
+ *
+ * ⚠️ E ATÉ AQUI NINGUÉM MEDIA O PDF ANTES DE MANDAR. O arquivo sobe inteiro em base64 no PASSO 2,
+ * e o envelope do passo 1 JÁ EXISTE na conta de PRODUÇÃO quando essa chamada falha. Ou seja: um
+ * contrato de 11 MB passava pelas duas portas da casa e morria lá, deixando rascunho para trás —
+ * uma falha cara e confusa no lugar de uma recusa barata e clara. Ninguém esbarrou nisso ainda
+ * porque `temis_anexos` está zerado; o primeiro anexo de verdade encostaria nele.
+ *
+ * Medido no mesmo dia: o maior contrato já gerado tem 6,35 MB (o v3 da VITORIA, com capa), o que
+ * deixa 3,65 MB de folga para anexos. E o PDF montado sai MAIOR que a soma das peças.
+ */
+export const LIMITE_CLICKSIGN_ARQUIVO_BYTES = 10 * 1024 * 1024;
+export const LIMITE_CLICKSIGN_ARQUIVO_ROTULO = "10MB";
+
+const emMegabytes = (bytes: number): string => `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+
+/**
+ * A recusa por tamanho, ou `null` quando cabe. Chamada ANTES da primeira ida à Clicksign.
+ *
+ * É a mesma disciplina de `conferirSignatarios`: o que dá para saber sem gastar envelope se
+ * descobre antes de gastar envelope.
+ */
+export function recusaPorTamanhoDoArquivo(bytes: number): null | string {
+  if (bytes <= LIMITE_CLICKSIGN_ARQUIVO_BYTES) return null;
+  return (
+    `O contrato tem ${emMegabytes(bytes)} e a Clicksign aceita no máximo ` +
+    `${LIMITE_CLICKSIGN_ARQUIVO_ROTULO} por arquivo, então ele não pode ser enviado para assinatura. ` +
+    "Reduza as peças anexadas (um PDF digitalizado costuma cair muito quando é salvo como PDF de " +
+    "texto) e gere o contrato de novo."
+  );
+}
+
 export type ResultadoDoEnvio = ({ ok: true } & EnvelopeCriado) | ({ ok: false } & FalhaNoEnvio);
 
 /**
@@ -188,6 +226,21 @@ export async function enviarParaAssinatura(
       requestId: falha?.erro.requestId ?? null,
     };
   };
+
+  // ⚠️ O TAMANHO SE CONFERE ANTES DA PRIMEIRA CHAMADA, pelo mesmo motivo que os signatários: o
+  // envelope do passo 1 custa e não se apaga depois de ativado. Ver `recusaPorTamanhoDoArquivo`.
+  const grandeDemais = recusaPorTamanhoDoArquivo(pedido.arquivo.bytes.byteLength);
+  if (grandeDemais) {
+    return {
+      // Nada foi chamado: envelope nenhum existe, e não há rascunho a apagar.
+      envelopeId: null,
+      erro: grandeDemais,
+      ok: false,
+      passo: "criar",
+      rascunhoApagado: true,
+      requestId: null,
+    };
+  }
 
   // ── 1. O ENVELOPE ─────────────────────────────────────────────────────────
   try {
