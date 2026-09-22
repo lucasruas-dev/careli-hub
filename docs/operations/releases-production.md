@@ -95,6 +95,26 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Temis] A linha do quadro de assinatura para de convidar ao erro (v1.360.2)`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-09-22T09:29:51-03:00` (push na main).
+- Ambiente: `producao`.
+- Origem: OK explicito do Lucas em 22/09/2026 ("pode fechar os tres" e "pode subir"), depois de "tem que melhorar essas linhas, posicao". Nivea: "Ele nao esta aceitando 02 testemunhas".
+- Migrations: NENHUMA. O banco sempre aceitou nove por papel (indice unico por workspace+empreendimento+papel+posicao, 0158; CHECK de 1 a 9): o defeito era so de tela.
+- Escopo publicado:
+  - O campo Linha nasce PREENCHIDO com a proxima livre daquele papel (era `placeholder` com `value` vazio: a tela mostrava o numero certo e mandava vazio, aceitando qualquer repetido por cima).
+  - A recusa 23505 passou a dizer de QUEM e a linha e como sair (`fraseDaLinhaOcupada`, um SELECT que so roda no erro), com o rotulo da tela no lugar da chave do banco.
+  - O bloco Testemunhas avisa quando alguma testemunha tem `ordem_assinatura` menor ou igual a de alguem de outro papel -- o caso do VOC, onde a YASMIN ficou com "Assina em 1".
+- Commit publicado: `01fb887e` (deployment `dpl_2VSURxSGYK8PkGazFvoVjzCu2wyZ`). Subiu junto o registro da v1.360.0.
+- Deployment anterior: commit `7ada8028` (v1.360.1, "o pai do C2X nao conta", da outra sessao). ⚠️ ESTA SUBIDA ATRAVESSOU MAIS UMA PUBLICACAO DA OUTRA SESSAO; rebase limpo e suite rodada depois.
+- Dominio alvo autorizado: `https://c2x.app.br`. `https://ops.c2x.app.br`: NAO TOCADO.
+- Validacoes executadas: typecheck limpo; 7.804 testes em 499 arquivos; teste de comportamento novo com o quadro real do VOC (YASMIN na linha 4, VITOR na 5, os dois com Assina em 1).
+- Healthcheck final: deployment `READY` as 09:36:16 -03:00, alias `c2x.app.br` apontado com `aliasError: null`, dominio respondendo 200.
+- Rollback definido: `7ada8028`. Nada a desfazer no banco.
+- Decisao de comunicacao: entrada do tipo `correcao` SEM `internal`, ao contrario do padrao. O time precisa saber que cabem duas testemunhas -- foi a tela que travou a Nivea, e esconder a correcao deixaria a duvida de pe.
+
+Registro de producao:
+
 - Assunto: `[Temis/Apolo] A revisao do contrato: precos, tabela, conjuge, capa, anexos e quem assina (v1.360.0) + as minutas VOL v10 e RVP v3`.
 - Squad/agente responsavel: `Zeus` (workflow de 7 frentes com cetico por achado, 61 agentes).
 - Data e hora local: `2026-09-22T09:00:55-03:00` (push na main) e `2026-09-22T09:10-03:00` (edicao das minutas).
