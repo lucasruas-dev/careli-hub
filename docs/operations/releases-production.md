@@ -95,6 +95,42 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Temis] O contrato avisa antes de gastar envelope, e para de engordar a toa (v1.360.7)`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-09-22 17:41:55 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas nas duas decisoes de hoje: "so a blindagem da montagem" e "sim, subir a trava da Clicksign"`.
+- Escopo publicado:
+  - `trava de tamanho ANTES de criar envelope na Clicksign (10MB por arquivo, o menor teto da corrente)`;
+  - `blindagem do inchaco na montagem: embedPages em lote no lugar de embedPage por pagina`.
+- Commit publicado: `b1e303620c6c4e41dfc177e344a8d49e3561ca41`.
+- Deployment anterior: `dpl_DJVNcC9Qt8kvDpMgted1KpniFLUL` (commit `1c8d9c71`, v1.360.6).
+- Deployment novo: `dpl_8SG5NgmVVpYoGwBeqJx1SYLgPnmi`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Arquivos/modulos incluidos: `lib/assinatura/clicksign/envelope.ts`, `lib/temis/montar-pdf-do-contrato.ts`, os testes dos dois, `lib/changelog/changelog.ts`.
+- Arquivos/modulos excluidos: `nenhuma migration; nenhuma dependencia nova; NAO subimos o anexo para 60MB nem implementamos compressao de imagem`.
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `npx vitest run`: `502 arquivos, 7.849 testes passando`;
+  - `medicao contra pecas REAIS do bucket`: `anexo de contrato 9,104 -> 8,415MB (-7,6%); matricula + dois anexos 16,288 -> 14,873MB (-8,7%); peca digitalizada -0,2%`.
+- ⚠️ A PERGUNTA QUE ORIGINOU A RODADA e a resposta medida:
+  - `Lucas: "tem como subir para 60mb os anexos?" A apuracao achou que o MENOR teto da corrente NAO e nosso: a Clicksign aceita 10MB por arquivo (FAQ oficial), menos que os 20MB do anexo e menos que os 24MB da montagem. E nada media o PDF antes de mandar.`;
+  - `Com "o cliente tem que assinar um documento somente" (Lucas), 60MB e impossivel: matricula BRUTA de 60MB viraria 0,66 a 3,24MB comprimida e caberia, mas matricula JA COMPRIMIDA de 60MB vira 36MB a 150 DPI. Teto realista de entrada: ~20MB hoje, ~16MB para peca ja comprimida mesmo com tudo liberado.`;
+  - `A RAM nunca foi o gargalo, ao contrario do que eu supunha: 54,9MB de pecas montaram em 0,1s com pico de +110MB de RSS contra 2GB.`
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200, build READY em 230s, alias apontado`.
+- Logs recentes: `sem erro critico`.
+- Rollback definido: `Instant Rollback para dpl_DJVNcC9Qt8kvDpMgted1KpniFLUL (commit 1c8d9c71)`.
+- Riscos conhecidos: `a blindagem muda quantos copiers o pdf-lib abre, nao a geometria (mesmo embedPage+drawPage, mesmo encaixar). O filtro do /Contents passou a vir ANTES da chamada em lote, coberto por teste para a folha em branco continuar entrando na posicao dela.`
+- ⚠️ Sobre os DOIS pushes barrados antes deste: `o hook recusou com 4 e 5 testes vermelhos, TODOS "Test timed out in 5000ms" e NENHUM com falha de asserção. Os mesmos testes passaram isolados (234 verdes). Era carga da maquina -- o Chrome do Lucas estava com 21 processos e 3GB desde as 11:48. NAO foi usado --no-verify; a terceira tentativa passou limpa com 7.849 verdes.`
+- Pendencias: `comprimir a CAPA e a maior alavanca que sobrou (2,45 -> 0,21MB, contrato de 6,97 -> 4,73MB, risco juridico zero por ser arte do Canva), mas depende de declarar o sharp e provar no build da Vercel -- nao pedido, nao feito. Reduzir o anexo a 150 DPI tem perda real e exige o Lucas ou a Nivea aprovarem com o arquivo aberto.`
+- Status: `EM PRODUCAO`.
+- Proxima acao: `nenhuma urgente -- a matricula que a Nivea cadastrou (4,39MB) fecha o contrato em 6,97MB, com folga para os 10MB da Clicksign`.
+
+Registro de producao:
+
 - Assunto: `[Temis/Apolo] O anexo do contrato para de nascer orfao (v1.360.6)`.
 - Squad/agente responsavel: `Zeus`.
 - Data e hora local: `2026-09-22 14:35:36 -03:00`.
