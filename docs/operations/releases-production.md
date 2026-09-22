@@ -108,6 +108,7 @@ Registro de producao:
 - Dominio alvo autorizado: `https://c2x.app.br`. `https://ops.c2x.app.br`: NAO TOCADO.
 - Validacoes executadas: typecheck limpo e suite completa 7.761 testes em 495 arquivos, verde DEPOIS do rebase (a soma com o lote da outra sessao).
 - Medicao do dia, que explica o cartao em ZERO no print do Lucas: nao existe nenhuma venda viva com pedido de cancelamento aberto. Os 11 cards de cancelamento/distrato da Temis estao todos em `ESTAGIOS_ENCERRADOS` (9 `faturado`, 2 `indeferido`) e as propostas deles ja viraram `distrato`/`cancelado`; a unica marca `cancelamento_pedido_em` em venda viva e a do TST, orfa (zero cards), que a peneira solta. O zero esta correto.
+- Healthcheck final: deployment `READY` as 00:03:07 -03:00 de 22/09, alias `c2x.app.br` apontado para ele com `aliasError: null`; o dominio respondeu 200 com `Age: 0`.
 - Rollback definido: `2385aafd` / `dpl_BDPJEBsJyTz1iprUfEtKfwwdKQa1`. Nada a desfazer no banco.
 
 Registro de producao:
