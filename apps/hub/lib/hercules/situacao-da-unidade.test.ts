@@ -287,3 +287,49 @@ describe("a linha bloqueada do terreno", () => {
     ).toBe("faturado");
   });
 });
+
+// ⚠️ O PAI É REFLEXO (Lucas, 22/09/2026: *"VLO é reflexo"*).
+//
+// No produto dividido a venda mora no FILHO e o pai é a soma; proposta viva pendurada no pai é
+// fantasma. A régua escolhe a proposta mais RECENTE do terreno, então uma reserva de 18/09 no pai
+// ganhava de uma venda faturada do filho de 09/09. Medido depois da carga de 22/09: 105 propostas
+// vivas no VLO e 48 no LAB, TODAS em unidade espelho e nenhuma em unidade de filho — o VOC
+// mostrava 19 reservados, onde o legado conta ZERO, e o Faturado caía de 86 para 68.
+describe("a proposta pendurada no pai", () => {
+  it("não vence a venda do filho, mesmo sendo mais recente", () => {
+    expect(
+      situacaoDoTerreno({
+        cadastro: "vendida",
+        propostasVivas: [
+          { daLinha: true, desde: "2026-09-09", etapa: "faturado" },
+          { daLinha: false, desde: "2026-09-18", etapa: "reservado", noPai: true },
+        ],
+        reservada: false,
+      }),
+    ).toBe("faturado");
+  });
+
+  it("⚠️ MAS segura o lote livre quando o filho não tem NADA — senão é segunda venda", () => {
+    // Medido no legado em 22/09/2026: os lotes 11/02 (Antônio Xavier) e 14/01 (Stefany) têm
+    // reserva viva pendurada no VLO, de 10/09, e o lote está livre no filho. Mostrar disponível
+    // com negócio andando no legado é o convite à segunda venda — é a exceção que ficou de pé na
+    // limpeza de 21/09 (o caso HERVE).
+    expect(
+      situacaoDoTerreno({
+        cadastro: "disponivel",
+        propostasVivas: [{ daLinha: false, desde: "2026-09-18", etapa: "reservado", noPai: true }],
+        reservada: false,
+      }),
+    ).toBe("reservado");
+  });
+
+  it("a proposta do FILHO irmão continua valendo, que é o que impede vender duplicado", () => {
+    expect(
+      situacaoDoTerreno({
+        cadastro: "disponivel",
+        propostasVivas: [{ daLinha: false, desde: "2026-09-08", etapa: "assinatura" }],
+        reservada: false,
+      }),
+    ).toBe("assinatura");
+  });
+});

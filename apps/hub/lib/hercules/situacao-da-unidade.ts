@@ -65,6 +65,12 @@ export type SinaisDoTerreno = {
     desde: string;
     emCancelamento?: boolean;
     etapa: string;
+    /**
+     * `true` = a proposta está pendurada na unidade do PAI (a linha espelho do produto dividido).
+     *
+     * ⚠️ O PAI É REFLEXO (Lucas, 22/09/2026: *"VLO é reflexo"*). Ver a régua.
+     */
+    noPai?: boolean;
   }>;
   /** Existe reserva viva (Hércules ou evento) em alguma linha do terreno? */
   reservada: boolean;
@@ -84,9 +90,28 @@ export function situacaoDoTerreno(sinais: SinaisDoTerreno): SituacaoDaUnidade {
   // contradição do cadastro, e aí quem manda é o processo, que tem dono e data.
   const bloqueadaNoCadastro = String(sinais.cadastro ?? "").trim().toLowerCase() === "bloqueada";
 
+  /** Algum FILHO do terreno tem proposta viva? É o que decide se o pai fala ou cala. */
+  const temPropostaNoFilho = sinais.propostasVivas.some(
+    (p) => p.noPai !== true && DO_FLUXO.has(p.etapa),
+  );
+
   let maisRecente: null | { desde: string; emCancelamento: boolean; etapa: EtapaDoFluxo } = null;
   for (const p of sinais.propostasVivas) {
     if (!DO_FLUXO.has(p.etapa)) continue;
+    // ⚠️ O PAI É REFLEXO, E CALA QUANDO O FILHO FALA (Lucas, 22/09/2026: *"VLO é reflexo"*).
+    // No produto dividido a venda mora no FILHO e o pai é a soma. Medido depois da carga de
+    // 22/09: 105 propostas vivas no VLO e 48 no LAB, TODAS em unidade espelho. Como a régua pega
+    // a proposta mais RECENTE do terreno, uma reserva de 18/09 pendurada no pai ganhava de uma
+    // venda faturada do filho de 09/09 -- o VOC mostrava 19 reservados, onde o legado conta
+    // ZERO, e o Faturado caia de 86 para 68. Isto já tinha sido limpo à mão em 21/09 e a carga
+    // trouxe de volta; por isso a regra vive aqui, e não numa faxina que a próxima carga desfaz.
+    //
+    // ⚠️ MAS SÓ QUANDO O FILHO TEM PROPOSTA. Sem nada no filho, a do pai continua mandando, e
+    // isso NÃO é detalhe: medido no legado em 22/09, os lotes 11/02 (Antônio Xavier) e 14/01
+    // (Stefany) têm RESERVA VIVA pendurada no VLO, de 10/09, com o lote livre no filho. Calar o
+    // pai nesses dois os mostraria disponíveis com negócio andando no legado, que é o convite à
+    // segunda venda -- a mesma exceção que ficou de pé na limpeza de 21/09 (o caso HERVE).
+    if (p.noPai === true && temPropostaNoFilho) continue;
     if (bloqueadaNoCadastro && p.daLinha === false) continue;
     if (!maisRecente || p.desde > maisRecente.desde) {
       maisRecente = {
@@ -510,7 +535,13 @@ export async function lerSituacaoDasUnidades(
 
   const propostasPorGrupo = new Map<
     string,
-    Array<{ desde: string; emCancelamento: boolean; etapa: string; unidadeId: string }>
+    Array<{
+      desde: string;
+      emCancelamento: boolean;
+      etapa: string;
+      noPai: boolean;
+      unidadeId: string;
+    }>
   >();
   for (const p of propostasTodas) {
     const grupo = p.unidade_id ? grupoDe.get(p.unidade_id) : undefined;
@@ -523,6 +554,8 @@ export async function lerSituacaoDasUnidades(
       desde: String(p.etapa_desde ?? p.criado_em_c2x ?? ""),
       emCancelamento: Boolean(p.cancelamento_pedido_em) && DEPOIS_DO_CONTRATO.has(p.etapa),
       etapa: p.etapa,
+      // A unidade do PAI é espelho (`espelho_de` preenchido): o que está pendurado nela é reflexo.
+      noPai: Boolean(p.unidade_id ? porId.get(p.unidade_id)?.espelho_de : false),
       unidadeId: String(p.unidade_id ?? ""),
     });
     propostasPorGrupo.set(grupo, lista);
@@ -605,6 +638,7 @@ export async function lerSituacaoDasUnidades(
         desde: p.desde,
         emCancelamento: p.emCancelamento,
         etapa: p.etapa,
+        noPai: p.noPai,
       })),
       reservada: gruposReservados.has(grupo),
     });

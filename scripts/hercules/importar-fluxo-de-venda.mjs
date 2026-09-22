@@ -402,10 +402,31 @@ for (let de = 0; ; de += 1000) {
   for (const p of pagina) encerradasNoPanteon.add(Number(p.origem_c2x_id));
   if (pagina.length < 1000) break;
 }
-const paraGravar = propostas.filter((p) => !encerradasNoPanteon.has(Number(p.origem_c2x_id)));
+
+// ⚠️ E NAO SUBSTITUI O QUE O COORDENADOR JA TRABALHOU (Lucas, 22/09/2026: "lembrando que nao
+// podemos substituir aquilo que o coordenador ja trabalhou"). Encerrar nao e a unica coisa que o
+// time faz aqui: mover a venda de etapa tambem e trabalho, e ele carimba `etapa_por`. Sem esta
+// segunda peneira, a carga devolve a etapa do C2X por cima de quem moveu na tela, e o trabalho
+// some sem aviso. Medido em 22/09/2026: 21 propostas com autor do Panteon; a carga daquele dia
+// tocou 111 linhas e, por sorte, nenhuma delas -- sorte nao e trava.
+const trabalhadasNoPanteon = new Set();
+for (let de = 0; ; de += 1000) {
+  const pagina = await supa(
+    `hercules_propostas?select=origem_c2x_id&origem_c2x_id=not.is.null&etapa_por=not.is.null&order=id&limit=1000&offset=${de}`,
+  );
+  for (const p of pagina) trabalhadasNoPanteon.add(Number(p.origem_c2x_id));
+  if (pagina.length < 1000) break;
+}
+
+const paraGravar = propostas.filter(
+  (p) =>
+    !encerradasNoPanteon.has(Number(p.origem_c2x_id)) &&
+    !trabalhadasNoPanteon.has(Number(p.origem_c2x_id)),
+);
 if (paraGravar.length !== propostas.length) {
   console.log(
-    `\n⚠️ ${propostas.length - paraGravar.length} proposta(s) encerrada(s) no Panteon ficam como estão (o C2X ainda não foi acertado para elas).`,
+    `
+⚠️ ${propostas.length - paraGravar.length} proposta(s) que o Panteon encerrou ou que o time moveu aqui ficam como estão (o C2X ainda não foi acertado para elas).`,
   );
 }
 
