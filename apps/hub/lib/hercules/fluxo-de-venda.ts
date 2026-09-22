@@ -495,12 +495,17 @@ function reguaDaEtapa(
   // ⚠️ A ETAPA DA UNIDADE VEM DA PROPOSTA VIVA MAIS RECENTE. Uma unidade acumula propostas ao
   // longo do tempo (revenda, cancelamento e nova venda): a que vale é a última que ainda está no
   // caminho. Pegar qualquer uma pintaria de "faturado" um lote que voltou para o estoque.
-  const vivaPorUnidade = new Map<string, { desde: string; etapa: EtapaDoFluxo }>();
+  const vivaPorUnidade = new Map<string, { desde: string; etapa: EtapaDoEspelho }>();
   for (const p of propostas) {
     if (!p.unidade_id || !ehDoFluxo(p.etapa)) continue;
     const desde = String(p.etapa_desde ?? p.criado_em_c2x ?? "");
     const atual = vivaPorUnidade.get(p.unidade_id);
-    if (!atual || desde > atual.desde) vivaPorUnidade.set(p.unidade_id, { desde, etapa: p.etapa });
+    // ⚠️ A VENDA PEDINDO PARA SAIR TEM SITUAÇÃO PRÓPRIA, aqui também. A régua única já a devolve
+    // como `em_cancelamento` (`situacao-da-unidade.ts`); esta conta local existe para quem ainda
+    // não passa o mapa, e sem a mesma marca ela devolveria "assinatura" para um lote que o
+    // jurídico está desfazendo — dois números com nomes diferentes para o mesmo lote.
+    const etapa: EtapaDoEspelho = ehVendaEmCancelamento(p) ? "em_cancelamento" : p.etapa;
+    if (!atual || desde > atual.desde) vivaPorUnidade.set(p.unidade_id, { desde, etapa });
   }
   // ⚠️ A PROPOSTA VIVA REFINA, MAS A SITUAÇÃO NUNCA É REBAIXADA PARA LIVRE. Com proposta, ela
   // manda (é ela que sabe se está em contrato ou já faturou). Sem proposta, vale o cadastro — e
@@ -709,6 +714,7 @@ export function agregarFluxo({
   periodo,
   propostas,
   situacaoPorUnidade,
+  terrenoDe,
   tiposDeProduto,
   unidades,
 }: {
@@ -730,6 +736,16 @@ export function agregarFluxo({
    * régua única, e não para produção.
    */
   situacaoPorUnidade?: ReadonlyMap<string, EtapaDoEspelho>;
+  /**
+   * As linhas irmãs de cada terreno (`terreno` de `lerSituacaoDasUnidades`).
+   *
+   * ⚠️ SEM ELA A FAIXA PERDE A PROPOSTA QUE MUDOU DE GLEBA. O lote que migrou guarda a
+   * proposta sob o código ANTIGO (VOR, VLO), e a grade a enxerga porque a régua olha o terreno
+   * inteiro. Medido em 21/09/2026 no VOC: 5 propostas nessa condição (2 reservado, 2 faturado,
+   * 1 assinatura) — exatamente o tamanho da divergência que a tela mostrava entre a faixa e a
+   * legenda (0x2, 83x85, 6x7).
+   */
+  terrenoDe?: (linhaId: string) => undefined | { linhas: string[] };
   /**
    * O tipo de cada produto do escopo, por `enterprise_id` (`hercules_empreendimentos.tipo_produto`).
    *
@@ -841,6 +857,40 @@ export function agregarFluxo({
   const estoque: Record<string, number> = {};
   const etapaDa = reguaDaEtapa(propostas, situacaoPorUnidade);
 
+  /**
+   * A proposta viva mais recente de cada LINHA, com o valor.
+   *
+   * ⚠️ O VALOR DA FAIXA SAI DAQUI, E NÃO DO PREÇO DE TABELA. Lucas, 21/09/2026: *"valor sempre
+   * será o que está na proposta"* — o card é lido como VGV do pipeline, e o que está em jogo é o
+   * que foi negociado, não o que a tabela pedia. O único passo que foge é `disponivel`, que não
+   * tem proposta: *"o disponivel sempre será o que está no cadastro"*.
+   */
+  const vivaPorLinha = new Map<string, { desde: string; valor: number }>();
+  for (const p of propostas) {
+    if (!p.unidade_id || !ehDoFluxo(p.etapa)) continue;
+    const desde = String(p.etapa_desde ?? p.criado_em_c2x ?? "");
+    const atual = vivaPorLinha.get(p.unidade_id);
+    if (!atual || desde > atual.desde) {
+      vivaPorLinha.set(p.unidade_id, { desde, valor: numero(p.valor) });
+    }
+  }
+
+  /** O valor negociado daquele LOTE, venha a proposta desta linha ou de uma irmã do terreno. */
+  const valorNegociado = (linhaId: string): number => {
+    const daPropria = vivaPorLinha.get(linhaId);
+    if (daPropria) return daPropria.valor;
+    const irmas = terrenoDe?.(linhaId)?.linhas ?? [];
+    let escolhida: null | { desde: string; valor: number } = null;
+    for (const irma of irmas) {
+      const viva = vivaPorLinha.get(irma);
+      if (viva && (!escolhida || viva.desde > escolhida.desde)) escolhida = viva;
+    }
+    return escolhida?.valor ?? 0;
+  };
+
+  /** A faixa, contada por LOTE. Ver a nota de `terrenoDe`. */
+  const faixaPorEtapa = new Map<string, { quantidade: number; vgv: number }>();
+
   // ⚠️ A CHAVE DO GRUPO LEVA O TIPO. Sem ele, a quadra "Unidades" de um loteamento e a torre única
   // "Unidades" de um prédio virariam o mesmo grupo no consolidado, e a grade poria lote e
   // apartamento na mesma coluna.
@@ -855,6 +905,14 @@ export function agregarFluxo({
     if (etapa === "disponivel") {
       disponiveis += 1;
       vgvDisponivel += numero(u.preco_tabela);
+    } else {
+      // ⚠️ UM LOTE, UMA LINHA NA FAIXA. Antes a faixa contava PROPOSTAS filtradas pelo código do
+      // empreendimento, e a legenda contava LOTES pela régua: dois números com o mesmo nome na
+      // mesma tela, e o de cima escondia o lote que migrou de gleba.
+      const balde = faixaPorEtapa.get(etapa) ?? { quantidade: 0, vgv: 0 };
+      balde.quantidade += 1;
+      balde.vgv += valorNegociado(u.id);
+      faixaPorEtapa.set(etapa, balde);
     }
 
     const tipoProduto = tipoDaUnidade({
@@ -899,19 +957,31 @@ export function agregarFluxo({
     faixasDePrazo: {},
     paiPorEmpreendimento: {},
     planos: [],
+    // ⚠️ A FAIXA SAI DA CONTAGEM POR LOTE, inclusive o passo `em_cancelamento` — ele já é situação
+    // da régua única desde 21/09/2026, e o VGV de cada passo continua sendo o valor da PROPOSTA
+    // daquele lote, achada pelo terreno quando ela ficou na linha irmã.
+    //
+    // ⚠️ SEM GRADE, A CONTA VOLTA A SER POR PROPOSTA. Quem chama sem `unidades` não tem lote para
+    // contar, e zerar a faixa inteira seria pior do que a divergência que este trabalho conserta:
+    // a tela mostraria um funil vazio com vendas vivas no banco.
     fluxo: ETAPAS_DA_FAIXA.map((etapa) => {
-      if (etapa === "disponivel")
+      if (etapa === "disponivel") {
         return { etapa, quantidade: disponiveis, vgv: Math.round(vgvDisponivel * 100) / 100 };
-      if (etapa === "em_cancelamento")
+      }
+      if (unidades.length === 0) {
+        if (etapa === "em_cancelamento") {
+          return { etapa, quantidade: emCancelamento, vgv: Math.round(vgvEmCancelamento * 100) / 100 };
+        }
         return {
           etapa,
-          quantidade: emCancelamento,
-          vgv: Math.round(vgvEmCancelamento * 100) / 100,
+          quantidade: porEtapa.get(etapa)?.propostas ?? 0,
+          vgv: Math.round((porEtapa.get(etapa)?.vgv ?? 0) * 100) / 100,
         };
+      }
       return {
         etapa,
-        quantidade: porEtapa.get(etapa)!.propostas,
-        vgv: Math.round(porEtapa.get(etapa)!.vgv * 100) / 100,
+        quantidade: faixaPorEtapa.get(etapa)?.quantidade ?? 0,
+        vgv: Math.round((faixaPorEtapa.get(etapa)?.vgv ?? 0) * 100) / 100,
       };
     }),
     lista: propostas.map((p) => ({

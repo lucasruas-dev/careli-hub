@@ -543,6 +543,8 @@ export async function GET(request: Request) {
             periodo,
             propostas: [...reservas, ...propostas],
             situacaoPorUnidade,
+            // A faixa precisa do terreno para achar a proposta do lote que mudou de gleba.
+            terrenoDe: situacao.lida.terreno,
             tiposDeProduto,
             unidades,
           }),

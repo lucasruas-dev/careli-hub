@@ -274,10 +274,12 @@ describe("a situação na grade vem da régua única", () => {
     const { fluxo, mapa } = await carregar();
     const etapas = Object.fromEntries(mapa.flatMap((g) => g.unidades).map((u) => [u.id, u.etapa]));
     expect(etapas).toEqual({ "u-gdn": "disponivel", "u-voc": "reservado" });
-    // O estoque livre da faixa acompanha a grade...
+    // ⚠️ A FAIXA INTEIRA ACOMPANHA A GRADE (Lucas, 21/09/2026). Antes só o passo `disponivel` vinha
+    // da régua e o resto vinha das propostas, então o lote reservado no salão aparecia reservado na
+    // grade e sumia da faixa. Era esse desencontro que fazia a tela do VOC mostrar "Reservado 0"
+    // em cima e "Reservado 2" embaixo.
     expect(fluxo.find((f) => f.etapa === "disponivel")?.quantidade).toBe(1);
-    // ...e o funil continua das propostas: a reserva do evento não é proposta do Hércules.
-    expect(fluxo.find((f) => f.etapa === "reservado")?.quantidade).toBe(0);
+    expect(fluxo.find((f) => f.etapa === "reservado")?.quantidade).toBe(1);
   });
 
   it("⚠️ falha na leitura da situação responde 503, e nunca devolve lote livre", async () => {

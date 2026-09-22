@@ -50,14 +50,25 @@ const unidade = (u: Partial<UnidadeDoMapa> & { codigo: string }): UnidadeDoMapa 
 });
 
 describe("agregarFluxo", () => {
+// ⚠️ A FAIXA CONTA LOTE, E NÃO PROPOSTA (Lucas, 21/09/2026). Ela contava linhas de
+// `hercules_propostas` filtradas pelo código do empreendimento, enquanto a legenda da grade
+// contava unidades pela régua única: dois números com o mesmo nome na mesma tela. No print do
+// VOC a faixa dizia Reservado 0, Assinatura 6 e Faturado 83; a legenda dizia 2, 7 e 85. A causa
+// eram 5 propostas de lotes que migraram de gleba, gravadas sob VOR e VLO. O valor segue vindo
+// da PROPOSTA (*"valor sempre será o que está na proposta"*), e o do passo `disponivel` vem do
+// cadastro (*"o disponivel sempre será o que está no cadastro"*).
   it("soma cada passo do fluxo em quantidade e VGV", () => {
     const r = agregarFluxo({
       propostas: [
-        proposta({ etapa: "reservado", valor: 10 }),
-        proposta({ etapa: "reservado", valor: 20 }),
-        proposta({ etapa: "faturado", valor: 100 }),
+        proposta({ etapa: "reservado", unidade_id: "u-a", valor: 10 }),
+        proposta({ etapa: "reservado", unidade_id: "u-b", valor: 20 }),
+        proposta({ etapa: "faturado", unidade_id: "u-c", valor: 100 }),
       ],
-      unidades: [],
+      unidades: [
+        unidade({ codigo: "Q01 L01", id: "u-a" }),
+        unidade({ codigo: "Q01 L02", id: "u-b" }),
+        unidade({ codigo: "Q01 L03", id: "u-c" }),
+      ],
     });
 
     expect(r.fluxo.find((f) => f.etapa === "reservado")).toEqual({
@@ -73,16 +84,23 @@ describe("agregarFluxo", () => {
     // planejar em cima de venda morta.
     const r = agregarFluxo({
       propostas: [
-        proposta({ etapa: "cancelado", valor: 50 }),
-        proposta({ etapa: "distrato", valor: 70 }),
-        proposta({ etapa: "faturado", valor: 100 }),
+        proposta({ etapa: "cancelado", unidade_id: "u-a", valor: 50 }),
+        proposta({ etapa: "distrato", unidade_id: "u-b", valor: 70 }),
+        proposta({ etapa: "faturado", unidade_id: "u-c", valor: 100 }),
       ],
-      unidades: [],
+      unidades: [
+        unidade({ codigo: "Q01 L01", id: "u-a" }),
+        unidade({ codigo: "Q01 L02", id: "u-b" }),
+        unidade({ codigo: "Q01 L03", id: "u-c" }),
+      ],
     });
 
-    // Sete passos agora: o estoque na frente (zero aqui, porque o teste não passa unidades) e o
-    // cancelamento no fim.
-    expect(r.fluxo.map((f) => f.quantidade)).toEqual([0, 0, 0, 0, 0, 1, 0]);
+    // Sete passos: o estoque na frente e o cancelamento no fim. Os dois lotes da venda desfeita
+    // voltaram ao estoque (o cadastro delas é `disponivel`) e contam em DISPONÍVEL, que é o que a
+    // operação precisa ver: lote livre para vender de novo. O que não pode é cancelado e distrato
+    // virarem passo do pipeline.
+    expect(r.fluxo.map((f) => f.quantidade)).toEqual([2, 0, 0, 0, 0, 1, 0]);
+    // O VGV da faixa só tem o faturado: os dois lotes livres não têm preço de tabela no fixture.
     expect(r.fluxo.reduce((a, f) => a + f.vgv, 0)).toBe(100);
     expect(r.perdas).toEqual({ canceladas: 1, distratos: 1, vgvCancelado: 120 });
   });
@@ -220,13 +238,18 @@ describe("agregarFluxo", () => {
     // Filtrar a faixa pela janela faria a proposta em assinatura desde julho desaparecer da tela
     // em setembro — o coordenador perderia de vista justamente o que esta parado.
     const propostas = [
-      proposta({ data_faturamento: "2026-03-10", etapa: "faturado", valor: 100 }),
-      proposta({ data_faturamento: "2026-09-01", etapa: "faturado", valor: 700 }),
-      proposta({ etapa: "assinatura", etapa_desde: "2026-07-05T10:00:00Z", valor: 500 }),
+      proposta({ data_faturamento: "2026-03-10", etapa: "faturado", unidade_id: "u-a", valor: 100 }),
+      proposta({ data_faturamento: "2026-09-01", etapa: "faturado", unidade_id: "u-b", valor: 700 }),
+      proposta({ etapa: "assinatura", etapa_desde: "2026-07-05T10:00:00Z", unidade_id: "u-c", valor: 500 }),
+    ];
+    const unidades = [
+      unidade({ codigo: "Q01 L01", id: "u-a" }),
+      unidade({ codigo: "Q01 L02", id: "u-b" }),
+      unidade({ codigo: "Q01 L03", id: "u-c" }),
     ];
 
-    const tudo = agregarFluxo({ propostas, unidades: [] });
-    const setembro = agregarFluxo({ periodo: { ate: "2026-09", de: "2026-09" }, propostas, unidades: [] });
+    const tudo = agregarFluxo({ propostas, unidades });
+    const setembro = agregarFluxo({ periodo: { ate: "2026-09", de: "2026-09" }, propostas, unidades });
 
     // A faixa: igual nos dois.
     const faixa = (r: ReturnType<typeof agregarFluxo>) => r.fluxo.map((f) => [f.etapa, f.quantidade, f.vgv]);
@@ -548,17 +571,39 @@ describe("agregarFluxo com a situação da régua única", () => {
     expect(r.fluxo.find((f) => f.etapa === "disponivel")).toEqual({ etapa: "disponivel", quantidade: 1, vgv: 300 });
   });
 
-  it("o funil, a lista e o VGV continuam saindo das propostas", () => {
+  // ⚠️ QUANDO A RÉGUA E A PROPOSTA DISCORDAM, A FAIXA SEGUE A RÉGUA. É a mesma coisa que a grade
+  // pinta, e era essa discordância que fazia a tela do VOC mostrar dois números para a mesma
+  // pergunta. A LISTA e o desempenho continuam saindo das propostas: são outra pergunta ("o que
+  // aconteceu"), e a de baixo tem a linha de cada venda.
+  it("a faixa segue a régua; a lista e o VGV do período seguem a proposta", () => {
     const r = agregarFluxo({
       propostas: [proposta({ etapa: "faturado", unidade_id: "u-2", valor: 500 })],
       situacaoPorUnidade: new Map([["u-2", "contrato"]]),
       unidades: [unidade({ codigo: "Q01 L02", id: "u-2", situacao: "vendida" })],
     });
 
-    expect(r.fluxo.find((f) => f.etapa === "faturado")).toEqual({ etapa: "faturado", quantidade: 1, vgv: 500 });
-    expect(r.fluxo.find((f) => f.etapa === "contrato")?.quantidade).toBe(0);
+    // O lote está em contrato pela régua, e o valor que entra é o da proposta.
+    expect(r.fluxo.find((f) => f.etapa === "contrato")).toEqual({ etapa: "contrato", quantidade: 1, vgv: 500 });
+    expect(r.fluxo.find((f) => f.etapa === "faturado")?.quantidade).toBe(0);
     expect(r.lista.map((l) => l.etapa)).toEqual(["faturado"]);
     expect(r.totais.vgvFaturado).toBe(500);
+  });
+
+  // ⚠️ O LOTE QUE MIGROU DE GLEBA: a proposta ficou na linha ANTIGA e a grade mostra a linha
+  // nova. Sem o terreno, a faixa perdia essa venda — foram 5 assim no VOC em 21/09/2026.
+  it("conta o lote cuja proposta está na linha irmã do terreno, com o valor dela", () => {
+    const r = agregarFluxo({
+      propostas: [proposta({ etapa: "assinatura", unidade_id: "linha-antiga", valor: 321 })],
+      situacaoPorUnidade: new Map([["linha-viva", "assinatura"]]),
+      terrenoDe: (id) => (id === "linha-viva" ? { linhas: ["linha-viva", "linha-antiga"] } : undefined),
+      unidades: [unidade({ codigo: "Q01 L03", id: "linha-viva", situacao: "vendida" })],
+    });
+
+    expect(r.fluxo.find((f) => f.etapa === "assinatura")).toEqual({
+      etapa: "assinatura",
+      quantidade: 1,
+      vgv: 321,
+    });
   });
 
   it("⚠️ unidade que a régua não trouxe NUNCA vira livre", () => {
