@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-22-a-etapa-volta-a-ser-a-etapa",
+    deployedAt: "2026-09-22T01:30:00-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**Lote que não faturou volta a aparecer como está.** Ontem a tela passou a promover para Faturado toda venda com data de faturamento no passado, e essa data é a PREVISTA, não o fato: das 60 vendas que a regra alcançava, 36 seguiam em assinatura no legado (35 no Cidade Jardim, previstas para setembro de 2025). Isso saiu. A etapa volta a ser a que está gravada na venda.",
+              "**O lote bloqueado não herda mais a venda da outra gleba.** No Vale do Ouro, 13/01, 13/02 e 12/06 existem três vezes no cadastro: bloqueados no VLO e no VOC, com a venda no VOR. O cartão de Faturado do VOC contava essas duas vendas e dizia 88 onde a lista, logo abaixo, mostrava 86. Bloquear é como a operação escreve que o lote não se vende ali, e agora a régua respeita isso.",
+              "**O que impede vender duplicado continua de pé:** lote não bloqueado segue enxergando a reserva ou a venda registrada na gleba antiga (é o caso do VOC 03/05).",
+              "**No histórico do lote não entra mais \"Faturada\" por data prevista** — histórico é prova, e prova não se escreve com previsão.",
+            ],
+            screen: "Venda · faixa, grade e ficha do lote",
+          },
+        ],
+      },
+    ],
+    rollback: "3f967656",
+    technical: {
+      done:
+        "REVERSAO DA v1.357.0 (um dia de vida) MAIS UMA REGRA NOVA. (1) `data_faturamento` guarda `acquisition_requests.billing_date`, que o C2X preenche quando a venda e MONTADA: medido nos dois bancos, 36 das 60 vendas vivas com a data no passado NAO tinham faturado (35 CDJ em assinatura, previsao de 22 a 30/09/2025; 1 RDP em contrato gerado, 23/12/2024), e as tres do VOC que motivaram o conserto tinham 17/09 gravado desde a carga de 13/09 -- a data bateu por coincidencia. `etapa-pelo-fato.ts` apagada, com a promocao removida de `situacao-da-unidade.ts`, da entrada de `agregarFluxo` e do evento derivado de `historico-da-unidade.ts`; `data-faturamento-e-previsao.test.ts` proibe derivar etapa do campo e mantem o uso legitimo (a DATA de quem ja esta faturado); a carga (`scripts/hercules/importar-fluxo-de-venda.mjs`) passa a gravar o campo SO no estagio 4, para ele virar fato. (2) `SinaisDoTerreno.propostasVivas` ganhou `daLinha`, e `situacaoDoTerreno` ignora a proposta da IRMA quando o cadastro desta linha diz `bloqueada` -- a mesma regra ja escrita em 18/09 para a irma com dono no cadastro. Nunca ignora a proposta da propria linha: lote bloqueado com venda viva ali e contradicao do cadastro, e quem manda e o processo. 7.773 testes verdes (5 novos na regua do bloqueio, 4 no guardiao), typecheck limpo. ⚠️ O FUNDO DO PROBLEMA SEGUE ABERTO: a carga do legado esta parada desde 13/09 e o time continua vendendo no C2X -- faltam aqui o pedido 4970 (VOC 03/05, em assinatura desde 14/09) e as etapas de tres faturamentos de 17/09. Com esta versao a tela mostra o que o Panteon SABE (83 faturados e 4 em assinatura no VOC), sem inventar o que ele nao sabe. Ensaio da carga medido em 22/09: 4.910 propostas prontas, todas com unidade casada; as 7 movidas pelo time sao distratos com `cancelada_em`, protegidos pela trava do script.",
+      motivation:
+        "Nivea, 22/09/2026 00:35, com o print da Venda do VOC: \"Lucas, sao 86 faturadas, 02 em assinatura - 0522 e 0305, 01 em contrato e 06 disponiveis\" -- a tela dizia 88 no cartao, 86 na lista e 1 em assinatura. Lucas: \"nada ta batendo, olha isso por favor\".",
+    },
+    title: "A etapa volta a ser a etapa, e o lote bloqueado para de herdar venda",
+    type: "correcao",
+    version: "1.359.0",
+  },
+  {
     buildTag: "2026-09-22-carteira-casa-pelo-pedido",
     deployedAt: "2026-09-22T00:30:00-03:00",
     modules: [
