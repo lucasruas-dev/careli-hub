@@ -278,10 +278,22 @@ export async function assinanteDeTermosDaVendedora(
 /**
  * As duas empresas do empreendimento de quem o quadro herda representante.
  *
- * ⚠️ TRÊS COLUNAS PARECIDAS, E UMA DELAS NÃO ENTRA AQUI. `vendedor_entity_id` é a incorporadora,
- * `coordenador_entity_id` (0159) é o coordenador DAQUELE empreendimento, e `coordenadora_entity_id`
- * é a Coordenação de Vendas da casa — esta última aparece no TEXTO do contrato e não assina. Trocar
- * as três já pôs o captador no lugar do coordenador uma vez.
+ * ⚠️ TRÊS COLUNAS PARECIDAS, E A ORDEM ENTRE DUAS DELAS MUDOU EM 22/09/2026.
+ * `vendedor_entity_id` é a incorporadora; `coordenadora_entity_id` é a Coordenação de Vendas da casa
+ * (a Gurgel, a mesma em todos os produtos) e é ela que o TEXTO do contrato imprime;
+ * `coordenador_entity_id` (0159) é quem o C2X registrou como coordenador daquele empreendimento.
+ *
+ * ⚠️ A COORDENADORA ASSINA — Lucas, 22/09/2026: *"a gurgel assina sim"*. Até esta data o papel
+ * `coordenadora` do envelope saía de `coordenador_entity_id`, e o TEXTO do contrato de
+ * `coordenadora_entity_id`: o nome impresso e quem o sistema convidava nunca eram a mesma empresa.
+ * Medido no dia: 16 linhas com `coordenadora_entity_id`, TODAS apontando a Gurgel; 24 com
+ * `coordenador_entity_id`, em 7 empresas diferentes, sendo 19 delas imobiliárias; linhas em que as
+ * duas coincidem: ZERO. No Vale do Ouro o contrato imprimia a Gurgel e mandava assinar a HUBER —
+ * que nem representante legal cadastrado tem, então a linha saía vazia no papel.
+ *
+ * ⚠️ O `coordenador_entity_id` FICA COMO QUEDA, e não sai de cena: é o único que responde no
+ * produto cuja coordenação ainda não foi apontada (o ACP e o LOS não têm a coluna nova preenchida).
+ * Trocar as três já pôs o captador no lugar do coordenador uma vez; por isso aqui se troca UMA.
  */
 export async function empresasDoEmpreendimento(
   sb: SupabaseClient,
@@ -293,14 +305,15 @@ export async function empresasDoEmpreendimento(
   try {
     const { data } = await sb
       .from("apolo_enterprise_settings")
-      .select("vendedor_entity_id, coordenador_entity_id")
+      .select("vendedor_entity_id, coordenador_entity_id, coordenadora_entity_id")
       .eq("enterprise_id", id)
       .maybeSingle<{
         coordenador_entity_id: null | string;
+        coordenadora_entity_id: null | string;
         vendedor_entity_id: null | string;
       }>();
     return {
-      coordenador: data?.coordenador_entity_id ?? null,
+      coordenador: data?.coordenadora_entity_id ?? data?.coordenador_entity_id ?? null,
       vendedora: data?.vendedor_entity_id ?? null,
     };
   } catch {
