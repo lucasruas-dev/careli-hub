@@ -178,13 +178,21 @@ export async function lerAnexosDaVenda(
  * entra porque o rótulo do consolidado o tem ("group:Lagoa Bonita"). O que não couber, não entra.
  * É a mesma disciplina de `lerAnexos`.
  *
- * ⚠️ O CONSOLIDADO NÃO É DEGRAU DA CADEIA HOJE, e este é um buraco conhecido. `resolverCadeia
- * DoContrato` monta os níveis a partir de `hercules_empreendimentos`, onde `group:Lagoa Bonita` não
- * existe: ele é rótulo do catálogo do C2X, e só `empreendimentosQueServem` (o caminho da minuta
- * PEDIDA) o conhece. Um anexo cadastrado no consolidado não entra no contrato. Trazê-lo custaria
- * uma leitura do catálogo do C2X em TODA montagem, e a decisão foi não pagar isso antes de existir
- * o primeiro anexo assim — `temis_anexos` tem zero linhas (medido em 21/09/2026). A validação
- * abaixo já aceita o formato para o dia em que a decisão mudar.
+ * ⚠️ O CONSOLIDADO NÃO É DEGRAU DA CADEIA, e hoje isso não deixa buraco nenhum: a GRAVAÇÃO já
+ * resolve o `group:` para o id do empreendimento antes de escrever, e RECUSA com 400 quando não
+ * resolve (ver o ramo do consolidado em `estrutura-servico.ts`). Ou seja, anexo com `group:` em
+ * `enterprise_id` não existe mais — a linha nunca chega a ser criada, em vez de ser criada e nunca
+ * aparecer no papel, que era o defeito de antes.
+ *
+ * `resolverCadeiaDoContrato` monta os níveis a partir de `hercules_empreendimentos`, onde
+ * `group:Lagoa Bonita` não existe: ele é rótulo do catálogo do C2X, e só `empreendimentosQueServem`
+ * (o caminho da minuta PEDIDA) o conhece. Trazê-lo custaria uma leitura do catálogo do C2X em TODA
+ * montagem. A validação abaixo segue aceitando o formato, para o dia em que a decisão mudar.
+ *
+ * ⚠️ O QUE SOBRA DE VERDADE são as três famílias cuja RAIZ não tem `c2x_enterprise_id` (LOX, PDX e
+ * RDX, medido em 22/09/2026): nelas a ficha consolidada recusa o cadastro, e a peça tem de ser
+ * pendurada na etapa (LOS, LOU, PDV, PVS, RDP, RPC, RPS) ou na categoria. Funciona, mas não herda
+ * de um pai comum — cada etapa precisa da sua cópia.
  */
 export function filtroDaCadeia(cadeia: CadeiaDoContrato): string {
   const partes: string[] = [];

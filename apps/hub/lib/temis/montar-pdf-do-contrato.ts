@@ -330,11 +330,20 @@ function megabytes(bytes: number): string {
 
 // ── O QUE FALTA, PARA QUEM PEGAR ESTA PEÇA DEPOIS ────────────────────────────
 //
-// `[anexo_2]` NO MEIO DA CLÁUSULA ainda não é honrado: o marcador some do texto (ver
-// `ehMarcadorDeMontagem`, em `preencher-contrato.ts`) e o arquivo entra no fim, na ordem da
-// posição. Hoje isso não muda nenhum contrato — nenhuma das 11 minutas usa `[anexo_N]` no corpo
-// (medido em 21/09/2026); a única que fala de anexo é a v6 do VOL, e ela usa o bloco
-// `[inicio_tem_anexo_1]` com `[anexo_1_nome]`, que são TEXTO e já funcionam.
+// `[anexo_2]` NO MEIO DA CLÁUSULA não é honrado, E ISSO VIROU DECISÃO, não mais dívida. Lucas,
+// 22/09/2026, depois de ver o quadro medido: *"não tem problema, pode ir no fim"*. O marcador some
+// do texto (ver `ehMarcadorDeMontagem`, em `preencher-contrato.ts`) e o arquivo entra no fim, na
+// ordem da posição.
+//
+// ⚠️ A NOTA ANTERIOR ESTAVA ERRADA e vale corrigi-la, porque era ela que a próxima pessoa leria
+// para decidir: ela dizia que NENHUMA das 11 minutas usava `[anexo_N]`. Medido em 22/09/2026, são
+// 18 minutas e QUATRO usam — entre elas a VOL v10 e a VOC v2, as duas publicadas e em uso. Em
+// 100% delas o `[anexo_N]` está no ÚLTIMO bloco do documento (bloco 280 de 280), então "no fim"
+// coincide exatamente com onde o marcador foi escrito. É por isso que a decisão custa pouco: o
+// desenho que o jurídico já usa (o contrato do Villa Paris, no C2X) também põe a peça no fim.
+//
+// E a trava do marcador órfão nunca dispara nessas minutas: o `[anexo_1]` está dentro de
+// `[inicio_tem_anexo_1]`, e o bloco condicional cai antes de o marcador ser resolvido.
 //
 // Quando precisar: o caminho é renderizar POR SEGMENTOS — cortar os nós do documento em cada
 // marcador, chamar `page.pdf()` uma vez por segmento no MESMO navegador (o `launch` é o caro, ~2,5s;

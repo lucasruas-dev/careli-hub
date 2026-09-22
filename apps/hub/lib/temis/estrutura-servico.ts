@@ -359,6 +359,98 @@ type AlcancePossivel = { id: string; nome: string; tipo: "categoria" | "empreend
  * lista de ESCOLHA, não um recorte de segurança — quem confere se o alcance escolhido é do ator
  * continua sendo `alcanceDaPasta`, na gravação.
  */
+/**
+ * A FAMÍLIA INTEIRA de um empreendimento: a raiz, as divisões dela e as categorias de todas.
+ *
+ * ⚠️ SOBE ANTES DE DESCER. `alcancesDoAnexo` monta a lista a partir do DONO que a tela abriu, e
+ * quando a tela está numa divisão (o VOL) ela não conhece o pai nem as irmãs. Para a trava da
+ * posição isso não serve: a cadeia do contrato atravessa a família toda, e uma colisão entre o VOL
+ * e o pai Vale do Ouro é exatamente a que derruba a emissão.
+ *
+ * Devolve os ids DO C2X dos empreendimentos e os uuid das categorias — as duas chaves que
+ * `temis_anexos` guarda.
+ */
+async function familiaDoEmpreendimento(
+  admin: Admin,
+  dono: string,
+): Promise<{ categorias: string[]; empreendimentos: string[] }> {
+  const vazio = { categorias: [], empreendimentos: [] };
+  if (!dono || dono.startsWith(PREFIXO_DO_CONSOLIDADO)) return vazio;
+
+  const { data: linha } = await admin
+    .from("hercules_empreendimentos")
+    .select("c2x_enterprise_id,id,pai_id")
+    .eq("workspace_id", WORKSPACE)
+    .eq("c2x_enterprise_id", dono)
+    .maybeSingle();
+  const atual = linha as null | { c2x_enterprise_id: null | string; id: string; pai_id: null | string };
+  if (!atual) return vazio;
+
+  // Sobe ao pai, quando houver: a raiz é quem tem os filhos pendurados.
+  let raizId = atual.id;
+  if (atual.pai_id) {
+    const { data: pai } = await admin
+      .from("hercules_empreendimentos")
+      .select("id")
+      .eq("workspace_id", WORKSPACE)
+      .eq("id", atual.pai_id)
+      .maybeSingle();
+    if (pai) raizId = (pai as { id: string }).id;
+  }
+
+  const { data: todos } = await admin
+    .from("hercules_empreendimentos")
+    .select("c2x_enterprise_id,id")
+    .eq("workspace_id", WORKSPACE)
+    .or(`id.eq.${raizId},pai_id.eq.${raizId}`);
+
+  const empreendimentos = ((todos ?? []) as Array<{ c2x_enterprise_id: null | string }>)
+    .map((e) => texto(e.c2x_enterprise_id))
+    .filter(Boolean);
+  if (empreendimentos.length === 0) return vazio;
+
+  const { data: categorias } = await admin
+    .from("temis_categorias")
+    .select("id")
+    .eq("workspace_id", WORKSPACE)
+    .in("enterprise_id", empreendimentos);
+
+  return {
+    categorias: ((categorias ?? []) as Array<{ id: string }>).map((c) => String(c.id)),
+    empreendimentos,
+  };
+}
+
+/**
+ * O empreendimento (id do C2X) a que este alcance pertence, seja ele qual for.
+ *
+ * É o que permite conferir a posição na família mesmo quando a peça é de uma categoria ou de um
+ * lote: os três degraus terminam no mesmo produto.
+ */
+async function donoDoAlcance(admin: Admin, campos: CamposDoAlcance): Promise<string> {
+  if (campos.enterprise_id) return texto(campos.enterprise_id);
+
+  if (campos.categoria_id) {
+    const { data } = await admin
+      .from("temis_categorias")
+      .select("enterprise_id")
+      .eq("id", campos.categoria_id)
+      .maybeSingle();
+    return texto((data as null | { enterprise_id: null | string })?.enterprise_id);
+  }
+
+  if (campos.unidade_id) {
+    const { data } = await admin
+      .from("hercules_unidades")
+      .select("enterprise_id")
+      .eq("id", campos.unidade_id)
+      .maybeSingle();
+    return texto((data as null | { enterprise_id: null | string })?.enterprise_id);
+  }
+
+  return "";
+}
+
 async function alcancesDoAnexo(
   admin: Admin,
   ator: AtorDaTemis,
@@ -501,6 +593,60 @@ export async function gravarAnexo(ator: AtorDaTemis, request: Request): Promise<
     corpo.enterpriseId = resolvido;
   }
 
+  // ⚠️ O ID DO EMPREENDIMENTO PRECISA SER O QUE A CADEIA DO CONTRATO PROCURA, e não o uuid interno.
+  //
+  // `temis_anexos.enterprise_id` guarda o ID DO C2X — o mesmo que `temis_minutas.enterprise_id` e o
+  // mesmo que a unidade carrega. Só que a coluna é texto e aceita qualquer coisa: mandar o uuid do
+  // Panteon (`af45a402-…`) gravava com 200, a peça aparecia na lista da própria tela e o contrato
+  // saía SEM ELA, para sempre e sem um aviso. Medido em 22/09/2026 com a venda da VITORIA: pelo
+  // uuid o contrato trouxe 0 anexos; pelo id do C2X (36), trouxe 1.
+  //
+  // ⚠️ CONVERTE ANTES DE RECUSAR, que é o que o bloco do consolidado logo acima já faz: o uuid é um
+  // apontamento legítimo para o mesmo produto, e quem o mandou quis dizer aquele empreendimento.
+  // Recusar o que dá para resolver seria rigor sem serventia. O que não resolve, aí sim, sai pela
+  // porta com a frase do motivo.
+  //
+  // ⚠️ E A CAPA FICA DE FORA, porque ali `enterpriseId` NÃO É UM EMPREENDIMENTO: o campo carrega o
+  // ID DA MINUTA (ver a nota do ramo `capa` e o comentário de `CapaDaMinuta` na tela). Conferir o
+  // cadastro de empreendimento num id de minuta recusaria todo upload de capa — foi o que os três
+  // testes do portal pegaram antes desta linha existir.
+  const doCorpo = texto(corpo.enterpriseId);
+  if (doCorpo && corpo.capa !== true && !doCorpo.startsWith(PREFIXO_DO_CONSOLIDADO)) {
+    const { data: porC2x } = await admin
+      .from("hercules_empreendimentos")
+      .select("c2x_enterprise_id")
+      .eq("workspace_id", WORKSPACE)
+      .eq("c2x_enterprise_id", doCorpo)
+      .maybeSingle();
+
+    if (!porC2x) {
+      const { data: porUuid } = await admin
+        .from("hercules_empreendimentos")
+        .select("c2x_enterprise_id,nome")
+        .eq("workspace_id", WORKSPACE)
+        .eq("id", doCorpo)
+        .maybeSingle();
+      const achado = porUuid as null | { c2x_enterprise_id: null | string; nome: null | string };
+      const convertido = texto(achado?.c2x_enterprise_id);
+
+      if (convertido) {
+        console.warn(
+          `[temis/anexos] alcance veio como uuid do Panteon (${doCorpo}) e foi convertido para o id do C2X (${convertido}).`,
+        );
+        corpo.enterpriseId = convertido;
+      } else {
+        return NextResponse.json(
+          {
+            error: achado
+              ? `O empreendimento "${achado.nome ?? doCorpo}" não tem id do sistema de vendas, e sem ele a peça nunca chegaria ao contrato. Escolha a divisão a que este anexo pertence.`
+              : "Não encontrei este empreendimento no cadastro. Recarregue a tela e escolha o alcance de novo.",
+          },
+          { status: 400 },
+        );
+      }
+    }
+  }
+
   const alcance = lerAlcance(corpo);
   if (alcance.erro || !alcance.campos || !alcance.pasta) {
     return NextResponse.json({ error: alcance.erro ?? "Alcance invalido." }, { status: 400 });
@@ -602,11 +748,63 @@ export async function gravarAnexo(ator: AtorDaTemis, request: Request): Promise<
       return NextResponse.json({ error: MENSAGEM_DOCUMENTO_GRANDE }, { status: 413 });
     }
 
+    // ⚠️ A POSIÇÃO É ÚNICA NA CADEIA INTEIRA, E ATÉ AQUI SÓ O MOTOR SABIA DISSO.
+    //
+    // Os índices únicos da 0156 são POR NÍVEL: o banco aceita, sem um pio, posição 1 no pai e
+    // posição 1 na divisão. Quem soma os níveis é a montagem do contrato, e lá a colisão não é
+    // aviso: é RECUSA TOTAL, 409, o contrato não sai e ninguém vence. A conta chegava dias depois
+    // do cadastro e longe da causa, em cima de uma venda pronta para assinar.
+    //
+    // ⚠️ E ELA TEM DE SER CONFERIDA NA GRAVAÇÃO, que é o único momento em que existe alguém
+    // olhando a tela para corrigir. Uma consulta a mais por cadastro é barata: cadastrar anexo é
+    // raro, emitir contrato não.
+    const dono = await donoDoAlcance(admin, alcance.campos);
+    const familia = await familiaDoEmpreendimento(admin, dono);
+    if (familia.empreendimentos.length > 0) {
+      const alvos: string[] = [];
+      for (const id of familia.empreendimentos) alvos.push(`enterprise_id.eq.${id}`);
+      for (const id of familia.categorias) alvos.push(`categoria_id.eq.${id}`);
+
+      const { data: vizinhos } = await admin
+        .from("temis_anexos")
+        .select("categoria_id,enterprise_id,nome,posicao,unidade_id")
+        .eq("ativo", true)
+        .eq("posicao", posicao)
+        .or(alvos.join(","));
+
+      // O próprio alcance não conta: o índice único do banco já responde por ele, com a mensagem
+      // de "posição ocupada neste alcance", que é mais precisa para esse caso.
+      const daFamilia = ((vizinhos ?? []) as LinhaDoAnexo[]).filter(
+        (v) =>
+          texto(v.enterprise_id) !== texto(alcance.campos?.enterprise_id) ||
+          texto(v.categoria_id) !== texto(alcance.campos?.categoria_id),
+      );
+
+      const conflito = daFamilia[0];
+      if (conflito) {
+        await bucket.remove([path]);
+        return NextResponse.json(
+          {
+            error:
+              `A posição ${posicao} já é de "${conflito.nome}", em outro nível deste mesmo produto. ` +
+              "O contrato soma as peças do empreendimento, da divisão e da categoria, e duas na " +
+              "mesma posição impedem a emissão. Use outra posição.",
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const { data, error } = await admin
       .from("temis_anexos")
       .insert({
         ...alcance.campos,
         arquivo_bytes: tamanho > 0 ? tamanho : null,
+        // ⚠️ EXPLÍCITO, e não pelo default da coluna. `ativo` é o que a leitura do contrato filtra
+        // (`.eq("ativo", true)`) e o que a trava da posição consulta: deixá-lo por conta do banco
+        // faz a peça nascer certa em produção e invisível em qualquer teste que não replique o
+        // default, que é o mesmo tipo de silêncio que a trava existe para acabar.
+        ativo: true,
         arquivo_mime: typeof info.data.contentType === "string" ? info.data.contentType : null,
         arquivo_nome: path.slice(path.lastIndexOf("/") + 1).replace(/^[0-9a-f-]{36}-/i, ""),
         // Hub: `hub_users.id`. Portal: `apolo_incorporador_usuarios.id`; o nome com a origem, ao

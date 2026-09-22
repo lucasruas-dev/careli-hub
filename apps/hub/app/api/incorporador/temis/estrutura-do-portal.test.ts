@@ -149,6 +149,11 @@ beforeEach(() => {
       { c2x_enterprise_id: "36", codigo: "VOL", id: "h-vol", nome: "VOL", pai_id: "h-vlo", workspace_id: "careli" },
       { c2x_enterprise_id: "41", codigo: "VOR", id: "h-vor", nome: "VOR", pai_id: "h-vlo", workspace_id: "careli" },
       { c2x_enterprise_id: "20", codigo: "JDG", id: "h-jdg", nome: "JDG", pai_id: null, workspace_id: "careli" },
+      // ⚠️ O GARDEN ENTROU EM 22/09/2026. Ele é metade do cenário da Cecílio (que opera 37 e 39) e
+      // faltava nesta tabela: os testes passavam porque nada lia o cadastro para o alcance do
+      // anexo. A trava da chave do empreendimento passou a ler, e a ausência aqui virou um 400 num
+      // caminho que em produção sempre funcionou — o Garden existe no cadastro real, como GDN.
+      { c2x_enterprise_id: "39", codigo: "GDN", id: "h-gdn", nome: "Garden", pai_id: null, workspace_id: "careli" },
     ],
     hercules_unidades: [
       unidade(UNIDADE_VOC, "37", "1"),
