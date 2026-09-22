@@ -3,8 +3,13 @@ import { NextResponse } from "next/server";
 import { loadApoloEnterpriseCarteira, type ApoloCarteiraUnit } from "@/lib/apolo/carteira";
 import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
 import {
+  agruparAtoESinalPorPedido,
+  type LinhaDeAtoESinal,
+  type ParcelaDeAtoESinal,
+  TETO_ATO_E_SINAL,
+} from "@/lib/apolo/incorporador/ato-e-sinal";
+import {
   carteiraLiquidaDoIncorporador,
-  perfilDaParcela,
   type CarteiraPorUnidade,
   type ColunaDoExtrato,
   type FiltroDoExtrato,
@@ -15,7 +20,6 @@ import { empreendimentosDoPortal } from "@/lib/apolo/incorporador/empreendimento
 import { autorizar, codigosDaSessao, idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { ehPortalComercial } from "@/lib/apolo/incorporador/perfis-de-portal";
 import { produtosDoPortal } from "@/lib/apolo/incorporador/produtos-do-portal";
-import { numeroDaParcela } from "@/lib/apolo/numero-da-parcela";
 import { type DadosDoApolo, loadPoliticaComercial } from "@/lib/apolo/politica-comercial";
 import { type PoliticaDoEmpreendimento } from "@/lib/apolo/liquido-incorporador";
 import { createApoloAdminClient } from "@/lib/apolo/server";
@@ -99,28 +103,6 @@ export const maxDuration = 30;
  * Uma parcela de Ato ou Sinal, como o COORDENADOR a vê: valor cheio (o que o cliente paga), sem
  * líquido, sem rateio, com o boleto. Só existe no payload da sessão comercial.
  */
-type ParcelaDeAtoESinal = {
-  /** Fatura/Boleto Asaas: `payment_asaas_url` primeiro, `payment_asaas_invoice_url` de fallback (a mesma escolha de parcelas-portal.ts). */
-  boletoUrl: null | string;
-  diasDeAtraso: number;
-  id: string;
-  /** `true` = o vencimento já passou (pago ou não). É o denominador da inadimplência, como no bruto. */
-  jaVenceu: boolean;
-  /** "1/1" no Ato, "n/total" no Sinal (a régua de numero-da-parcela.ts). */
-  numero: string;
-  pagoEm: null | string;
-  /** `true` = paga com pagamento no mês corrente (o card "Recuperação" do bruto). */
-  pagoNoMes: boolean;
-  perfil: "Ato" | "Sinal";
-  situacao: SituacaoDaParcela;
-  /** O principal (valor cheio da parcela), a mesma régua de `PRINCIPAL` em carteira.ts. */
-  valor: number;
-  /** Em aberto COM encargos quando vencida (a régua `OUTSTANDING` de carteira.ts); 0 quando não. */
-  valorEmAberto: number;
-  valorPago: number;
-  vencimento: null | string;
-};
-
 /** Uma unidade como o PORTAL a mostra: allowlist explícita sobre `ApoloCarteiraUnit`. */
 type UnidadeDoPortal = {
   /** SÓ na sessão comercial (ver o cabeçalho): as parcelas de Ato e Sinal desta unidade. */
@@ -152,43 +134,8 @@ type UnidadeDoPortal = {
   totalContract: number;
 };
 
-/** Uma linha crua da leitura de Ato e Sinal (ver `parcelasDeAtoESinal`). */
-type LinhaDeAtoESinal = {
-  dias_atraso: null | number | string;
-  due_date: null | string;
-  invoice_url: null | string;
-  ja_venceu: null | number | string;
-  pago_no_mes: null | number | string;
-  parcel_type: null | string;
-  parcela_n: null | number | string;
-  parcela_total: null | number | string;
-  payment_date: null | string;
-  payment_id: number | string;
-  payment_url: null | string;
-  sinal_n: null | number | string;
-  sinal_total: null | number | string;
-  situacao: null | string;
-  unit_id: number | string;
-  valor_em_aberto: null | number | string;
-  valor_pago: null | number | string;
-  valor_previsto: null | number | string;
-};
-
-/** Teto de segurança da leitura de Ato e Sinal: bateu, `parcial` vem `true` e a tela avisa. */
-const TETO_ATO_E_SINAL = 20000;
-
-const numero = (valor: unknown): number => {
-  const n = Number(valor ?? 0);
-  return Number.isFinite(n) ? n : 0;
-};
-
-const http = (valor: unknown): null | string => {
-  const texto = typeof valor === "string" ? valor.trim() : "";
-  return /^https?:\/\//i.test(texto) ? texto : null;
-};
-
 /**
- * As parcelas de ATO e SINAL da carteira ativa, por unidade — a leitura do modo coordenador.
+ * As parcelas de ATO e SINAL da carteira ativa, POR PEDIDO — a leitura do modo coordenador.
  *
  * ⚠️ A MESMA MATEMÁTICA DO BRUTO, de propósito. Carteira ativa = `payment_status_id in (5, 6, 7)`
  * sem as apagadas; paga = 5; vencida = a régua `OVERDUE`; pago/a receber/total = o PRINCIPAL
@@ -205,7 +152,7 @@ const http = (valor: unknown): null | string => {
  */
 async function parcelasDeAtoESinal(
   codes: string[],
-): Promise<{ parcial: boolean; porUnitId: Map<string, ParcelaDeAtoESinal[]> } | { erro: string }> {
+): Promise<{ parcial: boolean; porPedido: Map<string, ParcelaDeAtoESinal[]> } | { erro: string }> {
   const pool = getHadesDbPool();
   if (!pool.ok) {
     return { erro: `Configuracao C2X ausente: ${pool.missing.join(", ")}.` };
@@ -219,6 +166,7 @@ async function parcelasDeAtoESinal(
   const [linhas] = await pool.pool.query(
     `select
        p.id                                     as payment_id,
+       ar.id                                    as ar_id,
        eu.id                                    as unit_id,
        pt.name                                  as parcel_type,
        p.current_total_parcel                   as parcela_n,
@@ -255,59 +203,28 @@ async function parcelasDeAtoESinal(
     codes,
   );
 
-  const cruas = linhas as LinhaDeAtoESinal[];
-  const parcial = cruas.length > TETO_ATO_E_SINAL;
-  const porUnitId = new Map<string, ParcelaDeAtoESinal[]>();
-
-  for (const linha of cruas.slice(0, TETO_ATO_E_SINAL)) {
-    // A régua canônica decide; o LIKE do SQL só reduziu o volume.
-    const perfil = perfilDaParcela(linha.parcel_type);
-    if (perfil !== "ato" && perfil !== "sinal") continue;
-
-    const situacao = linha.situacao;
-    const unitId = String(linha.unit_id);
-    const lista = porUnitId.get(unitId) ?? [];
-    lista.push({
-      // A fatura primeiro, o PDF cru de fallback: a mesma escolha documentada em parcelas-portal.ts.
-      boletoUrl: http(linha.payment_url) ?? http(linha.invoice_url),
-      diasDeAtraso: numero(linha.dias_atraso),
-      id: String(linha.payment_id),
-      jaVenceu: numero(linha.ja_venceu) === 1,
-      numero: numeroDaParcela({
-        parcelaAtual: linha.parcela_n == null ? null : numero(linha.parcela_n),
-        parcelaTotal: linha.parcela_total == null ? null : numero(linha.parcela_total),
-        sinalAtual: linha.sinal_n == null ? null : numero(linha.sinal_n),
-        sinalTotal: linha.sinal_total == null ? null : numero(linha.sinal_total),
-        tipo: linha.parcel_type,
-      }),
-      pagoEm: linha.payment_date,
-      pagoNoMes: numero(linha.pago_no_mes) === 1,
-      perfil: perfil === "ato" ? "Ato" : "Sinal",
-      situacao: situacao === "paga" ? "paga" : situacao === "vencida" ? "vencida" : "a_vencer",
-      valor: numero(linha.valor_previsto),
-      valorEmAberto: numero(linha.valor_em_aberto),
-      valorPago: numero(linha.valor_pago),
-      vencimento: linha.due_date,
-    });
-    porUnitId.set(unitId, lista);
-  }
-
-  return { parcial, porUnitId };
+  // A régua PURA agrupa e decide o perfil (lib/apolo/incorporador/ato-e-sinal.ts), e é ela que
+  // tem teste: a rota só faz a leitura.
+  return agruparAtoESinalPorPedido(linhas as LinhaDeAtoESinal[]);
 }
 
 function unidadeParaOPortal(
   unit: ApoloCarteiraUnit,
   nomePorCode: Map<string, string>,
   liquidoPorUnitId: Map<string, CarteiraPorUnidade>,
-  atoESinalPorUnitId: Map<string, ParcelaDeAtoESinal[]> | null,
+  atoESinalPorPedido: Map<string, ParcelaDeAtoESinal[]> | null,
 ): UnidadeDoPortal {
   const liquido = liquidoPorUnitId.get(unit.id) ?? null;
 
   return {
-    // O campo só NASCE na sessão comercial (`atoESinalPorUnitId` é `null` fora dela): o payload
+    // O campo só NASCE na sessão comercial (`atoESinalPorPedido` é `null` fora dela): o payload
     // do incorporador não ganha nem um `atoESinal: undefined`.
-    ...(atoESinalPorUnitId
-      ? { atoESinal: { parcelas: atoESinalPorUnitId.get(unit.id) ?? [] } }
+    //
+    // ⚠️ A CHAVE É O PEDIDO DESTA LINHA, NÃO A UNIDADE. A unidade com mais de um pedido (reserva
+    // cancelada ao lado da venda que vingou) recebia o balde inteiro em cada linha, e o vencido
+    // de um comprador aparecia no nome do outro. Ver ato-e-sinal.ts.
+    ...(atoESinalPorPedido
+      ? { atoESinal: { parcelas: atoESinalPorPedido.get(unit.pedidoId) ?? [] } }
       : null),
     block: unit.block,
     client: unit.client?.name ?? null,
@@ -592,7 +509,7 @@ export async function GET(request: Request) {
             unit,
             nomePorCode,
             liquidoPorUnitId,
-            atoESinal ? atoESinal.porUnitId : null,
+            atoESinal ? atoESinal.porPedido : null,
           ),
         ),
       },

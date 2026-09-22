@@ -53,6 +53,7 @@ const carteiraUnit = (over: Partial<ApoloCarteiraUnit>): ApoloCarteiraUnit => ({
   overdueAmount: 0,
   overdueInstallments: 0,
   paidAmount: 0,
+  pedidoId: "900",
   toReceiveAmount: 0,
   totalContract: 0,
   ...over,

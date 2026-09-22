@@ -65,9 +65,19 @@ export type ApoloCarteiraUnit = {
   contractDocumentId: string | null;
   // Data em que a proposta chegou a "Faturado" (stage 4) — a referência de virada da venda.
   faturadoAt: string | null;
+  /** `enterprise_unities.id`. ⚠️ NÃO É CHAVE ÚNICA DA LINHA: ver `pedidoId`. */
   id: string;
   imobiliaria: ApoloCarteiraUnitParty | null;
   lot: string | null;
+  /**
+   * `acquisition_requests.id` — o pedido DESTA linha, e a única chave única dela.
+   *
+   * ⚠️ UMA UNIDADE PODE TER MAIS DE UMA LINHA. A consulta agrupa por unidade E pedido, porque a
+   * reserva cancelada continua no legado ao lado da venda que vingou (medido em 21/09/2026: 21
+   * unidades em 5 empreendimentos). Quem casar dado externo por `id` cola o dinheiro de um
+   * comprador na linha do outro — foi o bug do ato e sinal do portal comercial.
+   */
+  pedidoId: string;
   maxOverdueDays: number;
   overdueAmount: number;
   overdueInstallments: number;
@@ -304,6 +314,7 @@ function mapUnit(row: UnitRow): ApoloCarteiraUnit {
     id: String(row.unit_id),
     imobiliaria: party(row.imobiliaria_id, text(row.imobiliaria_name)),
     lot: text(row.lot),
+    pedidoId: String(row.ar_id ?? ""),
     maxOverdueDays: toNumber(row.max_overdue_days),
     overdueAmount: toNumber(row.overdue_amount),
     overdueInstallments: toNumber(row.overdue_installments),
