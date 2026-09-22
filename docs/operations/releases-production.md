@@ -95,6 +95,43 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Temis/Apolo] O anexo do contrato para de nascer orfao (v1.360.6)`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-09-22 14:35:36 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK explicito do Lucas ("pode corrigir" e "pode subir", 22/09/2026), depois de eu testar as rotas de anexo contra o banco de producao a pedido dele ("testa as rotas, verifica se conseguimos anexar")`.
+- Escopo publicado:
+  - `cadastro de anexo: o uuid do Panteon no alcance passa a ser convertido para o id do C2X, que e a chave que a cadeia do contrato procura`;
+  - `cadastro de anexo: posicao repetida na LINHAGEM (proprio + pai; ou raiz + filhos) e recusada com 409 na gravacao, em vez de derrubar a emissao do contrato depois`;
+  - `tres comentarios do repo corrigidos, entre eles o rodape de montar-pdf-do-contrato.ts, que afirmava que NENHUMA minuta usava [anexo_N] quando quatro usam`.
+- Commit publicado: `1c8d9c711734f07bee73baf437ef38bfaf68a7a1`.
+- Deployment anterior: `dpl_Cs1ZkNAJiK4XW7Pfc94e6oCXkmVx` (commit `aff21ebb`, v1.360.5).
+- Deployment novo: `dpl_DJVNcC9Qt8kvDpMgted1KpniFLUL`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Arquivos/modulos incluidos: `lib/temis/estrutura-servico.ts`, `lib/temis/anexos-da-venda.ts` (comentario), `lib/temis/montar-pdf-do-contrato.ts` (comentario), `lib/temis/estrutura-servico.anexos.test.ts` (novo, 12 testes), `app/api/incorporador/temis/estrutura-do-portal.test.ts` (fixture), `lib/changelog/changelog.ts`. Foi junto o commit de documentacao `8c8a1ca8`, que ficou parado no deploy anterior porque o hook exige changelog novo em todo push para a main.
+- Arquivos/modulos excluidos: `nenhuma migration; nenhuma escrita no legado C2X; nenhuma minuta alterada`.
+- Validacoes executadas:
+  - `npm --prefix apps/hub run check-types`: `limpo`;
+  - `npx vitest run` (suite completa): `502 arquivos, 7.843 testes passando`;
+  - `REVISAO ADVERSARIAL do diff ANTES do push (4 lentes + 16 ceticos)`: `dois defeitos CONFIRMADOS e corrigidos antes de subir -- ver abaixo`;
+  - `prova contra o banco de producao`: `uuid convertido para 36 com o contrato da VITORIA levando a peca; posicao 97 repetida no PAI recusada com 409; posicao 96 livre aceita; posicao 97 na IRMA (VOC 37) ACEITA; temis_anexos de volta a zero linhas ao fim`.
+- ⚠️ O QUE A REVISAO PEGOU, e que teria ido ao ar:
+  - `a trava da posicao pegava IRMAS, que nunca colidem. A cadeia do contrato e unidade + categoria + divisao da unidade + empreendimento da proposta + PAI: a irma nao entra. E as duas UNICAS minutas publicadas que citam [anexo_1] sao a do VOL (36) e a do VOC (37), IRMAS sob o Vale do Ouro -- as duas precisam da peca na posicao 1, e a trava impediria a segunda. Corrigido: linhagem, nao familia, e assimetrica (filho concorre so com o pai; raiz concorre com todos os filhos).`;
+  - `a trava da chave recusava id do C2X legitimo. O cadastro NAO e a lista completa: 2 (5 unidades), 30 (31) e 34 (1) carregam unidades e nao tem linha em hercules_empreendimentos, e a cadeia os alcanca porque filtroDaCadeia sai do empreendimento da PROPOSTA. Antes gravavam e chegavam ao papel; depois levariam 400 sem saida. Corrigido: so o que tem cara de UUID e conferido. E a conferencia fazia .eq("id","30") numa coluna uuid, gerando 22P02 engolido -- o erro agora e tratado e nao vira recusa.`;
+  - `⚠️ minha primeira conferencia do segundo caso deu ZERO porque li hercules_unidades com .limit(20000): o PostgREST corta em 1.000 SEM AVISAR. Refeito com count exact por id, os tres aparecem. E a mesma armadilha que o diario ja registra.`
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200 apos o build ficar READY`.
+- Logs recentes: `sem erro critico`.
+- Rollback definido: `Instant Rollback para dpl_Cs1ZkNAJiK4XW7Pfc94e6oCXkmVx (commit aff21ebb)`.
+- Riscos conhecidos: `a trava nova le hercules_empreendimentos num caminho que antes nao lia nada -- duas consultas a mais por cadastro de anexo, operacao rara (temis_anexos tem zero linhas). Falha de leitura do cadastro NAO vira recusa, por decisao: ela e conferencia, nao razao de ser da peca.`
+- Pendencias: `o Lucas subir os PDFs; 34 dos 38 empreendimentos ainda nao emitem contrato por falta de minuta publicada, entao anexo neles fica cadastrado e sem onde sair; o anexo e costurado na GERACAO e nao no envio, entao cadastrar depois de gerar exige gerar de novo (e cancelar o envelope, se ja estiver vivo)`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas cadastrar o primeiro anexo pela tela; eu gero um contrato de teste e confirmo com medida que a peca entrou no PDF`.
+
+Registro de producao:
+
 - Assunto: `[Temis/Apolo] O quadro do contrato fecha com o preco do lote (v1.360.5)`.
 - Squad/agente responsavel: `Zeus`.
 - Data e hora local: `2026-09-22 12:53:41 -03:00`.
