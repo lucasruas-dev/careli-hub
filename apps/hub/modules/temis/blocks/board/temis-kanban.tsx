@@ -13,6 +13,14 @@ import {
   prazoDeEmissao,
   situacaoDoPrazo,
 } from "@/lib/temis/trabalhos";
+import {
+  acharQuadro,
+  colunaDoCard,
+  colunasDoQuadro,
+  QUADRO_RESUMO,
+  QUADROS,
+  quadroDoTipo,
+} from "@/lib/temis/quadros";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 import { useApiDaTemis } from "@/modules/temis/api-da-temis";
 
@@ -173,7 +181,14 @@ export function TemisKanban({
   somenteLeitura?: boolean;
 }) {
   const [trabalhos, setTrabalhos] = useState<null | TrabalhoDaTela[]>(null);
-  const [colunas, setColunas] = useState<Colunas>([]);
+  /**
+   * O quadro aberto. Começa no resumo, de propósito.
+   *
+   * Lucas, 21/09/2026: *"quando abrir essa parte do board da Têmis, a gente vai ter um todos e
+   * nesse todos a gente terá três sessões somente (...) só para a gente ter um overview geral da
+   * operação"*. Quem chega quer ver a operação inteira; quem vai trabalhar escolhe o serviço.
+   */
+  const [quadroId, setQuadroId] = useState<string>(QUADRO_RESUMO);
   const [erro, setErro] = useState<null | string>(null);
   /**
    * O card cuja TELA DE TRABALHO está aberta.
@@ -227,7 +242,9 @@ export function TemisKanban({
       };
       if (!r.ok) throw new Error(j.error ?? `Falhou (${r.status}).`);
       setTrabalhos(j.data?.trabalhos ?? []);
-      setColunas(j.data?.estagios ?? []);
+      // ⚠️ AS COLUNAS NÃO VÊM MAIS DO SERVIDOR (`data.estagios`), e ele pode seguir mandando.
+      // Quem as desenha é `colunasDoQuadro`, porque elas dependem do QUADRO aberto — e a lista
+      // que o servidor manda é uma só, sem indeferido e com a palavra "Faturado" para todo tipo.
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não consegui carregar o board.");
       setTrabalhos([]);
@@ -295,15 +312,32 @@ export function TemisKanban({
    * Documentos da venda, que é a porta dele.
    */
 
-  const porEstagio = useMemo(() => {
-    const mapa = new Map<EstagioDoTrabalho, TrabalhoDaTela[]>();
+  const quadro = useMemo(() => acharQuadro(quadroId), [quadroId]);
+  const colunas = useMemo(() => colunasDoQuadro(quadro), [quadro]);
+
+  /** Quantos cards cada quadro tem, para a aba dizer o tamanho antes de ser aberta. */
+  const porQuadro = useMemo(() => {
+    const conta = new Map<string, number>();
     for (const t of trabalhos ?? []) {
-      const lista = mapa.get(t.estagio) ?? [];
+      conta.set(QUADRO_RESUMO, (conta.get(QUADRO_RESUMO) ?? 0) + 1);
+      const doTipo = quadroDoTipo(t.tipo);
+      conta.set(doTipo, (conta.get(doTipo) ?? 0) + 1);
+    }
+    return conta;
+  }, [trabalhos]);
+
+  const porEstagio = useMemo(() => {
+    const mapa = new Map<string, TrabalhoDaTela[]>();
+    for (const t of trabalhos ?? []) {
+      // O quadro de um serviço mostra só os tipos dele; o resumo mostra todos.
+      if (quadro.tipos.length > 0 && !quadro.tipos.includes(t.tipo)) continue;
+      const chave = colunaDoCard(quadro, t.estagio);
+      const lista = mapa.get(chave) ?? [];
       lista.push(t);
-      mapa.set(t.estagio, lista);
+      mapa.set(chave, lista);
     }
     return mapa;
-  }, [trabalhos]);
+  }, [quadro, trabalhos]);
 
   if (trabalhos === null) {
     return (
@@ -394,6 +428,38 @@ export function TemisKanban({
           <AlertTriangle aria-hidden="true" className="mt-0.5 shrink-0" size={14} /> {erro}
         </p>
       ) : null}
+
+      {/* ⚠️ UM QUADRO POR SERVIÇO, e o resumo na frente. Antes era um quadro só, com contrato,
+          cessão, distrato, cancelamento e correção de fluxo misturados nas mesmas colunas — e
+          serviços de caminho diferente dividindo coluna fazem a fila de um parecer a do outro. */}
+      <div className="flex flex-wrap gap-1.5">
+        {QUADROS.filter((q) => {
+          // ⚠️ NO PORTAL, ABA VAZIA NÃO APARECE. Lá o incorporador só acompanha o contrato dele
+          // (`somenteLeitura`), e "Cessão de direitos" ou "Correção de fluxo" zeradas seriam três
+          // abas que ele nunca vai abrir. Na Têmis todas ficam: o quadro é o mapa do trabalho, e
+          // uma aba que some faz quem opera achar que o serviço não existe.
+          if (!somenteLeitura) return true;
+          return q.id === QUADRO_RESUMO || (porQuadro.get(q.id) ?? 0) > 0;
+        }).map((q) => {
+          const aberto = q.id === quadro.id;
+          const quantos = porQuadro.get(q.id) ?? 0;
+          return (
+            <button
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                aberto
+                  ? "bg-ink text-white dark:bg-white dark:text-ink"
+                  : "border border-line text-ink-muted hover:bg-subtle"
+              }`}
+              key={q.id}
+              onClick={() => setQuadroId(q.id)}
+              type="button"
+            >
+              {q.nome}
+              <span className="ml-1.5 opacity-70">{quantos}</span>
+            </button>
+          );
+        })}
+      </div>
 
       {/* ⚠️ ROLA NA HORIZONTAL, e a página nunca. Quatro colunas não cabem em tela estreita, e o
           board inteiro apertado deixa o card ilegível justamente onde ele é lido de relance. */}
