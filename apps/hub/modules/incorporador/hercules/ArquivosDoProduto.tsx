@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  FileText,
   Film,
   ImageIcon,
   Images,
@@ -77,6 +78,25 @@ const ROTA_DO_PORTAL = "/api/incorporador/produto/arquivos";
 
 /** Depois disso, os links assinados (1 h) estão perto de vencer: a tela relê antes de abrir. */
 const RELER_DEPOIS_DE_MS = 45 * 60 * 1000;
+
+/**
+ * Como cada tipo se chama na tela.
+ *
+ * ⚠️ UM MAPA, E NÃO UM TERNÁRIO. Enquanto eram dois tipos, `tipo === "video" ? ... : ...` passava;
+ * com o documento (22/09/2026) cada ternário desses vira um lugar onde o PDF se chama "foto".
+ */
+const ROTULO_DO_TIPO: Readonly<Record<TipoDeArquivo, string>> = {
+  documento: "documento",
+  imagem: "foto",
+  video: "vídeo",
+};
+
+/** O mesmo, com artigo, para a frase da remoção ("Remover o vídeo “…”?"). */
+const ARTIGO_DO_TIPO: Readonly<Record<TipoDeArquivo, string>> = {
+  documento: "o documento",
+  imagem: "a foto",
+  video: "o vídeo",
+};
 
 type Fase = "enviando" | "erro" | "fila" | "preparando" | "pronto" | "registrando";
 
@@ -489,7 +509,7 @@ export function ArquivosDoProduto({
 
         {podeEnviar ? (
           <input
-            accept="image/*,video/*"
+            accept="image/*,video/*,application/pdf"
             className="arq-oculto"
             multiple
             onChange={aoEscolher}
@@ -505,7 +525,7 @@ export function ArquivosDoProduto({
         <div aria-labelledby="arq-remover-titulo" className="arq-confirmar" role="alertdialog">
           <div className="arq-confirmar-texto">
             <strong id="arq-remover-titulo">
-              Remover {removendo.tipo === "video" ? "o vídeo" : "a foto"} “{removendo.nome}”?
+              Remover {ARTIGO_DO_TIPO[removendo.tipo]} “{removendo.nome}”?
             </strong>
             <span>Deixa de aparecer para todos que veem este produto.</span>
             {erroDaRemocao ? <span className="arq-erro-texto">{erroDaRemocao}</span> : null}
@@ -638,7 +658,7 @@ export function ArquivosDoProduto({
       {arquivos.length > 0 ? (
         <ul className="arq-grade">
           {arquivos.map((a) => {
-            const rotulo = a.tipo === "video" ? "vídeo" : "foto";
+            const rotulo = ROTULO_DO_TIPO[a.tipo];
             const semMiniatura = !a.miniaturaUrl || miniaturasQuebradas.has(a.id);
             return (
               <li className="arq-cartao" key={a.id}>
@@ -655,6 +675,8 @@ export function ArquivosDoProduto({
                     <span className="arq-sem-miniatura">
                       {a.tipo === "video" ? (
                         <Film aria-hidden="true" size={26} />
+                      ) : a.tipo === "documento" ? (
+                        <FileText aria-hidden="true" size={26} />
                       ) : (
                         <ImageIcon aria-hidden="true" size={26} />
                       )}

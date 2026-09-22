@@ -55,7 +55,7 @@ export type MidiaDoVisualizador = {
   /** Aparece enquanto o original carrega (foto) e como pôster (vídeo). */
   miniaturaUrl?: null | string;
   nome?: null | string;
-  tipo: "imagem" | "video";
+  tipo: "documento" | "imagem" | "video";
   url: null | string;
 };
 
@@ -445,6 +445,29 @@ function Midia({
     );
   }
 
+  // ⚠️ O PDF ABRE NO VISUALIZADOR DO PRÓPRIO NAVEGADOR (22/09/2026). Lucas, sobre a apresentação
+  // do Garden Resort: *"um arquivo só: o PDF"* e *"tem que abrir em full"*. Um `iframe` com a URL
+  // assinada entrega páginas, zoom e busca de graça, e em tela cheia ocupa tudo -- desenhar o PDF
+  // página a página (pdf.js) custaria um megabyte de JavaScript para fazer pior.
+  //
+  // ⚠️ `sandbox` NÃO ENTRA AQUI. O Chrome desliga o próprio leitor de PDF em iframe com sandbox, e
+  // a página passa a BAIXAR o arquivo em vez de mostrá-lo. O conteúdo vem do nosso bucket, com URL
+  // assinada de uma hora, e não de terceiro.
+  if (item.tipo === "documento") {
+    return (
+      <>
+        <iframe
+          className="vdm-midia vdm-documento"
+          onError={() => setEstado("erro")}
+          onLoad={() => setEstado("pronto")}
+          src={item.url ?? undefined}
+          title={item.nome ?? "Documento"}
+        />
+        {estado === "carregando" ? <Carregando /> : null}
+      </>
+    );
+  }
+
   if (item.tipo === "video") {
     return (
       <>
@@ -546,6 +569,9 @@ const ESTILO = `
   object-fit: contain; border-radius: 6px; background: transparent;
   user-select: none;
 }
+/* O quadro do PDF nao tem proporcao propria: ele ocupa o palco inteiro, com fundo claro para a
+   pagina nao aparecer sobre o preto enquanto carrega. */
+.vdm-documento { border: 0; background: #fff; }
 .vdm-previa { position: absolute; filter: blur(6px); opacity: .6; max-width: calc(100% - 128px); max-height: calc(100% - 16px); }
 .vdm-midia--carregando { opacity: 0; }
 .vdm-carregando { position: absolute; display: inline-flex; pointer-events: none; }

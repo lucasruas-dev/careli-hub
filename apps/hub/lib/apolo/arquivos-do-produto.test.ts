@@ -55,7 +55,9 @@ describe("formato do arquivo", () => {
     expect(mimeDoArquivo("anima.gif", "image/gif")).toBeNull();
     expect(mimeDoArquivo("foto.jpg", "image/gif")).toBeNull();
     expect(tipoDoArquivo("filme.avi", "video/x-msvideo")).toBeNull();
-    expect(tipoDoArquivo("planta.pdf", "application/pdf")).toBeNull();
+    expect(tipoDoArquivo("tabela.xlsx", "application/vnd.ms-excel")).toBeNull();
+    // ⚠️ O PDF SAIU DESTA LISTA EM 22/09/2026: virou o tipo `documento`, para a apresentação
+    // comercial caber na aba. Ver o teste "o PDF entra como documento", abaixo.
   });
 
   it("a extensão do caminho sai do MIME canônico, nunca do nome", () => {
@@ -92,8 +94,37 @@ describe("conferirArquivoDoProduto", () => {
     expect(conferirArquivoDoProduto({ mime: "image/jpeg", nome: "a.jpg", tamanho: Number.NaN }).ok).toBe(
       false,
     );
-    const pdf = conferirArquivoDoProduto({ mime: "application/pdf", nome: "a.pdf", tamanho: 10 });
-    expect(pdf.ok).toBe(false);
+    const zip = conferirArquivoDoProduto({ mime: "application/zip", nome: "a.zip", tamanho: 10 });
+    expect(zip.ok).toBe(false);
+  });
+});
+
+describe("o PDF entra como documento", () => {
+  // Lucas (22/09/2026), com a apresentacao do Garden Resort: *"tem uma apresentacao tambem sobe
+  // ela"* e, escolhendo a forma, *"um arquivo so: o PDF"*.
+  it("reconhece o tipo pelo MIME e pela extensao", () => {
+    expect(tipoDoArquivo("apresentacao.pdf", "application/pdf")).toBe("documento");
+    // O navegador que nao diz o tipo (acontece no Windows) cai na extensao.
+    expect(tipoDoArquivo("apresentacao.pdf", "")).toBe("documento");
+    expect(extensaoDoMime("application/pdf")).toBe("pdf");
+  });
+
+  it("aceita ate 200 MB, e recusa acima disso", () => {
+    const cabe = conferirArquivoDoProduto({
+      mime: "application/pdf",
+      nome: "garden.pdf",
+      // A apresentacao que motivou o tipo tem 124 MB.
+      tamanho: 124 * 1024 * 1024,
+    });
+    expect(cabe.ok).toBe(true);
+    expect(cabe.ok ? cabe.tipo : null).toBe("documento");
+
+    const grande = conferirArquivoDoProduto({
+      mime: "application/pdf",
+      nome: "enorme.pdf",
+      tamanho: 201 * 1024 * 1024,
+    });
+    expect(grande.ok).toBe(false);
   });
 });
 
