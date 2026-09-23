@@ -2,6 +2,10 @@
 
 > Levantamento feito antes de desenhar o relatório de projeção de parcelas que o Lucas pediu em
 > 23/09/2026. **Nada foi implementado**: este documento é a medição que decide o desenho.
+>
+> 🛑 **LEIA A CORREÇÃO NO FIM ANTES DE USAR QUALQUER NÚMERO DAQUI.** O "97,8% explicado" da
+> primeira metade **não se sustentou** no backtest (acertou 4,1%). A primeira metade está mantida
+> porque mostra como a conclusão errada foi construída, e a segunda mostra o mecanismo real.
 
 ## Por que medir antes
 
@@ -112,3 +116,70 @@ Fontes de série usadas, ambas públicas e gratuitas:
   `dataFim` além de `data`.
 
 Ambas as fontes têm **defasagem de um mês**: em 23/09/2026 o último ponto publicado era agosto.
+
+---
+
+# ⚠️ CORREÇÃO (mesmo dia, depois do backtest)
+
+**O que está escrito acima sobre "97,8% explicado" NÃO se sustentou.** O teste que produziu aquele
+número ajustava a janela livremente entre 1 e 5 anos, com tolerância de 1,5 ponto; com cinco
+janelas e essa folga, muita coisa encaixa por acaso. O **backtest**, que é o teste honesto (usar só
+o passado de cada contrato para prever o degrau seguinte), acertou **4,1%**, não 97,8%.
+
+## O mecanismo real, visto num contrato
+
+AR 206 (LOU), 144 mensais:
+
+```
+R$ 535,99   135 parcelas   ZERO com boleto    2024-02 a 2036-01
+R$ 566,81     3 parcelas      3 com boleto    abr-jun/2026
+R$ 657,27     6 parcelas      5 com boleto    ago-dez/2026
+```
+
+**O valor contratual nunca é atualizado no C2X.** Só a parcela que recebe boleto é corrigida, e a
+correção é cumulativa desde a data-base. De 535,99 para 657,27 são **+22,63%** — e não os 15,96%
+que a régua de degrau mediu, porque ela compara patamar com patamar, não com o contratual.
+
+Por isso "desde o degrau anterior" é a janela errada: os degraus não são aplicações sucessivas de
+reajuste, são **lotes de boleto emitidos em momentos diferentes**, cada um carregando a correção
+acumulada desde o início.
+
+## A consequência, medida na carteira inteira
+
+**A defasagem não precisa ser deduzida de índice: ela é MEDIDA**, comparando o que a cobrança já
+usa (maior valor entre as parcelas com boleto) com o que as futuras ainda carregam.
+
+```
+873 contratos com mensalidade
+ 121  sem nenhum boleto emitido
+  15  sem parcela futura sem boleto
+ 210  ja em dia
+ 527  COM DEFASAGEM   <-- 60% da carteira
+```
+
+Defasagem das parcelas futuras, por percentil: p25 **22,63%**, p50 **22,63%**, p95 **23,20%**.
+
+| empreendimento | contratos | mediana | maior |
+|---|---|---|---|
+| LOS | 256 | 23,19% | 48,71% |
+| LOU | 203 | 22,63% | 23,67% |
+| MDS | 20 | 10,29% | 24,82% |
+| REP | 47 | 4,72% | 20,40% |
+
+**Se todas as parcelas futuras fossem corrigidas ao patamar que a cobrança já usa, a soma das
+mensalidades subiria R$ 72.338,05 por mês** (527 contratos, média de R$ 137,26 cada).
+
+⚠️ **Um outlier a descartar**: o AR 3716 (VAL) aparece com 4.472% porque tem uma parcela atípica
+marcada como mensal. O extrato já conhece esse caso (`FATOR_MENSALIDADE_ATIPICA`, que cita
+justamente o AR 3716); qualquer medição nova precisa do mesmo filtro.
+
+## O que isto muda no relatório
+
+1. **O "represado" é fato medido, não conta com índice.** Basta comparar o valor cobrado com o
+   contratual. Isso elimina a maior fonte de erro da peça.
+2. **O índice só serve para o trecho FUTURO**, depois do patamar já corrigido.
+3. **O valor que o cliente vê no sistema não é o que ele vai pagar.** No AR 206, o sistema mostra
+   R$ 535,99 em 135 parcelas e a cobrança já usa R$ 657,27. Dizer isso ao cliente é o conteúdo mais
+   útil do relatório inteiro, e não depende de projeção nenhuma.
+4. Os scripts `zeus-backtest-do-motor.ts`, `zeus-estrutura-dos-degraus.ts`,
+   `zeus-olhar-um-contrato.ts` e `zeus-defasagem-medida.ts` reproduzem tudo isto.
