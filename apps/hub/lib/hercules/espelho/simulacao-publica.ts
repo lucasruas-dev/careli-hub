@@ -7,16 +7,34 @@
 // tabela" e "Desconto X%" calculados desse valor: qualquer pessoa com o link baixava uma folha com a
 // marca da casa dizendo "Desconto 50%".
 //
-// ⚠️ A TELA NÃO É A ÚLTIMA PALAVRA. O simulador no modo simulação já prende o desconto ao do plano
-// escolhido, no prazo do plano (`SimuladorDeProposta`, `ajusteDaTela`), mas o corpo da requisição é
-// do cliente e se escreve à mão. Aqui o servidor refaz a MESMA régua da tela e da Mesa de Venda.
+// ⚠️ A TELA NÃO É A ÚLTIMA PALAVRA. O corpo da requisição é do cliente e se escreve à mão, numa
+// página SEM LOGIN. Aqui o servidor refaz a régua em cima do que o cadastro diz.
 //
-// ⚠️ O PISO DO PREÇO É O DO PLANO ESCOLHIDO, NO PRAZO DO CORPO (revisão 3, 18/09/2026). A primeira
-// versão usava a tabela com o MAIOR desconto de QUALQUER plano do empreendimento, e um corpo forjado
-// imprimia o NORMAL com "Desconto 12%" (o desconto do INVESTIDOR), o INVESTIDOR PARCELADO a
-// R$ 382.800 (12%, e não os 8% dele) e o INVESTIDOR em 180 vezes com os 12% que ele só dá em 36.
-// Agora o piso é a tabela com o desconto do plano escolhido quando o prazo é o do plano
-// (`descontoDoPlanoNoPrazo`); fora do prazo do plano, desconto zero, e o piso é a própria tabela.
+// ⚠️ O PREÇO DEIXOU DE SER PRESO AO DESCONTO DO PLANO EM 23/09/2026, E ISSO É DECISÃO TOMADA, COM O
+// RISCO POSTO. Lucas: *"sabe aquela parte do desconto que incluimos no comercial, vamos colocar para
+// cecilio também"* e, perguntado como fazer, com as três opções e o risco escrito em cada uma:
+// **"Liberar para todo mundo"**. Qualquer pessoa com o link `/e/<apelido>-<selo>` passa a poder
+// ajustar o preço e baixar uma folha com a marca da casa e o desconto que ela mesma escolheu.
+//
+// ⚠️ ISTO REABRE, DE PROPÓSITO, O BURACO QUE A REVISÃO DE 18/09/2026 FECHOU, e está escrito aqui
+// para que ninguém o feche de novo sem saber. O que a revisão 3 fazia era prender o preço no piso do
+// PLANO ESCOLHIDO, no prazo do corpo (`descontoDoPlanoNoPrazo`); com o campo de desconto liberado na
+// tela (`SimuladorDeProposta`), prender aqui viraria o pior dos mundos: a tela mostrando R$ 391.500
+// e a folha imprimindo R$ 400.200, em silêncio, depois do clique. É a MESMA família do item 4 do
+// Lucas de 22/09 (*"mesmo eu alterando o valor de entrada (...) ele não traz o valor que eu tinha
+// colocado"*), agora no preço, e um número trocado sem aviso é pior do que não ter a função.
+//
+// ⚠️ E A PERMUTA ENTROU JUNTO, NO MESMO DIA. Eu havia escrito aqui que ela ficaria de fora, porque
+// permuta é negociação e o espelho é vitrine; Lucas, lendo isso: *"permuta tem que entrar, não
+// entendi sua colocação"*. A separação era MINHA, não dele. O corpo passa a trazer `bensPedidos`, e
+// eles abatem o saldo no cronograma e saem impressos na folha — conferidos pela MESMA função da
+// rota da proposta (`conferirBensEPermutasDoCorpo`), e não por uma cópia frouxa deste lado.
+//
+// ⚠️ O QUE ATENUA, E QUE NÃO PODE SER REMOVIDO, É A FRASE QUE A FOLHA CARREGA: "não
+// constitui proposta, não reserva a unidade e não
+// vincula as partes" (`proposta-para-pdf.ts`, bandeira `simulacao`), mais a tarja de prévia. Com o
+// preço E os bens livres, essa frase é a única coisa entre um número inventado e um papel com cara
+// de oferta: quem mexer nela está mexendo na última proteção que sobrou.
 //
 // ⚠️ E O PLANO MANDA NO RESTO TAMBÉM (revisão 3): a entrada não respeitava a escada da tabela (os
 // 40% do INVESTIDOR); 10 anuais passavam num contrato de 36 meses e a folha imprimia as 10; e a
@@ -50,10 +68,30 @@
 // que o plano exige (os 40% do INVESTIDOR em 36 vezes, os 10% do NORMAL em 60).
 
 import { precoNoPlano } from "../ajuste-de-preco";
+import {
+  type BemOuPermuta,
+  conferirBensEPermutasDoCorpo,
+} from "../bens-e-permutas";
 import { entradaMinima } from "../composicoes";
 import { pisoDaEntradaNoPrazo } from "../faixa-do-plano";
 import { ENTRADA_VEZES_MAXIMA } from "../proposta";
 import { descontoDoPlanoNoPrazo } from "../tabela-do-lote";
+
+/**
+ * O desconto máximo que a folha da simulação pode anunciar, em percentual do preço de tabela.
+ *
+ * ⚠️ SEM TETO NENHUM, UM CORPO ESCRITO À MÃO PEDE 99% E A FOLHA SAI COM O LOTE DE R$ 435.000 A
+ * R$ 4.350, com a logo do empreendimento no topo e a marca do C2X no rodapé. A página não tem login:
+ * o número que chega aqui não passou por pessoa nenhuma da casa.
+ *
+ * ⚠️ O TETO FOI REMOVIDO EM 23/09/2026, POR DECISÃO EXPLÍCITA, e a constante fica só para quem
+ * precisar do número que já valeu. Medido no banco naquele dia: `temis_planos` tinha 37 planos
+ * ativos e só DOIS com desconto de tabela, 12% e 8%; e das 4.947 linhas de `hercules_propostas`,
+ * UMA tinha desconto à mão, de 10%. O teto de 15% cobria tudo isso com folga. O Lucas, perguntado
+ * com o risco na frente, respondeu *"Liberar para todo mundo"* e *"pode liberar tudo"*, e a régua
+ * saiu. Quem for repor um teto aqui está desfazendo uma decisão, não consertando um esquecimento.
+ */
+export const DESCONTO_MAXIMO_DA_SIMULACAO = 15;
 
 /**
  * O que esta régua precisa saber do plano escolhido (é um recorte de `PlanoPublico`).
@@ -71,6 +109,14 @@ export type PlanoDaSimulacaoPublica = {
 
 export type SimulacaoPublicaAceita = {
   anuais: { quantidade: number; valor: number };
+  /**
+   * Os bens e permutas do corpo, já conferidos item a item. Lista vazia = simulação só em dinheiro.
+   *
+   * ⚠️ ELES ENTRAM NA CONTA DO CRONOGRAMA E NA FOLHA (23/09/2026). Lucas, depois de eu escrever que
+   * permuta ficaria fora do espelho porque é negociação e não vitrine: *"permuta tem que entrar, não
+   * entendi sua colocação"*. A separação era minha, não dele.
+   */
+  bens: BemOuPermuta[];
   /** O desconto do plano que VALE para este prazo (zero fora do prazo do plano). */
   descontoPercentual: number;
   entrada: number;
@@ -104,6 +150,16 @@ function reais(v: unknown): null | number {
   return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null;
 }
 
+/**
+ * Reais em centavos inteiros.
+ *
+ * ⚠️ TODA COMPARAÇÃO DE PREÇO PASSA POR AQUI. `435000 * 0.85` em ponto flutuante dá
+ * 369749.99999999994, e o teto recusaria o próprio número que ele acabou de calcular.
+ */
+function emCentavos(v: number): number {
+  return Math.round(v * 100);
+}
+
 /** Um inteiro do corpo; lixo, negativo ou ausente vira o padrão de quem chama. */
 function inteiro(v: unknown, padrao: number): number {
   if (v === null || v === undefined || v === "") return padrao;
@@ -114,6 +170,13 @@ function inteiro(v: unknown, padrao: number): number {
 export function valoresDaSimulacaoPublica(entrada: {
   /** As anuais que vieram no corpo. Ausentes = as do plano. */
   anuaisPedidas?: { quantidade?: unknown; valor?: unknown };
+  /**
+   * Os bens e permutas que vieram no corpo. Ausentes ou nulos = simulação só em dinheiro.
+   *
+   * Conferidos por `conferirBensEPermutasDoCorpo`, A MESMA função da rota da proposta — ver a nota
+   * na régua, mais abaixo.
+   */
+  bensPedidos?: unknown;
   /** O piso do empreendimento (`pisoDeEntradaPublico`). Nulo = padrão da casa. */
   entradaMinimaPercentual: null | number;
   /**
@@ -162,18 +225,68 @@ export function valoresDaSimulacaoPublica(entrada: {
     };
   }
 
-  // ── O preço: entre a tabela com o desconto do plano NO PRAZO e a tabela ──
+  // ── Os bens e permutas: a MESMA conferência da rota da proposta ──
+  //
+  // ⚠️ A RÉGUA DE RECUSA É UMA SÓ, E POR ISSO ELA É IMPORTADA, E NÃO REESCRITA AQUI
+  // (`conferirBensEPermutasDoCorpo`, em `lib/hercules/bens-e-permutas.ts`). Uma segunda cópia é
+  // como o quadro do contrato ganhou a própria soma e imprimiu R$ 2.000.080.000.100.000,00 embaixo
+  // de uma cláusula que dizia R$ 0,00 (medido em 22/09/2026). Aqui a cópia seria pior ainda: a
+  // conferência frouxa ficaria justamente do lado SEM LOGIN.
+  //
+  // ⚠️ E VALOR VAZIO É ERRO, NUNCA ZERO. `Number("")` é 0, e nesta casa isso já virou cobrança de
+  // R$ 0,00 emitida; no papel público viraria uma permuta de zero reais impressa como se tivesse
+  // sido combinada com alguém.
+  //
+  // ⚠️ A RECUSA É A PRIMEIRA FRASE, E NÃO A LISTA DE CAMPOS. A rota da proposta devolve `campo` +
+  // `mensagem` porque a Mesa de Venda pinta o input de vermelho pelo caminho do JSON; o espelho tem
+  // uma linha só de erro embaixo do botão (`erroDoPdf`, em `EspelhoPublico`), e ela precisa dizer
+  // QUAL item está incompleto — é o que a frase já faz, com a posição dentro dela.
+  const bens = conferirBensEPermutasDoCorpo(entrada.bensPedidos);
+  if (bens.erros.length > 0) {
+    return { mensagem: bens.erros[0]!.mensagem, ok: false };
+  }
+
+  // ── O preço: o que a tela escolheu, entre o teto de desconto e a tabela ──
+  //
+  // ⚠️ O NÚMERO DA TELA PASSA INTEIRO, ATÉ O CENTAVO, e fora da banda a resposta é RECUSA, nunca um
+  // número trocado (ver o cabeçalho). Prender aqui faria a folha desmentir a tela em silêncio; a
+  // recusa, pelo menos, o visitante lê antes de encaminhar o papel para alguém.
   const descontoPercentual = descontoDoPlanoNoPrazo({
     descontoDoPlano: plano.descontoPercentual,
     parcelasDoPlano: plano.parcelas,
     parcelasEfetivas: parcelas,
   });
-  const piso = precoNoPlano(precoDeTabela, descontoPercentual);
+  // ⚠️ O MENOR ENTRE O TETO E O PREÇO DO PRÓPRIO PLANO. Hoje o maior desconto cadastrado é 12% e o
+  // teto é 15%, então quem manda é o teto; mas no dia em que alguém cadastrar um plano de 20% o
+  // simulador não pode recusar a folha do preço que a casa vende — seria a régua negando a tabela.
+  // ⚠️ NÃO EXISTE MAIS PISO DE DESCONTO, E FOI DECISÃO DO LUCAS, NÃO ESQUECIMENTO. Perguntado em
+  // 23/09/2026, com o risco escrito na frente (qualquer pessoa com o link imprimindo uma folha com
+  // a marca da casa e o desconto que ela mesma escolher), ele respondeu *"Liberar para todo mundo"*
+  // e, sobre o teto, *"pode liberar tudo"*. O que segura a folha continua sendo o texto que ela
+  // carrega: não constitui proposta, não reserva a unidade e não vincula as partes. E a VENDA não
+  // passa por aqui: quem protege a proposta é `conferirProposta`, com login.
+  const piso = 0;
   const pedido = reais(entrada.valorPedido);
-  const valor = Math.min(
-    precoDeTabela,
-    Math.max(piso, pedido !== null && pedido > 0 ? pedido : precoDeTabela),
-  );
+  // Lixo, ausente, nulo, vazio, negativo ou zero é "não mandou valor", e vale a tabela: só um corpo
+  // escrito à mão produz qualquer um deles, porque a tela sempre manda o número que está no campo.
+  const valor = pedido !== null && pedido > 0 ? pedido : precoDeTabela;
+  if (emCentavos(valor) <= emCentavos(piso)) {
+    return {
+      mensagem: "Informe o valor da unidade para simular.",
+      ok: false,
+    };
+  }
+  // ⚠️ ACIMA DA TABELA TAMBÉM É RECUSA, E NÃO UMA DESCIDA SILENCIOSA ATÉ ELA (23/09/2026). Até aqui
+  // o valor acima era preso na tabela, e isso era inofensivo porque a tela do espelho NÃO TINHA como
+  // produzir um número maior: o campo era somente leitura. Com o campo liberado, o botão de
+  // ACRÉSCIMO passou a estar à mão de qualquer visitante, e prender devolveria exatamente a troca
+  // silenciosa que esta rodada veio matar, só que para o outro lado.
+  if (emCentavos(valor) > emCentavos(precoDeTabela)) {
+    return {
+      mensagem: "Esta simulação não passa do valor de tabela da unidade. Para um valor maior, fale com o corretor.",
+      ok: false,
+    };
+  }
 
   // ── As anuais: até um por aniversário do prazo ──
   //
@@ -232,10 +345,10 @@ export function valoresDaSimulacaoPublica(entrada: {
   // (`lib/hercules/proposta.ts`), na rota `api/incorporador/venda/proposta`, e lá a entrada mínima
   // continua RECUSANDO — são duas funções, dois chamadores, e nenhum dos dois passa pelo outro.
   //
-  // ⚠️ E O PISO DO PREÇO CONTINUA DE PÉ. A página não tem login e a folha sai com a marca da casa:
-  // o que um corpo forjado não pode é anunciar DESCONTO que a casa não deu, e `valor` segue preso
-  // entre a tabela com o desconto do plano e a tabela. Entrada não é preço — ela só reparte o mesmo
-  // total entre o ato e as mensais, e o papel continua somando o valor da unidade.
+  // ⚠️ E NÃO HÁ MAIS TETO DE PREÇO (23/09/2026, decisão do Lucas): qualquer desconto passa, e o
+  // que a folha carrega é a frase de que não vincula. O que continua recusado é preço ACIMA da
+  // tabela, porque isso não é desconto, é a página anunciando a unidade mais cara do que a casa
+  // vende. Entrada não é preço: ela só reparte o mesmo total entre o ato e as mensais.
   //
   // ⚠️ ZERO É UMA ESCOLHA, E NÃO "NÃO ESCOLHI" (22/09/2026). Até aqui a condição era
   // `entradaPedida > 0`, e a justificativa escrita nesta linha dizia que "a tela trata campo vazio
@@ -262,6 +375,7 @@ export function valoresDaSimulacaoPublica(entrada: {
 
   return {
     anuais,
+    bens: bens.lista,
     descontoPercentual,
     entrada: entradaAceita,
     entradaDatas: datasDaEntradaAceitas(

@@ -172,7 +172,7 @@ describe("o polling de 60 s não reinicia o simulador do espelho", () => {
     expect(ultima?.parcelasMensais).toBe(48);
   });
 
-  it("plano que mudou DE VERDADE atualiza os números sem trocar a escolha", () => {
+  it("plano que mudou DE VERDADE atualiza o cartão sem trocar a escolha nem o preço já montado", () => {
     montar(garden());
     clicar(cartao("INVESTIDOR PARCELADO"));
     expect(ultima?.valorNegociado).toBe(400_200);
@@ -181,9 +181,18 @@ describe("o polling de 60 s não reinicia o simulador do espelho", () => {
     montar(garden(10));
 
     expect(ultima?.planoNome).toBe("INVESTIDOR PARCELADO");
-    // O preço do plano no modo simulação acompanha o desconto novo: 435.000 × 0,90.
-    expect(ultima?.valorNegociado).toBe(391_500);
+    // ⚠️ O PREÇO DA TELA PAROU DE SE REFAZER SOZINHO EM 23/09/2026, e é a outra ponta da decisão do
+    // Lucas (**"Liberar para todo mundo"**). Enquanto o campo era somente leitura no espelho, o
+    // preço era DERIVADO do plano e acompanhava o cadastro novo. Agora ele é o que está no campo, e
+    // campo que se refaz sozinho apagaria o desconto que a pessoa acabou de digitar — é o mesmo
+    // comportamento que a Mesa de Venda sempre teve. O cadastro novo continua chegando: o cartão do
+    // plano já mostra o preço de 10%, e `descontoDoPlanoPercentual` sobe 10, que é o que faz a régua
+    // tratar os 8% do campo como desconto à mão.
+    expect(ultima?.valorNegociado).toBe(400_200);
     expect(ultima?.descontoDoPlanoPercentual).toBe(10);
+    // E um clique no cartão traz o preço novo, que é como se pega a tabela nova de propósito.
+    clicar(cartao("INVESTIDOR PARCELADO"));
+    expect(ultima?.valorNegociado).toBe(391_500);
   });
 
   it("escolhido o NORMAL, o desconto novo do outro plano muda o cartão dele e deixa o NORMAL", () => {

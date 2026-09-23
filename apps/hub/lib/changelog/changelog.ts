@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-23-o-espelho-negocia",
+    deployedAt: "2026-09-23T15:50:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O link que o corretor manda passou a montar a negociação inteira.** Dá para ajustar o preço e registrar bem ou permuta ali mesmo, e a folha sai com esses números. Antes só dava para olhar o preço de tabela.",
+              "**A folha continua dizendo que não vincula.** Ela não constitui proposta, não reserva a unidade e não obriga ninguém: quem fecha venda é a proposta, no portal, com login.",
+              "**O rodapé parou de chamar de proposta o que é simulação.** Ele escrevia que aquelas eram as condições que iriam para a proposta, num lugar onde nada vira proposta.",
+            ],
+            screen: "Espelho de vendas",
+          },
+        ],
+      },
+    ],
+    rollback: "77a9deec",
+    technical: {
+      done:
+        "O espelho publico (`/e/<apelido>-<selo>`, sem login) ganhou o ajuste de preco e o bloco de bens e permutas. ⚠️ E DECISAO DO LUCAS, COM O RISCO POSTO: perguntado com tres opcoes e o risco escrito em cada uma, respondeu \"Liberar para todo mundo\" e, sobre o teto de desconto, \"pode liberar tudo\". Quem repuser um teto aqui esta desfazendo decisao, nao consertando esquecimento -- esta escrito no codigo, com data e frase. AS TRES PECAS ANDARAM JUNTAS, e tinham de andar: a tela (`ehSimulacao` carregava PALAVRA e AUTORIDADE misturadas; a palavra ficou, a autoridade soltou), a rota (`simulacao-publica.ts` refaz a regua no servidor de proposito, entao sem ela a tela mostraria um numero e o PDF imprimiria outro, calado) e o rodape. `conferirBensEPermutasDoCorpo` saiu da rota da proposta para `lib/hercules/bens-e-permutas.ts` e agora serve as DUAS portas: a casa nao pode ter duas conferencias da mesma lista, uma com login e outra sem. O QUE A PORTA PUBLICA AINDA RECUSA, medido: preco ACIMA da tabela (isso nao e desconto, e a pagina anunciando a unidade mais cara do que a casa vende), preco zero ou ausente, prazo maior que o do plano, e todo item de bem torto (tipo invalido, `entraComo` invalido, valor vazio ou nao positivo, descricao em branco, mais itens que o teto). ⚠️ E NAO HA TETO DE VALOR NOS BENS: um visitante pode zerar o financiado com um bem do tamanho do lote e imprimir folha de R$ 0,00 a financiar. Segue a mesma decisao do desconto, e esta dito aqui para ninguem descobrir depois. ⚠️ TRES DEFEITOS PEGOS POR REVISAO ADVERSARIAL: o botao de ACRESCIMO ficou visivel no espelho oferecendo o que o servidor sempre recusou (422 em todo valor acima da tabela); a tela nao avisava antes do clique em tres entradas que o servidor recusa; e o rodape caia no ramo da proposta porque o espelho passa `aoMudarCondicoes`, deixando o ramo da simulacao como codigo morto. 532 arquivos, 8.188 testes, typecheck limpo.",
+      motivation:
+        "Lucas, 23/09/2026: \"sabe aquela parte do desconto que incluimos no comercial, vamos colocar para cecilio também\". A medicao mostrou que o PORTAL da Cecilio JA tinha o ajuste (e a mesma TelaVenda do comercial desde 16/09) e que o print dele dizia \"Valor simulado\", o rotulo do ESPELHO. Perguntado como fazer, respondeu \"Liberar para todo mundo\". Sobre a permuta ficar de fora, que era decisao MINHA e nao dele: \"permuta tem que entrar, não entendi sua colocação\". E sobre o teto: \"pode liberar tudo\".",
+    },
+    title: "O espelho passou a negociar",
+    type: "novidade",
+    version: "1.364.0",
+  },
+  {
     buildTag: "2026-09-23-a-imobiliaria-assina",
     deployedAt: "2026-09-23T09:38:10-03:00",
     modules: [

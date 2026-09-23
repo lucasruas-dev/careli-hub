@@ -19,6 +19,7 @@ import {
   somarBensQueContamNaEntrada,
   TAMANHO_MAXIMO_DA_DESCRICAO,
   TETO_DE_BENS_NA_PROPOSTA,
+  valeDinheiro,
 } from "@/lib/hercules/bens-e-permutas";
 import {
   type Composicao,
@@ -532,21 +533,35 @@ export function SimuladorDeProposta({
   });
 
   /**
-   * O ajuste que vale na tela.
+   * O preço que vale na tela: a tabela com o ajuste que está no campo do lote.
    *
-   * ⚠️ NO MODO SIMULAÇÃO NÃO EXISTE DESCONTO À MÃO (18/09/2026). O espelho público monta este
-   * simulador numa página sem login, e o PDF que sai de lá leva a marca da casa: o campo de desconto
-   * fica preso ao desconto do plano escolhido, no prazo do plano (fora dele, desconto nenhum, pela
-   * mesma régua de cima). A rota do PDF confere de novo, porque a tela não é a última palavra
-   * (`app/api/publico/espelho/simulacao`). Na Mesa de Venda é o ajuste do campo, como sempre foi.
+   * ⚠️ `vocabulario` GOVERNAVA DUAS COISAS ORTOGONAIS ATÉ 23/09/2026 — a PALAVRA (os rótulos "Valor
+   * simulado" e "Simulação montada") e a AUTORIDADE sobre o preço. Aqui ficava
+   * `ehSimulacao ? ajusteDoPlano(descontoNoPrazo) : ajuste`: no espelho público o campo era preso ao
+   * desconto do plano, e o que se digitasse não entrava em conta nenhuma. A palavra CONTINUA como
+   * estava, porque ali é simulação mesmo; só a autoridade mudou de lado.
+   *
+   * ⚠️ E ISSO É DECISÃO TOMADA, COM O RISCO POSTO. Lucas (23/09/2026): *"sabe aquela parte do
+   * desconto que incluimos no comercial, vamos colocar para cecilio também"* e, perguntado como
+   * fazer, com as três opções e o risco escrito em cada uma: **"Liberar para todo mundo"**. Qualquer
+   * pessoa com o link `/e/<apelido>-<selo>`, que não tem login, passa a poder ajustar o preço e
+   * baixar uma folha com a marca da casa e o desconto que ela mesma escolheu.
+   *
+   * ⚠️ ISTO REABRE DE PROPÓSITO O QUE A REVISÃO DE 18/09/2026 FECHOU, e está escrito para que
+   * ninguém feche de novo sem saber. O que segura a folha agora é o TETO do servidor
+   * (`DESCONTO_MAXIMO_DA_SIMULACAO`, em `lib/hercules/espelho/simulacao-publica.ts`), a tarja de
+   * prévia e a frase que o PDF já carrega: "não constitui proposta, não reserva a unidade e não
+   * vincula as partes".
+   *
+   * ⚠️ E O BLOCO DE BENS E PERMUTAS ANDOU JUNTO, NO MESMO DIA. Eu havia deixado a permuta de fora
+   * ("permuta é negociação, o espelho é vitrine"), e o Lucas desfez: *"permuta tem que entrar, não
+   * entendi sua colocação"*. Então `vocabulario` NÃO governa mais autoridade nenhuma sobre a
+   * negociação — nem preço nem bens —, só a palavra. O que continua preso a ele é o que é de
+   * PROPOSTA e não de negociação: o bloco "Cobrança" e a edição de juros.
    */
-  const ajusteDaTela = useMemo(
-    () => (ehSimulacao ? ajusteDoPlano(descontoNoPrazo) : ajuste),
-    [ajuste, descontoNoPrazo, ehSimulacao],
-  );
   const preco = useMemo(
-    () => aplicarAjuste(valorDaUnidade, ajusteDaTela),
-    [ajusteDaTela, valorDaUnidade],
+    () => aplicarAjuste(valorDaUnidade, ajuste),
+    [ajuste, valorDaUnidade],
   );
 
   /**
@@ -555,10 +570,16 @@ export function SimuladorDeProposta({
    * ⚠️ É O QUE FAZ A BUSCA POR PARCELA RESPEITAR O CAMPO. Sem desconto à mão, cada plano compõe sobre
    * o preço do cartão dele (o que o clique carrega). Com desconto à mão, o plano ATIVO compõe sobre
    * o preço do campo: senão o coordenador dava 10% no Investidor Parcelado, partia da parcela, e a
-   * composição voltava a 8% por baixo do campo. Nunca no modo simulação, onde não há desconto à mão.
+   * composição voltava a 8% por baixo do campo.
+   *
+   * ⚠️ VALE NO ESPELHO TAMBÉM DESDE 23/09/2026 (era `!ehSimulacao && …`). Sem isto, quem desse 10%
+   * na página pública e depois partisse da parcela via a composição voltar aos 8% do plano por baixo
+   * do campo — o mesmo defeito que a Mesa de Venda já não tinha.
    */
-  const campoComDescontoProprio =
-    !ehSimulacao && !mesmoAjuste(ajuste, ajusteDoPlano(descontoDoAtivo));
+  const campoComDescontoProprio = !mesmoAjuste(
+    ajuste,
+    ajusteDoPlano(descontoDoAtivo),
+  );
 
   const premissaDaFaixa = useMemo(
     () => premissaDoPrazo(faixasDePrazo ?? [], prazoDaFaixa),
@@ -806,19 +827,26 @@ export function SimuladorDeProposta({
     : null;
 
   /**
-   * Os bens que ENTRAM NA CONTA — e no espelho público não entra nenhum.
+   * Os bens que ENTRAM NA CONTA — e desde 23/09/2026 eles entram no espelho público também.
    *
-   * ⚠️ A TRAVA É AQUI, NA CONTA, E NÃO SÓ NO DESENHO DO BLOCO. Esconder o campo já bastaria hoje,
-   * porque sem campo a lista nasce vazia e fica vazia; mas no dia em que alguém passar uma lista
-   * inicial por prop (para reabrir uma proposta, por exemplo), o `/e/<apelido>-<selo>` sem login
-   * passaria a abater o saldo por um bem que o visitante não pode nem ver, e o PDF sairia com o
-   * desconto. Permuta é negociação: ela existe do lado de cá do login e em lugar nenhum mais.
+   * ⚠️ ISTO ERA `ehSimulacao ? null : bens`, E O `null` NÃO ERA DESENHO: era a CONTA. Enquanto ele
+   * existiu, o bloco de bens podia até ser desenhado na página sem login que o cartão da direita
+   * não se mexeria, e o pedido do PDF subiria sem a lista. Campo que aparece e não muda número é o
+   * defeito que o Lucas relatou em 22/09 na entrada (*"mesmo eu alterando o valor de entrada (...)
+   * ele não traz o valor que eu tinha colocado"*) — por isso esta linha andou JUNTO com o bloco.
    *
-   * ⚠️ E O `null` É A MESMA REFERÊNCIA SEMPRE, assim como `bens` só muda quando alguém mexe. Isto
-   * importa: este valor entra nas dependências do efeito que sobe a composição, e um array novo a
-   * cada render faria o efeito rodar em laço.
+   * ⚠️ E A DECISÃO É DELE, DE 23/09/2026. Eu havia escrito, aqui e nos testes, que a permuta
+   * ficaria fora do espelho porque permuta é negociação e o espelho é vitrine; Lucas: *"permuta tem
+   * que entrar, não entendi sua colocação"*. A separação era minha, e está desfeita. Quem segura a
+   * folha continua sendo o servidor (`lib/hercules/espelho/simulacao-publica.ts`: o teto do
+   * desconto e a conferência dos bens, a mesma da rota da proposta) e a frase que o PDF carrega,
+   * "não constitui proposta, não reserva a unidade e não vincula as partes".
+   *
+   * ⚠️ E ELE É A MESMA REFERÊNCIA ENQUANTO NINGUÉM MEXE NA LISTA, porque é o próprio `bens` do
+   * estado. Isto importa: este valor entra nas dependências do efeito que sobe a composição, e um
+   * array novo a cada render faria o efeito rodar em laço.
    */
-  const bensDaNegociacao = ehSimulacao ? null : bens;
+  const bensDaNegociacao = bens;
   /** Quanto dos bens CUMPRE a entrada mínima — só os apontados na entrada. */
   const bensNaEntrada = somarBensQueContamNaEntrada(bensDaNegociacao);
 
@@ -997,11 +1025,11 @@ export function SimuladorDeProposta({
       c.plano === nomeDoAtivo && campoComDescontoProprio
         ? ajuste
         : ajusteAoTrocarDePlano({
-            ajusteAtual: ajusteDaTela,
+            ajusteAtual: ajuste,
             descontoDoAnterior: descontoDoAtivo,
             descontoDoNovo: c.descontoPercentual,
           }),
-    [ajuste, ajusteDaTela, campoComDescontoProprio, descontoDoAtivo, nomeDoAtivo],
+    [ajuste, campoComDescontoProprio, descontoDoAtivo, nomeDoAtivo],
   );
 
   /**
@@ -1045,7 +1073,7 @@ export function SimuladorDeProposta({
   const principal: Leitura | null = useMemo(() => {
     if (comando === "condicoes" && montada && plano) {
       return {
-        ajuste: ajusteDaTela,
+        ajuste,
         anuais: {
           quantidade: cockpit.anuaisQuantidade,
           valor: cockpit.anuaisValor,
@@ -1092,8 +1120,8 @@ export function SimuladorDeProposta({
     // cartão do ramo `montada` mostra essa entrada, e um memo que lê um valor sem declará-lo pode
     // devolver o cartão com o número anterior. É memo de leitura: recalcular a mais não dispara nada.
   }, [
+    ajuste,
     ajusteDaComposicao,
-    ajusteDaTela,
     comando,
     composicoes,
     cockpit,
@@ -1186,17 +1214,17 @@ export function SimuladorDeProposta({
   // exatamente o `valor` com que ela fechou (`precoNoPlano` é `aplicarAjuste` com o desconto do
   // plano). Nos empreendimentos sem desconto de plano os dois caminhos dão o mesmo `ajuste`.
   const ajusteNoCampo =
-    principal?.origem === "composicao" ? principal.ajuste : ajusteDaTela;
+    principal?.origem === "composicao" ? principal.ajuste : ajuste;
   /** O empreendimento tem plano com desconto próprio (o Garden)? Ver o campo do lote, abaixo. */
   const algumPlanoComDesconto = planosDaConta.some(
     (p) => descontoDoPlano(p.descontoPercentual) > 0,
   );
   const precoNoCampo = useMemo(
     () =>
-      ajusteNoCampo === ajusteDaTela
+      ajusteNoCampo === ajuste
         ? preco
         : aplicarAjuste(valorDaUnidade, ajusteNoCampo),
-    [ajusteDaTela, ajusteNoCampo, preco, valorDaUnidade],
+    [ajuste, ajusteNoCampo, preco, valorDaUnidade],
   );
 
   function usarComposicao(c: Composicao) {
@@ -1314,10 +1342,14 @@ export function SimuladorDeProposta({
             descontoDoPlano={
               principal ? principal.descontoDoPlano : descontoNoPrazo
             }
+            // ⚠️ O ACRÉSCIMO NÃO É OFERECIDO NA PÁGINA SEM LOGIN, porque o servidor recusa 100%
+            // das vezes (422, "Esta simulação não passa do valor de tabela da unidade"): medido em
+            // 23/09/2026, "Acréscimo" + 10 levava o cartão a R$ 478.500 e o PDF a erro. Ver
+            // `permitirAcrescimo`, em `CampoDoLote`.
+            permitirAcrescimo={!ehSimulacao}
             preco={precoNoCampo}
             rotulo={`Lote ${unidade}`}
             rotuloDoValor={ehSimulacao ? "Valor simulado" : "Proposta"}
-            somenteLeitura={ehSimulacao}
           />
         </Bloco>
 
@@ -1599,173 +1631,186 @@ export function SimuladorDeProposta({
             responderia "o bem cobre R$ 80.000 do mínimo" a três blocos de distância de onde o
             número aparece.
 
-            ⚠️ E NÃO EXISTE NO ESPELHO PÚBLICO (`ehSimulacao`). Este mesmo componente é montado no
-            link sem login que o corretor manda para o cliente: permuta é negociação, não vitrine.
-            Com o campo lá, qualquer visitante inventa um bem de R$ 200.000, zera o saldo e imprime
-            o PDF. É a mesma trava do bloco de cobrança e da edição de juros, logo abaixo.
+            ⚠️ E ELE EXISTE NO ESPELHO PÚBLICO DESDE 23/09/2026. Este mesmo componente é montado no
+            link sem login que o corretor manda para o cliente, e até 22/09 o bloco não aparecia lá:
+            eu havia decidido que permuta é negociação, não vitrine. Lucas, quando eu disse isso a
+            ele: *"permuta tem que entrar, não entendi sua colocação"*. A separação era minha, não
+            dele, e o `{!ehSimulacao ? …}` que abria esta linha saiu junto com ela.
 
-            ⚠️ MAS A TRAVA DE VERDADE ESTÁ NA CONTA (`bensDaNegociacao`), e não neste `if`. Esconder
-            o campo só resolve enquanto ninguém passar uma lista inicial por prop. */}
-        {!ehSimulacao ? (
-          <Bloco titulo="Bens e permutas">
-            {bens.length > 0 ? (
-              <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
-                {bens.map((bem, i) => (
-                  <div
-                    // ⚠️ A CHAVE É A POSIÇÃO, e aqui ela é a identidade certa: o item não tem id
-                    // até a proposta ser gravada, e duas permutas podem ser idênticas em tipo,
-                    // valor e descrição. Remover um item reordena as chaves, e é o que se quer: o
-                    // campo de texto da linha 2 passa a mostrar o que a linha 2 tem agora.
-                    key={i}
-                    style={{
-                      background: T.soft,
-                      border: `1px solid ${T.border}`,
-                      borderRadius: 10,
-                      display: "grid",
-                      gap: 6,
-                      padding: 8,
-                    }}
-                  >
-                    <div style={{ display: "flex", gap: 6, minWidth: 0 }}>
-                      <select
-                        aria-label={`Tipo do item ${i + 1}`}
-                        onChange={(e) =>
-                          mudarBem(i, {
-                            tipo: e.target.value as BemOuPermuta["tipo"],
-                          })
-                        }
-                        style={{ ...campo, flex: "0 0 96px", width: 96 }}
-                        value={bem.tipo}
-                      >
-                        <option value="bem">Bem</option>
-                        <option value="permuta">Permuta</option>
-                      </select>
-                      <span style={{ flex: "1 1 0", minWidth: 0 }}>
-                        <CampoEmReais
-                          aoMudar={(v) => {
-                            mudarBem(i, { valor: v });
-                            setComando("condicoes");
-                          }}
-                          rotulo=""
-                          rotuloAcessivel={`Valor do item ${i + 1}`}
-                          valor={bem.valor}
-                        />
-                      </span>
-                      <button
-                        aria-label={`Remover o item ${i + 1}`}
-                        onClick={() => {
-                          removerBem(i);
+            ⚠️ E O QUE ISSO CUSTA ESTÁ ESCRITO, para ninguém desfazer sem saber: qualquer visitante
+            do link inventa um bem de R$ 200.000, zera o saldo e imprime o PDF. O que sobrou de pé é
+            o servidor — que confere a lista com a MESMA função da rota da proposta e recusa com
+            frase (`lib/hercules/espelho/simulacao-publica.ts`) — e a frase que a folha carrega:
+            "não constitui proposta, não reserva a unidade e não vincula as partes". O bloco de
+            cobrança e a edição de juros, logo abaixo, continuam presos em `ehSimulacao`: aqueles o
+            Lucas não mandou soltar.
+
+            ⚠️ E A TRAVA DE VERDADE NUNCA FOI ESTE DESENHO, E SIM A CONTA (`bensDaNegociacao`, lá
+            em cima). As duas tinham de andar juntas: soltar o bloco sem soltar a conta daria um
+            campo que aparece na página e não move número nenhum, que é pior do que não ter campo. */}
+        <Bloco titulo="Bens e permutas">
+          {bens.length > 0 ? (
+            <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
+              {bens.map((bem, i) => (
+                <div
+                  // ⚠️ A CHAVE É A POSIÇÃO, e aqui ela é a identidade certa: o item não tem id
+                  // até a proposta ser gravada, e duas permutas podem ser idênticas em tipo,
+                  // valor e descrição. Remover um item reordena as chaves, e é o que se quer: o
+                  // campo de texto da linha 2 passa a mostrar o que a linha 2 tem agora.
+                  key={i}
+                  style={{
+                    background: T.soft,
+                    border: `1px solid ${T.border}`,
+                    borderRadius: 10,
+                    display: "grid",
+                    gap: 6,
+                    padding: 8,
+                  }}
+                >
+                  <div style={{ display: "flex", gap: 6, minWidth: 0 }}>
+                    <select
+                      aria-label={`Tipo do item ${i + 1}`}
+                      onChange={(e) =>
+                        mudarBem(i, {
+                          tipo: e.target.value as BemOuPermuta["tipo"],
+                        })
+                      }
+                      style={{ ...campo, flex: "0 0 96px", width: 96 }}
+                      value={bem.tipo}
+                    >
+                      <option value="bem">Bem</option>
+                      <option value="permuta">Permuta</option>
+                    </select>
+                    <span style={{ flex: "1 1 0", minWidth: 0 }}>
+                      <CampoEmReais
+                        aoMudar={(v) => {
+                          mudarBem(i, { valor: v });
                           setComando("condicoes");
                         }}
-                        style={{
-                          background: "transparent",
-                          border: `1px solid ${T.border}`,
-                          borderRadius: 8,
-                          color: T.muted,
-                          cursor: "pointer",
-                          flex: "0 0 auto",
-                          font: "inherit",
-                          fontSize: 13,
-                          fontWeight: 700,
-                          lineHeight: 1,
-                          padding: "0 9px",
-                        }}
-                        type="button"
-                      >
-                        ×
-                      </button>
-                    </div>
-
-                    {/* ⚠️ A DESCRIÇÃO É O QUE VAI PARA O CONTRATO, e o teto é o mesmo da rota
-                        (`TAMANHO_MAXIMO_DA_DESCRICAO`): lá ele RECUSA em vez de cortar, então
-                        cortar aqui é o que evita digitar 400 caracteres para receber 422. */}
-                    <input
-                      aria-label={`Descrição do item ${i + 1}`}
-                      maxLength={TAMANHO_MAXIMO_DA_DESCRICAO}
-                      onChange={(e) => mudarBem(i, { descricao: e.target.value })}
-                      placeholder="Ford Ka 2019 placa ABC1D23"
-                      style={{ ...campo, fontSize: 12.5, fontWeight: 500 }}
-                      value={bem.descricao}
-                    />
-
-                    {/* ONDE O VALOR ENTRA. Os dois abatem o saldo igual; o que muda é se ele
-                        CUMPRE a entrada mínima. */}
-                    <div style={{ display: "flex", gap: 6 }}>
-                      {(
-                        [
-                          {
-                            aria: `O item ${i + 1} entra na entrada`,
-                            modo: "entrada" as const,
-                            texto: "Na entrada",
-                          },
-                          {
-                            aria: `O item ${i + 1} só abate o valor negociado`,
-                            modo: "abatimento" as const,
-                            texto: "Só no valor negociado",
-                          },
-                        ] as const
-                      ).map((opcao) => {
-                        const marcado = bem.entraComo === opcao.modo;
-                        return (
-                          <button
-                            aria-label={opcao.aria}
-                            aria-pressed={marcado}
-                            key={opcao.modo}
-                            onClick={() => {
-                              mudarBem(i, { entraComo: opcao.modo });
-                              setComando("condicoes");
-                            }}
-                            style={{
-                              background: marcado ? T.card : "transparent",
-                              border: `1px solid ${marcado ? T.gold : T.border}`,
-                              borderRadius: 999,
-                              color: marcado ? T.text : T.sub,
-                              cursor: "pointer",
-                              font: "inherit",
-                              fontSize: 11,
-                              fontWeight: 650,
-                              padding: "4px 11px",
-                            }}
-                            type="button"
-                          >
-                            {opcao.texto}
-                          </button>
-                        );
-                      })}
-                    </div>
+                        rotulo=""
+                        rotuloAcessivel={`Valor do item ${i + 1}`}
+                        valor={bem.valor}
+                      />
+                    </span>
+                    <button
+                      aria-label={`Remover o item ${i + 1}`}
+                      onClick={() => {
+                        removerBem(i);
+                        setComando("condicoes");
+                      }}
+                      style={{
+                        background: "transparent",
+                        border: `1px solid ${T.border}`,
+                        borderRadius: 8,
+                        color: T.muted,
+                        cursor: "pointer",
+                        flex: "0 0 auto",
+                        font: "inherit",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        lineHeight: 1,
+                        padding: "0 9px",
+                      }}
+                      type="button"
+                    >
+                      ×
+                    </button>
                   </div>
-                ))}
-              </div>
-            ) : null}
 
-            <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
-              {/* ⚠️ O BOTÃO SOME NO DÉCIMO, e o teto é o da rota. Sem isto, o jeito de descobrir o
-                  limite era digitar o décimo primeiro item e receber 422 com a lista pronta. */}
-              {bens.length < TETO_DE_BENS_NA_PROPOSTA ? (
-                <button
-                  onClick={acrescentarBem}
-                  style={{ ...botaoDiscreto, padding: "6px 12px" }}
-                  type="button"
-                >
-                  Acrescentar bem ou permuta
-                </button>
-              ) : (
-                <span style={{ color: T.muted, fontSize: 11 }}>
-                  Máximo de {TETO_DE_BENS_NA_PROPOSTA} itens por proposta.
-                </span>
-              )}
-              {bens.length > 0 ? (
-                <span
-                  style={{ color: T.muted, fontSize: 11.5, marginLeft: "auto" }}
-                >
-                  {bensNaEntrada > 0
-                    ? `${dinheiro(bensNaEntrada)} na entrada`
-                    : "só abatem o valor"}
-                </span>
-              ) : null}
+                  {/* ⚠️ A DESCRIÇÃO É O QUE VAI PARA O CONTRATO, e o teto é o mesmo da rota
+                      (`TAMANHO_MAXIMO_DA_DESCRICAO`): lá ele RECUSA em vez de cortar, então
+                      cortar aqui é o que evita digitar 400 caracteres para receber 422. */}
+                  <input
+                    aria-label={`Descrição do item ${i + 1}`}
+                    maxLength={TAMANHO_MAXIMO_DA_DESCRICAO}
+                    onChange={(e) => mudarBem(i, { descricao: e.target.value })}
+                    placeholder="Ford Ka 2019 placa ABC1D23"
+                    style={{ ...campo, fontSize: 12.5, fontWeight: 500 }}
+                    value={bem.descricao}
+                  />
+
+                  {/* ⚠️ O AVISO FICA COLADO NO ITEM, e não num resumo no fim do bloco: com dez
+                      itens na lista, "um bem está incompleto" manda a pessoa conferir dez linhas.
+                      Aqui ele nasce embaixo do campo que falta. Ver `oQueFaltaNoBem`. */}
+                  <FaltaNoBem bem={bem} />
+
+                  {/* ONDE O VALOR ENTRA. Os dois abatem o saldo igual; o que muda é se ele
+                      CUMPRE a entrada mínima. */}
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {(
+                      [
+                        {
+                          aria: `O item ${i + 1} entra na entrada`,
+                          modo: "entrada" as const,
+                          texto: "Na entrada",
+                        },
+                        {
+                          aria: `O item ${i + 1} só abate o valor negociado`,
+                          modo: "abatimento" as const,
+                          texto: "Só no valor negociado",
+                        },
+                      ] as const
+                    ).map((opcao) => {
+                      const marcado = bem.entraComo === opcao.modo;
+                      return (
+                        <button
+                          aria-label={opcao.aria}
+                          aria-pressed={marcado}
+                          key={opcao.modo}
+                          onClick={() => {
+                            mudarBem(i, { entraComo: opcao.modo });
+                            setComando("condicoes");
+                          }}
+                          style={{
+                            background: marcado ? T.card : "transparent",
+                            border: `1px solid ${marcado ? T.gold : T.border}`,
+                            borderRadius: 999,
+                            color: marcado ? T.text : T.sub,
+                            cursor: "pointer",
+                            font: "inherit",
+                            fontSize: 11,
+                            fontWeight: 650,
+                            padding: "4px 11px",
+                          }}
+                          type="button"
+                        >
+                          {opcao.texto}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
-          </Bloco>
-        ) : null}
+          ) : null}
+
+          <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
+            {/* ⚠️ O BOTÃO SOME NO DÉCIMO, e o teto é o da rota. Sem isto, o jeito de descobrir o
+                limite era digitar o décimo primeiro item e receber 422 com a lista pronta. */}
+            {bens.length < TETO_DE_BENS_NA_PROPOSTA ? (
+              <button
+                onClick={acrescentarBem}
+                style={{ ...botaoDiscreto, padding: "6px 12px" }}
+                type="button"
+              >
+                Acrescentar bem ou permuta
+              </button>
+            ) : (
+              <span style={{ color: T.muted, fontSize: 11 }}>
+                Máximo de {TETO_DE_BENS_NA_PROPOSTA} itens por proposta.
+              </span>
+            )}
+            {bens.length > 0 ? (
+              <span
+                style={{ color: T.muted, fontSize: 11.5, marginLeft: "auto" }}
+              >
+                {bensNaEntrada > 0
+                  ? `${dinheiro(bensNaEntrada)} na entrada`
+                  : "só abatem o valor"}
+              </span>
+            ) : null}
+          </div>
+        </Bloco>
 
         {/* ⚠️ SÓ NA PROPOSTA, e por isso preso à prop. Numa simulação livre não existe primeira
             parcela: o coordenador está olhando quanto o cliente paga por mês, e um campo de data
@@ -2431,12 +2476,22 @@ export function SimuladorDeProposta({
             cartão, não a busca. */}
 
         {/* ⚠️ O RODAPÉ MUDA COM O USO. Dizer "nada aqui vincula a unidade nem gera proposta" na
-            modal que está gerando a proposta seria a tela desmentindo o botão logo abaixo dela. */}
+            modal que está gerando a proposta seria a tela desmentindo o botão logo abaixo dela.
+
+            ⚠️ A PALAVRA VEM ANTES DO USO, E A ORDEM DOS RAMOS MUDOU EM 23/09/2026. `aoMudarCondicoes`
+            era o primeiro teste, e o ESPELHO PÚBLICO a manda (é assim que ele escuta a composição
+            para montar o corpo do PDF): o rodapé da página sem login escrevia "Estas são as
+            condições que vão para a proposta", e o ramo do meio, o único que fala de simulação, era
+            CÓDIGO MORTO. Isso contradizia o pedido do Lucas de 10/09/2026 (*"não é proposta mas sim
+            uma simulação de pagamento"*) e, pior, discordava do próprio papel: o PDF já saía com
+            "Sobre esta simulação" e a frase de que não vincula (`proposta-para-pdf.ts`). Quem decide
+            a PALAVRA é `vocabulario`; `aoMudarCondicoes` decide só entre a modal que grava e o
+            simulador livre da ficha. */}
         <p style={{ color: T.muted, fontSize: 11.5, margin: 0 }}>
-          {aoMudarCondicoes
-            ? "Estas são as condições que vão para a proposta. Conta feita com os planos cadastrados do empreendimento."
-            : ehSimulacao
-              ? "Simulação de pagamento com os planos cadastrados do empreendimento. Os valores e o prazo são confirmados com o corretor."
+          {ehSimulacao
+            ? "Simulação de pagamento com os planos cadastrados do empreendimento. Os valores e o prazo são confirmados com o corretor."
+            : aoMudarCondicoes
+              ? "Estas são as condições que vão para a proposta. Conta feita com os planos cadastrados do empreendimento."
               : "Simulação livre: nada aqui vincula a unidade nem gera proposta. Conta feita nesta tela, com os planos cadastrados do empreendimento."}
         </p>
       </div>
@@ -3018,30 +3073,96 @@ function numeroDigitado(cru: string): number {
   return Number.isFinite(n) ? Math.abs(n) : 0;
 }
 
+/**
+ * O que falta no bem para o servidor aceitá-lo, em uma frase, ou nulo quando ele está completo.
+ *
+ * ⚠️ A TELA ABATIA O DINHEIRO E O SERVIDOR RECUSAVA DEPOIS DO CLIQUE. Medido em 23/09/2026: o
+ * bloco de bens não exigia descrição nenhuma, mas `conferirBensEPermutasDoCorpo` exige — então um
+ * carro de R$ 80.000 sem descrição baixava o "A financiar" no cartão, a pessoa lia o número novo,
+ * clicava para gerar e só ali recebia "Descreva o bem ou permuta na posição 1". No espelho público
+ * isso acontece numa página SEM LOGIN, onde não há corretor do lado para traduzir o erro.
+ *
+ * ⚠️ É AVISO, E NUNCA TRAVA. Lucas (22/09/2026): *"na cecilio pode deixar tudo liberado, sem trava,
+ * somente com alertas (...) somente garante essa visão"*. O campo continua aceitando qualquer
+ * tecla, o bem continua abatendo o saldo, e quem recusa de verdade continua sendo o servidor — com
+ * a MESMA régua nas duas rotas. Esta função só antecipa a leitura.
+ *
+ * ⚠️ E ELA LÊ A RÉGUA DO SERVIDOR, NÃO UMA PARECIDA: `descricao.trim()` vazio e `valeDinheiro`, as
+ * duas condições que `conferirBensEPermutasDoCorpo` aplica item a item. Uma segunda régua "quase
+ * igual" aqui produziria o pior caso possível: a tela dando o item por bom e o papel não saindo.
+ */
+function oQueFaltaNoBem(bem: BemOuPermuta): null | string {
+  const semDescricao = bem.descricao.trim() === "";
+  const semValor = !valeDinheiro(bem);
+  if (semDescricao && semValor)
+    return "Descreva o bem ou permuta e informe o valor: sem os dois o documento não sai.";
+  if (semDescricao)
+    return "Descreva o bem ou permuta: sem a descrição o documento não sai.";
+  if (semValor)
+    return "Informe o valor do bem ou permuta, maior que zero: sem ele o documento não sai.";
+  return null;
+}
+
+/** O aviso vermelho do bem incompleto, no mesmo padrão do "Abaixo do mínimo" da entrada. */
+function FaltaNoBem({ bem }: { bem: BemOuPermuta }) {
+  const falta = oQueFaltaNoBem(bem);
+  if (!falta) return null;
+  return (
+    <span style={{ color: T.danger, fontSize: 10.5, lineHeight: 1.35 }}>
+      {falta}
+    </span>
+  );
+}
+
+/**
+ * Os botões de sentido que o campo do lote desenha: os dois, ou só o desconto.
+ *
+ * ⚠️ FORA DO COMPONENTE, E COM TIPO DECLARADO, porque um ternário entre duas tuplas `as const`
+ * dentro do JSX vira uma UNIÃO de tuplas, e `.map` sobre união de tuplas não compila.
+ */
+function sentidosOferecidos(
+  permitirAcrescimo: boolean,
+): ReadonlyArray<-1 | 1> {
+  return permitirAcrescimo ? [-1, 1] : [-1];
+}
+
 function CampoDoLote({
   ajuste,
   aoMudarAjuste,
   descontoDoPlano: descontoDoPlanoAtivo = 0,
+  permitirAcrescimo = true,
   preco,
   rotulo,
   rotuloDoValor,
-  somenteLeitura = false,
 }: {
   ajuste: AjusteDePreco;
   aoMudarAjuste: (a: AjusteDePreco) => void;
   /** O desconto do plano escolhido. Quando o campo é exatamente ele, a tela diz "do plano". */
   descontoDoPlano?: number;
+  /**
+   * Se o botão `+` aparece. Falso no espelho público, verdadeiro na Mesa de Venda.
+   *
+   * ⚠️ A TELA NÃO PODE OFERECER O QUE O SERVIDOR RECUSA SEMPRE. Quando os controles de desconto
+   * foram soltos no espelho (23/09/2026), a linha inteira foi junto e levou o `+`: medido na
+   * página sem login, clicar em "Acréscimo" e digitar 10 põe R$ 478.500 no cartão, e a rota do PDF
+   * responde 422 ("Esta simulação não passa do valor de tabela da unidade") em todas as vezes.
+   *
+   * ⚠️ E A RECUSA DO SERVIDOR NÃO É O TETO DE DESCONTO QUE SAIU NO MESMO DIA. Desconto de qualquer
+   * tamanho é decisão do Lucas (*"Liberar para todo mundo"*, *"pode liberar tudo"*); anunciar a
+   * unidade MAIS CARA do que a casa vende, num link que qualquer um abre, não é desconto, é a
+   * página mentindo para cima. Por isso quem some é o botão, e não a recusa.
+   */
+  permitirAcrescimo?: boolean;
   preco: ReturnType<typeof aplicarAjuste>;
   rotulo: string;
-  /** "Proposta" na Mesa de Venda; "Valor simulado" no espelho público. */
-  rotuloDoValor: string;
   /**
-   * Sem os controles de desconto: a tela só mostra a tabela, o desconto do plano e o valor.
+   * "Proposta" na Mesa de Venda; "Valor simulado" no espelho público.
    *
-   * ⚠️ É O ESPELHO PÚBLICO (18/09/2026). A página não tem login e o PDF sai com a marca da casa: lá
-   * o desconto é o do plano escolhido, e ninguém digita outro.
+   * ⚠️ É SÓ PALAVRA. Até 23/09/2026 existia também um `somenteLeitura` que escondia os controles de
+   * desconto na página sem login; ele saiu com a decisão do Lucas (*"Liberar para todo mundo"*), e
+   * o que o espelho ainda muda neste campo é `permitirAcrescimo`, logo acima.
    */
-  somenteLeitura?: boolean;
+  rotuloDoValor: string;
 }) {
   const [texto, setTexto] = useState("");
   // ⚠️ O SENTIDO É UM BOTÃO, NÃO UM SINAL DIGITADO. Na primeira versão o desconto exigia escrever
@@ -3133,17 +3254,23 @@ function CampoDoLote({
         <span>{dinheiroExato(preco.tabela)}</span>
       </div>
 
-      {/* ⚠️ SOMENTE LEITURA ESCONDE A LINHA INTEIRA (sentido, moeda e número). E não é só aparência:
-          no modo simulação o ajuste da conta é derivado do plano (`ajusteDaTela`), e o que se
-          digitasse aqui não entraria em conta nenhuma. */}
+      {/* ⚠️ ESTA LINHA (sentido, moeda e número) FICAVA ESCONDIDA NO ESPELHO PÚBLICO até
+          23/09/2026, e não era só aparência: no modo simulação o ajuste da conta era derivado do
+          plano, e o que se digitasse aqui não entrava em conta nenhuma. Lucas, com as três opções e
+          o risco de cada uma na frente: **"Liberar para todo mundo"**. Quem segura a folha agora é
+          o teto do servidor (`DESCONTO_MAXIMO_DA_SIMULACAO`) e a frase de que ela não vincula. */}
       <div
         data-controles-do-desconto=""
-        style={{ display: somenteLeitura ? "none" : "flex", gap: 6, minWidth: 0 }}
+        style={{ display: "flex", gap: 6, minWidth: 0 }}
       >
         {/* ⚠️ O SENTIDO VEM PRIMEIRO, à esquerda: é a decisão que muda o resultado de lado, e ela
             precisa ser vista antes de o número ser digitado. O menos nasce escolhido porque
             desconto é o caso comum — e porque, se alguém não reparar no par de botões, errar para
-            menos é uma proposta que precisa de aprovação, não uma que sai cara para o cliente. */}
+            menos é uma proposta que precisa de aprovação, não uma que sai cara para o cliente.
+
+            ⚠️ E NO ESPELHO PÚBLICO O PAR VIRA SÓ O MENOS (`permitirAcrescimo`, 23/09/2026). O
+            menos fica desenhado, e não some junto: é ele que diz, sem texto, que o número que se
+            digita ali é DESCONTO. Sem ele o campo viraria um número sem sinal ao lado do preço. */}
         <div
           style={{
             border: `1px solid ${T.border}`,
@@ -3153,7 +3280,7 @@ function CampoDoLote({
             overflow: "hidden",
           }}
         >
-          {([-1, 1] as const).map((s) => (
+          {sentidosOferecidos(permitirAcrescimo).map((s) => (
             <button
               aria-label={s === -1 ? "Desconto" : "Acréscimo"}
               key={s}

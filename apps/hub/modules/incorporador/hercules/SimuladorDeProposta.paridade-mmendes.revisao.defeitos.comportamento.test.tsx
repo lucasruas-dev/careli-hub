@@ -285,7 +285,7 @@ describe("REVISÃO item 4: o polling não reinicia o simulador (reprodução ind
     expect(ultima?.planoNome).toBe("INVESTIDOR PARCELADO");
   });
 
-  it("medição: o desconto do plano escolhido muda de verdade (8% → 10%); o preço acompanha, a entrada do cockpit fica a do preço antigo", () => {
+  it("medição: o desconto do plano escolhido muda de verdade (8% → 10%); o que já estava montado fica, e o cartão mostra o novo", () => {
     montarSimulador("simulacao", daMesa());
     clicar(cartao("INVESTIDOR PARCELADO"));
     expect(ultima?.valorNegociado).toBe(400_200);
@@ -294,13 +294,16 @@ describe("REVISÃO item 4: o polling não reinicia o simulador (reprodução ind
       p.nome === "INVESTIDOR PARCELADO" ? { ...p, descontoPercentual: 10 } : { ...p },
     );
     montarSimulador("simulacao", novos);
-    // Medido: o valor vai para 391.500 e a escolha fica; a entrada continua 32.016 (8% de 400.200),
-    // enquanto o cartão do mesmo plano, na mesma tela, anuncia 31.320 (8% de 391.500).
+    // ⚠️ MEDIDO DE NOVO EM 23/09/2026, DEPOIS DE O CAMPO DE DESCONTO SER LIBERADO NO ESPELHO. Antes,
+    // o preço era derivado do plano e ia sozinho para 391.500; agora ele é o do CAMPO, e campo que
+    // se refaz sozinho apagaria o desconto recém-digitado (é o comportamento da Mesa de Venda). O
+    // cadastro novo continua chegando pelo cartão: ele anuncia 31.320, os 8% de 391.500, ao lado de
+    // um cockpit que ficou em 400.200 — a mesma leitura dupla que a Mesa sempre teve.
     expect(ultima?.planoNome).toBe("INVESTIDOR PARCELADO");
-    expect(ultima?.valorNegociado).toBe(391_500);
+    expect(ultima?.valorNegociado).toBe(400_200);
     expect(ultima?.entradaValor).toBe(32_016);
     expect(cartao("INVESTIDOR PARCELADO").querySelector('[data-cartao="resumo"]')?.textContent).toContain("R$ 31.320");
-    expect(ultima?.parcela.toFixed(2)).toBe(((391_500 - 32_016 - 100_000) / 84).toFixed(2));
+    expect(ultima?.parcela.toFixed(2)).toBe(((400_200 - 32_016 - 100_000) / 84).toFixed(2));
   });
 
   it("espelho de ponta a ponta: INVESTIDOR escolhido sobrevive a três voltas de 60 s", async () => {

@@ -278,4 +278,59 @@ describe("EspelhoPublico: o corpo do PDF carrega o que a tela mostra", () => {
     expect(ultimoEnvio().entradaParcelas).toBeNull();
     expect(ultimoEnvio().entradaDatas).toBeNull();
   });
+
+  // AS DUAS PEÇAS DE 23/09/2026 NO MESMO CORPO — o desconto e a permuta.
+  //
+  // ⚠️ ESTE É O ÚNICO TESTE QUE LIGA A TELA À ROTA. O campo existir e a régua do servidor aceitar
+  // são duas coisas provadas em outros arquivos; entre elas há um objeto literal montado à mão em
+  // `baixarPdf`, e um campo que falta nele é um corpo VÁLIDO — typecheck não diz nada. Foi assim
+  // que as parcelas montadas à mão ficaram um mês na tela sem chegar ao papel.
+  it("⚠️ o desconto digitado no lote sobe em `valor`", async () => {
+    abrirOLote();
+    const desconto = [...alvo.querySelectorAll("input")].find(
+      (i) => i.getAttribute("placeholder") === "desconto",
+    );
+    if (!desconto) throw new Error("campo de desconto ausente na página pública");
+    digitar(desconto, "10");
+
+    await salvarEmPdf();
+    // R$ 432.400 × 0,90.
+    expect(ultimoEnvio().valor).toBe(389_160);
+  });
+
+  it("⚠️ o bem digitado no espelho sobe em `bensEPermutas`", async () => {
+    abrirOLote();
+
+    const acrescentar = porTexto("Acrescentar bem ou permuta");
+    if (!acrescentar) throw new Error("botão de acrescentar bem ausente na página pública");
+    clicar(acrescentar);
+
+    const valorDoItem = alvo.querySelector<HTMLInputElement>('[aria-label="Valor do item 1"]');
+    const descricaoDoItem = alvo.querySelector<HTMLInputElement>(
+      '[aria-label="Descrição do item 1"]',
+    );
+    if (!valorDoItem || !descricaoDoItem) throw new Error("campos do item 1 ausentes");
+    digitar(valorDoItem, "80.000");
+    digitar(descricaoDoItem, "Ford Ka 2019 placa ABC1D23");
+
+    await salvarEmPdf();
+    expect(ultimoEnvio().bensEPermutas).toEqual([
+      {
+        descricao: "Ford Ka 2019 placa ABC1D23",
+        // ⚠️ "ABATIMENTO" É O PADRÃO DE QUEM NASCE (`acrescentarBem`), e vale na página pública do
+        // mesmo jeito: o item abate o saldo, mas NÃO cumpre a entrada mínima enquanto ninguém
+        // apontar isso à mão. É o lado que não afrouxa a régua sem alguém decidir.
+        entraComo: "abatimento",
+        tipo: "bem",
+        valor: 80_000,
+      },
+    ]);
+  });
+
+  it("sem bem nenhum, `bensEPermutas` sobe nulo, e não como lista vazia", async () => {
+    abrirOLote();
+    await salvarEmPdf();
+
+    expect(ultimoEnvio().bensEPermutas).toBeNull();
+  });
 });
