@@ -37,7 +37,7 @@ export type ChangelogEntry = {
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
     buildTag: "2026-09-23-cpf-e-excel-no-extrato",
-    deployedAt: "2026-09-23T14:50:33-03:00",
+    deployedAt: "2026-09-23T16:01:53-03:00",
     modules: [
       {
         module: "Portal do incorporador",
@@ -53,7 +53,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
         ],
       },
     ],
-    rollback: "6a7d5667",
+    rollback: "77a9deec",
     technical: {
       done:
         "O DOCUMENTO VEM DO LEGADO, e a medicao decidiu isso. Lucas levantou, com razao, que o cadastral mora no Apolo -- so que o extrato nasce do C2X e a chave dele e `acquisition_requests.client_id`: ir ao Apolo exigiria casar por CPF (circular: e o dado que se quer descobrir) ou por `client_c2x_id`, que colide. Medido em 23/09: o `users` que o join da carteira JA carrega cobre 856 de 856 clientes (839 com CPF de 11 digitos, 18 com CNPJ, ZERO em branco). Entao e uma linha no SELECT, sem join novo e sem risco de colar a ficha na pessoa errada. Sai SO no extrato, e SO o documento: telefone e e-mail continuam fora, porque servem para ABORDAR o cliente, e a abordagem e da Careli, nao do loteador. O teste que travava documento no payload foi ESTREITADO, nao desligado -- continua acusando email, telefone, entityId e link de boleto. A EXPORTACAO ENTROU NA PROPRIA ROTA DA CARTEIRA (`?formato=xlsx`), e nao numa sub-rota: uma rota propria teria que repetir a resolucao de escopo, o seletor de produtos, o mapa de nomes e a politica comercial, e e exatamente a segunda leitura quase igual que faz a planilha e a tela contarem historias diferentes. Pelo mesmo motivo, os parametros do recorte passaram a ser montados em UM lugar (`parametrosDoExtrato`), usado pela busca da aba e pelo botao. ⚠️ O ARQUIVO NAO PODE SAIR DO QUE ESTA NA TELA, ao contrario da planilha de boletos: la a competencia inteira cabe no envio (334 boletos no maior mes), aqui o extrato tem teto de payload de 2.000 linhas e o Vale do Ouro sozinho tem 27.721 parcelas. Por isso `montarIndicadores` ganhou `tetoDoExtrato` -- teto de ENVIO, nunca de conta: `extratoTotal` e os totais do recorte continuam saindo do recorte inteiro. Medido de ponta a ponta com dado real: 783ms de leitura no C2X, 1.067ms de montagem, 1,39 MB de arquivo, bem dentro do maxDuration de 30s. ⚠️ ACHADO DE BORDA, e ele JA vale para a tela de hoje: a leitura da carteira para em 30.000 linhas, e ha empreendimento que passa disso SOZINHO (medido: LOS 37.956, LOU 30.252). O sinal `parcial` que a rota ja produzia agora atravessa para o arquivo e vira aviso escrito na linha do total, alem do header `X-Parcial` que a tela le. Planilha truncada em silencio e pior do que planilha nenhuma. 18 testes novos.",
