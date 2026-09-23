@@ -71,9 +71,16 @@ function totalPago(): { nota: string; valor: string } {
   };
 }
 
-/** Os "total R$ ..." das linhas de "Outras composições com R$ X por mês". */
+/**
+ * Os "total R$ ..." das linhas de "Outras composições".
+ *
+ * ⚠️ SÓ DENTRO DE BOTÃO, e a diferença importa: cada alternativa era um `<button>` clicável, mas o
+ * cockpit também imprime um "total R$ 100.000" solto (a soma dos reforços anuais). Procurando em
+ * todos os `<span>`, o teste da ausência encontrava o cockpit e acusava lista que não existe mais.
+ */
 function totaisDasAlternativas(): string[] {
-  return [...alvo.querySelectorAll("span")]
+  return [...alvo.querySelectorAll("button")]
+    .flatMap((b) => [...b.querySelectorAll("span")])
     .map((s) => s.textContent?.replace(/\s+/g, " ").trim() ?? "")
     .filter((t) => t.startsWith("total R$"));
 }
@@ -97,17 +104,21 @@ describe("Quadra 03 Lote 07 do Garden, tabela R$ 470.000 (o segundo print)", () 
   });
 });
 
-describe("⚠️ a lista de alternativas anda com o cartão: uma régua só", () => {
-  it("nenhuma linha de 'Outras composições' passa do valor negociado no Garden", () => {
+describe("⚠️ a lista de outras composições SAIU da tela", () => {
+  // Lucas, 22/09/2026, com o print da lista aberta: *"pode tirar isso aqui"*, e perguntado de onde,
+  // *"De todo lugar"*. Ela já tinha saído da modal de proposta em 05/09 (*"deixa somente no
+  // simulador"*); agora sai do simulador também, e não sobra lugar nenhum que a desenhe.
+  //
+  // ⚠️ O CÁLCULO CONTINUA: `composicoesQueFecham` é quem acha a composição RECOMENDADA, a do cartão
+  // grande. O que saiu é a lista de alternativas embaixo dele, não a busca por parcela.
+  it("não existe mais o título nem nenhuma linha de alternativa", () => {
     montar(416_000);
-    const totais = totaisDasAlternativas();
-    expect(totais.length).toBeGreaterThan(0);
-    // Com juros fora da conta, nenhuma composição do Garden soma mais que o preço do plano dela —
-    // e o INVESTIDOR PARCELADO, que é o mais caro dos três em soma, fecha nos R$ 382.720.
-    for (const t of totais) {
-      const valor = Number(t.replace(/[^\d,]/g, "").replace(",", "."));
-      expect(valor).toBeLessThanOrEqual(416_000);
-    }
-    expect(totais).toContain("total R$ 382.720");
+    expect(alvo.textContent ?? "").not.toContain("Outras composições");
+    expect(totaisDasAlternativas()).toHaveLength(0);
+  });
+
+  it("e o cartão grande continua lá, com o total certo", () => {
+    montar(416_000);
+    expect(totalPago().valor).toBe("R$ 382.720");
   });
 });

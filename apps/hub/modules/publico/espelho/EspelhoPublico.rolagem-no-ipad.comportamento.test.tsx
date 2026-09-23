@@ -214,14 +214,19 @@ describe("EspelhoPublico: a janela do lote rola por dentro no iPad", () => {
     }
   });
 
-  it("os cartões de plano e as outras composições ficam DENTRO do rolador da leitura", () => {
+  // ⚠️ A LISTA DE "OUTRAS COMPOSIÇÕES" NÃO EXISTE MAIS (Lucas, 22/09/2026: *"pode tirar isso aqui"*,
+  // *"De todo lugar"*). O que este teste guarda continua valendo: o conteúdo comprido da leitura
+  // mora DENTRO do rolador, e não vaza para a página atrás. Quem faz esse papel agora é a simulação
+  // montada, que é o último bloco da coluna.
+  it("os cartões de plano e a simulação montada ficam DENTRO do rolador da leitura", () => {
     abrir("Disponível");
     const leitura = janela().querySelector<HTMLElement>('[data-sim-rolagem="leitura"]');
     expect(leitura).toBeTruthy();
 
     const texto = leitura?.textContent ?? "";
     expect(texto).toContain("Tabela do empreendimento, aplicada a este lote");
-    expect(texto).toContain("Outras composições com");
+    expect(texto).toContain("Simulação montada");
+    expect(texto).not.toContain("Outras composições");
   });
 
   it("sem simulador a janela continua pequena, como sempre esteve", () => {

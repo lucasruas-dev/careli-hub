@@ -1028,20 +1028,6 @@ export function SimuladorDeProposta({
     plano,
   ]);
 
-  /**
-   * As demais: mesma parcela, outro arranjo.
-   *
-   * ⚠️ FORA A QUE JÁ ESTÁ NO CARTÃO GRANDE, e a comparação é por plano + número de reforços, não
-   * por origem: quando ele monta à mão no Normal 180 sem reforço, a varredura acha esse mesmo
-   * arranjo (com a entrada arredondada) e ele apareceria de novo logo abaixo de si mesmo.
-   */
-  const alternativas = composicoes.filter(
-    (c) =>
-      !principal ||
-      c.plano !== principal.plano ||
-      c.anuais.quantidade !== principal.anuais.quantidade,
-  );
-
   // ⚠️ A COMPOSIÇÃO SOBE POR EFEITO, e não por um callback em cada `onChange`. São nove campos que
   // mexem no mesmo resultado (valor, parcela, entrada, vezes, prazo, reforço, plano, dia,
   // data), e chamar o pai em cada um deles significaria lembrar de chamar em todos — o campo
@@ -2127,82 +2113,15 @@ export function SimuladorDeProposta({
 
         {previa}
 
-        {/* AS ALTERNATIVAS: mesma parcela, outro arranjo de entrada e reforço.
-            ⚠️ SÓ NO SIMULADOR (Lucas, 05/09/2026: *"essas outras composições, deixa somente no
-            simulador, aqui quanto mais objetivo for melhor (...) pois ali pode ocorrer testes de
-            cenário com mais frequência"*). São dois momentos diferentes: no simulador a pessoa
-            está EXPLORANDO — cinco arranjos lado a lado é o serviço; na hora de gerar a proposta
-            ela já decidiu, e cinco alternativas embaixo do que ela escolheu convidam a recomeçar
-            uma conversa que já terminou, num formulário que precisa acabar.
-            ⚠️ `aoMudarCondicoes` É O SINAL, e não uma prop nova: ela já é a única diferença entre
-            os dois usos (ausente = simulador da ficha; presente = modal de proposta). Um segundo
-            interruptor para a mesma distinção daria dois lugares para eles discordarem. */}
-        {(!aoMudarCondicoes || ehSimulacao) && alternativas.length > 0 ? (
-          <div>
-            <div style={{ ...rotuloDeSecao, marginBottom: 8 }}>
-              Outras composições com {dinheiro(parcelaDeReferencia)} por mês
-            </div>
-            <div style={{ display: "grid", gap: 6 }}>
-              {alternativas.map((c) => (
-                <button
-                  // O valor anual entra na chave: o arranjo do plano (4 × R$ 25.000) e o da
-                  // varredura podem ter a mesma quantidade no mesmo plano.
-                  key={`${c.plano}-${c.anuais.quantidade}-${c.anuais.valor}`}
-                  onClick={() => usarComposicao(c)}
-                  style={{
-                    alignItems: "center",
-                    background: T.card,
-                    border: `1px solid ${T.border}`,
-                    borderRadius: 10,
-                    cursor: "pointer",
-                    display: "flex",
-                    flexWrap: "wrap",
-                    font: "inherit",
-                    gap: 12,
-                    justifyContent: "space-between",
-                    padding: "9px 12px",
-                    textAlign: "left",
-                  }}
-                  type="button"
-                >
-                  <span
-                    style={{
-                      color: T.text,
-                      fontSize: 12.5,
-                      fontWeight: 650,
-                      minWidth: 84,
-                    }}
-                  >
-                    {c.plano}
-                  </span>
-                  <span style={{ color: T.sub, fontSize: 12 }}>
-                    entrada{" "}
-                    <b style={{ fontVariantNumeric: "tabular-nums" }}>
-                      {dinheiro(c.entrada)}
-                    </b>
-                  </span>
-                  <span style={{ color: T.sub, fontSize: 12 }}>
-                    {c.anuais.quantidade > 0
-                      ? `${c.anuais.quantidade} × ${dinheiro(c.anuais.valor)} ao ano`
-                      : "sem reforço anual"}
-                  </span>
-                  <span style={{ color: T.sub, fontSize: 12 }}>
-                    {c.parcelas} meses
-                  </span>
-                  {/* O preço da composição, quando escolhê-la muda o preço do campo. */}
-                  {composicaoMostraPreco(c) ? (
-                    <span style={{ color: T.sub, fontSize: 12 }}>
-                      {precoDaComposicao(c)}
-                    </span>
-                  ) : null}
-                  <span style={{ color: T.muted, fontSize: 12 }}>
-                    total {dinheiro(c.total)}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
+        {/* ⚠️ AS "OUTRAS COMPOSIÇÕES" SAÍRAM DA TELA, e não é ajuste de layout: é decisão de
+            produto. Lucas, 22/09/2026, com o print da lista aberta: *"pode tirar isso aqui"*, e
+            perguntado de onde, *"De todo lugar"*. Ela já tinha saído da modal de proposta em
+            05/09 (*"deixa somente no simulador, aqui quanto mais objetivo for melhor"*); agora sai
+            do simulador também, e não sobra lugar que a desenhe.
+            ⚠️ `composicoesQueFecham` CONTINUA SENDO CHAMADA, e tirar a chamada junto quebraria a
+            tela: é ela que acha a composição RECOMENDADA, a do cartão grande, quando a pessoa parte
+            da parcela que o cliente pode pagar. O que saiu é a lista de alternativas embaixo do
+            cartão, não a busca. */}
 
         {/* ⚠️ O RODAPÉ MUDA COM O USO. Dizer "nada aqui vincula a unidade nem gera proposta" na
             modal que está gerando a proposta seria a tela desmentindo o botão logo abaixo dela. */}
