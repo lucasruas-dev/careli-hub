@@ -1,4 +1,4 @@
-import { lerRegraDeOrdem, ORDEM_PADRAO, type RegraDeOrdem } from "@/lib/assinatura/ordem";
+import { ORDEM_PADRAO, regraDaColuna, type RegraDeOrdem } from "@/lib/assinatura/ordem";
 import { PAPEIS_DO_CONTRATO, type PapelNoContrato } from "@/lib/assinatura/tipos";
 
 // A ORDEM DE ASSINATURA DA CATEGORIA — o degrau do meio da cadeia.
@@ -70,14 +70,17 @@ export function temOrdemPropria(nivel: { ordem: unknown; ordenada: boolean }): b
 /**
  * A regra de um degrau que decide.
  *
- * ⚠️ REAPROVEITA `lerRegraDeOrdem` EM VEZ DE REIMPLEMENTAR: a coluna guarda só a LISTA, e a função
+ * ⚠️ REAPROVEITA `regraDaColuna` EM VEZ DE REIMPLEMENTAR: a coluna guarda a LISTA antiga ou o MAPA
+ * novo, e a função
  * do provedor espera `{ ordenada, papeis }`. Montar o objeto aqui é o que faz o descarte de papel
  * desconhecido, a deduplicação e o completamento dos ausentes ("papel fora da lista assina por
  * último") continuarem valendo num lugar só — duas implementações da mesma regra divergiriam no
  * primeiro papel novo.
  */
 export function regraDoNivel(nivel: NivelDeOrdem): RegraDeOrdem {
-  return lerRegraDeOrdem({ ordenada: nivel.ordenada, papeis: nivel.ordem });
+  // Ver `regraDaColuna`: a coluna guarda a lista antiga OU o mapa novo, e a escolha entre as duas
+  // mora num lugar só.
+  return regraDaColuna(nivel.ordenada, nivel.ordem);
 }
 
 /**

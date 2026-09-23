@@ -174,6 +174,29 @@ export function lerRegraDeOrdem(cru: unknown): RegraDeOrdem {
 }
 
 /**
+ * A regra a partir do que está GRAVADO NA COLUNA, seja qual for o formato dela.
+ *
+ * ⚠️ A COLUNA GUARDA DUAS FORMAS, E QUEM LÊ PRECISA ESCOLHER A CERTA. Até 13/09/2026 ela guardava
+ * uma LISTA de papéis (a posição era o número); desde a troca do modelo guarda um MAPA
+ * `{papel: número}`, em que o mesmo número significa "assinam juntos". `lerRegraDeOrdem` sabe ler
+ * as duas, mas só se receber a lista em `papeis` e o mapa em `ordens` — passar um mapa como
+ * `papeis` não casa com nenhum dos dois ramos e devolve o PADRÃO, calado.
+ *
+ * ⚠️ E ERA ISSO QUE ACONTECIA NO ENVIO. Medido em 23/09/2026: `ordem-db.ts` e `ordem-da-categoria`
+ * montavam sempre `{ papeis: coluna }`, enquanto a tela do Setup escolhia entre as duas formas. O
+ * empreendimento com o mapa gravado assinava na ordem padrão da casa, e a tela do Setup mostrava
+ * outra coisa — duas telas discordando sobre a mesma linha do banco.
+ *
+ * Existe para que a escolha aconteça UM LUGAR SÓ. Quem tem a coluna na mão chama isto; ninguém
+ * mais decide entre `papeis` e `ordens`.
+ */
+export function regraDaColuna(ordenada: boolean, coluna: unknown): RegraDeOrdem {
+  return lerRegraDeOrdem(
+    Array.isArray(coluna) ? { ordenada, papeis: coluna } : { ordenada, ordens: coluna },
+  );
+}
+
+/**
  * Uma FILA de papéis virando números: o primeiro é 1, o segundo é 2, e assim por diante.
  *
  * ⚠️ EXISTE PARA AS TELAS QUE AINDA ARRASTAM UMA LISTA. O cadastro do empreendimento passou a

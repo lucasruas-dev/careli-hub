@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { lerRegraDeOrdem, ORDEM_PADRAO, type RegraDeOrdem } from "./ordem";
+import { ORDEM_PADRAO, regraDaColuna, type RegraDeOrdem } from "./ordem";
 
 // A REGRA DE ORDEM, LIDA DO CADASTRO — a cadeia da 0142, num lugar só.
 //
@@ -45,10 +45,10 @@ function foiCadastrada(linha: LinhaComOrdem | null): boolean {
 }
 
 function daLinha(linha: LinhaComOrdem): RegraDeOrdem {
-  return lerRegraDeOrdem({
-    ordenada: linha.assinatura_ordenada === true,
-    papeis: linha.assinatura_ordem,
-  });
+  // ⚠️ PELA COLUNA, E NÃO SEMPRE COMO `papeis`. Ver `regraDaColuna`: a coluna guarda a lista antiga
+  // OU o mapa novo, e montar sempre `{ papeis }` fazia o mapa não casar com ramo nenhum e cair no
+  // padrão — o empreendimento assinava em paralelo com a ordem cadastrada e ninguém era avisado.
+  return regraDaColuna(linha.assinatura_ordenada === true, linha.assinatura_ordem);
 }
 
 /**

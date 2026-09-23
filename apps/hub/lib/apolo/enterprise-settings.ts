@@ -452,21 +452,38 @@ export function setEnterpriseRecepcaoImobiliaria(input: {
  *
  * ⚠️ `null` NA LISTA É "ORDEM PADRÃO DA CASA", e apagar tem significado. Mesma disciplina do
  * `vendedor_entity_id` e dos percentuais: nulo é uma resposta, não a falta dela.
+ *
+ * ⚠️ E O MAPA `{papel: número}` É A FORMA NOVA, aceita aqui desde 23/09/2026. Até então este
+ * parâmetro era `null | string[]` e a rota fazia `Array.isArray(bruta) ? bruta : null`: o mapa
+ * passava pela validação, era descartado no repasse e a coluna gravava NULO. O efeito era pior do
+ * que não salvar, porque `assinatura_ordenada` salvava `true` no mesmo UPDATE — o empreendimento
+ * ficava marcado como "assinam em ordem" com ordem nenhuma, e o envio caía no padrão da casa.
+ * Medido no dia: VOL (36) e VOC (37) com `ordenada = true` e `ordem = NULL`, e a Nívea relatando
+ * que "o quadro de assinaturas não está ficando salvo lá no Apolo".
  */
 export async function setEnterpriseOrdemDeAssinatura(input: {
   adminClient: AdminClient;
   code?: null | string;
   enterpriseId: string;
-  ordem: null | string[];
+  ordem: null | Record<string, number> | string[];
   ordenada: boolean;
   updatedBy?: null | string;
 }): Promise<{ error?: string; ok: boolean }> {
   const enterpriseId = (input.enterpriseId ?? "").trim();
   if (!enterpriseId) return { error: "Empreendimento invalido.", ok: false };
 
+  // ⚠️ AS DUAS FORMAS SEGUEM COMO VIERAM, e a saneação continua sendo de quem LÊ (`regraDaColuna`
+  // + `lerRegraDeOrdem`): é lá que o papel desconhecido é descartado e o que falta é completado.
+  // Validar aqui QUAIS papéis existem faria um papel renomeado derrubar a regra inteira.
   const ordem = Array.isArray(input.ordem)
     ? input.ordem.map((p) => String(p ?? "").trim()).filter(Boolean)
-    : null;
+    : input.ordem && typeof input.ordem === "object"
+      ? Object.fromEntries(
+          Object.entries(input.ordem)
+            .map(([papel, valor]) => [String(papel ?? "").trim(), Math.trunc(Number(valor))] as const)
+            .filter(([papel, n]) => papel !== "" && Number.isFinite(n)),
+        )
+      : null;
 
   const campos = {
     assinatura_ordem: ordem,

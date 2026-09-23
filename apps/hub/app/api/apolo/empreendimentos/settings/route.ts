@@ -211,7 +211,16 @@ export async function PATCH(request: Request) {
       adminClient,
       code: body.code,
       enterpriseId: body.enterpriseId,
-      ordem: Array.isArray(bruta) ? bruta : null,
+      // ⚠️ O MAPA PASSA INTEIRO. Até 23/09/2026 esta linha era `Array.isArray(bruta) ? bruta : null`:
+      // a validação logo acima aceitava o mapa `{papel: número}` — a forma que a tela manda desde a
+      // troca do modelo em 13/09 — e o repasse o jogava fora, gravando NULO. Como
+      // `assinatura_ordenada` ia `true` no mesmo UPDATE, o empreendimento ficava "assinam em ordem"
+      // sem ordem nenhuma, e o envio caía no padrão da casa. A queixa da Nívea ("o quadro de
+      // assinaturas não está ficando salvo lá no Apolo") era exatamente isto.
+      ordem:
+        Array.isArray(bruta) || (bruta && typeof bruta === "object")
+          ? (bruta as Record<string, number> | string[])
+          : null,
       ordenada: Boolean(body.assinaturaOrdenada),
       updatedBy: auth.userId,
     });

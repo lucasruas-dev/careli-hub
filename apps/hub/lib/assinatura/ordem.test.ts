@@ -12,7 +12,7 @@ const fila = (r: { ordens: Record<string, number> }) =>
   gruposDaRegra(r as never).flat();
 
 
-import { descreverRegra, lerRegraDeOrdem, ordenarSignatarios, ORDEM_PADRAO, gruposDaRegra } from "./ordem";
+import { descreverRegra, gruposDaRegra, lerRegraDeOrdem, ordenarSignatarios, ORDEM_PADRAO, regraDaColuna } from "./ordem";
 import { rotuloDoPapel, type Signatario } from "./tipos";
 
 // ⚠️ O QUE ESTES TESTES PROTEGEM. A ordem de assinatura é feita HOJE na mão, contrato a contrato
@@ -239,5 +239,61 @@ describe("ler a regra gravada", () => {
   it("ordenada só é true quando é true de verdade", () => {
     expect(lerRegraDeOrdem({ ordenada: "sim", papeis: [] }).ordenada).toBe(false);
     expect(lerRegraDeOrdem({ papeis: ["comprador"] }).ordenada).toBe(false);
+  });
+});
+
+// ── A COLUNA, SEJA QUAL FOR A FORMA DELA ─────────────────────────────────────
+//
+// ⚠️ ESTE É O DEFEITO DE 23/09/2026, e ele custou a regra de dois empreendimentos. A coluna
+// `assinatura_ordem` guarda a LISTA antiga ou o MAPA novo, e quem lia montava sempre
+// `{ papeis: coluna }`. Um mapa passado como `papeis` não casa com nenhum dos dois ramos de
+// `lerRegraDeOrdem` e volta o PADRÃO, calado: o VOL e o VOC ficaram com `assinatura_ordenada = true`
+// e ordem nenhuma, e o contrato saía em paralelo enquanto a tela do Setup mostrava outra coisa.
+//
+// Nívea, no mesmo dia: *"o quadro de assinaturas não está ficando salvo lá no Apolo"*.
+describe("regraDaColuna lê as duas formas gravadas", () => {
+  it("⚠️ o MAPA novo vale, e é o que a tela grava desde 13/09", () => {
+    const r = regraDaColuna(true, { comprador: 1, testemunha: 2, vendedora: 2 });
+
+    expect(r.ordenada).toBe(true);
+    expect(r.ordens.comprador).toBe(1);
+    expect(r.ordens.vendedora).toBe(2);
+    expect(r.ordens.testemunha).toBe(2);
+  });
+
+  it("a LISTA antiga continua valendo: a posição vira o número", () => {
+    const r = regraDaColuna(true, ["comprador", "vendedora", "testemunha"]);
+
+    expect(r.ordens.comprador).toBe(1);
+    expect(r.ordens.vendedora).toBe(2);
+    expect(r.ordens.testemunha).toBe(3);
+  });
+
+  it("⚠️ o mapa passado como LISTA cairia no padrão — o defeito que isto trava", () => {
+    const mapa = { comprador: 1, vendedora: 2 };
+
+    // O caminho errado, que era o que `ordem-db` fazia:
+    const errado = lerRegraDeOrdem({ ordenada: true, papeis: mapa });
+    // O caminho certo:
+    const certo = regraDaColuna(true, mapa);
+
+    expect(errado.ordens).toEqual(ORDEM_PADRAO.ordens);
+    expect(certo.ordens).not.toEqual(ORDEM_PADRAO.ordens);
+  });
+
+  it("coluna NULA é a ordem padrão da casa, e isso é resposta e não falta", () => {
+    const r = regraDaColuna(false, null);
+
+    expect(r.ordenada).toBe(false);
+    expect(r.ordens).toEqual(ORDEM_PADRAO.ordens);
+  });
+
+  it("⚠️ ordenada=true com coluna NULA sai em paralelo, que era o estado do VOL e do VOC", () => {
+    // Não é o que alguém cadastrou: é o que sobrou quando a gravação descartava o mapa. O teste
+    // fica para nomear o estado, e não para abençoá-lo.
+    const r = regraDaColuna(true, null);
+
+    expect(r.ordenada).toBe(true);
+    expect(r.ordens).toEqual(ORDEM_PADRAO.ordens);
   });
 });
