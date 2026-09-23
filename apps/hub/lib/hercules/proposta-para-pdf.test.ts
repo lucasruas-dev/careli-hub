@@ -439,3 +439,101 @@ describe("montarFolhaDaProposta com o desconto do plano", () => {
     expect(semDesconto.condicoes).toEqual(antes);
   });
 });
+
+// ── BENS E PERMUTAS (22/09/2026) ────────────────────────────────────────────
+//
+// Lucas, em resposta direta: a permuta *"Abate, como uma entrada"*; cabem *"Vários"* numa
+// proposta; e contar para a entrada mínima de 10% *"pode ser um ou outro, pode apontar na entrada
+// ou somente no valor negociado"* — por isso `entraComo` é campo de CADA item, e não uma regra
+// fixa do empreendimento.
+describe("montarFolhaDaProposta com bens e permutas", () => {
+  const comPermuta = () =>
+    montarFolhaDaProposta({
+      ...BASE,
+      bensEPermutas: [
+        {
+          descricao: "Ford Ka 2019 placa ABC1D23",
+          entraComo: "entrada",
+          tipo: "bem",
+          valor: 30_000,
+        },
+        {
+          descricao: "lote 12 da quadra 4 em Anápolis",
+          entraComo: "abatimento",
+          tipo: "permuta",
+          valor: 50_000,
+        },
+      ],
+      cronograma: montarCronograma(CONDICOES),
+      plano: SACOC_SEM_JUROS,
+    });
+
+  it("cada item vira uma linha do papel, com tipo, como entra, valor e descrição", () => {
+    expect(comPermuta().bensEPermutas).toEqual([
+      {
+        comoEntra: "Entrada",
+        descricao: "Ford Ka 2019 placa ABC1D23",
+        tipo: "Bem",
+        valor: "R$ 30.000,00",
+      },
+      {
+        comoEntra: "Abatimento",
+        descricao: "lote 12 da quadra 4 em Anápolis",
+        tipo: "Permuta",
+        valor: "R$ 50.000,00",
+      },
+    ]);
+  });
+
+  it("⚠️ o total soma os DOIS, porque os dois abatem o que falta pagar", () => {
+    // A diferença entre "entrada" e "abatimento" é se o item cumpre a entrada mínima — não se ele
+    // abate. Somar só os de entrada esconderia R$ 50.000 que o comprador já entregou.
+    expect(comPermuta().bensEPermutasTotal).toBe("R$ 80.000,00");
+  });
+
+  it("⚠️ sem bem nem permuta, a lista é vazia e o total não existe", () => {
+    // O PDF só desenha a seção quando a lista tem item; um total "R$ 0,00" aqui viraria uma seção
+    // zerada no papel da maioria das propostas.
+    expect(folhaDoExemplo().bensEPermutas).toEqual([]);
+    expect(folhaDoExemplo().bensEPermutasTotal).toBe("");
+  });
+
+  it("⚠️ linha do formulário ainda em branco NÃO vira 'R$ 0,00' no papel", () => {
+    // A PRÉVIA é gerada do formulário VIVO (o botão que o Lucas pediu em 05/09), e uma linha
+    // recém-adicionada tem o valor vazio: `Number("")` é NaN, e `reais(NaN)` escreve "R$ 0,00".
+    // O papel sai no WhatsApp do cliente com um bem de zero real listado como recebido.
+    // A mesma régua de `somarBensEPermutas` (`bens-e-permutas.ts`): só valor positivo é dinheiro.
+    const folha = montarFolhaDaProposta({
+      ...BASE,
+      bensEPermutas: [
+        { descricao: "Ford Ka 2019 placa ABC1D23", entraComo: "entrada", tipo: "bem", valor: 30_000 },
+        { descricao: "", entraComo: "abatimento", tipo: "bem", valor: Number("") },
+        { descricao: "moto sem valor combinado", entraComo: "abatimento", tipo: "bem", valor: 0 },
+      ],
+      cronograma: montarCronograma(CONDICOES),
+      plano: SACOC_SEM_JUROS,
+    });
+
+    expect(folha.bensEPermutas).toHaveLength(1);
+    expect(folha.bensEPermutas?.[0]?.descricao).toBe("Ford Ka 2019 placa ABC1D23");
+    expect(folha.bensEPermutasTotal).toBe("R$ 30.000,00");
+  });
+
+  it("⚠️ se NENHUM item tem valor ainda, a seção inteira some do papel", () => {
+    // Senão a prévia de um formulário pela metade sai com um quadro "Bens e permutas recebidos"
+    // vazio, e o comprador lê que entregou alguma coisa que ninguém sabe o que é.
+    const folha = montarFolhaDaProposta({
+      ...BASE,
+      bensEPermutas: [{ descricao: "", entraComo: "entrada", tipo: "bem", valor: Number("") }],
+      cronograma: montarCronograma(CONDICOES),
+      plano: SACOC_SEM_JUROS,
+    });
+
+    expect(folha.bensEPermutas).toEqual([]);
+    expect(folha.bensEPermutasTotal).toBe("");
+  });
+
+  it("a ordem em que o operador cadastrou é a ordem do papel", () => {
+    expect(comPermuta().bensEPermutas?.map((b) => b.tipo)).toEqual(["Bem", "Permuta"]);
+  });
+});

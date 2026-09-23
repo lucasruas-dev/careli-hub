@@ -197,15 +197,26 @@ describe("revisão de segurança: o que um corpo forjado NÃO consegue imprimir 
     expect(maiorExcesso).toBeLessThanOrEqual(0);
   });
 
-  it("entrada: nenhum corpo imprime entrada abaixo do maior entre o piso (8%), o plano e o degrau do prazo", async () => {
-    const entradas: unknown[] = [0, -1, 1, "abc", null, "1e3", 32_015.99, Number.MIN_VALUE, 1e-9];
+  // ⚠️ ESTE CASO MUDOU DE PERGUNTA EM 22/09/2026, E NÃO FOI AFROUXAMENTO POR DESCUIDO. Ele media
+  // "nenhum corpo imprime entrada abaixo do piso", e a trava que ele guardava era o próprio defeito
+  // do print do Lucas: a entrada DIGITADA na tela era trocada pelo mínimo no caminho até o papel.
+  // Entrada não é preço — ela reparte o mesmo total entre o ato e as mensais —, então o que precisa
+  // ficar de pé numa página SEM LOGIN é o TOTAL, e é isso que se mede agora: nenhum corpo forjado
+  // faz a folha anunciar menos dinheiro do que o lote vale, nem entrada maior que o próprio valor.
+  // O piso do PREÇO continua conferido no caso de cima; a régua da venda, em `conferirProposta`.
+  it("entrada: nenhum corpo forjado encolhe o total da folha nem passa do valor da unidade", async () => {
+    const entradas: unknown[] = [0, -1, 1, "abc", null, "1e3", 32_015.99, Number.MIN_VALUE, 1e-9, 1e12];
     for (const plano of Object.keys(REGRA) as Array<keyof typeof REGRA>) {
       for (const entrada of entradas) {
         const r = await pedir({ ...DA_TELA, anuaisQuantidade: 0, entrada, parcelas: REGRA[plano].parcelas, plano, valor: 1 });
         expect(r.status).toBe(200);
         const valor = reaisDoTexto(destaque("Valor da unidade")?.valor);
         const impressa = reaisDoTexto(destaque("Entrada")?.valor);
-        expect(impressa).toBeGreaterThanOrEqual(Math.max(0.08, REGRA[plano].entradaMin) * valor - 0.01);
+        const financiado = reaisDoTexto(destaque("Financiado")?.valor);
+        // Sem anuais, a folha inteira é entrada + financiado, e tem que fechar no valor do lote.
+        expect(impressa + financiado).toBeCloseTo(valor, 2);
+        expect(impressa).toBeLessThanOrEqual(valor + 0.01);
+        expect(impressa).toBeGreaterThanOrEqual(0);
       }
     }
   });

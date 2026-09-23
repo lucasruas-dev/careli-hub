@@ -1,7 +1,14 @@
 "use client";
 
+import { FileText, Film, Image as ImagemIcone, Play } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  type MidiaDoVisualizador,
+  VisualizadorDeMidia,
+} from "@/components/galeria/VisualizadorDeMidia";
+import type { TipoDeArquivo } from "@/lib/apolo/arquivos-do-produto";
+import type { ArquivoPublicoDoEspelho } from "@/lib/hercules/espelho/arquivos-publicos";
 import type { LoteDoEspelho } from "@/lib/hercules/espelho/estado-do-espelho";
 import type { PlanoPublico } from "@/lib/hercules/espelho/planos-publicos";
 import type { PlanoDaVenda } from "@/lib/hercules/fluxo-de-venda";
@@ -142,6 +149,10 @@ const CSS_DE_IMPRESSAO = `
     overflow: visible !important;
   }
 
+  /* ⚠️ E A MOLDURA VOLTA A SER BLOCO, pelo mesmo motivo do celular: na tela ela é uma grade de uma
+     linha para dar altura ao simulador, e no papel não existe altura de tela para repartir. */
+  [data-esp-simulador] { display: block !important; }
+
   /* Cada bloco do simulador evita rachar no meio entre duas páginas. */
   [data-esp-tema] .inc > * { break-inside: avoid; }
 
@@ -175,7 +186,10 @@ const CSS_DO_CELULAR = `
     padding: calc(12px + env(safe-area-inset-top)) 14px calc(16px + env(safe-area-inset-bottom)) !important;
   }
   [data-esp-popup="topo"] { flex-wrap: wrap; }
-  [data-esp-simulador] { flex: none !important; overflow: visible !important; }
+  /* ⚠️ A MOLDURA VOLTA A SER BLOCO NO CELULAR. Na tela larga ela é uma grade de uma linha
+     (\`minmax(0, 1fr)\`), que é o que dá altura ao simulador para ele rolar por dentro; aqui quem
+     rola é a janela inteira, e a linha de grade só atrapalharia o empilhamento. */
+  [data-esp-simulador] { display: block !important; flex: none !important; overflow: visible !important; }
   [data-esp-simulador] > div {
     grid-template-columns: minmax(0, 1fr) !important;
     height: auto !important;
@@ -184,6 +198,48 @@ const CSS_DO_CELULAR = `
     overflow: visible !important;
     padding-right: 0 !important;
   }
+}
+`;
+
+/**
+ * A GRADE DE MINIATURAS DA ABA ARQUIVOS.
+ *
+ * ⚠️ CSS EM TEXTO, COMO O RESTO DESTA TELA, porque estilo inline não alcança `:hover`,
+ * `:focus-visible` nem `aspect-ratio` com `object-fit` de um jeito legível. Os tokens são os
+ * mesmos `--esp-*` dos dois temas: a grade tem de servir o cliente que abre o link no sol.
+ *
+ * ⚠️ `auto-fill` COM MÍNIMO DE 150 px, e não um número fixo de colunas: o mesmo link é aberto num
+ * celular de 375 px e na tela do corretor. No celular dá duas colunas; no desktop, quantas couberem.
+ */
+const CSS_DOS_ARQUIVOS = `
+.esp-arq-grade {
+  display: grid; gap: 10px; list-style: none; margin: 0; padding: 0;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+.esp-arq-cartao {
+  position: relative; display: block; width: 100%; padding: 0; overflow: hidden;
+  aspect-ratio: 4 / 3; cursor: pointer;
+  background: var(--esp-realce); color: var(--esp-texto);
+  border: 1px solid var(--esp-borda); border-radius: 10px;
+}
+.esp-arq-cartao:hover { border-color: var(--esp-borda-forte); }
+.esp-arq-cartao:focus-visible { outline: 2px solid var(--esp-selecao); outline-offset: 2px; }
+.esp-arq-cartao img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.esp-arq-icone {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; width: 100%; height: 100%; padding: 10px; opacity: .75;
+}
+.esp-arq-nome {
+  font-size: 11px; line-height: 1.3; text-align: center; word-break: break-word;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
+/* O losango do play fica sobre a miniatura do vídeo, como na aba do portal. */
+.esp-arq-play {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: #fff; text-shadow: 0 1px 6px rgb(0 0 0 / .6); pointer-events: none;
+}
+@media (max-width: 480px) {
+  .esp-arq-grade { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
 }
 `;
 
@@ -247,11 +303,31 @@ type Geometria = {
 /** Volta a pedir a situação de tempos em tempos: reserva e proposta mudam o mapa. */
 const INTERVALO_MS = 60_000;
 
+/** As visões do alternador. `arquivos` entrou em 22/09/2026, ao lado de Mapa e Grade. */
+type Visao = "arquivos" | "espelho" | "grade";
+
+const ROTULO_DA_VISAO: Readonly<Record<Visao, string>> = {
+  arquivos: "Arquivos",
+  espelho: "Mapa",
+  grade: "Grade",
+};
+
 export function EspelhoPublico({
+  arquivos = [],
   erroInicial,
   inicial,
   token,
 }: {
+  /**
+   * Os arquivos do empreendimento, já recortados pelo servidor (id, nome, ordem e tipo).
+   *
+   * ⚠️ FORA DO `Estado`, E NÃO POR DESCUIDO. O polling de 60 s troca o estado INTEIRO pela resposta
+   * de `/api/publico/espelho/situacao` (`setEstado(corpo.data)`), que não carrega arquivos — se
+   * eles morassem lá, a aba sumiria sozinha no primeiro minuto, com o corretor no meio da
+   * apresentação. É a armadilha [[reference_polling_sem_payload_apaga_tela]], que já apagou tela
+   * nesta casa. Vazio = o empreendimento não tem arquivo, e a aba não nasce.
+   */
+  arquivos?: readonly ArquivoPublicoDoEspelho[];
   erroInicial?: string;
   inicial?: Estado;
   token: string;
@@ -260,9 +336,7 @@ export function EspelhoPublico({
   // O erro só nasce do servidor (link inválido): a tela não o troca depois.
   const [erro] = useState<null | string>(erroInicial ?? null);
   const [geometria, setGeometria] = useState<Geometria | null>(null);
-  const [visao, setVisao] = useState<"espelho" | "grade">(
-    inicial?.temMapa ? "espelho" : "grade",
-  );
+  const [visao, setVisao] = useState<Visao>(inicial?.temMapa ? "espelho" : "grade");
   const [escolhido, setEscolhido] = useState<LoteDoEspelho | null>(null);
   const [tema, trocarTema] = useTema();
 
@@ -315,6 +389,18 @@ export function EspelhoPublico({
     [estado?.lotes],
   );
 
+  // ⚠️ A ABA SÓ EXISTE QUANDO HÁ O QUE MOSTRAR. Dos 37 empreendimentos, só o Garden tem arquivo
+  // hoje (medido em 22/09/2026): uma aba vazia nos outros 36 seria uma porta para lugar nenhum no
+  // link que o corretor manda ao cliente. E o alternador continua escondido quando sobra uma visão
+  // só, como era antes desta aba existir.
+  const visoes = useMemo<Visao[]>(() => {
+    const lista: Visao[] = [];
+    if (estado?.temMapa) lista.push("espelho");
+    lista.push("grade");
+    if (arquivos.length > 0) lista.push("arquivos");
+    return lista;
+  }, [arquivos.length, estado?.temMapa]);
+
   if (erro || !estado) {
     return (
       <main className="publico-shell" data-esp-tema={tema} style={ESTILO.vazio}>
@@ -333,20 +419,22 @@ export function EspelhoPublico({
     // [[reference_html_minwidth_quebra_mobile]] na memória: é a armadilha que mais volta.
     <main className="publico-shell" data-esp-tema={tema} style={ESTILO.pagina}>
       {/* O tema vale para a árvore inteira, inclusive o painel do lote, que é irmão do palco. */}
-      <style>{CSS_DO_TEMA + CSS_DE_IMPRESSAO + CSS_DO_CELULAR}</style>
+      <style>{CSS_DO_TEMA + CSS_DE_IMPRESSAO + CSS_DO_CELULAR + CSS_DOS_ARQUIVOS}</style>
 
       <Cabecalho
         contagem={estado.contagem}
         nome={estado.empreendimento.nome}
-        podeEspelho={estado.temMapa}
         tema={tema}
         visao={visao}
+        visoes={visoes}
         onTema={trocarTema}
         onVisao={setVisao}
       />
 
       <section data-esp-print="fora" style={ESTILO.palco}>
-        {visao === "espelho" && podeEspelho ? (
+        {visao === "arquivos" ? (
+          <GaleriaDeArquivos arquivos={arquivos} token={token} />
+        ) : visao === "espelho" && podeEspelho ? (
           <Mapa
             escolhido={escolhido}
             geometria={geometria}
@@ -384,17 +472,18 @@ function Cabecalho({
   nome,
   onTema,
   onVisao,
-  podeEspelho,
   tema,
   visao,
+  visoes,
 }: {
   contagem: Record<SituacaoPublica, number>;
   nome: string;
   onTema: (t: TemaDoEspelho) => void;
-  onVisao: (v: "espelho" | "grade") => void;
-  podeEspelho: boolean;
+  onVisao: (v: Visao) => void;
   tema: TemaDoEspelho;
-  visao: "espelho" | "grade";
+  visao: Visao;
+  /** As visões disponíveis, na ordem. Uma só = sem alternador. */
+  visoes: readonly Visao[];
 }) {
   const [cheia, setCheia] = useState(false);
   // ⚠️ O BOTÃO SÓ EXISTE ONDE A API EXISTE. No iPhone a tela cheia de elemento comum não está
@@ -436,9 +525,9 @@ function Cabecalho({
       </div>
 
       <div style={ESTILO.acoes}>
-        {podeEspelho ? (
+        {visoes.length > 1 ? (
           <div style={ESTILO.alternador}>
-            {(["espelho", "grade"] as const).map((v) => (
+            {visoes.map((v) => (
               <button
                 key={v}
                 onClick={() => onVisao(v)}
@@ -448,7 +537,7 @@ function Cabecalho({
                 }}
                 type="button"
               >
-                {v === "espelho" ? "Mapa" : "Grade"}
+                {ROTULO_DA_VISAO[v]}
               </button>
             ))}
           </div>
@@ -599,6 +688,134 @@ function Grade({
   );
 }
 
+// ── A ABA ARQUIVOS: o book, o vídeo e as cenas do empreendimento ───────────────────
+//
+// Lucas (22/09/2026): a aba Arquivos que existe no portal do incorporador *"tem que aparecer
+// também no espelho público"*, no link que o corretor manda ao cliente. E, no mesmo dia, sobre o
+// visualizador: *"quando clicar abrir em full"*, *"o video tem que abrir em fulltela"*.
+//
+// ⚠️ O VISUALIZADOR É O DO PORTAL, INTEIRO. `components/galeria/VisualizadorDeMidia` já abre
+// sozinho em tela cheia, anda entre os itens com seta e arrasto, toca vídeo com `playsInline` e
+// abre PDF no leitor do próprio navegador. Escrever um segundo aqui seria a quarta cópia de
+// lightbox da casa — e foi exatamente a cópia do mapa que custou o defeito publicado de 14/09.
+
+const ROTULO_DO_TIPO: Readonly<Record<TipoDeArquivo, string>> = {
+  documento: "documento",
+  imagem: "foto",
+  video: "vídeo",
+};
+
+/**
+ * O endereço de um arquivo na porta pública: o TOKEN do espelho mais o ID do arquivo.
+ *
+ * ⚠️ NUNCA O CAMINHO NO BUCKET. Quem resolve id em caminho é o servidor
+ * (`app/api/publico/espelho/arquivo/route.ts`); um caminho montado aqui viajaria no `src` de 47
+ * imagens e viraria uma porta para ler o bucket inteiro.
+ */
+export function urlDoArquivoDoEspelho(
+  token: string,
+  id: string,
+  opcoes?: { miniatura?: boolean },
+): string {
+  const busca = new URLSearchParams({ a: id, e: token });
+  if (opcoes?.miniatura) busca.set("m", "1");
+  return `/api/publico/espelho/arquivo?${busca.toString()}`;
+}
+
+function GaleriaDeArquivos({
+  arquivos,
+  token,
+}: {
+  arquivos: readonly ArquivoPublicoDoEspelho[];
+  token: string;
+}) {
+  const [aberto, setAberto] = useState<null | number>(null);
+  const [quebradas, setQuebradas] = useState<ReadonlySet<string>>(new Set());
+
+  // ⚠️ DOCUMENTO NÃO TEM MINIATURA, E ISSO É MEDIDO, NÃO SUPOSTO: no banco, o único documento do
+  // Garden (`Book Garden.pdf`, 212.799.580 bytes) é também o único arquivo sem `miniatura_path` —
+  // a miniatura nasce no navegador de quem envia, e ele só sabe desenhar foto e vídeo. Pedir a
+  // miniatura de um PDF seria um 404 por cartão; NÃO pedir o original é o que impede a grade de
+  // baixar 202,9 MB para desenhar um quadradinho de 150 px no 4G do cliente.
+  const temMiniatura = useCallback(
+    (a: ArquivoPublicoDoEspelho) => a.tipo !== "documento" && !quebradas.has(a.id),
+    [quebradas],
+  );
+
+  const itens = useMemo<MidiaDoVisualizador[]>(
+    () =>
+      arquivos.map((a) => ({
+        id: a.id,
+        legenda: null,
+        miniaturaUrl: temMiniatura(a) ? urlDoArquivoDoEspelho(token, a.id, { miniatura: true }) : null,
+        nome: a.nome,
+        tipo: a.tipo,
+        // ⚠️ O ORIGINAL SÓ É PEDIDO AQUI, e o visualizador só monta a mídia do item aberto: a
+        // lista inteira do Garden pesa 518.136.930 bytes, e nada disso desce ao abrir a aba.
+        url: urlDoArquivoDoEspelho(token, a.id),
+      })),
+    [arquivos, temMiniatura, token],
+  );
+
+  return (
+    <div style={ESTILO.grade}>
+      <ul className="esp-arq-grade">
+        {arquivos.map((a, indice) => {
+          const semMiniatura = !temMiniatura(a);
+          return (
+            <li key={a.id}>
+              <button
+                aria-label={`Abrir ${ROTULO_DO_TIPO[a.tipo]} ${a.nome}`}
+                className="esp-arq-cartao"
+                onClick={() => setAberto(indice)}
+                title={a.nome}
+                type="button"
+              >
+                {semMiniatura ? (
+                  <span className="esp-arq-icone">
+                    {a.tipo === "video" ? (
+                      <Film aria-hidden="true" size={26} />
+                    ) : a.tipo === "documento" ? (
+                      <FileText aria-hidden="true" size={26} />
+                    ) : (
+                      <ImagemIcone aria-hidden="true" size={26} />
+                    )}
+                    <span className="esp-arq-nome">{a.nome}</span>
+                  </span>
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element -- porta própria do espelho, sem otimizador
+                  <img
+                    alt=""
+                    decoding="async"
+                    // ⚠️ `lazy`: a grade do Garden tem 46 miniaturas (1.311.659 bytes medidos no
+                    // bucket). Quem abre no celular baixa as que estão na tela, não as 46.
+                    loading="lazy"
+                    onError={() => setQuebradas((atual) => new Set([...atual, a.id]))}
+                    src={urlDoArquivoDoEspelho(token, a.id, { miniatura: true })}
+                  />
+                )}
+                {a.tipo === "video" && !semMiniatura ? (
+                  <span className="esp-arq-play">
+                    <Play aria-hidden="true" size={22} />
+                  </span>
+                ) : null}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+
+      <VisualizadorDeMidia
+        indice={aberto}
+        itens={itens}
+        onFechar={() => setAberto(null)}
+        onIndice={setAberto}
+        rotulo="Arquivos do empreendimento"
+      />
+    </div>
+  );
+}
+
 // ── O PAINEL DO LOTE: preço, metragem e simulação ──────────────────────────────────
 
 function PainelDoLote({
@@ -669,6 +886,29 @@ function PainelDoLote({
       ? `${lote.quadra} ${lote.lote ?? ""}`.trim()
       : lote.codigo;
 
+  /**
+   * A janela abre com o simulador dentro quando o lote está à venda e tem plano.
+   *
+   * ⚠️ A ALTURA DA JANELA É TETO, E NÃO TAMANHO (22/09/2026, segunda rodada). Lucas, sobre o iPad:
+   * *"a tela da simulação está cortando essa parte de sugestão de plano e quando tento subir quem
+   * sobe é a tela do fundo"*. A causa era o `aside` ter só `max-height: 92dvh`, sem altura DEFINIDA
+   * para o filho: o `height: 100%` da raiz do `SimuladorDeProposta` resolvia em `auto`, as colunas
+   * cresciam até o conteúdo, a moldura cortava o fim com `overflow: hidden` e o arrasto vazava para
+   * o documento.
+   *
+   * A primeira correção pôs `height: 92dvh` aqui, e trocou um defeito por outro: a janela passou a
+   * abrir do tamanho da tela mesmo com pouco conteúdo. Medido no navegador a 1920 × 1080, réplica
+   * fiel desta cadeia com um empreendimento de um plano só: a janela foi de 389px para 993,6px, com
+   * 604,6px de vazio embaixo do conteúdo.
+   *
+   * Quem resolve os dois é a MOLDURA (`ESTILO.molduraDoSimulador`), com a linha de grade
+   * `minmax(0, 1fr)`: ela dá ao simulador uma altura definida sem travar a janela num número. Na
+   * mesma réplica, agora: conteúdo curto a 1920 × 1080 → janela 389px, sem vazio; conteúdo longo →
+   * 993,6px com 535px de curso na coluna da leitura; no iPad a 768 × 1024 → 942,1px com 587px de
+   * curso, contra 587px CORTADOS antes de qualquer conserto.
+   */
+  const mostraSimulador = disponivel && preco > 0 && planosDaVenda.length > 0;
+
   // O que está na tela AGORA — é o que vai para o papel.
   const condicoes = useRef<CondicoesDaProposta | null>(null);
   const [baixando, setBaixando] = useState(false);
@@ -707,6 +947,18 @@ function PainelDoLote({
             anuaisValor: atual.anuaisValor,
             codigo: lote.codigo,
             entrada: atual.entradaValor,
+            // E as DATAS escolhidas para essas parcelas, pelo mesmo motivo: o campo de data fica
+            // visível no espelho (só o bloco "Cobrança" some no modo simulação), e a data da
+            // entrada ainda empurra a primeira mensal no cronograma.
+            entradaDatas: atual.entradaDatas,
+            // ⚠️ AS PARCELAS MONTADAS À MÃO VÃO JUNTO (22/09/2026). O botão "montar valores" aparece
+            // aqui também, sempre que a entrada tem mais de uma parcela, e o cartão grande passa a
+            // anunciar "4× · 1ª de R$ 10.000". Sem este campo o corpo levava só o total: a folha
+            // repartia em partes iguais e quem montou 10.000 + 7.000 + 7.000 + 7.000 encaminhava um
+            // papel dizendo 4 × R$ 7.750. É a mesma família do item 4 do Lucas (*"mesmo eu alterando
+            // o valor de entrada (...) ele não traz o valor que eu tinha colocado"*), em outro campo.
+            // Nulo = sem montagem, e o servidor reparte igual como sempre.
+            entradaParcelas: atual.entradaParcelas,
             entradaVezes: atual.entradaVezes,
             parcelas: atual.parcelasMensais,
             plano: atual.planoNome,
@@ -807,7 +1059,7 @@ function PainelDoLote({
           </p>
         ) : null}
 
-        {disponivel && preco > 0 && planosDaVenda.length > 0 ? (
+        {mostraSimulador ? (
           <div className="inc" data-esp-simulador style={ESTILO.molduraDoSimulador}>
             <style>{TEMA_CSS}</style>
             <SimuladorDeProposta
@@ -882,13 +1134,28 @@ const ESTILO: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     padding: "8px 12px",
   },
-  // O simulador traz a própria altura (duas colunas roláveis); a moldura só lhe dá espaço e
-  // recorta os cantos junto com o pop-up.
+  // A MOLDURA É QUEM DÁ ALTURA AO SIMULADOR, e é ela que encolhe quando a janela bate no teto.
+  //
+  // ⚠️ O `grid-template-rows: minmax(0, 1fr)` É A PEÇA QUE FALTAVA (22/09/2026). A raiz do
+  // `SimuladorDeProposta` pede `height: 100%`, e percentual contra um pai de altura INDEFINIDA
+  // resolve em `auto`: as duas colunas dele cresciam até o conteúdo, esta moldura cortava o fim com
+  // `overflow: hidden` e o arrasto, sem nada para rolar ali dentro, vazava para a página de trás.
+  // Foi o corte do iPad. A primeira correção travou a JANELA em `92dvh`, o que resolveu o corte e
+  // criou outro defeito: no desktop com conteúdo curto sobrava tela vazia (ver o comentário em
+  // `mostraSimulador`). Com a linha de grade a altura da moldura é definida para o filho sem estar
+  // travada num número — ela vale o que a janela deixar, e a janela vale o conteúdo até o teto.
+  //
+  // Medido no navegador com a réplica desta cadeia, conteúdo longo a 768 × 1024 (iPad retrato):
+  // sem a linha, raiz do simulador em 1430px dentro de uma moldura de 843,1px, 587px cortados sem
+  // barra; com ela, raiz 843,1px e a coluna da leitura rolando 587px por dentro.
   molduraDoSimulador: {
     borderRadius: 10,
-    // `flex: 1` mais `min-height: 0` é o par que permite a um filho de flex encolher abaixo do
-    // conteúdo — sem o segundo, o simulador empurraria o pop-up para fora da tela.
-    flex: 1,
+    display: "grid",
+    // `flex: 1 1 auto` mais `min-height: 0` é o par que permite a um filho de flex encolher abaixo
+    // do conteúdo — sem o segundo, o simulador empurraria o pop-up para fora da tela. A base `auto`
+    // (e não `0`) é o que deixa a janela nascer do tamanho do conteúdo quando ele é curto.
+    flex: "1 1 auto",
+    gridTemplateRows: "minmax(0, 1fr)",
     marginTop: 14,
     minHeight: 0,
     overflow: "hidden",
@@ -1198,6 +1465,12 @@ const ESTILO: Record<string, React.CSSProperties> = {
   // pop-up e a das colunas do simulador, que já rolam sozinhas. `hidden` mais `flex` deixa o
   // simulador ocupar a altura que sobra e cuidar da própria rolagem, que é o comportamento dele
   // na Mesa de Venda.
+  //
+  // ⚠️ `max-height` É TETO, E NÃO ALTURA, E É DE PROPÓSITO. Ele sozinho não dá altura ao filho, e
+  // sem altura a rolagem de dentro nunca liga (o corte no iPad de 22/09/2026); quem resolve isso é
+  // a linha de grade da `molduraDoSimulador`, e não um `height` aqui. Travar a janela em `92dvh`
+  // foi a primeira tentativa e deixava 604,6px de tela vazia num empreendimento de conteúdo curto,
+  // medido a 1920 × 1080 — ver `mostraSimulador` em `PainelDoLote`.
   painel: {
     background: "var(--esp-superficie)",
     border: "1px solid var(--esp-borda)",

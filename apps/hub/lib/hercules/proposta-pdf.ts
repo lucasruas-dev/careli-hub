@@ -59,6 +59,29 @@ export type ParcelaDaProposta = {
   valor: string;
 };
 
+/**
+ * Um bem ou uma permuta recebido na aquisição, já escrito como o papel imprime.
+ *
+ * ⚠️ TUDO CHEGA EM TEXTO, inclusive o "Bem"/"Permuta" e o "Entrada"/"Abatimento": quem traduz o
+ * dado em palavra é `montarFolhaDaProposta`, como em toda linha desta folha. Um gerador que
+ * também decidisse a palavra seria um gerador que decide o que o documento diz.
+ */
+export type BemDaFolha = {
+  /**
+   * "Entrada" ou "Abatimento" — o papel que aquele bem cumpriu na negociação.
+   *
+   * ⚠️ OS DOIS ABATEM; SÓ UM CUMPRE A ENTRADA MÍNIMA de 10% (Lucas, 22/09/2026: *"pode ser um ou
+   * outro, pode apontar na entrada ou somente no valor negociado"*). Sem esta coluna, quem confere
+   * a entrada no papel ou soma o mesmo dinheiro duas vezes, ou não acha os 10% que a folha anuncia.
+   */
+  comoEntra: string;
+  /** "Ford Ka 2019 placa ABC1D23" — texto livre do operador, cortado se não couber na coluna. */
+  descricao: string;
+  /** "Bem" ou "Permuta". */
+  tipo: string;
+  valor: string;
+};
+
 export type FaixaDeReajuste = {
   ate: string;
   de: string;
@@ -94,6 +117,21 @@ export type PropostaParaPdf = {
     imobiliaria: null | string;
     telefone: null | string;
   };
+  /**
+   * Os bens e as permutas recebidos na aquisição — carro, lote, imóvel dado no negócio.
+   *
+   * ⚠️ VAZIO OU AUSENTE = A SEÇÃO NÃO EXISTE, como nas anuais. A maioria das propostas não tem
+   * permuta, e uma seção com um "R$ 0,00" mudaria o papel de todo mundo por causa de um recurso
+   * de poucos. Há teste comparando o desenho inteiro, linha por linha e coordenada por
+   * coordenada, contra a impressão digital tirada antes desta seção existir.
+   *
+   * ⚠️ E QUANDO EXISTE, ELA NÃO PODE FALTAR: Lucas (22/09/2026) sobre a permuta, *"Abate, como
+   * uma entrada"*. Um bem de R$ 80.000 que some do papel faz o comprador ler o saldo e achar que
+   * está devendo R$ 80.000 a mais do que combinou.
+   */
+  bensEPermutas?: BemDaFolha[];
+  /** A soma dos bens e permutas, já escrita. Vazio quando não há nenhum. */
+  bensEPermutasTotal?: string;
   /** `000123` — o COD da venda, o mesmo desde a reserva. */
   codigo: string;
   compradores: CompradorDaProposta[];
@@ -345,11 +383,42 @@ function quebrar(
 
 type Coluna = {
   alinhamento?: "direita" | "esquerda";
+  /**
+   * Corta o valor que não couber na largura da coluna, com reticências.
+   *
+   * ⚠️ SÓ PARA TEXTO LIVRE, e por isso não é o padrão: as colunas do documento são todas de dado
+   * formatado por nós (data por extenso, "1 de 2", "R$ 583,33"), e encurtar um valor desses
+   * esconderia dinheiro. A descrição do bem é digitada pelo operador, sem limite de tamanho, e
+   * `tabela` desenha cada célula num x FIXO: sem o corte, "Fazenda Santa Luzia, 42 alqueires com
+   * sede, curral..." atravessa a coluna do valor e o comprador lê o preço do bem por cima das
+   * letras.
+   */
+  encurta?: boolean;
   largura: number;
   /** Destaca o VALOR da coluna (não o cabeçalho). Serve ao nome de quem compra. */
   negrito?: boolean;
   titulo: string;
 };
+
+/** O texto que cabe em `largura`, com reticências de três pontos quando sobra. */
+function encurtar(
+  font: PDFFont,
+  valor: string,
+  size: number,
+  largura: number,
+): string {
+  let escrito = seguro(valor);
+  if (font.widthOfTextAtSize(escrito, size) <= largura) return escrito;
+  // ⚠️ RETICÊNCIAS DE TRÊS PONTOS, e não "…": o caractere único não existe no WinAnsi e faria o
+  // encode lançar na hora de gravar — o mesmo cuidado do rodapé.
+  while (
+    escrito.length > 1 &&
+    font.widthOfTextAtSize(`${escrito.trimEnd()}...`, size) > largura
+  ) {
+    escrito = escrito.slice(0, -1);
+  }
+  return `${escrito.trimEnd()}...`;
+}
 
 function cabecalhoDaTabela(ctx: Ctx, colunas: Coluna[], xs: number[]): void {
   colunas.forEach((c, i) => {
@@ -421,9 +490,12 @@ function tabela(
           textoDireita(ctx, valor, direita, 8.6);
         }
       } else {
+        const fonte = c.negrito ? ctx.bold : ctx.font;
         texto(
           ctx,
-          valor,
+          // A folga de 8pt é o respiro até a coluna vizinha: encostar uma na outra já se lê como
+          // texto invadido.
+          c.encurta ? encurtar(fonte, valor, 8.6, c.largura - 8) : valor,
           xs[i]!,
           8.6,
           c.negrito ? { bold: true, cor: INK } : undefined,
@@ -667,6 +739,51 @@ export async function montarPropostaPdf(
     dados.entrada.map((p) => [p.ordem, p.vencimento, p.valor]),
     { soma: ["Total da entrada", "", dados.entradaTotal] },
   );
+
+  // ── BENS E PERMUTAS ──────────────────────────────────────────────────────
+  //
+  // Lucas (22/09/2026), perguntado se a permuta abate o valor a financiar ou é só registro:
+  // *"Abate, como uma entrada"*. Quantos cabem numa proposta: *"Vários"*.
+  //
+  // ⚠️ LOGO DEPOIS DA ENTRADA, E ANTES DAS ANUAIS. É aqui que o comprador acabou de ler quanto
+  // entregou de dinheiro; o bem é a outra metade da mesma resposta ("o que eu já dei"). Jogado
+  // para o fim da folha, depois do fluxo das anuais, ele viraria mais uma coisa a pagar.
+  //
+  // ⚠️ TODAS AS LINHAS, SEM TETO. O corte de quatro linhas das anuais existe porque elas são
+  // todas iguais e só muda o ano; bem e permuta são cada um uma coisa diferente no mundo, e
+  // esconder o terceiro item some com um bem que o comprador entregou.
+  const bens = dados.bensEPermutas ?? [];
+  if (bens.length > 0) {
+    ctx.y -= 12;
+    tituloDaSecao(ctx, "Bens e permutas recebidos");
+    tabela(
+      ctx,
+      [
+        { largura: LARGURA * 0.14, titulo: "Tipo" },
+        { encurta: true, largura: LARGURA * 0.44, titulo: "Descrição" },
+        { largura: LARGURA * 0.18, titulo: "Entra como" },
+        { alinhamento: "direita", largura: LARGURA * 0.24, titulo: "Valor" },
+      ],
+      bens.map((b) => [b.tipo, b.descricao, b.comoEntra, b.valor]),
+      {
+        // ⚠️ O TOTAL PRECISA DIZER QUE ISSO JÁ SAIU DA DÍVIDA. Sozinho, um "Total em bens e
+        // permutas R$ 80.000,00" logo abaixo do fluxo da entrada se lê como mais uma coisa a
+        // pagar — e é exatamente o contrário: esse dinheiro já foi entregue e já abateu o saldo.
+        //
+        // ⚠️ A FRASE VAI NA COLUNA DO "ENTRA COMO", E NÃO NA DA DESCRIÇÃO, porque `tabela` NÃO
+        // encurta a linha de soma: "Total em bens e permutas" em Helvetica-Bold 9 mede 110pt e
+        // termina em x=144,6, enquanto a coluna da descrição começa em x=108,2 — a frase saía
+        // impressa POR CIMA do rótulo do total. Na coluna seguinte (x=339,7) ela termina em
+        // x=468,7, com 38pt de folga até o valor. Há teste medindo essas duas larguras.
+        soma: [
+          "Total em bens e permutas",
+          "",
+          "já abatido do saldo a financiar",
+          dados.bensEPermutasTotal ?? "",
+        ],
+      },
+    );
+  }
 
   // ── PARCELAS ANUAIS ──────────────────────────────────────────────────────
   //

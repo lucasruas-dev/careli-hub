@@ -20,6 +20,7 @@
 // proposta imprimiu. Proposta importada do C2X não tem cronograma: aí o quadro não existe, a
 // variável fica em branco e a conferência da Têmis acusa — melhor do que uma tabela inventada.
 import { INDICES, type IndiceCorrecao } from "@/lib/apolo/planos-comerciais";
+import { type BemOuPermuta, valeDinheiro } from "@/lib/hercules/bens-e-permutas";
 
 import type { NoDoDocumento } from "./documento-html";
 
@@ -69,6 +70,7 @@ const CABECALHO = ["Parcela", "Correção", "Juros", "1º vencimento", "Qtde.", 
 export function tabelaGeralDePagamentos(
   condicoes: unknown,
   comissaoEmCentavos: null | number = null,
+  bensEPermutas: null | readonly BemOuPermuta[] | undefined = null,
 ): NoDoDocumento | null {
   const dados = (condicoes ?? null) as CondicoesGravadas | null;
   if (!dados) return null;
@@ -76,7 +78,10 @@ export function tabelaGeralDePagamentos(
   const entrada = parcelas(dados.entrada);
   const mensais = parcelas(dados.mensais);
   const anuais = parcelas(dados.anuais);
-  if (entrada.length === 0 && mensais.length === 0 && anuais.length === 0) return null;
+  const bens = bensQueValemDinheiro(bensEPermutas);
+  if (entrada.length === 0 && mensais.length === 0 && anuais.length === 0 && bens.length === 0) {
+    return null;
+  }
 
   const correcao = rotuloDoIndice(dados.plano?.indiceCorrecao);
   const juros = rotuloDosJuros(dados.plano?.jurosTaxa, dados.plano?.jurosPeriodicidade);
@@ -148,6 +153,37 @@ export function tabelaGeralDePagamentos(
     });
   });
 
+  // ⚠️ O BEM ENTRA AQUI, LOGO DEPOIS DA ENTRADA, e não no fim do quadro. Lucas (22/09/2026):
+  // *"Abate, como uma entrada"* — ele é entregue na aquisição, junto do sinal. Posto depois das 156
+  // mensais, o comprador leria a permuta como o último pagamento do contrato, em 2039.
+  //
+  // ⚠️ E SEM ESTA LINHA O RODAPÉ DESMENTE A CLÁUSULA 6.1 DA MESMA PÁGINA. `montarCronograma` já
+  // desconta o bem do saldo (`financiado = negociado − entrada − bens − anuais`), e o total daqui é
+  // a SOMA DAS LINHAS: num lote de R$ 200.000 com permuta de R$ 80.000, o quadro fechava em
+  // R$ 120.000 embaixo de um 6.1 que promete R$ 200.000. É o mesmo defeito que voltou do jurídico
+  // com a venda do VOL em 22/09/2026, pela mesma causa — uma parcela do preço fora do quadro.
+  //
+  // ⚠️ SEM VENCIMENTO, DE PROPÓSITO. O bem não tem data: ele é entregue no ato. Repetir ali a data
+  // da entrada faria o contrato prometer a transferência do carro num dia que ninguém combinou, e
+  // data de contrato é o que o cartório confere.
+  //
+  // ⚠️ E SEM CORREÇÃO NEM JUROS, pela mesma razão da entrada: não existe saldo devedor sobre o que
+  // já foi entregue.
+  for (const bem of bens) {
+    linhas.push({
+      correcao: "—",
+      juros: "—",
+      quantidade: 1,
+      tipo: rotuloDoBem(bem),
+      total: bem.valor,
+      valor: dinheiro(bem.valor),
+      vencimento: "—",
+    });
+  }
+
+  /** Onde termina o que é entregue NO ATO (a entrada e os bens) — ver a linha da corretagem. */
+  const fimDoAto = linhas.length;
+
   if (mensais.length > 0) {
     linhas.push({
       correcao,
@@ -182,7 +218,52 @@ export function tabelaGeralDePagamentos(
   // Somando as linhas, o rodapé vira o 6.1 PREÇO DO LOTE quando há comissão a abater
   // (R$ 125.537,94) e o próprio valor negociado quando não há (R$ 133.551,00). Nos dois casos ele
   // é um número que o contrato repete em outro lugar, que é o que se espera de um quadro-resumo.
-  const totalGeral = linhas.reduce((soma, linha) => soma + (linha.total ?? 0), 0);
+
+  // ⚠️ SEM PARCELA DE ENTRADA, A COMISSÃO VIRA LINHA PRÓPRIA — SENÃO ELA SOME DO QUADRO.
+  //
+  // `abaterDaEntrada` devolve `null` quando não há entrada nenhuma, e até 22/09/2026 o rodapé
+  // voltava a somar o negociado CHEIO. Medido: lote de R$ 200.000, comissão de R$ 12.000 e permuta
+  // de R$ 20.000 apontada na entrada com entrada em dinheiro ZERO — o quadro fechava em
+  // R$ 200.000,00 embaixo de um `preco_do_lote` (6.1) de R$ 188.000,00, na mesma página. É o mesmo
+  // defeito que voltou do jurídico com a venda do VOL, pela mesma causa: uma parcela do preço fora
+  // do quadro.
+  //
+  // ⚠️ E O CASO É NOVO, NÃO ANTIGO. A régua da proposta passou a aceitar entrada em dinheiro zero
+  // quando o bem apontado na entrada cobre o piso (`centavos(entradaValor) + centavos(bensNaEntrada)
+  // >= centavos(piso)`, `proposta.ts`): antes da permuta, venda sem parcela de entrada não existia.
+  //
+  // ⚠️ ELA NÃO SAI DE DENTRO DA LINHA DO BEM. Abater a corretagem do valor da permuta faria o
+  // contrato anunciar um Ford Ka de R$ 8.000 ao lado da cláusula que diz R$ 20.000
+  // (`valor_bens_e_permutas`, a mesma página): trocaria uma contradição por outra, e esta cairia
+  // sobre a descrição de um bem que o cartório confere. Nem sai das mensais, que amortizam o preço
+  // do lote inteiras — a coluna deixaria de multiplicar, que é o defeito que o Lucas achou com a
+  // calculadora em 22/09/2026.
+  //
+  // ⚠️ E FICA JUNTO DO ATO, logo depois da entrada e dos bens: é dali que a corretagem sai quando
+  // há dinheiro ("em conformidade com o fluxo financeiro das parcelas de SINAL/ATO", item 7.1 do
+  // contrato de corretagem). Com entrada em dinheiro nada disto acontece — a comissão continua
+  // saindo por dentro das parcelas, e o quadro de toda venda de hoje sai nó a nó como saía.
+  //
+  // ⚠️ MESMA RESSALVA DA ENTRADA ENGOLIDA: comissão que alcança o quadro INTEIRO é defeito de
+  // cadastro, e um rodapé negativo o esconderia atrás de um número plausível. Melhor o quadro
+  // cheio, com a divergência visível para quem confere.
+  const corretagemSolta =
+    abatimento === null && entrada.length === 0 && comissaoEmCentavos !== null
+      ? comissaoEmCentavos / 100
+      : 0;
+  if (corretagemSolta > 0 && somaDasLinhas(linhas) > corretagemSolta) {
+    linhas.splice(fimDoAto, 0, {
+      correcao: "—",
+      juros: "—",
+      quantidade: 1,
+      tipo: "(-) Comissão de corretagem",
+      total: -corretagemSolta,
+      valor: dinheiro(-corretagemSolta),
+      vencimento: "—",
+    });
+  }
+
+  const totalGeral = somaDasLinhas(linhas);
 
   return {
     children: [
@@ -212,12 +293,56 @@ export function tabelaGeralDePagamentos(
 }
 
 /**
+ * Os bens e permutas que são dinheiro de verdade, na ordem em que a proposta os gravou.
+ *
+ * ⚠️ VALOR QUE NÃO É NÚMERO POSITIVO NÃO VIRA LINHA, e a régua é `valeDinheiro` DA CASA, importada
+ * de `lib/hercules/bens-e-permutas.ts`. A lista chega de um formulário que está sendo preenchido:
+ * uma linha recém-adicionada tem `valor` vazio, e imprimi-la poria "R$ NaN" numa célula do contrato
+ * e levaria o rodapé inteiro para NaN.
+ *
+ * ⚠️ ELA ERA UMA CÓPIA QUE COAGIA, E AS DUAS DISCORDAVAM. Até 22/09/2026 o filtro daqui era
+ * `Number(bem.valor) > 0` e a linha saía com `total: bem.valor` CRU: medido, a lista
+ * `[{ valor: "80000" }]` imprimia `Total R$ 2.000.080.000.100.000,00` — o `reduce` do rodapé
+ * concatenava a string — enquanto `somarBensEPermutas` da mesma lista devolvia 0, e é ela que
+ * escreve `valor_bens_e_permutas` na cláusula da mesma página. Mesmo item, três números diferentes
+ * no mesmo papel. Uma régua só resolve as três: o que não é número não existe em lugar nenhum.
+ */
+function bensQueValemDinheiro(
+  bens: null | readonly BemOuPermuta[] | undefined,
+): BemOuPermuta[] {
+  if (!bens || bens.length === 0) return [];
+  return bens.filter((bem) => bem && valeDinheiro(bem));
+}
+
+/**
+ * Como o bem se anuncia na coluna Parcela: "Permuta: Ford Ka 2019 placa ABC1D23".
+ *
+ * ⚠️ A DESCRIÇÃO VAI JUNTO, e não só o rótulo do tipo. Um quadro que diz apenas "Permuta" ao lado de
+ * R$ 80.000 anuncia oitenta mil reais de coisa nenhuma: quem confere o contrato não tem como saber
+ * que carro é esse, e a migration 0187 existe exatamente para o contrato poder dizer *"recebe em
+ * permuta o Ford Ka placa ABC1D23"*.
+ *
+ * Sem descrição preenchida sobra o rótulo sozinho, que ainda é verdade — melhor do que um
+ * dois-pontos pendurado no fim da célula.
+ */
+function rotuloDoBem(bem: BemOuPermuta): string {
+  const rotulo = bem.tipo === "permuta" ? "Permuta" : "Bem";
+  const descricao = String(bem.descricao ?? "").trim();
+  return descricao ? `${rotulo}: ${descricao}` : rotulo;
+}
+
+/**
  * A entrada, parcela a parcela, já sem a comissão de corretagem.
  *
  * Devolve `null` quando não há o que abater — e é `null` também no caso anômalo em que a comissão
  * alcança a entrada inteira. Um quadro com entrada zerada (ou negativa) descreve um negócio que não
  * existe e esconde o defeito do cadastro atrás de um número plausível; melhor o quadro cheio, que
  * bate com a proposta e deixa a divergência visível para quem confere.
+ *
+ * ⚠️ E `null` POR NÃO EXISTIR ENTRADA NÃO É MAIS "COMISSÃO ESQUECIDA". Quem chama trata esse caso
+ * (`entrada.length === 0` com comissão conhecida) pondo a corretagem em LINHA PRÓPRIA no quadro:
+ * sem isso, a venda paga com permuta no ato fechava o rodapé no negociado cheio, contra o 6.1 da
+ * mesma página. Ver a nota do rodapé.
  */
 function abaterDaEntrada(
   entrada: readonly ParcelaGravada[],
@@ -242,6 +367,11 @@ function abaterDaEntrada(
   liquidos[ultima] = (liquidos[ultima] ?? 0) + sobra;
 
   return liquidos.map((c) => c / 100);
+}
+
+/** O rodapé: a soma das linhas que estão logo acima dele, e de mais nada. */
+function somaDasLinhas(linhas: readonly LinhaDoQuadro[]): number {
+  return linhas.reduce((soma, linha) => soma + (linha.total ?? 0), 0);
 }
 
 function linhaDaTabela(valores: readonly string[], cabecalho = false): NoDoDocumento {

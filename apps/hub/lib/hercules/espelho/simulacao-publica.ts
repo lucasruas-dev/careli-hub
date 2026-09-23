@@ -26,12 +26,20 @@
 //     fez com o valor e o piso: são números dentro de uma condição que continua a mesma, e a tela
 //     nunca produz o número fora (a entrada abaixo do mínimo ela marca em vermelho; as anuais e as
 //     vezes da entrada ela nem deixa subir).
+//     ⚠️ A ENTRADA SAIU DESTA LISTA EM 22/09/2026. A premissa "a tela nunca produz o número fora"
+//     era FALSA para ela: a tela marca em vermelho e DEIXA SEGUIR, e prender aqui trocava o número
+//     do corretor em silêncio (ver a decisão inteira junto do `return`, no fim do arquivo).
 //   • O PRAZO FORA DO PLANO É RECUSADO (422), e não preso. O prazo é o que decide a condição inteira
 //     (desconto, juros, entrada da faixa): prender 180 vezes do INVESTIDOR em 36 imprimiria uma folha
 //     de 36 vezes com 40% de entrada para quem digitou 180, e ninguém veria a troca. A frase diz até
 //     quantas parcelas o plano vai, e a tela a mostra ao lado do botão.
 //
 // ⚠️ A ENTRADA MÍNIMA É A MESMA RÉGUA DA TELA E DA MESA, E NÃO UMA TERCEIRA (revisão de 18/09/2026).
+// ⚠️ DESDE 22/09/2026 ELA É A SUGESTÃO DE QUEM NÃO MANDOU ENTRADA NENHUMA, e não mais um piso que
+// prende: o parágrafo abaixo continua valendo para decidir QUAL número sugerir, e é só isso que ele
+// decide. "Não mandou" é a chave AUSENTE (ou nula, vazia, lixo, negativa) — coisa que só um corpo
+// escrito à mão produz. ZERO É UMA ESCOLHA e vai ao papel como zero: é o campo apagado na tela, e a
+// tela já calcula e imprime a composição inteira com ele.
 // A primeira versão da revisão 3 somava a entrada do PLANO ESCOLHIDO ao piso do empreendimento e à
 // faixa do prazo. Nos empreendimentos em que a escada é irregular (um plano mais curto com entrada
 // MENOR que a de um mais longo: 20, 29, 38 e 42) a tela aceitava a entrada sem o aviso "Abaixo do
@@ -66,6 +74,20 @@ export type SimulacaoPublicaAceita = {
   /** O desconto do plano que VALE para este prazo (zero fora do prazo do plano). */
   descontoPercentual: number;
   entrada: number;
+  /**
+   * Os valores das parcelas da entrada montadas à mão, ou nulo para a divisão igual de sempre.
+   *
+   * É o que `montarCronograma` recebe em `entradaParcelas`. Só sai daqui a lista que FECHA com a
+   * entrada aceita — ver `parcelasDaEntradaAceitas`, no fim do arquivo.
+   */
+  entradaParcelas: null | number[];
+  /**
+   * A data escolhida à mão para cada parcela da entrada, ou nulo quando ninguém escolheu nenhuma.
+   *
+   * `AAAA-MM-DD` ou nulo em cada posição, como `montarCronograma` espera em `entradaDatas`: nulo é
+   * "a data calculada", que continua sendo o estado normal.
+   */
+  entradaDatas: null | (null | string)[];
   /** Em quantas vezes a entrada se divide, de 1 a `ENTRADA_VEZES_MAXIMA`. */
   entradaVezes: number;
   ok: true;
@@ -94,6 +116,18 @@ export function valoresDaSimulacaoPublica(entrada: {
   anuaisPedidas?: { quantidade?: unknown; valor?: unknown };
   /** O piso do empreendimento (`pisoDeEntradaPublico`). Nulo = padrão da casa. */
   entradaMinimaPercentual: null | number;
+  /**
+   * As datas escolhidas para as parcelas da entrada, quando alguém escolheu alguma.
+   *
+   * Ausente, nula ou só de nulos = as datas calculadas. Ver `datasDaEntradaAceitas`.
+   */
+  entradaDatasPedidas?: unknown;
+  /**
+   * As parcelas da entrada montadas à mão, quando a tela as montou.
+   *
+   * Ausente ou nulo = a divisão igual de sempre. Ver `parcelasDaEntradaAceitas`.
+   */
+  entradaParcelasPedidas?: unknown;
   /** A entrada que veio no corpo. */
   entradaPedida: unknown;
   /** Em quantas vezes o corpo pediu a entrada. Ausente, zero ou lixo = à vista (1). */
@@ -159,20 +193,20 @@ export function valoresDaSimulacaoPublica(entrada: {
         }
       : { quantidade: 0, valor: 0 };
 
-  // ── A entrada: o piso da tela, e nunca acima do valor ──
+  // ── A entrada: a que veio da tela, e nunca acima do valor ──
   //
-  // ⚠️ O MAIOR ENTRE O PISO DO EMPREENDIMENTO E A ENTRADA DA FAIXA DO PRAZO, a chamada IGUAL à do
-  // `pisoDoPrazo` do simulador e à de `conferirProposta` (ver o cabeçalho): o que a tela aceita sem o
-  // aviso vermelho é o que a folha imprime. A faixa é a escada da tabela: o INVESTIDOR do Garden em
-  // 36 vezes exige os 40% dele, e o INVESTIDOR PARCELADO encurtado para 50 vezes cai no degrau do
+  // A SUGESTÃO, para quem não escolheu entrada nenhuma: o maior entre o piso do empreendimento e a
+  // entrada da faixa do prazo, a chamada IGUAL à do `pisoDoPrazo` do simulador e à de
+  // `conferirProposta` (ver o cabeçalho). A faixa é a escada da tabela: o INVESTIDOR do Garden em 36
+  // vezes sugere os 40% dele, e o INVESTIDOR PARCELADO encurtado para 50 vezes cai no degrau do
   // NORMAL (10%). Tudo sobre o valor já com o desconto do plano, como a MMendes (`pd × entMin`).
-  const minima = pisoDaEntradaNoPrazo({
+  const sugerida = pisoDaEntradaNoPrazo({
     parcelas,
     pisoDaCasaEmReais: entradaMinima(valor, entrada.entradaMinimaPercentual),
     planos: [...entrada.planos],
     valorNegociado: valor,
   }).emReais;
-  const entradaPedida = reais(entrada.entradaPedida) ?? 0;
+  const entradaPedida = reais(entrada.entradaPedida);
 
   // ── As vezes da entrada: de 1 ao teto do contador da tela ──
   //
@@ -183,13 +217,174 @@ export function valoresDaSimulacaoPublica(entrada: {
   const vezes = inteiro(entrada.entradaVezesPedidas, 1);
   const entradaVezes = Math.min(ENTRADA_VEZES_MAXIMA, Math.max(1, vezes));
 
+  // ⚠️ A ENTRADA DIGITADA VAI AO PAPEL COMO ESTÁ, E NÃO PRESA NO MÍNIMO (22/09/2026). Até aqui esta
+  // linha era `Math.max(minima, entradaPedida)`, e o PDF trocava o número do corretor em silêncio,
+  // depois do clique: medido no print do Lucas, Quadra 03 · Lote 07 do Cecílio Rocha com R$ 10.000
+  // digitados (a tela avisando "Abaixo do mínimo de 8% (R$ 34.592)" e deixando seguir) saía impresso
+  // com ENTRADA R$ 34.592, financiado R$ 297.808 e parcela R$ 3.545,33, no lugar dos R$ 322.400 e
+  // R$ 3.838,10 que estavam na tela. O corretor mostra uma conta e entrega outra pelo WhatsApp, e
+  // ninguém percebe a troca até o cliente cobrar a parcela que ele viu. Lucas: *"na cecilio pode
+  // deixar tudo liberado, sem trava, somente com alertas (...) somente garante essa visão"*.
+  //
+  // ⚠️ AFROUXAR AQUI NÃO AFROUXA A VENDA, e é por isso que dá para fazer: esta régua é só da
+  // SIMULAÇÃO do espelho, a folha que sai com a tarja de prévia e a frase "não constitui proposta,
+  // não reserva a unidade e não vincula as partes". Quem protege a venda é `conferirProposta`
+  // (`lib/hercules/proposta.ts`), na rota `api/incorporador/venda/proposta`, e lá a entrada mínima
+  // continua RECUSANDO — são duas funções, dois chamadores, e nenhum dos dois passa pelo outro.
+  //
+  // ⚠️ E O PISO DO PREÇO CONTINUA DE PÉ. A página não tem login e a folha sai com a marca da casa:
+  // o que um corpo forjado não pode é anunciar DESCONTO que a casa não deu, e `valor` segue preso
+  // entre a tabela com o desconto do plano e a tabela. Entrada não é preço — ela só reparte o mesmo
+  // total entre o ato e as mensais, e o papel continua somando o valor da unidade.
+  //
+  // ⚠️ ZERO É UMA ESCOLHA, E NÃO "NÃO ESCOLHI" (22/09/2026). Até aqui a condição era
+  // `entradaPedida > 0`, e a justificativa escrita nesta linha dizia que "a tela trata campo vazio
+  // como ainda não escolhi". Medido em `SimuladorDeProposta.tsx`, é FALSO: apagar o campo faz
+  // `cockpit.entrada = 0`, `conferirEntradaMontada` devolve `entrada: 0`, o cartão grande imprime
+  // "Entrada R$ 0,00" e sobe `entradaValor: 0` no pedido do PDF. Com os números do print do Lucas
+  // (Cecílio Rocha, R$ 432.400, INVESTIDOR PARCELADO em 84x, 4 anuais de R$ 25.000) a tela mostrava
+  // entrada R$ 0,00, a financiar R$ 332.400 e parcela R$ 3.957,14, e o papel saía com R$ 34.592,
+  // R$ 297.808 e R$ 3.545,33 — a MESMA troca silenciosa do item 4 dele, e a pior de todas, porque
+  // em zero a tela nem pintava o aviso vermelho (`abaixoDoMinimo` exigia `valor > 0`; isso também
+  // foi corrigido, e agora o zero acusa "Abaixo do mínimo" com o botão "usar o mínimo").
+  //
+  // ⚠️ A TELA NUNCA OMITE A CHAVE: ela sempre manda um número. Só um corpo escrito à mão manda
+  // ausente, nulo, vazio, lixo ou negativo — e para ESSES a sugestão continua sendo a resposta
+  // certa, porque não há tela nenhuma dizendo o contrário. `reais` devolve nulo para todos eles,
+  // e é essa a fronteira entre "escolheu zero" e "não mandou entrada".
+  //
+  // ⚠️ O TETO NO VALOR FICA, E É SANIDADE, NÃO RÉGUA COMERCIAL: entrada maior que o valor faz
+  // `montarCronograma` quebrar, e a folha não sairia de jeito nenhum.
+  const entradaAceita = Math.min(
+    valor,
+    entradaPedida !== null ? entradaPedida : sugerida,
+  );
+
   return {
     anuais,
     descontoPercentual,
-    entrada: Math.min(valor, Math.max(minima, entradaPedida)),
+    entrada: entradaAceita,
+    entradaDatas: datasDaEntradaAceitas(
+      entrada.entradaDatasPedidas,
+      entradaVezes,
+    ),
+    entradaParcelas: parcelasDaEntradaAceitas(
+      entrada.entradaParcelasPedidas,
+      entradaAceita,
+      entradaVezes,
+    ),
     entradaVezes,
     ok: true,
     parcelas,
     valor,
   };
+}
+
+/**
+ * As parcelas da entrada montadas à mão, quando elas fecham com a entrada aceita.
+ *
+ * ⚠️ É O SEGUNDO "DIGITEI E NÃO FOI PARA O PAPEL" (22/09/2026). O botão "montar valores" aparece no
+ * espelho público sempre que a entrada tem mais de uma parcela (`SimuladorDeProposta.tsx`), e o
+ * cartão grande passa a anunciar "4× · 1ª de R$ 10.000". O corpo do PDF não levava a lista, e a
+ * folha saía com a divisão igual: quem montou 10.000 + 7.000 + 7.000 + 7.000 encaminhava um papel
+ * dizendo 4 × R$ 7.750. Mesma família do item 4 do Lucas, mesmo remédio.
+ *
+ * ⚠️ E A LISTA SÓ VALE SE FECHAR COM A ENTRADA QUE A FOLHA VAI IMPRIMIR. A folha traz a entrada no
+ * destaque E o fluxo linha a linha: uma lista que soma outra coisa faria o cabeçalho brigar com o
+ * próprio fluxo, no papel que vai ao cliente. Quando não fecha, a resposta é a divisão igual de
+ * sempre — que sempre soma a entrada por construção —, e não uma recusa: a página não tem login, o
+ * corpo se escreve à mão, e derrubar o PDF por causa de uma lista estranha só castigaria o visitante
+ * honesto cuja tela mandou a montagem de um estado anterior.
+ *
+ * ⚠️ A COMPARAÇÃO É EM CENTAVOS INTEIROS, como em `conferirEntradaMontada`: 3.333,33 × 3 dá
+ * 9.999,989999999998 em ponto flutuante, e a divisão mais comum entre três parcelas seria recusada.
+ */
+function parcelasDaEntradaAceitas(
+  pedidas: unknown,
+  entradaAceita: number,
+  entradaVezes: number,
+): null | number[] {
+  if (!Array.isArray(pedidas) || pedidas.length !== entradaVezes) return null;
+
+  const valores: number[] = [];
+  for (const bruto of pedidas) {
+    const v = reais(bruto);
+    // Zero no meio da lista não é montagem: é a tela em preenchimento, e `montarCronograma`
+    // descarta a linha, deixando a entrada somando menos do que o destaque anuncia.
+    if (v === null || v <= 0) return null;
+    valores.push(v);
+  }
+
+  const soma = valores.reduce((total, v) => total + Math.round(v * 100), 0);
+  return soma === Math.round(entradaAceita * 100) ? valores : null;
+}
+
+/**
+ * As datas escolhidas à mão para as parcelas da entrada.
+ *
+ * ⚠️ O CAMPO DE DATA FICA VISÍVEL NO ESPELHO PÚBLICO, ao contrário do bloco "Cobrança". O dia de
+ * vencimento e a data da primeira mensal somem no modo simulação, a pedido do Lucas (*"tira essa
+ * coisa de vencimento (...) como é um simulador"*), mas a data de CADA PARCELA DA ENTRADA aparece
+ * junto com a montagem, e sem ela no corpo o corretor escolhia "a segunda cai em janeiro" e a folha
+ * agendava outro mês. A data da entrada ainda empurra a primeira mensal (`montarCronograma`), então
+ * o fluxo inteiro saía diferente do que estava na tela: é a mesma queixa do item 4, num terceiro
+ * campo.
+ *
+ * ⚠️ SÓ `AAAA-MM-DD` DE VERDADE PASSA, e a lista inteira cai junto quando uma posição não é data.
+ * Um campo pela metade ("2026-1") viraria vencimento, e a folha pública se escreve à mão. A
+ * conferência é a do calendário, e não só a do formato: "2026-02-31" é formato válido e dia
+ * nenhum, e `Date` o empurraria para março sem avisar.
+ *
+ * Lista só de nulos devolve nulo: ninguém escolheu nada, e as datas calculadas continuam valendo.
+ *
+ * ⚠️ LISTA MAIS CURTA QUE `entradaVezes` VALE, E LISTA MAIOR NÃO (22/09/2026). Até aqui a régua
+ * exigia `length === entradaVezes` e jogava fora a lista INTEIRA quando o tamanho não batia. Medido
+ * em `SimuladorDeProposta.tsx`, o tamanho quase nunca bate: `datasDaEntradaCruas` nasce `[]` e o
+ * `onChange` do campo de data só faz a lista crescer até a posição tocada
+ * (`while (proxima.length <= i) proxima.push(null)`). Nada a completa até `entradaVezes`. Quem
+ * escolhe a data da 2ª de 4 parcelas sobe `entradaVezes: 4` com `entradaDatas: [null, "2026-12-20"]`
+ * (tamanho 2), a régua devolvia nulo e a folha agendava a data CALCULADA: o corretor escolhia uma
+ * data, via a data escolhida na tela e o papel saía com outra. É o item 4 do Lucas num terceiro
+ * campo (*"mesmo eu alterando o valor... quando eu mando para PDF ele não traz o valor que eu tinha
+ * colocado"*), e a Mesa nunca teve esse defeito: a rota da proposta só mapeia a lista e deixa o
+ * cronograma decidir posição a posição.
+ *
+ * ⚠️ OS DOIS CASOS SÃO DIFERENTES DE VERDADE, e por isso só um afrouxou:
+ *
+ *   • CURTA É A TELA NORMAL. As posições ausentes são as que ninguém tocou, e "não tocada" já quer
+ *     dizer "a data calculada" em toda posição nula do meio da lista. Completar com nulo até
+ *     `entradaVezes` diz exatamente a mesma coisa, e nenhuma data inventada entra no papel.
+ *   • MAIOR É ESTADO VELHO, de uma simulação com MAIS parcelas que a de agora. As datas de lá foram
+ *     escolhidas para um arranjo que não existe mais, e casá-las por posição com o arranjo de agora
+ *     agendaria a entrada por um combinado que ninguém fez. A resposta certa continua sendo a lista
+ *     inteira fora, e as datas calculadas de volta.
+ *
+ * ⚠️ E O TETO DE VEZES CONTINUA VALENDO POR TABELA: `entradaVezes` já chega preso em
+ * `ENTRADA_VEZES_MAXIMA`, então 200 datas num corpo escrito à mão caem como lista maior.
+ */
+function datasDaEntradaAceitas(
+  pedidas: unknown,
+  entradaVezes: number,
+): null | (null | string)[] {
+  if (!Array.isArray(pedidas) || pedidas.length > entradaVezes) return null;
+
+  const datas: (null | string)[] = [];
+  for (const bruto of pedidas) {
+    if (bruto === null || bruto === undefined || bruto === "") {
+      datas.push(null);
+      continue;
+    }
+    if (typeof bruto !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(bruto))
+      return null;
+    // O dia existe no calendário? `toISOString` devolve o mesmo texto só quando existe.
+    const data = new Date(`${bruto}T00:00:00Z`);
+    if (Number.isNaN(data.getTime()) || data.toISOString().slice(0, 10) !== bruto)
+      return null;
+    datas.push(bruto);
+  }
+
+  // As posições que a tela nunca tocou: nulo é "a data calculada", como em toda posição do meio.
+  while (datas.length < entradaVezes) datas.push(null);
+
+  return datas.some((d) => d !== null) ? datas : null;
 }

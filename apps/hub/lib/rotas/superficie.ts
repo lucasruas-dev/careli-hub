@@ -42,6 +42,10 @@ export const RAIZES_EXTERNAS = [
   "incorporador",
   // Páginas públicas por desenho: CAD do corretor, credenciamento de imobiliária, painel.
   "publico",
+  // A TV do stand de vendas: /tv/garden. Não é o hub em tela grande — é um telão que fica ligado o
+  // dia todo numa televisão do salão, sem teclado, sem login e sem ninguém operando. Quem autoriza
+  // é a lista curta de `lib/hercules/espelho/telas-de-tv.ts`, e não uma sessão.
+  "tv",
 ] as const;
 
 /**

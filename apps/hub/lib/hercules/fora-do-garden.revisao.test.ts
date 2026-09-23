@@ -118,8 +118,13 @@ describe("fora do Garden, os números são os da origin/main (reforço lançado 
       achadas.map((c) => [c.plano, c.parcelas, c.anuais.quantidade, c.anuais.valor, c.entrada, Math.round(c.parcela * 100) / 100]),
     ).toEqual([
       ["INVESTIDOR", 12, 1, 30_000, 20_000, 2_491.67],
-      ["CURTO", 24, 0, 0, 24_000, 2_329.17],
+      // ⚠️ AS DUAS DO CURTO TROCARAM DE LUGAR EM 22/09/2026, e é o desempate novo trabalhando. Elas
+      // empatam na entrada (R$ 24.000) e no total (o preço do lote, desde que o total passou a
+      // fechar com ele), e até aqui quem ficava na frente era a que a varredura gerou primeiro. O
+      // terceiro critério é a MENOR PARCELA: R$ 1.704,17 na frente de R$ 2.329,17, com a mesma
+      // entrada e o mesmo total. Nenhum número mudou — mudou qual delas o corretor lê primeiro.
       ["CURTO", 24, 1, 15_000, 24_000, 1_704.17],
+      ["CURTO", 24, 0, 0, 24_000, 2_329.17],
       ["INVESTIDOR", 12, 0, 0, 50_000, 2_491.67],
     ]);
   });
@@ -136,7 +141,9 @@ describe("fora do Garden, os números são os da origin/main (reforço lançado 
       primeiraParcelaDaEntrada: "2026-10-10",
       valorNegociado: 143_451,
     });
-    expect(c.totais).toEqual({ anuais: 45_000, entrada: 14_346, financiado: 91_135.3, geral: 214_339.56, mensais: 154_993.56 });
+    // `bensEPermutas: 0` nasceu em 22/09/2026 e é a única linha nova: os outros cinco números
+    // continuam sendo os da origin/main, que é o que esta revisão existe para travar.
+    expect(c.totais).toEqual({ anuais: 45_000, bensEPermutas: 0, entrada: 14_346, financiado: 91_135.3, geral: 214_339.56, mensais: 154_993.56 });
     expect(c.mensais[0]?.valor).toBe(584.2);
     expect(c.mensais[12]?.valor).toBe(612.3);
     expect(c.mensais.at(-1)?.valor).toBe(1_579.94);

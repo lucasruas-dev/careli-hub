@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto";
+import { inflateSync } from "node:zlib";
 import { readFileSync, writeFileSync } from "node:fs";
 
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, StandardFonts } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 
 import { avisoDaFolha, montarPropostaPdf, type PropostaParaPdf } from "./proposta-pdf";
@@ -162,5 +164,209 @@ describe("a folha do prédio", () => {
       unidade: "Torre A · Apto 304",
     });
     expect(Buffer.from(pdf.slice(0, 5)).toString()).toBe("%PDF-");
+  });
+});
+
+// ── A FOLHA NÃO PODE MUDAR SOZINHA ──────────────────────────────────────────
+
+/**
+ * Cada linha que o PDF desenha, com a folha e a coordenada em que ela saiu.
+ *
+ * ⚠️ `pdf.length` NÃO PROVA LAYOUT. Ele cresce e encolhe com compressão, e duas folhas com o
+ * mesmo tamanho em bytes podem ter o parágrafo em alturas diferentes. Quem responde "mudou um
+ * pixel?" é a COORDENADA, e ela está no fluxo de conteúdo: o pdf-lib escreve
+ * `1 0 0 1 <x> <y> Tm` antes de cada `<hex> Tj`. Mesmo desenho do `termo-de-acordo-pdf.test.ts`.
+ */
+function linhasDoPdf(bytes: Uint8Array): string[] {
+  const arquivo = Buffer.from(bytes);
+  const linhas: string[] = [];
+  let folha = 0;
+  let inicio = arquivo.indexOf("stream");
+
+  while (inicio !== -1) {
+    const comeco = arquivo.indexOf("\n", inicio) + 1;
+    const fim = arquivo.indexOf("endstream", comeco);
+    if (fim === -1) break;
+    try {
+      const conteudo = inflateSync(arquivo.subarray(comeco, fim)).toString("latin1");
+      const achados = [
+        ...conteudo.matchAll(/1 0 0 1 (-?[\d.]+) (-?[\d.]+) Tm\s*<([0-9A-Fa-f]*)>\s*Tj/g),
+      ];
+      if (achados.length > 0) {
+        folha += 1;
+        for (const [, x, y, hexadecimal] of achados) {
+          const texto = Buffer.from(hexadecimal ?? "", "hex").toString("latin1");
+          linhas.push(`${folha} ${x} ${y} ${texto}`);
+        }
+      }
+    } catch {
+      // fluxo que não é conteúdo de página comprimido (fonte, imagem): não tem texto a ler
+    }
+    inicio = arquivo.indexOf("stream", fim + "endstream".length);
+  }
+
+  return linhas;
+}
+
+describe("⚠️ a proposta SEM bens nem permutas sai exatamente como saía", () => {
+  it("o desenho inteiro bate com a impressão digital tirada antes da permuta existir", async () => {
+    const linhas = linhasDoPdf(await montarPropostaPdf(EXEMPLO));
+    const digital = createHash("sha256").update(linhas.join("\n")).digest("hex");
+
+    // ⚠️ IMPRESSÃO DIGITAL TIRADA EM 22/09/2026, ANTES DE A PERMUTA EXISTIR — é ela que prova
+    // que a folha da maioria (proposta sem bem nem permuta) não mudou nada: mesmo texto, mesmo x,
+    // mesmo y, mesma folha, nas 85 linhas do exemplo. Se este número mudar junto com uma feature
+    // que era para ser invisível aqui, a feature vazou para o papel de quem não tem permuta.
+    // Mudou de propósito (um texto novo, um espaçamento aprovado)? Rode, leia o valor recebido e
+    // troque o de baixo — mas só depois de olhar o PDF em `.tmpr/proposta-exemplo.pdf`.
+    expect({ digital, linhas: linhas.length }).toEqual({
+      digital: "e3426d98f06caaea91abe6752d0c8a984ed03ffa62ade6d8d9755e43fd8e9bce",
+      linhas: 85,
+    });
+  });
+});
+
+// ── BENS E PERMUTAS NO PAPEL (22/09/2026) ───────────────────────────────────
+//
+// Lucas, perguntado se a permuta abate o valor a financiar ou é só registro: *"Abate, como uma
+// entrada"*. Quantos cabem numa proposta: *"Vários"*. E a folha tem que mostrar, porque um bem de
+// R$ 80.000 que some do papel faz o comprador achar que está devendo R$ 80.000 a mais.
+
+/** Só o texto desenhado, sem as coordenadas — para procurar uma frase no papel. */
+const textoDoPdf = (linhas: string[]): string =>
+  linhas.map((l) => l.replace(/^\d+ \S+ \S+ /, "")).join("\n");
+
+/** Como o documento escreve um título de seção: maiúsculas com espaço entre as letras. */
+const comoTitulo = (valor: string): string =>
+  valor.toUpperCase().split("").join(" ");
+
+/** A altura em que uma frase foi desenhada, para conferir a ORDEM das seções na folha. */
+const alturaDe = (linhas: string[], frase: string): null | number => {
+  const achada = linhas.find((l) => l.endsWith(` ${frase}`));
+  return achada ? Number(achada.split(" ")[2]) : null;
+};
+
+describe("bens e permutas no papel", () => {
+  const BENS = [
+    {
+      comoEntra: "Entrada",
+      descricao: "Ford Ka 2019 placa ABC1D23",
+      tipo: "Bem",
+      valor: "R$ 30.000,00",
+    },
+    {
+      comoEntra: "Abatimento",
+      descricao: "lote 12 da quadra 4 em Anápolis",
+      tipo: "Permuta",
+      valor: "R$ 50.000,00",
+    },
+  ];
+
+  const comPermuta = (extra: Partial<PropostaParaPdf> = {}) =>
+    montarPropostaPdf({
+      ...EXEMPLO,
+      bensEPermutas: BENS,
+      bensEPermutasTotal: "R$ 80.000,00",
+      ...extra,
+    });
+
+  it("cada item sai com o tipo, o valor e a descrição", async () => {
+    const pdf = await comPermuta();
+    const texto = textoDoPdf(linhasDoPdf(pdf));
+
+    // O Lucas confere papel olhando o papel: fica gravado ao lado do exemplo sem permuta.
+    writeFileSync(arquivo("../../../../.tmpr/proposta-exemplo-permuta.pdf"), pdf);
+
+    expect(texto).toContain("Ford Ka 2019 placa ABC1D23");
+    expect(texto).toContain("lote 12 da quadra 4 em Anápolis");
+    expect(texto).toContain("R$ 30.000,00");
+    expect(texto).toContain("R$ 50.000,00");
+    expect(texto).toContain("Bem");
+    expect(texto).toContain("Permuta");
+  });
+
+  it("⚠️ o total diz que aquele dinheiro ABATEU o saldo, e não que ainda será pago", async () => {
+    const texto = textoDoPdf(linhasDoPdf(await comPermuta()));
+
+    expect(texto).toContain("Total em bens e permutas");
+    expect(texto).toContain("R$ 80.000,00");
+    // Sem esta frase, os R$ 80.000 ao lado do fluxo de entrada e das anuais parecem mais uma
+    // coisa a pagar — que é o oposto do que eles são.
+    expect(texto).toContain("abatido do saldo a financiar");
+  });
+
+  it("⚠️ cada item diz SE cumpriu a entrada ou só abateu o saldo", async () => {
+    // Lucas: *"pode ser um ou outro, pode apontar na entrada ou somente no valor negociado"*. Os
+    // dois abatem; só um conta para a entrada mínima de 10%. Sem essa coluna, quem confere a
+    // entrada no papel some com a diferença ou soma o mesmo dinheiro duas vezes.
+    const texto = textoDoPdf(linhasDoPdf(await comPermuta()));
+
+    expect(texto).toContain("Entrada");
+    expect(texto).toContain("Abatimento");
+  });
+
+  it("a seção fica entre o fluxo da entrada e o das anuais", async () => {
+    const linhas = linhasDoPdf(await comPermuta());
+    const entrada = alturaDe(linhas, comoTitulo("Pagamento da entrada"));
+    const bens = alturaDe(linhas, comoTitulo("Bens e permutas recebidos"));
+    const anuais = alturaDe(linhas, comoTitulo("Pagamento das parcelas anuais"));
+
+    // Na mesma página e descendo: o y do PDF cresce para cima.
+    expect(entrada).not.toBeNull();
+    expect(bens).not.toBeNull();
+    expect(anuais).not.toBeNull();
+    expect(bens!).toBeLessThan(entrada!);
+    expect(anuais!).toBeLessThan(bens!);
+  });
+
+  it("⚠️ descrição comprida é cortada, e não escrita por cima do valor", async () => {
+    // O operador digita texto livre. `tabela` desenha cada célula num x fixo: uma descrição mais
+    // larga que a coluna atravessa a do valor e o comprador lê o preço do bem por cima das letras.
+    const longa =
+      "Fazenda Santa Luzia, 42 alqueires com sede, curral, dois poços artesianos e pastagem formada, em Jussara GO";
+    const linhas = linhasDoPdf(
+      await comPermuta({
+        bensEPermutas: [{ ...BENS[0]!, descricao: longa }],
+      }),
+    );
+    const texto = textoDoPdf(linhas);
+
+    expect(texto).not.toContain(longa);
+    expect(texto).toContain("Fazenda Santa Luzia,");
+    expect(linhas.some((l) => l.includes("Fazenda Santa Luzia,") && l.endsWith("..."))).toBe(true);
+  });
+
+  it("⚠️ a linha do total não escreve um pedaço por cima do outro", async () => {
+    // Foi o que aconteceu ao escrever esta seção: "Total em bens e permutas" em Helvetica-Bold 9
+    // termina em x=144,6, e a frase do lado começava em x=108,2 — 36pt de texto sobre texto, que
+    // nenhum teste de conteúdo pega (as duas frases existem no PDF, só que ilegíveis uma na
+    // outra). O que pega é medir a largura do que foi desenhado.
+    const linhas = linhasDoPdf(await comPermuta());
+    const doTotal = linhas
+      .filter((l) => l.includes("Total em bens e permutas") || l.includes("abatido do saldo"))
+      .map((l) => {
+        const [, , y, ...resto] = l.split(" ");
+        return { texto: resto.join(" "), y: Number(y), x: Number(l.split(" ")[1]) };
+      });
+
+    // O `tabela` escreve a linha de soma em Helvetica-Bold 9.
+    const doc = await PDFDocument.create();
+    const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+    const naMesmaAltura = doTotal.filter((c) => c.y === doTotal[0]?.y).sort((a, b) => a.x - b.x);
+
+    expect(naMesmaAltura).toHaveLength(2);
+    const [esquerda, direita] = naMesmaAltura;
+    expect(esquerda!.x + bold.widthOfTextAtSize(esquerda!.texto, 9)).toBeLessThan(direita!.x);
+  });
+
+  it("⚠️ lista vazia desenha EXATAMENTE o que o campo ausente desenha", async () => {
+    // A maioria das propostas não tem permuta. Se a seção deixasse um espaço, uma régua ou um
+    // "R$ 0,00" para trás, o papel de todo mundo mudaria por causa de um recurso de poucos.
+    const vazia = linhasDoPdf(
+      await montarPropostaPdf({ ...EXEMPLO, bensEPermutas: [], bensEPermutasTotal: "" }),
+    );
+    const ausente = linhasDoPdf(await montarPropostaPdf(EXEMPLO));
+
+    expect(vazia).toEqual(ausente);
   });
 });

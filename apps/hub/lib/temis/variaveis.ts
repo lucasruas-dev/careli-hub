@@ -571,6 +571,18 @@ const VALORES: VariavelDoContrato[] = [
   { exemplo: "10", fonte: VENDA("dia_vencimento"), grupo: "valores", nome: "dia_vencimento", origem: "Dia de vencimento das parcelas", rotulo: "Dia de vencimento", tipo: "numero" },
   { exemplo: "dez", extensoDe: "dia_vencimento", fonte: EXTENSO_DE("dia_vencimento"), grupo: "valores", nome: "dia_vencimento_extenso", origem: "Escrito pelo sistema", rotulo: "Dia de vencimento por extenso", tipo: "extenso" },
   { exemplo: "01 de setembro de 2026", fonte: VENDA("vendida_em"), grupo: "valores", nome: "data_venda", origem: "Data da venda", rotulo: "Data da venda", tipo: "data" },
+  // ── O BEM E A PERMUTA RECEBIDOS NA AQUISIÇÃO (migration 0187) ──
+  //
+  // Lucas (22/09/2026), perguntado onde a permuta aparece: *"Já no contrato também"*. Até aqui o
+  // carro e o lote dados em pagamento só existiam na `observacao`, em texto corrido: a minuta não
+  // tinha como dizer "recebe em permuta o Ford Ka placa ABC1D23, R$ 80.000".
+  //
+  // ⚠️ AS DUAS SÓ SAEM DENTRO DO PAR `inicio_tem_bens_e_permutas`. A imensa maioria das vendas não
+  // tem bem nenhum, e uma cláusula solta com estas variáveis imprimiria "recebe em permuta , no
+  // valor total de " em todo contrato da casa.
+  { exemplo: "Ford Ka 2019 placa ABC1D23 (permuta), no valor de R$ 80.000,00", fonte: VENDA("bens_e_permutas — a lista de bens e permutas da proposta"), grupo: "valores", nome: "bens_e_permutas_descricao", origem: "Bens e permutas da venda", rotulo: "Bens e permutas, descritos", tipo: "texto" },
+  { exemplo: "R$ 80.000,00", fonte: VENDA("soma de bens_e_permutas[].valor"), grupo: "valores", nome: "valor_bens_e_permutas", origem: "Bens e permutas da venda", rotulo: "Valor dos bens e permutas", tipo: "dinheiro" },
+  { exemplo: "oitenta mil reais", extensoDe: "valor_bens_e_permutas", fonte: EXTENSO_DE("valor_bens_e_permutas"), grupo: "valores", nome: "valor_bens_e_permutas_extenso", origem: "Escrito pelo sistema", rotulo: "Bens e permutas por extenso", tipo: "extenso" },
 ];
 
 // ── PLANOS NA FOLHA DA PROPOSTA ──────────────────────────────────────────────
@@ -624,6 +636,30 @@ const BLOCOS_DO_PLANO: VariavelDoContrato[] = [
     nome: "fim_tem_anuais",
     origem: "Sai só quando o plano tem parcelas anuais",
     rotulo: "Fim — só quando o plano tem anuais",
+    tipo: "bloco_fim",
+  },
+  // ⚠️ O PAR DA PERMUTA PRECISA EXISTIR NO CATÁLOGO E SER RESPONDIDO SEMPRE. `condicaoLigada`
+  // (preencher-contrato.ts) termina em `return true` para par DESCONHECIDO — a cláusula sai e
+  // alguém percebe, que é a regra certa para o que ninguém sabe avaliar. Aqui a casa SABE: quem
+  // responde é `condicoesDoContrato`, e ela devolve `false` inclusive para as 4.857 propostas
+  // importadas, cujo `condicoes` é nulo. Sem essa resposta, toda venda importada sairia prometendo
+  // uma permuta que ninguém deu.
+  {
+    exemplo: "",
+    fonte: VENDA("bens_e_permutas com pelo menos um item de valor positivo"),
+    grupo: "bloco",
+    nome: "inicio_tem_bens_e_permutas",
+    origem: "Sai só quando a venda recebeu bem ou permuta",
+    rotulo: "Início — só quando há bem ou permuta",
+    tipo: "bloco_inicio",
+  },
+  {
+    exemplo: "",
+    fonte: VENDA("bens_e_permutas com pelo menos um item de valor positivo"),
+    grupo: "bloco",
+    nome: "fim_tem_bens_e_permutas",
+    origem: "Sai só quando a venda recebeu bem ou permuta",
+    rotulo: "Fim — só quando há bem ou permuta",
     tipo: "bloco_fim",
   },
 ];

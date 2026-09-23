@@ -51,6 +51,7 @@ import { C2X_PROFISSOES } from "@/lib/apolo/c2x-professions";
 import { type EnderecoDaFicha, unirConjuge, unirEndereco } from "@/lib/apolo/cadastro-cascata";
 import { type CarteiraDaVenda, carteiraDaVendaImportada } from "@/lib/apolo/carteira-da-venda";
 import { formatarDocumento, soDigitos } from "@/lib/apolo/documento";
+import { type BemOuPermuta, somarBensEPermutas, valeDinheiro } from "@/lib/hercules/bens-e-permutas";
 import type { FatosApurados } from "@/lib/hercules/fatos-do-contrato";
 import { lerFatosDoContrato } from "@/lib/hercules/fatos-do-contrato-server";
 import { lerComColunasDoApartamento } from "@/lib/hercules/nome-da-unidade";
@@ -84,6 +85,14 @@ type LinhaDaProposta = {
    */
   cliente_entity_id?: null | string;
   cliente_nome: null | string;
+  /**
+   * Os bens e permutas recebidos na aquisição (migration 0187), em lista jsonb.
+   *
+   * ⚠️ OPCIONAL PORQUE A COLUNA PODE NÃO EXISTIR. A 0187 está escrita e NÃO foi aplicada: conferido
+   * em `information_schema.columns` no banco em 22/09/2026, `hercules_propostas` não a tem. Ver
+   * `lerProposta`, que repete a consulta sem ela.
+   */
+  bens_e_permutas?: unknown;
   compradores: unknown;
   condicoes: unknown;
   /** ⚠️ Nomes DESNORMALIZADOS — são o que as 4.857 propostas importadas têm. Ver a nota da corretagem. */
@@ -376,16 +385,7 @@ export async function dadosDaProposta(
 } | null> {
   const avisos: string[] = [];
 
-  const proposta = await umaLinha<LinhaDaProposta>(
-    sb
-      .from("hercules_propostas")
-      .select(
-        "cliente_c2x_id, cliente_documento, cliente_entity_id, cliente_nome, compradores, condicoes, contrato_parcelas, corretor_entity_id, corretor_nome, data_assinatura, data_ato, data_faturamento, dia_vencimento, empreendimento_id, etapa_c2x, imobiliaria_c2x_id, imobiliaria_entity_id, imobiliaria_nome, origem_c2x_id, plano_nome, plano_parcelas, unidade_id, valor",
-      )
-      .eq("id", propostaId)
-      .maybeSingle(),
-    "hercules_propostas",
-  );
+  const proposta = await lerProposta(sb, propostaId);
 
   if (!proposta) return null;
 
@@ -522,9 +522,15 @@ export async function dadosDaProposta(
   // manda conferir o que foi gravado na proposta; esta precisa dizer que a carteira já tem as
   // parcelas e que, mesmo assim, o quadro do CONTRATO depende do cronograma da proposta — senão o
   // operador vai procurar defeito na carteira, que está certa.
+  // ⚠️ O BEM VAI PARA O QUADRO, SENÃO O RODAPÉ DESMENTE A CLÁUSULA 6.1 DA PÁGINA. O cronograma já
+  // desconta a permuta do saldo, e o total do quadro é a soma das linhas: sem a linha do bem, o
+  // lote de R$ 200.000 com permuta de R$ 80.000 fechava em R$ 120.000 embaixo de um 6.1 que promete
+  // R$ 200.000. Ver `tabela-de-pagamentos.ts`.
+  const bens = bensDaProposta(proposta);
   const quadro = tabelaGeralDePagamentos(
     proposta.condicoes,
     comissaoTotalEmCentavos(numero(proposta.valor), comissao.percentuais),
+    bens,
   );
   const temCronogramaGravado = objeto(proposta.condicoes) !== null;
   if (!quadro && (temCronogramaGravado || carteira?.situacao === "ok")) {
@@ -2238,6 +2244,29 @@ function gerais(
 
   por("plano_nome", texto(proposta.plano_nome));
 
+  // ── O BEM E A PERMUTA ──
+  //
+  // ⚠️ ELES SAEM AQUI EM CIMA, ANTES DO CRONOGRAMA, e a posição é o que faz a coisa funcionar: o
+  // bloco do cronograma abaixo tem `return` quando `condicoes` é nulo (as 4.857 propostas importadas
+  // do C2X). O bem mora em coluna PRÓPRIA desde a 0187 — uma venda importada pode receber permuta
+  // sem nunca ter tido cronograma gravado, e escrevê-lo lá embaixo o perderia em todas elas.
+  //
+  // ⚠️ SEM BEM, NADA É ESCRITO — nem "R$ 0,00". O par `tem_bens_e_permutas` já corta a cláusula
+  // inteira (ver `condicoesDoContrato`), e uma variável com zero solta no mapa é o que faz a minuta
+  // mal fechada imprimir "recebe em permuta , no valor total de R$ 0,00" no contrato do cliente.
+  const bensEPermutas = bensDaProposta(proposta);
+  if (bensEPermutas.length > 0) {
+    por("bens_e_permutas_descricao", descricaoDosBens(bensEPermutas));
+    parDeDinheiro(
+      "valor_bens_e_permutas",
+      // ⚠️ A SOMA É A DA CASA (`somarBensEPermutas`), e não um `reduce` local. Duas contas da mesma
+      // lista é como o cartão da tela e o papel do cliente passam a anunciar números diferentes para
+      // a mesma venda — foi o que aconteceu com os reforços anuais (R$ 180.000 contra
+      // R$ 166.111,11). A mesma função soma o abatimento do saldo no cronograma.
+      somarBensEPermutas(bensEPermutas),
+    );
+  }
+
   const condicoes = objeto(proposta.condicoes) as CondicoesGravadas | null;
 
   // ⚠️ A TABELA DE AMORTIZAÇÃO SAI DO PLANO DA VENDA, e não da digitação. A variável
@@ -2320,10 +2349,20 @@ function gerais(
  * avaliar faria a cláusula sumir em silêncio do contrato assinado.
  */
 function condicoesDoContrato(proposta: LinhaDaProposta): Record<string, boolean> {
+  // ⚠️ O PAR DA PERMUTA É RESPONDIDO ANTES DE TUDO, E NUNCA FICA DE FORA DO MAPA. `condicaoLigada`
+  // trata par DESCONHECIDO como VERDADEIRO, e o `return {}` de baixo é o caso das 4.857 propostas
+  // importadas do C2X, que têm `condicoes` nulo: com o par ausente, `[inicio_tem_bens_e_permutas]`
+  // sairia LIGADO em todas elas e o contrato prometeria uma permuta que ninguém deu — com os
+  // colchetes das variáveis impressos no meio da frase, porque não há bem nenhum para preenchê-las.
+  //
+  // ⚠️ E A RESPOSTA NÃO DEPENDE DE `condicoes`: o bem mora em coluna PRÓPRIA (0187), e venda
+  // importada pode ganhar permuta sem nunca ter cronograma gravado.
+  const bens = { tem_bens_e_permutas: bensDaProposta(proposta).length > 0 };
+
   const condicoes = objeto(proposta.condicoes) as CondicoesGravadas | null;
-  if (!condicoes) return {};
+  if (!condicoes) return bens;
   const anuais = Array.isArray(condicoes.anuais) ? condicoes.anuais : [];
-  return { tem_anuais: anuais.length > 0 };
+  return { ...bens, tem_anuais: anuais.length > 0 };
 }
 
 /**
@@ -2734,6 +2773,62 @@ function compradoresDaProposta(proposta: LinhaDaProposta): CompradorDaProposta[]
   return [{ cpf: documento, nome, titular: true }];
 }
 
+/**
+ * Os bens e permutas da proposta, já filtrados pelo que é dinheiro de verdade.
+ *
+ * ⚠️ A MESMA RÉGUA DE `valeDinheiro` (`lib/hercules/bens-e-permutas.ts`): valor que não é número
+ * positivo não conta. A lista nasce de um formulário que está sendo preenchido, e um item com
+ * `valor` vazio levaria "R$ NaN" para a cláusula e para o quadro do contrato.
+ *
+ * ⚠️ E LISTA AUSENTE É LISTA VAZIA, sem distinção. A coluna é `not null default '[]'` desde a 0187
+ * (aplicada em 22/09/2026), mas uma proposta lida por um select que não pede a coluna chega com
+ * `undefined` — e "não tem permuta" é a mesma coisa nos dois casos.
+ */
+function bensDaProposta(proposta: LinhaDaProposta): BemOuPermuta[] {
+  const crus = Array.isArray(proposta.bens_e_permutas) ? proposta.bens_e_permutas : [];
+  return crus
+    .map((c) => {
+      const cru = objeto(c) as null | Partial<BemOuPermuta>;
+      if (!cru) return null;
+      // ⚠️ AQUI O VALOR É NORMALIZADO ANTES DA RÉGUA, e este é o único lugar do fluxo onde isso se
+      // faz. Esta função é o portão de LEITURA do banco: o jsonb pode ter chegado de uma carga, de
+      // um SQL direto ou de uma serialização que virou `"80000"` em vez de `80000`, e `valeDinheiro`
+      // não coage de propósito. Sem normalizar aqui, o item passava no filtro por `Number(...)` e
+      // seguia com `valor` string: medido em 22/09/2026, a cláusula anunciava "R$ 80.000,00", a
+      // variável `valor_bens_e_permutas` imprimia "R$ 0,00" e o quadro não ganhava linha nenhuma.
+      // Três números para o mesmo carro, no mesmo contrato.
+      return { ...cru, valor: Number(cru.valor) } as BemOuPermuta;
+    })
+    .filter((c): c is BemOuPermuta => c !== null && valeDinheiro(c));
+}
+
+/**
+ * Como os bens se escrevem numa frase de contrato: "o Ford Ka 2019 placa ABC1D23, recebido em
+ * permuta, no valor de R$ 80.000,00".
+ *
+ * ⚠️ CADA ITEM LEVA O PRÓPRIO VALOR, e não só o total. Lucas (22/09/2026), perguntado quantos bens
+ * cabem numa proposta: *"Vários"*. Uma frase que dissesse "o carro e o lote, no valor total de
+ * R$ 95.000" obrigaria quem lê a adivinhar quanto vale cada um — e é sobre o valor de CADA bem que
+ * se discute devolução numa rescisão.
+ *
+ * ⚠️ E O TIPO VAI JUNTO porque ele muda o que se transfere: permuta é imóvel entregue no lugar do
+ * preço, bem é coisa dada em pagamento. O cartório não registra os dois do mesmo jeito.
+ *
+ * ⚠️ PONTO E VÍRGULA ENTRE OS ITENS, E NÃO VÍRGULA. Cada item já tem uma vírgula dentro ("…, no
+ * valor de …"); separar com vírgula faria uma lista de três bens virar uma frase em que ninguém
+ * distingue onde um acaba e o outro começa.
+ */
+function descricaoDosBens(bens: readonly BemOuPermuta[]): string {
+  const itens = bens.map((bem) => {
+    const oQueE =
+      String(bem.descricao ?? "").trim() || (bem.tipo === "permuta" ? "o bem permutado" : "o bem");
+    const comoEntra = bem.tipo === "permuta" ? "recebido em permuta" : "recebido em pagamento";
+    return `${oQueE}, ${comoEntra}, no valor de ${emReais(numero(bem.valor) ?? 0)}`;
+  });
+  if (itens.length <= 1) return itens[0] ?? "";
+  return `${itens.slice(0, -1).join("; ")}; e ${itens[itens.length - 1]}`;
+}
+
 // ── AS CONSULTAS ─────────────────────────────────────────────────────────────
 //
 // ⚠️ LEITURA QUE FALHOU NÃO É "NÃO TEM". É a lição de `lerCadDaEsteira`: engolir o erro faria um
@@ -2741,7 +2836,54 @@ function compradoresDaProposta(proposta: LinhaDaProposta): CompradorDaProposta[]
 // branco, com um aviso plausível ao lado, sem ninguém suspeitar de nada. Parar é o certo aqui:
 // contrato não sai pela metade.
 
-type Resposta = { data?: unknown; error?: null | { message?: string } };
+type Resposta = { data?: unknown; error?: null | { code?: string; message?: string } };
+
+/** As colunas da proposta que o motor do contrato lê, sem a da 0187. */
+const COLUNAS_DA_PROPOSTA =
+  "cliente_c2x_id, cliente_documento, cliente_entity_id, cliente_nome, compradores, condicoes, contrato_parcelas, corretor_entity_id, corretor_nome, data_assinatura, data_ato, data_faturamento, dia_vencimento, empreendimento_id, etapa_c2x, imobiliaria_c2x_id, imobiliaria_entity_id, imobiliaria_nome, origem_c2x_id, plano_nome, plano_parcelas, unidade_id, valor";
+
+/**
+ * A linha da proposta, com os bens e permutas quando o banco já os tem.
+ *
+ * ⚠️ A MIGRATION 0187 AINDA NÃO ENTROU, E O CONTRATO NÃO PODE CAIR POR CAUSA DISSO. Medido em
+ * 22/09/2026: `information_schema.columns` não tem `hercules_propostas.bens_e_permutas` no banco de
+ * produção. Pedir coluna inexistente devolve 42703/PGRST204, `umaLinha` transforma isso em erro, e a
+ * geração de TODO contrato da casa passaria a responder falha — inclusive a das 4.857 propostas
+ * importadas do C2X, que nunca terão permuta nenhuma.
+ *
+ * É o mesmo recuo de `lerComColunasDoApartamento` (0171), e pelo mesmo motivo: sem a coluna não
+ * existe permuta cadastrada em lugar nenhum, então ler sem ela é EXATO, não aproximado.
+ *
+ * ⚠️ E SÓ ESSE ERRO REPETE. Qualquer outra falha de leitura continua subindo como sempre — engolir
+ * um blip de rede aqui faria o contrato sair sem a permuta que o comprador deu, calado.
+ */
+async function lerProposta(
+  sb: SupabaseClient,
+  propostaId: string,
+): Promise<LinhaDaProposta | null> {
+  const comBens = (await sb
+    .from("hercules_propostas")
+    .select(`${COLUNAS_DA_PROPOSTA}, bens_e_permutas`)
+    .eq("id", propostaId)
+    .maybeSingle()) as Resposta;
+
+  if (!ehColunaDeBensAusente(comBens.error)) {
+    return umaLinha<LinhaDaProposta>(Promise.resolve(comBens), "hercules_propostas");
+  }
+
+  return umaLinha<LinhaDaProposta>(
+    sb.from("hercules_propostas").select(COLUNAS_DA_PROPOSTA).eq("id", propostaId).maybeSingle(),
+    "hercules_propostas",
+  );
+}
+
+/** O erro do Postgres/PostgREST para "essa coluna não existe", e só para a da 0187. */
+function ehColunaDeBensAusente(erro: unknown): boolean {
+  if (!erro || typeof erro !== "object") return false;
+  const { code, message } = erro as { code?: unknown; message?: unknown };
+  if (code !== "42703" && code !== "PGRST204") return false;
+  return String(message ?? "").toLowerCase().includes("bens_e_permutas");
+}
 
 async function umaLinha<T>(consulta: PromiseLike<unknown>, tabela: string): Promise<null | T> {
   const { data, error } = ((await consulta) ?? {}) as Resposta;

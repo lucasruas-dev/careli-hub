@@ -248,13 +248,17 @@ describe("⚠️ composicoesQueFecham em SACOC — o plano de 21 dos 24 empreend
     for (const c of r) expect(c.entrada).toBeGreaterThan(0);
   });
 
-  it("⚠️ o total soma a série inteira, com o degrau do aniversário dentro", () => {
-    // `parcela × prazo` esconderia os juros que o SACOC cobra a partir do 13º mês — e a lista
-    // ordena o desempate por total.
+  it("⚠️ o total é a soma do que a linha anuncia, sem o degrau do aniversário", () => {
+    // Era o contrário até 22/09/2026 (`somaDasMensais`, com o degrau do SACOC dentro). Lucas, sobre
+    // os dois prints do espelho público do Garden: *"o valor pago tem que ser o valor do lote, está
+    // cobrando juros errado. não calculamos juros nessa etapa, é somente informativo"*. Cada linha
+    // da lista diz entrada, reforço e prazo; somar por baixo um degrau que ela não mostra é o que
+    // imprimia R$ 425.937 num arranjo de R$ 382.720.
     const r = composicoesQueFecham({ parcelaAlvo: 3_450, planos: PLANOS_SACOC, valor: 136_521 });
+    expect(r.length).toBeGreaterThan(0);
     for (const c of r) {
       const face = c.anuais.quantidade * c.anuais.valor;
-      expect(c.total).toBeGreaterThan(c.entrada + c.parcela * c.parcelas + face);
+      expect(c.total).toBeCloseTo(c.entrada + c.parcela * c.parcelas + face, 6);
     }
   });
 });

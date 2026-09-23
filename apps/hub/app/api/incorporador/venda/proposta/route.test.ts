@@ -32,8 +32,16 @@ const estado = vi.hoisted(() => ({
   credenciado: true,
   /** O desconto do plano (0178). Zero é o plano de sempre; o do Garden entra só no teste dele. */
   descontoDoPlano: 0,
+  /** Cada folha que chegou ao gerador de PDF — é por ela que se prova o que o papel carrega. */
+  folhas: [] as Array<Record<string, unknown>>,
   inserido: [] as Array<{ linha: Record<string, unknown>; tabela: string }>,
   reserva: {} as Record<string, unknown>,
+  /**
+   * O banco AINDA SEM A 0187: o insert que nomeia `bens_e_permutas` volta com o erro de coluna
+   * desconhecida. Medido em produção em 22/09/2026 — `information_schema.columns` não devolve a
+   * coluna em `hercules_propostas`, porque aplicar migration exige OK do Lucas, a cada vez.
+   */
+  semAColunaDeBens: false,
 }));
 
 const UNIDADE = {
@@ -170,9 +178,16 @@ vi.mock("@/lib/hercules/avisos-da-venda", async () => {
   };
 });
 
-// O PDF de verdade é caro e não é o assunto deste teste — o insert acontece antes dele.
+// O desenho do PDF é caro e não é o assunto deste teste — o insert acontece antes dele.
+//
+// ⚠️ MAS A FOLHA FICA GUARDADA, e é o único jeito de provar o que o papel carrega sem abrir o PDF
+// a olho. `montarFolhaDaProposta` (o de VERDADE, não mockado) é quem traduz o que a rota passa em
+// linhas impressas: capturar o argumento aqui prende a costura inteira rota → folha → papel.
 vi.mock("@/lib/hercules/proposta-pdf", () => ({
-  montarPropostaPdf: async () => new Uint8Array([1, 2, 3]),
+  montarPropostaPdf: async (folha: Record<string, unknown>) => {
+    estado.folhas.push(folha);
+    return new Uint8Array([1, 2, 3]);
+  },
 }));
 
 vi.mock("@/lib/apolo/server", () => {
@@ -241,7 +256,26 @@ vi.mock("@/lib/apolo/server", () => {
       update: boolean;
     },
   ) => {
-    if (feito.insert) return { data: { id: "prop-1" }, error: null };
+    if (feito.insert) {
+      // ⚠️ O BANCO SEM A 0187 RECUSA O INSERT QUE NOMEIA A COLUNA — e é a forma exata do erro que
+      // o PostgREST devolve quando o schema cache não conhece o campo (PGRST204). Sem este ramo o
+      // dublê aceitaria qualquer coluna, e o teste provaria um banco que não existe.
+      if (
+        tabela === "hercules_propostas" &&
+        estado.semAColunaDeBens &&
+        "bens_e_permutas" in feito.insert
+      ) {
+        return {
+          data: null,
+          error: {
+            code: "PGRST204",
+            message:
+              "Could not find the 'bens_e_permutas' column of 'hercules_propostas' in the schema cache",
+          },
+        };
+      }
+      return { data: { id: "prop-1" }, error: null };
+    }
     // Update com `.select()`: uma linha casada, como no caminho feliz do PostgREST.
     if (feito.update) {
       if (!feito.select) return { data: null, error: null };
@@ -311,6 +345,11 @@ vi.mock("@/lib/apolo/server", () => {
 });
 
 import { POST } from "@/app/api/incorporador/venda/proposta/route";
+// ⚠️ O CRONOGRAMA AQUI É O DE VERDADE, e é ele o gabarito. Reescrever a conta esperada à mão
+// (200.000 − 5.000 − 80.000) provaria a aritmética do teste, não que a rota MANDOU os bens para a
+// lib: é exatamente assim que a rota ficou "meio ligada" — gravando a permuta e financiando o lote
+// inteiro. O teste compara o que a rota congelou com o que a mesma composição produz.
+import { montarCronograma } from "@/lib/hercules/cronograma";
 
 /** Uma data que não é passado — a régua recusa cobrança em dia que já passou. */
 const PRIMEIRA_PARCELA = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
@@ -354,8 +393,16 @@ const pedir = (corpo: Record<string, unknown>) =>
     }),
   );
 
-/** A linha que foi para `hercules_propostas`. */
-const gravada = () => estado.inserido.find((i) => i.tabela === "hercules_propostas")?.linha ?? {};
+/**
+ * A linha que foi para `hercules_propostas` — a ÚLTIMA tentativa, que é a que valeu.
+ *
+ * ⚠️ A PRIMEIRA PODE TER SIDO RECUSADA. Com a 0187 ainda não aplicada, o insert que nomeia
+ * `bens_e_permutas` volta com PGRST204 e a rota refaz sem a coluna; pegar a PRIMEIRA entrada da
+ * lista devolveria a tentativa que o banco rejeitou, e o teste afirmaria ter gravado o que não
+ * gravou.
+ */
+const gravada = () =>
+  [...estado.inserido].reverse().find((i) => i.tabela === "hercules_propostas")?.linha ?? {};
 
 beforeEach(() => {
   estado.apagado = [];
@@ -368,8 +415,10 @@ beforeEach(() => {
   estado.unidade = UNIDADE;
   estado.credenciado = true;
   estado.descontoDoPlano = 0;
+  estado.folhas = [];
   estado.inserido = [];
   estado.reservaJaSaiu = false;
+  estado.semAColunaDeBens = false;
   estado.propostasDeOutros = [];
   estado.reserva = {
     corretor_entity_id: "corr-1",
@@ -633,5 +682,395 @@ describe("POST: o desconto do plano congelado na proposta (18/09/2026)", () => {
   it("plano sem desconto congela zero, como sempre", async () => {
     await pedir({ parcelasMensais: 180 });
     expect(congelado()).toBe(0);
+  });
+});
+
+// ── O BEM E A PERMUTA RECEBIDOS NA AQUISIÇÃO (Lucas, 22/09/2026) ─────────────
+//
+// *"Abate, como uma entrada"*, *"Vários"*, *"pode ser um ou outro, pode apontar na entrada ou
+// somente no valor negociado"*. O que se trava aqui é o CONTRATO DO DADO: a lista chega pela rota,
+// é conferida item a item e vai para `hercules_propostas.bens_e_permutas` (0187). O que cada
+// `entraComo` faz com a entrada mínima é régua de `lib/hercules/proposta.ts`, de outra frente.
+//
+// ⚠️ O CASO DO VALOR VAZIO É O MOTIVO DESTE BLOCO EXISTIR. `Number("")` é ZERO, e nesta casa isso
+// já virou cobrança de R$ 0,00 em produção: um campo de valor que o coordenador não preencheu não
+// pode virar "permuta de zero reais" gravada e impressa no contrato como se fosse combinada.
+const PERMUTA = {
+  descricao: "Ford Ka 2019 placa ABC1D23",
+  entraComo: "entrada",
+  tipo: "bem",
+  valor: 32_000,
+};
+
+/** A lista como ela ficou gravada na coluna. */
+const bensGravados = () =>
+  gravada().bens_e_permutas as Array<Record<string, unknown>>;
+
+/** O primeiro erro de campo que a rota devolveu. */
+const erroDeCampo = async (r: Response) =>
+  ((await r.json()) as { erros?: Array<{ campo: string; mensagem: string }> })
+    .erros?.[0] ?? null;
+
+describe("POST — os bens e permutas da proposta", () => {
+  it("aceita a lista e grava os quatro campos de cada item", async () => {
+    const r = await pedir({
+      bensEPermutas: [
+        PERMUTA,
+        {
+          descricao: "lote 12 da quadra 4 em Anápolis",
+          entraComo: "abatimento",
+          tipo: "permuta",
+          valor: 55_000,
+        },
+      ],
+    });
+    expect(r.status).toBe(200);
+    expect(bensGravados()).toEqual([
+      {
+        descricao: "Ford Ka 2019 placa ABC1D23",
+        entraComo: "entrada",
+        tipo: "bem",
+        valor: 32_000,
+      },
+      {
+        descricao: "lote 12 da quadra 4 em Anápolis",
+        entraComo: "abatimento",
+        tipo: "permuta",
+        valor: 55_000,
+      },
+    ]);
+  });
+
+  it("⚠️ proposta SEM o campo continua sendo gravada, com a lista vazia", async () => {
+    // É a tela de hoje, e os clientes em cache: nenhum deles manda `bensEPermutas`. Recusá-los
+    // pararia a venda inteira por causa de um campo que eles não sabem existir. E a coluna é NOT
+    // NULL: quem lê nunca precisa distinguir nulo de vazio.
+    const r = await pedir({});
+    expect(r.status).toBe(200);
+    expect(bensGravados()).toEqual([]);
+  });
+
+  it("a descrição é gravada aparada, e o valor vira número", async () => {
+    await pedir({
+      bensEPermutas: [{ ...PERMUTA, descricao: "  Ford Ka 2019  ", valor: "32000.50" }],
+    });
+    expect(bensGravados()[0]).toMatchObject({ descricao: "Ford Ka 2019", valor: 32_000.5 });
+  });
+
+  it("⚠️ valor vazio é ERRO, nunca zero — `Number(\"\")` é 0 e já virou cobrança de R$ 0,00", async () => {
+    const r = await pedir({ bensEPermutas: [{ ...PERMUTA, valor: "" }] });
+    expect(r.status).toBe(400);
+    expect((await erroDeCampo(r))?.campo).toBe("bensEPermutas[0].valor");
+    expect(estado.inserido).toHaveLength(0);
+  });
+
+  it("valor zero, negativo, não finito ou ilegível é recusado", async () => {
+    for (const valor of [0, -1, "abc", Number.NaN, null, undefined, {}]) {
+      estado.inserido = [];
+      const r = await pedir({ bensEPermutas: [{ ...PERMUTA, valor }] });
+      expect(r.status).toBe(400);
+      expect((await erroDeCampo(r))?.campo).toBe("bensEPermutas[0].valor");
+      expect(estado.inserido).toHaveLength(0);
+    }
+  });
+
+  it("tipo fora de {bem, permuta} é recusado, dizendo o campo", async () => {
+    const r = await pedir({ bensEPermutas: [{ ...PERMUTA, tipo: "veiculo" }] });
+    expect(r.status).toBe(400);
+    const erro = await erroDeCampo(r);
+    expect(erro?.campo).toBe("bensEPermutas[0].tipo");
+    expect(erro?.mensagem).toContain("bem");
+    expect(estado.inserido).toHaveLength(0);
+  });
+
+  it("⚠️ entraComo fora de {entrada, abatimento} é recusado — e ausente NÃO vira padrão", async () => {
+    // Lucas: *"pode ser um ou outro"*. Escolher por ele mudaria o que a proposta promete: com
+    // "entrada", o bem CUMPRE o piso de 10% e o cliente não precisa pôr dinheiro; com
+    // "abatimento", precisa. Um padrão em silêncio decide o negócio no lugar do coordenador.
+    for (const entraComo of ["sinal", "", null, undefined]) {
+      estado.inserido = [];
+      const r = await pedir({ bensEPermutas: [{ ...PERMUTA, entraComo }] });
+      expect(r.status).toBe(400);
+      expect((await erroDeCampo(r))?.campo).toBe("bensEPermutas[0].entraComo");
+      expect(estado.inserido).toHaveLength(0);
+    }
+  });
+
+  it("descrição vazia é recusada: o contrato precisa dizer O QUE está recebendo", async () => {
+    for (const descricao of ["", "   ", null, 42]) {
+      estado.inserido = [];
+      const r = await pedir({ bensEPermutas: [{ ...PERMUTA, descricao }] });
+      expect(r.status).toBe(400);
+      expect((await erroDeCampo(r))?.campo).toBe("bensEPermutas[0].descricao");
+      expect(estado.inserido).toHaveLength(0);
+    }
+  });
+
+  it("descrição acima do limite é recusada, e não cortada em silêncio", async () => {
+    const r = await pedir({
+      bensEPermutas: [{ ...PERMUTA, descricao: "a".repeat(301) }],
+    });
+    expect(r.status).toBe(400);
+    expect((await erroDeCampo(r))?.campo).toBe("bensEPermutas[0].descricao");
+    expect(estado.inserido).toHaveLength(0);
+  });
+
+  it("descrição no limite exato passa", async () => {
+    const r = await pedir({
+      bensEPermutas: [{ ...PERMUTA, descricao: "a".repeat(300) }],
+    });
+    expect(r.status).toBe(200);
+    expect((bensGravados()[0]?.descricao as string).length).toBe(300);
+  });
+
+  it("o campo que não é lista é recusado — e o erro aponta a lista, não um item", async () => {
+    for (const bensEPermutas of ["Ford Ka", 3, { descricao: "Ford Ka" }]) {
+      estado.inserido = [];
+      const r = await pedir({ bensEPermutas });
+      expect(r.status).toBe(400);
+      expect((await erroDeCampo(r))?.campo).toBe("bensEPermutas");
+      expect(estado.inserido).toHaveLength(0);
+    }
+  });
+
+  it("item que não é objeto é recusado, dizendo a posição", async () => {
+    const r = await pedir({ bensEPermutas: [PERMUTA, "Ford Ka"] });
+    expect(r.status).toBe(400);
+    expect((await erroDeCampo(r))?.campo).toBe("bensEPermutas[1]");
+    expect(estado.inserido).toHaveLength(0);
+  });
+
+  // ⚠️ OS ITENS DESTES DOIS TESTES VALEM POUCO DE PROPÓSITO. O que se trava aqui é o TETO DE
+  // QUANTIDADE, e dez carros de R$ 32.000 num lote de R$ 178.100 batem antes no teto do DINHEIRO
+  // (`conferirProposta` recusa entrada + bens acima do valor negociado, e com razão): o teste
+  // passaria a provar a régua do dinheiro achando que prova a da lista.
+  const BEM_BARATO = { ...PERMUTA, valor: 1_000 };
+
+  it("acima do teto de itens é recusado", async () => {
+    const r = await pedir({
+      bensEPermutas: Array.from({ length: 11 }, (_, i) => ({
+        ...BEM_BARATO,
+        descricao: `bem ${i + 1}`,
+      })),
+    });
+    expect(r.status).toBe(400);
+    expect((await erroDeCampo(r))?.campo).toBe("bensEPermutas");
+    expect(estado.inserido).toHaveLength(0);
+  });
+
+  it("no teto exato passa: o limite é teto, não parede antes dele", async () => {
+    const r = await pedir({
+      bensEPermutas: Array.from({ length: 10 }, (_, i) => ({
+        ...BEM_BARATO,
+        descricao: `bem ${i + 1}`,
+      })),
+    });
+    expect(r.status).toBe(200);
+    expect(bensGravados()).toHaveLength(10);
+  });
+
+  it("⚠️ o campo a mais no item é DESCARTADO, e não gravado", async () => {
+    // A coluna é o que a Têmis vai imprimir no contrato. Deixar passar o que a tela mandou por
+    // engano (um `id` de rascunho, um `valorFipe` de outra aba) põe na minuta um dado que ninguém
+    // conferiu — e jsonb não tem schema para barrar depois.
+    await pedir({
+      bensEPermutas: [{ ...PERMUTA, id: "rascunho-1", valorFipe: 41_000 }],
+    });
+    expect(Object.keys(bensGravados()[0] ?? {}).sort()).toEqual([
+      "descricao",
+      "entraComo",
+      "tipo",
+      "valor",
+    ]);
+  });
+});
+
+// ── ⚠️ O BEM ENTRA NA CONTA, E NÃO SÓ NA COLUNA ─────────────────────────────
+//
+// O bloco acima prova que a lista CHEGA e é GRAVADA. Este prova o que faltava: que ela é usada.
+// A rota estava meio ligada, que é pior do que desligada — validava a permuta, gravava a permuta
+// e emitia o cronograma do lote INTEIRO. Reproduzido no código antes de consertar: lote de
+// R$ 200.000, entrada de R$ 20.000 e um carro de R$ 80.000 gravavam a proposta com o carro na
+// coluna E 120 boletos sobre R$ 180.000 — o bem cobrado de novo, em boleto, de quem já o entregou.
+//
+// ⚠️ O GABARITO É `montarCronograma`, E NÃO UM NÚMERO ESCRITO À MÃO. Ver o comentário do import.
+describe("⚠️ os bens e permutas ENTRAM NA CONTA da proposta (22/09/2026)", () => {
+  const LOTE = 200_000;
+  const CARRO = 80_000;
+  /** 10% de R$ 200.000 — o piso deste empreendimento (`apolo_enterprise_settings`). */
+  const PISO = 20_000;
+
+  const carro = (entraComo: "abatimento" | "entrada") => ({
+    descricao: "Ford Ka 2019 placa ABC1D23",
+    entraComo,
+    tipo: "bem",
+    valor: CARRO,
+  });
+
+  /** A MESMA composição do corpo, montada pela lib de verdade. */
+  const gabarito = (entradaValor: number, bens: ReturnType<typeof carro>[]) =>
+    montarCronograma({
+      anuaisQuantidade: 0,
+      anuaisValor: 0,
+      bensEPermutas: bens as Parameters<
+        typeof montarCronograma
+      >[0]["bensEPermutas"],
+      diaDeVencimento: 10,
+      entradaDatas: null,
+      entradaParcelas: null,
+      entradaValor,
+      entradaVezes: 2,
+      parcelasMensais: 120,
+      plano: { ...PLANO, descontoPercentual: 0 } as unknown as Parameters<
+        typeof montarCronograma
+      >[0]["plano"],
+      primeiraParcelaDaEntrada: PRIMEIRA_PARCELA,
+      valorNegociado: LOTE,
+    });
+
+  /** O cronograma que a rota CONGELOU na proposta — `condicoes` é o cronograma mais a premissa. */
+  const congelado = () =>
+    gravada().condicoes as {
+      mensais: Array<{ valor: number }>;
+      totais: Record<string, number>;
+    };
+
+  beforeEach(() => {
+    // O preço de tabela acompanha o negociado: a guarda da rota só recusa unidade SEM preço.
+    estado.unidade = { ...UNIDADE, preco_tabela: "200000.00" };
+  });
+
+  it("⚠️ permuta apontada na ENTRADA cumpre o piso e financia o saldo certo", async () => {
+    // R$ 5.000 em espécie estão abaixo dos R$ 20.000 de piso; o carro apontado na entrada é o que
+    // completa. Sem a lista chegando a `conferirProposta`, a rota recusa uma venda legítima.
+    const r = await pedir({
+      bensEPermutas: [carro("entrada")],
+      entradaValor: 5_000,
+      valorNegociado: LOTE,
+    });
+    expect(r.status).toBe(200);
+
+    const esperado = gabarito(5_000, [carro("entrada")]);
+    expect(congelado().totais).toEqual(esperado.totais);
+    expect(congelado().mensais).toEqual(esperado.mensais);
+    // O número que o defeito produzia era R$ 195.000 financiados (o carro fora da conta).
+    expect(congelado().totais.financiado).toBe(LOTE - 5_000 - CARRO);
+    expect(congelado().totais.bensEPermutas).toBe(CARRO);
+  });
+
+  it("⚠️ permuta como ABATIMENTO não cumpre o piso — mas abate o saldo igual", async () => {
+    const recusada = await pedir({
+      bensEPermutas: [carro("abatimento")],
+      entradaValor: 5_000,
+      valorNegociado: LOTE,
+    });
+    expect(recusada.status).toBe(422);
+    expect((await erroDeCampo(recusada))?.campo).toBe("entrada");
+    expect(estado.inserido).toHaveLength(0);
+
+    // O mesmo carro, com a entrada em dia: o piso está cumprido em espécie e o bem abate igual.
+    const aceita = await pedir({
+      bensEPermutas: [carro("abatimento")],
+      entradaValor: PISO,
+      valorNegociado: LOTE,
+    });
+    expect(aceita.status).toBe(200);
+    expect(congelado().totais).toEqual(
+      gabarito(PISO, [carro("abatimento")]).totais,
+    );
+    expect(congelado().totais.financiado).toBe(LOTE - PISO - CARRO);
+  });
+
+  it("⚠️ o PDF que a rota gera carrega os bens, com o papel de cada um", async () => {
+    // Sem isto o comprador recebe um papel que abate R$ 80.000 do saldo e não diz por quê.
+    const r = await pedir({
+      bensEPermutas: [carro("entrada")],
+      entradaValor: PISO,
+      valorNegociado: LOTE,
+    });
+    expect(r.status).toBe(200);
+
+    const folha = estado.folhas.at(-1) as {
+      bensEPermutas?: Array<Record<string, string>>;
+      bensEPermutasTotal?: string;
+    };
+    expect(folha.bensEPermutas).toEqual([
+      {
+        comoEntra: "Entrada",
+        descricao: "Ford Ka 2019 placa ABC1D23",
+        tipo: "Bem",
+        valor: "R$ 80.000,00",
+      },
+    ]);
+    expect(folha.bensEPermutasTotal).toBe("R$ 80.000,00");
+  });
+
+  it("a prévia imprime os mesmos bens, antes de qualquer escrita", async () => {
+    const r = await pedir({
+      bensEPermutas: [carro("entrada")],
+      entradaValor: PISO,
+      previa: true,
+      valorNegociado: LOTE,
+    });
+    expect(r.status).toBe(200);
+    expect(estado.inserido).toHaveLength(0);
+    expect(
+      (estado.folhas.at(-1) as { bensEPermutasTotal?: string })
+        .bensEPermutasTotal,
+    ).toBe("R$ 80.000,00");
+  });
+});
+
+// ── ⚠️ O CÓDIGO PODE IR AO AR ANTES DA 0187 ─────────────────────────────────
+//
+// Medido em produção em 22/09/2026: `select column_name from information_schema.columns where
+// table_name='hercules_propostas' and column_name='bens_e_permutas'` devolve VAZIO. A migration
+// está escrita e não aplicada — e aplicar exige OK do Lucas, a cada vez. Com o insert nomeando a
+// coluna sem desvio, QUALQUER proposta (com ou sem permuta) morria em 503.
+describe("⚠️ a proposta antes da migration 0187", () => {
+  beforeEach(() => {
+    estado.semAColunaDeBens = true;
+  });
+
+  it("sem permuta, grava SEM o campo e se comporta exatamente como hoje", async () => {
+    const r = await pedir({});
+    expect(r.status).toBe(200);
+    expect("bens_e_permutas" in gravada()).toBe(false);
+    // O resto da linha continua o de sempre — a proposta nasce inteira.
+    expect(gravada()).toMatchObject({ contrato_parcelas: 120, etapa: "proposta" });
+    expect(estado.avisados).toBe(1);
+  });
+
+  it("⚠️ COM permuta, recusa e não grava: o bem não pode sumir da linha que já o abateu", async () => {
+    // Regravar sem a coluna deixaria a venda com o cronograma abatido em R$ 80.000 e sem uma linha
+    // dizendo por quê — a Têmis imprimiria um contrato com desconto sem causa.
+    const r = await pedir({
+      bensEPermutas: [
+        { descricao: "Ford Ka", entraComo: "entrada", tipo: "bem", valor: 80_000 },
+      ],
+      entradaValor: 20_000,
+      valorNegociado: 200_000,
+    });
+    expect(r.status).toBe(503);
+    expect(((await r.json()) as { error: string }).error).toBe(
+      "Esta proposta tem bens ou permutas, e o registro deles ainda não está disponível neste ambiente. Nada foi gravado.",
+    );
+    // UMA tentativa só: nenhuma regravação silenciosa sem o campo.
+    expect(estado.inserido.filter((i) => i.tabela === "hercules_propostas")).toHaveLength(1);
+    expect(estado.avisados).toBe(0);
+  });
+
+  it("com a coluna no lugar, a lista grava na PRIMEIRA tentativa", async () => {
+    estado.semAColunaDeBens = false;
+    const r = await pedir({
+      bensEPermutas: [
+        { descricao: "Ford Ka", entraComo: "entrada", tipo: "bem", valor: 80_000 },
+      ],
+      entradaValor: 20_000,
+      valorNegociado: 200_000,
+    });
+    expect(r.status).toBe(200);
+    expect(estado.inserido.filter((i) => i.tabela === "hercules_propostas")).toHaveLength(1);
+    expect(bensGravados()).toHaveLength(1);
   });
 });

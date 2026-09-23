@@ -223,7 +223,7 @@ describe("REVISÃO paridade: produção HOJE, sem a 0178 aplicada (coluna descon
   });
 });
 
-describe("REVISÃO coerência: o 'Total pago' do cartão grande diz '% sobre a tabela'", () => {
+describe("REVISÃO coerência: o 'Total pago' do cartão grande fecha com o valor negociado", () => {
   function totalPago(): { nota: string; valor: string } {
     const rotulo = [...alvo.querySelectorAll("div")].find(
       (d) => d.textContent === "Total pago" && d.childElementCount === 0,
@@ -238,14 +238,21 @@ describe("REVISÃO coerência: o 'Total pago' do cartão grande diz '% sobre a t
 
   // ⚠️ ERA DEFEITO (vermelho de propósito) e foi corrigido: o % era calculado sobre o valor já com o
   // desconto do plano. O INVESTIDOR dizia "+0% sobre a tabela" pagando menos que a tabela.
+  //
+  // ⚠️ E A RÉGUA MUDOU DE NOVO EM 22/09/2026, a pedido do Lucas: o total deixou de somar o degrau do
+  // SACOC (*"não calculamos juros nessa etapa, é somente informativo"*). Com os juros fora, este
+  // teste media um número que virou cópia do desconto do plano — medido nesta mesma suíte, os três
+  // cartões do Garden diziam exatamente "−12%", "−8%" e "0% sobre a tabela", que são os descontos
+  // de 12, 8 e 0 do cadastro. A nota passou a comparar com o VALOR NEGOCIADO, e o que este teste
+  // guarda agora é o que o Lucas pediu: no Garden, o total pago É o valor do lote.
+  const ESPERADO = { INVESTIDOR: 382_800, "INVESTIDOR PARCELADO": 400_200, NORMAL: 435_000 };
   for (const nome of ["INVESTIDOR", "INVESTIDOR PARCELADO", "NORMAL"] as const) {
-    it(`${nome} no lote de R$ 435.000: o % do Total pago é sobre a tabela do lote, com o sinal`, () => {
+    it(`${nome} no lote de R$ 435.000: o Total pago é o preço do plano, e a nota diz isso`, () => {
       montarSimulador("proposta", daMesa());
       clicar(cartao(nome));
       const { nota, valor } = totalPago();
-      const sobreATabela = Math.round((numero(valor) / 435_000 - 1) * 100);
-      const esperado = sobreATabela > 0 ? `+${sobreATabela}` : sobreATabela < 0 ? `−${Math.abs(sobreATabela)}` : "0";
-      expect(nota).toBe(`${esperado}% sobre a tabela`);
+      expect(numero(valor)).toBe(ESPERADO[nome]);
+      expect(nota).toBe("igual ao valor negociado");
     });
   }
 });

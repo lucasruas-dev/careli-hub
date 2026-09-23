@@ -15,6 +15,11 @@
 import type { SistemaAmortizacao } from "@/lib/apolo/planos-comerciais";
 
 import { descontoDoPlano, precoNoPlano } from "./ajuste-de-preco";
+import {
+  type BemOuPermuta,
+  somarBensEPermutas,
+  somarBensQueContamNaEntrada,
+} from "./bens-e-permutas";
 import { pisoDaEntradaNoPrazo } from "./faixa-do-plano";
 import { entradaParaAParcela, montarProposta, temAnuaisCadastradas } from "./simulacao";
 
@@ -89,11 +94,15 @@ export type Composicao = {
   parcelas: number;
   plano: string;
   /**
-   * Entrada + a série mensal INTEIRA + reforços.
+   * Entrada + reforços + `parcela × parcelas`: a soma do que ESTA LINHA anuncia.
    *
-   * ⚠️ NÃO É `parcela × parcelas` FORA DA PRICE: no SACOC a parcela sobe no aniversário, e o total
-   * vem de `somaDasMensais`. Multiplicar a parcela do primeiro ano pelo prazo tirava R$ 72 mil de
-   * um contrato de 120 meses a 8% a.a. — e é este número que ordena o desempate da lista.
+   * ⚠️ MUDOU EM 22/09/2026, e era `somaDasMensais` (a série com o degrau do SACOC dentro). Lucas,
+   * nos prints do espelho público do Garden: *"o valor pago tem que ser o valor do lote, está
+   * cobrando juros errado. não calculamos juros nessa etapa, é somente informativo"*. Cada linha da
+   * lista diz entrada, reforço, prazo e parcela; somar por baixo um degrau que ela não mostra
+   * imprimia "total R$ 425.937" num arranjo que, pelos próprios números da linha, dá R$ 382.720.
+   * A conta é uma só, em `montarProposta`, e o cartão grande lê a mesma. Este número também ordena
+   * o desempate da lista (a ordem primária é pela menor entrada).
    */
   total: number;
   /**
@@ -185,6 +194,15 @@ function milhar(valor: number): number {
  */
 export function composicoesQueFecham(entrada: {
   anuaisPossiveis?: number[];
+  /**
+   * Os bens e permutas recebidos na aquisição. Ausente, nula ou vazia = a varredura de sempre.
+   *
+   * ⚠️ SEM ELES AQUI, A MESMA TELA MOSTRA DOIS FINANCIADOS. O cartão da composição recomendada sai
+   * desta varredura e o rodapé "O que vai sair" sai de `montarProposta`/`montarCronograma`, que já
+   * descontam o carro: num lote de R$ 200.000 com permuta de R$ 80.000, um diria R$ 195.000 e o
+   * outro R$ 115.000, lado a lado, e o PDF sairia com o segundo.
+   */
+  bensEPermutas?: null | readonly BemOuPermuta[];
   /** A % mínima de entrada DESTE empreendimento. Ausente = padrão da casa. */
   entradaMinimaPercentual?: null | number;
   parcelaAlvo: number;
@@ -216,6 +234,9 @@ export function composicoesQueFecham(entrada: {
 }): Composicao[] {
   const { anuaisPossiveis = [0, 15_000, 20_000, 25_000, 30_000], parcelaAlvo, planos, valor } = entrada;
   const teto = entrada.tetoDaEntrada ?? null;
+  /** O que os bens abatem do saldo (os dois `entraComo`) e o que deles cumpre a entrada mínima. */
+  const totalDosBens = somarBensEPermutas(entrada.bensEPermutas);
+  const bensNaEntrada = somarBensQueContamNaEntrada(entrada.bensEPermutas);
   const tabela =
     typeof entrada.precoDeTabela === "number" && entrada.precoDeTabela > 0
       ? entrada.precoDeTabela
@@ -336,6 +357,7 @@ export function composicoesQueFecham(entrada: {
         anuaisCadastradasNoPlano,
         baloesQuantidade: quantidade,
         baloesValor: valorAnual,
+        bensEPermutas: entrada.bensEPermutas,
         parcela: parcelaAlvo,
         parcelas: plano.parcelas,
         sistemaAmortizacao: plano.sistemaAmortizacao,
@@ -350,20 +372,37 @@ export function composicoesQueFecham(entrada: {
       // abaixo do mínimo da casa, a composição continua válida: com a entrada no piso a parcela
       // sai MENOR do que a pedida, que é a favor do cliente. Descartar esconderia a melhor
       // notícia da mesa ("cabe, e ainda sobra").
-      const arredondada = Math.max(pisoDoPlano(plano, valorDoPlano), milhar(exata));
+      // ⚠️ O BEM APONTADO NA ENTRADA ABATE O PISO — SENÃO A VARREDURA PEDE DINHEIRO QUE A RÉGUA NÃO
+      // EXIGE. `conferirProposta` aceita a proposta quando entrada + bem apontado na entrada chegam
+      // ao mínimo; ancorar aqui no piso cheio faria a tela recomendar R$ 20.000 em espécie num lote
+      // de R$ 200.000 onde o carro de R$ 80.000 já cumpre os 10%, e a parcela recomendada sairia
+      // menor que a pedida sem motivo. O `max(0, …)` é o que impede piso negativo quando o bem
+      // sozinho passa do mínimo.
+      const pisoEmDinheiro = Math.max(
+        0,
+        pisoDoPlano(plano, valorDoPlano) - bensNaEntrada,
+      );
+      const arredondada = Math.max(pisoEmDinheiro, milhar(exata));
 
       // ⚠️ ENTRADA QUE COBRE O LOTE INTEIRO NÃO É COMPOSIÇÃO — é venda à vista, e ela não
       // responde a pergunta que foi feita. Quem digitou "o cliente paga R$ 4.000 por mês" recebia
       // como única recomendação o plano À VISTA com entrada de 100% e "R$ 0,00 por mês, 1 vez", e
       // o PDF saía com "Parcela 1 de 1: R$ 0,00" para alguém que acabou de dizer que pode pagar
       // quatro mil. Vender à vista continua possível: basta escolher o plano na tabela.
-      if (arredondada >= valorDoPlano) continue;
+      //
+      // ⚠️ E O BEM CONTA NESSA COBERTURA. Sem somá-lo, uma entrada de R$ 120.000 mais um carro de
+      // R$ 80.000 num lote de R$ 200.000 passaria nesta linha e voltaria como composição de
+      // "R$ 0,00 por mês" — a venda à vista disfarçada que esta trava existe para barrar.
+      if (arredondada + totalDosBens >= valorDoPlano) continue;
+      // ⚠️ O TETO É O DINHEIRO DO CLIENTE, E BEM NÃO É DINHEIRO. Quem digitou "tenho R$ 30.000 de
+      // entrada" está falando do que tem em conta; o carro já está na lista de bens.
       if (teto !== null && arredondada > teto) continue;
 
       const montada = montarProposta({
         anuaisCadastradasNoPlano,
         baloesQuantidade: quantidade,
         baloesValor: valorAnual,
+        bensEPermutas: entrada.bensEPermutas,
         entrada: arredondada,
         parcelas: plano.parcelas,
         sistemaAmortizacao: plano.sistemaAmortizacao,
@@ -400,7 +439,32 @@ export function composicoesQueFecham(entrada: {
     if (!atual || c.entrada < atual.entrada) melhorPorChave.set(chave, c);
   }
 
+  // ⚠️ A ORDEM É TOTAL, E O TERCEIRO CRITÉRIO É A PARCELA MENSAL (22/09/2026). Os dois primeiros
+  // (menor entrada, menor total) deixaram de separar a lista quando o `total` passou a fechar com o
+  // preço do lote: no Garden, TODA composição do mesmo plano soma o mesmo preço, o segundo critério
+  // virou empate e a primeira linha passou a ser a da ORDEM DE GERAÇÃO — os valores de
+  // `anuaisPossiveis` na ordem em que estão escritos lá em cima. Medido no lote de R$ 435.000, em
+  // dez alvos de parcela: em QUATRO a primeira linha trocou. No alvo de R$ 3.500 a recomendada
+  // virou "5 anuais de R$ 15.000, parcela R$ 3.478,57" no lugar de "4 anuais de R$ 25.000, parcela
+  // R$ 3.180,95" — a mesma entrada de R$ 33.000 e o mesmo total de R$ 400.200, R$ 297,62 a mais por
+  // mês, e é a primeira linha que vira `principal` (o cartão grande) e a parcela que o corretor lê
+  // em voz alta.
+  //
+  // ⚠️ E O CRITÉRIO É A PARCELA PORQUE É A PERGUNTA QUE FOI FEITA. A lista se chama "outras
+  // composições com R$ X por mês" e quem chega nela está tentando caber no mês: empatados o
+  // dinheiro de agora (entrada) e o dinheiro do fim (total), o que decide é o boleto.
+  //
+  // ⚠️ OS TRÊS ÚLTIMOS EXISTEM PARA A ORDEM NÃO DEPENDER DA ORDEM DE GERAÇÃO. Menos reforços é uma
+  // promessa a menos para explicar ao cliente; os dois seguintes só fecham a ordem — duas linhas
+  // que empatam até aqui anunciam o mesmo dinheiro, e o que não pode é a mesma busca devolver a
+  // recomendada de um jeito hoje e de outro quando alguém acrescentar um valor em `anuaisPossiveis`.
   return [...melhorPorChave.values()].sort(
-    (a, b) => a.entrada - b.entrada || a.total - b.total,
+    (a, b) =>
+      a.entrada - b.entrada ||
+      a.total - b.total ||
+      a.parcela - b.parcela ||
+      a.anuais.quantidade - b.anuais.quantidade ||
+      a.anuais.valor - b.anuais.valor ||
+      a.plano.localeCompare(b.plano),
   );
 }

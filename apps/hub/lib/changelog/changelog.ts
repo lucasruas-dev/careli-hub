@@ -36,6 +36,106 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-23-o-bem-ganha-tela-e-o-espelho-ganha-arquivos",
+    deployedAt: "2026-09-23T08:30:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**Agora dá para registrar o bem ou a permuta na proposta.** O bloco fica logo abaixo da Entrada, cabem quantos itens a negociação tiver, e cada um escolhe se aponta na entrada, cumprindo a entrada mínima, ou se só abate o valor negociado. O cálculo já existia; faltava onde digitar.",
+              "**O bem entregue passou a pedir justificativa**, como o desconto próprio já pedia. Um desconto de 5% se confere contra a tabela; o valor de um carro é um número que alguém disse, e ele abate o saldo como se fosse dinheiro no ato.",
+              "**A lista de outras composições saiu da tela.** O cartão da simulação montada continua, com a composição recomendada.",
+            ],
+            screen: "Venda · Simulador e proposta",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O link que o corretor manda ganhou a aba Arquivos.** O book, o vídeo e as 45 cenas do Garden agora abrem no mesmo link do estoque, em tela cheia, para servir de apresentação na frente do cliente.",
+              "**Fechar uma foto parou de derrubar a tela cheia da página.** Quem estava apresentando em tela cheia e abria uma imagem via a barra do navegador voltar ao fechar.",
+            ],
+            screen: "Espelho de vendas",
+          },
+        ],
+      },
+    ],
+    rollback: "2dbf11be",
+    technical: {
+      done:
+        "TELA DA PERMUTA: o bloco entrou em `SimuladorDeProposta.tsx` entre Entrada e Cobranca, e a lista sobe por tres pontos (deps de `montada` e `composicoes`, mais a lista explicita do efeito que chama `aoMudarCondicoes`). ⚠️ MEDIDO REVERTENDO, um a um: tirando so as deps dos memos, 4 testes caem e o cartao nao anda; tirando as tres, 6 caem e o pedido sobe SEM a lista, que e o defeito silencioso de sempre (o cliente entrega o carro e recebe boleto do valor cheio). O item NASCE como `abatimento`, o lado que nao afrouxa a regua: nascendo `entrada`, todo bem digitado as pressas cumpriria o piso sem ninguem decidir isso. `TETO_DE_BENS_NA_PROPOSTA` e `TAMANHO_MAXIMO_DA_DESCRICAO` mudaram da rota para `lib/hercules/bens-e-permutas.ts`, porque a tela precisa dos mesmos numeros. ABA ARQUIVOS NO ESPELHO: `GET /api/publico/espelho/arquivo?e=<token>&a=<id>` responde 302 para URL assinada de 1h, e com `m=1` entrega a miniatura pelos bytes da funcao. ⚠️ O PARAMETRO E O ID, E O CAMINHO NASCE NO SERVIDOR: caminho forjado nem chega ao banco. ⚠️ E O ORIGINAL SAI POR 302 DE PROPOSITO: o book tem 212.799.580 bytes, o corpo de uma funcao da Vercel corta em 4,5 MB, e video no iPhone pede `Range`/206, que um proxy nosso nao entrega. Peso medido da primeira carga: 4.970 bytes de lista no HTML que ja vem, mais no maximo 1.311.659 bytes de miniaturas (`lazy`), contra 518.136.930 bytes de acervo -- 0,25%. ⚠️ DOIS DEFEITOS PEGOS POR REVISAO ADVERSARIAL: (1) a limpeza do visualizador saia da tela cheia sempre que ALGUMA estava ativa, sem perguntar de quem era, e o espelho e a unica tela da casa com botao de tela cheia DA PAGINA ao lado de uma galeria -- fechar uma foto derrubava a apresentacao inteira; agora `telaCheiaEDeste(raiz.current)` decide, e o teste falha sem a correcao com \"expected spy to not be called, but been called 1 times\". (2) a linha que explica o piso mentia quando o bem cobria PARTE dele: num lote de R$ 200.000 com bem de R$ 15.000, escrevia \"Abaixo do minimo de 10% (R$ 5.000)\" -- e R$ 5.000 e 2,5% do lote -- e escrevia \"Falta R$ 5.000\" logo depois de o botao \"usar o minimo\" ter posto esses R$ 5.000; `minimo` tinha deixado de ser o piso e virado residuo, e as frases continuaram falando dele como piso. 526 arquivos, 8.126 testes, typecheck limpo.",
+      motivation:
+        "Lucas, 22/09/2026, olhando o simulador no ar: \"eu não vi a parte da permuta, bem\" -- o calculo tinha subido no dia anterior e a tela nao. E sobre o espelho: \"kd a aba arquivos nesse link?\", apontando `c2x.app.br/e/garden-ksewinpw`. Mais \"pode tirar isso aqui\" sobre a lista de outras composicoes, \"De todo lugar\".",
+    },
+    title: "O bem ganha tela, e o espelho ganha os arquivos",
+    type: "novidade",
+    version: "1.362.0",
+  },
+  {
+    buildTag: "2026-09-22-o-bem-entra-na-conta-e-a-tv-liga",
+    deployedAt: "2026-09-22T21:30:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**A proposta passou a aceitar bem e permuta.** Dá para registrar quantos itens a negociação tiver, cada um com o que é, quanto vale e uma descrição, e o valor abate o saldo a financiar. Cada item escolhe se aponta na entrada, e aí cumpre a entrada mínima, ou se só reduz o valor negociado.",
+              "**O total pago voltou a fechar com o valor do lote.** Ele vinha somando os juros que o boleto do primeiro ano não cobra, e inflava a conta: num lote de R$ 416.000 com 8% de desconto, mostrava R$ 425.937 onde a soma real é R$ 382.720.",
+              "**O PDF passou a imprimir a simulação que está na tela.** Mudar a entrada e mandar para o papel trazia o mínimo do plano em vez do valor digitado, inclusive quando a entrada era zero. A data escolhida numa parcela do meio também se perdia.",
+            ],
+            screen: "Venda · Simulador e proposta",
+          },
+          {
+            items: [
+              "**A janela da simulação cabe no iPad.** A lista de composições ficava cortada e, ao arrastar, quem rolava era a página atrás.",
+            ],
+            screen: "Venda · Simulação no tablet",
+          },
+        ],
+      },
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O bem recebido aparece no contrato.** Vira linha própria no Quadro-Resumo, com o que é e quanto vale, e uma cláusula descreve item a item. O quadro continua fechando com o preço do lote.",
+            ],
+            screen: "Contrato · Quadro-Resumo",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O Garden ganhou um espelho de televisão: `c2x.app.br/tv/garden`.** Tela cheia, o masterplan com as marcas, e as cores dizendo o que está liberado. Atualiza sozinha a cada minuto conforme a venda anda, e mantém o último mapa bom se a rede cair.",
+            ],
+            screen: "Espelho de vendas na TV",
+          },
+        ],
+      },
+    ],
+    rollback: "b1e30362",
+    technical: {
+      done:
+        "PERMUTA: coluna `bens_e_permutas` jsonb not null default '[]' (migration 0187, aplicada em producao com OK do Lucas), regua unica em `lib/hercules/bens-e-permutas.ts` (`valeDinheiro` nao coage, usa `Number.isFinite`), e o abatimento entra ao lado de `totalDaEntrada` em `cronograma.ts`, NUNCA em `anuaisQueAbatemOSaldo` (aquele criterio de valor presente e de anual do Garden; bem entregue no ato vale a face). O teto passou a ser `entrada + permutas <= valorNegociado` e o piso conta so os itens `entraComo: \"entrada\"`. A volta (`entradaParaAParcela`) foi junto, senao a entrada sugerida nao produz a parcela pedida. TOTAL PAGO: `simulacao.ts` somava `somaDasMensais`, que reconstroi o degrau do aniversario do SACOC; medido R$ 43.217,43 a mais no Q04 L16 e R$ 55.268,50 no Q03 L07. O rotulo '% sobre a tabela' saiu porque sem os juros ele virava aritmeticamente o desconto do plano, que a linha de cima ja diz. O desempate da lista ganhou menor parcela, porque com os totais iguais a ordem passou a ser a de geracao e isso trocava a composicao RECOMENDADA em 4 de 10 alvos medidos. PLANO POR ID: a rota casava o plano pela string do nome, entao renomear com uma tela aberta gravaria juros e prazo de outro plano (medido: R$ 5.845,92 a mais num cliente que fechou plano sem juros). O id manda, o nome e reserva com o `find` de sempre. TV: `/tv/[slug]`, lista de slugs escrita a mao (`/tv/<outra coisa>` e 404, inclusive para empreendimento que existe), primeira carga no servidor, poll de 60s, e o funil `estadoParaTv` deixa passar SO codigo e situacao -- revertendo ele, 3 testes mostram `preco`, `area` e `rotulo` vazando no corpo. Erro devolve 503, nunca `lotes: []` com 200, senao a TV apaga as cores e se le como loteamento inteiro livre. ⚠️ SEIS DEFEITOS GRAVES FORAM PEGOS POR REVISAO ADVERSARIAL ANTES DO DEPLOY, e nenhum apareceu em teste comum: a rota gravava a permuta sem calcular com ela (o cliente entregava o carro e recebia boleto do valor cheio); o insert escrevia a coluna nova antes da migration, o que quebraria TODA proposta; a comissao sumia do quadro quando a entrada em dinheiro e zero, caso que a permuta tornou comum; existiam TRES copias divergentes da regua de valor, fazendo o mesmo carro valer R$ 80.000 na clausula, R$ 0,00 na variavel e nada no quadro; e duas travas que eu mesmo criei para o rename recusariam proposta em TODO o Lagoa Bonita e gravariam proposta que se contradizia (plano exigindo 20% com entrada de 12% no mesmo objeto). As duas travas foram desfeitas: o id resolve o rename sem elas. 520 arquivos, 8.062 testes, typecheck limpo.",
+      motivation:
+        "Lucas, 22/09/2026: \"temos que incluir um campo para apontar na negociação as permutas e o bens que são negociados na aquisição da unidade\", \"o valor pago tem que ser o valor do lote, está cobrando juros errado. não calculamos juros nessa etapa, é somente informativo\", \"mesmo eu alterando o valor de entrada, quando eu mando para PDF ele não traz o valor que eu tinha colocado\", \"no ipad, a tela da simulação está cortando\" e \"cria um espelho de vendas eu preciso criar um espelho do garden para ficar fixo em uma tv\".",
+    },
+    title: "O bem entra na conta, e o Garden vai para a TV",
+    type: "novidade",
+    version: "1.361.0",
+  },
+  {
     buildTag: "2026-09-22-o-contrato-nao-gasta-envelope-a-toa",
     deployedAt: "2026-09-22T17:41:55-03:00",
     internal: true,
