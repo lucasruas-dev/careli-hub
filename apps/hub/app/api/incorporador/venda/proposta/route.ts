@@ -27,6 +27,11 @@ import {
   registrarAvisoNaoEnviado,
   vendaAvisaPeloWhatsapp,
 } from "@/lib/hercules/avisos-da-venda";
+// ⚠️ O TIPO VEM DE LÁ, E NÃO É REESCRITO AQUI. `bens-e-permutas.ts` não importa ninguém de
+// propósito (é a conta que a régua, o cronograma e a tela compartilham), então esta rota pode
+// depender dele sem ciclo. Uma segunda definição do mesmo objeto é como a rota passaria a aceitar
+// um `entraComo` que a régua não conhece, sem o typecheck dizer nada.
+import type { BemOuPermuta } from "@/lib/hercules/bens-e-permutas";
 import {
   carregarCadastroDeEmpreendimentos,
   type LinhaDoCadastro,
@@ -191,6 +196,162 @@ function telefoneEscrito(valor: unknown): null | string {
   return t || null;
 }
 
+/**
+ * Quantos bens cabem numa proposta.
+ *
+ * ⚠️ O TETO EXISTE PORQUE ESTA LISTA VAI PARA O CONTRATO, E ELE É UM PAPEL. Lucas disse *"Vários"*
+ * quando perguntado quantos cabem, e vários não é ilimitado: cada item vira uma linha do
+ * Quadro-Resumo e uma oração da minuta, e um POST com mil itens montaria um PDF que ninguém
+ * assina, dentro dos 60s de `maxDuration`. Dez cobre com folga o caso real (um carro e um lote) e
+ * ainda deixa o negócio de quem traz uma carteira de imóveis passar. Se um dia faltar, o número
+ * sobe aqui — mas o limite fica EXPLÍCITO, e não implícito no que o gateway aguenta.
+ */
+const TETO_DE_BENS_NA_PROPOSTA = 10;
+
+/** Quanto texto cabe na descrição de um bem. O bastante para "lote 12 da quadra 4, matrícula X". */
+const TAMANHO_MAXIMO_DA_DESCRICAO = 300;
+
+const TIPOS_DE_BEM = ["bem", "permuta"] as const;
+const ENTRADAS_DO_BEM = ["abatimento", "entrada"] as const;
+
+/**
+ * A lista de bens e permutas que veio no corpo, conferida item a item.
+ *
+ * ⚠️ AUSENTE É LISTA VAZIA, E NÃO ERRO. Nenhum cliente de hoje manda este campo — nem a tela em
+ * cache do navegador, nem a chamada antiga. Recusá-los pararia toda venda por causa de um campo
+ * que eles não sabem existir, que é a mesma regra que o prazo da proposta já segue.
+ *
+ * ⚠️ MAS VALOR VAZIO É ERRO, NUNCA ZERO. `Number("")` é 0, e nesta casa isso já transformou
+ * cobrança sem valor em R$ 0,00 emitido. Um campo que o coordenador não preencheu não pode virar
+ * "permuta de zero reais" gravada e impressa no contrato como se tivesse sido combinada — por isso
+ * o valor só passa vindo de número ou de texto que vira número FINITO e MAIOR QUE ZERO, e `null`,
+ * `undefined`, `""`, `{}` e `[]` caem todos no mesmo 400.
+ *
+ * ⚠️ E O QUE VEM A MAIS NO ITEM É DESCARTADO. A lista é gravada em jsonb, que não tem schema para
+ * barrar nada depois, e é dela que a Têmis vai imprimir o contrato: um `id` de rascunho ou um
+ * `valorFipe` de outra aba que a tela mandasse por engano chegaria à minuta sem ninguém conferir.
+ * O objeto devolvido é montado campo a campo, e não copiado.
+ */
+function bensEPermutasDoCorpo(valor: unknown): {
+  erros: Array<{ campo: string; mensagem: string }>;
+  lista: BemOuPermuta[];
+} {
+  const erros: Array<{ campo: string; mensagem: string }> = [];
+  const lista: BemOuPermuta[] = [];
+  if (valor === null || valor === undefined) return { erros, lista };
+
+  if (!Array.isArray(valor)) {
+    erros.push({
+      campo: "bensEPermutas",
+      mensagem: "Os bens e permutas têm que vir em uma lista.",
+    });
+    return { erros, lista };
+  }
+  if (valor.length > TETO_DE_BENS_NA_PROPOSTA) {
+    erros.push({
+      campo: "bensEPermutas",
+      mensagem: `Uma proposta aceita no máximo ${TETO_DE_BENS_NA_PROPOSTA} bens ou permutas.`,
+    });
+    return { erros, lista };
+  }
+
+  valor.forEach((bruto, i) => {
+    // ⚠️ O `campo` É O CAMINHO NO JSON (base zero), e é por ele que a tela acha o input para
+    // marcar de vermelho; a frase fala em "posição 1" porque quem lê conta a partir de um.
+    const caminho = `bensEPermutas[${i}]`;
+    const posicao = i + 1;
+    const errosAntesDoItem = erros.length;
+    if (typeof bruto !== "object" || bruto === null || Array.isArray(bruto)) {
+      erros.push({
+        campo: caminho,
+        mensagem: `O bem ou permuta na posição ${posicao} não foi entendido.`,
+      });
+      return;
+    }
+    const item = bruto as Record<string, unknown>;
+
+    const descricao =
+      typeof item.descricao === "string" ? item.descricao.trim() : "";
+    if (!descricao) {
+      erros.push({
+        campo: `${caminho}.descricao`,
+        mensagem: `Descreva o bem ou permuta na posição ${posicao}.`,
+      });
+    } else if (descricao.length > TAMANHO_MAXIMO_DA_DESCRICAO) {
+      // ⚠️ RECUSA, E NÃO CORTE. Cortar em silêncio mandaria para o contrato uma descrição pela
+      // metade — "lote 12 da quadra 4 em Anápolis, matríc" — com ar de texto conferido.
+      erros.push({
+        campo: `${caminho}.descricao`,
+        mensagem: `A descrição do bem ou permuta na posição ${posicao} passa de ${TAMANHO_MAXIMO_DA_DESCRICAO} caracteres.`,
+      });
+    }
+
+    const tipo = typeof item.tipo === "string" ? item.tipo.trim() : "";
+    if (!(TIPOS_DE_BEM as readonly string[]).includes(tipo)) {
+      erros.push({
+        campo: `${caminho}.tipo`,
+        mensagem: `O tipo do item na posição ${posicao} tem que ser "bem" ou "permuta".`,
+      });
+    }
+
+    const entraComo =
+      typeof item.entraComo === "string" ? item.entraComo.trim() : "";
+    if (!(ENTRADAS_DO_BEM as readonly string[]).includes(entraComo)) {
+      erros.push({
+        campo: `${caminho}.entraComo`,
+        mensagem: `Diga se o bem ou permuta na posição ${posicao} entra como "entrada" (cumpre a entrada mínima) ou como "abatimento" (só reduz o saldo).`,
+      });
+    }
+
+    // ⚠️ SÓ NÚMERO OU TEXTO CHEGAM ATÉ O `Number`, e é o que barra o resto: `Number([])` é 0,
+    // `Number([5])` é 5 e `Number(true)` é 1 — três jeitos de um corpo malformado virar valor de
+    // permuta sem ninguém digitar número nenhum.
+    const valorBruto = item.valor;
+    const numero =
+      (typeof valorBruto === "number" || typeof valorBruto === "string") &&
+      String(valorBruto).trim() !== ""
+        ? Number(valorBruto)
+        : Number.NaN;
+    if (!Number.isFinite(numero) || numero <= 0) {
+      erros.push({
+        campo: `${caminho}.valor`,
+        mensagem: `Informe o valor do bem ou permuta na posição ${posicao}, em reais e maior que zero.`,
+      });
+    }
+
+    // Item com qualquer campo recusado não entra na lista — e a lista inteira é descartada
+    // abaixo, porque meia proposta gravada é pior do que proposta nenhuma.
+    if (erros.length > errosAntesDoItem) return;
+    lista.push({
+      descricao,
+      entraComo: entraComo as BemOuPermuta["entraComo"],
+      tipo: tipo as BemOuPermuta["tipo"],
+      valor: numero,
+    });
+  });
+
+  return { erros, lista: erros.length > 0 ? [] : lista };
+}
+
+/**
+ * O banco ainda sem a 0187: o PostgREST não conhece a coluna `bens_e_permutas`.
+ *
+ * ⚠️ SÃO DOIS CÓDIGOS PORQUE SÃO DUAS CAMADAS. `42703` é o Postgres dizendo "undefined column"
+ * (quando a consulta chega ao banco) e `PGRST204` é o PostgREST barrando antes, pelo cache de
+ * schema dele — que continua desatualizado por um tempo mesmo DEPOIS de a migration rodar. Tratar
+ * só um dos dois deixa metade dos minutos seguintes ao deploy derrubando proposta.
+ *
+ * ⚠️ E O NOME DA COLUNA ENTRA NA CONTA, como em `semAColunaDoTerreno` (`criar-reserva.ts`). Sem
+ * ele, qualquer outra coluna que faltasse nesta tabela viraria "refaz sem os bens" — a rota
+ * esconderia um erro de schema de verdade gravando uma proposta incompleta.
+ */
+function semAColunaDeBens(erro: { code?: string; message?: string }): boolean {
+  return (
+    (erro.code === "PGRST204" || erro.code === "42703") &&
+    /bens_e_permutas/.test(String(erro.message ?? ""))
+  );
+}
+
 /** `numeric` do Postgres chega como STRING no PostgREST: somar sem converter concatena. */
 function numeroDoBanco(
   valor: null | number | string | undefined,
@@ -281,12 +442,22 @@ function codigoDoEmpreendimento(
   return cadastro?.codigo || null;
 }
 
+/**
+ * O plano como a Mesa o recebe: o `PlanoComercial` da conta, mais o id da linha que o originou.
+ *
+ * ⚠️ O ID SÓ EXISTE DO LADO DO PANTEON, e é por isso que ele é opcional. `comoPlano` carrega
+ * `temis_planos.id` em todo plano cadastrado aqui; os que vêm do C2X (`commercial_plans`, lidos por
+ * slot) não têm id nenhum para carregar. `PlanosDoEmpreendimento.planos` é tipado como
+ * `PlanoComercial` porque as duas fontes se misturam ali, e o id se perde no TIPO — não no objeto.
+ */
+type PlanoDaMesa = PlanoComercial & { id?: null | string };
+
 /** Os planos que o simulador oferece para esta unidade: Panteon primeiro, C2X depois. */
 async function planosDaUnidade(
   admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
   familia: string[],
   codigo: null | string,
-): Promise<PlanoComercial[]> {
+): Promise<PlanoDaMesa[]> {
   // ⚠️ FALHA NÃO DERRUBA A TELA, dos dois lados — a mesma escolha da rota `/venda`: sem plano o
   // simulador cai na conta simples, que é o que ele já fazia. Perder a proposta inteira porque o
   // legado não respondeu seria pior.
@@ -300,10 +471,86 @@ async function planosDaUnidade(
     }),
   ]);
 
+  // ⚠️ A LISTA É A DA FAMÍLIA ACHATADA, E É UMA SÓ PARA OS DOIS USOS. `familia` traz o pai e os
+  // irmãos (a mesma expansão da esteira), e desta lista saem tanto o plano da proposta quanto
+  // `pedido.planosDaTabela`, que a régua confere. Em 22/09/2026 este `flatMap` chegou a carimbar o
+  // `enterpriseId` de cada plano para um recorte por empreendimento que foi desfeito no mesmo dia:
+  // com ele, a rota escolhia o plano numa lista e conferia a proposta noutra, e uma proposta do LBF
+  // gravava `plano.entradaPercentual = 20` ao lado de uma entrada de 12%, no mesmo objeto.
   return planosPreferindoOPanteon(
     doC2x.ok ? doC2x.empreendimentos : [],
     doPanteon,
-  ).flatMap((e) => e.planos);
+  ).flatMap((e) => e.planos as PlanoDaMesa[]);
+}
+
+/**
+ * O plano desta proposta: pelo ID da linha de `temis_planos`, com o nome como reserva.
+ *
+ * ⚠️ O NOME NÃO É CHAVE, E ISSO CUSTA DINHEIRO DE VERDADE. Até 22/09/2026 a rota casava o plano por
+ * `p.nome.trim() === planoNome`, e os nomes dos planos são texto que o cadastro edita. No dia em que
+ * o Garden trocou NORMAL por INVESTIDOR, INVESTIDOR PARCELADO por PROMOÇÃO PARCELADO e INVESTIDOR
+ * por PROMOÇÃO À VISTA, um simulador que já estava aberto continuou mandando `planoNome:
+ * "INVESTIDOR"` querendo o plano de 36 parcelas — e o nome passou a casar com a linha de 60. O
+ * objeto ia inteiro para `montarCronograma` e congelava na gravação: medido no banco, o de 36x tem
+ * `juros_taxa` 0,000000 e o de 60x tem 6,000000 ao ano. São 6% ao ano gravados numa proposta de
+ * verdade, num cronograma que alimenta o contrato. Não é tela errada, é dinheiro errado que fica.
+ *
+ * ⚠️ OS DOIS SÃO ACEITOS DE PROPÓSITO. O id é a chave; o nome é a reserva para quem não o manda —
+ * qualquer aba aberta antes desta subida, e o C2X, que não tem o que mandar (`commercial_plans` é
+ * lido por slot e não tem id que sobreviva à leitura, então lá o nome é a única chave que existe).
+ * Recusar tudo o que chega sem id pararia a venda de todo mundo no minuto do deploy.
+ *
+ * ⚠️ ID QUE NÃO CASA NÃO CAI NO NOME. Seria reabrir exatamente o buraco: a tela velha manda o id
+ * certo E o nome velho, e um fallback silencioso a levaria de volta para a linha renomeada. Id que
+ * não existe mais é uma frase para o coordenador, não um palpite.
+ *
+ * ⚠️ E O CAMINHO SEM ID É O `find` DE SEMPRE, DESFEITO E DEVOLVIDO NO MESMO DIA EM QUE SAIU
+ * (22/09/2026). Duas regras nasceram aqui junto com o casamento por id, e as duas saíram por
+ * medição, porque mudavam regra de venda de quem não pediu nada:
+ *
+ *   • A TRAVA DO NOME AMBÍGUO (recusar com 422 quando dois planos de mesmo nome discordavam no
+ *     dinheiro) PARAVA A VENDA DO LAGOA BONITA INTEIRA, hoje e sem rename nenhum. `planosDaUnidade`
+ *     achata a família (pai e irmãos), e medido em 22/09/2026 no banco: o "NORMAL 01" do LBR
+ *     (enterprise 27) pede 12% de entrada e o do LBF (enterprise 33) pede 20%, os dois cadastrados
+ *     de propósito; o "INVESTIDOR 02" tem a mesma diferença. São cadastros CERTOS, de produtos
+ *     diferentes, que a trava comparava como se fossem candidatos ao mesmo lote.
+ *
+ *   • O RECORTE POR EMPREENDIMENTO DA UNIDADE, criado para consertar a trava, GRAVAVA PROPOSTA QUE
+ *     SE CONTRADIZIA: ele escolhia o plano numa lista recortada enquanto a tela e
+ *     `pedido.planosDaTabela` continuavam olhando a família inteira. Medido: uma proposta do LBF
+ *     congelava `plano.entradaPercentual = 20` ao lado de uma entrada de 12%, no mesmo objeto.
+ *
+ * O nome repetido escolhe o PRIMEIRO da lista, como sempre escolheu. Quem fecha esse buraco é o id,
+ * que a tela passou a mandar — e não uma recusa que para venda legítima para todo mundo.
+ */
+function escolherPlanoDaProposta(
+  planos: PlanoDaMesa[],
+  escolhido: { id: string; nome: string },
+): { motivo: string; plano: null } | { motivo: null; plano: PlanoDaMesa } {
+  if (escolhido.id) {
+    const porId = planos.find(
+      (p) => String(p.id ?? "").trim() === escolhido.id,
+    );
+    return porId
+      ? { motivo: null, plano: porId }
+      : {
+          motivo:
+            "O plano escolhido não está mais disponível neste empreendimento. Abra a proposta de novo e escolha o plano na lista.",
+          plano: null,
+        };
+  }
+
+  if (!escolhido.nome) return { motivo: "Escolha o plano da proposta.", plano: null };
+
+  // ⚠️ ESTE `find` É O DE SEMPRE, LETRA POR LETRA — ver o cabeçalho. Mexer nele é mexer na regra de
+  // venda de todo empreendimento servido pelo C2X e de toda aba que ainda não manda o id.
+  const porNome = planos.find((p) => p.nome.trim() === escolhido.nome);
+  return porNome
+    ? { motivo: null, plano: porNome }
+    : {
+        motivo: `O plano "${escolhido.nome}" não está disponível neste empreendimento.`,
+        plano: null,
+      };
 }
 
 /** A % mínima de entrada DESTE empreendimento. Nulo = a tela cai no padrão da casa. */
@@ -543,6 +790,11 @@ export async function POST(request: Request) {
     ajusteValor?: unknown;
     anuaisQuantidade?: unknown;
     anuaisValor?: unknown;
+    /**
+     * Os bens e permutas recebidos na aquisição (0187). Lucas (22/09/2026): *"Abate, como uma
+     * entrada"*, *"Vários"*. Ausente = proposta só em dinheiro.
+     */
+    bensEPermutas?: unknown;
     compradores?: unknown;
     diaDeVencimento?: unknown;
     entradaValor?: unknown;
@@ -553,6 +805,15 @@ export async function POST(request: Request) {
     incluirReajuste?: unknown;
     observacao?: unknown;
     parcelasMensais?: unknown;
+    /**
+     * O id da linha de `temis_planos` — a chave do plano desta proposta.
+     *
+     * ⚠️ ELE MANDA, E O NOME É A RESERVA. Ver `escolherPlanoDaProposta`: nome é texto que o cadastro
+     * edita, e casar por nome faz a proposta trocar de plano quando alguém renomeia. A modal o manda
+     * desde 22/09/2026 (`ModalDeProposta.corpoDoPedido`); vem ausente da aba aberta antes da subida,
+     * e ausente SEMPRE nos empreendimentos servidos pelo C2X, que não têm id para mandar.
+     */
+    planoId?: unknown;
     planoNome?: unknown;
     /** Pede o PDF de prévia e para antes de gravar — ver o passo 6.5. */
     previa?: unknown;
@@ -568,6 +829,7 @@ export async function POST(request: Request) {
   }
 
   const unidadeId = String(corpo.unidadeId ?? "").trim();
+  const planoId = String(corpo.planoId ?? "").trim();
   const planoNome = String(corpo.planoNome ?? "").trim();
 
   // ⚠️ O AJUSTE É LIDO AQUI E NÃO INFLUENCIA O PREÇO — `valorNegociado` já chega com ele
@@ -718,6 +980,21 @@ export async function POST(request: Request) {
       };
     });
 
+    // ── OS BENS E AS PERMUTAS ──────────────────────────────────────────────
+    //
+    // ⚠️ CONFERIDO AQUI, E NÃO NA RÉGUA. `conferirProposta` é função PURA da composição do
+    // pagamento; isto é conferência de FORMATO do que chegou por HTTP, e o 400 dela precisa dizer
+    // qual campo de qual item está errado — coisa que a régua, que fala de entrada e parcela, não
+    // tem como nomear.
+    //
+    // ⚠️ E ANTES DO PDF DE PRÉVIA, de propósito: a prévia imprime a proposta, e imprimir uma
+    // permuta sem valor (ou com o valor que `Number("")` inventaria) põe no papel do cliente um
+    // número que ninguém combinou.
+    const bensEPermutas = bensEPermutasDoCorpo(corpo.bensEPermutas);
+    if (bensEPermutas.erros.length > 0) {
+      return NextResponse.json({ erros: bensEPermutas.erros }, { status: 400 });
+    }
+
     const entradaMinimaPercentual = await pisoDaEntrada(admin, c2xId);
     const primeiraParcelaEm = String(corpo.primeiraParcelaEm ?? "").trim();
 
@@ -776,6 +1053,13 @@ export async function POST(request: Request) {
         corpo.anuaisValor === null || corpo.anuaisValor === undefined
           ? 0
           : numeroDoCorpo(corpo.anuaisValor),
+      // ⚠️ A LISTA ENTRA NO PEDIDO, E É O QUE FAZ O BEM VIRAR CONTA. Até 22/09/2026 ela era
+      // conferida acima e gravada na coluna, e NÃO chegava aqui: `conferirProposta` recusava por
+      // entrada mínima um carro apontado na entrada (o piso só via dinheiro), e quando o
+      // coordenador subia a entrada para passar, o cronograma saía financiando o lote INTEIRO —
+      // num lote de R$ 200.000 com carro de R$ 80.000, 120 boletos sobre R$ 180.000. O bem
+      // cobrado de novo, em boleto, de quem já o entregou. Meio ligada é pior que desligada.
+      bensEPermutas: bensEPermutas.lista,
       compradores,
       entradaMinimaPercentual,
       entradaValor: numeroDoCorpo(corpo.entradaValor),
@@ -807,7 +1091,14 @@ export async function POST(request: Request) {
       familia,
       codigoDoEmpreendimento(catalogo, empreendimento, c2xId),
     );
-    const plano = planos.find((p) => p.nome.trim() === planoNome) ?? null;
+    // ⚠️ PELO ID DA LINHA, COM O NOME COMO RESERVA — ver `escolherPlanoDaProposta`. O `find` por
+    // nome que morava aqui é o que fazia uma proposta de verdade nascer com o plano errado assim
+    // que alguém renomeasse a tabela comercial.
+    const escolha = escolherPlanoDaProposta(planos, {
+      id: planoId,
+      nome: planoNome,
+    });
+    const plano = escolha.plano;
 
     // ⚠️ A TABELA VAI JUNTO PARA A RÉGUA, e é o que faz a faixa do prazo VALER. Sem estes planos,
     // `conferirProposta` só conhece o piso da casa (10%) e uma proposta de 30 parcelas com entrada
@@ -822,13 +1113,11 @@ export async function POST(request: Request) {
     const erros: Array<{ campo: string; mensagem: string }> = [
       ...conferirProposta(pedido, new Date().toISOString()),
     ];
-    if (!plano) {
-      erros.push({
-        campo: "plano",
-        mensagem: planoNome
-          ? `O plano "${planoNome}" não está disponível neste empreendimento.`
-          : "Escolha o plano da proposta.",
-      });
+    if (!escolha.plano) {
+      // ⚠️ A FRASE VEM DA ESCOLHA, e cada caso tem a sua: id que sumiu do cadastro, nome que não
+      // existe, nenhum plano escolhido. "Não está disponível" para os três deixaria o coordenador
+      // reclicando no mesmo botão sem saber que o problema é o CADASTRO.
+      erros.push({ campo: "plano", mensagem: escolha.motivo });
     }
     if (erros.length > 0 || !plano) {
       return NextResponse.json({ erros }, { status: 422 });
@@ -845,6 +1134,11 @@ export async function POST(request: Request) {
       cronograma = montarCronograma({
         anuaisQuantidade: pedido.anuaisQuantidade ?? 0,
         anuaisValor: pedido.anuaisValor ?? 0,
+        // ⚠️ SAI DO `pedido`, E NÃO DE `bensEPermutas.lista` DIRETO. É a mesma lista, e é de
+        // propósito: o cronograma tem que ser o da composição que a régua acabou de APROVAR. Duas
+        // origens para o mesmo dado é como a régua passa a conferir uma venda e o papel a imprimir
+        // outra no dia em que um dos dois ganhar um filtro.
+        bensEPermutas: pedido.bensEPermutas,
         diaDeVencimento: pedido.vencimentoDia,
         entradaValor: pedido.entradaValor,
         entradaDatas: pedido.entradaDatas,
@@ -931,6 +1225,9 @@ export async function POST(request: Request) {
             imobiliaria: paraORodape?.imobiliaria.nome ?? nomeDaImobiliaria,
             telefone: paraORodape?.imobiliaria.telefone ?? null,
           },
+          // A prévia é o papel que o coordenador confere ANTES de gerar: sem os bens aqui, ele
+          // aprovaria um documento diferente do que o cliente vai receber.
+          bensEPermutas: bensEPermutas.lista,
           codigo,
           compradores,
           cronograma,
@@ -980,141 +1277,189 @@ export async function POST(request: Request) {
       }
     }
 
-    const { data: criada, error } = await admin
-      .from("hercules_propostas")
-      .insert({
-        // A carga do C2X preenche esta coluna e ninguem a le hoje; gravada aqui para a proposta
-        // nativa nao ser a unica linha da tabela com o campo em branco.
-        aberta: true,
-        // ⚠️ O DESCONTO FICA REGISTRADO, E OS DOIS ANDAM JUNTOS (a constraint da 0151 exige):
-        // modo sem valor não diz quanto, valor sem modo não diz de quê. Ajuste ausente ou zerado
-        // grava NULO nos dois — "sem desconto" e "desconto de zero" são a mesma coisa para quem
-        // lê, e nulo é o que as 4.857 propostas importadas têm.
-        ajuste_modo: ajuste ? ajuste.modo : null,
-        ajuste_valor: ajuste ? ajuste.valor : null,
-        cliente_documento: cpfDoTitular,
-        // A CAD que DECIDIU o credenciamento — é por ela que se abre a ficha do cliente depois.
-        cliente_entity_id: credenciamento.entityId,
-        cliente_nome: titular.nome,
-        compradores,
-        // O cronograma inteiro, como ele foi impresso: é o que responde "o que a proposta
-        // prometeu" quando o plano do empreendimento mudar no ano que vem.
-        //
-        // ⚠️ E AGORA A PREMISSA VAI JUNTO, e não só o resultado dela. Até 13/09/2026 a proposta
-        // congelava o CRONOGRAMA e nunca a PREMISSA: guardava as 120 parcelas com data e valor, e
-        // não guardava com que taxa, com que índice nem com que sistema aquilo tinha sido gerado.
-        // Quem quisesse saber depois reencontrava o plano PELO NOME — e a 0143 tirou a unicidade
-        // do nome, então "Normal - Price" pode ser dois planos diferentes daqui a um ano.
-        //
-        // ⚠️ POR QUE AQUI DENTRO, e não em colunas novas: as colunas planas `plano_juros` e
-        // `plano_correcao` existem, mas `plano_juros` JÁ MISTURA DUAS UNIDADES — medido em
-        // 13/09/2026 nas 4.857 linhas importadas do C2X: 1.662 delas guardam 8 ou 6 (que é % ao
-        // ANO) e ~848 guardam 0,7207 / 0,6434 / 0,5 / 0,8 (que é % ao MÊS), na mesma coluna, sem
-        // marcador. 8% a.a. e 0,6434% a.m. são a MESMA taxa e a coluna não sabe distinguir. Um
-        // número sozinho ali não congela nada; o objeto abaixo congela.
-        condicoes: {
-          ...cronograma,
-          // ⚠️ GRAVADA, e não só usada na hora. Sem isto, reimprimir a mesma proposta daqui a três
-          // meses devolveria um documento diferente do que o cliente recebeu — e o documento
-          // reimpresso é justamente o que alguém vai buscar quando houver discussão.
-          incluirReajuste,
-          plano: {
-            // ⚠️ O DESCONTO DO PLANO FICA CONGELADO JUNTO (18/09/2026). `ajuste_modo`/`ajuste_valor`
-            // guardam o desconto que foi DADO; este guarda o que o plano PREVIA. Com os dois lado a
-            // lado, a Têmis distingue "8% do Investidor Parcelado" de "8% à mão". Zero = sem desconto.
-            //
-            // ⚠️ E SÓ NO PRAZO DO PLANO (`descontoDoPlanoNoPrazo`): o Investidor escolhido e levado a
-            // 84 parcelas não previa os 12% dele nesse prazo, e o que ficou no campo é exceção do
-            // coordenador (a modal pediu a nota). É a mesma régua do simulador.
-            descontoPercentual: descontoDoPlanoNoPrazo({
-              descontoDoPlano: (plano as { descontoPercentual?: unknown }).descontoPercentual,
-              parcelasDoPlano: plano.parcelas,
-              parcelasEfetivas: pedido.parcelas,
-            }),
-            entradaPercentual: plano.entradaPercentual,
-            indiceCorrecao: plano.indiceCorrecao,
-            jurosConvencao: plano.jurosConvencao,
-            jurosPeriodicidade: plano.jurosPeriodicidade,
-            jurosTaxa: plano.jurosTaxa,
-            nome: plano.nome,
-            /** O prazo do MOLDE. O prazo contratado está em `contrato_parcelas`. */
-            parcelas: plano.parcelas,
-            sistemaAmortizacao: plano.sistemaAmortizacao,
-          },
+    // ⚠️ A LINHA VIROU UMA FUNÇÃO POR CAUSA DE UMA COLUNA SÓ, e o molde é o da reserva com
+    // `terreno_chave` (0176, `lib/hercules/criar-reserva.ts`): tenta COM a coluna nova e, se o
+    // banco não a conhecer, refaz SEM ela. Medido em produção em 22/09/2026:
+    // `information_schema.columns` não devolve `bens_e_permutas` em `hercules_propostas` — a 0187
+    // está escrita e NÃO aplicada, porque aplicar migration exige OK do Lucas, a cada vez. Sem
+    // este desvio, o código no ar antes da migration derruba TODA proposta, com permuta ou sem, num
+    // 503 que parece falha do sistema e para a venda da casa inteira. E nada precisa ser mexido no
+    // dia em que a coluna nascer: a primeira tentativa passa e a lista grava sozinha.
+    const linhaDaProposta = (comBens: boolean) => ({
+      // A carga do C2X preenche esta coluna e ninguem a le hoje; gravada aqui para a proposta
+      // nativa nao ser a unica linha da tabela com o campo em branco.
+      aberta: true,
+      // ⚠️ O DESCONTO FICA REGISTRADO, E OS DOIS ANDAM JUNTOS (a constraint da 0151 exige):
+      // modo sem valor não diz quanto, valor sem modo não diz de quê. Ajuste ausente ou zerado
+      // grava NULO nos dois — "sem desconto" e "desconto de zero" são a mesma coisa para quem
+      // lê, e nulo é o que as 4.857 propostas importadas têm.
+      ajuste_modo: ajuste ? ajuste.modo : null,
+      ajuste_valor: ajuste ? ajuste.valor : null,
+      // ⚠️ O QUE O CLIENTE DEU EM BEM FICA REGISTRADO, e não só embutido no valor negociado.
+      // Sem esta coluna o carro e o lote dados em pagamento só existiriam na `observacao`, em
+      // texto corrido: a Têmis não teria como imprimir "recebe em permuta o Ford Ka placa
+      // ABC1D23, R$ 32.000" no contrato, e a análise não teria como separar quanto da entrada
+      // foi dinheiro e quanto foi bem. Lucas (22/09/2026): *"Já no contrato também"*.
+      //
+      // ⚠️ LISTA VAZIA, NUNCA NULO — a coluna é NOT NULL com default `'[]'` (0187), e quem lê
+      // nunca precisa distinguir "não tem bem" de "não foi preenchido".
+      //
+      // ⚠️ E O CAMPO SAI DA LINHA INTEIRA QUANDO `comBens` É FALSO, em vez de ir nulo: o
+      // PostgREST recusa a coluna que não conhece, e mandar `null` não resolveria nada — não é
+      // o VALOR que ele não aceita, é o NOME.
+      ...(comBens ? { bens_e_permutas: bensEPermutas.lista } : {}),
+      cliente_documento: cpfDoTitular,
+      // A CAD que DECIDIU o credenciamento — é por ela que se abre a ficha do cliente depois.
+      cliente_entity_id: credenciamento.entityId,
+      cliente_nome: titular.nome,
+      compradores,
+      // O cronograma inteiro, como ele foi impresso: é o que responde "o que a proposta
+      // prometeu" quando o plano do empreendimento mudar no ano que vem.
+      //
+      // ⚠️ E AGORA A PREMISSA VAI JUNTO, e não só o resultado dela. Até 13/09/2026 a proposta
+      // congelava o CRONOGRAMA e nunca a PREMISSA: guardava as 120 parcelas com data e valor, e
+      // não guardava com que taxa, com que índice nem com que sistema aquilo tinha sido gerado.
+      // Quem quisesse saber depois reencontrava o plano PELO NOME — e a 0143 tirou a unicidade
+      // do nome, então "Normal - Price" pode ser dois planos diferentes daqui a um ano.
+      //
+      // ⚠️ POR QUE AQUI DENTRO, e não em colunas novas: as colunas planas `plano_juros` e
+      // `plano_correcao` existem, mas `plano_juros` JÁ MISTURA DUAS UNIDADES — medido em
+      // 13/09/2026 nas 4.857 linhas importadas do C2X: 1.662 delas guardam 8 ou 6 (que é % ao
+      // ANO) e ~848 guardam 0,7207 / 0,6434 / 0,5 / 0,8 (que é % ao MÊS), na mesma coluna, sem
+      // marcador. 8% a.a. e 0,6434% a.m. são a MESMA taxa e a coluna não sabe distinguir. Um
+      // número sozinho ali não congela nada; o objeto abaixo congela.
+      condicoes: {
+        ...cronograma,
+        // ⚠️ GRAVADA, e não só usada na hora. Sem isto, reimprimir a mesma proposta daqui a três
+        // meses devolveria um documento diferente do que o cliente recebeu — e o documento
+        // reimpresso é justamente o que alguém vai buscar quando houver discussão.
+        incluirReajuste,
+        plano: {
+          // ⚠️ O DESCONTO DO PLANO FICA CONGELADO JUNTO (18/09/2026). `ajuste_modo`/`ajuste_valor`
+          // guardam o desconto que foi DADO; este guarda o que o plano PREVIA. Com os dois lado a
+          // lado, a Têmis distingue "8% do Investidor Parcelado" de "8% à mão". Zero = sem desconto.
+          //
+          // ⚠️ E SÓ NO PRAZO DO PLANO (`descontoDoPlanoNoPrazo`): o Investidor escolhido e levado a
+          // 84 parcelas não previa os 12% dele nesse prazo, e o que ficou no campo é exceção do
+          // coordenador (a modal pediu a nota). É a mesma régua do simulador.
+          descontoPercentual: descontoDoPlanoNoPrazo({
+            descontoDoPlano: (plano as { descontoPercentual?: unknown }).descontoPercentual,
+            parcelasDoPlano: plano.parcelas,
+            parcelasEfetivas: pedido.parcelas,
+          }),
+          entradaPercentual: plano.entradaPercentual,
+          indiceCorrecao: plano.indiceCorrecao,
+          jurosConvencao: plano.jurosConvencao,
+          jurosPeriodicidade: plano.jurosPeriodicidade,
+          jurosTaxa: plano.jurosTaxa,
+          nome: plano.nome,
+          /** O prazo do MOLDE. O prazo contratado está em `contrato_parcelas`. */
+          parcelas: plano.parcelas,
+          sistemaAmortizacao: plano.sistemaAmortizacao,
         },
-        // ⚠️ O PRAZO CONTRATADO É ESTE, e é ele que a tela mostra. `fluxoDoPlano`
-        // (lib/hercules/fluxo-de-venda.ts) prefere `contrato_parcelas` e só cai em
-        // `plano_parcelas` quando o contrato não tem o dele — deixar esta coluna nula fazia a
-        // proposta de 120x que o coordenador acabou de montar aparecer como "180x" na lista,
-        // porque 180 é o tamanho do MOLDE. É exatamente o erro que já estampou "144x" no extrato
-        // de um contrato de 62 parcelas, e a lição está escrita: `commercial_plans.parcels` é
-        // molde, `payments.total_parcels` é contrato.
-        contrato_parcelas: pedido.parcelas,
-        corretor_entity_id: reserva.corretor_entity_id,
-        corretor_nome: nomeDoCorretor,
-        criado_por: sessao.usuarioId,
-        criado_por_nome: sessao.usuarioNome,
-        dia_vencimento: pedido.vencimentoDia,
-        // ⚠️ SEM ESTE CÓDIGO A PROPOSTA NASCE INVISÍVEL: a rota `/venda` filtra por ele.
-        empreendimento_codigo: codigoDoEmpreendimento(
-          catalogo,
-          empreendimento,
-          c2xId,
-        ),
-        empreendimento_id: empreendimento.id,
-        etapa: "proposta",
-        // ⚠️ SEM ESTA DATA O MAPA CONTINUA PINTANDO "RESERVADO": é o `etapa_desde` mais recente
-        // que decide a cor da unidade e as ações que a tela oferece.
-        etapa_desde: agora,
-        imobiliaria_entity_id: reserva.imobiliaria_entity_id,
-        imobiliaria_nome: nomeDaImobiliaria,
-        observacao: String(corpo.observacao ?? "").trim() || null,
-        origem: "panteon",
-        parcelas_sinal: pedido.entradaVezes,
-        // ⚠️ A TAXA VAI CRUA, na MESMA convenção que a coluna já usa. A carga do C2X gravou aqui o
-        // número do cadastro sem converter (8 para o plano anual, 0,6434 para o mensal), e
-        // converter só as linhas novas para % ao mês faria a tela da Têmis comparar 0,64 com 8
-        // achando que são taxas diferentes. A periodicidade que desfaz a ambiguidade está em
-        // `condicoes.plano.jurosPeriodicidade`.
-        //
-        // ⚠️ E ELA PRECISA EXISTIR: até hoje a proposta nativa não gravava nenhum dos dois, e por
-        // isso TODA proposta do Panteon chegava na análise da Têmis dizendo "Juros: não informado"
-        // (comercial-da-analise.ts lê `plano_juros` e cai no texto de ausência com nulo). Medido em
-        // 13/09/2026: as 5 propostas nativas têm plano_juros e plano_correcao NULOS, as duas.
-        plano_juros: plano.jurosTaxa,
-        // ⚠️ O RÓTULO, e não o código. Esta coluna é lida como TEXTO para mostrar na tela em dois
-        // lugares (fluxo-de-venda.ts:340 e comercial-da-analise.ts:252) e a carga do C2X encheu-a
-        // com o rótulo do legado ("IPCA ANUAL", "POUPANÇA"). Gravar `IPCA_ANUAL` aqui colocaria um
-        // segundo idioma na mesma coluna e o operador leria o nome da constante.
-        plano_correcao: rotuloDoIndice(plano.indiceCorrecao),
-        plano_nome: plano.nome,
-        // ⚠️ ESTE É O MOLDE, E FICA — não é o prazo desta venda (esse é `contrato_parcelas`, acima).
-        // Ele existe para responder "de que produto esta proposta saiu": as 4.857 linhas importadas
-        // do C2X só têm este número, e apagá-lo aqui faria a proposta nativa ser a única sem a
-        // referência do plano que a originou. Quem lê os dois lado a lado enxerga o desconto de
-        // prazo que o coordenador deu.
-        plano_parcelas: plano.parcelas,
-        // ⚠️ CONGELADO, NÃO CONSULTADO. É o preço do lote NESTE instante. Ler o cadastro depois,
-        // na hora de analisar, faria o passado mudar toda vez que alguém corrigisse o preço da
-        // unidade — a proposta de agosto passaria a "ter desconto" porque o preço subiu em
-        // outubro. Ver a 0151.
-        preco_tabela: numeroDoBanco(unidade.preco_tabela),
-        primeiro_sinal: diaDoCalendario(pedido.primeiraParcelaEm),
-        // O COD é o MESMO da reserva, copiado: um número novo aqui quebraria a única coisa que
-        // amarra a venda do primeiro telefonema ao contrato assinado.
-        protocolo_numero: reserva.protocolo_numero,
-        reserva_id: reserva.id,
-        unidade_id: unidade.id,
-        unidade_nome: unidadeEscrita,
-        // ⚠️ A VALIDADE FICA GRAVADA, e é ela que o documento repete depois. Antes da 0132 o PDF
-        // somava sete dias na hora de imprimir: a mesma proposta reimpressa em dezembro dizia que
-        // valia até dezembro, e o papel do cliente deixava de bater com o que foi prometido.
-        validade_em: pedido.validadeEm,
-        valor: pedido.valorNegociado,
-        workspace_id: WORKSPACE,
-      })
-      .select("id")
-      .maybeSingle();
+      },
+      // ⚠️ O PRAZO CONTRATADO É ESTE, e é ele que a tela mostra. `fluxoDoPlano`
+      // (lib/hercules/fluxo-de-venda.ts) prefere `contrato_parcelas` e só cai em
+      // `plano_parcelas` quando o contrato não tem o dele — deixar esta coluna nula fazia a
+      // proposta de 120x que o coordenador acabou de montar aparecer como "180x" na lista,
+      // porque 180 é o tamanho do MOLDE. É exatamente o erro que já estampou "144x" no extrato
+      // de um contrato de 62 parcelas, e a lição está escrita: `commercial_plans.parcels` é
+      // molde, `payments.total_parcels` é contrato.
+      contrato_parcelas: pedido.parcelas,
+      corretor_entity_id: reserva.corretor_entity_id,
+      corretor_nome: nomeDoCorretor,
+      criado_por: sessao.usuarioId,
+      criado_por_nome: sessao.usuarioNome,
+      dia_vencimento: pedido.vencimentoDia,
+      // ⚠️ SEM ESTE CÓDIGO A PROPOSTA NASCE INVISÍVEL: a rota `/venda` filtra por ele.
+      empreendimento_codigo: codigoDoEmpreendimento(
+        catalogo,
+        empreendimento,
+        c2xId,
+      ),
+      empreendimento_id: empreendimento.id,
+      etapa: "proposta",
+      // ⚠️ SEM ESTA DATA O MAPA CONTINUA PINTANDO "RESERVADO": é o `etapa_desde` mais recente
+      // que decide a cor da unidade e as ações que a tela oferece.
+      etapa_desde: agora,
+      imobiliaria_entity_id: reserva.imobiliaria_entity_id,
+      imobiliaria_nome: nomeDaImobiliaria,
+      observacao: String(corpo.observacao ?? "").trim() || null,
+      origem: "panteon",
+      parcelas_sinal: pedido.entradaVezes,
+      // ⚠️ A TAXA VAI CRUA, na MESMA convenção que a coluna já usa. A carga do C2X gravou aqui o
+      // número do cadastro sem converter (8 para o plano anual, 0,6434 para o mensal), e
+      // converter só as linhas novas para % ao mês faria a tela da Têmis comparar 0,64 com 8
+      // achando que são taxas diferentes. A periodicidade que desfaz a ambiguidade está em
+      // `condicoes.plano.jurosPeriodicidade`.
+      //
+      // ⚠️ E ELA PRECISA EXISTIR: até hoje a proposta nativa não gravava nenhum dos dois, e por
+      // isso TODA proposta do Panteon chegava na análise da Têmis dizendo "Juros: não informado"
+      // (comercial-da-analise.ts lê `plano_juros` e cai no texto de ausência com nulo). Medido em
+      // 13/09/2026: as 5 propostas nativas têm plano_juros e plano_correcao NULOS, as duas.
+      plano_juros: plano.jurosTaxa,
+      // ⚠️ O RÓTULO, e não o código. Esta coluna é lida como TEXTO para mostrar na tela em dois
+      // lugares (fluxo-de-venda.ts:340 e comercial-da-analise.ts:252) e a carga do C2X encheu-a
+      // com o rótulo do legado ("IPCA ANUAL", "POUPANÇA"). Gravar `IPCA_ANUAL` aqui colocaria um
+      // segundo idioma na mesma coluna e o operador leria o nome da constante.
+      plano_correcao: rotuloDoIndice(plano.indiceCorrecao),
+      plano_nome: plano.nome,
+      // ⚠️ ESTE É O MOLDE, E FICA — não é o prazo desta venda (esse é `contrato_parcelas`, acima).
+      // Ele existe para responder "de que produto esta proposta saiu": as 4.857 linhas importadas
+      // do C2X só têm este número, e apagá-lo aqui faria a proposta nativa ser a única sem a
+      // referência do plano que a originou. Quem lê os dois lado a lado enxerga o desconto de
+      // prazo que o coordenador deu.
+      plano_parcelas: plano.parcelas,
+      // ⚠️ CONGELADO, NÃO CONSULTADO. É o preço do lote NESTE instante. Ler o cadastro depois,
+      // na hora de analisar, faria o passado mudar toda vez que alguém corrigisse o preço da
+      // unidade — a proposta de agosto passaria a "ter desconto" porque o preço subiu em
+      // outubro. Ver a 0151.
+      preco_tabela: numeroDoBanco(unidade.preco_tabela),
+      primeiro_sinal: diaDoCalendario(pedido.primeiraParcelaEm),
+      // O COD é o MESMO da reserva, copiado: um número novo aqui quebraria a única coisa que
+      // amarra a venda do primeiro telefonema ao contrato assinado.
+      protocolo_numero: reserva.protocolo_numero,
+      reserva_id: reserva.id,
+      unidade_id: unidade.id,
+      unidade_nome: unidadeEscrita,
+      // ⚠️ A VALIDADE FICA GRAVADA, e é ela que o documento repete depois. Antes da 0132 o PDF
+      // somava sete dias na hora de imprimir: a mesma proposta reimpressa em dezembro dizia que
+      // valia até dezembro, e o papel do cliente deixava de bater com o que foi prometido.
+      validade_em: pedido.validadeEm,
+      valor: pedido.valorNegociado,
+      workspace_id: WORKSPACE,
+    });
+
+    const inserirProposta = (comBens: boolean) =>
+      admin
+        .from("hercules_propostas")
+        .insert(linhaDaProposta(comBens))
+        .select("id")
+        .maybeSingle();
+
+    let { data: criada, error } = await inserirProposta(true);
+    if (error && semAColunaDeBens(error)) {
+      // ⚠️ SÓ A LISTA VAZIA REFAZ SEM A COLUNA. Regravar sem ela uma proposta QUE TEM BEM deixaria
+      // a venda com o cronograma já abatido em R$ 80.000 e sem uma linha dizendo por quê: a Têmis
+      // imprimiria um contrato que cobra o lote menos um desconto sem causa, e a análise não teria
+      // como separar o que foi dinheiro do que foi carro. O insert é a PRIMEIRA escrita da rota,
+      // então recusar aqui não deixa nada pela metade — nem proposta, nem reserva movida, nem
+      // WhatsApp. É o mesmo princípio do 409 da trava do lote: na dúvida sobre dinheiro, não grava.
+      if (bensEPermutas.lista.length > 0) {
+        console.error(
+          "[hercules][proposta] 0187 pendente: proposta com bens recusada",
+          { unidade: unidade.id },
+        );
+        return NextResponse.json(
+          {
+            error:
+              "Esta proposta tem bens ou permutas, e o registro deles ainda não está disponível neste ambiente. Nada foi gravado.",
+          },
+          { status: 503 },
+        );
+      }
+      ({ data: criada, error } = await inserirProposta(false));
+    }
 
     if (error) {
       // 23505 = `hercules_propostas_uma_viva_por_unidade`: alguém gerou primeiro.
@@ -1189,6 +1534,7 @@ export async function POST(request: Request) {
       // montado e guardado igual (é o papel da venda, e vai para a aba Documentos); só o WhatsApp
       // não sai, e o histórico de disparos diz que não saiu por decisão.
       avisaPeloWhatsapp: vendaAvisaPeloWhatsapp(sessao),
+      bensEPermutas: bensEPermutas.lista,
       c2xId,
       // O elo do PDF com a ficha do cliente no Apolo — a mesma entidade que decidiu o
       // credenciamento, e o hash do CPF do titular. Ver a 0136.
@@ -1281,6 +1627,15 @@ async function avisar(
      * mas nenhum WhatsApp sai, e o registro diz que não saiu por decisão.
      */
     avisaPeloWhatsapp: boolean;
+    /**
+     * Os bens e permutas que vão ao papel definitivo.
+     *
+     * ⚠️ CAMPO PRÓPRIO, COMO `compradores` — e não lido de `pedido` aqui dentro. É este PDF que
+     * fica guardado na aba Documentos e que vai por WhatsApp para três pessoas: ele e a prévia
+     * precisam sair da MESMA lista, e o campo explícito é o que faz o typecheck cobrar quem
+     * esquecer de passá-la.
+     */
+    bensEPermutas: BemOuPermuta[];
     c2xId: string;
     /** O elo do PDF com a ficha do cliente no Apolo. Ver a 0136. */
     clienteDocumentoHash: null | string;
@@ -1338,6 +1693,7 @@ async function avisar(
         imobiliaria: destinatarios.imobiliaria.nome,
         telefone: destinatarios.imobiliaria.telefone,
       },
+      bensEPermutas: dados.bensEPermutas,
       clienteDocumentoHash: dados.clienteDocumentoHash,
       clienteEntityId: dados.clienteEntityId,
       codigo: dados.codigo,
@@ -1437,6 +1793,15 @@ type DadosDoPdfDaProposta = {
     imobiliaria: null | string;
     telefone: null | string;
   };
+  /**
+   * Os bens e permutas recebidos. Ausente ou vazia = a seção não existe no papel.
+   *
+   * ⚠️ O PAPEL TEM QUE DIZER DE ONDE VEIO O ABATIMENTO. O cronograma que vai impresso já desconta
+   * o carro do saldo; sem esta lista, o comprador lê um financiado R$ 80.000 menor que o lote e
+   * não acha no documento uma linha que explique a diferença — e é o mesmo papel que a Têmis usa
+   * para escrever o contrato.
+   */
+  bensEPermutas: BemOuPermuta[];
   codigo: string;
   compradores: CompradorDoPedido[];
   cronograma: ReturnType<typeof montarCronograma>;
@@ -1475,6 +1840,7 @@ async function bytesDoPdfDaProposta(
 ): Promise<Uint8Array> {
   const folha = montarFolhaDaProposta({
     atendimento: dados.atendimento,
+    bensEPermutas: dados.bensEPermutas,
     codigo: dados.codigo,
     compradores: dados.compradores.map((c) => ({
       cpf: c.cpf,

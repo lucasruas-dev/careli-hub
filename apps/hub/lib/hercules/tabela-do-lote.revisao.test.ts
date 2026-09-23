@@ -255,11 +255,16 @@ describe("revisão: o cronograma (PDF) com as anuais do plano", () => {
     expect(cronograma.totais.anuais).toBe(100_000);
   });
 
-  it("o total do PDF é entrada + anuais de face + soma das mensais, e o do cartão é o mesmo", () => {
+  it("o total do PDF é entrada + anuais de face + soma das mensais; o do cartão é o preço do plano", () => {
     const soma = cronograma.mensais.reduce((s, m) => s + centavos(m.valor), 0);
     expect(centavos(cronograma.totais.geral)).toBe(centavos(32_016) + centavos(100_000) + soma);
-    // O cartão soma a série sem arredondar cada boleto: diferença de centavos, não de reais.
-    expect(Math.abs(centavos(cronograma.totais.geral) - centavos(nossa.total))).toBeLessThan(100);
+    // ⚠️ OS DOIS SE SEPARARAM EM 22/09/2026, E É DE PROPÓSITO. O cronograma cobra o degrau do
+    // aniversário do SACOC, porque é o papel do contrato; o cartão da simulação soma o que anuncia
+    // (Lucas: *"não calculamos juros nessa etapa, é somente informativo"*) e fecha nos R$ 400.200
+    // do INVESTIDOR PARCELADO. A diferença medida aqui, R$ 45.974,32, é o degrau — era ela que
+    // aparecia como "Total pago" embaixo de "R$ 4.383,14 por mês, 84 vezes".
+    expect(centavos(nossa.total)).toBe(centavos(400_200));
+    expect(centavos(cronograma.totais.geral) - centavos(nossa.total)).toBe(centavos(45_974.32));
   });
 
   // ⚠️ A EXPECTATIVA MUDOU COM A DECISÃO 2 (18/09/2026): a anual k vence junto com a mensal 12k
@@ -471,6 +476,16 @@ describe("revisão: a busca por parcela, Panteon x `propor` da MMendes (lote de 
         "INVESTIDOR PARCELADO 65000 0x0",
       ],
     });
+    // ⚠️ ESTAS DUAS EMPATAM EM ENTRADA E EM TOTAL, E QUEM DESEMPATA AGORA É A PARCELA. A ordem
+    // primária continua sendo a MENOR ENTRADA, e ela não mudou em alvo nenhum. O que mudou é o
+    // degrau de baixo: no Garden TODAS as composições passaram a somar exatamente o preço do plano
+    // (R$ 400.200 nas duas aqui), porque os três planos têm anuais cadastradas e o SACOC as abate
+    // pelo valor de face — o desempate por total virou empate, e até 22/09/2026 a ordem caía na de
+    // GERAÇÃO (a ordem em que `anuaisPossiveis` está escrita), que é estável mas não é critério.
+    // O terceiro critério passou a ser a menor parcela mensal: R$ 4.192,86 (1 × R$ 15.000) na frente
+    // de R$ 4.371,43 (sem reforço), mesma entrada de R$ 33.000 e mesmo total. Fora do Garden (Price,
+    // ou reforço à mão em plano sem anual cadastrada) o total continua diferindo e continua
+    // desempatando antes disso.
     expect(resumo(4_500)).toEqual({
       dela: ["normal 45000 4x30000", "invest 161000 3x20000"],
       nossa: [
@@ -481,6 +496,8 @@ describe("revisão: a busca por parcela, Panteon x `propor` da MMendes (lote de 
     });
     expect(resumo(5_000)).toEqual({
       dela: ["normal 45000 3x30000", "invest 158000 3x15000"],
+      // Mesmo empate de R$ 44.000 de entrada e de R$ 435.000 de total, mesmo desempate: R$ 4.433,33
+      // (5 × R$ 25.000) na frente de R$ 4.850,00 (5 × R$ 20.000).
       nossa: ["NORMAL 44000 5x25000", "NORMAL 44000 5x20000", "NORMAL 135000 0x0"],
     });
   });

@@ -199,6 +199,25 @@ describe("o fluxo de pagamento", () => {
     }
   });
 
+  // ⚠️ A PERMUTA É PARTE DO PREÇO, e por isso mora nos DOIS formatos de fluxo. Lucas (22/09/2026):
+  // *"Já no contrato também"*. Um contrato que só diz o preço e o saldo deixa sem explicação por que
+  // o comprador financia R$ 100.000 de um lote de R$ 200.000 tendo dado R$ 20.000 de entrada.
+  it("diz a permuta nos dois formatos, sempre dentro do par que a esconde", () => {
+    for (const id of ["fluxo-tabela", "fluxo-escrito"]) {
+      const texto = textoDoBloco(acharBlocoPronto(id) as never);
+      const abre = texto.indexOf("[inicio_tem_bens_e_permutas]");
+      const fecha = texto.indexOf("[fim_tem_bens_e_permutas]");
+
+      expect(abre, id).toBeGreaterThan(-1);
+      expect(fecha, id).toBeGreaterThan(abre);
+      // ⚠️ AS DUAS VARIÁVEIS FICAM DENTRO DO PAR. Fora dele, todo contrato da casa (a imensa
+      // maioria não tem bem nenhum) imprimiria "recebe , no valor total de " no papel do cliente.
+      expect(texto.indexOf("[bens_e_permutas_descricao]"), id).toBeGreaterThan(abre);
+      expect(texto.indexOf("[valor_bens_e_permutas]"), id).toBeLessThan(fecha);
+      expect(texto.indexOf("[valor_bens_e_permutas_extenso]"), id).toBeLessThan(fecha);
+    }
+  });
+
   it("traz a condição suspensiva do sinal, que é o que dá dente à cláusula", () => {
     expect(textoDoBloco(acharBlocoPronto("fluxo-escrito") as never)).toContain(
       "condição suspensiva",

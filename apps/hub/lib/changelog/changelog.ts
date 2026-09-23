@@ -36,6 +36,64 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-22-o-bem-entra-na-conta-e-a-tv-liga",
+    deployedAt: "2026-09-22T19:20:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**A proposta passou a aceitar bem e permuta.** Dá para registrar quantos itens a negociação tiver, cada um com o que é, quanto vale e uma descrição, e o valor abate o saldo a financiar. Cada item escolhe se aponta na entrada, e aí cumpre a entrada mínima, ou se só reduz o valor negociado.",
+              "**O total pago voltou a fechar com o valor do lote.** Ele vinha somando os juros que o boleto do primeiro ano não cobra, e inflava a conta: num lote de R$ 416.000 com 8% de desconto, mostrava R$ 425.937 onde a soma real é R$ 382.720.",
+              "**O PDF passou a imprimir a simulação que está na tela.** Mudar a entrada e mandar para o papel trazia o mínimo do plano em vez do valor digitado, inclusive quando a entrada era zero. A data escolhida numa parcela do meio também se perdia.",
+            ],
+            screen: "Venda · Simulador e proposta",
+          },
+          {
+            items: [
+              "**A janela da simulação cabe no iPad.** A lista de composições ficava cortada e, ao arrastar, quem rolava era a página atrás.",
+            ],
+            screen: "Venda · Simulação no tablet",
+          },
+        ],
+      },
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O bem recebido aparece no contrato.** Vira linha própria no Quadro-Resumo, com o que é e quanto vale, e uma cláusula descreve item a item. O quadro continua fechando com o preço do lote.",
+            ],
+            screen: "Contrato · Quadro-Resumo",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O Garden ganhou um espelho de televisão: `c2x.app.br/tv/garden`.** Tela cheia, o masterplan com as marcas, e as cores dizendo o que está liberado. Atualiza sozinha a cada minuto conforme a venda anda, e mantém o último mapa bom se a rede cair.",
+            ],
+            screen: "Espelho de vendas na TV",
+          },
+        ],
+      },
+    ],
+    rollback: "1c8d9c71",
+    technical: {
+      done:
+        "PERMUTA: coluna `bens_e_permutas` jsonb not null default '[]' (migration 0187, aplicada em producao com OK do Lucas), regua unica em `lib/hercules/bens-e-permutas.ts` (`valeDinheiro` nao coage, `Number.isFinite`), e o abatimento entra ao lado de `totalDaEntrada` em `cronograma.ts`, NUNCA em `anuaisQueAbatemOSaldo` (aquele criterio de valor presente e de anual do Garden; bem entregue no ato vale a face). O teto passou a ser `entrada + permutas <= valorNegociado` e o piso conta so os itens `entraComo: \"entrada\"`. A volta (`entradaParaAParcela`) foi junto, senao a entrada sugerida nao produz a parcela pedida. TOTAL PAGO: `simulacao.ts` somava `somaDasMensais`, que reconstroi o degrau do aniversario do SACOC; medido R$ 43.217,43 a mais no Q04 L16 e R$ 55.268,50 no Q03 L07. O rotulo '% sobre a tabela' saiu porque sem os juros ele virava aritmeticamente o desconto do plano, que a linha de cima ja diz. O desempate da lista ganhou menor parcela, porque com os totais iguais a ordem passou a ser a de geracao e isso trocava a composicao RECOMENDADA em 4 de 10 alvos medidos. TV: `/tv/[slug]`, lista de slugs escrita a mao (`/tv/<outra coisa>` e 404, inclusive para empreendimento que existe), primeira carga no servidor, poll de 60s, e o funil `estadoParaTv` deixa passar SO codigo e situacao -- revertendo ele, 3 testes mostram `preco`, `area` e `rotulo` vazando no corpo. Erro devolve 503, nunca `lotes: []` com 200, senao a TV apaga as cores e se le como loteamento inteiro livre. ⚠️ QUATRO DEFEITOS GRAVES FORAM PEGOS POR REVISAO ADVERSARIAL ANTES DO DEPLOY, e nenhum deles apareceu em teste comum: a rota gravava a permuta sem calcular com ela (o cliente entregava o carro e recebia boleto do valor cheio); o insert escrevia a coluna nova antes da migration, o que quebraria TODA proposta; a comissao sumia do quadro quando a entrada em dinheiro e zero, caso que a permuta tornou comum; e existiam TRES copias divergentes da regua de valor, fazendo o mesmo carro valer R$ 80.000 na clausula, R$ 0,00 na variavel e nada no quadro. 519 arquivos, 8.063 testes, typecheck limpo.",
+      motivation:
+        "Lucas, 22/09/2026: \"temos que incluir um campo para apontar na negociação as permutas e o bens que são negociados na aquisição da unidade\", \"o valor pago tem que ser o valor do lote, está cobrando juros errado. não calculamos juros nessa etapa, é somente informativo\", \"mesmo eu alterando o valor de entrada, quando eu mando para PDF ele não traz o valor que eu tinha colocado\", \"no ipad, a tela da simulação está cortando\" e \"preciso criar um espelho do garden para ficar fixo em uma tv\".",
+    },
+    title: "O bem entra na conta, e o Garden vai para a TV",
+    type: "novidade",
+    version: "1.361.0",
+  },
+  {
     buildTag: "2026-09-22-o-anexo-nao-nasce-orfao",
     deployedAt: "2026-09-22T14:35:36-03:00",
     internal: true,

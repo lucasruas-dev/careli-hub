@@ -180,13 +180,21 @@ describe("POST /api/publico/espelho/simulacao", () => {
     expect(condicao("Valor de tabela")).toBeUndefined();
   });
 
-  it("⚠️ a entrada respeita o piso do empreendimento", async () => {
+  it("⚠️ a entrada digitada vai ao papel como está; quem não escolheu recebe o piso do empreendimento", async () => {
+    // ⚠️ A PRIMEIRA LINHA MUDOU DE LADO EM 22/09/2026, e é o defeito do print do Lucas: até aqui
+    // R$ 1.000 digitados saíam impressos como R$ 32.016 (os 8% de R$ 400.200), e o corretor
+    // encaminhava pelo WhatsApp uma folha com outra conta que a da tela dele. Ver
+    // `route.entrada-da-tela.test.ts` e a decisão em `simulacao-publica.ts`.
     await pedir({ ...DA_TELA, entrada: 1_000 });
-    // 8% de R$ 400.200 = R$ 32.016,00.
+    expect(destaque("Entrada")).toBe("R$ 1.000,00");
+    // Quem não escolheu entrada continua recebendo a sugestão: 8% de R$ 400.200 = R$ 32.016,00.
+    // ⚠️ "NÃO ESCOLHEU" É A CHAVE AUSENTE, E NÃO O ZERO (22/09/2026): apagar o campo na tela manda
+    // `entrada: 0`, e desde então zero vai ao papel como zero. Ver `route.entrada-da-tela.test.ts`.
+    await pedir({ ...DA_TELA, entrada: undefined });
     expect(destaque("Entrada")).toBe("R$ 32.016,00");
     // Sem piso cadastrado (ou falha na leitura), vale o padrão da casa: 10%.
     estado.piso = null;
-    await pedir({ ...DA_TELA, entrada: 0 });
+    await pedir({ ...DA_TELA, entrada: undefined });
     expect(destaque("Entrada")).toBe("R$ 40.020,00");
   });
 
@@ -198,14 +206,14 @@ describe("POST /api/publico/espelho/simulacao", () => {
 
 describe("POST /api/publico/espelho/simulacao: as regras do plano (revisão 3, 18/09/2026)", () => {
   it("⚠️ a entrada respeita a entrada DO PLANO (40% no INVESTIDOR), e não só o piso de 8%", async () => {
-    const r = await pedir({ ...DA_TELA, anuaisQuantidade: 3, anuaisValor: 30_000, entrada: 0, parcelas: 36, plano: "INVESTIDOR", valor: 382_800 });
+    const r = await pedir({ ...DA_TELA, anuaisQuantidade: 3, anuaisValor: 30_000, entrada: undefined, parcelas: 36, plano: "INVESTIDOR", valor: 382_800 });
     expect(r.status).toBe(200);
     // 40% de R$ 382.800.
     expect(destaque("Entrada")).toBe("R$ 153.120,00");
   });
 
   it("⚠️ a entrada respeita o degrau do prazo: INVESTIDOR PARCELADO encurtado para 50x pede os 10% do NORMAL", async () => {
-    const r = await pedir({ ...DA_TELA, anuaisQuantidade: 4, entrada: 0, parcelas: 50 });
+    const r = await pedir({ ...DA_TELA, anuaisQuantidade: 4, entrada: undefined, parcelas: 50 });
     expect(r.status).toBe(200);
     // Fora do prazo do plano não há desconto (R$ 435.000), e o degrau de 50 é o NORMAL (10%).
     expect(destaque("Valor da unidade")).toBe("R$ 435.000,00");
@@ -214,7 +222,7 @@ describe("POST /api/publico/espelho/simulacao: as regras do plano (revisão 3, 1
   });
 
   it("⚠️ anuais além de uma por aniversário são presas ao teto: 10 pedidas em 36x viram 3", async () => {
-    const r = await pedir({ ...DA_TELA, anuaisQuantidade: 10, anuaisValor: 10_000, entrada: 0, parcelas: 36, plano: "INVESTIDOR", valor: 382_800 });
+    const r = await pedir({ ...DA_TELA, anuaisQuantidade: 10, anuaisValor: 10_000, entrada: undefined, parcelas: 36, plano: "INVESTIDOR", valor: 382_800 });
     expect(r.status).toBe(200);
     expect(condicao("Parcelas anuais")).toBe("3 de R$ 10.000,00");
   });

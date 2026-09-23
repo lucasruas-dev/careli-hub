@@ -22,15 +22,26 @@ import {
   type PlanoComercial,
   textoDaTaxa,
 } from "@/lib/apolo/planos-comerciais";
+import { type BemOuPermuta, valeDinheiro } from "@/lib/hercules/bens-e-permutas";
 
 import type { Cronograma, ParcelaDoCronograma } from "./cronograma";
 import type { TipoProduto } from "./produto-novo";
 import { dataEscrita } from "./proposta";
 import type {
+  BemDaFolha,
   CompradorDaProposta,
   ParcelaDaProposta,
   PropostaParaPdf,
 } from "./proposta-pdf";
+
+// ⚠️ O TIPO DO BEM VEM DE `bens-e-permutas.ts`, E ESTE ARQUIVO NÃO O REDECLARA MAIS.
+//
+// Até 22/09/2026 havia uma CÓPIA aqui, marcada pelo próprio bloco como "precisa ser reconciliado":
+// ela nasceu antes do dono e compilava por compatibilidade estrutural. Duas declarações vivas do
+// mesmo dado não brigam no dia em que nascem, e sim no dia em que uma delas muda — o `entraComo`
+// ganha um terceiro modo na régua, a folha do cliente segue compilando com dois e passa a descrever
+// uma permuta que a conta não reconhece. A varredura
+// `bem-ou-permuta-uma-definicao.varredura.test.ts` é quem impede a terceira.
 
 export type CompradorDaFolha = {
   cpf: string;
@@ -47,6 +58,15 @@ export type DadosDaFolha = {
     /** O telefone que o comprador liga se tiver dúvida. */
     telefone: null | string;
   };
+  /**
+   * Os bens e as permutas que entraram no negócio. Ausente ou vazio = a seção não existe no papel.
+   *
+   * ⚠️ UMA LISTA, E NÃO UM CAMPO SÓ. Lucas (22/09/2026), perguntado quantos cabem numa proposta:
+   * *"Vários"*. Com um campo único, o segundo carro do negócio não teria onde ser escrito e o
+   * operador acabaria empilhando dois bens numa descrição só, com um valor que não é de nenhum
+   * dos dois.
+   */
+  bensEPermutas?: BemOuPermuta[];
   /** `000123` — o COD da venda, o mesmo desde a reserva. Ignorado quando `simulacao`. */
   codigo: string;
   /**
@@ -205,6 +225,20 @@ function comoLinha(parcela: ParcelaDoCronograma): ParcelaDaProposta {
   };
 }
 
+/** O bem negociado como a folha o escreve: "Permuta · lote 12 ... · Abatimento · R$ 50.000,00". */
+function comoBemDaFolha(bem: BemOuPermuta): BemDaFolha {
+  return {
+    // ⚠️ O QUE O ITEM CUMPRIU, EM UMA PALAVRA. "Entrada" quando ele foi apontado na entrada e
+    // vale para a mínima de 10%; "Abatimento" quando só reduziu o saldo. O comprador confere a
+    // entrada somando o que o papel chama de entrada, e sem esta palavra ele não sabe se aquele
+    // carro está dentro ou fora daquela conta.
+    comoEntra: bem.entraComo === "entrada" ? "Entrada" : "Abatimento",
+    descricao: bem.descricao,
+    tipo: bem.tipo === "permuta" ? "Permuta" : "Bem",
+    valor: reais(bem.valor),
+  };
+}
+
 /** "1º ano", "2º ano" — o rótulo do ciclo de reajuste. */
 function periodoDoCiclo(ciclo: number): string {
   return `${ciclo}º ano`;
@@ -273,6 +307,13 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
     participacao: percentual(c.participacao),
   }));
 
+  // ⚠️ SÓ O QUE É DINHEIRO DE VERDADE VAI AO PAPEL, e a régua é a MESMA de `somarBensEPermutas`:
+  // `valeDinheiro`, importada de `bens-e-permutas.ts` em vez de repetida aqui. A PRÉVIA é gerada do
+  // formulário VIVO, e uma linha recém-adicionada tem o valor vazio — `Number("")` é NaN, e
+  // `reais(NaN)` escreve "R$ 0,00". Sem este filtro, a folha que vai para o WhatsApp do cliente
+  // lista um bem de zero real como recebido, e o total do papel deixa de bater com o que a conta
+  // abateu.
+  const bensEPermutas = (dados.bensEPermutas ?? []).filter(valeDinheiro);
   const anuaisPorAno = cronograma.anuais[0]?.valor ?? 0;
   const taxa = textoDaTaxa(plano);
   const temCorrecao = plano.indiceCorrecao !== "SEM_CORRECAO";
@@ -446,6 +487,17 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
     anuaisTotal:
       cronograma.anuais.length > 0 ? reais(cronograma.totais.anuais) : "",
     atendimento: dados.atendimento,
+    bensEPermutas: bensEPermutas.map(comoBemDaFolha),
+    // ⚠️ SOMA OS DOIS TIPOS DE ENTRADA. A diferença entre "entrada" e "abatimento" é se o item
+    // cumpre a entrada mínima, e não se ele abate: Lucas (22/09/2026), sobre a permuta, *"Abate,
+    // como uma entrada"*. Somar só os apontados na entrada esconderia do total um bem que o
+    // comprador entregou.
+    //
+    // ⚠️ E VAZIO QUANDO NÃO HÁ NENHUM, como `anuaisTotal`: é a ausência da seção no papel.
+    bensEPermutasTotal:
+      bensEPermutas.length > 0
+        ? reais(bensEPermutas.reduce((soma, b) => soma + b.valor, 0))
+        : "",
     codigo: dados.codigo,
     compradores,
     condicoes,

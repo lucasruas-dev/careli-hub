@@ -47,6 +47,21 @@ type Corpo = {
   anuaisValor?: number;
   codigo?: string;
   entrada?: number;
+  /**
+   * A data escolhida para cada parcela da entrada (`AAAA-MM-DD` ou nulo na posição).
+   *
+   * ⚠️ O CAMPO DE DATA APARECE JUNTO COM A MONTAGEM, e não some no modo simulação como o bloco
+   * "Cobrança". Sem ele aqui, escolher "a segunda cai em janeiro" não mudava nada no papel.
+   */
+  entradaDatas?: (null | string)[];
+  /**
+   * Os valores das parcelas da entrada, quando o corretor as montou à mão na tela.
+   *
+   * ⚠️ O BOTÃO "MONTAR VALORES" EXISTE AQUI, e não só na Mesa de Venda: ele aparece no espelho
+   * público sempre que a entrada tem mais de uma parcela. Sem este campo a folha saía com a divisão
+   * igual, e quem montou 10.000 + 7.000 + 7.000 + 7.000 encaminhava um papel dizendo 4 × R$ 7.750.
+   */
+  entradaParcelas?: number[];
   entradaVezes?: number;
   parcelas?: number;
   plano?: string;
@@ -147,13 +162,15 @@ export async function POST(request: Request) {
   // ⚠️ O PREÇO É O DO ESPELHO, E O CORPO SÓ ESCOLHE DENTRO DA RÉGUA DO PLANO ESCOLHIDO
   // (`valoresDaSimulacaoPublica`, revisão 3 de 18/09/2026): o valor nunca abaixo da tabela com o
   // desconto DESTE plano no prazo pedido (fora do prazo do plano, desconto zero) nem acima da tabela;
-  // a entrada nunca abaixo da régua da tela (o piso do empreendimento e a faixa do prazo); as anuais
-  // até uma por aniversário; a entrada em no máximo `ENTRADA_VEZES_MAXIMA` vezes. Prazo além do plano
-  // é recusado com a frase.
+  // a entrada é a QUE ESTÁ NA TELA, inclusive zero (só a chave ausente cai na sugestão do plano),
+  // com as parcelas montadas à mão quando elas fecham com ela; as anuais até uma por aniversário; a
+  // entrada em no máximo `ENTRADA_VEZES_MAXIMA` vezes. Prazo além do plano é recusado com a frase.
   const precoDeTabela = loteNoEspelho.preco;
   const aceita = valoresDaSimulacaoPublica({
     anuaisPedidas: { quantidade: corpo.anuaisQuantidade, valor: corpo.anuaisValor },
     entradaMinimaPercentual,
+    entradaDatasPedidas: corpo.entradaDatas,
+    entradaParcelasPedidas: corpo.entradaParcelas,
     entradaPedida: corpo.entrada,
     entradaVezesPedidas: corpo.entradaVezes,
     parcelasPedidas: corpo.parcelas,
@@ -168,7 +185,8 @@ export async function POST(request: Request) {
       { headers: { "Cache-Control": SEM_CACHE }, status: 422 },
     );
   }
-  const { anuais, entrada, entradaVezes, parcelas, valor } = aceita;
+  const { anuais, entrada, entradaDatas, entradaParcelas, entradaVezes, parcelas, valor } =
+    aceita;
 
   // ⚠️ A COMPOSIÇÃO QUE NÃO FECHA É 422 COM A FRASE, E NÃO 503. `montarCronograma` quebra de
   // propósito quando entrada e anuais valem mais que o valor (um corpo com anual de R$ 400 mil, por
@@ -183,6 +201,11 @@ export async function POST(request: Request) {
       // vencimento (ver `validadeEmIso` nulo abaixo).
       diaDeVencimento: 10,
       entradaValor: entrada,
+      // Nulo aqui é a data calculada, uma a uma: só sobe o que alguém escolheu de fato.
+      entradaDatas,
+      // Nulo aqui é a divisão igual de sempre; a lista só chega quando FECHA com a entrada aceita
+      // (`parcelasDaEntradaAceitas`), para o destaque da folha não brigar com o próprio fluxo.
+      entradaParcelas,
       entradaVezes,
       parcelasMensais: parcelas,
       plano: { ...plano, slot: null },

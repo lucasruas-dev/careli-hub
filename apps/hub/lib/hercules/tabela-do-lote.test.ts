@@ -15,7 +15,6 @@ import {
   montarProposta,
   parcelaDoFinanciado,
   sistemaDoCadastro,
-  somaDasMensais,
   temAnuaisCadastradas,
   valorPresenteDosBaloes,
 } from "./simulacao";
@@ -360,6 +359,11 @@ function cartaoAntigo(valor: number, p: PlanoDaComposicao, minimo: null | number
  * `montarProposta` e `entradaParaAParcela` como estavam na main v1.349.6: as anuais SEMPRE a valor
  * presente. Desde 18/09/2026 o SACOC abate pelo valor de face (decisão do Zeus, "tem que ser igual o
  * mmendes"); a Price e o SAC continuam aqui.
+ *
+ * ⚠️ A LINHA DO `total` FOI ATUALIZADA EM 22/09/2026 (era `somaDasMensais`, virou `parcela ×
+ * parcelas`) pelo mesmo motivo de `montarPropostaAntiga` em `simulacao.test.ts`: esta régua guarda
+ * a mudança das ANUAIS, e com a soma antiga ela passaria a acusar como regressão a correção do
+ * "Total pago" que o Lucas pediu, em TODA composição de TODO empreendimento.
  */
 const contaAntiga = {
   entradaParaAParcela: (e: Parameters<typeof entradaParaAParcela>[0]) => {
@@ -383,12 +387,13 @@ const contaAntiga = {
       sistemaAmortizacao: e.sistemaAmortizacao,
       taxaAoMes: e.taxaAoMes,
     };
+    const parcela = parcelaDoFinanciado({ financiado, ...sistema });
     return {
       financiado,
-      parcela: parcelaDoFinanciado({ financiado, ...sistema }),
+      parcela,
       total:
         desembolsoInicial +
-        somaDasMensais({ financiado, ...sistema }) +
+        parcela * Math.max(0, e.parcelas) +
         Math.max(0, e.baloesQuantidade) * Math.max(0, e.baloesValor),
     };
   },
@@ -493,6 +498,38 @@ function composicoesAntigas(entrada: {
   return [...melhorPorChave.values()].sort((a, b) => a.entrada - b.entrada || a.total - b.total);
 }
 
+/**
+ * A lista de antes, posta na ordem de hoje.
+ *
+ * ⚠️ O QUE ESTA REGRESSÃO GUARDA SÃO OS NÚMEROS, E ELES NÃO MUDARAM. O que mudou em 22/09/2026 foi
+ * o DESEMPATE: `composicoesAntigas` para em `entrada || total`, e quando os dois empatam a ordem
+ * dela é a de geração. Medido aqui: no 136.521 com alvo de R$ 3.450, CURTO 36x sem reforço e
+ * INVESTIDOR 24x com 2 × R$ 20.000 empatam em R$ 14.000 de entrada e R$ 136.521 de total, e trocam
+ * de lugar. Reordenar a lista antiga pelo critério novo compara o que interessa — cada campo de
+ * cada composição, e quantas são — sem congelar um empate que deixou de ser empate. A ordem em si
+ * tem o seu teste, em `composicoes.desempate.test.ts`.
+ */
+const naOrdemDeHoje = <
+  T extends {
+    anuais: { quantidade: number; valor: number };
+    entrada: number;
+    parcela: number;
+    plano: string;
+    total: number;
+  },
+>(
+  lista: T[],
+): T[] =>
+  [...lista].sort(
+    (a, b) =>
+      a.entrada - b.entrada ||
+      a.total - b.total ||
+      a.parcela - b.parcela ||
+      a.anuais.quantidade - b.anuais.quantidade ||
+      a.anuais.valor - b.anuais.valor ||
+      a.plano.localeCompare(b.plano),
+  );
+
 const PRECOS = [98_750, 136_521, 145_451, 178_100, 185_400.5, 220_000, 434_999.99];
 
 describe("⚠️ regressão: os outros empreendimentos saem IDÊNTICOS", () => {
@@ -542,7 +579,7 @@ describe("⚠️ regressão: os outros empreendimentos saem IDÊNTICOS", () => {
             agora.map(
               ({ arranjoDoPlano: _a, descontoPercentual: _d, valor: _v, ...resto }) => resto,
             ),
-          ).toEqual(antes);
+          ).toEqual(naOrdemDeHoje(antes));
           expect(
             agora.every(
               (c) => c.valor === preco && c.descontoPercentual === 0 && !c.arranjoDoPlano,

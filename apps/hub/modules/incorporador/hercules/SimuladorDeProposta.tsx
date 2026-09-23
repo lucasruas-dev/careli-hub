@@ -206,6 +206,14 @@ export type CondicoesDaProposta = {
   /** A mensal do PRIMEIRO ciclo, que é a que a tela anuncia. Ver `parcelaFixa` em `proposta.ts`. */
   parcela: number;
   parcelasMensais: number;
+  /**
+   * `temis_planos.id` do plano escolhido — a chave que o rename não muda.
+   *
+   * ⚠️ NULO É RESPOSTA VÁLIDA, E É O CASO DE UM EMPREENDIMENTO INTEIRO. Os planos servidos pelo
+   * C2X (`commercial_plans`, lidos por slot) não têm id nenhum para carregar. Quem monta o POST
+   * omite o campo quando ele vem nulo, e o servidor volta a casar pelo nome, como sempre fez.
+   */
+  planoId: null | string;
   planoNome: string;
   /** `YYYY-MM-DD` — o dia em que a primeira parcela da ENTRADA vence. */
   primeiraParcelaEm: string;
@@ -937,6 +945,28 @@ export function SimuladorDeProposta({
     return `${dinheiro(c.valor)} (${ajusteDela ? ajusteDela.toLowerCase() : "tabela"})`;
   };
 
+  /**
+   * O id da linha de `temis_planos` do plano que ESTA TELA está mostrando.
+   *
+   * ⚠️ É O QUE FECHA O BURACO DO RENAME, e o buraco grava dinheiro errado. O servidor casava o
+   * plano da proposta pelo NOME, e nome é texto que o cadastro edita: quando o Garden trocou NORMAL
+   * por INVESTIDOR e INVESTIDOR por PROMOÇÃO À VISTA, uma aba aberta antes continuou mandando
+   * "INVESTIDOR" querendo o plano de 36 parcelas SEM JUROS, e o nome passou a casar com a linha de
+   * 60 com 6% ao ano — medido no banco, e congelado no cronograma que alimenta o contrato.
+   *
+   * ⚠️ PELA PRIMEIRA POSIÇÃO DO NOME, que é como TODA esta tela resolve plano (`indiceDoPlano`,
+   * `carregarPlano`, o cartão da tabela) e é exatamente o que o servidor faz no caminho sem id.
+   * Mandar este id não troca o plano de ninguém: ele CONGELA o plano que estava nesta tela quando
+   * ela carregou, contra um cadastro que pode ter mudado no meio.
+   */
+  const idDoPlanoNaTela = useCallback(
+    (nome: string): null | string => {
+      const posicao = planos.findIndex((p) => p.nome === nome);
+      return posicao >= 0 ? String(planos[posicao]?.id ?? "").trim() || null : null;
+    },
+    [planos],
+  );
+
   const principal: Leitura | null = useMemo(() => {
     if (comando === "condicoes" && montada && plano) {
       return {
@@ -1046,6 +1076,7 @@ export function SimuladorDeProposta({
             premissaAlterada,
             parcela: principal.parcela,
             parcelasMensais: principal.parcelas,
+            planoId: idDoPlanoNaTela(principal.plano),
             planoNome: principal.plano,
             primeiraParcelaEm,
             valorNegociado: principal.valor,
@@ -1062,6 +1093,7 @@ export function SimuladorDeProposta({
     datasDaEntrada,
     premissaAlterada,
     diaDeVencimento,
+    idDoPlanoNaTela,
     // ⚠️ A MONTAGEM ENTRA NAS DEPENDÊNCIAS. Sem ela, digitar um valor de parcela da entrada não
     // subiria nada: o pai continuaria com a composição antiga, e o botão "Gerar proposta" mandaria
     // ao servidor uma entrada diferente da que está escrita na tela.
@@ -1125,6 +1157,7 @@ export function SimuladorDeProposta({
     >
       {/* ═══ O COCKPIT ═══════════════════════════════════════════════════ */}
       <div
+        data-sim-rolagem="comandos"
         style={{
           display: "grid",
           gap: 10,
@@ -1137,6 +1170,11 @@ export function SimuladorDeProposta({
           // cortado, o que obriga os filhos a caberem de verdade.
           overflowX: "hidden",
           overflowY: "auto",
+          // ⚠️ O ARRASTO NÃO SAI DAQUI. Sem isto, no dedo, o gesto que chega ao fim desta coluna
+          // continua na página de trás: no espelho público Lucas viu *"quem sobe é a tela do
+          // fundo"* (22/09/2026). O simulador vive dentro de uma janela sobreposta, e uma janela
+          // que empurra o que está atrás dela some debaixo do dedo.
+          overscrollBehavior: "contain",
           paddingRight: 4,
         }}
       >
@@ -1705,12 +1743,18 @@ export function SimuladorDeProposta({
 
       {/* ═══ A LEITURA ═══════════════════════════════════════════════════ */}
       <div
+        data-sim-rolagem="leitura"
         style={{
           display: "grid",
           gap: 12,
           gridAutoRows: "min-content",
           minHeight: 0,
+          // ⚠️ AQUI MORAM OS CARTÕES DE PLANO E AS "OUTRAS COMPOSIÇÕES": é esta coluna que precisa
+          // rolar por dentro, e é ela que no iPad cortava embaixo. O eixo horizontal continua em
+          // `auto` (ao contrário da coluna dos comandos) porque a prévia do cronograma é uma
+          // tabela: cortá-la esconderia colunas do fluxo sem dar como chegar nelas.
           overflow: "auto",
+          overscrollBehavior: "contain",
           paddingRight: 4,
         }}
       >
@@ -2032,9 +2076,21 @@ export function SimuladorDeProposta({
                 valor={dinheiro(principal.financiado)}
               />
               <Dado
-                // ⚠️ SOBRE A TABELA DO LOTE, e não sobre o valor já com o desconto do plano (revisão de
-                // 18/09/2026): o INVESTIDOR do Garden dizia "+0% sobre a tabela" pagando menos que ela.
-                nota={`${sinalDoPercentual(Math.round((principal.total / (valorDaUnidade || principal.valor || 1) - 1) * 100))}% sobre a tabela`}
+                // ⚠️ CONTRA O VALOR NEGOCIADO, E NÃO MAIS "% SOBRE A TABELA" (22/09/2026). Com os
+                // juros fora do total (ver `montarProposta`), o percentual sobre a tabela virou
+                // aritmeticamente o DESCONTO do plano: medido nos dois prints do Lucas, "−8% sobre
+                // a tabela" nos dois, exatamente os 8% do INVESTIDOR PARCELADO — e o mesmo cartão
+                // já imprime "R$ 382.720 (desconto de 8%)" na linha do preço, duas linhas acima.
+                // Era um número morto, e um que mudava de sentido sozinho no dia em que o plano
+                // fosse Price (lá o percentual passaria a misturar desconto com juros da parcela).
+                // Contra o valor negociado ele é zero exatamente quando a conta fecha — que é o que
+                // o Lucas pediu ver — e só sai do zero onde a própria parcela carrega juros (Price)
+                // ou onde o reforço abate a valor presente, que é a única notícia que sobra ali.
+                nota={
+                  centavosIguais(principal.total, principal.valor)
+                    ? "igual ao valor negociado"
+                    : `${dinheiro(Math.abs(principal.total - principal.valor))} ${principal.total > principal.valor ? "acima" : "abaixo"} do negociado`
+                }
                 rotulo="Total pago"
                 valor={dinheiro(principal.total)}
               />
@@ -2546,9 +2602,20 @@ function CampoEmPorcento({
  * ⚠️ A COMPARAÇÃO É EM CENTAVOS INTEIROS. Em ponto flutuante 10% de R$ 178.100 é
  * 17810.000000000002, e `17810 < 17810.000000000002` é verdadeiro: a tela acusava "abaixo do
  * mínimo" para o valor exato do mínimo. O piso é inclusivo — 10% em diante.
+ *
+ * ⚠️ E ZERO ACUSA TAMBÉM, DESDE 22/09/2026. Até aqui a função exigia `valor > 0`, com a ideia de que
+ * campo vazio é "ainda não escolhi". Medido na própria tela, é falso: apagar o campo faz
+ * `cockpit.entrada = 0`, a composição sai com entrada zero e o cartão grande já imprime
+ * "Entrada R$ 0,00", "A financiar" cheio e a parcela maior — a tela CALCULOU com zero, e só o aviso
+ * ficava mudo. Era o pior caso da entrada solta: o Lucas aceitou liberar a entrada sem trava (*"pode
+ * deixar tudo liberado, sem trava, somente com alertas"*) EM TROCA do alerta, e sem ele o que sobra
+ * é só a liberação.
+ *
+ * ⚠️ SEM PISO NÃO HÁ AVISO: com `minimo` zero (o empreendimento 42, piso 0%), zero não está abaixo
+ * de nada, e a comparação em centavos já devolve falso sozinha.
  */
 function abaixoDoMinimo(valor: number, minimo: number): boolean {
-  return valor > 0 && Math.round(valor * 100) < Math.round(minimo * 100);
+  return Math.round(valor * 100) < Math.round(minimo * 100);
 }
 
 function Contador({
@@ -2965,9 +3032,3 @@ function CampoDoLote({
   );
 }
 
-/** "+11", "−3" ou "0": o sinal do percentual escrito como no resto do cartão. */
-function sinalDoPercentual(p: number): string {
-  if (p > 0) return `+${p}`;
-  if (p < 0) return `−${Math.abs(p)}`;
-  return "0";
-}

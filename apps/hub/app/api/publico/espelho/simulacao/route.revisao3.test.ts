@@ -163,8 +163,10 @@ describe("revisão 3: o que um corpo forjado consegue imprimir na folha pública
     expect(estado.folhas).toHaveLength(0);
   });
 
-  it("entrada zero cai no piso do empreendimento (8% do valor), e lote fora do verde é 409", async () => {
-    await pedir({ ...DA_TELA, entrada: 0 });
+  it("entrada AUSENTE cai no piso do empreendimento (8% do valor), e lote fora do verde é 409", async () => {
+    // ⚠️ ERA "entrada: 0" ATÉ 22/09/2026, e zero deixou de significar "não escolhi": apagar o campo
+    // na tela manda zero, e agora zero é impresso como zero. Quem não escolheu omite a chave.
+    await pedir({ ...DA_TELA, entrada: undefined });
     expect(destaque("Entrada")).toBe("R$ 32.016,00");
     estado.lotes = [{ codigo: "GDN1110", preco: 435_000, situacao: "indisponivel" }];
     expect((await pedir(DA_TELA)).status).toBe(409);
@@ -181,7 +183,7 @@ describe("revisão 3: o que um corpo forjado consegue imprimir na folha pública
   // R$ 30.624) no lugar dos 40% do plano, e a folha imprimia 10 anuais num contrato de 36 meses.
   // CORRIGIDO NA RODADA 3 (item 3).
   it("INVESTIDOR 36x com entrada zero e 10 anuais: a entrada sobe aos 40% do plano e as anuais param em 3", async () => {
-    const r = await pedir({ ...DA_TELA, anuaisQuantidade: 10, anuaisValor: 10_000, entrada: 0, parcelas: 36, plano: "INVESTIDOR", valor: 382_800 });
+    const r = await pedir({ ...DA_TELA, anuaisQuantidade: 10, anuaisValor: 10_000, entrada: undefined, parcelas: 36, plano: "INVESTIDOR", valor: 382_800 });
     expect(r.status).toBe(200);
     expect(destaque("Entrada")).toBe("R$ 153.120,00");
     expect(condicao("Parcelas anuais")).toBe("3 de R$ 10.000,00");

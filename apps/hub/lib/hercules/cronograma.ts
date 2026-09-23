@@ -32,6 +32,7 @@ import {
   primeiraParcelaSac,
   taxaMensal,
 } from "@/lib/apolo/planos-comerciais";
+import { type BemOuPermuta, somarBensEPermutas } from "@/lib/hercules/bens-e-permutas";
 import { anuaisQueAbatemOSaldo, temAnuaisCadastradas } from "@/lib/hercules/simulacao";
 
 /** Quantos meses tem um ciclo de reajuste. O aniversário do contrato é anual em toda a casa. */
@@ -68,9 +69,18 @@ export type FaixaDoCronograma = {
 export type TotaisDoCronograma = {
   /** O que o comprador desembolsa nas anuais: valor de FACE, somado. Ver `financiado`. */
   anuais: number;
+  /**
+   * O que os bens e permutas recebidos valem, somados — os dois `entraComo`.
+   *
+   * ⚠️ NÃO VIRA SÉRIE NENHUMA, e é por isso que é um total sem lista ao lado. O carro é entregue na
+   * aquisição: não tem vencimento, não tem boleto e não aparece em `entrada`, `mensais` nem
+   * `anuais`. Ele abate o saldo e entra no `geral`, porque é valor que o comprador entrega.
+   */
+  bensEPermutas: number;
   entrada: number;
   /**
-   * O saldo que a série mensal amortiza: negociado − entrada − o que as anuais abatem.
+   * O saldo que a série mensal amortiza: negociado − entrada − bens e permutas − o que as anuais
+   * abatem.
    *
    * ⚠️ NO SACOC COM ANUAIS CADASTRADAS NO PLANO (o Garden) É `negociado − entrada − anuais` PELO
    * VALOR DE FACE, e a folha fecha ao centavo (18/09/2026, "tem que ser igual o mmendes"; "So no
@@ -78,7 +88,7 @@ export type TotaisDoCronograma = {
    * diferença. Ver `anuaisQueAbatemOSaldo`.
    */
   financiado: number;
-  /** Tudo o que o comprador desembolsa, somando as três séries. */
+  /** Tudo o que o comprador entrega: as três séries mais os bens e permutas. */
   geral: number;
   mensais: number;
 };
@@ -94,6 +104,15 @@ export type Cronograma = {
 export type CondicoesDoCronograma = {
   anuaisQuantidade: number;
   anuaisValor: number;
+  /**
+   * Os bens e permutas recebidos na aquisição. Ausente, nula ou vazia = proposta sem permuta.
+   *
+   * ⚠️ ELES ABATEM O SALDO PELO VALOR CHEIO, ao lado da entrada (Lucas, 22/09/2026: *"Abate, como
+   * uma entrada"*). É `somarBensEPermutas` quem soma, e é a MESMA função que a régua da proposta e o
+   * simulador chamam: duas somas diferentes da mesma lista é como o cartão da tela e o PDF passam a
+   * anunciar financiados diferentes para a mesma venda.
+   */
+  bensEPermutas?: null | readonly BemOuPermuta[];
   /** 10 ou 20 na tela de hoje, mas a função recebe um número: ver o aviso em `somarMeses`. */
   diaDeVencimento: number;
   /**
@@ -479,12 +498,19 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
   // por data ilegível: não existe cronograma para estas condições, e devolver um plausível é pior
   // do que não devolver nenhum. Zero exato NÃO quebra: entrada de 100% sem série mensal é venda à
   // vista, e é legítima.
+  // ⚠️ O BEM ENTRA AQUI PELO VALOR CHEIO, AO LADO DA ENTRADA, E NÃO POR `anuaisQueAbatemOSaldo`.
+  // Aquela função desconta a valor presente porque o reforço ANUAL vence lá na frente; o carro é
+  // entregue na assinatura. Passá-lo pelo mesmo critério devolveria, num carro de R$ 80.000 com
+  // juros de 8% a.a., um abatimento de cerca de R$ 74.000 — R$ 6.000 do comprador sumindo por uma
+  // regra que é de outro tipo de pagamento.
+  const totalDosBens = somarBensEPermutas(condicoes.bensEPermutas);
+
   const financiado = emReais(
-    valorNegociado - totalDaEntrada - anuaisNoSaldo,
+    valorNegociado - totalDaEntrada - totalDosBens - anuaisNoSaldo,
   );
   if (financiado < 0) {
     throw new Error(
-      "A composição não fecha: a entrada e as parcelas anuais valem mais do que o valor negociado.",
+      "A composição não fecha: a entrada, os bens e permutas e as parcelas anuais valem mais do que o valor negociado.",
     );
   }
 
@@ -567,9 +593,16 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
     reajustes: faixasDeReajuste(listaDasMensais, plano, valorDoCiclo, i),
     totais: {
       anuais: totalDasAnuais,
+      bensEPermutas: totalDosBens,
       entrada: totalDaEntrada,
       financiado,
-      geral: emReais(totalDaEntrada + totalDasAnuais + somar(listaDasMensais)),
+      // ⚠️ O BEM ENTRA NO GERAL. Ele não é boleto, mas é valor que o comprador entrega: fora daqui,
+      // o "total geral" de uma venda com carro de R$ 80.000 sairia R$ 80.000 menor que o lote e o
+      // papel anunciaria um desconto que ninguém deu. Sem permuta o número é o de sempre, ao
+      // centavo, porque a parcela nova vale zero.
+      geral: emReais(
+        totalDaEntrada + totalDosBens + totalDasAnuais + somar(listaDasMensais),
+      ),
       mensais: somar(listaDasMensais),
     },
   };

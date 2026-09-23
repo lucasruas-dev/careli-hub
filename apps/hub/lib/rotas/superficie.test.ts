@@ -42,13 +42,34 @@ describe("o portal do coordenador", () => {
 });
 
 describe("as portas de fora", () => {
-  it.each(["/incorporador/gurgel", "/e/villa-paris-rreaymrc", "/publico/cad", "/evento"])(
-    "%s não recebe nada do hub",
-    (caminho) => {
-      expect(ehRotaExterna(caminho)).toBe(true);
-      expect(ehSuperficieDoHub(caminho)).toBe(false);
-    },
-  );
+  it.each([
+    "/incorporador/gurgel",
+    "/e/villa-paris-rreaymrc",
+    "/publico/cad",
+    "/evento",
+    "/tv/garden",
+  ])("%s não recebe nada do hub", (caminho) => {
+    expect(ehRotaExterna(caminho)).toBe(true);
+    expect(ehSuperficieDoHub(caminho)).toBe(false);
+  });
+});
+
+describe("a TV do stand", () => {
+  // ⚠️ SEM ESTA LINHA A TELEVISÃO MOSTRA A TELA DE LOGIN DO PANTEON, e sem erro nenhum no
+  // servidor — o gate de página do hub é client-side e libera por RAIZ. É o mesmo defeito que o
+  // portal da Gurgel passou doze dias sofrendo em 14/09/2026, e numa TV de stand ele fica na
+  // parede o dia inteiro.
+  it("é porta de fora: não tem login, não tem quem opere", () => {
+    expect(ehRotaExterna("/tv/garden")).toBe(true);
+    expect(ehSuperficieDoHub("/tv/garden")).toBe(false);
+  });
+
+  // O banner de chamada do Hermes, com nome e foto de quem ligou, desenhando por cima do mapa
+  // projetado no salão é exatamente o vazamento de 14/09 — só que numa parede.
+  it("e nenhum aviso do hub desenha por cima dela", () => {
+    expect(ehSuperficieDoHub("/tv")).toBe(false);
+    expect(ehSuperficieDoHub("/tv/qualquer-outra")).toBe(false);
+  });
 });
 
 describe("a sala pública do Chronos", () => {

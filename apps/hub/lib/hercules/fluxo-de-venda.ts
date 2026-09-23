@@ -313,6 +313,18 @@ export type PlanoDaVenda = {
   /** O `enterprise_id` de quem cadastrou o plano — o degrau em que ele vive. */
   enterpriseId?: null | string;
   entradaPercentual: number;
+  /**
+   * `temis_planos.id` — a chave do plano, e a única coisa dele que um rename não muda.
+   *
+   * ⚠️ JÁ VIAJAVA NO JSON E O TIPO NÃO O DECLARAVA. `comoPlano` carrega o id em toda linha de
+   * `temis_planos` e a rota da proposta serializa o plano inteiro; faltava aqui a declaração para a
+   * tela poder lê-lo e devolvê-lo no POST (`ModalDeProposta.corpoDoPedido`). Sem ele, o servidor
+   * casa o plano por NOME, e nome é texto que o cadastro edita.
+   *
+   * ⚠️ AUSENTE NOS EMPREENDIMENTOS SERVIDOS PELO C2X: `commercial_plans` é lido por slot e não tem
+   * id que sobreviva à leitura. Lá o nome continua sendo a única chave que existe.
+   */
+  id?: null | string;
   indiceCorrecao: string;
   jurosConvencao: string;
   jurosPeriodicidade: string;

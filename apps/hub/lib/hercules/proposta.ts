@@ -24,6 +24,11 @@
 
 import { cpfValido } from "@/lib/apolo/documento";
 
+import {
+  type BemOuPermuta,
+  somarBensEPermutas,
+  somarBensQueContamNaEntrada,
+} from "./bens-e-permutas";
 import { entradaMinima } from "./composicoes";
 import { type PlanoDaFaixa, pisoDaEntradaNoPrazo } from "./faixa-do-plano";
 import { mascararCpf } from "./reserva";
@@ -54,6 +59,18 @@ export type PedidoDeProposta = {
    */
   anuaisQuantidade?: null | number;
   anuaisValor?: null | number;
+  /**
+   * Os bens e permutas recebidos na aquisição. Ausente, nula ou vazia = proposta sem permuta.
+   *
+   * ⚠️ SÃO VÁRIOS POR PROPOSTA (Lucas, 22/09/2026, perguntado quantos cabem: *"Vários"*). Um campo
+   * único obrigaria o comercial a somar o carro com o lote à mão e escrever um total sem descrição —
+   * e é a descrição de cada bem que vai para o contrato.
+   *
+   * ⚠️ E ELES ENTRAM NAS DUAS RÉGUAS DO DINHEIRO, cada uma do seu jeito: no TETO somam com a entrada
+   * (senão entrada de 100% mais permuta passa e o financiado fica negativo), e no PISO só os
+   * `entraComo: "entrada"` contam.
+   */
+  bensEPermutas?: null | readonly BemOuPermuta[];
   compradores: CompradorDoPedido[];
   /** A % mínima de entrada DESTE empreendimento. Nulo/ausente = padrão da casa. */
   entradaMinimaPercentual?: null | number;
@@ -155,6 +172,7 @@ export const VENCIMENTO_DIA_MAXIMO = 28;
 export type ErroDaProposta = {
   campo:
     | "anuais"
+    | "bensEPermutas"
     | "compradores"
     | "cpf"
     | "entrada"
@@ -403,6 +421,30 @@ export function conferirProposta(
     });
   }
 
+  // ⚠️ BEM SEM DESCRIÇÃO OU SEM VALOR NÃO É BEM. A descrição é o que vai para o contrato ("Ford Ka
+  // 2019 placa ABC1D23"), e o valor é o que abate o saldo: uma linha em branco que o comercial
+  // esqueceu de apagar sai no papel como "— R$ 0,00" e, pior, uma linha COM valor e sem descrição
+  // tira dezenas de milhares do financiado sem dizer em troca de quê.
+  const bens = pedido.bensEPermutas ?? [];
+  if (bens.length > 0) {
+    if (bens.some((bem) => !String(bem.descricao ?? "").trim())) {
+      erros.push({
+        campo: "bensEPermutas",
+        mensagem: "Descreva cada bem ou permuta recebido.",
+      });
+    }
+    if (bens.some((bem) => !Number.isFinite(bem.valor) || bem.valor <= 0)) {
+      erros.push({
+        campo: "bensEPermutas",
+        mensagem: "Todo bem ou permuta precisa de um valor.",
+      });
+    }
+  }
+  /** O que os bens abatem do saldo: os dois `entraComo`, pelo valor cheio. */
+  const totalDosBens = somarBensEPermutas(pedido.bensEPermutas);
+  /** O que deles CUMPRE a entrada mínima: só os `entraComo: "entrada"`. */
+  const bensNaEntrada = somarBensQueContamNaEntrada(pedido.bensEPermutas);
+
   if (!(pedido.valorNegociado > 0)) {
     erros.push({ campo: "valor", mensagem: "Informe o valor negociado." });
   } else if (entradaEhNumero) {
@@ -427,7 +469,12 @@ export function conferirProposta(
     // ⚠️ A COMPARAÇÃO É EM CENTAVOS INTEIROS. 10% de R$ 178.100 dá 17810.000000000002 em ponto
     // flutuante, e a tela chegou a dizer "abaixo do mínimo" para uma entrada de exatamente
     // R$ 17.810 — o valor do próprio mínimo. O mínimo é "10% em diante": o próprio 10% vale.
-    if (centavos(pedido.entradaValor) < centavos(piso)) {
+    // ⚠️ SÓ O BEM APONTADO NA ENTRADA CUMPRE O PISO, e é escolha do Lucas por ITEM (22/09/2026:
+    // *"pode ser um ou outro, pode apontar na entrada ou somente no valor negociado"*). O
+    // "abatimento" abate o saldo igual, mas não vale como entrada: o piso de 10% existe para
+    // garantir dinheiro do ATO, e um carro apontado como abatimento é justamente o caso em que o
+    // comercial disse que ele NÃO cobre a entrada.
+    if (centavos(pedido.entradaValor) + centavos(bensNaEntrada) < centavos(piso)) {
       erros.push({
         campo: "entrada",
         // ⚠️ A FRASE DIZ DE ONDE VEM A EXIGÊNCIA. "A entrada mínima é R$ 56.000" num empreendimento
@@ -458,10 +505,26 @@ export function conferirProposta(
     //
     // ⚠️ IGUAL AO VALOR PASSA: é a venda à vista, e recusá-la seria proibir o cliente de quitar
     // na assinatura. O que não pode é pagar MAIS do que o lote custa.
-    if (centavos(pedido.entradaValor) > centavos(pedido.valorNegociado)) {
+    //
+    // ⚠️ O BEM E A PERMUTA SOMAM AQUI — E ISSO NÃO É REPETIR O ERRO DO REFORÇO ACIMA. O reforço
+    // ficou de fora porque cai no mês 72 e não é dinheiro de hoje; o bem é entregue NA AQUISIÇÃO e
+    // abate o saldo pelo valor cheio (`somarBensEPermutas`, a mesma função que o cronograma usa).
+    // Sem ele nesta soma, entrada de 100% mais um carro de R$ 80.000 atravessa a régua inteira e
+    // quebra lá na frente, dentro de `montarCronograma`, com financiado negativo — um 500 no lugar
+    // de uma frase que o coordenador entende.
+    const doAto = centavos(pedido.entradaValor) + centavos(totalDosBens);
+    if (doAto > centavos(pedido.valorNegociado)) {
       erros.push({
         campo: "entrada",
-        mensagem: `A entrada não pode passar do valor negociado (${reais(pedido.valorNegociado)}).`,
+        // ⚠️ A FRASE MUDA SÓ QUANDO EXISTE BEM. Numa proposta sem permuta a mensagem é a de sempre,
+        // palavra por palavra — falar de "bens e permutas" para quem não cadastrou nenhum faria o
+        // coordenador procurar na tela um campo que ele não preencheu.
+        mensagem:
+          totalDosBens > 0
+            ? `A entrada mais os bens e permutas (${reais(
+                pedido.entradaValor + totalDosBens,
+              )}) não podem passar do valor negociado (${reais(pedido.valorNegociado)}).`
+            : `A entrada não pode passar do valor negociado (${reais(pedido.valorNegociado)}).`,
       });
     }
   }

@@ -33,6 +33,7 @@ import {
   primeiraParcelaSac,
   type SistemaAmortizacao,
 } from "@/lib/apolo/planos-comerciais";
+import { type BemOuPermuta, somarBensEPermutas } from "@/lib/hercules/bens-e-permutas";
 
 /** Quantos meses tem um ciclo de reajuste. O aniversário do contrato é anual em toda a casa. */
 const MESES_DO_CICLO = 12;
@@ -200,11 +201,15 @@ export function fatorDoFinanciado(entrada: {
 /**
  * A SOMA DE TODAS AS MENSAIS do contrato — o que a série mensal custa do começo ao fim.
  *
- * ⚠️ NÃO É `parcela × n` FORA DA PRICE, e é o que o cartão "Total" da tela mostra. Na Price todas
- * as parcelas são iguais e a multiplicação basta. No SACOC a parcela SOBE no aniversário: no lote
- * de R$ 200.000 com R$ 20.000 de entrada, 120 meses a 8% a.a., a série custa ~R$ 252.400 e não os
- * R$ 180.000 de `1.500 × 120` — anunciar o produto da parcela pelo prazo tiraria R$ 72 mil do total
- * e faria a tela dizer "+0% sobre a tabela" num contrato que custa 36% a mais que o preço de lista.
+ * ⚠️ NÃO É `parcela × n` FORA DA PRICE. Na Price todas as parcelas são iguais e a multiplicação
+ * basta. No SACOC a parcela SOBE no aniversário: no lote de R$ 200.000 com R$ 20.000 de entrada,
+ * 120 meses a 8% a.a., a série custa ~R$ 252.400 e não os R$ 180.000 de `1.500 × 120`.
+ *
+ * ⚠️ E ISTO NÃO É MAIS O "TOTAL PAGO" DA TELA — deixou de ser em 22/09/2026. O cartão da simulação
+ * anuncia a parcela do primeiro ciclo e soma exatamente o que anuncia (ver `montarProposta`); quem
+ * cobra o degrau é o CONTRATO, em `montarCronograma`. Esta função sobrevive como a régua cruzada da
+ * curva do cronograma: `simulacao.test.ts` compara as duas num plano de 130 meses, que é onde uma
+ * fórmula fechada deixaria de valer. Sem ela, mexer na curva de um lado sai calado do outro.
  *
  * ⚠️ A CURVA DO SACOC É A DE `parcelaNiveladaSacoc`, a mesma que `montarCronograma` usa, e o
  * DEFASAMENTO DE UM CICLO faz parte dela: no primeiro ano o boleto cobra só amortização, e os juros
@@ -267,13 +272,21 @@ export function somaDasMensais(entrada: {
 
 export type PropostaMontada = {
   /**
-   * O que sobra para a série mensal, depois da entrada e dos balões (`anuaisQueAbatemOSaldo`: valor
-   * de face no SACOC com anuais cadastradas no plano, valor presente no resto).
+   * O que sobra para a série mensal, depois da entrada, dos bens e permutas (valor cheio) e dos
+   * balões (`anuaisQueAbatemOSaldo`: valor de face no SACOC com anuais cadastradas no plano, valor
+   * presente no resto).
    */
   financiado: number;
   /** A do PRIMEIRO ciclo, no SACOC: é a que o C2X emite no primeiro ano e a que a tela anuncia. */
   parcela: number;
-  /** Soma de tudo o que o cliente desembolsa: entrada + série mensal inteira + balões. */
+  /**
+   * Soma do que a SIMULAÇÃO anuncia: entrada + bens e permutas + balões + `parcela × parcelas`.
+   *
+   * ⚠️ NÃO É O `geral` DE `montarCronograma`, e desde 22/09/2026 não é mais igual a ele. Lá o
+   * cronograma reconstrói o degrau do aniversário do SACOC, porque é o papel do CONTRATO; aqui a
+   * tela é informativa e anuncia "R$ 3.001,21 por mês, 84 vezes" — somar outra coisa embaixo desse
+   * anúncio é o defeito que o Lucas pegou. Ver o aviso de `montarProposta`.
+   */
   total: number;
 };
 
@@ -285,14 +298,33 @@ export type PropostaMontada = {
  * além do que a conta permite. Pelo valor de face só no plano SACOC com anuais cadastradas, que é o
  * Garden (Lucas, 18/09/2026: *"So no Garden"*).
  *
- * ⚠️ E O TOTAL SOMA A SÉRIE INTEIRA (`somaDasMensais`), não `parcela × parcelas`: no SACOC a
- * parcela do primeiro ano não é a do contrato inteiro.
+ * ⚠️ E O TOTAL É `parcela × parcelas`, E NÃO A SÉRIE INTEIRA (`somaDasMensais`) — mudou em
+ * 22/09/2026. Lucas, nos dois prints do espelho público do Garden: *"o valor pago tem que ser o
+ * valor do lote, está cobrando juros errado. não calculamos juros nessa etapa, é somente
+ * informativo."* O que quebra sem isto, medido: na Quadra 04 Lote 16 (tabela R$ 416.000, 8% de
+ * desconto, entrada R$ 30.618, 4 anuais de R$ 25.000, 84 × R$ 3.001,21) o cartão anunciava a
+ * parcela certa e imprimia "Total pago R$ 425.937" — R$ 43.217,43 a mais que os R$ 382.720 que a
+ * própria tela soma; na Quadra 03 Lote 07 eram R$ 55.268,50 a mais. A diferença era o degrau do
+ * aniversário do SACOC, que `somaDasMensais` reconstrói e a tela nunca mostrou.
+ *
+ * ⚠️ O TOTAL SOMA EXATAMENTE OS NÚMEROS QUE ESTÃO NA TELA, inclusive no SAC (onde `parcela` é a
+ * primeira, a maior, e a soma fica acima da série real). É deliberado: o cartão diz "X por mês, N
+ * vezes" e o total tem de ser auditável a partir do que ele diz. O degrau e a curva verdadeira
+ * continuam inteiros em `montarCronograma`, que é o que vira contrato e análise da Têmis. Nenhum
+ * empreendimento vende em SAC hoje (`enterprise_tables` só tem PRICE e SACOOC).
+ *
+ * ⚠️ O BEM E A PERMUTA SAEM DO SALDO PELO VALOR CHEIO, E NÃO PELO CRITÉRIO DO BALÃO. O balão vence
+ * no aniversário e por isso vale hoje menos que a face; o bem é entregue na aquisição. São os dois
+ * `entraComo`: quem separa "entrada" de "abatimento" é a entrada MÍNIMA, em `conferirProposta`, e
+ * não esta conta.
  */
 export function montarProposta(entrada: {
   /** `temAnuaisCadastradas(plano)`. Ausente = falso, a conta de sempre. */
   anuaisCadastradasNoPlano?: boolean;
   baloesQuantidade: number;
   baloesValor: number;
+  /** Os bens e permutas recebidos. Ausente, nula ou vazia = proposta sem permuta. */
+  bensEPermutas?: null | readonly BemOuPermuta[];
   entrada: number;
   parcelas: number;
   sistemaAmortizacao: SistemaAmortizacao;
@@ -301,6 +333,7 @@ export function montarProposta(entrada: {
 }): PropostaMontada {
   const { baloesQuantidade, baloesValor, parcelas, sistemaAmortizacao, taxaAoMes, valor } = entrada;
   const desembolsoInicial = Math.max(0, entrada.entrada);
+  const bensNoSaldo = somarBensEPermutas(entrada.bensEPermutas);
 
   const baloesNoSaldo = anuaisQueAbatemOSaldo({
     anuaisCadastradasNoPlano: entrada.anuaisCadastradasNoPlano,
@@ -309,7 +342,7 @@ export function montarProposta(entrada: {
     taxaAoMes,
     valor: baloesValor,
   });
-  const financiado = Math.max(0, valor - desembolsoInicial - baloesNoSaldo);
+  const financiado = Math.max(0, valor - desembolsoInicial - bensNoSaldo - baloesNoSaldo);
   const parcela = parcelaDoFinanciado({ financiado, parcelas, sistemaAmortizacao, taxaAoMes });
 
   return {
@@ -317,7 +350,8 @@ export function montarProposta(entrada: {
     parcela,
     total:
       desembolsoInicial +
-      somaDasMensais({ financiado, parcelas, sistemaAmortizacao, taxaAoMes }) +
+      bensNoSaldo +
+      parcela * Math.max(0, parcelas) +
       Math.max(0, baloesQuantidade) * Math.max(0, baloesValor),
   };
 }
@@ -338,12 +372,20 @@ export function montarProposta(entrada: {
  * MESMO critério (`anuaisCadastradasNoPlano`): valor de face no SACOC com anuais cadastradas (o
  * Garden), valor presente no resto. Inverter com uma regra e ir com outra faria a entrada sugerida
  * não produzir a parcela pedida.
+ *
+ * ⚠️ E O BEM SAI ANTES PELO MESMO MOTIVO — A VOLTA TAMBÉM CONTA. Com a permuta só na ida
+ * (`montarProposta`), a entrada devolvida aqui seria a de um lote sem permuta: num lote de
+ * R$ 200.000 com carro de R$ 80.000 e parcela pedida de R$ 800 em 120×, a volta ofereceria
+ * R$ 104.000 de entrada, e a ida com esses R$ 104.000 devolveria R$ 133,33 de parcela em vez dos
+ * R$ 800 pedidos. A entrada certa é R$ 24.000.
  */
 export function entradaParaAParcela(entrada: {
   /** `temAnuaisCadastradas(plano)`. Ausente = falso, a conta de sempre. */
   anuaisCadastradasNoPlano?: boolean;
   baloesQuantidade: number;
   baloesValor: number;
+  /** Os bens e permutas recebidos. Ausente, nula ou vazia = proposta sem permuta. */
+  bensEPermutas?: null | readonly BemOuPermuta[];
   parcela: number;
   parcelas: number;
   sistemaAmortizacao: SistemaAmortizacao;
@@ -353,6 +395,7 @@ export function entradaParaAParcela(entrada: {
   const { baloesQuantidade, baloesValor, parcela, parcelas, sistemaAmortizacao, taxaAoMes, valor } =
     entrada;
 
+  const bensNoSaldo = somarBensEPermutas(entrada.bensEPermutas);
   const baloesNoSaldo = anuaisQueAbatemOSaldo({
     anuaisCadastradasNoPlano: entrada.anuaisCadastradasNoPlano,
     quantidade: baloesQuantidade,
@@ -362,7 +405,7 @@ export function entradaParaAParcela(entrada: {
   });
   const financiadoQueAParcelaPaga =
     parcela * fatorDoFinanciado({ parcelas, sistemaAmortizacao, taxaAoMes });
-  const bruta = valor - baloesNoSaldo - financiadoQueAParcelaPaga;
+  const bruta = valor - bensNoSaldo - baloesNoSaldo - financiadoQueAParcelaPaga;
 
   return bruta >= 0 ? { entrada: bruta, sobra: 0 } : { entrada: 0, sobra: -bruta };
 }

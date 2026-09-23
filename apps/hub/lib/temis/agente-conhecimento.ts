@@ -153,6 +153,7 @@ Um par [inicio_X] ... [fim_X] só imprime o que está dentro quando a condição
   dados_cliente_pf     só quando o comprador é pessoa FÍSICA (estado civil, regime de bens, RG)
   dados_cliente_pj     só quando o comprador é pessoa JURÍDICA (razão social, CNPJ)
   tem_anuais           só quando o plano tem parcelas anuais
+  tem_bens_e_permutas  só quando a venda recebeu bem ou permuta (o carro, o lote dado em pagamento)
   tem_anexo_1 (2, 3…)  só quando aquela posição de anexo tem arquivo
 
 Sem isso, um contrato de pessoa física sai com "razão social:" em branco — que foi exatamente o

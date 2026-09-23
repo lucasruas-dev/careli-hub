@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { somarBensEPermutas } from "@/lib/hercules/bens-e-permutas";
+
 import { documentoParaHtml } from "./documento-html";
 import { tabelaGeralDePagamentos } from "./tabela-de-pagamentos";
 
@@ -273,5 +275,326 @@ describe("a comissão sai do fluxo da entrada", () => {
     // Um quadro com entrada zerada esconde o defeito do cadastro atrás de um número plausível.
     const quadro = texto(tabelaGeralDePagamentos(CONDICOES, 1_400_000));
     expect(quadro).toContain("R$ 13.355,10");
+  });
+});
+
+// ── O BEM E A PERMUTA ENTRAM NO QUADRO ────────────────────────────────────────
+//
+// Lucas (22/09/2026), sobre o carro e o lote recebidos na aquisição: *"Abate, como uma entrada"*,
+// *"Vários"* e, sobre onde isso aparece, *"Já no contrato também"*.
+//
+// ⚠️ SEM ISTO O QUADRO NÃO FECHA COM A CLÁUSULA 6.1 LOGO ACIMA. `montarCronograma` desconta o bem do
+// saldo (`financiado = negociado − entrada − bens − anuais`), e o rodapé do quadro é a SOMA DAS
+// LINHAS. Num lote de R$ 200.000 com permuta de R$ 80.000 as linhas dão 20.000 + 100.000 =
+// R$ 120.000 embaixo de um 6.1 que promete R$ 200.000: é o mesmo defeito que voltou do jurídico em
+// 22/09/2026 com a venda do VOL, e a correção é a mesma — a linha que falta entra no quadro.
+const CONDICOES_COM_PERMUTA = {
+  anuais: [],
+  entrada: [{ numero: 1, total: 1, valor: 20_000, vencimento: "2026-10-10" }],
+  mensais: [{ numero: 1, total: 100, valor: 1_000, vencimento: "2026-11-10" }],
+  plano: {
+    indiceCorrecao: "IPCA_ANUAL",
+    jurosPeriodicidade: "mensal",
+    jurosTaxa: 0.7207,
+    nome: "NORMAL",
+    parcelas: 100,
+    sistemaAmortizacao: "sacoc",
+  },
+  totais: {
+    anuais: 0,
+    bensEPermutas: 80_000,
+    entrada: 20_000,
+    financiado: 100_000,
+    geral: 200_000,
+    mensais: 100_000,
+  },
+};
+
+const CARRO = {
+  descricao: "Ford Ka 2019 placa ABC1D23",
+  entraComo: "abatimento",
+  tipo: "permuta",
+  valor: 80_000,
+} as const;
+
+const LOTE_EM_ANAPOLIS = {
+  descricao: "lote 12 da quadra 4 em Anápolis",
+  entraComo: "entrada",
+  tipo: "bem",
+  valor: 15_000,
+} as const;
+
+describe("o bem e a permuta no quadro de pagamento", () => {
+  it("⚠️ vira linha própria, dizendo O QUE É e QUANTO VALE", () => {
+    const saida = texto(tabelaGeralDePagamentos(CONDICOES_COM_PERMUTA, null, [CARRO]));
+
+    expect(saida).toContain("Permuta");
+    // A descrição é o que liga a linha ao bem de verdade: sem ela o quadro anuncia R$ 80.000 de
+    // coisa nenhuma, e quem confere não tem como saber que carro é esse.
+    expect(saida).toContain("Ford Ka 2019 placa ABC1D23");
+    expect(saida).toContain("R$ 80.000,00");
+  });
+
+  it("⚠️ o total volta a fechar com o preço do lote", () => {
+    const saida = texto(tabelaGeralDePagamentos(CONDICOES_COM_PERMUTA, null, [CARRO]));
+
+    // 20.000 de entrada + 80.000 de permuta + 100.000 de saldo = R$ 200.000,00, que é o 6.1.
+    expect(saida).toContain("R$ 200.000,00");
+    // O rodapé de antes, que deixava a permuta de fora e desmentia a cláusula da página.
+    expect(saida).not.toContain("R$ 120.000,00");
+  });
+
+  // Lucas, 22/09/2026, perguntado quantos bens cabem numa proposta: *"Vários"*.
+  it("traz uma linha por item, e o total soma todas", () => {
+    const saida = texto(
+      tabelaGeralDePagamentos(
+        {
+          ...CONDICOES_COM_PERMUTA,
+          totais: {
+            ...CONDICOES_COM_PERMUTA.totais,
+            bensEPermutas: 95_000,
+            financiado: 85_000,
+            geral: 200_000,
+          },
+        },
+        null,
+        [CARRO, LOTE_EM_ANAPOLIS],
+      ),
+    );
+
+    expect(saida).toContain("Ford Ka 2019 placa ABC1D23");
+    expect(saida).toContain("lote 12 da quadra 4 em Anápolis");
+    expect(saida).toContain("R$ 15.000,00");
+    // 20.000 + 80.000 + 15.000 + 85.000 = R$ 200.000,00.
+    expect(saida).toContain("R$ 200.000,00");
+  });
+
+  // ⚠️ O QUE O QUADRO SOMA É O QUE A RÉGUA SOMA. Duas contas da mesma lista é como a tela e o papel
+  // passam a anunciar financiados diferentes para a mesma venda (a lição dos reforços anuais). Este
+  // teste amarra o rodapé do quadro a `somarBensEPermutas`, que é quem o cronograma usa.
+  it("⚠️ as linhas do bem somam exatamente o que somarBensEPermutas soma", () => {
+    const bens = [CARRO, LOTE_EM_ANAPOLIS, { ...CARRO, descricao: "moto", valor: 0 }];
+    const soLinhasDoBem = tabelaGeralDePagamentos(
+      { entrada: [], mensais: [], anuais: [], totais: {} },
+      null,
+      bens,
+    );
+
+    expect(texto(soLinhasDoBem)).toContain("R$ 95.000,00");
+    expect(somarBensEPermutas(bens)).toBe(95_000);
+  });
+
+  // ⚠️ A LISTA CHEGA DE UM FORMULÁRIO QUE ESTÁ SENDO PREENCHIDO. Uma linha recém-adicionada tem
+  // `valor` vazio; imprimi-la poria "R$ NaN" no contrato e o rodapé inteiro viraria NaN.
+  it("item sem valor não vira linha", () => {
+    const saida = texto(
+      tabelaGeralDePagamentos(CONDICOES_COM_PERMUTA, null, [
+        { ...CARRO, descricao: "Fiat Uno sem valor", valor: Number.NaN },
+      ]),
+    );
+
+    expect(saida).not.toContain("Fiat Uno sem valor");
+    expect(saida).not.toContain("NaN");
+  });
+
+  it("item sem descrição sai só com o que ele é", () => {
+    const saida = texto(
+      tabelaGeralDePagamentos(CONDICOES_COM_PERMUTA, null, [{ ...CARRO, descricao: "   " }]),
+    );
+
+    expect(saida).toContain("Permuta");
+    expect(saida).toContain("R$ 80.000,00");
+  });
+
+  // ⚠️ A IMENSA MAIORIA DAS VENDAS NÃO TEM BEM NENHUM, e o quadro delas tem de sair IDÊNTICO ao de
+  // hoje: sem linha vazia, sem célula a mais, sem espaço sobrando. É a trava desta mudança.
+  it("⚠️ sem bem, o quadro é o MESMO de antes — nó a nó", () => {
+    const comoHoje = tabelaGeralDePagamentos(CONDICOES, COMISSAO);
+
+    expect(tabelaGeralDePagamentos(CONDICOES, COMISSAO, null)).toEqual(comoHoje);
+    expect(tabelaGeralDePagamentos(CONDICOES, COMISSAO, [])).toEqual(comoHoje);
+    expect(tabelaGeralDePagamentos(CONDICOES, COMISSAO, undefined)).toEqual(comoHoje);
+    // E a lista só com item sem dinheiro também não muda nada.
+    expect(
+      tabelaGeralDePagamentos(CONDICOES, COMISSAO, [{ ...CARRO, valor: 0 }]),
+    ).toEqual(comoHoje);
+  });
+
+  // ⚠️ O BEM VAI JUNTO DA ENTRADA, ANTES DAS SÉRIES. Ele é entregue na aquisição (Lucas: *"Abate,
+  // como uma entrada"*), e um quadro que o pusesse depois das 156 mensais faria o comprador ler a
+  // permuta como se fosse o último pagamento do contrato, em 2039.
+  it("⚠️ a linha do bem fica entre a entrada e as parcelas", () => {
+    const saida = texto(tabelaGeralDePagamentos(CONDICOES_COM_PERMUTA, null, [CARRO]));
+
+    expect(saida.indexOf("Entrada")).toBeLessThan(saida.indexOf("Permuta"));
+    expect(saida.indexOf("Permuta")).toBeLessThan(saida.indexOf("Mensal"));
+  });
+
+  // ⚠️ O BEM NÃO TEM VENCIMENTO, E O QUADRO NÃO INVENTA UM. Ele é entregue no ato; escrever ali a
+  // data da entrada faria o contrato prometer a transferência do carro numa data que ninguém
+  // combinou, e é data de contrato que o cartório confere.
+  it("a linha do bem não anuncia vencimento nenhum", () => {
+    const quadro = tabelaGeralDePagamentos(CONDICOES_COM_PERMUTA, null, [CARRO]);
+    const linha = (quadro?.children ?? []).find((no) =>
+      JSON.stringify(no).includes("Ford Ka"),
+    );
+
+    expect(JSON.stringify(linha)).not.toContain("10/10/2026");
+    expect(JSON.stringify(linha)).not.toContain("10/11/2026");
+  });
+});
+
+// ── A PERMUTA NA ENTRADA, SEM DINHEIRO NO ATO ────────────────────────────────
+//
+// ⚠️ O CASO QUE A PERMUTA ACABOU DE TORNAR COMUM. A régua nova da proposta aceita entrada em
+// dinheiro ZERO quando o bem apontado na entrada cobre o piso de 10%
+// (`centavos(entradaValor) + centavos(bensNaEntrada) >= centavos(piso)`, `proposta.ts`). Antes dela
+// essa composição era impossível: sem parcela de entrada, a proposta não passava.
+//
+// ⚠️ E SEM PARCELA DE ENTRADA A COMISSÃO NÃO TINHA DE ONDE SAIR. `abaterDaEntrada` devolve `null`
+// com `entrada.length === 0`, e o rodapé voltava a somar o negociado CHEIO: medido num lote de
+// R$ 200.000 com comissão de R$ 12.000 e permuta de R$ 20.000 na entrada, o quadro fechava em
+// R$ 200.000,00 embaixo de um `preco_do_lote` (6.1) de R$ 188.000,00 — na mesma página. É o mesmo
+// defeito que voltou do jurídico com a venda do VOL em 22/09/2026.
+const CONDICOES_SEM_DINHEIRO_NO_ATO = {
+  anuais: [],
+  entrada: [],
+  mensais: [{ numero: 1, total: 180, valor: 1_000, vencimento: "2026-11-10" }],
+  plano: {
+    indiceCorrecao: "IPCA_ANUAL",
+    jurosPeriodicidade: "mensal",
+    jurosTaxa: 0.7207,
+    nome: "NORMAL",
+    parcelas: 180,
+    sistemaAmortizacao: "sacoc",
+  },
+  totais: {
+    anuais: 0,
+    bensEPermutas: 20_000,
+    entrada: 0,
+    financiado: 180_000,
+    geral: 200_000,
+    mensais: 180_000,
+  },
+};
+
+/** A permuta que faz as vezes da entrada: R$ 20.000 num lote de R$ 200.000, os 10% do piso. */
+const CARRO_NA_ENTRADA = {
+  descricao: "Ford Ka 2019 placa ABC1D23",
+  entraComo: "entrada",
+  tipo: "permuta",
+  valor: 20_000,
+} as const;
+
+/** 6% de R$ 200.000 (2% da coordenadora + 4% da imobiliária) = R$ 12.000,00. */
+const COMISSAO_DO_LOTE_DE_DUZENTOS = 1_200_000;
+
+describe("sem parcela de entrada, a comissão ainda sai do quadro", () => {
+  it("⚠️ o rodapé fecha com o 6.1 PREÇO DO LOTE, e não com o negociado cheio", () => {
+    const saida = texto(
+      tabelaGeralDePagamentos(CONDICOES_SEM_DINHEIRO_NO_ATO, COMISSAO_DO_LOTE_DE_DUZENTOS, [
+        CARRO_NA_ENTRADA,
+      ]),
+    );
+
+    // 20.000 de permuta + 180.000 de saldo - 12.000 de corretagem = R$ 188.000,00, que é o
+    // `preco_do_lote` que `dados-do-contrato` imprime no 6.1 (200.000,00 menos 12.000,00).
+    expect(saida).toContain("R$ 188.000,00");
+    // O rodapé de antes, que desmentia a cláusula da mesma página.
+    expect(saida).not.toContain("R$ 200.000,00");
+  });
+
+  // ⚠️ A PERMUTA MANTÉM O VALOR CHEIO. Abater a corretagem DENTRO da linha do bem faria o contrato
+  // anunciar um Ford Ka de R$ 8.000 ao lado de uma cláusula que diz R$ 20.000 (`valor_bens_e_permutas`,
+  // a mesma página) — trocaria uma contradição por outra, e esta cairia sobre a descrição de um bem
+  // que o cartório confere.
+  it("⚠️ o bem continua valendo o que vale, e a comissão vira linha própria", () => {
+    const saida = texto(
+      tabelaGeralDePagamentos(CONDICOES_SEM_DINHEIRO_NO_ATO, COMISSAO_DO_LOTE_DE_DUZENTOS, [
+        CARRO_NA_ENTRADA,
+      ]),
+    );
+
+    expect(saida).toContain("Ford Ka 2019 placa ABC1D23");
+    expect(saida).toContain("R$ 20.000,00");
+    expect(saida).toContain("Comissão de corretagem");
+    expect(saida).toContain("-R$ 12.000,00");
+    // E as mensais seguem intocadas: elas amortizam o preço do lote inteiras.
+    expect(saida).toContain("R$ 180.000,00");
+  });
+
+  // ⚠️ A LINHA FICA JUNTO DO ATO, e não no fim do quadro. A corretagem é paga "em conformidade com o
+  // fluxo financeiro das parcelas de SINAL/ATO" (item 7.1 do contrato de corretagem), que é
+  // exatamente o que a entrada em dinheiro faz de forma invisível quando ela existe.
+  it("a linha da comissão fica depois do bem e antes das mensais", () => {
+    const saida = texto(
+      tabelaGeralDePagamentos(CONDICOES_SEM_DINHEIRO_NO_ATO, COMISSAO_DO_LOTE_DE_DUZENTOS, [
+        CARRO_NA_ENTRADA,
+      ]),
+    );
+
+    expect(saida.indexOf("Permuta")).toBeLessThan(saida.indexOf("Comissão de corretagem"));
+    expect(saida.indexOf("Comissão de corretagem")).toBeLessThan(saida.indexOf("Mensal"));
+  });
+
+  // ⚠️ COM ENTRADA EM DINHEIRO NADA MUDA: a comissão continua saindo por dentro das parcelas do ato,
+  // sem linha nova. É a trava da correção — o quadro de toda venda de hoje sai nó a nó como saía.
+  it("⚠️ com entrada em dinheiro, o quadro é o MESMO de antes — nó a nó", () => {
+    const comoHoje = tabelaGeralDePagamentos(CONDICOES, COMISSAO);
+
+    expect(texto(comoHoje)).not.toContain("Comissão de corretagem");
+    expect(texto(comoHoje)).toContain("R$ 125.537,94");
+    expect(tabelaGeralDePagamentos(CONDICOES, COMISSAO, [])).toEqual(comoHoje);
+  });
+
+  it("sem comissão conhecida, o quadro sem entrada fica como a proposta congelou", () => {
+    const saida = texto(
+      tabelaGeralDePagamentos(CONDICOES_SEM_DINHEIRO_NO_ATO, null, [CARRO_NA_ENTRADA]),
+    );
+
+    expect(saida).not.toContain("Comissão de corretagem");
+    expect(saida).toContain("R$ 200.000,00");
+  });
+
+  // ⚠️ MESMA REGRA DA ENTRADA ENGOLIDA: comissão maior do que o quadro inteiro é defeito de
+  // cadastro, e um rodapé negativo o esconderia atrás de um número plausível.
+  it("comissão maior do que o quadro inteiro NÃO é abatida", () => {
+    const saida = texto(
+      tabelaGeralDePagamentos(CONDICOES_SEM_DINHEIRO_NO_ATO, 30_000_000, [CARRO_NA_ENTRADA]),
+    );
+
+    expect(saida).not.toContain("Comissão de corretagem");
+    expect(saida).toContain("R$ 200.000,00");
+  });
+});
+
+// ── A RÉGUA DO "VALE DINHEIRO" É UMA SÓ ──────────────────────────────────────
+//
+// ⚠️ MEDIDO EM 22/09/2026: a lista `[{ valor: "80000" }]` fazia o quadro imprimir
+// `Total R$ 2.000.080.000.100.000,00` — o `reduce` do rodapé CONCATENAVA a string, porque a linha
+// recebia `total: bem.valor` cru — enquanto `somarBensEPermutas` da mesma lista devolvia 0, e é ela
+// que escreve `valor_bens_e_permutas`. Mesmo item, três números diferentes no mesmo papel.
+//
+// ⚠️ A CAUSA ERAM DUAS RÉGUAS: o filtro do quadro COAGIA (`Number(bem.valor) > 0`) e o de
+// `bens-e-permutas.ts` exige número de verdade (`Number.isFinite(bem.valor)`). Hoje o alcance é
+// baixo (a rota normaliza com `Number` antes de gravar), mas régua que diverge só espera o dia.
+describe("o quadro e a régua do dinheiro contam a MESMA lista", () => {
+  it("⚠️ valor em texto não vira linha, e o rodapé não concatena string", () => {
+    const comTexto = [{ ...CARRO, valor: "80000" as unknown as number }];
+    const saida = texto(tabelaGeralDePagamentos(CONDICOES_COM_PERMUTA, null, comTexto));
+
+    expect(somarBensEPermutas(comTexto)).toBe(0);
+    expect(saida).not.toContain("2.000.080.000.100.000");
+    expect(saida).not.toContain("Ford Ka 2019 placa ABC1D23");
+    // 20.000 de entrada + 100.000 de saldo: o que a régua soma é o que o quadro soma.
+    expect(saida).toContain("R$ 120.000,00");
+  });
+
+  it("valor em texto também não conta para a régua da entrada mínima", () => {
+    const comTexto = [{ ...CARRO, valor: "80000" as unknown as number }];
+    const quadro = tabelaGeralDePagamentos(CONDICOES_COM_PERMUTA, null, comTexto);
+    const semBem = tabelaGeralDePagamentos(CONDICOES_COM_PERMUTA, null, []);
+
+    expect(quadro).toEqual(semBem);
   });
 });

@@ -113,7 +113,7 @@ describe("⚠️ a MESMA MODAL não pode anunciar duas parcelas", () => {
     expect(price.parcela / sacoc.parcela).toBeGreaterThan(1.4);
   });
 
-  it("e o cartão do simulador fecha com o cronograma do PDF, parcela e total", () => {
+  it("e o cartão do simulador fecha com o cronograma do PDF em parcela e financiado", () => {
     const doSimulador = montarProposta({ ...CENARIO, sistemaAmortizacao: "sacoc" });
     const c = montarCronograma({
       anuaisQuantidade: 0,
@@ -129,17 +129,20 @@ describe("⚠️ a MESMA MODAL não pode anunciar duas parcelas", () => {
 
     expect(c.totais.financiado).toBeCloseTo(doSimulador.financiado, 2);
     expect(c.mensais[0]?.valor).toBeCloseTo(doSimulador.parcela, 2);
-    // O total soma 120 parcelas já arredondadas no centavo, daí a folga de um real.
-    expect(Math.abs(c.totais.geral - doSimulador.total)).toBeLessThan(1);
+    // ⚠️ O TOTAL DIVERGE DE PROPÓSITO DESDE 22/09/2026, e é a única coisa que diverge. Lucas, sobre
+    // a simulação: *"não calculamos juros nessa etapa, é somente informativo"*. O cronograma é o
+    // papel do CONTRATO e carrega o degrau do aniversário inteiro (R$ 272.401,82 aqui); a tela soma
+    // o que ela mesma anuncia, R$ 20.000 de entrada e 120 × R$ 1.500. Os R$ 72.401,82 de diferença
+    // são o degrau, e é ele que aparecia embaixo de "R$ 1.500,00 por mês, 120 vezes".
+    expect(doSimulador.total).toBeCloseTo(200_000, 2);
+    expect(c.totais.geral - doSimulador.total).toBeCloseTo(72_401.82, 0);
   });
 
-  it("⚠️ o total do SACOC não é a parcela do primeiro ano vezes o prazo", () => {
-    // O degrau do aniversário está dentro do total: `1.500 × 120 + 20.000` daria R$ 200.000 e a
-    // tela diria "+0% sobre a tabela" num contrato que custa ~36% a mais que o preço de lista.
+  it("⚠️ o total do SACOC é a parcela anunciada vezes o prazo, sem o degrau do aniversário", () => {
     const r = montarProposta({ ...CENARIO, sistemaAmortizacao: "sacoc" });
-    // R$ 20.000 de entrada + R$ 252.401,82 de série mensal.
-    expect(r.total).toBeCloseTo(272_401.82, 2);
-    expect(r.total).toBeGreaterThan(20_000 + r.parcela * 120);
+    expect(r.total).toBeCloseTo(20_000 + r.parcela * 120, 6);
+    // Entrada mais a série anunciada: o próprio valor do lote, que é o que o Lucas pediu ver.
+    expect(r.total).toBeCloseTo(200_000, 2);
   });
 
   it("com os reforços anuais, os dois continuam contando a mesma história", () => {
@@ -170,7 +173,19 @@ describe("⚠️ a MESMA MODAL não pode anunciar duas parcelas", () => {
     );
     expect(doSimulador.financiado).toBeLessThan(180_000);
     expect(c.mensais[0]?.valor).toBeCloseTo(doSimulador.parcela, 2);
-    expect(Math.abs(c.totais.geral - doSimulador.total)).toBeLessThan(1);
+    // ⚠️ AQUI O TOTAL DA TELA PASSA DO VALOR NEGOCIADO, e está certo: o reforço à mão abate o saldo
+    // pelo VALOR PRESENTE (R$ 51.541,94) e o comprador entrega os R$ 60.000 de face. A diferença de
+    // R$ 8.458,06 é dinheiro que ele realmente desembolsa, e é o caso em que a nota do cartão deixa
+    // de dizer "igual ao valor negociado" e passa a dizer quanto está acima.
+    expect(doSimulador.total).toBeCloseTo(
+      20_000 + doSimulador.parcela * 120 + 3 * 20_000,
+      6,
+    );
+    expect(doSimulador.total - 200_000).toBeCloseTo(
+      3 * 20_000 - valorPresenteDosBaloes(3, 20_000, I_SACOC),
+      6,
+    );
+    expect(c.totais.geral).toBeGreaterThan(doSimulador.total);
   });
 
   it("e no plano COM anuais cadastradas (o Garden), os dois abatem pelo valor de face", () => {
@@ -198,7 +213,11 @@ describe("⚠️ a MESMA MODAL não pode anunciar duas parcelas", () => {
     expect(doSimulador.financiado).toBeCloseTo(120_000, 2);
     expect(c.totais.financiado).toBeCloseTo(doSimulador.financiado, 2);
     expect(c.mensais[0]?.valor).toBeCloseTo(doSimulador.parcela, 2);
-    expect(Math.abs(c.totais.geral - doSimulador.total)).toBeLessThan(1);
+    // ⚠️ E AQUI A TELA FECHA AO CENTAVO COM O VALOR NEGOCIADO — é o caso do Garden. Anual pelo valor
+    // de face: entrada + 3 × 20.000 + 120 × 1.000 = os 200.000 do lote. O cronograma continua acima,
+    // porque lá o degrau do aniversário é cobrado de verdade.
+    expect(doSimulador.total).toBeCloseTo(200_000, 6);
+    expect(c.totais.geral).toBeGreaterThan(doSimulador.total);
   });
 });
 
@@ -517,28 +536,33 @@ describe("fatorDoFinanciado", () => {
 // regressão é a conta ANTIGA, copiada abaixo: tudo o que não é SACOC com anual cadastrada sai
 // idêntico, ao bit.
 
-/** `montarProposta` como estava na main v1.349.6 (anuais sempre a valor presente). */
+/**
+ * `montarProposta` como estava na main v1.349.6 (anuais sempre a valor presente).
+ *
+ * ⚠️ A LINHA DO `total` FOI ATUALIZADA EM 22/09/2026, junto com a de `montarProposta`: era
+ * `somaDasMensais` e passou a ser `parcela × parcelas`. O que esta régua guarda é a mudança das
+ * ANUAIS (valor de face no Garden), e só ela. Deixá-la com a soma antiga faria a régua acusar como
+ * regressão em Price, em SAC e em todo plano sem anual cadastrada a correção que o Lucas pediu —
+ * que não é regressão nenhuma, é a decisão nova, e aí a régua pararia de guardar o que veio
+ * guardar.
+ */
 function montarPropostaAntiga(e: Parameters<typeof montarProposta>[0]) {
   const financiado = Math.max(
     0,
     e.valor - Math.max(0, e.entrada) - valorPresenteDosBaloes(e.baloesQuantidade, e.baloesValor, e.taxaAoMes),
   );
+  const parcela = parcelaDoFinanciado({
+    financiado,
+    parcelas: e.parcelas,
+    sistemaAmortizacao: e.sistemaAmortizacao,
+    taxaAoMes: e.taxaAoMes,
+  });
   return {
     financiado,
-    parcela: parcelaDoFinanciado({
-      financiado,
-      parcelas: e.parcelas,
-      sistemaAmortizacao: e.sistemaAmortizacao,
-      taxaAoMes: e.taxaAoMes,
-    }),
+    parcela,
     total:
       Math.max(0, e.entrada) +
-      somaDasMensais({
-        financiado,
-        parcelas: e.parcelas,
-        sistemaAmortizacao: e.sistemaAmortizacao,
-        taxaAoMes: e.taxaAoMes,
-      }) +
+      parcela * Math.max(0, e.parcelas) +
       Math.max(0, e.baloesQuantidade) * Math.max(0, e.baloesValor),
   };
 }

@@ -142,6 +142,10 @@ const CSS_DE_IMPRESSAO = `
     overflow: visible !important;
   }
 
+  /* ⚠️ E A MOLDURA VOLTA A SER BLOCO, pelo mesmo motivo do celular: na tela ela é uma grade de uma
+     linha para dar altura ao simulador, e no papel não existe altura de tela para repartir. */
+  [data-esp-simulador] { display: block !important; }
+
   /* Cada bloco do simulador evita rachar no meio entre duas páginas. */
   [data-esp-tema] .inc > * { break-inside: avoid; }
 
@@ -175,7 +179,10 @@ const CSS_DO_CELULAR = `
     padding: calc(12px + env(safe-area-inset-top)) 14px calc(16px + env(safe-area-inset-bottom)) !important;
   }
   [data-esp-popup="topo"] { flex-wrap: wrap; }
-  [data-esp-simulador] { flex: none !important; overflow: visible !important; }
+  /* ⚠️ A MOLDURA VOLTA A SER BLOCO NO CELULAR. Na tela larga ela é uma grade de uma linha
+     (\`minmax(0, 1fr)\`), que é o que dá altura ao simulador para ele rolar por dentro; aqui quem
+     rola é a janela inteira, e a linha de grade só atrapalharia o empilhamento. */
+  [data-esp-simulador] { display: block !important; flex: none !important; overflow: visible !important; }
   [data-esp-simulador] > div {
     grid-template-columns: minmax(0, 1fr) !important;
     height: auto !important;
@@ -669,6 +676,29 @@ function PainelDoLote({
       ? `${lote.quadra} ${lote.lote ?? ""}`.trim()
       : lote.codigo;
 
+  /**
+   * A janela abre com o simulador dentro quando o lote está à venda e tem plano.
+   *
+   * ⚠️ A ALTURA DA JANELA É TETO, E NÃO TAMANHO (22/09/2026, segunda rodada). Lucas, sobre o iPad:
+   * *"a tela da simulação está cortando essa parte de sugestão de plano e quando tento subir quem
+   * sobe é a tela do fundo"*. A causa era o `aside` ter só `max-height: 92dvh`, sem altura DEFINIDA
+   * para o filho: o `height: 100%` da raiz do `SimuladorDeProposta` resolvia em `auto`, as colunas
+   * cresciam até o conteúdo, a moldura cortava o fim com `overflow: hidden` e o arrasto vazava para
+   * o documento.
+   *
+   * A primeira correção pôs `height: 92dvh` aqui, e trocou um defeito por outro: a janela passou a
+   * abrir do tamanho da tela mesmo com pouco conteúdo. Medido no navegador a 1920 × 1080, réplica
+   * fiel desta cadeia com um empreendimento de um plano só: a janela foi de 389px para 993,6px, com
+   * 604,6px de vazio embaixo do conteúdo.
+   *
+   * Quem resolve os dois é a MOLDURA (`ESTILO.molduraDoSimulador`), com a linha de grade
+   * `minmax(0, 1fr)`: ela dá ao simulador uma altura definida sem travar a janela num número. Na
+   * mesma réplica, agora: conteúdo curto a 1920 × 1080 → janela 389px, sem vazio; conteúdo longo →
+   * 993,6px com 535px de curso na coluna da leitura; no iPad a 768 × 1024 → 942,1px com 587px de
+   * curso, contra 587px CORTADOS antes de qualquer conserto.
+   */
+  const mostraSimulador = disponivel && preco > 0 && planosDaVenda.length > 0;
+
   // O que está na tela AGORA — é o que vai para o papel.
   const condicoes = useRef<CondicoesDaProposta | null>(null);
   const [baixando, setBaixando] = useState(false);
@@ -707,6 +737,18 @@ function PainelDoLote({
             anuaisValor: atual.anuaisValor,
             codigo: lote.codigo,
             entrada: atual.entradaValor,
+            // E as DATAS escolhidas para essas parcelas, pelo mesmo motivo: o campo de data fica
+            // visível no espelho (só o bloco "Cobrança" some no modo simulação), e a data da
+            // entrada ainda empurra a primeira mensal no cronograma.
+            entradaDatas: atual.entradaDatas,
+            // ⚠️ AS PARCELAS MONTADAS À MÃO VÃO JUNTO (22/09/2026). O botão "montar valores" aparece
+            // aqui também, sempre que a entrada tem mais de uma parcela, e o cartão grande passa a
+            // anunciar "4× · 1ª de R$ 10.000". Sem este campo o corpo levava só o total: a folha
+            // repartia em partes iguais e quem montou 10.000 + 7.000 + 7.000 + 7.000 encaminhava um
+            // papel dizendo 4 × R$ 7.750. É a mesma família do item 4 do Lucas (*"mesmo eu alterando
+            // o valor de entrada (...) ele não traz o valor que eu tinha colocado"*), em outro campo.
+            // Nulo = sem montagem, e o servidor reparte igual como sempre.
+            entradaParcelas: atual.entradaParcelas,
             entradaVezes: atual.entradaVezes,
             parcelas: atual.parcelasMensais,
             plano: atual.planoNome,
@@ -807,7 +849,7 @@ function PainelDoLote({
           </p>
         ) : null}
 
-        {disponivel && preco > 0 && planosDaVenda.length > 0 ? (
+        {mostraSimulador ? (
           <div className="inc" data-esp-simulador style={ESTILO.molduraDoSimulador}>
             <style>{TEMA_CSS}</style>
             <SimuladorDeProposta
@@ -882,13 +924,28 @@ const ESTILO: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     padding: "8px 12px",
   },
-  // O simulador traz a própria altura (duas colunas roláveis); a moldura só lhe dá espaço e
-  // recorta os cantos junto com o pop-up.
+  // A MOLDURA É QUEM DÁ ALTURA AO SIMULADOR, e é ela que encolhe quando a janela bate no teto.
+  //
+  // ⚠️ O `grid-template-rows: minmax(0, 1fr)` É A PEÇA QUE FALTAVA (22/09/2026). A raiz do
+  // `SimuladorDeProposta` pede `height: 100%`, e percentual contra um pai de altura INDEFINIDA
+  // resolve em `auto`: as duas colunas dele cresciam até o conteúdo, esta moldura cortava o fim com
+  // `overflow: hidden` e o arrasto, sem nada para rolar ali dentro, vazava para a página de trás.
+  // Foi o corte do iPad. A primeira correção travou a JANELA em `92dvh`, o que resolveu o corte e
+  // criou outro defeito: no desktop com conteúdo curto sobrava tela vazia (ver o comentário em
+  // `mostraSimulador`). Com a linha de grade a altura da moldura é definida para o filho sem estar
+  // travada num número — ela vale o que a janela deixar, e a janela vale o conteúdo até o teto.
+  //
+  // Medido no navegador com a réplica desta cadeia, conteúdo longo a 768 × 1024 (iPad retrato):
+  // sem a linha, raiz do simulador em 1430px dentro de uma moldura de 843,1px, 587px cortados sem
+  // barra; com ela, raiz 843,1px e a coluna da leitura rolando 587px por dentro.
   molduraDoSimulador: {
     borderRadius: 10,
-    // `flex: 1` mais `min-height: 0` é o par que permite a um filho de flex encolher abaixo do
-    // conteúdo — sem o segundo, o simulador empurraria o pop-up para fora da tela.
-    flex: 1,
+    display: "grid",
+    // `flex: 1 1 auto` mais `min-height: 0` é o par que permite a um filho de flex encolher abaixo
+    // do conteúdo — sem o segundo, o simulador empurraria o pop-up para fora da tela. A base `auto`
+    // (e não `0`) é o que deixa a janela nascer do tamanho do conteúdo quando ele é curto.
+    flex: "1 1 auto",
+    gridTemplateRows: "minmax(0, 1fr)",
     marginTop: 14,
     minHeight: 0,
     overflow: "hidden",
@@ -1198,6 +1255,12 @@ const ESTILO: Record<string, React.CSSProperties> = {
   // pop-up e a das colunas do simulador, que já rolam sozinhas. `hidden` mais `flex` deixa o
   // simulador ocupar a altura que sobra e cuidar da própria rolagem, que é o comportamento dele
   // na Mesa de Venda.
+  //
+  // ⚠️ `max-height` É TETO, E NÃO ALTURA, E É DE PROPÓSITO. Ele sozinho não dá altura ao filho, e
+  // sem altura a rolagem de dentro nunca liga (o corte no iPad de 22/09/2026); quem resolve isso é
+  // a linha de grade da `molduraDoSimulador`, e não um `height` aqui. Travar a janela em `92dvh`
+  // foi a primeira tentativa e deixava 604,6px de tela vazia num empreendimento de conteúdo curto,
+  // medido a 1920 × 1080 — ver `mostraSimulador` em `PainelDoLote`.
   painel: {
     background: "var(--esp-superficie)",
     border: "1px solid var(--esp-borda)",

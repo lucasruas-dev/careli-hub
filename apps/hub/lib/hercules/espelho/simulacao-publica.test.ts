@@ -112,29 +112,29 @@ describe("valoresDaSimulacaoPublica: as regras do plano (item 3)", () => {
     // INVESTIDOR, R$ 435.000 com 12%: a faixa de 36 é o próprio INVESTIDOR, 40% de 382.800 = 153.120
     // (o piso de 8% seria 30.624).
     expect(
-      aceito({ entrada: 0, plano: INVESTIDOR, tabela: 435_000, valor: 382_800 })
+      aceito({ entrada: undefined, plano: INVESTIDOR, tabela: 435_000, valor: 382_800 })
         .entrada,
     ).toBe(153_120);
     // INVESTIDOR PARCELADO: 8% do preço do plano, em centavos (421.500 → 387.780 → 31.022,40).
-    expect(aceito({ entrada: 0, valor: 387_780 }).entrada).toBe(31_022.4);
+    expect(aceito({ entrada: undefined, valor: 387_780 }).entrada).toBe(31_022.4);
     // Nunca acima do valor.
     expect(aceito({ entrada: 999_999, valor: 387_780 }).entrada).toBe(387_780);
   });
 
   it("o piso do empreendimento vale quando é maior que o do plano; nulo é o padrão da casa (10%)", () => {
-    expect(aceito({ entrada: 0, piso: null, valor: 387_780 }).entrada).toBe(
+    expect(aceito({ entrada: undefined, piso: null, valor: 387_780 }).entrada).toBe(
       38_778,
     );
-    expect(aceito({ entrada: 0, piso: 15, valor: 387_780 }).entrada).toBe(
+    expect(aceito({ entrada: undefined, piso: 15, valor: 387_780 }).entrada).toBe(
       58_167,
     );
   });
 
   it("⚠️ prazo encurtado cai no degrau da tabela (a faixa do prazo, a mesma régua da tela)", () => {
     // INVESTIDOR PARCELADO em 50 vezes: o degrau de 50 é o NORMAL (60x, 10%), sem o desconto do plano.
-    expect(aceito({ entrada: 0, parcelas: 50 }).entrada).toBe(42_150);
+    expect(aceito({ entrada: undefined, parcelas: 50 }).entrada).toBe(42_150);
     // NORMAL em 24 vezes: o degrau é o INVESTIDOR (40%).
-    expect(aceito({ entrada: 0, parcelas: 24, plano: NORMAL }).entrada).toBe(
+    expect(aceito({ entrada: undefined, parcelas: 24, plano: NORMAL }).entrada).toBe(
       168_600,
     );
   });
@@ -212,6 +212,10 @@ describe("valoresDaSimulacaoPublica: as regras do plano (item 3)", () => {
       anuais: { quantidade: 0, valor: 0 },
       descontoPercentual: 0,
       entrada: 40_000,
+      // Sem montagem à mão no corpo, a entrada em vezes é repartida pelo cronograma como sempre, e
+      // as datas são as calculadas.
+      entradaDatas: null,
+      entradaParcelas: null,
       entradaVezes: 1,
       ok: true,
       parcelas: 36,
@@ -224,7 +228,7 @@ describe("valoresDaSimulacaoPublica: as regras do plano (item 3)", () => {
     const INVESTIDOR_20 = { anuaisQuantidade: 0, anuaisValor: 0, descontoPercentual: 0, entradaPercentual: 0, nome: "Investidor", parcelas: 24 };
     const CURTO_20 = { ...INVESTIDOR_20, entradaPercentual: 20, nome: "Curto", parcelas: 36 };
     const NORMAL_20 = { ...INVESTIDOR_20, entradaPercentual: 10, nome: "Normal", parcelas: 120 };
-    const doVinte = (parcelasPedidas: number, entradaPedida: number) =>
+    const doVinte = (parcelasPedidas: number, entradaPedida: unknown) =>
       valoresDaSimulacaoPublica({
         entradaMinimaPercentual: 10,
         entradaPedida,
@@ -236,9 +240,13 @@ describe("valoresDaSimulacaoPublica: as regras do plano (item 3)", () => {
       });
     // Na primeira versão da rodada 3 saía R$ 18.580 (os 20% do Curto), contra R$ 9.290 na tela.
     expect(doVinte(24, 9_290)).toMatchObject({ entrada: 9_290, ok: true, parcelas: 24 });
-    expect(doVinte(24, 0)).toMatchObject({ entrada: 9_290, ok: true });
-    // No prazo dele, o Curto é o degrau de 36, e a faixa exige os 20%.
-    expect(doVinte(36, 9_290)).toMatchObject({ entrada: 18_580, ok: true });
+    expect(doVinte(24, undefined)).toMatchObject({ entrada: 9_290, ok: true });
+    // ⚠️ E DESDE 22/09/2026 A ENTRADA DIGITADA MANDA TAMBÉM NO PRAZO DO PLANO. Aqui o Curto em 36
+    // vezes sugere os 20% (R$ 18.580), mas quem digitou R$ 9.290 recebe a folha com R$ 9.290: era
+    // exatamente este empurrão, no Cecílio Rocha, que trocava a entrada do corretor no papel. A
+    // sugestão continua existindo para quem NÃO escolheu (a chave ausente, logo abaixo).
+    expect(doVinte(36, 9_290)).toMatchObject({ entrada: 9_290, ok: true });
+    expect(doVinte(36, undefined)).toMatchObject({ entrada: 18_580, ok: true });
   });
 });
 
@@ -292,7 +300,7 @@ describe("valoresDaSimulacaoPublica: a entrada é a régua da tela, em todo plan
             planos,
             valorNegociado: valor,
           }).emReais;
-          for (const pedida of [daTela, 0]) {
+          for (const pedida of [daTela, undefined]) {
             const r = valoresDaSimulacaoPublica({
               entradaMinimaPercentual: piso,
               entradaPedida: pedida,

@@ -658,6 +658,16 @@ export function ModalDeProposta({
       entradaParcelas: condicoesAgora.entradaParcelas,
       entradaVezes: condicoesAgora.entradaVezes,
       parcelasMensais: condicoesAgora.parcelasMensais,
+      // ⚠️ O ID DO PLANO VAI JUNTO, E É ELE A CHAVE (22/09/2026). O servidor casava o plano por
+      // NOME, e nome é texto que o cadastro edita: com a aba aberta, o rename do Garden (NORMAL →
+      // INVESTIDOR, INVESTIDOR → PROMOÇÃO À VISTA) fazia o pedido do plano de 36 parcelas sem juros
+      // casar com a linha de 60 a 6% ao ano — gravado no cronograma que vira contrato.
+      //
+      // ⚠️ E O CAMPO SÓ SAI QUANDO EXISTE. Os empreendimentos servidos pelo C2X não têm id de
+      // `temis_planos` para mandar; mandar `planoId: null` seria igual, mas mandar a string vazia
+      // que um `?? ""` produziria faria o servidor recusar um plano que está lá. Sem o campo, ele
+      // usa o nome, como sempre usou.
+      ...(condicoesAgora.planoId ? { planoId: condicoesAgora.planoId } : {}),
       planoNome: condicoesAgora.planoNome,
       primeiraParcelaEm: condicoesAgora.primeiraParcelaEm,
       // ⚠️ VAI O NÚMERO DE DIAS, E NÃO A DATA. Quem transforma prazo em vencimento é o servidor,

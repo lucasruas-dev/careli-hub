@@ -54,6 +54,8 @@ const fixo = vi.hoisted(() => {
       entradaVezes: 2,
       parcela: 1_000,
       parcelasMensais: 120,
+      /** `temis_planos.id` do plano escolhido. Nulo = empreendimento servido pelo C2X. */
+      planoId: null as null | string,
       planoNome: "PRICE 120x",
       primeiraParcelaEm: daqui30Dias,
       valorNegociado: 200_000,
@@ -284,5 +286,75 @@ describe("até quando a proposta vale", () => {
     };
     expect(corpo.prazoEmDias).toBe(3);
     expect(corpo.validadeEm).toBeUndefined();
+  });
+});
+
+// O ID DO PLANO NO CORPO DO POST (22/09/2026).
+//
+// ⚠️ O SERVIDOR CASA O PLANO POR `temis_planos.id`, E ALGUÉM PRECISA MANDÁ-LO. A rota já prefere o
+// id (`escolherPlanoDaProposta`), mas esta modal montava o corpo só com `planoNome` — e nome é
+// texto que o cadastro edita: no rename do Garden, uma aba aberta antes pedia o plano de 36
+// parcelas SEM JUROS e o nome casava com a linha de 60 a 6% ao ano, congelada no cronograma que
+// vira contrato. O `corpoDoPedido` é um objeto só para "Gerar proposta" e para a prévia, então
+// provar a geração prova as duas.
+describe("o id do plano vai no corpo do pedido", () => {
+  /** Arma o POST e devolve os corpos enviados. */
+  function capturarEnvios() {
+    const enviados: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, opcoes?: { body?: string; method?: string }) => {
+        if (opcoes?.method === "POST") {
+          enviados.push(String(opcoes.body ?? ""));
+          return {
+            ok: true,
+            text: async () => JSON.stringify({ data: { avisos: [], codigo: "PRP-7" } }),
+          };
+        }
+        return { ok: true, text: async () => JSON.stringify({ data: portao }) };
+      }),
+    );
+    return enviados;
+  }
+
+  async function gerar() {
+    await abrir();
+    clicar(botao("Montar as condições"));
+    await act(async () => {
+      clicar(botao("Gerar proposta"));
+    });
+  }
+
+  afterEach(() => {
+    fixo.condicoes.planoId = null;
+  });
+
+  it("⚠️ com id na tela, o corpo leva `planoId` junto com o nome", async () => {
+    fixo.condicoes.planoId = "plano-36x";
+    const enviados = capturarEnvios();
+
+    await gerar();
+
+    const corpo = JSON.parse(enviados[0] ?? "{}") as {
+      planoId?: string;
+      planoNome?: string;
+    };
+    expect(corpo.planoId).toBe("plano-36x");
+    // ⚠️ O NOME CONTINUA INDO. Ele é a reserva do servidor e o que a frase de recusa cita; tirá-lo
+    // trocaria um buraco por outro nas abas e nos empreendimentos que não têm id.
+    expect(corpo.planoNome).toBe("PRICE 120x");
+  });
+
+  // ⚠️ SEM ID, O CAMPO NÃO SAI — e não sai como string vazia. `escolherPlanoDaProposta` recusa com
+  // 422 um id que não casa, então mandar "" pararia a venda de todo empreendimento servido pelo
+  // C2X, que não tem id de `temis_planos` para mandar.
+  it("sem id na tela, o corpo sai sem `planoId` e o servidor usa o nome", async () => {
+    const enviados = capturarEnvios();
+
+    await gerar();
+
+    const corpo = JSON.parse(enviados[0] ?? "{}") as Record<string, unknown>;
+    expect("planoId" in corpo).toBe(false);
+    expect(corpo.planoNome).toBe("PRICE 120x");
   });
 });

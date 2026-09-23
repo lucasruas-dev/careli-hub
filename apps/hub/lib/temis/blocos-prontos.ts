@@ -180,6 +180,21 @@ const FLUXO_TABELA: BlocoPronto = {
       texto:
         "O preço de [preco_venda] ([preco_venda_extenso]) será pago conforme o quadro abaixo, parte integrante deste instrumento:",
     },
+    // ⚠️ A PERMUTA É PARTE DO PREÇO, E SEM ESTA CLÁUSULA O CONTRATO NÃO EXPLICA A PRÓPRIA CONTA.
+    // Lucas (22/09/2026), perguntado onde o bem aparece: *"Já no contrato também"*. Num lote de
+    // R$ 200.000 com permuta de R$ 80.000, o quadro traz entrada de R$ 20.000 e saldo de
+    // R$ 100.000: sem dizer de onde vêm os outros oitenta mil, o documento parece errado para quem
+    // o confere, e é desse tipo de buraco que o contrato volta do jurídico.
+    //
+    // ⚠️ E ELA VIVE DENTRO DO PAR, nunca solta. A imensa maioria das vendas não tem bem nenhum, e
+    // fora do par este parágrafo sairia em TODO contrato da casa como "a VENDEDORA recebe , no
+    // valor total de ". Quem responde o par é `condicoesDoContrato` (`dados-do-contrato.ts`), e ela
+    // responde inclusive para as 4.857 propostas importadas, que têm `condicoes` nulo.
+    {
+      estilo: "corpo",
+      texto:
+        "[inicio_tem_bens_e_permutas]Parte do preço acima é paga em bem: a VENDEDORA recebe do COMPRADOR [bens_e_permutas_descricao]. O total recebido em bem, de [valor_bens_e_permutas] ([valor_bens_e_permutas_extenso]), é entregue na data deste instrumento e já está abatido do saldo devedor.[fim_tem_bens_e_permutas]",
+    },
     // ⚠️ O QUADRO INTEIRO SAI DESTA VARIÁVEL. `[tabela_geral_pagamentos]` é escrito pelo motor a
     // partir do plano da venda, com as colunas do contrato que o Lucas mandou: tipo de parcela,
     // correção monetária, juros, primeiro vencimento, nº de parcelas, valor da parcela e total.
@@ -202,6 +217,21 @@ const FLUXO_ESCRITO: BlocoPronto = {
     {
       estilo: "corpo",
       texto: "O preço certo e ajustado da unidade é de [preco_venda] ([preco_venda_extenso]).",
+    },
+    // ⚠️ A PERMUTA É PARTE DO PREÇO, E SEM ESTA CLÁUSULA O CONTRATO NÃO EXPLICA A PRÓPRIA CONTA.
+    // Lucas (22/09/2026), perguntado onde o bem aparece: *"Já no contrato também"*. Num lote de
+    // R$ 200.000 com permuta de R$ 80.000, o quadro traz entrada de R$ 20.000 e saldo de
+    // R$ 100.000: sem dizer de onde vêm os outros oitenta mil, o documento parece errado para quem
+    // o confere, e é desse tipo de buraco que o contrato volta do jurídico.
+    //
+    // ⚠️ E ELA VIVE DENTRO DO PAR, nunca solta. A imensa maioria das vendas não tem bem nenhum, e
+    // fora do par este parágrafo sairia em TODO contrato da casa como "a VENDEDORA recebe , no
+    // valor total de ". Quem responde o par é `condicoesDoContrato` (`dados-do-contrato.ts`), e ela
+    // responde inclusive para as 4.857 propostas importadas, que têm `condicoes` nulo.
+    {
+      estilo: "corpo",
+      texto:
+        "[inicio_tem_bens_e_permutas]Parte do preço acima é paga em bem: a VENDEDORA recebe do COMPRADOR [bens_e_permutas_descricao]. O total recebido em bem, de [valor_bens_e_permutas] ([valor_bens_e_permutas_extenso]), é entregue na data deste instrumento e já está abatido do saldo devedor.[fim_tem_bens_e_permutas]",
     },
     { estilo: "titulo", texto: "Sinal" },
     // Os três `[paragrafo_*]` saem REDIGIDOS pelo motor a partir do plano — o parágrafo inteiro,

@@ -162,6 +162,10 @@ function cronogramaGravado(bruto: unknown): Cronograma | null {
     reajustes: Array.isArray(c.reajustes) ? c.reajustes : [],
     totais: {
       anuais: numero(c.totais?.anuais) ?? 0,
+      // ⚠️ AUSENTE VALE ZERO, E É O CASO DE TODA PROPOSTA JÁ GRAVADA. O total de bens e permutas
+      // nasceu em 22/09/2026; o `condicoes` das propostas anteriores não tem a chave, e ler isso
+      // como `undefined` colocaria "R$ NaN" no quadro de condições da análise jurídica.
+      bensEPermutas: numero(c.totais?.bensEPermutas) ?? 0,
       entrada: numero(c.totais?.entrada) ?? 0,
       financiado: numero(c.totais?.financiado) ?? 0,
       geral: numero(c.totais?.geral) ?? 0,
@@ -228,14 +232,42 @@ export async function comercialDaProposta(
       rotulo: "Entrada",
       valor: reais(cronograma.totais.entrada),
     },
-    {
-      detalhe: `${cronograma.mensais.length} mensais${
-        cronograma.anuais.length > 0 ? ` + ${cronograma.anuais.length} anuais` : ""
-      }`,
-      rotulo: "Financiado",
-      valor: reais(cronograma.totais.financiado),
-    },
   ];
+
+  // ⚠️ O BEM PRECISA DE LINHA PRÓPRIA, SENÃO O DESEMBOLSO TRAZ DINHEIRO QUE A TELA NÃO EXPLICA.
+  // `totais.geral` passou a somar os bens e permutas em 22/09/2026 (ver `cronograma.ts`), e os
+  // destaques ao lado continuaram sendo só entrada e financiado: num lote de R$ 200.000 com permuta
+  // de R$ 80.000, quem analisa lia Entrada R$ 20.000, Financiado R$ 100.000 e um desembolso com
+  // oitenta mil reais vindos do nada. Com esta linha, a conta fecha na ponta do lápis —
+  // 20.000 + 80.000 + 100.000 = o valor da unidade, que é o primeiro destaque.
+  //
+  // ⚠️ E SÓ APARECE QUANDO EXISTE. A imensa maioria das vendas não tem bem nenhum, e as 4.857
+  // importadas do C2X sequer têm a chave no `condicoes`: "Bem e permuta: R$ 0,00" no meio dos
+  // destaques parece defeito do sistema — é a mesma razão pela qual a Parcela mensal some na venda
+  // à vista.
+  //
+  // ⚠️ O DETALHE DIZ O QUE ELE FAZ COM O SALDO, e não de que `entraComo` ele é. Os dois modos abatem
+  // igual (Lucas, 22/09/2026: *"Abate, como uma entrada"*); o que muda entre eles é o cumprimento da
+  // entrada mínima de 10%, que é régua da PROPOSTA e já foi aplicada antes de a análise abrir.
+  // Repetir "entrada" no rótulo faria a soma dos destaques contar o bem duas vezes.
+  const bensEPermutas = cronograma.totais.bensEPermutas;
+  if (bensEPermutas > 0) {
+    destaques.push({
+      detalhe: `${
+        negociado > 0 ? `${porcentagem((bensEPermutas / negociado) * 100)} · ` : ""
+      }abate o saldo a financiar`,
+      rotulo: "Bem e permuta",
+      valor: reais(bensEPermutas),
+    });
+  }
+
+  destaques.push({
+    detalhe: `${cronograma.mensais.length} mensais${
+      cronograma.anuais.length > 0 ? ` + ${cronograma.anuais.length} anuais` : ""
+    }`,
+    rotulo: "Financiado",
+    valor: reais(cronograma.totais.financiado),
+  });
 
   // ⚠️ SEM SÉRIE MENSAL O DESTAQUE SOME, em vez de imprimir "R$ 0,00" — entrada de 100% é venda à
   // vista, é legítima, e uma parcela zerada no meio da tela parece defeito do sistema.
