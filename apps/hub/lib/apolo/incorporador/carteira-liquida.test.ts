@@ -35,6 +35,7 @@ function linha(sobrescreve: Partial<LinhaCruaDaCarteira> = {}): LinhaCruaDaCarte
     ar_id: 900,
     cliente: "Maria da Silva",
     competence: "07/2026",
+    documento: "064.510.436-13",
     due_date: "2026-07-10",
     enterprise_code: "VAL",
     entrada_contratada: 30,
@@ -343,7 +344,7 @@ describe("montarIndicadores", () => {
     expect(porMes["2026-09"]).toBeUndefined();
   });
 
-  it("extrato: vencimento CRESCENTE por padrão, com nome de mercado e SEM dado sensível", () => {
+  it("extrato: vencimento CRESCENTE por padrão, com nome de mercado, documento e SEM contato", () => {
     expect(indicadores.extratoTotal).toBe(4);
 
     // ⚠️ A ORDEM VIROU CRESCENTE em 20/08/2026, e é uma decisão de produto, não um detalhe:
@@ -360,6 +361,10 @@ describe("montarIndicadores", () => {
     // A última continua sendo a mais distante — a mesma linha que antes vinha primeiro.
     expect(indicadores.extrato.at(-1)).toEqual({
       cliente: "João Pereira",
+      // ⚠️ SÓ DÍGITOS. O legado grava pontuado ("064.510.436-13"); quem formata é a tela e a
+      // planilha. Guardar o formato do legado faria a busca por CPF depender de como a pessoa
+      // digita.
+      documento: "06451043613",
       empreendimento: "Vista Alegre",
       imobiliaria: "Imobiliária X",
       liquido: 400,
@@ -373,14 +378,37 @@ describe("montarIndicadores", () => {
       vencimento: "2026-09-10",
     });
 
-    // ⚠️ A REGRA DO PORTAL: nenhuma linha do extrato carrega documento, telefone, e-mail, link de
-    // boleto ou id interno de entidade. Se alguém adicionar um campo desses, este teste acusa.
+    // ⚠️ A REGRA DO PORTAL, ESTREITADA EM 23/09/2026: o CPF/CNPJ PASSOU a sair (Lucas pediu o
+    // documento no painel do extrato), mas CONTATO e id interno continuam fora. Telefone e e-mail
+    // servem para ABORDAR o cliente, e a abordagem é da Careli, não do loteador; `entityId` e
+    // link de boleto são chave de rota interna. Se alguém adicionar um campo desses, este teste
+    // acusa — e é para acusar mesmo.
     for (const parcela of indicadores.extrato) {
       const chaves = Object.keys(parcela);
-      for (const proibida of ["cpf", "cnpj", "document", "documento", "email", "entityId", "phone", "telefone", "url"]) {
+      for (const proibida of ["email", "entityId", "phone", "telefone", "url", "boleto"]) {
         expect(chaves.some((c) => c.toLowerCase().includes(proibida.toLowerCase()))).toBe(false);
       }
     }
+  });
+
+  it("a busca do extrato acha por CPF, com ou sem pontuação, e não confunde com unidade", () => {
+    const comCpf = (filtro: string) =>
+      montarIndicadores([linha()], {
+        agoraMs: AGORA_MS,
+        filtroDoExtrato: { busca: filtro },
+        politicaPorCode: POLITICAS,
+      }).extratoTotal;
+
+    // A fábrica usa "064.510.436-13" na unidade "Q01 L01".
+    expect(comCpf("064.510.436-13")).toBe(1);
+    expect(comCpf("06451043613")).toBe(1);
+    expect(comCpf("510436")).toBe(1);
+    expect(comCpf("99999999999")).toBe(0);
+
+    // ⚠️ O PISO DE 6 DÍGITOS EXISTE POR ISTO. A busca é um OU: sem o piso, procurar a unidade
+    // "L01" viraria "01" e traria de brinde todo CPF que contém "01" — inclusive este.
+    expect(comCpf("Q01")).toBe(1); // acha pela unidade, e não pelo documento
+    expect(comCpf("0645")).toBe(0); // 4 dígitos não casam documento
   });
 
   it("parcela sem política entra nos motivos e em semLiquido, sem sumir da conta", () => {
