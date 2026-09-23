@@ -116,6 +116,48 @@ export function signatariosDoContrato(
     }
   }
 
+  // ⚠️ A IMOBILIÁRIA VINCULADA VEM DA VENDA, E NÃO DO QUADRO — é a diferença que decide o desenho.
+  //
+  // O quadro (`temis_assinantes`) guarda quem assina SEMPRE por aquele empreendimento: a vendedora,
+  // o coordenador, as testemunhas. A imobiliária muda a cada venda, como o comprador muda, e por
+  // isso ela sai dos DADOS DO CONTRATO — das mesmas chaves que o papel já imprime no item VIII.
+  // Fosse pelo quadro, seria preciso cadastrar cada imobiliária em cada empreendimento e escolher a
+  // certa na hora do envio.
+  //
+  // ⚠️ QUEM ASSINA É A PESSOA JURÍDICA, e não o corretor. Lucas, 23/09/2026, escolhendo entre as
+  // duas: a imobiliária, no e-mail cadastrado dela. É também a via que TEM dado — medido no mesmo
+  // dia, 4.929 das 4.947 propostas com imobiliária têm a ponte que preenche `email_vinculado`,
+  // contra 18 que têm `imobiliaria_entity_id` (o caminho do representante legal, que a vendedora e
+  // o coordenador usam e que aqui seria um beco).
+  //
+  // ⚠️ ATÉ 23/09/2026 ELA NUNCA ERA CONVIDADA. O papel `corretor` existia no vocabulário e na tela
+  // do Setup — dava para numerá-lo na ordem, e o Villa Paris tem isso gravado —, mas nenhuma função
+  // do Panteon produzia um signatário com ele. Medido na venda da VITORIA, que TEM imobiliária
+  // vinculada: saíam 11 signatários, nenhum corretor. Nívea, no dia anterior: *"não está trazendo a
+  // imobiliária"*.
+  const daImobiliaria = texto(dados.gerais.nome_vinculado);
+  if (daImobiliaria) {
+    const emailDela = texto(dados.gerais.email_vinculado);
+
+    // ⚠️ A MESMA EMPRESA NÃO ASSINA DUAS VEZES. A coordenadora de vendas costuma ser uma
+    // imobiliária também (no Vale do Ouro é a Gurgel), e ela já entra pelo quadro: repetir o mesmo
+    // e-mail poria a mesma pessoa duas vezes no envelope, o que a própria `conferirSignatarios`
+    // recusa logo abaixo — e a recusa apareceria como defeito, não como duplicata evitada.
+    const jaEstaNoEnvelope = emailDela
+      ? [...pessoas, ...doQuadro].some((p) => p.email.toLowerCase() === emailDela.toLowerCase())
+      : false;
+
+    if (!jaEstaNoEnvelope) {
+      pessoas.push({
+        cpf: texto(dados.gerais.cpf_cnpj_vinculado) || null,
+        email: emailDela,
+        nome: daImobiliaria,
+        papel: "corretor",
+        telefone: texto(dados.gerais.telefone_vinculado) || null,
+      });
+    }
+  }
+
   // As pessoas cadastradas no quadro: vendedora, coordenador de vendas e testemunha.
   for (const p of doQuadro) pessoas.push(p);
 

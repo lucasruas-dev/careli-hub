@@ -232,3 +232,79 @@ describe("a conferência antes de chamar a API", () => {
     expect(veredito.erro).toContain("e-mail");
   });
 });
+
+// ── A IMOBILIÁRIA VINCULADA ─────────────────────────────────────────────────
+//
+// ⚠️ ATÉ 23/09/2026 ELA NUNCA ERA CONVIDADA. O papel `corretor` existia no vocabulário e na tela do
+// Setup — dava para numerá-lo na ordem, e o Villa Paris tem isso gravado —, mas nenhuma função do
+// Panteon produzia um signatário com ele. Medido na venda da VITORIA, que TEM imobiliária
+// vinculada: saíam 11 signatários e nenhum corretor. Nívea, no dia anterior: *"não está trazendo a
+// imobiliária"*.
+//
+// ⚠️ E ELA VEM DA VENDA, NÃO DO QUADRO. O quadro guarda quem assina SEMPRE por aquele
+// empreendimento; a imobiliária muda a cada venda, como o comprador. Por isso sai das mesmas chaves
+// que o papel já imprime no item VIII.
+//
+// Quem assina é a PESSOA JURÍDICA, no e-mail dela (Lucas, 23/09/2026) — e é a via que tem dado:
+// 4.929 das 4.947 propostas com imobiliária chegam com `email_vinculado`.
+describe("a imobiliária vinculada assina", () => {
+  const comImobiliaria = (extras: Record<string, string> = {}) =>
+    contrato([comprador({ email_cliente: "c@x.com", nome_cliente: "Comprador" })], {
+      cpf_cnpj_vinculado: "58.896.684/0001-31",
+      email_vinculado: "contrato@flat.com.br",
+      nome_vinculado: "FLAT NEGOCIOS IMOBILIARIOS LTDA",
+      telefone_vinculado: "+55(31) 99999-0000",
+      ...extras,
+    });
+
+  it("⚠️ entra como `corretor`, com o nome e o e-mail da empresa", () => {
+    const { pessoas } = signatariosDoContrato(comImobiliaria());
+
+    const dela = pessoas.find((p) => p.papel === "corretor");
+    expect(dela?.nome).toBe("FLAT NEGOCIOS IMOBILIARIOS LTDA");
+    expect(dela?.email).toBe("contrato@flat.com.br");
+    expect(dela?.cpf).toBe("58.896.684/0001-31");
+  });
+
+  it("sem imobiliária vinculada na venda, ninguém é inventado", () => {
+    const { pessoas } = signatariosDoContrato(
+      contrato([comprador({ email_cliente: "c@x.com", nome_cliente: "Comprador" })]),
+    );
+
+    expect(pessoas.some((p) => p.papel === "corretor")).toBe(false);
+  });
+
+  it("⚠️ a MESMA empresa não assina duas vezes: a coordenadora costuma ser imobiliária também", () => {
+    // No Vale do Ouro a coordenadora é a Gurgel, que já entra pelo quadro. Repetir o mesmo e-mail
+    // faria `conferirSignatarios` recusar o envio por e-mail duplicado — a duplicata apareceria
+    // como defeito, e não como o que é.
+    const { pessoas } = signatariosDoContrato(
+      comImobiliaria({ email_vinculado: "coord@gurgel.com.br" }),
+      [{ cpf: null, email: "coord@gurgel.com.br", nome: "GURGEL", papel: "coordenadora", telefone: null }],
+    );
+
+    expect(pessoas.filter((p) => p.email === "coord@gurgel.com.br")).toHaveLength(1);
+    expect(pessoas.some((p) => p.papel === "corretor")).toBe(false);
+  });
+
+  it("a comparação de e-mail ignora a caixa", () => {
+    const { pessoas } = signatariosDoContrato(
+      comImobiliaria({ email_vinculado: "Coord@Gurgel.com.BR" }),
+      [{ cpf: null, email: "coord@gurgel.com.br", nome: "GURGEL", papel: "coordenadora", telefone: null }],
+    );
+
+    expect(pessoas.some((p) => p.papel === "corretor")).toBe(false);
+  });
+
+  it("imobiliária sem e-mail entra e a conferência RECUSA, nomeando ela", () => {
+    // Entrar sem e-mail é melhor do que sumir: quem confere precisa saber que ela deveria assinar e
+    // que falta cadastro. `conferirSignatarios` é quem barra, com a frase que diz o que fazer.
+    const { pessoas } = signatariosDoContrato(comImobiliaria({ email_vinculado: "" }));
+
+    expect(pessoas.some((p) => p.papel === "corretor")).toBe(true);
+
+    const veredito = conferirSignatarios(pessoas);
+    expect(veredito.ok).toBe(false);
+    if (!veredito.ok) expect(veredito.erro).toContain("FLAT NEGOCIOS IMOBILIARIOS LTDA");
+  });
+});
