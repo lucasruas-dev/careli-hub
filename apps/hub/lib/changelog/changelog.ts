@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-23-parcelas-a-corrigir",
+    deployedAt: "2026-09-23T18:36:35-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Tela nova: Parcelas a corrigir.** Ela lista os contratos cuja parcela FUTURA ainda esta no valor antigo, porque a correcao so alcanca a parcela quando o boleto dela e emitido. Sao 527 contratos, R$ 50.762,05 por mes que a carteira deixa de cobrar.",
+              "**Mostra os dois valores lado a lado:** o que o sistema tem hoje na parcela do cliente e o que a cobranca ja pratica. Com busca, filtro por empreendimento e exportacao em CSV.",
+              "**Ela nao corrige nada, e isso e de proposito.** Quem aplica a correcao e a operacao, pela tela do C2X: aqui e so o mapa de onde o dinheiro esta parado.",
+            ],
+            screen: "Parcelas a corrigir",
+          },
+        ],
+      },
+    ],
+    rollback: "21e39421",
+    technical: {
+      done:
+        "NASCEU DE OUTRO PEDIDO, e o desvio e o ponto. O Lucas pediu um relatorio de projecao de reajuste para o cliente; ao medir o terreno antes de desenhar, apareceu isto: o VALOR CONTRATUAL DA PARCELA NUNCA E ATUALIZADO NO C2X. So a parcela que recebe BOLETO e corrigida, cumulativamente desde a data-base. O AR 206 (LOU) mostra o mecanismo inteiro: R$ 535,99 em 135 de 144 parcelas, ZERO com boleto; R$ 566,81 em 3 parcelas com boleto; R$ 657,27 em 6 parcelas com boleto (+22,63% sobre o contratual). Medido na carteira: 527 de 870 contratos (60%) com parcela futura defasada, mediana 22,63%, somando R$ 50.762,05 por mes (LOS 26.840, LOU 19.656, MDS 2.246, REP 1.832). A DEFASAGEM E MEDIDA, NAO DEDUZIDA DE INDICE: compara o MAIOR valor entre as parcelas com boleto com a MODA das futuras sem boleto vencendo depois da ultima com boleto. ⚠️ TENTEI DEDUZIR DE INDICE ANTES E O TESTE ME ENGANOU: casar o degrau com indice acumulado em janela livre de 1 a 5 anos e tolerancia de 1,5 ponto deu 97,8% de encaixe, e o BACKTEST honesto (prever o degrau seguinte so com o passado do contrato) acertou 4,1%. Com cinco janelas e essa folga, encaixa por acaso. Os degraus nao sao aplicacoes sucessivas de reajuste: sao LOTES DE BOLETO emitidos em momentos diferentes. Esta tudo em docs/operations/2026-09-23-como-o-reajuste-realmente-anda.md, com a versao errada preservada e avisada, porque ela mostra como a conclusao ruim foi construida. ⚠️ O PRIMEIRO NUMERO QUE APUREI, R$ 72.338, ESTAVA INFLADO em R$ 21.576 pelo balao de R$ 22 mil do AR 3716 contado como mensalidade; a regua do extrato (mensalidadePlausivel, que existe por causa desse mesmo AR) o poe no lugar, com a defasagem real dele de 38,55%. A TELA NAO CORRIGE NADA, de proposito: o legado e READ-ONLY daqui e corrigir parcela tem cliente do outro lado -- e decisao da operacao. Ela mostra onde o dinheiro esta parado, com CSV. Uma consulta so para a carteira inteira (118.033 mensais em 868ms), sem polling. Entra tambem, SEM TELA AINDA, o motor de projecao futura e o buscador das series publicas (IPCA na API v3 do IBGE, INCC-M e IGP-M no SGS do Banco Central), com as armadilhas medidas anotadas: o host apisidra falha no TLS daqui, as series DIARIAS (Poupanca 195, TR 226) devolvem 406 sem janela de datas, e as duas fontes tem UM MES de defasagem. ⚠️ FICA UM ACHADO DE ENGENHARIA: o dev server do preview sobe a partir do CHECKOUT PRINCIPAL e nao do worktree, entao pagina criada em worktree da 404 nele -- a validacao da tela foi por teste de comportamento (jsdom), que e melhor: fica no repo. 51 testes novos.",
+      motivation:
+        "Lucas, 23/09/2026: preciso que a gente crie um novo relatorio la no financeiro do Apolo, que mostra ao cliente a evolucao das parcelas com base na serie historica do indice de correcao do contrato, e uma projecao para o futuro. A medicao feita antes de desenhar mostrou que havia algo mais urgente na frente: 60% da carteira com parcela futura no valor de anos atras. O relatorio para o cliente continua de pe e vem em seguida, apoiado na mesma medicao.",
+    },
+    title: "Parcelas a corrigir: a carteira que ficou no valor antigo",
+    type: "novidade",
+    version: "1.366.0",
+  },
+  {
     buildTag: "2026-09-23-cpf-e-excel-no-extrato",
     deployedAt: "2026-09-23T16:01:53-03:00",
     modules: [
