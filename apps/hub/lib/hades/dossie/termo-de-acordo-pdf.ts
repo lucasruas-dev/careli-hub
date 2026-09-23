@@ -861,8 +861,13 @@ export async function montarTermoDeAcordoPdf(
     // ⚠️ A FRASE DE QUEM ASSINA SAI EM CINZA, um degrau abaixo do texto do jurídico: ela é NOSSA,
     // explica o instrumento, e não é cláusula. Misturá-la no mesmo tom faria o leitor contar sete
     // parágrafos de texto legal onde o jurídico escreveu seis.
+    // ⚠️ JUSTIFICADO, a pedido da Nívea em 23/09/2026 (*"justifica o texto, por favor"*). São seis
+    // parágrafos de prosa corrida que o jurídico aprovou, e num texto legal a margem direita reta é
+    // o que o leitor espera de um instrumento — o serrilhado do alinhamento à esquerda faz o papel
+    // parecer rascunho. A última linha de cada parágrafo continua solta; ver `escreverJustificado`.
     paragrafo(ctx, paragrafoDoTexto, {
       color: indice === TEXTO_LEGAL_DO_ACORDO.length ? SOFT_TEXT : TEXT,
+      justificado: true,
       size: CORPO_DO_ACEITE,
     });
   }

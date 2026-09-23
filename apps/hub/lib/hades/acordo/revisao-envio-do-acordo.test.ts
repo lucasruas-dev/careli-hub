@@ -212,9 +212,9 @@ describe("o envelope do acordo sai com três pessoas, na ordem do Lucas", () => 
 
     expect(saida.ok).toBe(true);
     expect(signatarios).toEqual([
-      { group: 1, name: "Beltrano Exemplo Ferreira" },
-      { group: 2, name: "Analista Do Juridico" },
-      { group: 3, name: "Nivea Careli" },
+      { group: 1, name: "BELTRANO EXEMPLO FERREIRA" },
+      { group: 2, name: "ANALISTA DO JURIDICO" },
+      { group: 3, name: "NIVEA CARELI" },
     ]);
   });
 
@@ -232,7 +232,7 @@ describe("o envelope do acordo sai com três pessoas, na ordem do Lucas", () => 
     );
 
     expect(signatarios.map((s) => s.group)).toEqual([1, 2, 3]);
-    expect(signatarios[1]?.name).toBe("Fulana Representante Legal");
+    expect(signatarios[1]?.name).toBe("FULANA REPRESENTANTE LEGAL");
   });
 
   /**
@@ -281,9 +281,9 @@ describe("a precedência de quem assina pelo incorporador", () => {
 
     expect(preparo.impedimento).toBeNull();
     expect(preparo.signatarios.map((s) => s.nome)).toEqual([
-      "Beltrano Exemplo Ferreira",
-      "Analista Do Juridico",
-      "Nivea Careli",
+      "BELTRANO EXEMPLO FERREIRA",
+      "ANALISTA DO JURIDICO",
+      "NIVEA CARELI",
     ]);
   });
 
@@ -334,7 +334,7 @@ describe("o apontado com e-mail ruim para antes de existir envelope", () => {
     );
 
     if (saida.ok) throw new Error("o envio devia ter sido recusado");
-    expect(saida.erro).toContain("Analista Do Juridico");
+    expect(saida.erro).toContain("ANALISTA DO JURIDICO");
     expect(saida.erro).toContain("sem e-mail");
     expect(signatarios).toEqual([]);
   });
@@ -348,8 +348,8 @@ describe("o apontado com e-mail ruim para antes de existir envelope", () => {
     const preparo = await prepararEnvioDoAcordo(bancoDeTeste(), acordo());
     if (!preparo.ok) throw new Error("o preparo devia ter dado certo");
 
-    expect(preparo.impedimento).toContain("Analista Do Juridico");
-    expect(preparo.signatarios.map((s) => s.nome)).not.toContain("Fulana Representante Legal");
+    expect(preparo.impedimento).toContain("ANALISTA DO JURIDICO");
+    expect(preparo.signatarios.map((s) => s.nome)).not.toContain("FULANA REPRESENTANTE LEGAL");
   });
 
   // ⚠️ O MESMO E-MAIL DO COMPRADOR é o caso da imobiliária que cadastra o próprio endereço como
@@ -370,8 +370,8 @@ describe("o apontado com e-mail ruim para antes de existir envelope", () => {
     );
 
     if (saida.ok) throw new Error("o envio devia ter sido recusado");
-    expect(saida.erro).toContain("Beltrano Exemplo Ferreira");
-    expect(saida.erro).toContain("Analista Do Juridico");
+    expect(saida.erro).toContain("BELTRANO EXEMPLO FERREIRA");
+    expect(saida.erro).toContain("ANALISTA DO JURIDICO");
     expect(saida.erro).toContain("MESMO e-mail");
     expect(signatarios).toEqual([]);
   });
@@ -419,7 +419,7 @@ describe("pai e filho: onde o Panteon procura quem assina os termos", () => {
     if (!preparo.ok) throw new Error("o preparo devia ter dado certo");
 
     expect(preparo.impedimento).toBeNull();
-    expect(preparo.signatarios.map((s) => s.nome)).toContain("Analista Do Juridico");
+    expect(preparo.signatarios.map((s) => s.nome)).toContain("ANALISTA DO JURIDICO");
   });
 
   /**
@@ -445,7 +445,7 @@ describe("pai e filho: onde o Panteon procura quem assina os termos", () => {
     if (!preparo.ok) throw new Error("o preparo devia ter dado certo");
 
     expect(preparo.impedimento).toBeNull();
-    expect(preparo.signatarios.map((s) => s.nome)).toContain("Analista Do Juridico");
+    expect(preparo.signatarios.map((s) => s.nome)).toContain("ANALISTA DO JURIDICO");
   });
 
   // ⚠️ E ESTE É O COMPORTAMENTO DE HOJE, escrito para quem for consertar saber o que muda: sem
@@ -525,9 +525,9 @@ describe("duas pessoas pela vendedora: só uma entra no termo", () => {
 
     expect(preparo.signatarios).toHaveLength(3);
     expect(preparo.signatarios.map((s) => s.nome)).toEqual([
-      "Beltrano Exemplo Ferreira",
-      "Fulana Representante Legal",
-      "Nivea Careli",
+      "BELTRANO EXEMPLO FERREIRA",
+      "FULANA REPRESENTANTE LEGAL",
+      "NIVEA CARELI",
     ]);
   });
 

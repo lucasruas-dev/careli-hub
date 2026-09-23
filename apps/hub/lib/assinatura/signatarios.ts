@@ -1,6 +1,7 @@
 import type { DadosDoContrato } from "@/lib/temis/preencher-contrato";
 
 import type { PapelNoContrato, Signatario } from "./tipos";
+import { nomeDeSignatario } from "./ordem";
 
 // QUEM ASSINA — extraído do CONTRATO, nunca digitado.
 //
@@ -160,6 +161,10 @@ export function signatariosDoContrato(
 
   // As pessoas cadastradas no quadro: vendedora, coordenador de vendas e testemunha.
   for (const p of doQuadro) pessoas.push(p);
+
+  // ⚠️ O NOME SAI NO PADRÃO DA CASA, e é aqui que ele passa. Ver `nomeDeSignatario`: as fontes são
+  // diferentes (o cadastro guarda em caixa alta, o usuário do hub não) e o documento é um só.
+  for (const p of pessoas) p.nome = nomeDeSignatario(p.nome);
 
   // ⚠️ O AVISO SÓ SAI QUANDO NÃO HÁ NENHUMA DAS DUAS VIAS. Ele é sobre o ENVELOPE sair sem a parte
   // vendedora — e isso já aconteceu: dos três envelopes de produção medidos em 13/09/2026, nenhum

@@ -163,8 +163,8 @@ const CONTRATO: DadosDoContrato = {
         cpf_cliente: "999.999.004-53",
         email_cliente: "comprador@exemplo.test",
         email_conjuge: "conjuge@exemplo.test",
-        nome_cliente: "Comprador Titular Exemplo",
-        nome_conjuge: "Conjuge Do Titular Exemplo",
+        nome_cliente: "COMPRADOR TITULAR EXEMPLO",
+        nome_conjuge: "CONJUGE DO TITULAR EXEMPLO",
       },
     },
   ],
@@ -329,8 +329,8 @@ describe("pai com assinante de termos, filho sem", () => {
     const doFilho = await envelopeDoContrato(estado, FILHO_VOC, UNIDADE_DO_FILHO);
 
     expect(doFilho.signatarios.map((s) => s.nome)).toEqual([
-      "Comprador Titular Exemplo",
-      "Conjuge Do Titular Exemplo",
+      "COMPRADOR TITULAR EXEMPLO",
+      "CONJUGE DO TITULAR EXEMPLO",
     ]);
   });
 

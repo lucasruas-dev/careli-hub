@@ -104,6 +104,30 @@ export const ORDEM_MAXIMA = 20;
  * ⚠️ PAPEL FORA DA REGRA ASSINA POR ÚLTIMO, e não primeiro. Um papel que a regra salva não previa
  * — porque nasceu depois dela — esperando o resto é seguro; ele na frente da vendedora não é.
  */
+/**
+ * O nome do signatário no padrão da casa: CAIXA ALTA.
+ *
+ * ⚠️ TRÊS FONTES, TRÊS FORMATOS, UM DOCUMENTO SÓ. O comprador e o incorporador chegam do cadastro,
+ * que guarda em caixa alta; a Careli chega do `display_name` do usuário do hub, que é "Nivea
+ * Careli". No termo que foi para o cliente em 23/09/2026 saiu, em sequência, "MARIA DE FATIMA
+ * RODRIGUES DOS SANTOS", "ANTÔNIO BARBOSA DA COSTA JÚNIOR" e "Nivea Careli". Nívea: *"ajusta, por
+ * favor, o padrão do nome dos assinantes"*.
+ *
+ * ⚠️ CAIXA ALTA, E NÃO "Nome Próprio", e a escolha foi do Lucas no mesmo dia. Subir a caixa não
+ * inventa nada: é o único dos dois caminhos que não depende de adivinhar. O contrário — baixar a
+ * caixa e recapitalizar — precisaria acertar as preposições ("de", "da", "dos") e, pior, NÃO
+ * devolve acento que o cadastro não tem: "FATIMA" viraria "Fatima", nunca "Fátima", e o nome sairia
+ * errado num papel que vai a cartório.
+ *
+ * ⚠️ E VALE TAMBÉM PARA O ENVELOPE, não só para a tela: a lista que a tela mostra é a mesma que vai
+ * para a Clicksign. Por isso ela é chamada nos DOIS montadores — `signatariosDoContrato` e
+ * `signatariosDoAcordo` —, e não dentro de `ordenarSignatarios`: ordenar não muda dado, e um teste
+ * de ordem que recebesse o nome trocado estaria certo em reclamar.
+ */
+export function nomeDeSignatario(nome: string): string {
+  return String(nome ?? "").trim().replace(/\s+/g, " ").toUpperCase();
+}
+
 export function ordenarSignatarios(
   pessoas: Omit<Signatario, "ordem">[],
   regra: RegraDeOrdem = ORDEM_PADRAO,

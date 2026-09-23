@@ -131,9 +131,9 @@ describe("quem assina pelo incorporador, na ordem em que o Panteon procura", () 
 
     expect(preparo.impedimento).toBeNull();
     expect(preparo.signatarios.map((s) => [s.papel, s.nome, s.ordem])).toEqual([
-      ["comprador", "Beltrano Exemplo Ferreira", 1],
-      ["vendedora", "Analista Do Juridico", 2],
-      ["careli", "Nivea Careli", 3],
+      ["comprador", "BELTRANO EXEMPLO FERREIRA", 1],
+      ["vendedora", "ANALISTA DO JURIDICO", 2],
+      ["careli", "NIVEA CARELI", 3],
     ]);
   });
 
@@ -148,9 +148,9 @@ describe("quem assina pelo incorporador, na ordem em que o Panteon procura", () 
 
     expect(preparo.impedimento).toBeNull();
     expect(preparo.signatarios.map((s) => s.nome)).toEqual([
-      "Beltrano Exemplo Ferreira",
-      "Fulana Representante Legal",
-      "Nivea Careli",
+      "BELTRANO EXEMPLO FERREIRA",
+      "FULANA REPRESENTANTE LEGAL",
+      "NIVEA CARELI",
     ]);
   });
 

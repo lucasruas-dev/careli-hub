@@ -40,9 +40,11 @@ describe("de onde saem os signatários", () => {
       ]),
     );
 
+    // ⚠️ O NOME SAI EM CAIXA ALTA: ver `nomeDeSignatario`. As fontes são diferentes (o cadastro
+    // guarda em maiúsculas, o usuário do hub não) e o documento é um só.
     expect(pessoas.map((p) => [p.papel, p.nome, p.email])).toEqual([
-      ["comprador", "Henrique Sales do Vale", "henrique.vale@zzteste.careli.dev"],
-      ["conjuge", "Patrícia Sales do Vale", "patricia.vale@zzteste.careli.dev"],
+      ["comprador", "HENRIQUE SALES DO VALE", "henrique.vale@zzteste.careli.dev"],
+      ["conjuge", "PATRÍCIA SALES DO VALE", "patricia.vale@zzteste.careli.dev"],
     ]);
   });
 
@@ -73,7 +75,7 @@ describe("de onde saem os signatários", () => {
         comprador({ email_cliente: "3@x.com", nome_cliente: "Pedro Souza", nome_conjuge: "Rita Souza", email_conjuge: "4@x.com" }, true),
       ]),
     );
-    expect(pessoas.map((p) => p.nome)).toEqual(["João Silva", "Ana Silva", "Pedro Souza", "Rita Souza"]);
+    expect(pessoas.map((p) => p.nome)).toEqual(["JOÃO SILVA", "ANA SILVA", "PEDRO SOUZA", "RITA SOUZA"]);
   });
 
   // ⚠️ MEDIDO EM 08/09/2026: dos 18 empreendimentos com settings, ZERO têm `vendedor_entity_id`, e
@@ -124,7 +126,7 @@ describe("de onde saem os signatários", () => {
 
     const vendedoras = pessoas.filter((p) => p.papel === "vendedora");
     expect(vendedoras).toHaveLength(1);
-    expect(vendedoras[0]?.nome).toBe("Representante Novo");
+    expect(vendedoras[0]?.nome).toBe("REPRESENTANTE NOVO");
   });
 
   // ⚠️ CONTRATO COM LINHA DE TESTEMUNHA EM BRANCO VOLTA DO CARTÓRIO. O aviso é barato; descobrir

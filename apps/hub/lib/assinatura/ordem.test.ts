@@ -12,7 +12,15 @@ const fila = (r: { ordens: Record<string, number> }) =>
   gruposDaRegra(r as never).flat();
 
 
-import { descreverRegra, gruposDaRegra, lerRegraDeOrdem, ordenarSignatarios, ORDEM_PADRAO, regraDaColuna } from "./ordem";
+import {
+  descreverRegra,
+  gruposDaRegra,
+  lerRegraDeOrdem,
+  nomeDeSignatario,
+  ordenarSignatarios,
+  ORDEM_PADRAO,
+  regraDaColuna,
+} from "./ordem";
 import { rotuloDoPapel, type Signatario } from "./tipos";
 
 // ⚠️ O QUE ESTES TESTES PROTEGEM. A ordem de assinatura é feita HOJE na mão, contrato a contrato
@@ -295,5 +303,41 @@ describe("regraDaColuna lê as duas formas gravadas", () => {
 
     expect(r.ordenada).toBe(true);
     expect(r.ordens).toEqual(ORDEM_PADRAO.ordens);
+  });
+});
+
+// ── O PADRÃO DO NOME ────────────────────────────────────────────────────────
+//
+// Nívea, 23/09/2026, sobre o termo que foi para o cliente: *"ajusta, por favor, o padrão do nome dos
+// assinantes"*. No papel saíram, em sequência, "MARIA DE FATIMA RODRIGUES DOS SANTOS", "ANTÔNIO
+// BARBOSA DA COSTA JÚNIOR" e "Nivea Careli" — três fontes, três formatos, um documento só.
+//
+// ⚠️ CAIXA ALTA, e a escolha foi do Lucas. Subir a caixa não inventa nada; baixar e recapitalizar
+// precisaria acertar as preposições E não devolveria o acento que o cadastro não tem — "FATIMA"
+// viraria "Fatima", nunca "Fátima", num papel que vai a cartório.
+describe("o nome do signatário sai no padrão da casa", () => {
+  it("⚠️ sobe a caixa, e é só isso que ele faz", () => {
+    expect(nomeDeSignatario("Nivea Careli")).toBe("NIVEA CARELI");
+    expect(nomeDeSignatario("MARIA DE FATIMA RODRIGUES DOS SANTOS")).toBe(
+      "MARIA DE FATIMA RODRIGUES DOS SANTOS",
+    );
+  });
+
+  it("preserva o acento que o cadastro tem", () => {
+    expect(nomeDeSignatario("Antônio Barbosa da Costa Júnior")).toBe("ANTÔNIO BARBOSA DA COSTA JÚNIOR");
+  });
+
+  it("⚠️ NÃO inventa acento que o cadastro não tem", () => {
+    // É a razão de não usar "Nome Próprio": nenhuma das duas formas conserta o cadastro, e só uma
+    // finge que conserta.
+    expect(nomeDeSignatario("MARIA DE FATIMA")).not.toContain("Fátima");
+  });
+
+  it("apara o espaço de sobra, que é o que vem de nome colado à mão", () => {
+    expect(nomeDeSignatario("  Helena   Maria  Lino ")).toBe("HELENA MARIA LINO");
+  });
+
+  it("razão social também passa, e é o caso da imobiliária", () => {
+    expect(nomeDeSignatario("Flat Negocios Imobiliarios Ltda")).toBe("FLAT NEGOCIOS IMOBILIARIOS LTDA");
   });
 });

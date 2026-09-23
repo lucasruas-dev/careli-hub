@@ -60,7 +60,10 @@ describe("as três partes, na ordem que o Lucas pediu", () => {
     const { signatarios } = signatariosDoAcordo({ careli, comprador, incorporador });
     const daCasa = signatarios.find((s) => s.papel === "careli");
 
-    expect(daCasa?.nome).toBe(ASSINANTE_DA_CARELI.nome);
+    // ⚠️ EM CAIXA ALTA: ver `nomeDeSignatario`. A Careli chega do `display_name` do usuário do
+    // hub ("Nivea Careli") e as outras duas partes do cadastro, que guarda em maiúsculas; o
+    // documento é um só e sai num padrão só.
+    expect(daCasa?.nome).toBe(ASSINANTE_DA_CARELI.nome.toUpperCase());
     expect(daCasa?.email).toBe(ASSINANTE_DA_CARELI.email);
   });
 });
@@ -108,7 +111,7 @@ describe("o dado que falta vira FRASE, e o envio não sai", () => {
       incorporador,
     });
 
-    expect(impedimento).toContain("Beltrano Exemplo Ferreira");
+    expect(impedimento).toContain("BELTRANO EXEMPLO FERREIRA");
     expect(impedimento).toContain("sem e-mail");
   });
 

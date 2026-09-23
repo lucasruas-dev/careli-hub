@@ -1,4 +1,4 @@
-import { ORDEM_PADRAO, ordenarSignatarios, type RegraDeOrdem } from "@/lib/assinatura/ordem";
+import { nomeDeSignatario, ORDEM_PADRAO, ordenarSignatarios, type RegraDeOrdem } from "@/lib/assinatura/ordem";
 import { conferirSignatarios, type Pessoa } from "@/lib/assinatura/signatarios";
 import type { Signatario } from "@/lib/assinatura/tipos";
 
@@ -92,6 +92,11 @@ export function signatariosDoAcordo(partes: {
   if (partes.comprador) pessoas.push(partes.comprador);
   if (partes.incorporador) pessoas.push(partes.incorporador);
   pessoas.push(partes.careli);
+
+  // ⚠️ O NOME SAI NO PADRÃO DA CASA. Ver `nomeDeSignatario`: no termo que foi para o cliente em
+  // 23/09/2026 saíram, em sequência, dois nomes do cadastro em caixa alta e o da Careli em "Nivea
+  // Careli", porque as três partes vêm de fontes diferentes.
+  for (const p of pessoas) p.nome = nomeDeSignatario(p.nome);
 
   const impedimento = faltaAlgumaParte(partes) ?? conferencia(pessoas);
 

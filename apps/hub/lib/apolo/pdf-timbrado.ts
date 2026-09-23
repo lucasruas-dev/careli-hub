@@ -38,7 +38,7 @@
 // ⚠️ E DUAS COISAS QUE FALTAVAM PARA O DOCUMENTO SER O DO MODELO: o parágrafo de corpo (que no
 // extrato só existe como ressalva, em cinza claro) e o rodapé de contato dos modelos em Word.
 // Viraram parâmetro, sem mudar o que o extrato já fazia.
-import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, PDFFont, PDFPage, rgb, setWordSpacing, StandardFonts } from "pdf-lib";
 
 import { CARELI_LOGO_PNG_BASE64 } from "@/lib/apolo/careli-logo";
 
@@ -248,15 +248,63 @@ export function tituloDeSecao(ctx: Ctx, titulo: string, junto = 0): void {
 export function paragrafo(
   ctx: Ctx,
   texto: string,
-  { color = SOFT_TEXT, size = 7.8 }: { color?: ReturnType<typeof rgb>; size?: number } = {},
+  {
+    color = SOFT_TEXT,
+    justificado = false,
+    size = 7.8,
+  }: { color?: ReturnType<typeof rgb>; justificado?: boolean; size?: number } = {},
 ): void {
   const linhas = quebrar(texto, ctx.font, size, USABLE);
   garantirEspaco(ctx, linhas.length * (size + 2.6));
 
-  for (const linha of linhas) {
-    escrever(ctx, linha, { color, size, x: MARGIN, y: ctx.y });
+  for (const [indice, linha] of linhas.entries()) {
+    // ⚠️ A ÚLTIMA LINHA DO PARÁGRAFO NUNCA SE JUSTIFICA. Ela quase nunca está cheia, e esticá-la
+    // abriria vãos entre três ou quatro palavras espalhadas pela largura da página — o defeito
+    // clássico de justificação mal feita, e o oposto do que se pede quando se pede texto justificado.
+    const ultima = indice === linhas.length - 1;
+    if (justificado && !ultima) escreverJustificado(ctx, linha, { color, size });
+    else escrever(ctx, linha, { color, size, x: MARGIN, y: ctx.y });
     ctx.y -= size + 2.6;
   }
+}
+
+/**
+ * Uma linha esticada até a margem direita, pelo espaçamento de palavra do próprio PDF.
+ *
+ * ⚠️ PELO OPERADOR `Tw`, E NÃO DESENHANDO PALAVRA POR PALAVRA. As duas produzem a mesma imagem, e
+ * só uma preserva o TEXTO. A primeira versão disto desenhava cada palavra na posição calculada, e a
+ * suíte do termo de acordo pegou na hora: o extrator passou a ler 6 linhas onde havia 9, e um
+ * parágrafo deixou de bater palavra por palavra. Num papel que vai a cartório e à Clicksign, texto
+ * que não se copia nem se busca é defeito — a justificação é de forma, não pode custar o conteúdo.
+ *
+ * `Tw` é exatamente o que um editor de verdade usa: a linha continua sendo UMA string com espaços,
+ * e o leitor de PDF é quem os estica. Ele é estado de texto, então volta a zero logo depois — sem
+ * isso, a próxima linha herdaria o vão desta.
+ *
+ * ⚠️ E HÁ UM TETO PARA O VÃO. Uma linha com poucas palavras e muita sobra — a que vem antes de uma
+ * palavra longa que não coube — viraria uma fileira de palavras soltas, pior do que o alinhamento à
+ * esquerda. Acima de três vezes o espaço normal a linha sai como estava.
+ */
+function escreverJustificado(
+  ctx: Ctx,
+  linha: string,
+  { color, size }: { color: ReturnType<typeof rgb>; size: number },
+): void {
+  const texto = limpar(linha);
+  const vaos = texto.split(" ").filter(Boolean).length - 1;
+  const sobra = USABLE - ctx.font.widthOfTextAtSize(texto, size);
+  const espacoNormal = ctx.font.widthOfTextAtSize(" ", size);
+
+  const normal = () => escrever(ctx, linha, { color, size, x: MARGIN, y: ctx.y });
+
+  if (vaos < 1 || sobra <= 0 || sobra / vaos > espacoNormal * 2) {
+    normal();
+    return;
+  }
+
+  ctx.page.pushOperators(setWordSpacing(sobra / vaos));
+  normal();
+  ctx.page.pushOperators(setWordSpacing(0));
 }
 
 /**

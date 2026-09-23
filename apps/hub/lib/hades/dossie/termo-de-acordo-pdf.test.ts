@@ -3,6 +3,8 @@ import { inflateSync } from "node:zlib";
 import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 
+import { MARGIN, USABLE } from "@/lib/apolo/pdf-timbrado";
+
 import {
   cartoesDoTermoDeAcordo,
   type DadosDoTermoDeAcordo,
@@ -676,5 +678,79 @@ describe("a emissão do PDF", () => {
     const texto = textoDoPdf(bytes);
     expect(texto).toContain("90/144");
     expect(texto).toContain("R$ 9.000,00");
+  });
+});
+
+// ── A JUSTIFICAÇÃO DO TEXTO LEGAL ───────────────────────────────────────────
+//
+// Nívea, 23/09/2026, sobre o termo que foi para o cliente: *"justifica o texto, por favor"*.
+//
+// ⚠️ A JUSTIFICAÇÃO É PELO OPERADOR `Tw` DO PDF, e não desenhando palavra por palavra — e este
+// teste é a razão. A primeira versão desenhava cada palavra na posição calculada, e a suíte pegou
+// na hora: o extrator passou a ler 6 linhas onde havia 9, porque cada palavra virou um `Tj`
+// próprio. Num papel que vai a cartório e à Clicksign, texto que não se copia nem se busca é
+// defeito. Com `Tw` a linha continua sendo UMA string com espaços, e é o leitor de PDF que os
+// estica — o que estes testes conferem sem precisar olhar pixel.
+describe("o texto legal sai justificado", () => {
+  it("⚠️ cada linha continua sendo UM desenho de texto, e não uma palavra por vez", async () => {
+    const linhas = linhasDoTextoLegal(linhasDoPdf(await montarTermoDeAcordoPdf(CASO_REAL)));
+
+    // Nenhuma linha do texto legal é uma palavra sozinha: se a justificação tivesse quebrado o
+    // desenho, apareceriam dezenas delas.
+    expect(linhas.length).toBeGreaterThan(4);
+    for (const linha of linhas) {
+      expect(linha.texto.split(/\s+/).filter(Boolean).length).toBeGreaterThan(1);
+    }
+  });
+
+  it("todas as linhas começam na margem esquerda", async () => {
+    const linhas = linhasDoTextoLegal(linhasDoPdf(await montarTermoDeAcordoPdf(CASO_REAL)));
+
+    for (const linha of linhas) expect(linha.x).toBeCloseTo(MARGIN, 1);
+  });
+
+  it("⚠️ o PDF carrega o operador de espaçamento, que é o que estica a linha", async () => {
+    const bytes = await montarTermoDeAcordoPdf(CASO_REAL);
+    const arquivo = Buffer.from(bytes);
+
+    let achouTw = false;
+    let inicio = arquivo.indexOf("stream");
+    while (inicio !== -1 && !achouTw) {
+      const comeco = arquivo.indexOf("\n", inicio) + 1;
+      const fim = arquivo.indexOf("endstream", comeco);
+      if (fim === -1) break;
+      try {
+        const conteudo = inflateSync(arquivo.subarray(comeco, fim)).toString("latin1");
+        // Um `Tw` diferente de zero em algum lugar do fluxo: é a linha esticada.
+        if (/(?:^|\s)(?!0(?:\.0+)?\s+Tw)[\d.]+\s+Tw/.test(conteudo)) achouTw = true;
+      } catch {
+        // fluxo sem conteúdo de página
+      }
+      inicio = arquivo.indexOf("stream", fim + "endstream".length);
+    }
+
+    expect(achouTw).toBe(true);
+  });
+
+  it("o espaçamento volta a zero, para a linha seguinte não herdar o vão", async () => {
+    const bytes = await montarTermoDeAcordoPdf(CASO_REAL);
+    const arquivo = Buffer.from(bytes);
+
+    let zeros = 0;
+    let inicio = arquivo.indexOf("stream");
+    while (inicio !== -1) {
+      const comeco = arquivo.indexOf("\n", inicio) + 1;
+      const fim = arquivo.indexOf("endstream", comeco);
+      if (fim === -1) break;
+      try {
+        const conteudo = inflateSync(arquivo.subarray(comeco, fim)).toString("latin1");
+        zeros += [...conteudo.matchAll(/(?:^|\s)0\s+Tw/g)].length;
+      } catch {
+        // fluxo sem conteúdo de página
+      }
+      inicio = arquivo.indexOf("stream", fim + "endstream".length);
+    }
+
+    expect(zeros).toBeGreaterThan(0);
   });
 });
