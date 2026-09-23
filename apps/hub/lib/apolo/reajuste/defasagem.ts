@@ -2,6 +2,7 @@ import {
   type ExtratoClienteParcelaBruta,
   mensalidadePlausivel,
   mensalidadeTipica,
+  superadasPorCobrancaMenor,
   temBoleto,
 } from "@/lib/apolo/extrato-cliente";
 
@@ -108,7 +109,28 @@ export function defasagemDoContrato(
 
   // ⚠️ O MAIOR, e não o mais recente. A emissão não é cronológica: um boleto avulso de parcela
   // antiga sai depois de um da parcela seguinte, e "o último emitido" devolveria o valor velho.
-  const cobrado = Math.max(...comBoleto.map((p) => p.valorInicial));
+  //
+  // ⚠️ MAS O MAIOR CRU MENTE NO ACORDO ESCALONADO, e o extrato já tinha pago caro por isso. No
+  // AR 417 (LOS Q16 L14) há parcelas de R$ 672,80 com boleto vencendo ANTES de parcelas de
+  // R$ 557,37 também com boleto: os R$ 672,80 são majoração temporária de acordo, não o valor
+  // praticado. O máximo cru publicava 48,71% de defasagem onde o real é 23,19%, e jogava esse
+  // contrato para o TOPO da lista, que é ordenada pelo maior rombo. `superadasPorCobrancaMenor`
+  // é a régua que `mensalidadeVigente` usa para exatamente isto; ela é a porta única do valor
+  // praticado, e não uma segunda conta.
+  //
+  // ⚠️ A RÉGUA VARRE DE TRÁS PARA FRENTE e depende da ORDEM da série (ver o aviso dela no
+  // extrato): por isso a ordenação por `parcelaAtual` vem antes, e não depois.
+  const emOrdem = [...serie].sort(
+    (a, b) => (a.parcelaAtual ?? 0) - (b.parcelaAtual ?? 0) || (a.id - b.id),
+  );
+  const superadas = superadasPorCobrancaMenor(emOrdem);
+  const praticadas = comBoleto.filter((p) => !superadas.has(p.id));
+
+  // Se o filtro esvaziar tudo (série inteira superada), volta ao máximo cru: melhor medir com
+  // ruído do que não medir — é a mesma saída que `serieMensal` dá no extrato.
+  const cobrado = Math.max(
+    ...(praticadas.length > 0 ? praticadas : comBoleto).map((p) => p.valorInicial),
+  );
 
   const ultimoBoletoEm =
     comBoleto

@@ -94,6 +94,49 @@ describe("defasagemDoContrato", () => {
     expect(defasagemDoContrato(serie).cobrado).toBe(650);
   });
 
+  it("⚠️ ACORDO ESCALONADO: a majoração temporária NÃO é o valor praticado (AR 417)", () => {
+    // A forma medida no C2X em 23/09/2026, LOS Q16 L14: a base de R$ 452,43 em 133 parcelas SEM
+    // boleto, quatro de R$ 672,80 com boleto vencendo ANTES, e seis de R$ 557,37 com boleto
+    // vencendo DEPOIS. O máximo cru publicava 48,71% onde o real é 23,19%, e jogava este contrato
+    // para o topo da lista. É a mesma armadilha que o extrato matou em `mensalidadeVigente`.
+    const serie: ExtratoClienteParcelaBruta[] = [];
+    let n = 1;
+    for (let i = 0; i < 4; i += 1) {
+      serie.push(
+        parcela({
+          boletoUrl: "b",
+          parcelaAtual: n++,
+          valorInicial: 672.8,
+          vencimento: `2026-${String(7 + i).padStart(2, "0")}-25`,
+        }),
+      );
+    }
+    for (let i = 0; i < 6; i += 1) {
+      serie.push(
+        parcela({
+          boletoUrl: "b",
+          parcelaAtual: n++,
+          valorInicial: 557.37,
+          vencimento: `2026-${String(8 + i).padStart(2, "0")}-18`,
+        }),
+      );
+    }
+    for (let i = 0; i < 60; i += 1) {
+      serie.push(
+        parcela({
+          parcelaAtual: n++,
+          valorInicial: 452.43,
+          vencimento: `2027-${String((i % 12) + 1).padStart(2, "0")}-20`,
+        }),
+      );
+    }
+
+    const d = defasagemDoContrato(serie);
+    expect(d.cobrado).toBe(557.37);
+    expect(d.percentual).toBeCloseTo(23.19, 1);
+    expect(d.porParcela).toBeCloseTo(104.94, 1);
+  });
+
   it("contrato em dia: apurada, com zero, e não 'não consegui'", () => {
     const serie = [
       parcela({ boletoUrl: "b", valorInicial: 600, vencimento: "2026-05-20" }),

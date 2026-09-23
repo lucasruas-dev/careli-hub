@@ -24,6 +24,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 (globalThis as unknown as { React: typeof React }).React = React;
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+vi.mock("@/modules/apolo/data/apolo-operations", () => ({
+  getApoloAccessToken: async () => "token-de-teste",
+}));
+
 const { PainelDefasagem } = await import("./painel-defasagem");
 
 type Defasagem = {
@@ -107,13 +111,16 @@ function texto(): string {
   return container.textContent ?? "";
 }
 
+let ultimoPedido: null | { init?: RequestInit; url: string } = null;
+
 async function montar(payload: unknown = PAYLOAD) {
+  ultimoPedido = null;
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => ({
-      json: async () => ({ data: payload }),
-      ok: true,
-    })),
+    vi.fn(async (url: string, init?: RequestInit) => {
+      ultimoPedido = { init, url };
+      return { json: async () => ({ data: payload }), ok: true };
+    }),
   );
 
   await act(async () => {
@@ -223,6 +230,16 @@ describe("PainelDefasagem", () => {
     });
     expect(texto()).toContain("C2X fora do ar.");
     expect(texto()).toContain("Tentar de novo");
+  });
+
+  it("⚠️ manda o Bearer: sem ele a rota devolve 401 e a tela nunca carrega", async () => {
+    await montar();
+    // Este teste existe porque o defeito ACONTECEU: a primeira versão chamava a rota sem header
+    // nenhum, e `authorizeApoloRead` recusa antes de qualquer coisa — inclusive em ambiente local.
+    // Typecheck não pega, porque é só um fetch.
+    const cabecalhos = (ultimoPedido?.init?.headers ?? {}) as Record<string, string>;
+    expect(ultimoPedido?.url).toBe("/api/apolo/defasagem");
+    expect(cabecalhos.Authorization).toBe("Bearer token-de-teste");
   });
 
   it("⚠️ a tela NÃO oferece botão de corrigir: o legado é read-only e a decisão é da operação", async () => {

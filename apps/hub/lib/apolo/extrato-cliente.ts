@@ -598,7 +598,7 @@ export function mensalidadeVigente(
  * é exatamente o valor original do contrato: ali o boleto novo saiu com o valor velho porque
  * ninguém aplicou a correção, e a parcela maior continua sendo a mensalidade vigente.
  */
-function superadasPorCobrancaMenor(
+export function superadasPorCobrancaMenor(
   plausiveis: ExtratoClienteParcelaBruta[],
 ): ReadonlySet<number> {
   // A linha original é a MAIS BAIXA da série, não a primeira: reajuste só sobe, e existe

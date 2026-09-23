@@ -4,6 +4,7 @@ import { AlertTriangle, Download, Loader2, RefreshCw, Search } from "lucide-reac
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { LinhaDaDefasagem, ResumoDaDefasagem } from "@/lib/apolo/reajuste/defasagem";
+import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 
 // PARCELAS A CORRIGIR — a carteira que ficou para trás.
 //
@@ -54,7 +55,15 @@ export function PainelDefasagem() {
     setCarregando(true);
     setErro(null);
     try {
-      const resposta = await fetch("/api/apolo/defasagem", { cache: "no-store" });
+      // ⚠️ SEM O BEARER A ROTA DEVOLVE 401 E A TELA NUNCA CARREGA. `authorizeApoloRead` lê só o
+      // header `authorization`; cookie de sessão não conta, nem em ambiente local. Todo painel do
+      // Apolo pega o token antes (painel-assinatura, painel-contratos, preview-asaas) — este
+      // esqueceu, e o typecheck não pega, porque é só um fetch.
+      const token = await getApoloAccessToken();
+      const resposta = await fetch("/api/apolo/defasagem", {
+        cache: "no-store",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       const corpo = (await resposta.json().catch(() => null)) as
         | { data?: Payload; error?: string }
         | null;

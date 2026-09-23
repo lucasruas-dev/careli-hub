@@ -194,3 +194,38 @@ precisa desse filtro**, e o número válido é o de R$ 50.762,05.
    útil do relatório inteiro, e não depende de projeção nenhuma.
 4. Os scripts `zeus-backtest-do-motor.ts`, `zeus-estrutura-dos-degraus.ts`,
    `zeus-olhar-um-contrato.ts` e `zeus-defasagem-medida.ts` reproduzem tudo isto.
+
+---
+
+# ⚠️ SEGUNDA CORREÇÃO (23/09/2026, depois da revisão adversarial)
+
+A revisão pegou **dois defeitos de gravidade alta** no que eu já tinha subido (v1.366.0):
+
+**1. O `cobrado` pegava majoração temporária de acordo escalonado.** O `Math.max` sobre as parcelas
+com boleto não usava `superadasPorCobrancaMenor`, a régua que o extrato escreveu exatamente contra
+isso. No **AR 417 (LOS Q16 L14)** há quatro parcelas de R$ 672,80 com boleto vencendo **antes** de
+seis de R$ 557,37 também com boleto: os R$ 672,80 são majoração de acordo, não o valor praticado.
+A tela publicava **48,71%** de defasagem onde o real é **23,19%**, e jogava esse contrato para o
+**topo** da lista, que é ordenada pelo maior rombo.
+
+Efeito agregado, medido: **25 contratos** inflados, **R$ 1.279,36/mês**. O total corrigido é
+**R$ 49.482,69** (não R$ 50.762,05), e a mediana de 22,63% não muda. O dano era de ranking e de
+caso individual, não do número de capa: a operação começaria pelo contrato errado.
+
+**2. A tela nunca carregava.** O `fetch` não mandava o `Authorization: Bearer`, e
+`authorizeApoloRead` devolve 401 sem ele — inclusive em ambiente local, porque o atalho de dev vem
+*depois* da checagem do token. Todo painel irmão do Apolo pega o token antes
+(`painel-assinatura`, `painel-contratos`, `preview-asaas`); este não pegava. **Typecheck não pega
+isso, porque é só um fetch**, e o teste de comportamento também não pegava, porque o dublê de
+`fetch` respondia 200 a qualquer chamada.
+
+**As duas correções, e o que ficou travado em teste:**
+- `superadasPorCobrancaMenor` virou export em `extrato-cliente.ts` e é a porta única do valor
+  praticado nas duas peças (era função privada com um leitor só);
+- teste novo com a forma medida do AR 417, esperando R$ 557,37 e 23,19%;
+- o token entrou na tela, com o porquê escrito ao lado.
+
+**A lição que fica:** eu tinha subido com a revisão ainda rodando, com OK do Lucas para não
+esperar. Os dois defeitos que ela achou eram invisíveis para typecheck, para 8.273 testes e para
+uma medição que batia com a soma das linhas — o primeiro porque o número *parecia* plausível, o
+segundo porque o dublê de teste era generoso demais.

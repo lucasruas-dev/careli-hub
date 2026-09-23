@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-23-parcelas-a-corrigir-correcao",
+    deployedAt: "2026-09-23T19:00:11-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**A tela Parcelas a corrigir voltou a abrir.** Ela subiu de manha sem conseguir carregar os dados.",
+              "**O valor que a cobranca pratica passou a ignorar majoracao temporaria de acordo.** Vinte e cinco contratos apareciam com defasagem maior do que a real, e um deles estava no topo da lista.",
+            ],
+            screen: "Parcelas a corrigir",
+          },
+        ],
+      },
+    ],
+    rollback: "6322d223",
+    technical: {
+      done:
+        "DOIS DEFEITOS DE GRAVIDADE ALTA na v1.366.0, achados por revisao adversarial que rodava enquanto eu subia. (1) A TELA NUNCA CARREGAVA: o fetch nao mandava `Authorization: Bearer`, e `authorizeApoloRead` devolve 401 sem ele -- inclusive em ambiente local, porque o atalho de dev vem DEPOIS da checagem do token (auth.ts:87-102). Todo painel irmao do Apolo pega o token antes (painel-assinatura, painel-contratos, preview-asaas); este nao pegava. ⚠️ TYPECHECK NAO PEGA, porque e so um fetch, e o teste de comportamento tambem nao pegava, porque o duble de fetch respondia 200 a qualquer chamada. Agora o duble guarda o pedido e um teste confere o header. (2) O VALOR PRATICADO PEGAVA MAJORACAO TEMPORARIA DE ACORDO: o `Math.max` sobre as parcelas com boleto nao usava `superadasPorCobrancaMenor`, a regua que o extrato escreveu exatamente contra isso. No AR 417 (LOS Q16 L14) ha quatro parcelas de R$ 672,80 com boleto vencendo ANTES de seis de R$ 557,37 tambem com boleto: os R$ 672,80 sao acordo, nao o valor praticado. A tela publicava 48,71% onde o real e 23,19%, e jogava esse contrato para o TOPO da lista, que e ordenada pelo maior rombo -- a operacao comecaria pelo caso errado. Medido: 25 contratos inflados, R$ 1.279,36/mes. O total corrigido e R$ 49.482,69 (era R$ 50.762,05) e a mediana de 22,63% nao muda. A funcao era PRIVADA com um leitor so; virou export e e a porta unica do valor praticado nas duas pecas. Teste novo com a forma medida do AR 417. A LICAO, escrita no doc: os dois defeitos eram invisiveis para typecheck, para 8.273 testes e para uma medicao que batia com a soma das linhas -- o primeiro porque o numero PARECIA plausivel, o segundo porque o duble de teste era generoso demais.",
+      motivation:
+        "Revisao adversarial do proprio lote, pedida antes do deploy e concluida depois dele. O Lucas autorizou subir sem esperar por ela; os dois achados que sobreviveram a refutacao estao corrigidos aqui.",
+    },
+    title: "Correcao: a tela abre, e o acordo escalonado nao infla mais a defasagem",
+    type: "correcao",
+    version: "1.366.1",
+  },
+  {
     buildTag: "2026-09-23-parcelas-a-corrigir",
     deployedAt: "2026-09-23T18:36:35-03:00",
     modules: [
