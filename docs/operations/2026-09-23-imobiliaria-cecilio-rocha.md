@@ -35,13 +35,23 @@ Rastreio: `metadata.origem` da entidade e `metadata.source` do vínculo = `setup
 
 - Desde a v1.363.0 a imobiliária da venda **sai no contrato** (item VIII) e **é convidada a assinar**. O
   e-mail usado é o do cartão da Receita. Se quem assina pela Cecílio usa outro e-mail, é preciso trocar.
-- Nenhum corretor foi ligado a essa imobiliária. A reserva aceita venda sem corretor.
+- Corretor ligado (pedido do Lucas, mesmo dia): **VITOR CECÍLIO**, e-mail vitorcecilio@hotmail.com.
+  Ficha PF `0b828540-309d-424b-9485-5334011881f5`, papel `corretor` ativo, vínculo `corretor` da
+  imobiliária para ele (`related_entity_id`), `verified`. Sem CPF e sem telefone: o Lucas passou só
+  o nome e o e-mail. Se o CPF entrar depois, confira antes se ele já não tem ficha como cliente
+  (dedup por `document_hash`).
 - Só o Garden foi habilitado. VOC (37) e VOR (41) seguem só como consulta no portal.
 
 ## Como desfazer
 
 ```sql
--- id: b3c0b461-5e4f-461a-b6c5-4269752b5e24
+-- primeiro os vínculos (o da imobiliária aponta para o corretor)
+delete from apolo_relationships where entity_id = 'b3c0b461-5e4f-461a-b6c5-4269752b5e24';
+-- corretor: 0b828540-309d-424b-9485-5334011881f5
+delete from apolo_contacts        where entity_id = '0b828540-309d-424b-9485-5334011881f5';
+delete from apolo_entity_profiles where entity_id = '0b828540-309d-424b-9485-5334011881f5';
+delete from apolo_entities        where id = '0b828540-309d-424b-9485-5334011881f5';
+-- imobiliária (apaga também o vínculo com o corretor): b3c0b461-5e4f-461a-b6c5-4269752b5e24
 delete from apolo_relationships where entity_id = 'b3c0b461-5e4f-461a-b6c5-4269752b5e24';
 delete from apolo_contacts      where entity_id = 'b3c0b461-5e4f-461a-b6c5-4269752b5e24';
 delete from apolo_addresses     where entity_id = 'b3c0b461-5e4f-461a-b6c5-4269752b5e24';
