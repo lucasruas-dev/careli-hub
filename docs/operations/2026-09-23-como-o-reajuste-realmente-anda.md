@@ -167,11 +167,22 @@ Defasagem das parcelas futuras, por percentil: p25 **22,63%**, p50 **22,63%**, p
 | REP | 47 | 4,72% | 20,40% |
 
 **Se todas as parcelas futuras fossem corrigidas ao patamar que a cobrança já usa, a soma das
-mensalidades subiria R$ 72.338,05 por mês** (527 contratos, média de R$ 137,26 cada).
+mensalidades subiria R$ 50.762,05 por mês** (527 contratos), assim distribuídos:
 
-⚠️ **Um outlier a descartar**: o AR 3716 (VAL) aparece com 4.472% porque tem uma parcela atípica
-marcada como mensal. O extrato já conhece esse caso (`FATOR_MENSALIDADE_ATIPICA`, que cita
-justamente o AR 3716); qualquer medição nova precisa do mesmo filtro.
+| empreendimento | contratos defasados | mediana | por mês |
+|---|---|---|---|
+| LOS | 256 | 23,19% | R$ 26.840,22 |
+| LOU | 203 | 22,63% | R$ 19.656,10 |
+| MDS | 20 | 10,29% | R$ 2.246,47 |
+| REP | 47 | 4,72% | R$ 1.831,64 |
+| VAL | 1 | 38,55% | R$ 187,62 |
+
+⚠️ **O primeiro número que apurei, R$ 72.338,05, estava INFLADO em R$ 21.576 por um balão.** O AR
+3716 (VAL) tem uma parcela de R$ 22.250,25 marcada como `parcel_type_id = 3`, e o script cru a
+tratou como mensalidade, produzindo 4.472% de defasagem naquele contrato sozinho. Com a régua do
+extrato (`mensalidadePlausivel`, que existe justamente por causa do AR 3716), ele entra com a
+defasagem real dele: 38,55%, de R$ 486,63 para R$ 674,25. **Toda medição de mensalidade no C2X
+precisa desse filtro**, e o número válido é o de R$ 50.762,05.
 
 ## O que isto muda no relatório
 

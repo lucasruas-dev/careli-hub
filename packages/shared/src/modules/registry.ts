@@ -48,6 +48,13 @@ export const hubModules = [
         path: "/apolo",
         description: "Busca, cadastro mestre e vida operacional consolidada.",
       },
+      {
+        id: "apolo-defasagem",
+        label: "Parcelas a corrigir",
+        path: "/apolo/defasagem",
+        description:
+          "Contratos cuja parcela futura ficou no valor antigo, porque a correcao so alcanca a parcela quando o boleto dela e emitido.",
+      },
     ],
     navigationItems: [
       {
@@ -56,6 +63,13 @@ export const hubModules = [
         path: "/apolo",
         iconKey: "apolo",
         order: 10,
+      },
+      {
+        id: "apolo-defasagem",
+        label: "Parcelas a corrigir",
+        path: "/apolo/defasagem",
+        iconKey: "apolo",
+        order: 20,
       },
     ],
   },
