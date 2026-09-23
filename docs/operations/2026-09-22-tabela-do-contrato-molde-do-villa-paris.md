@@ -76,3 +76,47 @@ Registro de diario:
   linha dizendo que os valores sao os devidos a VENDEDORA (a corretagem fica no item VIII); orientar
   a Nivea sobre o cadastro de anexos agora que a tela destravou.
 - Status: EM PRODUCAO.
+
+---
+
+## Adendo, 14:35 — os anexos do contrato (v1.360.6)
+
+Testei as rotas de anexo de ponta a ponta contra o banco de PRODUCAO, a pedido do Lucas
+(*"testa as rotas, verifica se conseguimos anexar, pode usar qualquer arquivo com o teste"*).
+Elas funcionam: `upload` 200, objeto no Storage, `confirmar` 200, `GET` lista, a cadeia enxerga e o
+contrato real da VITORIA leva a peca. `temis_anexos` voltou a zero linhas ao fim de cada rodada.
+
+⚠️ **O anexo entra sem a minuta citar marcador nenhum.** Medido: `marcadores que a minuta usou: -`
+e, ao mesmo tempo, `anexos que entram no PDF: 1`. A montagem checa PECA, nao marcador. Isso confirma
+o desenho que o Lucas descreveu (*"nao precisa necessariamente de uma minuta"*) para o CADASTRO — mas
+a EMISSAO continua exigindo minuta publicada na cadeia (409 antes de ler anexo), o que hoje deixa 34
+dos 38 empreendimentos sem onde a peca sair.
+
+⚠️ **E o anexo e costurado na GERACAO, nao no envio para assinatura.** `envio-db.ts` so baixa os
+bytes do PDF ja guardado. Cadastrar anexo depois de gerar NAO altera o arquivo; o envelope sai sem a
+peca e a correcao exige gerar de novo (e cancelar o envelope, se ja estiver vivo).
+
+### Os dois defeitos que a revisao adversarial pegou antes do deploy
+
+Eu tinha escrito duas travas no cadastro e as duas nasceram erradas:
+
+1. **A trava da posicao pegava IRMAS.** `resolverCadeiaDoContrato` monta a cadeia com unidade +
+   categoria + divisao da unidade + empreendimento da proposta + PAI: a irma nunca entra. E as duas
+   UNICAS minutas publicadas que citam `[anexo_1]` sao a do VOL (36) e a do VOC (37), IRMAS sob o
+   Vale do Ouro (35) — as duas precisam da peca na posicao 1. A trava impediria a segunda e
+   empurraria a peca do VOC para a posicao 2, deixando o `[anexo_1]` da minuta dele apontando para o
+   vazio. Corrigido: **linhagem, nao familia**, e ela nao e simetrica — quem cadastra num FILHO so
+   concorre com o pai; quem cadastra na RAIZ concorre com todos os filhos, um de cada vez.
+
+2. **A trava da chave recusava id do C2X legitimo.** O cadastro do Panteon NAO e a lista completa dos
+   ids do C2X: 2 (5 unidades), 30 (31) e 34 (1) carregam unidades e nao tem linha em
+   `hercules_empreendimentos`, e a cadeia os alcanca do mesmo jeito porque `filtroDaCadeia` sai do
+   empreendimento da PROPOSTA. Antes gravavam e chegavam ao papel; com a trava levariam 400 com
+   *"recarregue a tela"*, sem alcance nenhum para escolher. Corrigido: **so o que tem cara de UUID e
+   conferido**, que e o unico caso que nunca casa com a cadeia.
+
+⚠️ **E a minha primeira conferencia do item 2 deu ZERO.** Li `hercules_unidades` com
+`.limit(20000)` e concluí que nao havia nenhum id nessa situacao — mas o PostgREST corta em 1.000
+SEM AVISAR e eu tinha visto so a primeira pagina. Refeito com `count: "exact", head: true` por id, os
+tres aparecem. E a mesma armadilha que este diario ja registra, e ela me pegou de novo: **contagem
+se pede ao servidor, nao se conta linha lida.**

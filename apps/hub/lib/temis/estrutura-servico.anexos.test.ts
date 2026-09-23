@@ -65,8 +65,13 @@ beforeEach(() => {
 /** As tabelas do fixture são `Record<string, Linha[]>`: o índice pode vir vazio. */
 const tabela = (nome: string) => (estado.atual.tabelas[nome] ??= []);
 
+// ⚠️ O MÓDULO ENTRA UMA VEZ SÓ, aqui, e não dentro do primeiro `it`. Carregá-lo no primeiro caso
+// fazia aquele caso pagar sozinho o custo do import (~700ms isolado) e estourar o timeout de 5s
+// quando a suíte inteira roda sob carga — um vermelho que não é defeito nenhum e manda procurar
+// onde não há. `vi.mock` é içado, então o mock já vale para este import.
+const { gravarAnexo } = await import("./estrutura-servico");
+
 async function confirmar(enterpriseId: string, posicao: number, nome: string) {
-  const { gravarAnexo } = await import("./estrutura-servico");
   const resposta = await gravarAnexo(
     ATOR,
     pedido({ acao: "confirmar", enterpriseId, nome, path: CAMINHO, posicao }),

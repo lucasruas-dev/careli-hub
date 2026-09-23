@@ -37,7 +37,7 @@ export type ChangelogEntry = {
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
     buildTag: "2026-09-22-o-bem-entra-na-conta-e-a-tv-liga",
-    deployedAt: "2026-09-22T19:20:00-03:00",
+    deployedAt: "2026-09-22T21:30:00-03:00",
     internal: true,
     modules: [
       {
@@ -82,16 +82,45 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
         ],
       },
     ],
-    rollback: "1c8d9c71",
+    rollback: "b1e30362",
     technical: {
       done:
-        "PERMUTA: coluna `bens_e_permutas` jsonb not null default '[]' (migration 0187, aplicada em producao com OK do Lucas), regua unica em `lib/hercules/bens-e-permutas.ts` (`valeDinheiro` nao coage, `Number.isFinite`), e o abatimento entra ao lado de `totalDaEntrada` em `cronograma.ts`, NUNCA em `anuaisQueAbatemOSaldo` (aquele criterio de valor presente e de anual do Garden; bem entregue no ato vale a face). O teto passou a ser `entrada + permutas <= valorNegociado` e o piso conta so os itens `entraComo: \"entrada\"`. A volta (`entradaParaAParcela`) foi junto, senao a entrada sugerida nao produz a parcela pedida. TOTAL PAGO: `simulacao.ts` somava `somaDasMensais`, que reconstroi o degrau do aniversario do SACOC; medido R$ 43.217,43 a mais no Q04 L16 e R$ 55.268,50 no Q03 L07. O rotulo '% sobre a tabela' saiu porque sem os juros ele virava aritmeticamente o desconto do plano, que a linha de cima ja diz. O desempate da lista ganhou menor parcela, porque com os totais iguais a ordem passou a ser a de geracao e isso trocava a composicao RECOMENDADA em 4 de 10 alvos medidos. TV: `/tv/[slug]`, lista de slugs escrita a mao (`/tv/<outra coisa>` e 404, inclusive para empreendimento que existe), primeira carga no servidor, poll de 60s, e o funil `estadoParaTv` deixa passar SO codigo e situacao -- revertendo ele, 3 testes mostram `preco`, `area` e `rotulo` vazando no corpo. Erro devolve 503, nunca `lotes: []` com 200, senao a TV apaga as cores e se le como loteamento inteiro livre. ⚠️ QUATRO DEFEITOS GRAVES FORAM PEGOS POR REVISAO ADVERSARIAL ANTES DO DEPLOY, e nenhum deles apareceu em teste comum: a rota gravava a permuta sem calcular com ela (o cliente entregava o carro e recebia boleto do valor cheio); o insert escrevia a coluna nova antes da migration, o que quebraria TODA proposta; a comissao sumia do quadro quando a entrada em dinheiro e zero, caso que a permuta tornou comum; e existiam TRES copias divergentes da regua de valor, fazendo o mesmo carro valer R$ 80.000 na clausula, R$ 0,00 na variavel e nada no quadro. 519 arquivos, 8.063 testes, typecheck limpo.",
+        "PERMUTA: coluna `bens_e_permutas` jsonb not null default '[]' (migration 0187, aplicada em producao com OK do Lucas), regua unica em `lib/hercules/bens-e-permutas.ts` (`valeDinheiro` nao coage, usa `Number.isFinite`), e o abatimento entra ao lado de `totalDaEntrada` em `cronograma.ts`, NUNCA em `anuaisQueAbatemOSaldo` (aquele criterio de valor presente e de anual do Garden; bem entregue no ato vale a face). O teto passou a ser `entrada + permutas <= valorNegociado` e o piso conta so os itens `entraComo: \"entrada\"`. A volta (`entradaParaAParcela`) foi junto, senao a entrada sugerida nao produz a parcela pedida. TOTAL PAGO: `simulacao.ts` somava `somaDasMensais`, que reconstroi o degrau do aniversario do SACOC; medido R$ 43.217,43 a mais no Q04 L16 e R$ 55.268,50 no Q03 L07. O rotulo '% sobre a tabela' saiu porque sem os juros ele virava aritmeticamente o desconto do plano, que a linha de cima ja diz. O desempate da lista ganhou menor parcela, porque com os totais iguais a ordem passou a ser a de geracao e isso trocava a composicao RECOMENDADA em 4 de 10 alvos medidos. PLANO POR ID: a rota casava o plano pela string do nome, entao renomear com uma tela aberta gravaria juros e prazo de outro plano (medido: R$ 5.845,92 a mais num cliente que fechou plano sem juros). O id manda, o nome e reserva com o `find` de sempre. TV: `/tv/[slug]`, lista de slugs escrita a mao (`/tv/<outra coisa>` e 404, inclusive para empreendimento que existe), primeira carga no servidor, poll de 60s, e o funil `estadoParaTv` deixa passar SO codigo e situacao -- revertendo ele, 3 testes mostram `preco`, `area` e `rotulo` vazando no corpo. Erro devolve 503, nunca `lotes: []` com 200, senao a TV apaga as cores e se le como loteamento inteiro livre. ⚠️ SEIS DEFEITOS GRAVES FORAM PEGOS POR REVISAO ADVERSARIAL ANTES DO DEPLOY, e nenhum apareceu em teste comum: a rota gravava a permuta sem calcular com ela (o cliente entregava o carro e recebia boleto do valor cheio); o insert escrevia a coluna nova antes da migration, o que quebraria TODA proposta; a comissao sumia do quadro quando a entrada em dinheiro e zero, caso que a permuta tornou comum; existiam TRES copias divergentes da regua de valor, fazendo o mesmo carro valer R$ 80.000 na clausula, R$ 0,00 na variavel e nada no quadro; e duas travas que eu mesmo criei para o rename recusariam proposta em TODO o Lagoa Bonita e gravariam proposta que se contradizia (plano exigindo 20% com entrada de 12% no mesmo objeto). As duas travas foram desfeitas: o id resolve o rename sem elas. 520 arquivos, 8.062 testes, typecheck limpo.",
       motivation:
-        "Lucas, 22/09/2026: \"temos que incluir um campo para apontar na negociação as permutas e o bens que são negociados na aquisição da unidade\", \"o valor pago tem que ser o valor do lote, está cobrando juros errado. não calculamos juros nessa etapa, é somente informativo\", \"mesmo eu alterando o valor de entrada, quando eu mando para PDF ele não traz o valor que eu tinha colocado\", \"no ipad, a tela da simulação está cortando\" e \"preciso criar um espelho do garden para ficar fixo em uma tv\".",
+        "Lucas, 22/09/2026: \"temos que incluir um campo para apontar na negociação as permutas e o bens que são negociados na aquisição da unidade\", \"o valor pago tem que ser o valor do lote, está cobrando juros errado. não calculamos juros nessa etapa, é somente informativo\", \"mesmo eu alterando o valor de entrada, quando eu mando para PDF ele não traz o valor que eu tinha colocado\", \"no ipad, a tela da simulação está cortando\" e \"cria um espelho de vendas eu preciso criar um espelho do garden para ficar fixo em uma tv\".",
     },
     title: "O bem entra na conta, e o Garden vai para a TV",
     type: "novidade",
     version: "1.361.0",
+  },
+  {
+    buildTag: "2026-09-22-o-contrato-nao-gasta-envelope-a-toa",
+    deployedAt: "2026-09-22T17:41:55-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Contrato grande demais para assinar passou a avisar antes.** A Clicksign aceita no máximo 10MB por arquivo, e até agora o Panteon descobria isso só depois de criar o envelope na conta, que fica lá mesmo depois de falhar.",
+              "**O contrato com anexos de texto ficou menor.** Um memorial ou regulamento anexado engordava o PDF sem motivo; agora não engorda mais.",
+            ],
+            screen: "Contrato · geração e envio",
+          },
+        ],
+      },
+    ],
+    rollback: "1c8d9c71",
+    technical: {
+      done:
+        "DUAS ENTREGAS, as duas saidas da pergunta do Lucas sobre subir o anexo de 20MB para 60MB. (1) TRAVA DE TAMANHO NO ENVIO: a apuracao da corrente inteira mostrou que o MENOR teto nao e nosso -- a Clicksign aceita 10MB por arquivo (FAQ oficial), menos que os 20MB do anexo e menos que os 24MB da montagem. E nada media o PDF antes de mandar: ele sobe em base64 no PASSO 2 de 6, e o envelope do passo 1 JA EXISTE na conta de PRODUCAO quando essa chamada falha (envelope ativado nao se apaga, so se cancela, e o cancelado fica na lista para sempre). `recusaPorTamanhoDoArquivo` agora roda ANTES da primeira chamada, pela mesma disciplina de `conferirSignatarios`, e devolve `envelopeId: null` porque nada chegou a existir. (2) BLINDAGEM DO INCHACO: `montarPdfDoContrato` chamava `embedPage` uma vez POR PAGINA, e cada chamada abre um `PDFObjectCopier` novo com cache proprio -- as fontes compartilhadas entre as paginas da peca eram recopiadas a cada pagina. `embedPages` em lote usa um copier so. Medido com pecas reais: anexo de contrato 9,104 para 8,415MB (menos 7,6 por cento); matricula mais dois anexos 16,288 para 14,873MB (menos 8,7 por cento); peca DIGITALIZADA quase zero, porque escaneado nao compartilha nada -- e e por isso que o contrato de hoje nao inchava e ninguem tinha percebido. A geometria nao muda (mesmo embedPage mais drawPage, mesmo encaixar); trocar por copyPages renderia mais mas mexe no MediaBox, e as capas de producao tem MediaBox deslocado. O filtro do /Contents passou a vir ANTES da chamada em lote, para a folha em branco continuar entrando na posicao dela. ⚠️ ARMADILHA MEDIDA: a primeira medicao deu zero porque a peca sintetica usava StandardFonts, que nao embute FontFile -- so PDF de fonte embutida mostra o ganho. NAO FEITO: subir o anexo para 60MB (com 10MB por arquivo na Clicksign seria trocar recusa barata por falha cara) e comprimir imagem (a maior alavanca medida e a CAPA, 2,45 para 0,21MB, mas depende de declarar o sharp -- decisao do Lucas). 6 testes novos; 502 arquivos, 7.849 testes, typecheck limpo.",
+      motivation:
+        "Lucas, 22/09/2026: \"tem como subir para 60mb os anexos?\" e, depois de ver que o teto e da Clicksign, \"o cliente tem que assinar um documento somente. teriamos que compactar o pdf\". Antes de comprimir qualquer coisa, a medicao achou desperdicio que se desfaz sem custo de qualidade -- e um buraco que ja existia hoje, gastando envelope pago para descobrir um tamanho que dava para medir de graca.",
+    },
+    title: "O contrato avisa antes de gastar envelope, e para de engordar à toa",
+    type: "correcao",
+    version: "1.360.7",
   },
   {
     buildTag: "2026-09-22-o-anexo-nao-nasce-orfao",
