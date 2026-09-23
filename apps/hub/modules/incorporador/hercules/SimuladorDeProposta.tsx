@@ -15,6 +15,12 @@ import {
   taxaMensal,
 } from "@/lib/apolo/planos-comerciais";
 import {
+  type BemOuPermuta,
+  somarBensQueContamNaEntrada,
+  TAMANHO_MAXIMO_DA_DESCRICAO,
+  TETO_DE_BENS_NA_PROPOSTA,
+} from "@/lib/hercules/bens-e-permutas";
+import {
   type Composicao,
   composicoesQueFecham,
   ENTRADA_MINIMA_PERCENTUAL,
@@ -174,6 +180,16 @@ export type CondicoesDaProposta = {
   ajuste: AjusteDePreco | null;
   anuaisQuantidade: number;
   anuaisValor: number;
+  /**
+   * Os bens e permutas recebidos na aquisição. `null` = proposta só em dinheiro, que é o normal.
+   *
+   * ⚠️ SOBE A LISTA INTEIRA, INCLUSIVE A LINHA PELA METADE. A tentação é filtrar aqui o item sem
+   * valor ou sem descrição para "não sujar o pedido", e é exatamente o jeito de repetir o defeito
+   * que este bloco existe para não ter: a linha continuaria na tela e sumiria do papel, calada.
+   * Quem recusa é a régua (`conferirProposta` e a rota), que devolve a frase dizendo QUAL item
+   * está incompleto — e é por isso que o `campo` do erro carrega a posição.
+   */
+  bensEPermutas: null | readonly BemOuPermuta[];
   /**
    * O desconto do plano escolhido, em percentual (0 quando não tem).
    *
@@ -364,6 +380,17 @@ export function SimuladorDeProposta({
   // como limite cortaria as composições sem ninguém ter pedido, e a lista aparecia vazia sem
   // explicação. Teto é o que o cliente TEM; o valor do plano é só um ponto de partida.
   const [entradaEhTeto, setEntradaEhTeto] = useState(false);
+  /**
+   * Os bens e permutas que o cliente entrega na aquisição — o carro, o lote, o apartamento.
+   *
+   * ⚠️ ESTADO PRÓPRIO, E NÃO UM CAMPO DO `Cockpit`. O cockpit é a conta em números soltos (entrada,
+   * parcela, prazo), e cada efeito que o reescreve inteiro o reescreve inteiro: trocar de plano
+   * (`carregarPlano`), abrir outro lote e usar uma composição fazem `setCockpit({...})` com a lista
+   * de campos escrita à mão. Um bem morando lá desapareceria em cada um desses caminhos — clicar no
+   * cartão do plano ao lado apagaria o Ford Ka sem dizer nada. O bem não é consequência do plano: é
+   * o que o cliente trouxe, e sobrevive à troca de plano como sobreviveria numa conversa.
+   */
+  const [bens, setBens] = useState<BemOuPermuta[]>([]);
   // ⚠️ OS DOIS CAMPOS DA COBRANÇA VIVEM AQUI MESMO SEM A PROP. Estado condicional não existe em
   // React, e tentar criá-lo com um hook dentro de `if` quebra a ordem dos hooks. Sem a prop eles
   // simplesmente não são desenhados nem lidos por ninguém.
@@ -778,6 +805,23 @@ export function SimuladorDeProposta({
     ? datasDaEntradaCruas
     : null;
 
+  /**
+   * Os bens que ENTRAM NA CONTA — e no espelho público não entra nenhum.
+   *
+   * ⚠️ A TRAVA É AQUI, NA CONTA, E NÃO SÓ NO DESENHO DO BLOCO. Esconder o campo já bastaria hoje,
+   * porque sem campo a lista nasce vazia e fica vazia; mas no dia em que alguém passar uma lista
+   * inicial por prop (para reabrir uma proposta, por exemplo), o `/e/<apelido>-<selo>` sem login
+   * passaria a abater o saldo por um bem que o visitante não pode nem ver, e o PDF sairia com o
+   * desconto. Permuta é negociação: ela existe do lado de cá do login e em lugar nenhum mais.
+   *
+   * ⚠️ E O `null` É A MESMA REFERÊNCIA SEMPRE, assim como `bens` só muda quando alguém mexe. Isto
+   * importa: este valor entra nas dependências do efeito que sobe a composição, e um array novo a
+   * cada render faria o efeito rodar em laço.
+   */
+  const bensDaNegociacao = ehSimulacao ? null : bens;
+  /** Quanto dos bens CUMPRE a entrada mínima — só os apontados na entrada. */
+  const bensNaEntrada = somarBensQueContamNaEntrada(bensDaNegociacao);
+
   const montagem = conferirEntradaMontada(
     cockpit.entrada,
     parcelasDaEntrada ?? [cockpit.entrada],
@@ -796,6 +840,11 @@ export function SimuladorDeProposta({
         anuaisCadastradasNoPlano: temAnuaisCadastradas(plano),
         baloesQuantidade: cockpit.anuaisQuantidade,
         baloesValor: cockpit.anuaisValor,
+        // ⚠️ O BEM ABATE O SALDO AQUI, E É O QUE FAZ A CONTA ANDAR NA HORA. Lucas (22/09/2026):
+        // *"Abate, como uma entrada"*. Sem esta linha o bloco da esquerda mostraria o carro e o
+        // cartão grande continuaria anunciando o financiado do valor cheio — a pessoa digita
+        // R$ 80.000 e nada se mexe, e a única leitura possível é que o campo não funciona.
+        bensEPermutas: bensDaNegociacao,
         // ⚠️ A ENTRADA É A DA MONTAGEM, e não a do cockpit. Quando as parcelas somam MAIS que o
         // combinado, é a soma que vira a entrada (regra do Lucas) — e o cartão grande da direita é
         // onde o coordenador está olhando quando clica em Gerar. Enquanto esta conta usava o valor
@@ -812,7 +861,7 @@ export function SimuladorDeProposta({
       }),
       parcelas,
     };
-  }, [cockpit, montagem.entrada, plano]);
+  }, [bensDaNegociacao, cockpit, montagem.entrada, plano]);
 
   /** O chão da casa para este lote — 10% do valor negociado, e acompanha o valor editado. */
   // ⚠️ O PISO DA ENTRADA DEPENDE DO PRAZO (Lucas, 05/09/2026: *"se eu colocar o parcelamento de 30
@@ -835,6 +884,25 @@ export function SimuladorDeProposta({
     valorNegociado: cockpit.valor,
   });
   const minimoDaEntrada = pisoDoPrazo.emReais;
+  /**
+   * Quanto o cliente ainda precisa pôr EM DINHEIRO para cumprir o piso.
+   *
+   * ⚠️ É A MESMA CONTA DE `conferirProposta`, E TEM DE SER. Lá a régua aceita a proposta quando
+   * `entrada + bem apontado na entrada` chega ao mínimo; se o campo aqui continuasse cobrando o
+   * piso cheio, a tela acusaria "Abaixo do mínimo de 10%" em vermelho sobre uma proposta que o
+   * servidor grava sem reclamar — a tela desmentindo a rota na cara de quem está vendendo, com o
+   * botão "usar o mínimo" ao lado oferecendo pôr em espécie um dinheiro que a régua não pede.
+   *
+   * ⚠️ E É SÓ O `entraComo: "entrada"` QUE ABATE O PISO. O "abatimento" reduz o saldo igual, mas o
+   * piso existe para garantir dinheiro do ATO, e um carro apontado como abatimento é justamente o
+   * caso em que o comercial disse que ele NÃO cobre a entrada (Lucas, 22/09/2026: *"pode ser um ou
+   * outro, pode apontar na entrada ou somente no valor negociado"*).
+   *
+   * ⚠️ O PISO CHEIO (`minimoDaEntrada`) CONTINUA SENDO O DA RÉGUA, e é ele que responde de quem é
+   * a exigência logo abaixo (`pisoEmPercentual`): o bem não muda a política do empreendimento, ele
+   * só paga parte dela.
+   */
+  const minimoEmDinheiro = Math.max(0, minimoDaEntrada - bensNaEntrada);
   /**
    * A entrada montada à mão, conferida.
    *
@@ -882,6 +950,12 @@ export function SimuladorDeProposta({
     () =>
       parcelaDeReferencia > 0
         ? composicoesQueFecham({
+            // ⚠️ A BUSCA POR PARCELA TAMBÉM CONTA O BEM, senão a MESMA TELA mostra dois
+            // financiados: o cartão da composição recomendada sai desta varredura e o rodapé "O
+            // que vai sair" sai de `montarCronograma`, que já desconta o carro. Num lote de
+            // R$ 200.000 com permuta de R$ 80.000 um diria R$ 195.000 e o outro R$ 115.000, lado a
+            // lado, e o PDF sairia com o segundo.
+            bensEPermutas: bensDaNegociacao,
             parcelaAlvo: parcelaDeReferencia,
             planos: planosDaConta,
             entradaMinimaPercentual,
@@ -896,6 +970,7 @@ export function SimuladorDeProposta({
           })
         : [],
     [
+      bensDaNegociacao,
       cockpit.entrada,
       cockpit.valor,
       descontoDoAtivo,
@@ -1048,6 +1123,11 @@ export function SimuladorDeProposta({
             ajuste: principal.ajuste.valor !== 0 ? principal.ajuste : null,
             anuaisQuantidade: principal.anuais.quantidade,
             anuaisValor: principal.anuais.valor,
+            // ⚠️ LISTA VAZIA SOBE COMO `null`, e não como `[]`. Proposta sem permuta é a regra, e
+            // um array vazio em toda proposta gravaria `[]` no jsonb de milhares de vendas que não
+            // têm bem nenhum — e faria `bensEPermutas != null` deixar de significar "tem permuta"
+            // para quem ler a coluna depois.
+            bensEPermutas: bensDaNegociacao?.length ? bensDaNegociacao : null,
             descontoDoPlanoPercentual: principal.descontoDoPlano,
             diaDeVencimento,
             // ⚠️ QUANDO HÁ MONTAGEM, A ENTRADA É A SOMA DELA — inclusive quando passa do
@@ -1071,6 +1151,16 @@ export function SimuladorDeProposta({
     );
   }, [
     aoMudarCondicoes,
+    // ⚠️ A DOS BENS ENTROU EM 23/09/2026, E O QUE ELA SEGURA FOI MEDIDO, não suposto. Tirando SÓ
+    // esta linha, os 10 testes de `SimuladorDeProposta.permuta.comportamento` continuam passando:
+    // `principal` muda de identidade quando `montada` e `composicoes` refazem a conta com o bem, e
+    // o efeito roda por ela. Tirando as três de uma vez (esta e as de `montada`/`composicoes`),
+    // caem 6 dos 10 — e o modo como caem é o defeito que a casa já teve duas vezes: o bem aparece
+    // na tela, o cartão não se mexe e o pedido sobe SEM a lista, em silêncio. Ela fica porque a
+    // garantia não pode depender de outro memo continuar recalculando: no dia em que alguém
+    // memoizar `principal` por valor, ou um campo de bem deixar de mexer na conta (uma nota, um
+    // documento do carro), o efeito para de rodar e ninguém percebe.
+    bensDaNegociacao,
     cockpit.entradaVezes,
     // ⚠️ AS DUAS ENTRARAM EM 13/09/2026 E SÃO OBRIGATÓRIAS. Sem `datasDaEntrada`, mudar a data de
     // uma parcela da entrada não avisava a modal e a data não chegava à proposta; sem
@@ -1125,6 +1215,37 @@ export function SimuladorDeProposta({
     setPlanoAtivo(c.plano);
     setComando("condicoes");
     setEntradaEhTeto(false);
+  }
+
+  /**
+   * Mais um bem na negociação.
+   *
+   * ⚠️ NASCE COMO "ABATIMENTO", E É DE PROPÓSITO O LADO QUE NÃO AFROUXA A RÉGUA. Os dois destinos
+   * são escolha por item (Lucas, 22/09/2026: *"pode ser um ou outro"*), e algum tem de ser o
+   * padrão. Nascendo "entrada", todo carro digitado às pressas passaria a CUMPRIR a entrada mínima
+   * sem ninguém ter decidido isso: o piso de 10% existe para garantir dinheiro no ato, e ele
+   * desapareceria em silêncio. Nascendo "abatimento", o esquecimento aparece na hora, em vermelho,
+   * no campo da entrada, e um clique conserta.
+   */
+  function acrescentarBem() {
+    setBens((atual) =>
+      atual.length >= TETO_DE_BENS_NA_PROPOSTA
+        ? atual
+        : [
+            ...atual,
+            { descricao: "", entraComo: "abatimento", tipo: "bem", valor: 0 },
+          ],
+    );
+  }
+
+  function mudarBem(posicao: number, mudanca: Partial<BemOuPermuta>) {
+    setBens((atual) =>
+      atual.map((bem, i) => (i === posicao ? { ...bem, ...mudanca } : bem)),
+    );
+  }
+
+  function removerBem(posicao: number) {
+    setBens((atual) => atual.filter((_, i) => i !== posicao));
   }
 
   return (
@@ -1226,7 +1347,11 @@ export function SimuladorDeProposta({
               setEntradaEhTeto(true);
               if (comando !== "parcela") setComando("condicoes");
             }}
-            minimo={minimoDaEntrada}
+            cobertoPorBem={bensNaEntrada}
+            // ⚠️ O PISO QUE O CAMPO COBRA É O QUE FALTA EM DINHEIRO, e não o piso da política. Ver
+            // `minimoEmDinheiro`: é a mesma conta que `conferirProposta` faz para aceitar a
+            // proposta, e a tela e a rota têm de recusar exatamente as mesmas condições.
+            minimo={minimoEmDinheiro}
             minimoEmPercentual={pisoEmPercentual}
             valor={cockpit.entrada}
             valorDoLote={cockpit.valor}
@@ -1459,6 +1584,188 @@ export function SimuladorDeProposta({
             </div>
           ) : null}
         </Bloco>
+
+        {/* BENS E PERMUTAS — o carro, o lote, o apartamento que o cliente entrega na aquisição.
+
+            Lucas (22/09/2026), perguntado como o bem entra: *"Abate, como uma entrada"*; quantos
+            cabem: *"Vários"*; e se conta para a entrada mínima: *"pode ser um ou outro, pode
+            apontar na entrada ou somente no valor negociado"*. A conta, a régua, a rota, o PDF e o
+            contrato já sabiam disso desde a 0187 — só faltava ONDE DIGITAR, e por isso nenhuma
+            proposta do Panteon tinha nascido com permuta dentro.
+
+            ⚠️ DEPOIS DA ENTRADA, E NÃO NO FIM DA COLUNA. O bem é a outra metade do que o cliente
+            põe no ato: a linha de baixo do campo Entrada passa a dizer quanto do piso ele já cobre,
+            e as duas coisas têm de ser lidas juntas. No fim da coluna, embaixo do prazo, o campo
+            responderia "o bem cobre R$ 80.000 do mínimo" a três blocos de distância de onde o
+            número aparece.
+
+            ⚠️ E NÃO EXISTE NO ESPELHO PÚBLICO (`ehSimulacao`). Este mesmo componente é montado no
+            link sem login que o corretor manda para o cliente: permuta é negociação, não vitrine.
+            Com o campo lá, qualquer visitante inventa um bem de R$ 200.000, zera o saldo e imprime
+            o PDF. É a mesma trava do bloco de cobrança e da edição de juros, logo abaixo.
+
+            ⚠️ MAS A TRAVA DE VERDADE ESTÁ NA CONTA (`bensDaNegociacao`), e não neste `if`. Esconder
+            o campo só resolve enquanto ninguém passar uma lista inicial por prop. */}
+        {!ehSimulacao ? (
+          <Bloco titulo="Bens e permutas">
+            {bens.length > 0 ? (
+              <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
+                {bens.map((bem, i) => (
+                  <div
+                    // ⚠️ A CHAVE É A POSIÇÃO, e aqui ela é a identidade certa: o item não tem id
+                    // até a proposta ser gravada, e duas permutas podem ser idênticas em tipo,
+                    // valor e descrição. Remover um item reordena as chaves, e é o que se quer: o
+                    // campo de texto da linha 2 passa a mostrar o que a linha 2 tem agora.
+                    key={i}
+                    style={{
+                      background: T.soft,
+                      border: `1px solid ${T.border}`,
+                      borderRadius: 10,
+                      display: "grid",
+                      gap: 6,
+                      padding: 8,
+                    }}
+                  >
+                    <div style={{ display: "flex", gap: 6, minWidth: 0 }}>
+                      <select
+                        aria-label={`Tipo do item ${i + 1}`}
+                        onChange={(e) =>
+                          mudarBem(i, {
+                            tipo: e.target.value as BemOuPermuta["tipo"],
+                          })
+                        }
+                        style={{ ...campo, flex: "0 0 96px", width: 96 }}
+                        value={bem.tipo}
+                      >
+                        <option value="bem">Bem</option>
+                        <option value="permuta">Permuta</option>
+                      </select>
+                      <span style={{ flex: "1 1 0", minWidth: 0 }}>
+                        <CampoEmReais
+                          aoMudar={(v) => {
+                            mudarBem(i, { valor: v });
+                            setComando("condicoes");
+                          }}
+                          rotulo=""
+                          rotuloAcessivel={`Valor do item ${i + 1}`}
+                          valor={bem.valor}
+                        />
+                      </span>
+                      <button
+                        aria-label={`Remover o item ${i + 1}`}
+                        onClick={() => {
+                          removerBem(i);
+                          setComando("condicoes");
+                        }}
+                        style={{
+                          background: "transparent",
+                          border: `1px solid ${T.border}`,
+                          borderRadius: 8,
+                          color: T.muted,
+                          cursor: "pointer",
+                          flex: "0 0 auto",
+                          font: "inherit",
+                          fontSize: 13,
+                          fontWeight: 700,
+                          lineHeight: 1,
+                          padding: "0 9px",
+                        }}
+                        type="button"
+                      >
+                        ×
+                      </button>
+                    </div>
+
+                    {/* ⚠️ A DESCRIÇÃO É O QUE VAI PARA O CONTRATO, e o teto é o mesmo da rota
+                        (`TAMANHO_MAXIMO_DA_DESCRICAO`): lá ele RECUSA em vez de cortar, então
+                        cortar aqui é o que evita digitar 400 caracteres para receber 422. */}
+                    <input
+                      aria-label={`Descrição do item ${i + 1}`}
+                      maxLength={TAMANHO_MAXIMO_DA_DESCRICAO}
+                      onChange={(e) => mudarBem(i, { descricao: e.target.value })}
+                      placeholder="Ford Ka 2019 placa ABC1D23"
+                      style={{ ...campo, fontSize: 12.5, fontWeight: 500 }}
+                      value={bem.descricao}
+                    />
+
+                    {/* ONDE O VALOR ENTRA. Os dois abatem o saldo igual; o que muda é se ele
+                        CUMPRE a entrada mínima. */}
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {(
+                        [
+                          {
+                            aria: `O item ${i + 1} entra na entrada`,
+                            modo: "entrada" as const,
+                            texto: "Na entrada",
+                          },
+                          {
+                            aria: `O item ${i + 1} só abate o valor negociado`,
+                            modo: "abatimento" as const,
+                            texto: "Só no valor negociado",
+                          },
+                        ] as const
+                      ).map((opcao) => {
+                        const marcado = bem.entraComo === opcao.modo;
+                        return (
+                          <button
+                            aria-label={opcao.aria}
+                            aria-pressed={marcado}
+                            key={opcao.modo}
+                            onClick={() => {
+                              mudarBem(i, { entraComo: opcao.modo });
+                              setComando("condicoes");
+                            }}
+                            style={{
+                              background: marcado ? T.card : "transparent",
+                              border: `1px solid ${marcado ? T.gold : T.border}`,
+                              borderRadius: 999,
+                              color: marcado ? T.text : T.sub,
+                              cursor: "pointer",
+                              font: "inherit",
+                              fontSize: 11,
+                              fontWeight: 650,
+                              padding: "4px 11px",
+                            }}
+                            type="button"
+                          >
+                            {opcao.texto}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
+              {/* ⚠️ O BOTÃO SOME NO DÉCIMO, e o teto é o da rota. Sem isto, o jeito de descobrir o
+                  limite era digitar o décimo primeiro item e receber 422 com a lista pronta. */}
+              {bens.length < TETO_DE_BENS_NA_PROPOSTA ? (
+                <button
+                  onClick={acrescentarBem}
+                  style={{ ...botaoDiscreto, padding: "6px 12px" }}
+                  type="button"
+                >
+                  Acrescentar bem ou permuta
+                </button>
+              ) : (
+                <span style={{ color: T.muted, fontSize: 11 }}>
+                  Máximo de {TETO_DE_BENS_NA_PROPOSTA} itens por proposta.
+                </span>
+              )}
+              {bens.length > 0 ? (
+                <span
+                  style={{ color: T.muted, fontSize: 11.5, marginLeft: "auto" }}
+                >
+                  {bensNaEntrada > 0
+                    ? `${dinheiro(bensNaEntrada)} na entrada`
+                    : "só abatem o valor"}
+                </span>
+              ) : null}
+            </div>
+          </Bloco>
+        ) : null}
 
         {/* ⚠️ SÓ NA PROPOSTA, e por isso preso à prop. Numa simulação livre não existe primeira
             parcela: o coordenador está olhando quanto o cliente paga por mês, e um campo de data
@@ -2269,12 +2576,22 @@ function CampoEmReais({
   destaque,
   direita,
   rotulo,
+  rotuloAcessivel,
   valor,
 }: {
   aoMudar: (n: number) => void;
   destaque?: boolean;
   direita?: string;
   rotulo: string;
+  /**
+   * O nome do campo para quem não vê o desenho, quando `rotulo` está vazio.
+   *
+   * ⚠️ EXISTE PORQUE HÁ CAMPO SEM RÓTULO VISÍVEL, e "sem rótulo visível" não pode virar "sem
+   * rótulo". Na linha de um bem, o valor divide a linha com o tipo e o botão de remover, e um
+   * rótulo escrito por cima de cada um empilharia três linhas de cinza por item. O leitor de tela
+   * (e o teste) continuam achando o campo pelo nome.
+   */
+  rotuloAcessivel?: string;
   valor: number;
 }) {
   const [texto, setTexto] = useState(valorParaOCampo(valor));
@@ -2323,6 +2640,7 @@ function CampoEmReais({
           R$
         </span>
         <input
+          aria-label={rotuloAcessivel}
           inputMode="decimal"
           onBlur={() => setTexto(valor > 0 ? valorParaOCampo(valor) : "")}
           onChange={(e) => {
@@ -2356,12 +2674,22 @@ function CampoEmReais({
  */
 function CampoDeEntrada({
   aoMudar,
+  cobertoPorBem = 0,
   minimo,
   minimoEmPercentual,
   valor,
   valorDoLote,
 }: {
   aoMudar: (n: number) => void;
+  /**
+   * Quanto do piso já está pago por bem apontado NA ENTRADA. Zero = o caso de sempre.
+   *
+   * ⚠️ O NÚMERO PRECISA SER DITO, e não só descontado. Sem esta linha, o campo passaria de
+   * "Mínimo de 10%: R$ 20.000" para "Mínimo de 10%: R$ 0" no instante em que o bem é digitado, e
+   * um mínimo que vira zero sozinho se lê como defeito. Dizer de onde veio é o que transforma o
+   * mesmo número em notícia: o carro já cumpre o piso.
+   */
+  cobertoPorBem?: number;
   minimo: number;
   /** O mesmo piso, em %, para a tela escrever "minimo de 8%" em vez de repetir a constante. */
   minimoEmPercentual: number;
@@ -2434,11 +2762,24 @@ function CampoDeEntrada({
         }}
       >
         <span style={{ color: abaixo ? T.danger : T.muted, fontSize: 10.5 }}>
+          {/* ⚠️ `minimo` AQUI É O RESÍDUO EM DINHEIRO, NÃO O PISO, desde que o bem passou a cobrir
+              parte dele. Chamá-lo de "mínimo de 10%" fazia a linha desmentir a régua: num lote de
+              R$ 200.000 com bem de R$ 15.000 na entrada, ela escrevia "Abaixo do mínimo de 10%
+              (R$ 5.000)" — e R$ 5.000 é 2,5% do lote —, e escrevia "Falta R$ 5.000" logo depois de
+              o botão "usar o mínimo" ter posto exatamente esses R$ 5.000. Medido na revisão de
+              23/09/2026. Cada frase abaixo diz o que o número É: com bem, fala em DINHEIRO que
+              falta; sem bem, fala no piso. */}
           {abaixo
-            ? `Abaixo do mínimo de ${minimoEmPercentual}% (${dinheiro(minimo)})`
-            : valor > 0
-              ? `${pct.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% do valor · mínimo ${dinheiro(minimo)}`
-              : `Mínimo de ${minimoEmPercentual}%: ${dinheiro(minimo)}`}
+            ? cobertoPorBem > 0
+              ? `Faltam ${dinheiro(minimo - valor)} em dinheiro: o bem cobre ${dinheiro(cobertoPorBem)} do mínimo de ${minimoEmPercentual}%`
+              : `Abaixo do mínimo de ${minimoEmPercentual}% (${dinheiro(minimo)})`
+            : cobertoPorBem > 0 && minimo <= 0
+              ? `O bem apontado na entrada já cumpre o mínimo de ${minimoEmPercentual}%`
+              : cobertoPorBem > 0
+                ? `Com o bem de ${dinheiro(cobertoPorBem)}, o mínimo de ${minimoEmPercentual}% está cumprido`
+                : valor > 0
+                  ? `${pct.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% do valor · mínimo ${dinheiro(minimo)}`
+                  : `Mínimo de ${minimoEmPercentual}%: ${dinheiro(minimo)}`}
         </span>
         {abaixo ? (
           <button

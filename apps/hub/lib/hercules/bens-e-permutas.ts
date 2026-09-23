@@ -16,6 +16,26 @@
 // — foi exatamente o que aconteceu com os reforços anuais (o cartão dizia R$ 180.000 e o papel do
 // cliente, R$ 166.111,11).
 
+/**
+ * Quantos bens cabem numa proposta.
+ *
+ * ⚠️ O TETO EXISTE PORQUE ESTA LISTA VAI PARA O CONTRATO, E ELE É UM PAPEL. Lucas disse *"Vários"*
+ * quando perguntado quantos cabem, e vários não é ilimitado: cada item vira uma linha do
+ * Quadro-Resumo e uma oração da minuta, e um POST com mil itens montaria um PDF que ninguém
+ * assina, dentro dos 60s de `maxDuration`. Dez cobre com folga o caso real (um carro e um lote) e
+ * ainda deixa o negócio de quem traz uma carteira de imóveis passar. Se um dia faltar, o número
+ * sobe aqui — mas o limite fica EXPLÍCITO, e não implícito no que o gateway aguenta.
+ *
+ * ⚠️ E ELE MORA AQUI, E NÃO NA ROTA, DESDE 23/09/2026. A TELA precisa do mesmo número para apagar
+ * o botão "Acrescentar" no décimo item: enquanto o teto foi só do servidor, o único jeito de
+ * descobri-lo era acrescentar o décimo primeiro, clicar em Gerar e receber um 422 com uma lista já
+ * digitada para desmanchar à mão. Régua de recusa é uma só, pelo mesmo motivo de `valeDinheiro`.
+ */
+export const TETO_DE_BENS_NA_PROPOSTA = 10;
+
+/** Quanto texto cabe na descrição de um bem. O bastante para "lote 12 da quadra 4, matrícula X". */
+export const TAMANHO_MAXIMO_DA_DESCRICAO = 300;
+
 /** Um bem ou uma permuta recebido na aquisição da unidade. */
 export type BemOuPermuta = {
   /** O que é o bem, em texto livre: "Ford Ka 2019 placa ABC1D23", "lote 12 da quadra 4 em Anápolis". */

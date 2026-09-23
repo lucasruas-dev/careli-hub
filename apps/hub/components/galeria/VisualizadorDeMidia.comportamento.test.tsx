@@ -344,4 +344,31 @@ describe("VisualizadorDeMidia", () => {
     expect(contador()).toBe("2 de 3");
     expect(document.querySelector("img.vdm-midia")).not.toBeNull();
   });
+
+  // ── A TELA CHEIA DA PÁGINA NÃO É NOSSA (23/09/2026) ─────────────────────────────────────────
+  //
+  // ⚠️ ACHADO POR REVISÃO ADVERSARIAL, e só existe numa combinação nova: o espelho público é a
+  // única tela da casa com um botão de tela cheia DA PÁGINA ao lado de uma galeria. A limpeza do
+  // modal saía da tela cheia sempre que ALGUMA estava ativa, sem perguntar de quem era: fechar uma
+  // foto derrubava a página inteira, com a barra do navegador voltando no meio da apresentação.
+  it("fechar a foto NÃO derruba a tela cheia que é da página", () => {
+    const sair = vi.fn(() => Promise.resolve());
+    const outro = document.createElement("div");
+    document.body.append(outro);
+    // A página está em tela cheia, e quem a pediu não foi o visualizador.
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, value: outro });
+    Object.defineProperty(document, "exitFullscreen", { configurable: true, value: sair });
+
+    montar(<Harness inicial={0} />);
+    // Desmontar é o que dispara a limpeza do efeito, que é onde o defeito morava.
+    act(() => {
+      raiz.render(null);
+    });
+
+    expect(sair).not.toHaveBeenCalled();
+
+    delete (document as unknown as { fullscreenElement?: unknown }).fullscreenElement;
+    delete (document as unknown as { exitFullscreen?: unknown }).exitFullscreen;
+    outro.remove();
+  });
 });

@@ -36,6 +36,48 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-23-o-bem-ganha-tela-e-o-espelho-ganha-arquivos",
+    deployedAt: "2026-09-23T08:30:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**Agora dá para registrar o bem ou a permuta na proposta.** O bloco fica logo abaixo da Entrada, cabem quantos itens a negociação tiver, e cada um escolhe se aponta na entrada, cumprindo a entrada mínima, ou se só abate o valor negociado. O cálculo já existia; faltava onde digitar.",
+              "**O bem entregue passou a pedir justificativa**, como o desconto próprio já pedia. Um desconto de 5% se confere contra a tabela; o valor de um carro é um número que alguém disse, e ele abate o saldo como se fosse dinheiro no ato.",
+              "**A lista de outras composições saiu da tela.** O cartão da simulação montada continua, com a composição recomendada.",
+            ],
+            screen: "Venda · Simulador e proposta",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O link que o corretor manda ganhou a aba Arquivos.** O book, o vídeo e as 45 cenas do Garden agora abrem no mesmo link do estoque, em tela cheia, para servir de apresentação na frente do cliente.",
+              "**Fechar uma foto parou de derrubar a tela cheia da página.** Quem estava apresentando em tela cheia e abria uma imagem via a barra do navegador voltar ao fechar.",
+            ],
+            screen: "Espelho de vendas",
+          },
+        ],
+      },
+    ],
+    rollback: "2dbf11be",
+    technical: {
+      done:
+        "TELA DA PERMUTA: o bloco entrou em `SimuladorDeProposta.tsx` entre Entrada e Cobranca, e a lista sobe por tres pontos (deps de `montada` e `composicoes`, mais a lista explicita do efeito que chama `aoMudarCondicoes`). ⚠️ MEDIDO REVERTENDO, um a um: tirando so as deps dos memos, 4 testes caem e o cartao nao anda; tirando as tres, 6 caem e o pedido sobe SEM a lista, que e o defeito silencioso de sempre (o cliente entrega o carro e recebe boleto do valor cheio). O item NASCE como `abatimento`, o lado que nao afrouxa a regua: nascendo `entrada`, todo bem digitado as pressas cumpriria o piso sem ninguem decidir isso. `TETO_DE_BENS_NA_PROPOSTA` e `TAMANHO_MAXIMO_DA_DESCRICAO` mudaram da rota para `lib/hercules/bens-e-permutas.ts`, porque a tela precisa dos mesmos numeros. ABA ARQUIVOS NO ESPELHO: `GET /api/publico/espelho/arquivo?e=<token>&a=<id>` responde 302 para URL assinada de 1h, e com `m=1` entrega a miniatura pelos bytes da funcao. ⚠️ O PARAMETRO E O ID, E O CAMINHO NASCE NO SERVIDOR: caminho forjado nem chega ao banco. ⚠️ E O ORIGINAL SAI POR 302 DE PROPOSITO: o book tem 212.799.580 bytes, o corpo de uma funcao da Vercel corta em 4,5 MB, e video no iPhone pede `Range`/206, que um proxy nosso nao entrega. Peso medido da primeira carga: 4.970 bytes de lista no HTML que ja vem, mais no maximo 1.311.659 bytes de miniaturas (`lazy`), contra 518.136.930 bytes de acervo -- 0,25%. ⚠️ DOIS DEFEITOS PEGOS POR REVISAO ADVERSARIAL: (1) a limpeza do visualizador saia da tela cheia sempre que ALGUMA estava ativa, sem perguntar de quem era, e o espelho e a unica tela da casa com botao de tela cheia DA PAGINA ao lado de uma galeria -- fechar uma foto derrubava a apresentacao inteira; agora `telaCheiaEDeste(raiz.current)` decide, e o teste falha sem a correcao com \"expected spy to not be called, but been called 1 times\". (2) a linha que explica o piso mentia quando o bem cobria PARTE dele: num lote de R$ 200.000 com bem de R$ 15.000, escrevia \"Abaixo do minimo de 10% (R$ 5.000)\" -- e R$ 5.000 e 2,5% do lote -- e escrevia \"Falta R$ 5.000\" logo depois de o botao \"usar o minimo\" ter posto esses R$ 5.000; `minimo` tinha deixado de ser o piso e virado residuo, e as frases continuaram falando dele como piso. 526 arquivos, 8.126 testes, typecheck limpo.",
+      motivation:
+        "Lucas, 22/09/2026, olhando o simulador no ar: \"eu não vi a parte da permuta, bem\" -- o calculo tinha subido no dia anterior e a tela nao. E sobre o espelho: \"kd a aba arquivos nesse link?\", apontando `c2x.app.br/e/garden-ksewinpw`. Mais \"pode tirar isso aqui\" sobre a lista de outras composicoes, \"De todo lugar\".",
+    },
+    title: "O bem ganha tela, e o espelho ganha os arquivos",
+    type: "novidade",
+    version: "1.362.0",
+  },
+  {
     buildTag: "2026-09-22-o-bem-entra-na-conta-e-a-tv-liga",
     deployedAt: "2026-09-22T21:30:00-03:00",
     internal: true,

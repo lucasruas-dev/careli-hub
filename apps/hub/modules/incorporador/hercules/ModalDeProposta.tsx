@@ -9,6 +9,9 @@ import {
 import { cpfValido, formatarDocumento, soDigitos } from "@/lib/apolo/documento";
 import type { PlanoComercial } from "@/lib/apolo/planos-comerciais";
 import { precoNoPlano } from "@/lib/hercules/ajuste-de-preco";
+// ⚠️ A MESMA RÉGUA DE "É DINHEIRO?" QUE A CONTA E O CONTRATO USAM. Escrever `bem.valor > 0` aqui
+// seria a quarta cópia da regra, e a primeira a aceitar `NaN` como bem de verdade.
+import { valeDinheiro } from "@/lib/hercules/bens-e-permutas";
 import { montarCronograma } from "@/lib/hercules/cronograma";
 import type { PlanoDaVenda } from "@/lib/hercules/fluxo-de-venda";
 import {
@@ -315,6 +318,13 @@ export function ModalDeProposta({
   const pedido: PedidoDeProposta = {
     anuaisQuantidade: condicoes?.anuaisQuantidade ?? 0,
     anuaisValor: condicoes?.anuaisValor ?? 0,
+    // ⚠️ SEM ELA AQUI, A RÉGUA DA TELA COBRA O PISO CHEIO. `conferirProposta` aceita a proposta
+    // quando `entrada + bem apontado na entrada` chega ao mínimo; alimentando só o servidor, o
+    // botão "Gerar proposta" ficaria apagado com a frase "a entrada mínima é R$ 20.000" sobre uma
+    // proposta que a rota grava sem reclamar. É a mesma razão pela qual `entradaParcelas` e
+    // `planosDaTabela` entraram aqui: régua alimentada pela metade é a tela recusando o que o
+    // servidor aceita, e o coordenador sem saída.
+    bensEPermutas: condicoes?.bensEPermutas ?? null,
     compradores: compradores.map((c) => ({
       cpf: c.cpf,
       nome: c.nome,
@@ -389,7 +399,36 @@ export function ModalDeProposta({
    * capa da proposta e a taxa não.
    */
   const premissaAlterada = condicoes?.premissaAlterada ?? false;
-  const precisaDeNota = ehDesconto || premissaAlterada;
+  /**
+   * Entrou bem ou permuta na negociação?
+   *
+   * ⚠️ O GATILHO É DINHEIRO, E NÃO LINHA. `valeDinheiro` é a mesma régua que a conta e o contrato
+   * usam para decidir o que é item de verdade: uma linha recém-acrescentada, ainda sem valor, abre
+   * a caixa de nota antes de a pessoa ter digitado o que justificar. Ela reaparece assim que o
+   * valor entra, que é quando existe o que explicar.
+   */
+  const temBemOuPermuta = (condicoes?.bensEPermutas ?? []).some(valeDinheiro);
+  /**
+   * ⚠️ BEM ENTREGUE ENTRA NA EXIGÊNCIA DA NOTA, E ESTE É O PORQUÊ (decisão de 23/09/2026).
+   *
+   * Um desconto de 5% é auditável contra a tabela: o preço de tabela está no cadastro, a conta é
+   * de cabeça, e qualquer um confere seis meses depois. O valor de um bem não tem tabela nenhuma
+   * por trás. "Ford Ka 2019 por R$ 80.000" é um número que uma pessoa disse, e o sistema não tem
+   * como conferir contra nada — e ele abate o saldo pelo valor cheio, no ato, como se fosse
+   * dinheiro. Nos números do exemplo do Lucas o bem vale 40% do lote, oito vezes o desconto de 5%
+   * que a casa já exige justificar desde 13/09.
+   *
+   * ⚠️ E A NOTA É O ÚNICO LUGAR ONDE CABE QUEM AVALIOU. A lista que vai para o jsonb tem tipo,
+   * valor, descrição e destino — e nenhum campo para "avaliado pela FIPE, aprovado pelo Northon".
+   * Sem a caixa, essa informação não existe em lugar nenhum do sistema, e a pergunta aparece
+   * exatamente quando o carro precisar ser vendido pela metade do que foi aceito. Medido no legado
+   * em 13/09/2026: das 431 propostas com plano personalizado, 31 (7,2%) têm observação — quem não
+   * é obrigado, não escreve.
+   *
+   * ⚠️ O QUE ELA NÃO FAZ É BLOQUEAR NO SERVIDOR. Como as outras duas, é trava de TELA: a rota
+   * aceita proposta sem observação porque as 4.857 linhas importadas do C2X vieram sem ela.
+   */
+  const precisaDeNota = ehDesconto || premissaAlterada || temBemOuPermuta;
   const precisaDaNota = precisaDeNota && nota.trim().length === 0;
   const credenciado = portao?.credenciamento.credenciado === true;
   const podeMontar =
@@ -418,6 +457,11 @@ export function ModalDeProposta({
         cronograma: montarCronograma({
           anuaisQuantidade: condicoes.anuaisQuantidade,
           anuaisValor: condicoes.anuaisValor,
+          // ⚠️ O BEM ABATE O SALDO TAMBÉM AQUI. Este é o fluxo que o rodapé "O que vai sair"
+          // desenha, e ele é a MESMA função que a rota e o PDF chamam: sem a lista, o rodapé
+          // anunciaria 120 mensais do valor cheio embaixo de uma proposta que o servidor vai
+          // gravar com o carro descontado. Duas contas para a mesma venda, na mesma tela.
+          bensEPermutas: condicoes.bensEPermutas,
           diaDeVencimento: condicoes.diaDeVencimento,
           // ⚠️ AS DATAS ESCOLHIDAS ENTRAM AQUI TAMBÉM. Faltavam até 18/09/2026: a rota e o PDF
           // recebiam as datas, a tela não, e o rodapé mostrava um cronograma que o papel desmentia.
@@ -627,6 +671,12 @@ export function ModalDeProposta({
       ajusteValor: condicoesAgora.ajuste?.valor ?? null,
       anuaisQuantidade: condicoesAgora.anuaisQuantidade,
       anuaisValor: condicoesAgora.anuaisValor,
+      // ⚠️ A LISTA VAI COMO ESTÁ NA TELA, sem peneira. A rota confere item a item e devolve o
+      // `campo` com a POSIÇÃO do que estiver errado; filtrar aqui a linha incompleta faria o
+      // oposto do que este bloco existe para fazer, que é o bem chegar ao papel — ele sumiria do
+      // pedido e continuaria na tela, em silêncio. Ausente = campo nulo, e a rota trata nulo como
+      // "proposta sem permuta", que é o caso de quase toda venda.
+      bensEPermutas: condicoesAgora.bensEPermutas,
       compradores: compradores.map((c) => ({
         cpf: c.cpf,
         nome: c.nome,
@@ -653,8 +703,14 @@ export function ModalDeProposta({
       // ⚠️ O DESCONTO DO PLANO NÃO CONTA COMO AJUSTE AQUI (18/09/2026): sem caixa na tela, uma nota
       // escrita antes (quando havia desconto além do plano) não pode subir calada. Em plano sem
       // desconto, `ajusteProprio` é exatamente "tem ajuste", como antes.
+      //
+      // ⚠️ E O BEM ENTROU NA LISTA DE GATILHOS (23/09/2026). Ver `precisaDeNota`: o valor de um
+      // carro não tem tabela por trás, e esta coluna é o único lugar do sistema onde cabe quem o
+      // avaliou. Sem bem e sem ajuste, o campo continua subindo vazio, como sempre.
       observacao:
-        ajusteProprio || condicoesAgora.premissaAlterada ? nota.trim() : "",
+        ajusteProprio || condicoesAgora.premissaAlterada || temBemOuPermuta
+          ? nota.trim()
+          : "",
       entradaParcelas: condicoesAgora.entradaParcelas,
       entradaVezes: condicoesAgora.entradaVezes,
       parcelasMensais: condicoesAgora.parcelasMensais,
@@ -976,7 +1032,9 @@ export function ModalDeProposta({
                       ⚠️ E O DE/PARA VEM ESCRITO PELO SISTEMA, acima do campo. A nota do humano vale
                       muito mais acompanhada do número que ela explica: sem isso, daqui a seis meses
                       alguém lê "cliente pediu" sem saber de quanto para quanto. */}
-                  {ajusteProprio || premissaAlterada ? (
+                  {/* ⚠️ O BEM ABRE A CAIXA SOZINHO desde 23/09/2026, sem depender de desconto nem
+                      de premissa alterada: o porquê está em `precisaDeNota`. */}
+                  {ajusteProprio || premissaAlterada || temBemOuPermuta ? (
                     <div style={{ display: "grid", gap: 6 }}>
                       <label
                         htmlFor="nota-do-ajuste"
@@ -986,7 +1044,14 @@ export function ModalDeProposta({
                           ? "Por que o desconto?"
                           : premissaAlterada
                             ? "Por que a condição mudou?"
-                            : "Por que o valor subiu?"}
+                            : ajusteProprio
+                              ? "Por que o valor subiu?"
+                              : // ⚠️ A PERGUNTA DIZ O QUE SE ESPERA DA RESPOSTA. "Por que a
+                                // condição mudou?" numa proposta com permuta receberia "cliente
+                                // deu o carro" — que é o que a lista ao lado já diz. O que falta
+                                // na lista é a avaliação: quanto vale, por qual referência, com
+                                // o aval de quem.
+                                "Por que o bem entra na conta?"}
                         {precisaDeNota ? (
                           <span style={{ color: T.muted, fontWeight: 400 }}>
                             {" "}

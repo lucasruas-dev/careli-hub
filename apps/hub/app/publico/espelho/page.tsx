@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 
 import { abrirEspelho } from "@/lib/hercules/espelho/abrir-espelho";
+import { arquivosPublicosDoEspelho } from "@/lib/hercules/espelho/arquivos-publicos";
 import { estadoDoEspelho } from "@/lib/hercules/espelho/estado-do-espelho";
 import { pisoDeEntradaPublico, planosPublicos } from "@/lib/hercules/espelho/planos-publicos";
 import { EspelhoPublico } from "@/modules/publico/espelho/EspelhoPublico";
@@ -51,7 +52,7 @@ export default async function EspelhoPublicoRoute({
 
   try {
     const ids = [paiC2xId, ...filhosC2xIds].filter(Boolean) as string[];
-    const [estado, planos, entradaMinimaPercentual] = await Promise.all([
+    const [estado, planos, entradaMinimaPercentual, arquivos] = await Promise.all([
       estadoDoEspelho(client, {
         enterpriseIdDoPai: paiC2xId,
         enterpriseIdsDosFilhos: filhosC2xIds,
@@ -59,10 +60,14 @@ export default async function EspelhoPublicoRoute({
       planosPublicos(client, ids),
       // O piso do empreendimento (8% no Garden): o mesmo que a Mesa de Venda entrega ao simulador.
       pisoDeEntradaPublico(client, ids),
+      // A aba Arquivos: id, nome, ordem e tipo, e nada mais. O endereço longo tem a MESMA aba que o
+      // link curto — ver `arquivos-nas-duas-paginas.varredura.test.ts`.
+      arquivosPublicosDoEspelho(client, ids),
     ]);
 
     return (
       <EspelhoPublico
+        arquivos={arquivos}
         inicial={{
           ...estado,
           entradaMinimaPercentual,

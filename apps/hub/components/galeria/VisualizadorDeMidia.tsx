@@ -105,6 +105,21 @@ function telaCheiaAtiva(): boolean {
   return Boolean(doc.fullscreenElement ?? doc.webkitFullscreenElement);
 }
 
+/**
+ * A tela cheia em curso é a DESTE elemento?
+ *
+ * ⚠️ EXISTE PORQUE A TELA CHEIA PODE NÃO SER NOSSA, e no espelho público ela quase nunca é: aquela
+ * tela tem um botão de tela cheia DA PÁGINA (`documentElement.requestFullscreen()`) ao lado da
+ * galeria, combinação que não existe em nenhuma outra tela da casa. Sem esta pergunta, fechar uma
+ * foto derrubava a página inteira da tela cheia, com a barra do navegador voltando no meio de uma
+ * apresentação para o cliente (medido em 23/09/2026, na revisão da aba Arquivos do espelho).
+ */
+function telaCheiaEDeste(elemento: null | Element): boolean {
+  if (!elemento) return false;
+  const doc = document as DocumentoComWebkit;
+  return (doc.fullscreenElement ?? doc.webkitFullscreenElement) === elemento;
+}
+
 function sairDaTelaCheia(): void {
   const doc = document as DocumentoComWebkit;
   if (doc.fullscreenElement) {
@@ -164,7 +179,9 @@ function Modal({
     return () => {
       if (relogioDaTelaCheia.current !== null) window.clearTimeout(relogioDaTelaCheia.current);
       document.body.style.overflow = overflowAntes;
-      if (telaCheiaAtiva()) sairDaTelaCheia();
+      // ⚠️ SÓ SAI DA TELA CHEIA SE ELA FOR NOSSA: a da página é de quem a pediu, e desfazê-la
+      // aqui derrubaria a apresentação inteira ao fechar uma foto.
+      if (telaCheiaEDeste(raiz.current)) sairDaTelaCheia();
       // Só devolve o foco se o elemento ainda está na página (a miniatura pode ter sido removida).
       if (antes && document.contains(antes)) antes.focus();
     };
@@ -247,7 +264,10 @@ function Modal({
    * ninguém pediu nada. Sem tela cheia de verdade, fica o popup normal.
    */
   const alternarTelaCheia = useCallback((automatica = false) => {
-    if (telaCheiaAtiva()) {
+    // ⚠️ E AQUI TAMBÉM A PERGUNTA É "É NOSSA?": com a PÁGINA em tela cheia, o botão do visualizador
+    // caía neste ramo e derrubava a página, em vez de expandir a foto. Quem está em tela cheia
+    // alheia segue para o pedido normal logo abaixo.
+    if (telaCheiaEDeste(raiz.current)) {
       sairDaTelaCheia();
       return;
     }

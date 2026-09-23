@@ -31,7 +31,11 @@ import {
 // propósito (é a conta que a régua, o cronograma e a tela compartilham), então esta rota pode
 // depender dele sem ciclo. Uma segunda definição do mesmo objeto é como a rota passaria a aceitar
 // um `entraComo` que a régua não conhece, sem o typecheck dizer nada.
-import type { BemOuPermuta } from "@/lib/hercules/bens-e-permutas";
+import {
+  type BemOuPermuta,
+  TAMANHO_MAXIMO_DA_DESCRICAO,
+  TETO_DE_BENS_NA_PROPOSTA,
+} from "@/lib/hercules/bens-e-permutas";
 import {
   carregarCadastroDeEmpreendimentos,
   type LinhaDoCadastro,
@@ -196,20 +200,11 @@ function telefoneEscrito(valor: unknown): null | string {
   return t || null;
 }
 
-/**
- * Quantos bens cabem numa proposta.
- *
- * ⚠️ O TETO EXISTE PORQUE ESTA LISTA VAI PARA O CONTRATO, E ELE É UM PAPEL. Lucas disse *"Vários"*
- * quando perguntado quantos cabem, e vários não é ilimitado: cada item vira uma linha do
- * Quadro-Resumo e uma oração da minuta, e um POST com mil itens montaria um PDF que ninguém
- * assina, dentro dos 60s de `maxDuration`. Dez cobre com folga o caso real (um carro e um lote) e
- * ainda deixa o negócio de quem traz uma carteira de imóveis passar. Se um dia faltar, o número
- * sobe aqui — mas o limite fica EXPLÍCITO, e não implícito no que o gateway aguenta.
- */
-const TETO_DE_BENS_NA_PROPOSTA = 10;
-
-/** Quanto texto cabe na descrição de um bem. O bastante para "lote 12 da quadra 4, matrícula X". */
-const TAMANHO_MAXIMO_DA_DESCRICAO = 300;
+// ⚠️ O TETO E O TAMANHO DA DESCRIÇÃO MUDARAM DE CASA (23/09/2026): vivem em
+// `lib/hercules/bens-e-permutas.ts`, porque a TELA passou a precisar deles para apagar o botão
+// "Acrescentar" no décimo item e para cortar a digitação na descrição. Os números são os mesmos,
+// e a régua continua sendo esta rota — o que a tela faz é não deixar a pessoa montar um pedido que
+// ela já sabe que vai voltar 422.
 
 const TIPOS_DE_BEM = ["bem", "permuta"] as const;
 const ENTRADAS_DO_BEM = ["abatimento", "entrada"] as const;
