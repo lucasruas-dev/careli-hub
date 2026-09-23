@@ -33,8 +33,7 @@ import {
 // um `entraComo` que a régua não conhece, sem o typecheck dizer nada.
 import {
   type BemOuPermuta,
-  TAMANHO_MAXIMO_DA_DESCRICAO,
-  TETO_DE_BENS_NA_PROPOSTA,
+  conferirBensEPermutasDoCorpo,
 } from "@/lib/hercules/bens-e-permutas";
 import {
   carregarCadastroDeEmpreendimentos,
@@ -200,133 +199,11 @@ function telefoneEscrito(valor: unknown): null | string {
   return t || null;
 }
 
-// ⚠️ O TETO E O TAMANHO DA DESCRIÇÃO MUDARAM DE CASA (23/09/2026): vivem em
-// `lib/hercules/bens-e-permutas.ts`, porque a TELA passou a precisar deles para apagar o botão
-// "Acrescentar" no décimo item e para cortar a digitação na descrição. Os números são os mesmos,
-// e a régua continua sendo esta rota — o que a tela faz é não deixar a pessoa montar um pedido que
-// ela já sabe que vai voltar 422.
-
-const TIPOS_DE_BEM = ["bem", "permuta"] as const;
-const ENTRADAS_DO_BEM = ["abatimento", "entrada"] as const;
-
-/**
- * A lista de bens e permutas que veio no corpo, conferida item a item.
- *
- * ⚠️ AUSENTE É LISTA VAZIA, E NÃO ERRO. Nenhum cliente de hoje manda este campo — nem a tela em
- * cache do navegador, nem a chamada antiga. Recusá-los pararia toda venda por causa de um campo
- * que eles não sabem existir, que é a mesma regra que o prazo da proposta já segue.
- *
- * ⚠️ MAS VALOR VAZIO É ERRO, NUNCA ZERO. `Number("")` é 0, e nesta casa isso já transformou
- * cobrança sem valor em R$ 0,00 emitido. Um campo que o coordenador não preencheu não pode virar
- * "permuta de zero reais" gravada e impressa no contrato como se tivesse sido combinada — por isso
- * o valor só passa vindo de número ou de texto que vira número FINITO e MAIOR QUE ZERO, e `null`,
- * `undefined`, `""`, `{}` e `[]` caem todos no mesmo 400.
- *
- * ⚠️ E O QUE VEM A MAIS NO ITEM É DESCARTADO. A lista é gravada em jsonb, que não tem schema para
- * barrar nada depois, e é dela que a Têmis vai imprimir o contrato: um `id` de rascunho ou um
- * `valorFipe` de outra aba que a tela mandasse por engano chegaria à minuta sem ninguém conferir.
- * O objeto devolvido é montado campo a campo, e não copiado.
- */
-function bensEPermutasDoCorpo(valor: unknown): {
-  erros: Array<{ campo: string; mensagem: string }>;
-  lista: BemOuPermuta[];
-} {
-  const erros: Array<{ campo: string; mensagem: string }> = [];
-  const lista: BemOuPermuta[] = [];
-  if (valor === null || valor === undefined) return { erros, lista };
-
-  if (!Array.isArray(valor)) {
-    erros.push({
-      campo: "bensEPermutas",
-      mensagem: "Os bens e permutas têm que vir em uma lista.",
-    });
-    return { erros, lista };
-  }
-  if (valor.length > TETO_DE_BENS_NA_PROPOSTA) {
-    erros.push({
-      campo: "bensEPermutas",
-      mensagem: `Uma proposta aceita no máximo ${TETO_DE_BENS_NA_PROPOSTA} bens ou permutas.`,
-    });
-    return { erros, lista };
-  }
-
-  valor.forEach((bruto, i) => {
-    // ⚠️ O `campo` É O CAMINHO NO JSON (base zero), e é por ele que a tela acha o input para
-    // marcar de vermelho; a frase fala em "posição 1" porque quem lê conta a partir de um.
-    const caminho = `bensEPermutas[${i}]`;
-    const posicao = i + 1;
-    const errosAntesDoItem = erros.length;
-    if (typeof bruto !== "object" || bruto === null || Array.isArray(bruto)) {
-      erros.push({
-        campo: caminho,
-        mensagem: `O bem ou permuta na posição ${posicao} não foi entendido.`,
-      });
-      return;
-    }
-    const item = bruto as Record<string, unknown>;
-
-    const descricao =
-      typeof item.descricao === "string" ? item.descricao.trim() : "";
-    if (!descricao) {
-      erros.push({
-        campo: `${caminho}.descricao`,
-        mensagem: `Descreva o bem ou permuta na posição ${posicao}.`,
-      });
-    } else if (descricao.length > TAMANHO_MAXIMO_DA_DESCRICAO) {
-      // ⚠️ RECUSA, E NÃO CORTE. Cortar em silêncio mandaria para o contrato uma descrição pela
-      // metade — "lote 12 da quadra 4 em Anápolis, matríc" — com ar de texto conferido.
-      erros.push({
-        campo: `${caminho}.descricao`,
-        mensagem: `A descrição do bem ou permuta na posição ${posicao} passa de ${TAMANHO_MAXIMO_DA_DESCRICAO} caracteres.`,
-      });
-    }
-
-    const tipo = typeof item.tipo === "string" ? item.tipo.trim() : "";
-    if (!(TIPOS_DE_BEM as readonly string[]).includes(tipo)) {
-      erros.push({
-        campo: `${caminho}.tipo`,
-        mensagem: `O tipo do item na posição ${posicao} tem que ser "bem" ou "permuta".`,
-      });
-    }
-
-    const entraComo =
-      typeof item.entraComo === "string" ? item.entraComo.trim() : "";
-    if (!(ENTRADAS_DO_BEM as readonly string[]).includes(entraComo)) {
-      erros.push({
-        campo: `${caminho}.entraComo`,
-        mensagem: `Diga se o bem ou permuta na posição ${posicao} entra como "entrada" (cumpre a entrada mínima) ou como "abatimento" (só reduz o saldo).`,
-      });
-    }
-
-    // ⚠️ SÓ NÚMERO OU TEXTO CHEGAM ATÉ O `Number`, e é o que barra o resto: `Number([])` é 0,
-    // `Number([5])` é 5 e `Number(true)` é 1 — três jeitos de um corpo malformado virar valor de
-    // permuta sem ninguém digitar número nenhum.
-    const valorBruto = item.valor;
-    const numero =
-      (typeof valorBruto === "number" || typeof valorBruto === "string") &&
-      String(valorBruto).trim() !== ""
-        ? Number(valorBruto)
-        : Number.NaN;
-    if (!Number.isFinite(numero) || numero <= 0) {
-      erros.push({
-        campo: `${caminho}.valor`,
-        mensagem: `Informe o valor do bem ou permuta na posição ${posicao}, em reais e maior que zero.`,
-      });
-    }
-
-    // Item com qualquer campo recusado não entra na lista — e a lista inteira é descartada
-    // abaixo, porque meia proposta gravada é pior do que proposta nenhuma.
-    if (erros.length > errosAntesDoItem) return;
-    lista.push({
-      descricao,
-      entraComo: entraComo as BemOuPermuta["entraComo"],
-      tipo: tipo as BemOuPermuta["tipo"],
-      valor: numero,
-    });
-  });
-
-  return { erros, lista: erros.length > 0 ? [] : lista };
-}
+// ⚠️ O TETO, O TAMANHO DA DESCRIÇÃO E A CONFERÊNCIA DA LISTA MUDARAM DE CASA (23/09/2026): vivem
+// em `lib/hercules/bens-e-permutas.ts`. O teto e o tamanho saíram daqui porque a TELA precisa deles
+// para apagar o botão "Acrescentar" no décimo item e cortar a digitação na descrição; a CONFERÊNCIA
+// saiu porque o espelho público passou a aceitar permuta e agora são duas rotas lendo a mesma lista
+// — uma com login e outra sem nenhum. Os números e a régua são os mesmos: nada aqui afrouxou.
 
 /**
  * O banco ainda sem a 0187: o PostgREST não conhece a coluna `bens_e_permutas`.
@@ -985,7 +862,7 @@ export async function POST(request: Request) {
     // ⚠️ E ANTES DO PDF DE PRÉVIA, de propósito: a prévia imprime a proposta, e imprimir uma
     // permuta sem valor (ou com o valor que `Number("")` inventaria) põe no papel do cliente um
     // número que ninguém combinou.
-    const bensEPermutas = bensEPermutasDoCorpo(corpo.bensEPermutas);
+    const bensEPermutas = conferirBensEPermutasDoCorpo(corpo.bensEPermutas);
     if (bensEPermutas.erros.length > 0) {
       return NextResponse.json({ erros: bensEPermutas.erros }, { status: 400 });
     }

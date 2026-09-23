@@ -9,8 +9,15 @@ import type { PropostaParaPdf } from "@/lib/hercules/proposta-pdf";
 // empreendimento, e não o do plano que o corpo escolheu: o simulador da tela (`ajusteDaTela`, modo
 // simulação) prende o desconto ao do PLANO escolhido e só no PRAZO dele (`descontoDoPlanoNoPrazo`).
 // Os três casos abaixo eram DEFEITO (corpos escritos à mão que a tela nunca produz e que a rota
-// aceitava); CORRIGIDOS NA RODADA 3 (18/09/2026): o piso agora é o desconto do plano escolhido, no
-// prazo do corpo (`valoresDaSimulacaoPublica`).
+// aceitava); CORRIGIDOS NA RODADA 3 (18/09/2026): o piso passou a ser o desconto do plano escolhido,
+// no prazo do corpo (`valoresDaSimulacaoPublica`).
+//
+// ⚠️ E O REMÉDIO MUDOU DE FORMA EM 23/09/2026, sem que o defeito voltasse. Com o campo de desconto
+// liberado na tela do espelho (Lucas: **"Liberar para todo mundo"**), EMPURRAR o valor para o preço
+// do plano virou troca silenciosa de número — a folha desmentindo a tela depois do clique. O piso
+// passou a ser `DESCONTO_MAXIMO_DA_SIMULACAO` (15%) e a resposta além dele é RECUSA, com a frase.
+// Por isso os corpos com `valor: 1` deste arquivo agora são 422 em vez de 200: o que eles mediam —
+// "a folha pública não anuncia desconto que a casa não deu" — continua valendo, e com mais força.
 //
 // Mocks copiados de `route.test.ts`.
 
@@ -132,15 +139,25 @@ beforeEach(() => {
 
 describe("revisão 3: o que um corpo forjado consegue imprimir na folha pública", () => {
   it("NORMAL (plano sem desconto) não sai com 'Desconto 12%', o desconto do INVESTIDOR", async () => {
-    // A tela, no NORMAL, simula sempre a R$ 435.000 (sem desconto à mão no modo simulação).
+    // ⚠️ `valor: 1` ERA 200 COM A FOLHA A R$ 435.000 até 22/09/2026 (o piso empurrava), e desde
+    // 23/09/2026 é 422 — MAS NÃO MAIS POR CAUSA DO PREÇO. O teto de desconto saiu naquele mesmo dia
+    // (Lucas: **"pode liberar tudo"**) e 99,99% de desconto passaria; quem barra este corpo é a
+    // conta do cronograma: entrada de R$ 43.500 mais 5 anuais de R$ 25.000 são R$ 168.500 dentro de
+    // um valor de R$ 1. Está escrito porque quem ler "422" aqui vai supor um teto que não existe.
     const r = await pedir({ ...DA_TELA, anuaisQuantidade: 5, entrada: 43_500, parcelas: 60, plano: "NORMAL", valor: 1 });
-    expect(r.status).toBe(200);
+    expect(r.status).toBe(422);
+    expect(estado.folhas).toHaveLength(0);
+    // E o que a tela do NORMAL manda de verdade continua imprimindo a tabela, sem linha de desconto.
+    await pedir({ ...DA_TELA, anuaisQuantidade: 5, entrada: 43_500, parcelas: 60, plano: "NORMAL", valor: 435_000 });
     expect(condicao("Desconto")).toBeUndefined();
     expect(destaque("Valor da unidade")).toBe("R$ 435.000,00");
   });
 
   it("INVESTIDOR PARCELADO (8%) não sai com 12% de desconto", async () => {
-    await pedir({ ...DA_TELA, valor: 1 });
+    // O 422 do `valor: 1` é da composição, e não de teto de preço — ver o caso de cima.
+    expect((await pedir({ ...DA_TELA, valor: 1 })).status).toBe(422);
+    expect(estado.folhas).toHaveLength(0);
+    await pedir(DA_TELA);
     expect(destaque("Valor da unidade")).toBe("R$ 400.200,00");
     expect(condicao("Desconto")).toBe("8% · R$ 34.800,00");
   });
@@ -149,12 +166,26 @@ describe("revisão 3: o que um corpo forjado consegue imprimir na folha pública
   // rodada passou a recusar (422) prazo além do plano, e 180 vezes num plano de 36 não chega mais a
   // imprimir folha (ver o caso logo abaixo). O que este caso mede continua o mesmo: fora do prazo do
   // plano os 12% não valem. 30 vezes cabe no INVESTIDOR (vai até 36) e não é o prazo dele.
-  it("INVESTIDOR fora do prazo dele (30x) não mantém os 12% (a tela zera o desconto fora do prazo do plano)", async () => {
+  // ⚠️ ESTE CASO VIROU OUTRA COISA EM 23/09/2026, E É A CARA DA DECISÃO DO LUCAS. Os 12% fora do
+  // prazo do plano continuam NÃO sendo desconto de tabela, mas desde que o campo foi liberado eles
+  // são um desconto À MÃO legítimo, escolhido por quem está na tela — e o que a folha imprime tem de
+  // ser o que a tela mostrou.
+  // ⚠️ E A ÚLTIMA ASSERÇÃO VIROU DE LADO NO MESMO DIA, algumas horas depois: ela exigia 422 para os
+  // 20% (R$ 348.000), por causa do teto de 15% que eu havia posto. Perguntado sobre o teto com o
+  // risco escrito na frente, Lucas: **"pode liberar tudo"**. O que o caso mede agora é que o
+  // desconto à mão de 20% sai impresso COM O NÚMERO DA TELA, e que a folha o chama de 20% mesmo
+  // fora do prazo do plano — ou seja, a rota não devolve nada trocado, nem para cima nem para baixo.
+  it("INVESTIDOR fora do prazo dele (30x): os 12% valem como desconto à mão, e 20% também", async () => {
     const r = await pedir({ ...DA_TELA, anuaisQuantidade: 3, anuaisValor: 30_000, parcelas: 30, plano: "INVESTIDOR", valor: 382_800 });
     expect(r.status).toBe(200);
     expect(condicao("Parcelas mensais")).toBe("30");
-    expect(condicao("Desconto")).toBeUndefined();
-    expect(destaque("Valor da unidade")).toBe("R$ 435.000,00");
+    expect(destaque("Valor da unidade")).toBe("R$ 382.800,00");
+    expect(condicao("Desconto")).toBe("12% · R$ 52.200,00");
+    // 20% no mesmo corpo: passa, e sai impresso como 20%.
+    const alem = await pedir({ ...DA_TELA, anuaisQuantidade: 3, anuaisValor: 30_000, parcelas: 30, plano: "INVESTIDOR", valor: 348_000 });
+    expect(alem.status).toBe(200);
+    expect(destaque("Valor da unidade")).toBe("R$ 348.000,00");
+    expect(condicao("Desconto")).toBe("20% · R$ 87.000,00");
   });
 
   it("INVESTIDOR levado a 180x (o corpo original do defeito): 422, e nenhuma folha com os 12%", async () => {

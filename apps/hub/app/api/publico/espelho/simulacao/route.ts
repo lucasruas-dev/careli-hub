@@ -30,6 +30,13 @@ import { montarFolhaDaProposta } from "@/lib/hercules/proposta-para-pdf";
 // "parecida" divergiria da primeira no primeiro ajuste, e o cliente receberia dois documentos da
 // mesma casa com aparências diferentes.
 //
+// ⚠️ E A FRASE DE QUE NÃO VINCULA NÃO SAI DAQUI. Desde 23/09/2026 o preço E a lista de bens podem
+// vir ajustados à mão de uma página SEM LOGIN (decisão do Lucas: **"Liberar para todo mundo"** no
+// desconto e *"permuta tem que entrar, não entendi sua colocação"* na permuta), e a bandeira
+// `simulacao` — que faz `montarFolhaDaProposta` escrever "Esta é uma simulação de pagamento: não
+// constitui proposta, não reserva a unidade e não vincula as partes" — é a única coisa entre um
+// desconto e um carro escolhidos pelo visitante e um papel com cara de oferta.
+//
 // ⚠️ E SAI COM A TARJA DE PRÉVIA (`previa: true`). O papel se denuncia: sem isso um PDF idêntico
 // ao definitivo vira anexo de WhatsApp em dois toques, e do outro lado o cliente guarda como
 // proposta um documento que não existe no sistema, com preço que ninguém reservou. A tarja é o
@@ -45,6 +52,15 @@ export const maxDuration = 30;
 type Corpo = {
   anuaisQuantidade?: number;
   anuaisValor?: number;
+  /**
+   * Os bens e permutas que a tela do espelho montou — o carro, o lote, o apartamento.
+   *
+   * ⚠️ `unknown` DE PROPÓSITO, e não `BemOuPermuta[]`. O corpo desta rota se escreve à mão numa
+   * página sem login: declarar o tipo aqui só faria o typecheck ACREDITAR nele. Quem confere é
+   * `conferirBensEPermutasDoCorpo`, dentro de `valoresDaSimulacaoPublica`, a MESMA função da rota
+   * da proposta.
+   */
+  bensEPermutas?: unknown;
   codigo?: string;
   entrada?: number;
   /**
@@ -159,15 +175,18 @@ export async function POST(request: Request) {
     );
   }
 
-  // ⚠️ O PREÇO É O DO ESPELHO, E O CORPO SÓ ESCOLHE DENTRO DA RÉGUA DO PLANO ESCOLHIDO
-  // (`valoresDaSimulacaoPublica`, revisão 3 de 18/09/2026): o valor nunca abaixo da tabela com o
-  // desconto DESTE plano no prazo pedido (fora do prazo do plano, desconto zero) nem acima da tabela;
-  // a entrada é a QUE ESTÁ NA TELA, inclusive zero (só a chave ausente cai na sugestão do plano),
-  // com as parcelas montadas à mão quando elas fecham com ela; as anuais até uma por aniversário; a
-  // entrada em no máximo `ENTRADA_VEZES_MAXIMA` vezes. Prazo além do plano é recusado com a frase.
+  // ⚠️ A TABELA É A DO ESPELHO, E O CORPO ESCOLHE O PREÇO DENTRO DA BANDA DA SIMULAÇÃO
+  // (`valoresDaSimulacaoPublica`): o valor é o que a tela mandou, entre a tabela com
+  // `DESCONTO_MAXIMO_DA_SIMULACAO` e a própria tabela, e fora dessa banda a resposta é 422 com a
+  // frase — nunca um número trocado em silêncio (decisão do Lucas de 23/09/2026, *"Liberar para todo
+  // mundo"*; até 22/09 o valor era PRESO no preço do plano escolhido). A entrada é a QUE ESTÁ NA
+  // TELA, inclusive zero (só a chave ausente cai na sugestão do plano), com as parcelas montadas à
+  // mão quando elas fecham com ela; as anuais até uma por aniversário; a entrada em no máximo
+  // `ENTRADA_VEZES_MAXIMA` vezes. Prazo além do plano é recusado com a frase.
   const precoDeTabela = loteNoEspelho.preco;
   const aceita = valoresDaSimulacaoPublica({
     anuaisPedidas: { quantidade: corpo.anuaisQuantidade, valor: corpo.anuaisValor },
+    bensPedidos: corpo.bensEPermutas,
     entradaMinimaPercentual,
     entradaDatasPedidas: corpo.entradaDatas,
     entradaParcelasPedidas: corpo.entradaParcelas,
@@ -185,7 +204,7 @@ export async function POST(request: Request) {
       { headers: { "Cache-Control": SEM_CACHE }, status: 422 },
     );
   }
-  const { anuais, entrada, entradaDatas, entradaParcelas, entradaVezes, parcelas, valor } =
+  const { anuais, bens, entrada, entradaDatas, entradaParcelas, entradaVezes, parcelas, valor } =
     aceita;
 
   // ⚠️ A COMPOSIÇÃO QUE NÃO FECHA É 422 COM A FRASE, E NÃO 503. `montarCronograma` quebra de
@@ -197,6 +216,11 @@ export async function POST(request: Request) {
     cronograma = montarCronograma({
       anuaisQuantidade: anuais.quantidade,
       anuaisValor: anuais.valor,
+      // ⚠️ O BEM ABATE O SALDO AQUI, E É ISTO QUE FAZ O PAPEL DIZER O MESMO QUE A TELA. Sem esta
+      // linha o bloco de bens apareceria no espelho, o cartão da direita mostraria R$ 115.000 a
+      // financiar e a folha sairia com R$ 195.000: a troca silenciosa de que o Lucas reclamou em
+      // 22/09 no valor da entrada (*"ele não traz o valor que eu tinha colocado"*), agora no bem.
+      bensEPermutas: bens,
       // O dia é só o que o cronograma precisa para agendar; a folha da simulação não anuncia
       // vencimento (ver `validadeEmIso` nulo abaixo).
       diaDeVencimento: 10,
@@ -235,6 +259,12 @@ export async function POST(request: Request) {
       atendimento: { coordenador: null, corretor: null, imobiliaria: null, telefone: null },
       // Não há venda, então não há COD. O código do lote é o que identifica a folha.
       codigo: unidade.codigo,
+      // ⚠️ E A SEÇÃO DOS BENS SAI NA FOLHA, e não só no cronograma. São dois consumidores da mesma
+      // lista: `montarCronograma` faz a CONTA e `montarFolhaDaProposta` escreve o QUADRO ("Bem ·
+      // Ford Ka 2019 · Entrada · R$ 80.000,00") com o total. Sem esta linha o saldo já apareceria
+      // abatido no papel sem nada explicando por quê, e quem recebe o PDF leria um financiado que
+      // não fecha com o valor da unidade.
+      bensEPermutas: bens,
       // Simulação não tem comprador: ninguém foi qualificado, nada foi assinado.
       compradores: [],
       cronograma,
@@ -245,9 +275,10 @@ export async function POST(request: Request) {
       logoEmpreendimento: await logoDoEmpreendimento(client, paiC2xId),
       plano: { ...plano, slot: null },
       // ⚠️ A TABELA VAI SEMPRE QUE O VALOR FICOU ABAIXO DELA (18/09/2026): a folha diz "valor de
-      // tabela" e "desconto" com o número de verdade. No espelho não há desconto à mão, então isso só
-      // acontece no plano com desconto (o Investidor Parcelado do Garden) ou num corpo escrito à mão
-      // que escolheu outro preço dentro da régua; nos outros empreendimentos a folha sai igual.
+      // tabela" e "desconto" com o número de verdade. Desde 23/09/2026 o espelho TEM desconto à mão
+      // (o campo do lote foi liberado na página sem login), então esta linha passou a aparecer
+      // também para quem simplesmente digitou um desconto — e o número que ela imprime é o mesmo que
+      // estava na tela, porque a rota não mexe mais no valor.
       precoDeTabela: valor < precoDeTabela ? precoDeTabela : null,
       // ⚠️ AQUI TAMBÉM, e não só no `montarPropostaPdf`: é `montarFolhaDaProposta` que escreve as
       // OBSERVAÇÕES do rodapé, e sem a bandeira elas continuavam falando em reajuste e proposta

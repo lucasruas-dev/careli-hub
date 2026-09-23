@@ -7,9 +7,14 @@ import type { PropostaParaPdf } from "@/lib/hercules/proposta-pdf";
 // A página não tem login e o PDF sai com a marca da casa. Até aqui a rota aceitava o `valor` e a
 // `entrada` do corpo sem piso nenhum, e para qualquer lote: dava para baixar uma folha "Desconto 50%"
 // ou simular um lote vendido. Agora ela recusa o lote que o espelho não pinta de verde (a mesma régua,
-// `estadoDoEspelho`), prende o valor entre a tabela com o desconto DO PLANO ESCOLHIDO no prazo pedido
-// e a tabela, a entrada no maior dos pisos (empreendimento, plano, faixa do prazo), as anuais a uma
-// por aniversário, e recusa (422) o prazo além do plano (revisão 3, 18/09/2026).
+// `estadoDoEspelho`), mantém o valor entre o TETO DE DESCONTO da simulação e a tabela, sugere a
+// entrada a quem não mandou nenhuma, prende as anuais a uma por aniversário, e recusa (422) o prazo
+// além do plano.
+//
+// ⚠️ O PISO DO PREÇO MUDOU EM 23/09/2026: era o preço do PLANO ESCOLHIDO, e o número da tela era
+// preso nele; com o campo de desconto liberado no espelho (Lucas: **"Liberar para todo mundo"**), o
+// piso passou a ser `DESCONTO_MAXIMO_DA_SIMULACAO`, e além dele a resposta é RECUSA, nunca um número
+// trocado em silêncio. Ver `route.desconto-no-espelho.test.ts`.
 //
 // ⚠️ O QUE É DUBLÊ: o token (`abrirEspelho`), o estado do espelho, os planos e o piso (leituras do
 // banco) e o desenhista do PDF, que só guarda a folha que recebeu. `montarCronograma` e
@@ -156,28 +161,40 @@ describe("POST /api/publico/espelho/simulacao", () => {
     expect(estado.folhas).toHaveLength(0);
   });
 
-  // ⚠️ MUDOU NA REVISÃO 3 (18/09/2026): este teste dava como certo o INVESTIDOR PARCELADO a
-  // R$ 382.800 com "Desconto 12%", que é o desconto do INVESTIDOR. O piso agora é o do plano
-  // escolhido (8%), e não o maior desconto do empreendimento.
-  it("⚠️ o valor nunca fica abaixo da tabela com o desconto DO PLANO ESCOLHIDO (8% no INVESTIDOR PARCELADO)", async () => {
-    // O corpo escrito à mão pedindo "Desconto 50%".
-    const r = await pedir({ ...DA_TELA, entrada: 150_000, valor: 217_500 });
+  // ⚠️ ESTE CASO JÁ MUDOU TRÊS VEZES, E A ÚLTIMA É DECISÃO DO LUCAS. Na revisão 3 (18/09/2026) ele
+  // deixou de aceitar o INVESTIDOR PARCELADO a R$ 382.800 com "Desconto 12%" (o desconto do
+  // INVESTIDOR) e passou a EMPURRAR o valor para o preço do plano escolhido. Em 23/09/2026, com o
+  // campo liberado na tela, empurrar virou troca silenciosa de número e a resposta virou RECUSA por
+  // teto de 15%. Horas depois, perguntado sobre o teto com o risco escrito na frente, Lucas:
+  // *"Liberar para todo mundo"* e **"pode liberar tudo"** — e o teto saiu. Os 50% imprimem.
+  it("⚠️ o corpo escrito à mão pedindo 'Desconto 50%' agora imprime, e a composição é quem recusa", async () => {
+    const r = await pedir({ ...DA_TELA, entrada: 0, valor: 217_500 });
     expect(r.status).toBe(200);
-    expect(destaque("Valor da unidade")).toBe("R$ 400.200,00");
-    expect(condicao("Desconto")).toBe("8% · R$ 34.800,00");
+    expect(destaque("Valor da unidade")).toBe("R$ 217.500,00");
+    expect(condicao("Desconto")).toBe("50% · R$ 217.500,00");
+
+    // ⚠️ E O QUE ESTE CASO GUARDAVA ALÉM DO TETO CONTINUA GUARDADO: recusa não imprime folha. O
+    // corpo original trazia entrada de R$ 150.000 com 4 anuais de R$ 25.000 — R$ 250.000 dentro de
+    // um valor de R$ 217.500 —, e é a conta do cronograma que o barra, não o preço.
+    estado.folhas.length = 0;
+    const naoFecha = await pedir({ ...DA_TELA, entrada: 150_000, valor: 217_500 });
+    expect(naoFecha.status).toBe(422);
+    expect(((await naoFecha.json()) as { error: string }).error).toMatch(/composição não fecha/);
+    expect(estado.folhas).toHaveLength(0);
   });
 
-  it("o INVESTIDOR, no prazo dele (36x), vai até os 12% dele", async () => {
-    const r = await pedir({ ...DA_TELA, anuaisQuantidade: 3, anuaisValor: 30_000, entrada: 153_120, parcelas: 36, plano: "INVESTIDOR", valor: 217_500 });
+  it("o INVESTIDOR, no prazo dele (36x), imprime os 12% dele", async () => {
+    const r = await pedir({ ...DA_TELA, anuaisQuantidade: 3, anuaisValor: 30_000, entrada: 153_120, parcelas: 36, plano: "INVESTIDOR", valor: 382_800 });
     expect(r.status).toBe(200);
     expect(destaque("Valor da unidade")).toBe("R$ 382.800,00");
     expect(condicao("Desconto")).toBe("12% · R$ 52.200,00");
   });
 
-  it("e nunca acima da tabela (no espelho não existe acréscimo)", async () => {
-    await pedir({ ...DA_TELA, plano: "NORMAL", parcelas: 60, anuaisQuantidade: 5, valor: 999_999 });
-    expect(destaque("Valor da unidade")).toBe("R$ 435.000,00");
-    expect(condicao("Valor de tabela")).toBeUndefined();
+  it("e acima da tabela é recusa (o acréscimo da tela não vira folha)", async () => {
+    const r = await pedir({ ...DA_TELA, plano: "NORMAL", parcelas: 60, anuaisQuantidade: 5, valor: 999_999 });
+    expect(r.status).toBe(422);
+    expect(((await r.json()) as { error: string }).error).toMatch(/tabela/);
+    expect(estado.folhas).toHaveLength(0);
   });
 
   it("⚠️ a entrada digitada vai ao papel como está; quem não escolheu recebe o piso do empreendimento", async () => {
@@ -215,9 +232,12 @@ describe("POST /api/publico/espelho/simulacao: as regras do plano (revisão 3, 1
   it("⚠️ a entrada respeita o degrau do prazo: INVESTIDOR PARCELADO encurtado para 50x pede os 10% do NORMAL", async () => {
     const r = await pedir({ ...DA_TELA, anuaisQuantidade: 4, entrada: undefined, parcelas: 50 });
     expect(r.status).toBe(200);
-    // Fora do prazo do plano não há desconto (R$ 435.000), e o degrau de 50 é o NORMAL (10%).
-    expect(destaque("Valor da unidade")).toBe("R$ 435.000,00");
-    expect(destaque("Entrada")).toBe("R$ 43.500,00");
+    // ⚠️ O VALOR AQUI MUDOU EM 23/09/2026, E A MUDANÇA É DA TELA. Encurtar o prazo já não zera o
+    // desconto que está no campo do espelho (ele virou desconto à mão, como na Mesa de Venda), e os
+    // R$ 400.200 que a tela mostra são os que chegam. O que este caso mede continua sendo o degrau:
+    // o de 50 vezes é o NORMAL, 10%, e 10% de R$ 400.200 é R$ 40.020.
+    expect(destaque("Valor da unidade")).toBe("R$ 400.200,00");
+    expect(destaque("Entrada")).toBe("R$ 40.020,00");
     expect(condicao("Parcelas mensais")).toBe("50");
   });
 

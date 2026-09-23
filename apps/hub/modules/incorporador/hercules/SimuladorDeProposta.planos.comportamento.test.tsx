@@ -19,7 +19,9 @@ import { type CondicoesDaProposta, SimuladorDeProposta } from "./SimuladorDeProp
 //     para o campo do lote (o mesmo que sobe para a proposta e o PDF);
 //   • item 6: o desconto só é "do plano" no prazo do plano; fora dele sobe como exceção, e a
 //     `ModalDeProposta` pede a nota (`ajusteFrenteAoPlano`);
-//   • item 7: no modo simulação (espelho público, sem login) o desconto fica preso ao do plano.
+//   • item 7: no modo simulação (espelho público, sem login) o desconto ficava preso ao do plano —
+//     REABERTO DE PROPÓSITO em 23/09/2026 por decisão do Lucas (**"Liberar para todo mundo"**), e o
+//     que ficou no lugar está logo abaixo e em `SimuladorDeProposta.desconto-no-espelho`.
 
 (globalThis as unknown as { React: typeof React }).React = React;
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -276,12 +278,18 @@ describe("item 6: o desconto só é do plano no prazo do plano", () => {
   });
 });
 
-describe("item 7: no modo simulação o desconto é o do plano, e só ele", () => {
-  it("sem os controles de desconto; o valor é o do plano no prazo do plano", () => {
+// ⚠️ O ITEM 7 FOI REABERTO EM 23/09/2026, DE PROPÓSITO, E COM O RISCO POSTO. Ele media a trava do
+// espelho público: campo de desconto escondido, valor preso ao do plano, e o que se digitasse no
+// campo oculto não entrava em conta nenhuma. Lucas, perguntado diretamente, com as três opções e o
+// risco escrito em cada uma: **"Liberar para todo mundo"**. O que continua valendo é o que este
+// bloco passa a medir: o desconto do PLANO segue sendo o ponto de partida do campo, e continua
+// sendo reconhecido como desconto de tabela — o que mudou é que agora dá para digitar por cima.
+describe("item 7: no espelho público o desconto do plano é o PONTO DE PARTIDA, e não uma trava", () => {
+  it("os controles de desconto aparecem, e o campo abre com o desconto do plano", () => {
     montar("simulacao");
-    // Os controles (sentido, moeda e número) não aparecem.
+    // Até 22/09/2026 esta linha (sentido, moeda e número) vinha com `display: none`.
     const controles = alvo.querySelector<HTMLElement>("[data-controles-do-desconto]");
-    expect(controles?.style.display).toBe("none");
+    expect(controles?.style.display).toBe("flex");
     expect(ultima).toMatchObject({
       ajuste: { modo: "percentual", valor: -8 },
       descontoDoPlanoPercentual: 8,
@@ -296,26 +304,32 @@ describe("item 7: no modo simulação o desconto é o do plano, e só ele", () =
     expect(ultima).toMatchObject({ ajuste: null, valorNegociado: 435_000 });
   });
 
-  it("fora do prazo do plano não há desconto nenhum (não existe desconto à mão no espelho)", () => {
+  it("fora do prazo do plano o desconto deixa de ser 'do plano', como na Mesa de Venda", () => {
     montar("simulacao");
     clicar(cartao("INVESTIDOR"));
     digitar(campo("Parcelas"), "84");
+    // ⚠️ O VALOR NÃO VOLTA MAIS PARA A TABELA. Os 12% ficam no campo como desconto À MÃO (é o mesmo
+    // comportamento do comercial), e `descontoDoPlanoPercentual` zera para dizer que já não é
+    // tabela. Quem segura o exagero é o teto do servidor, e não mais a tela.
     expect(ultima).toMatchObject({
-      ajuste: null,
+      ajuste: { modo: "percentual", valor: -12 },
       descontoDoPlanoPercentual: 0,
       parcelasMensais: 84,
-      valorNegociado: 435_000,
+      valorNegociado: 382_800,
     });
-    expect(valorNoCampo("Valor simulado")).toBe("R$ 435.000,00");
+    expect(valorNoCampo("Valor simulado")).toBe("R$ 382.800,00");
   });
 
-  it("mesmo que alguém escreva no campo escondido, o valor não sai do plano", () => {
+  it("⚠️ e o que se digita no campo VALE: 50% na página sem login chegam à tela", () => {
+    // É exatamente o buraco que a revisão de 18/09 fechou, reaberto a pedido do Lucas. A tela não é
+    // mais a guarda: quem recusa os 50% é `valoresDaSimulacaoPublica`, e o visitante lê a frase em
+    // vez de baixar o PDF (ver `route.desconto-no-espelho.test.ts`).
     montar("simulacao");
     const desconto = [...alvo.querySelectorAll("input")].find(
       (i) => i.getAttribute("placeholder") === "desconto",
     )!;
     digitar(desconto, "50");
-    expect(ultima?.valorNegociado).toBe(400_200);
-    expect(ultima?.ajuste).toEqual({ modo: "percentual", valor: -8 });
+    expect(ultima?.valorNegociado).toBe(217_500);
+    expect(ultima?.ajuste).toEqual({ modo: "percentual", valor: -50 });
   });
 });

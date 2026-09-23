@@ -53,7 +53,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
         ],
       },
     ],
-    rollback: "77a9deec",
+    rollback: "30c38dcc",
     technical: {
       done:
         "O DOCUMENTO VEM DO LEGADO, e a medicao decidiu isso. Lucas levantou, com razao, que o cadastral mora no Apolo -- so que o extrato nasce do C2X e a chave dele e `acquisition_requests.client_id`: ir ao Apolo exigiria casar por CPF (circular: e o dado que se quer descobrir) ou por `client_c2x_id`, que colide. Medido em 23/09: o `users` que o join da carteira JA carrega cobre 856 de 856 clientes (839 com CPF de 11 digitos, 18 com CNPJ, ZERO em branco). Entao e uma linha no SELECT, sem join novo e sem risco de colar a ficha na pessoa errada. Sai SO no extrato, e SO o documento: telefone e e-mail continuam fora, porque servem para ABORDAR o cliente, e a abordagem e da Careli, nao do loteador. O teste que travava documento no payload foi ESTREITADO, nao desligado -- continua acusando email, telefone, entityId e link de boleto. A EXPORTACAO ENTROU NA PROPRIA ROTA DA CARTEIRA (`?formato=xlsx`), e nao numa sub-rota: uma rota propria teria que repetir a resolucao de escopo, o seletor de produtos, o mapa de nomes e a politica comercial, e e exatamente a segunda leitura quase igual que faz a planilha e a tela contarem historias diferentes. Pelo mesmo motivo, os parametros do recorte passaram a ser montados em UM lugar (`parametrosDoExtrato`), usado pela busca da aba e pelo botao. ⚠️ O ARQUIVO NAO PODE SAIR DO QUE ESTA NA TELA, ao contrario da planilha de boletos: la a competencia inteira cabe no envio (334 boletos no maior mes), aqui o extrato tem teto de payload de 2.000 linhas e o Vale do Ouro sozinho tem 27.721 parcelas. Por isso `montarIndicadores` ganhou `tetoDoExtrato` -- teto de ENVIO, nunca de conta: `extratoTotal` e os totais do recorte continuam saindo do recorte inteiro. Medido de ponta a ponta com dado real: 783ms de leitura no C2X, 1.067ms de montagem, 1,39 MB de arquivo, bem dentro do maxDuration de 30s. ⚠️ ACHADO DE BORDA, e ele JA vale para a tela de hoje: a leitura da carteira para em 30.000 linhas, e ha empreendimento que passa disso SOZINHO (medido: LOS 37.956, LOU 30.252). O sinal `parcial` que a rota ja produzia agora atravessa para o arquivo e vira aviso escrito na linha do total, alem do header `X-Parcial` que a tela le. Planilha truncada em silencio e pior do que planilha nenhuma. 18 testes novos.",
@@ -61,6 +61,36 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
         "Lucas, 23/09/2026: no portal do incorporador, na parte de carteira, temos a parte do extrato. preciso trazer o CPF para esse painel e ter um botao para exportar em xlsx. E, sobre a fonte do dado: acho que todo o cliente esta dentro do apolo, o que vem do legado e a parte financeira, a cadastral temos no apolo.",
     },
     title: "CPF e exportacao em Excel no extrato da carteira",
+    type: "novidade",
+    version: "1.365.0",
+  },
+  {
+    buildTag: "2026-09-23-o-espelho-negocia",
+    deployedAt: "2026-09-23T15:50:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O link que o corretor manda passou a montar a negociação inteira.** Dá para ajustar o preço e registrar bem ou permuta ali mesmo, e a folha sai com esses números. Antes só dava para olhar o preço de tabela.",
+              "**A folha continua dizendo que não vincula.** Ela não constitui proposta, não reserva a unidade e não obriga ninguém: quem fecha venda é a proposta, no portal, com login.",
+              "**O rodapé parou de chamar de proposta o que é simulação.** Ele escrevia que aquelas eram as condições que iriam para a proposta, num lugar onde nada vira proposta.",
+            ],
+            screen: "Espelho de vendas",
+          },
+        ],
+      },
+    ],
+    rollback: "77a9deec",
+    technical: {
+      done:
+        "O espelho publico (`/e/<apelido>-<selo>`, sem login) ganhou o ajuste de preco e o bloco de bens e permutas. ⚠️ E DECISAO DO LUCAS, COM O RISCO POSTO: perguntado com tres opcoes e o risco escrito em cada uma, respondeu \"Liberar para todo mundo\" e, sobre o teto de desconto, \"pode liberar tudo\". Quem repuser um teto aqui esta desfazendo decisao, nao consertando esquecimento -- esta escrito no codigo, com data e frase. AS TRES PECAS ANDARAM JUNTAS, e tinham de andar: a tela (`ehSimulacao` carregava PALAVRA e AUTORIDADE misturadas; a palavra ficou, a autoridade soltou), a rota (`simulacao-publica.ts` refaz a regua no servidor de proposito, entao sem ela a tela mostraria um numero e o PDF imprimiria outro, calado) e o rodape. `conferirBensEPermutasDoCorpo` saiu da rota da proposta para `lib/hercules/bens-e-permutas.ts` e agora serve as DUAS portas: a casa nao pode ter duas conferencias da mesma lista, uma com login e outra sem. O QUE A PORTA PUBLICA AINDA RECUSA, medido: preco ACIMA da tabela (isso nao e desconto, e a pagina anunciando a unidade mais cara do que a casa vende), preco zero ou ausente, prazo maior que o do plano, e todo item de bem torto (tipo invalido, `entraComo` invalido, valor vazio ou nao positivo, descricao em branco, mais itens que o teto). ⚠️ E NAO HA TETO DE VALOR NOS BENS: um visitante pode zerar o financiado com um bem do tamanho do lote e imprimir folha de R$ 0,00 a financiar. Segue a mesma decisao do desconto, e esta dito aqui para ninguem descobrir depois. ⚠️ TRES DEFEITOS PEGOS POR REVISAO ADVERSARIAL: o botao de ACRESCIMO ficou visivel no espelho oferecendo o que o servidor sempre recusou (422 em todo valor acima da tabela); a tela nao avisava antes do clique em tres entradas que o servidor recusa; e o rodape caia no ramo da proposta porque o espelho passa `aoMudarCondicoes`, deixando o ramo da simulacao como codigo morto. 532 arquivos, 8.188 testes, typecheck limpo.",
+      motivation:
+        "Lucas, 23/09/2026: \"sabe aquela parte do desconto que incluimos no comercial, vamos colocar para cecilio também\". A medicao mostrou que o PORTAL da Cecilio JA tinha o ajuste (e a mesma TelaVenda do comercial desde 16/09) e que o print dele dizia \"Valor simulado\", o rotulo do ESPELHO. Perguntado como fazer, respondeu \"Liberar para todo mundo\". Sobre a permuta ficar de fora, que era decisao MINHA e nao dele: \"permuta tem que entrar, não entendi sua colocação\". E sobre o teto: \"pode liberar tudo\".",
+    },
+    title: "O espelho passou a negociar",
     type: "novidade",
     version: "1.364.0",
   },

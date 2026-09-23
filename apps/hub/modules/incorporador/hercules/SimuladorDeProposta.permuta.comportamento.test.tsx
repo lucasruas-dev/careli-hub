@@ -13,6 +13,11 @@
 //
 // ⚠️ E ELE OLHA O CARTÃO GRANDE, e não o estado. O número que a pessoa lê quando promete ao
 // cliente é o "A financiar" da direita: é ele que tem de mexer quando o bem entra.
+//
+// ⚠️ EM 23/09/2026 O BLOCO PASSOU A EXISTIR NO ESPELHO PÚBLICO TAMBÉM. Este arquivo nasceu com a
+// asserção contrária, escrita por mim: permuta seria negociação, e o espelho, vitrine. Lucas:
+// *"permuta tem que entrar, não entendi sua colocação"*. As duas asserções foram invertidas, e o
+// que o espelho ganhou está medido em `SimuladorDeProposta.permuta-no-espelho.comportamento`.
 
 import * as React from "react";
 import { act } from "react";
@@ -172,25 +177,22 @@ function doCartao(rotulo: string): string {
   return bloco.children[1]?.textContent ?? "";
 }
 
-describe("o bloco existe no portal e NÃO existe no espelho público", () => {
-  // ⚠️ PERMUTA É NEGOCIAÇÃO, NÃO VITRINE. O mesmo componente é montado no link sem login que o
-  // corretor manda para o cliente (`/e/<apelido>-<selo>`): com o campo lá, qualquer pessoa inventa
-  // um bem de R$ 200.000, abate o saldo inteiro e imprime o PDF. A chave é a mesma que já separa o
-  // vencimento e a edição de juros — `ehSimulacao`.
+describe("o bloco existe nos DOIS, no portal e no espelho público", () => {
+  // ⚠️ ESTE BLOCO DIZIA O CONTRÁRIO ATÉ 23/09/2026, e a asserção invertida está registrada aqui de
+  // propósito. Eu havia decidido que permuta é negociação e não vitrine, e prendido o bloco em
+  // `ehSimulacao`; Lucas, lendo isso: *"permuta tem que entrar, não entendi sua colocação"*. A
+  // separação era minha, não dele. O que cada lado ganha e o que isso custa está em
+  // `SimuladorDeProposta.permuta-no-espelho.comportamento.test.tsx`.
   it("no simulador do portal o bloco está lá, com o botão de acrescentar", () => {
     montar("proposta");
     expect(alvo.textContent ?? "").toContain("Bens e permutas");
     expect(botao("Acrescentar bem ou permuta")).toBeTruthy();
   });
 
-  it("⚠️ no espelho público não existe bloco nenhum de bem ou permuta", () => {
+  it("⚠️ e no espelho público também, desde que o Lucas mandou a permuta entrar", () => {
     montar("simulacao");
-    expect(alvo.textContent ?? "").not.toContain("Bens e permutas");
-    expect(
-      [...alvo.querySelectorAll("button")].some((b) =>
-        (b.textContent ?? "").includes("bem ou permuta"),
-      ),
-    ).toBe(false);
+    expect(alvo.textContent ?? "").toContain("Bens e permutas");
+    expect(botao("Acrescentar bem ou permuta")).toBeTruthy();
   });
 });
 
@@ -375,7 +377,9 @@ describe("⚠️ o que está na tela SOBE para quem vai gerar a proposta", () =>
     expect(ultima?.bensEPermutas?.[0]?.entraComo).toBe("abatimento");
   });
 
-  it("no espelho público nada de bem sobe: o campo não existe e a lista é nula", () => {
+  it("no espelho público, enquanto ninguém acrescenta nada, a lista continua nula", () => {
+    // ⚠️ NULO, E NÃO `[]`, NOS DOIS VOCABULÁRIOS. Um array vazio em toda simulação faria
+    // `bensEPermutas != null` deixar de significar "tem permuta" para quem lê o corpo depois.
     montar("simulacao");
     expect(ultima?.bensEPermutas ?? null).toBeNull();
   });
