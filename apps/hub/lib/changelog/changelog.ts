@@ -36,6 +36,46 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-23-a-imobiliaria-assina",
+    deployedAt: "2026-09-23T09:38:10-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**A imobiliária que intermediou a venda passa a assinar o contrato.** Ela entra como Corretor / imobiliária, com o e-mail da empresa, junto com as outras partes. Antes o papel existia na tela do Setup e dava para numerá-lo na ordem, mas ninguém era convidado.",
+              "**A ordem de assinatura cadastrada no Setup voltou a valer.** O que era configurado não estava sendo gravado, e o contrato saía na ordem padrão da casa.",
+            ],
+            screen: "Contrato · enviar para assinatura",
+          },
+        ],
+      },
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "**Os nomes dos assinantes saem todos no mesmo padrão**, em maiúsculas, na tela e no documento. Antes cada um vinha do jeito que estava cadastrado.",
+              "**O texto do aceite sai justificado**, com a margem direita reta.",
+            ],
+            screen: "Acordo · termo e assinatura",
+          },
+        ],
+      },
+    ],
+    rollback: "d1b65bba",
+    technical: {
+      done:
+        "TRES FRENTES, todas de queixa da Nivea em 22 e 23/09/2026. (1) A ORDEM NAO SALVAVA, e o defeito tinha DUAS pernas: a rota validava o MAPA {papel: numero} que a tela manda desde 13/09 e depois fazia `ordem: Array.isArray(bruta) ? bruta : null`, gravando NULO -- com `assinatura_ordenada` indo `true` no MESMO update, o empreendimento ficava marcado como assinam em ordem sem ordem nenhuma (medido: VOL 36 e VOC 37 assim no banco). E `ordem-db.ts` montava sempre { papeis: coluna }, entao um mapa nao casava com ramo nenhum de `lerRegraDeOrdem` e voltava o PADRAO, calado: mesmo corrigindo a gravacao, o envio continuaria em paralelo. Nasceu `regraDaColuna`, e os tres leitores a usam. (2) A IMOBILIARIA NUNCA ERA CONVIDADA: o papel `corretor` existia no vocabulario e na tela do Setup, mas NENHUMA funcao produzia signatario com ele, e o CHECK da 0180 so aceita quatro papeis. Rodando o `prepararEnvio` real na venda da VITORIA, que TEM imobiliaria vinculada, saiam 11 signatarios e zero corretor. Agora ela vem da VENDA (como o comprador), e nao do quadro do empreendimento -- por isso NAO HA MIGRATION. Quem assina e a pessoa juridica, no `email_vinculado` que o contrato ja imprime no item VIII; e a via que tem dado (4.929 das 4.947 propostas, contra 18 com `imobiliaria_entity_id`). A mesma empresa nao assina duas vezes: a coordenadora costuma ser imobiliaria tambem. (3) O NOME E O TEXTO DO TERMO: `nomeDeSignatario` sobe a caixa nos dois montadores (nao dentro de `ordenarSignatarios`: ordenar nao muda dado, e os testes de ordem me mandaram tirar de la); e o aceite passou a sair justificado pelo operador `Tw` do PDF, depois de a suite pegar que desenhar palavra por palavra quebrava a extracao de texto -- o extrator lia 6 linhas onde havia 9. 14 testes novos. ⚠️ NAO CORRIGE O DADO JA GRAVADO: VOL e VOC seguem com ordenada=true e ordem nula ate alguem reabrir o Setup e salvar.",
+      motivation:
+        "Nivea, 22/09: o quadro de assinaturas nao esta ficando salvo la no Apolo, e nao esta trazendo a imobiliaria. E em 23/09, sobre o termo de acordo que foi para o cliente: ajusta o padrao do nome dos assinantes, e justifica o texto.",
+    },
+    title: "A imobiliária assina, e a ordem cadastrada volta a valer",
+    type: "melhoria",
+    version: "1.363.0",
+  },
+  {
     buildTag: "2026-09-23-o-bem-ganha-tela-e-o-espelho-ganha-arquivos",
     deployedAt: "2026-09-23T08:30:00-03:00",
     internal: true,
