@@ -95,6 +95,46 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Temis/Hades] A imobiliaria assina, e a ordem cadastrada volta a valer (v1.363.0)`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-09-23 09:38:10 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK explicito do Lucas ("pode subir"), depois de ele decidir as duas questoes de produto: a imobiliaria assina como PAPEL PROPRIO, e quem assina e a PESSOA JURIDICA; e o nome dos assinantes em CAIXA ALTA, na tela e no envelope`.
+- Escopo publicado:
+  - `a ordem de assinatura do Setup volta a ser gravada E lida (duas pernas do mesmo defeito)`;
+  - `a imobiliaria vinculada passa a ser convidada a assinar o contrato, como papel `corretor``;
+  - `no termo de acordo: nome dos assinantes num padrao so e texto legal justificado`.
+- Commit publicado: `77a9deec329cbf6e28d4fc30be1eecbcb3525a0e`.
+- Deployment anterior: `d1b65bba` (v1.362.0, de OUTRA sessao -- a main avancou durante o trabalho e foi mesclada antes do push).
+- Deployment novo: `dpl_AbaXH77MPemN5GJo2xVKys4e7qBR`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Arquivos/modulos incluidos: `lib/assinatura/ordem.ts` (nasceu `regraDaColuna` e `nomeDeSignatario`), `lib/assinatura/ordem-db.ts`, `lib/assinatura/signatarios.ts`, `lib/temis/ordem-da-categoria.ts`, `lib/apolo/enterprise-settings.ts`, `app/api/apolo/empreendimentos/settings/route.ts`, `lib/hades/acordo/signatarios-do-acordo.ts`, `lib/apolo/pdf-timbrado.ts`, `lib/hades/dossie/termo-de-acordo-pdf.ts` e os testes.
+- Arquivos/modulos excluidos: `NENHUMA MIGRATION. O CHECK da 0180 so aceita quatro papeis e nao tem corretor -- a imobiliaria nao precisou dele porque vem da VENDA, e nao do quadro do empreendimento.`
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `npx vitest run`: `527 arquivos, 8.147 testes passando (ja com o merge da outra sessao)`;
+  - `prova contra producao (leitura pura)`: `prepararEnvio da venda da VITORIA passou de 11 signatarios sem corretor para 12, com 'ordem=4 papel=corretor FLAT NEGOCIOS IMOBILIARIOS LTDA'; a Gurgel NAO duplicou, avisos [] e impedimento nenhum`;
+  - `simulacao da ordem`: `com o mapa da tela, o envio usaria 1. Coordenador | 2. Comprador + Conjuge | 3. Testemunha | 4. Vendedora, contra a ordem PADRAO que saia antes`.
+- ⚠️ AS TRES CAUSAS, medidas:
+  - `A ORDEM: a rota validava o MAPA {papel: numero} (a forma que a tela manda desde 13/09) e depois fazia 'ordem: Array.isArray(bruta) ? bruta : null', gravando NULO. Como 'assinatura_ordenada' ia true no MESMO update, o empreendimento ficava marcado como "assinam em ordem" com ordem nenhuma -- pior do que nao salvar. Medido: VOL (36) e VOC (37) assim no banco; so o RVP (38) tinha ordem, no formato ANTIGO.`;
+  - `E A SEGUNDA PERNA, que quase passou: 'ordem-db.ts' montava sempre { papeis: coluna }, e um mapa nao casa com ramo nenhum de 'lerRegraDeOrdem' -- volta o PADRAO, calado. Mesmo corrigindo a gravacao, o envio continuaria em paralelo, e a tela do Setup (que JA sabia ler as duas formas) mostraria outra coisa. Nasceu 'regraDaColuna', usada pelos tres leitores.`;
+  - `A IMOBILIARIA: nao era regressao, era funcionalidade que nunca existiu. O papel 'corretor' estava no vocabulario e na tela do Setup (da para numera-lo na ordem, e o Villa Paris tem isso gravado), mas NENHUMA funcao produzia signatario com ele. O dado ja estava no contrato, inclusive o e-mail: 'signatariosDoContrato' so consultava 'vendedora_representante_*', via antiga nunca escrita.`
+- ⚠️ DUAS ESCOLHAS DE ENGENHARIA QUE OS TESTES CORRIGIRAM:
+  - `A normalizacao do nome comecou dentro de 'ordenarSignatarios' e os testes de ORDENACAO reclamaram, com razao: ordenar nao muda dado. Foi para os dois montadores.`;
+  - `A justificacao comecou desenhando PALAVRA POR PALAVRA, e a suite do termo pegou na hora: o extrator passou a ler 6 linhas onde havia 9, porque cada palavra virou um Tj proprio -- texto que nao se copia nem se busca, num papel que vai a cartorio. Refeita pelo operador 'Tw' do PDF, que e como editores de verdade justificam.`
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200, build READY em 232s, alias apontado`.
+- Logs recentes: `sem erro critico`.
+- Rollback definido: `Instant Rollback para o deployment do commit d1b65bba`.
+- Riscos conhecidos: `o envelope do contrato passa a ter MAIS UM signatario em toda venda com imobiliaria vinculada -- e mudanca de fluxo, e por isso a entrada do changelog NAO foi marcada como interna.`
+- Pendencias: `⚠️ O DADO JA GRAVADO NAO SE CONSERTA SOZINHO: VOL e VOC seguem com assinatura_ordenada=true e assinatura_ordem NULA ate alguem reabrir o Setup e salvar a ordem. E a tela do Setup ainda oferece o papel 'interveniente', que nao existe no codigo desde 13/09 e e descartado em silencio na leitura.`
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Nivea reabrir o Setup do VOL e do VOC e salvar a ordem; e conferir um envio de contrato do VOL para ver a imobiliaria na lista antes de mandar`.
+
+Registro de producao:
+
 - Assunto: `[Temis] O contrato avisa antes de gastar envelope, e para de engordar a toa (v1.360.7)`.
 - Squad/agente responsavel: `Zeus`.
 - Data e hora local: `2026-09-22 17:41:55 -03:00`.
