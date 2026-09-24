@@ -36,6 +36,67 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-24-quadro-anual-da-parcela",
+    deployedAt: "2026-09-24T10:36:44-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**A Evolução da parcela agora mostra o contrato inteiro, do primeiro ao último ano.** Cada linha é um período entre dois aniversários do contrato e separa o que é amortização, o que é juros e o que é correção pelo índice. No fim vem o total do contrato.",
+              "**Um quadro para cada cenário: otimista, tendência e conservador.** Os anos que já passaram usam o índice publicado e são iguais nos três. Os anos futuros vêm marcados como estimativa.",
+              "**A conta segue a regra do contrato.** No aniversário, soma o índice acumulado dos 12 meses até aquele mês aos juros do contrato, na mesma tabela SACOC que o gerador de proposta usa. Contrato em PRICE mostra só a correção, porque os juros já estão dentro da parcela.",
+              "**O PDF traz os três quadros na mesma folha.**",
+              "**Quando o quadro não pode ser calculado, a tela diz por quê.** Pode ser contrato encerrado, pedido sem plano comercial no C2X ou contrato sem índice de correção. Nesses casos não aparece uma conta pela metade.",
+              "**Saiu da tela a parcela que a cobrança lançou.** O relatório é a conta do contrato. O valor devido de cada parcela continua sendo o do boleto.",
+            ],
+            screen: "Financeiro · Evolução da parcela",
+          },
+        ],
+      },
+    ],
+    rollback: "eb722ad2",
+    technical: {
+      done:
+        "MOTOR NOVO `lib/apolo/reajuste/quadro-anual.ts` (`montarQuadroAnual`), com a regra da Lavra do Ouro, que funcionou no reajuste em massa. (1) O CICLO É O ANIVERSÁRIO DO CONTRATO: a data do ato (se faltar, a de assinatura; se faltar, o 1º vencimento). A parcela entra no ciclo pela data de vencimento comparada com a data do aniversário. No LOS0617 (ato 02/08/2024, 1º vencimento 20/09/2024), o ciclo 1 tem 11 parcelas, de set/24 a jul/25. (2) O ÍNDICE DO CICLO é o acumulado dos 12 meses que terminam no mês do aniversário, olhado mês a mês. Mês sem índice publicado usa a média mensal do cenário, e a linha vai marcada como estimada. (3) SACOC: a taxa do ano é índice + juros do contrato em soma simples. A mensal é (1+a)^(1/12)-1, truncada em 7 casas, e a parcela é truncada no centavo. A conta não depende do caminho: cada ciclo parte da amortização original com a taxa daquele aniversário. Para separar juros de correção, a mesma curva roda duas vezes, com índice+juros e com só juros. PRICE aplica só o fator do índice. (4) A CURVA É UMA SÓ: `parcelaDoCicloSacoc` saiu de `hercules/cronograma.ts` e foi para `apolo/planos-comerciais.ts`. O gerador de proposta e o quadro chamam a mesma função, e os 1.510 testes de Hércules e planos passaram sem nenhuma mudança. `taxaMensal` agora delega para `taxaMensalDaTaxa`. (5) JUROS E ÍNDICE VÊM DA PROPOSTA, isto é, do plano comercial `ar.commercial_plan_id`, porque o plano próprio do C2X é uma casca vazia. PROVA NO LOS0617, cenário tendência: set/24 a jul/25 = 452,43; ago/25 a jul/26 = 484,00 (452,43 + juros 19,37 + correção 12,20, com IPCA de 5,13%); ago/26 a jul/27 = 540,75 (4,22%); total do contrato 136.250,54 = amortização 65.149,92 + juros 35.166,96 + correção 35.933,66. A regra, com o IPCA de 4,26% do lote, reproduz o 481,94 lançado no C2X. Esse lote usou o IPCA fechado de 2025, e isso foi pontual. A PARCELA DE HOJE SAIU DA TELA porque é caixa: 481,94 ao lado de 484,00 no mesmo ano faria o leitor duvidar dos dois. DIVERGÊNCIA EM ABERTO, para a Nívea decidir: no 2º aniversário, o template LOU da Lavra divide 12 meses de juros por 11 (LOU1819 aplicado = 477,98). A curva da casa divide o ano cheio (dá 466,12). O quadro segue a curva da casa. REVISÃO ADVERSARIAL ANTES DO DEPLOY (quatro leituras independentes do diff e um verificador tentando derrubar cada achado, 17 agentes): confirmou nove defeitos, e esta versão corrige todos. (a) O SISTEMA passa a ser o que o C2X DECLARA: primeiro o nome do plano, porque o Veredas do Ouro diz PRICE ou SACOC no nome, e depois `enterprise_tables` do empreendimento. A dedução pela parcela ficou só como último recurso. Ela errava o MDS0805, o MDS0306 e o MDS0713, que caíam em SACOC e ganhavam 8% a.a. por cima de uma parcela que já tem juros; no MDS0713 o total ia de 126 mil para 185 mil. O extrato passou a ler `cp.name` e `et.name`, com um LEFT JOIN pela chave, só SELECT. (b) A PARCELA 1 É RECONSTRUÍDA PELO NÚMERO de cada mensal, por votação, e não pelo menor vencimento. No LOS0404 as mensais 1 a 17 não existem no C2X, e o contrato terminava em jan/2038 com R$ 14,5 mil a mais. No MDS0306 um acordo empilhou as parcelas 1 a 16 em maio/2026. (c) Com carência, o ciclo de aniversário não é mais passado direto para a curva, e as últimas parcelas deixam de despencar para a amortização pura. (d) O quadro só sai quando a conta inteira é possível. Contrato encerrado, pedido sem plano comercial (juro nulo deixou de ser 0,00% a.a.: LOS0619, R$ 71 mil abaixo do real), contrato sem índice e série fora do ar saem sem quadro e com o motivo. O PDF devolve 503 quando a série falha agora. (e) Correção negativa (IGP-M de 2023/24) aparece com sinal. PRICE chama a coluna de Parcela de origem, e o total de juros não diz R$ 0,00. O quadro do PDF não se parte entre páginas. Os degraus do caixa saíram da tela. Trocar de cenário não refaz a leitura do C2X e do IBGE. VARREDURA NA CARTEIRA INTEIRA, só leitura: 1.041 pedidos com carteira, 803 com quadro, zero violações das invariantes (decomposição fecha, nenhum ciclo despenca, todo quadro começa na parcela 1). PRICE só no MDS (24) e no ACP (8). Testes: 37 do quadro, 10 da montagem (novo), 19 de comportamento da tela e 2 da rota do PDF (novo). Suíte inteira: 551 arquivos, 8.445 testes passando. PDF do LOS0617 com os três quadros: 39,0 KB, mesmos números, e o quadro conservador agora vai inteiro para a página 2.",
+      motivation:
+        "Lucas, 24/09/2026: pode trazer o quadro desde a primeira parcela, além disso aplicar os juros, e apontar o crescimento do juros e da correção. E: podemos dividir pelas visões, ter um quadro otimista, tendência, conservador. Sobre a regra: o juros é aplicado todo aniversário do contrato, isso na sacoc; price trariamos somente a correção do indice; estuda o calculo que fizemos para ajustar as parcelas do lavra do ouro, funcionou perfeitamente; o indice a gente olha mes a mes, para aplica-lo no aniversario. Sempre aniversario do contrato.",
+    },
+    title: "Quadro anual da parcela: amortização, juros e correção, do primeiro ao último ano",
+    type: "melhoria",
+    version: "1.370.0",
+  },
+  {
+    buildTag: "2026-09-24-pdf-da-evolucao",
+    deployedAt: "2026-09-24T00:49:29-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**A Evolucao da parcela agora sai em PDF timbrado**, no mesmo padrao dos outros relatorios da casa.",
+              "**O papel traz os tres cenarios lado a lado** (otimista, tendencia e conservador), porque o resultado e uma faixa e nao um numero. A premissa de cada coluna vai escrita.",
+              "**Em toda pagina esta dito que e estimativa**, e que o valor devido de cada parcela e o do boleto: a folha circula sozinha e nao pode ser lida como promessa.",
+            ],
+            screen: "Financeiro · Evolucao da parcela",
+          },
+        ],
+      },
+    ],
+    rollback: "4c981613",
+    technical: {
+      done:
+        "O PAPEL SAI DA MESMA APURACAO DA TELA: as duas rotas chamam `evolucaoDosContratos`, entao tela e PDF nunca divergem sobre a parcela de um cliente. E a mesma regra que o extrato segue, e existe porque divergencia de dinheiro entre duas telas da casa vira reuniao. OS TRES CENARIOS NA MESMA FOLHA, e isso e decisao de honestidade, nao de economia de papel: um documento com um numero so e lido como PREVISAO; tres colunas mostram que o resultado e uma FAIXA. No contrato usado para provar (LOS0617), em 2031 a parcela vai de R$ 575,41 no otimista a R$ 649,30 no conservador, com R$ 626,06 na tendencia. A ordem e do menor para o maior, e a premissa de cada coluna vai escrita por extenso embaixo da tabela. UMA LEITURA PARA OS TRES: `evolucaoDosContratos` ganhou `cenarios`, e o que muda entre eles e so a media aplicada -- conta pura sobre a serie ja carregada. Tres chamadas custariam tres varreduras do C2X e tres buscas de serie para desenhar a MESMA folha. Medido: 1.177ms de leitura, 67ms de montagem, 32,9 KB. A RESSALVA E ESTRUTURAL, nao nota em corpo 6: cada linha diz se e o valor de hoje ou estimativa, ha uma secao explicando que a correcao so alcanca a parcela na emissao do boleto (que e por que as parcelas distantes ainda aparecem pelo valor de origem), e o rodape repete em TODA pagina que nao e compromisso -- a folha circula solta, e a pagina 2 sozinha nao pode virar promessa. ⚠️ A REVOGACAO DO BLOB ESPERA 60s, que e a correcao do defeito que o Isac relatou em 08/09/2026 no PDF do extrato: revogar na mesma linha do clique e corrida com o navegador e mata o download CALADO. O molde e o `pdf-timbrado` de sempre (logo, cartoes, tabela limpa), e o nome do arquivo segue o formato do extrato para os dois cairem juntos na pasta de download do atendente. 12 testes de comportamento, um deles travando que o PDF sai no cenario da tela quando a rota e chamada com um cenario so.",
+      motivation:
+        "Lucas, 23/09/2026: agora falta criar o relatorio em PDF igual temos os outros. E, vendo a primeira versao do papel, em 24/09: pode fazer as tres visoes em um relatorio so.",
+    },
+    title: "PDF da Evolucao da parcela, com os tres cenarios juntos",
+    type: "novidade",
+    version: "1.369.0",
+  },
+  {
     buildTag: "2026-09-23-o-juridico-cancela-o-contrato",
     // ⚠️ AJUSTAR NO DEPLOY: esta entrada foi escrita junto com o código, antes do push. A hora é a
     // prevista; `rollback` é o deployment anterior, que só existe no momento do go-live.

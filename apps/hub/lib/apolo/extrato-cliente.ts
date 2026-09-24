@@ -261,6 +261,11 @@ export type ExtratoClienteContrato = {
   indiceCorrecao: null | string;
   jurosContratuais: null | number;
   lote: null | string;
+  /**
+   * `commercial_plans.name` do plano da proposta. O Veredas do Ouro diz o sistema de amortização
+   * no NOME ("PLANO NORMAL PRICE" e "PLANO NORMAL SACOC"). Opcional: só a Evolução da parcela lê.
+   */
+  planoNome?: null | string;
   /** O parcelamento do CONTRATO (de `payments.total_parcels`). */
   planoParcelas: null | number;
   /** O do plano comercial, para comparar quando o contrato é personalizado. */
@@ -270,6 +275,11 @@ export type ExtratoClienteContrato = {
   /** `enterprise_unities.price` — preço de tabela da unidade. */
   precoTabela: null | number;
   quadra: null | string;
+  /**
+   * `enterprise_tables.name` do empreendimento (PRICE | SACOOC): é como o C2X declara o sistema de
+   * amortização. Opcional: só a Evolução da parcela lê.
+   */
+  tabelaDoEmpreendimento?: null | string;
   titulares: ExtratoClienteTitular[];
 };
 

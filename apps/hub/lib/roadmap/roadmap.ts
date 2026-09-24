@@ -98,6 +98,15 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
     titulo: "A \"correção\" fantasma no extrato: mora entrando como reajuste",
   },
   {
+    id: "PAN-120",
+    entregueEm: "2026-09-24",
+    evidencia: "v1.370.0. `lib/apolo/reajuste/quadro-anual.ts` (`montarQuadroAnual`) e a curva única `parcelaDoCicloSacoc` em `lib/apolo/planos-comerciais.ts`, que o gerador de proposta do Hércules também usa. Revisão adversarial antes do deploy corrigiu 9 defeitos (sistema declarado pelo C2X, parcela 1 pelo número, carência, quadro só com a conta inteira), e a varredura da carteira deu 803 quadros e zero violações. Prova no LOS0617: ago/25 a jul/26 = R$ 484,00 (452,43 + juros 19,37 + correção 12,20, IPCA 5,13%), total do contrato R$ 136.250,54. ⚠️ Em aberto, para a Nívea: no 2º aniversário, o template LOU divide 12 meses de juros por 11 (LOU1819 aplicado 477,98), e a curva da casa divide o ano cheio (466,12).",
+    modulo: "Apolo",
+    porque: "Lucas (24/09/2026): *\"pode trazer o quadro desde a primeira parcela, além disso aplicar os juros, e apontar o crescimento do juros e da correção\"*. O cliente e o atendente veem, ano a ano e em três cenários, quanto da parcela é amortização, quanto é juros e quanto é correção. A conta é a do contrato (índice dos 12 meses até o aniversário somado aos juros, a regra da Lavra), e não o que a cobrança lançou.",
+    situacao: "entregue",
+    titulo: "Evolução da parcela: quadro anual com amortização, juros e correção nos três cenários",
+  },
+  {
     id: "PAN-001",
     entregueEm: "2026-09-11",
     evidencia: "UPDATE aplicado em produção em 11/09 com OK do Lucas: o card fc996d65 voltou para `analise` com `estagio_desde` = criado_em (08/09 08:22). Varredura depois: os 8 cards estão dentro do caminho do próprio tipo.",
