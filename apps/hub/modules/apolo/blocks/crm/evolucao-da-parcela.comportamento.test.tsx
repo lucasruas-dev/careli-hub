@@ -18,16 +18,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 //   • trocar de cenário REFAZ a busca, senão a tela mostra o número do cenário anterior;
 //   • contrato sem índice reconhecido DIZ por quê, em vez de sumir com a seção;
 //   • manda o Bearer (a lição que custou a v1.366.0, no mesmo dia).
+//
+// ⚠️ NÃO MOCKE `apolo-derive` AQUI, e a razão é medida: mockar o módulo inteiro (só para trocar
+// `entityC2xId`) apaga o resto dele — `buyerStatusLabel`, `resolveCarteiraRoles` — para os outros
+// arquivos que dividem o mesmo worker do vitest. Com esse mock, SEIS testes de outras frentes
+// (espelho público, simulador, TelaVenda, termo de acordo) caíam, e passavam isolados; sem ele, a
+// suíte fecha em 8.292. Custou quatro pushes barrados para eu olhar no lugar certo. A função real
+// só lê `hadesClientId`, então basta montar a entity como ela é.
 
 (globalThis as unknown as { React: typeof React }).React = React;
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 vi.mock("@/modules/apolo/data/apolo-operations", () => ({
   getApoloAccessToken: async () => "token-de-teste",
-}));
-
-vi.mock("@/modules/apolo/data/apolo-derive", () => ({
-  entityC2xId: (entity: { c2xId?: null | number }) => entity.c2xId ?? null,
 }));
 
 const { EvolucaoDaParcela } = await import("./evolucao-da-parcela");
@@ -72,7 +75,11 @@ function texto(): string {
   return container.textContent ?? "";
 }
 
-async function montar(payload: unknown = [CONTRATO], entity: unknown = { c2xId: 1398 }) {
+/** A forma real: `entityC2xId` tira o número do fim de `hadesClientId`. */
+const COM_CARTEIRA = { hadesClientId: "c2x-1398" };
+const SEM_CARTEIRA = { hadesClientId: null };
+
+async function montar(payload: unknown = [CONTRATO], entity: unknown = COM_CARTEIRA) {
   pedidos = [];
   vi.stubGlobal(
     "fetch",
@@ -220,7 +227,7 @@ describe("EvolucaoDaParcela", () => {
   });
 
   it("cadastro sem ligação com o C2X explica, em vez de girar para sempre", async () => {
-    await montar([CONTRATO], { c2xId: null });
+    await montar([CONTRATO], SEM_CARTEIRA);
     expect(texto()).toContain("não está ligado a um cliente do C2X");
     expect(pedidos).toHaveLength(0);
   });
@@ -237,7 +244,7 @@ describe("EvolucaoDaParcela", () => {
     );
     await act(async () => {
       root.render(
-        React.createElement(EvolucaoDaParcela, { entity: { c2xId: 1398 } } as never),
+        React.createElement(EvolucaoDaParcela, { entity: COM_CARTEIRA } as never),
       );
     });
     await act(async () => {
