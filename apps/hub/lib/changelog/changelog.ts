@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-23-evolucao-da-parcela",
+    deployedAt: "2026-09-23T23:34:31-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Aba nova no Financeiro do cliente: Evolucao da parcela.** Ela mostra o valor de contrato e o que o cliente paga hoje lado a lado, e projeta para onde a parcela caminha, usando a serie do indice do proprio contrato.",
+              "**Tres cenarios** (otimista, tendencia e conservador), cada um com a premissa escrita na tela: quem le sabe de onde saiu o numero.",
+              "**Cada linha diz se e fato ou estimativa.** O que ja aconteceu e medido; o que vem pela frente e palpite bem-feito, e esta dito assim, porque o valor definitivo de cada parcela e o do boleto.",
+            ],
+            screen: "Financeiro · Evolucao da parcela",
+          },
+        ],
+      },
+    ],
+    rollback: "0155f4e6",
+    technical: {
+      done:
+        "O RELATORIO QUE O LUCAS PEDIU DE MANHA, agora no lugar certo. A primeira entrega (1.366.0) virou painel de carteira em /apolo/defasagem: util, mas nao era o pedido. Com a tela do Financeiro aberta ele apontou: 'queria aqui na tela do financeiro por cliente, e um relatorio'. NADA RECALCULA O QUE O EXTRATO JA SABE: mensalidade base, mensalidade vigente, defasagem medida e indice do contrato saem todos de `loadExtratoDoCliente`; esta peca so acrescenta o TEMPO. Duas contas do mesmo numero em duas abas vizinhas e como elas comecam a divergir. A PROJECAO SOBE EM DEGRAU ANUAL, e nao em rampa mensal: e assim que o contrato reajusta, e a rampa mostraria uma subida suave que nenhum boleto do cliente teve. O ponto de partida e a parcela VIGENTE (o que a cobranca pratica), nao a base -- a diferenca entre as duas e a defasagem, que aparece ao lado. Tres cenarios com janelas diferentes da mesma serie (3, 5 e 10 anos), com media GEOMETRICA: a aritmetica de variacoes percentuais superestima o acumulado. ⚠️ CADA LINHA DIZ SE E FATO OU ESTIMATIVA, e a premissa (% ao mes) fica visivel na tela. A peca pode ir para a mao do cliente, e numero de 2031 sem essa marcacao vira expectativa. ⚠️ FONTE EXTERNA FORA DO AR NAO DERRUBA A ABA: sem a serie, o que e fato (valor de contrato, parcela de hoje, defasagem, historico) continua aparecendo e a curva sai com o motivo escrito. Uma busca de serie por INDICE, nao por contrato. PROVADO NO CONTRATO DO PRINT (LOS0617, AR 1066): contrato R$ 452,43, hoje R$ 481,94, 6,52% acima, IPCA ANUAL, IPCA 12m 4,22% -- os mesmos numeros que o extrato mostra ao lado. Projecao na tendencia: R$ 507,83 em 1 ano, R$ 563,85 em 3, R$ 626,06 em 5. ⚠️ ACHADO DE PASSAGEM: esse cliente tem CADASTRO DUPLICADO no C2X (id 1390 sem parcela nenhuma, 1398 com as 146). A peca acerta porque o extrato segue quem tem parcela, que e a regua da casa. 10 testes de comportamento, com os numeros do contrato real.",
+      motivation:
+        "Lucas, 23/09/2026: preciso que a gente crie um novo relatorio la no financeiro do Apolo, que mostra ao cliente a evolucao das parcelas com base na serie historica do indice de correcao do contrato, e uma projecao para o futuro. E, vendo a primeira entrega: queria aqui na tela do financeiro por cliente, e um relatorio.",
+    },
+    title: "Evolucao da parcela: para onde a mensalidade do cliente caminha",
+    type: "novidade",
+    version: "1.367.0",
+  },
+  {
     buildTag: "2026-09-23-parcelas-a-corrigir-correcao",
     deployedAt: "2026-09-23T19:00:11-03:00",
     internal: true,
