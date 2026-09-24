@@ -95,6 +95,51 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Apolo] Evolucao da parcela: quadro anual com amortizacao, juros e correcao nos tres cenarios (v1.370.0)`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-09-24 10:36:44 -03:00` (push na main).
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK explicito do Lucas ("tem o meu ok"), dado DUAS vezes: a primeira antes da revisao adversarial, e de novo ("tem o meu ok, pode subir") depois que a revisao achou e esta versao corrigiu nove defeitos -- o pacote tinha mudado, e a trava do modo automatico barrou o primeiro push com razao.`
+- Escopo publicado:
+  - `o quadro anual da parcela, do primeiro ao ultimo ano, um periodo por aniversario do contrato, com amortizacao, juros e correcao pelo indice, nos tres cenarios (tela e PDF)`;
+  - `a regra da Lavra: indice acumulado dos 12 meses ate o mes do aniversario (mes a mes) + juros do contrato em soma simples, mensal truncada em 7 casas, parcela truncada no centavo, na curva SACOC da casa -- a mesma do gerador de proposta (parcelaDoCicloSacoc, agora em planos-comerciais.ts); PRICE aplica so o indice`;
+  - `o sistema de amortizacao passa a ser o que o C2X DECLARA (nome do plano, depois enterprise_tables); a parcela 1 e reconstruida pelo numero de cada mensal, por voto`;
+  - `o quadro so sai quando a conta inteira e possivel; senao sai o motivo (encerrado, sem plano, sem indice, serie fora do ar); o PDF devolve 503 com a serie fora do ar`.
+- Commit publicado: `9b1e89e4c875bdf36026d8cc36cf799e537fe8b8` (a funcionalidade em `283bb1a2`, as correcoes da revisao em `c4f26485`).
+- Deployment anterior: `dpl_6ojw6kxDqwjCSnibAVDPAdqWPw8L` (commit `eb722ad2`, v1.369.0).
+- Deployment novo: `dpl_946fJUgGyfR2Uj31ZZSWhAXFdkyL`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Arquivos/modulos incluidos: `lib/apolo/reajuste/quadro-anual.ts` (novo) e `projecao-do-contrato.ts`, `lib/apolo/reajuste/evolucao-pdf.ts`, `modules/apolo/blocks/crm/evolucao-da-parcela.tsx`, `app/api/apolo/evolucao-da-parcela/pdf/route.ts`, `lib/apolo/planos-comerciais.ts` e `lib/hercules/cronograma.ts` (a curva SACOC num lugar so), `lib/apolo/extrato-cliente-c2x.ts` e `extrato-cliente.ts` (duas colunas novas na leitura: cp.name e et.name), changelog 1.370.0 e roadmap PAN-120.
+- Arquivos/modulos excluidos: `NENHUMA MIGRATION, nenhuma env. O C2X segue so leitura: a mudanca no extrato e um LEFT JOIN em enterprise_tables pela chave primaria, que nao multiplica linha.`
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `npx vitest run`: `551 arquivos, 8.445 testes passando`; testes novos: 37 do quadro, 10 da montagem dos dados (novo arquivo), 19 de comportamento da tela, 2 da rota do PDF (novo arquivo); Hercules e planos (1.510) sem mudanca;
+  - `revisao adversarial (workflow, 17 agentes)`: `quatro leituras independentes do diff (a conta, o gerador de proposta, os dados de entrada, tela e PDF) e um verificador tentando derrubar cada achado. O gerador de proposta saiu limpo. Nove defeitos confirmados, todos corrigidos nesta versao`;
+  - `prova real (so leitura)`: `LOS0617 ago/25 a jul/26 = R$ 484,00 (452,43 + juros 19,37 + correcao 12,20, IPCA 5,13%), total R$ 136.250,54; LOS0404 ancorado em set/24, total R$ 137.572,84; MDS0805, MDS0306 e MDS0713 em PRICE (MDS0713 de R$ 185 mil para R$ 126 mil); LOS0619 sem quadro, com o motivo`;
+  - `varredura da carteira inteira (so leitura)`: `1.041 pedidos com carteira, 803 com quadro, zero violacoes das invariantes (decomposicao fecha, nenhum ciclo despenca, todo quadro comeca na parcela 1); PRICE so no MDS (24) e no ACP (8); ancora diferente do menor vencimento em 8 (MDS0306, LOS0404, LOU0231, REPD155, REPD132, REPB50, LBFC1301, VOC0916)`.
+- ⚠️ OS NOVE DEFEITOS QUE A REVISAO PEGOU ANTES DO AR:
+  - `sistema deduzido pela parcela mandava MDS0805/MDS0306/MDS0713 (PRICE) para SACOC, com 8% a.a. por cima de parcela que ja tem juros`;
+  - `a parcela 1 era o menor vencimento que sobrou: LOS0404 (sem as mensais 1 a 17 no C2X) terminava em jan/2038 com R$ 14,5 mil a mais; MDS0306 (acordo empilhou 1 a 16 em maio/2026) parecia ter carencia`;
+  - `com carencia, o ciclo de aniversario ia direto para a curva e as ultimas parcelas despencavam para a amortizacao pura`;
+  - `contrato encerrado saia projetado ate 2036`;
+  - `pedido sem plano (juro nulo) saia com "0,00% a.a." e total R$ 71 mil abaixo do real (LOS0619)`;
+  - `serie fora do ar virava total SEM correcao`;
+  - `correcao negativa (IGP-M 2023/24) aparecia como "-"`;
+  - `PRICE chamava de amortizacao a parcela com juros e imprimia juros R$ 0,00`;
+  - `a tela ainda listava os degraus do caixa (com o 481,94) e o PDF deixava o total de um quadro sozinho no topo da pagina`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200 no site; /api/version = 1.370.0 (buildTag 2026-09-24-quadro-anual-da-parcela) as 10:42:10, cerca de 5 min depois do push; /api/apolo/evolucao-da-parcela, /pdf e /extrato-cliente respondem 401 sem token (publicadas e protegidas)`.
+- Logs recentes: `sem erro de runtime no deployment novo (o unico grupo nos ultimos 15 min e o DeprecationWarning antigo de url.parse do Hermes, do deployment anterior)`.
+- Rollback definido: `Instant Rollback para dpl_6ojw6kxDqwjCSnibAVDPAdqWPw8L (commit eb722ad2, v1.369.0)`.
+- Riscos conhecidos: `a leitura do extrato no C2X ganhou um LEFT JOIN (enterprise_tables) -- a tela do Extrato usa a mesma consulta. Os contratos sem quadro passam a dizer por que, e 110 deles sao contratos sem mensal (nao tinham quadro antes tambem).`
+- Pendencias: `em aberto, para a Nivea: no 2o aniversario o template LOU divide 12 meses de juros por 11 (LOU1819 aplicado R$ 477,98) e a curva da casa divide o ano cheio (R$ 466,12); o quadro segue a curva da casa. E a regra de indice: o lote de 24/08 usou o IPCA fechado de 2025 (4,26%), e a regra do contrato (Lucas, 24/09) e o acumulado ate o aniversario -- o LOS0617 tem R$ 481,94 lancado e R$ 484,00 pela regra.`
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas conferir a aba Financeiro > Evolucao da parcela de um cliente da Lavra e de um do MDS (PRICE), e baixar o PDF.`
+
+Registro de producao:
+
 - Assunto: `[Temis/Hades] A imobiliaria assina, e a ordem cadastrada volta a valer (v1.363.0)`.
 - Squad/agente responsavel: `Zeus`.
 - Data e hora local: `2026-09-23 09:38:10 -03:00`.
