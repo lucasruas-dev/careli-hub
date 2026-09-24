@@ -95,6 +95,41 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Apolo] Mover CAD de empreendimento, travas da troca e o empreendimento de volta no PDF da CAD (v1.372.0)`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-09-24 16:42:50 -03:00` (push na main); no ar as 16:50:46.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK explicito do Lucas ("tem o meu ok") depois de ele decidir a regra da troca: "Validacao nao precisa pois ja foi feita"; destino com analise e sem analise recente vai para analise; "se ja foi feito ... e so validar os valores e apontar se passou ou nao"; e "Pode ser daqui pra frente" para o PDF.`
+- Escopo publicado:
+  - `acao Mover CAD no Board (so admin/leader): move CAD, vinculos e documentos pessoais juntos, para o empreendimento de mercado (pai), com a regra de etapa do Lucas`;
+  - `travas: excluir o vinculo que e o da CAD da 409; o credito recusa CAD cujo vinculo foi arquivado depois de ela nascer`;
+  - `rotulo do card do Board sai da CAD, nao do vinculo`;
+  - `PDF da CAD: linha Empreendimento abaixo do Corretor (nome do pai, nunca a divisao) e Enviado em = data real do envio no fuso de Brasilia`.
+- Commit publicado: `012eace1255d5c6a894714d58b6717344f7e6e9a` (codigo em `87ddd227`, merge da 1.371.0 da sessao Plantao, changelog em `012eace1`).
+- Deployment anterior: `dpl_4pGYoyEcMsaz71c2ej76kvYeHxwH` (commit `fc91a75c`, v1.371.0, da sessao Plantao).
+- Deployment novo: `dpl_DN1AsUvnCS1Gbiivp9aeuoCAVPig`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Arquivos/modulos incluidos: `lib/apolo/mover-cad.ts` e a rota `app/api/apolo/board/[id]/mover-empreendimento` (novos), `lib/apolo/empreendimento-de-mercado.ts` (novo), `relationships/archive`, `lib/serasa/consulta-servico.ts` (so a trava), `lib/apolo/esteira-cad.ts`, `board-do-servidor.ts`, `board-view.tsx` e `mover-cad.tsx`, `relationships-panel.tsx`, `cad-pdf.ts`, `cad-de-entidade.ts`, `cadastro-salvar.ts`, `cadastro-persist.ts`, `cobranca-prevenda.ts`, `asaas/bancada`, rotas do CAD publico e da ficha de imobiliaria. Changelog 1.372.0 e roadmap PAN-121.
+- Arquivos/modulos excluidos: `NENHUMA MIGRATION, nenhuma env. Nenhuma coluna nova: o Mover usa apolo_esteira, apolo_relationships, apolo_documents e apolo_timeline_events como estao.`
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `npx vitest run` (ja com o merge da 1.371.0): `573 arquivos, 8.812 testes passando`; uma primeira rodada registrou 1 erro fora dos testes, intermitente, que nao se repetiu na segunda nem no pre-push;
+  - `revisao`: `investigacao com 3 investigadores + 3 verificadores (causa provada: a troca manual mexeu so no vinculo, a CAD ficou no Veredas; nao era pai/filho); implementacao em 3 frentes e tres rodadas de revisao adversarial (achados corrigidos e reconferidos, com testes de mutacao)`.
+- Correcao de dado anterior ao deploy (com OK do Lucas, "Sim, pode mover para o vale do ouro"): `CAD do Jonatas (c34d4b6c) de 19 VEREDAS DO OURO para 35 VALE DO OURO, etapa credito; 2 PDFs remarcados; evento cad_movida. Depois a Nivea rodou o Serasa as 15:28, aprovou pela regra do VLO, e o aviso de credenciado foi para HUBER NEGOCIOS IMOBILIARIOS e para o corretor.`
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version = 1.372.0 (buildTag 2026-09-24-mover-cad-de-empreendimento) as 16:50:46`;
+  - `rotas`: `POST mover-empreendimento, POST serasa/consultar e GET incorporador/crm respondem 401 sem token (publicadas e protegidas)`.
+- Logs recentes: `sem erro de runtime nos 15 min depois do deploy`.
+- Rollback definido: `Instant Rollback para dpl_4pGYoyEcMsaz71c2ej76kvYeHxwH (commit fc91a75c, v1.371.0)`.
+- Riscos conhecidos: `o Mover recusa CAD com cobranca de pre-venda (pagamento_ref ou pago_em): hoje isso barra 432 credenciados do VLO. E padrao do Zeus, a confirmar com o Lucas. Credenciado movido nao volta para a pre-venda do destino (tambem a confirmar).`
+- Pendencias: `aviso ao coordenador das CADs gravadas em group:Lagoa Bonita falha sempre (o C2X e consultado pelo code 'LBF + LBR + LBP'); tarefa separada sugerida. Pergunta aberta ao Lucas: caixa do nome do empreendimento no PDF ('Vale do Ouro' x 'VALE DO OURO') e imprimir o corretor no PDF do cadastro interno.`
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas ou a coordenacao testarem o Mover CAD num caso real e conferirem o PDF de uma CAD nova com a linha Empreendimento.`
+
+Registro de producao:
+
 - Assunto: `[Temis/Hades] A imobiliaria assina, e a ordem cadastrada volta a valer (v1.363.0)`.
 - Squad/agente responsavel: `Zeus`.
 - Data e hora local: `2026-09-23 09:38:10 -03:00`.
