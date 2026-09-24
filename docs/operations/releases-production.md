@@ -7013,3 +7013,22 @@ sem aviso novo. ⚠️ Nao verificado em tela — o hub exige login.
 - ⚠️ Nao verificado em tela por mim: o portal exige sessao, e quem clica e o Lucas.
 
 - Status: `EM PRODUCAO`.
+
+## v1.371.0 · 24/09/2026 · A Têmis reflete no Hércules, e o cancelamento solta o lote
+
+- **Commit:** fc91a75c (branch `plantao` integrada à `main`; a 1.370.0 da outra sessão entrou antes)
+- **Rollback:** 9b1e89e4 (a 1.370.0)
+- **Autorização:** Lucas, 24/09/2026, *"pode subir"*
+- **O que vai:** `refletirCardNaVenda` liga todo movimento de card de contrato à etapa da venda
+  (envio para assinatura, webhook assinado, volta para correção, marcação); o card só anda para a
+  frente; `soltarLoteDaVendaDesfeita` prova pela régua que o lote saiu e diz quem o segura;
+  cancelar proposta retoma a soltura quando falha no meio; marcar atividade não conclui pedido de
+  cancelamento; indeferir olha a etapa da venda; o aviso de que a venda não acompanhou aparece na
+  tela, em faixa que pede ação.
+- **Verificação:** 555 arquivos e 8.523 testes verdes, typecheck limpo, duas rodadas de revisão
+  adversarial (6 revisores, 15 defeitos confirmados e corrigidos).
+- **Sem migration.** Nenhuma mudança de schema.
+- **Pendências declaradas no código:** pré-faturamento mantém a venda em `assinatura`; envelope
+  recusado não devolve a venda sozinho; faturar não grava `data_faturamento` nem `vendida`; nenhuma
+  tela leva o card de contrato a Faturado (a regra dos 7 dias mais entrada paga está em
+  `temis-redesenho-decisoes.md` e ainda não tem porta).
