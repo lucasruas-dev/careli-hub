@@ -39,7 +39,7 @@ import {
   carregarCadastroDeEmpreendimentos,
   type LinhaDoCadastro,
 } from "@/lib/hercules/cadastro";
-import { devolverCadastroSeNaoHaOutroDono } from "@/lib/hercules/cancelar-reserva-server";
+import { desfechoDaUnidade, soltarLoteDaVendaDesfeita } from "@/lib/hercules/cancelar-reserva-server";
 import { lerSituacaoDasUnidades } from "@/lib/hercules/situacao-da-unidade";
 import { fraseDoConflito, outrosDonosDoLote } from "@/lib/hercules/trava-do-lote";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
@@ -1884,6 +1884,169 @@ async function logoDoEmpreendimento(
 //
 // ⚠️ PATCH, E NÃO DELETE — a mesma razão da reserva. A proposta cancelada continua respondendo
 // "quem tinha este lote e por quê", e o histórico da unidade lê `cancelada_em` para montar o evento.
+const COLUNAS_DA_PROPOSTA_QUE_CAI =
+  "id, etapa, protocolo_numero, codigo, compradores, cliente_nome, reserva_id, imobiliaria_entity_id, corretor_entity_id, empreendimento_id, cancelada_em, cancelada_motivo, atualizado_em";
+
+type PropostaQueCai = {
+  atualizado_em: null | string;
+  cancelada_em: null | string;
+  cancelada_motivo: null | string;
+  cliente_nome: null | string;
+  codigo: null | string;
+  compradores: unknown;
+  corretor_entity_id: null | string;
+  empreendimento_id: null | string;
+  etapa: string;
+  id: string;
+  imobiliaria_entity_id: null | string;
+  protocolo_numero: null | number;
+  reserva_id: null | string;
+};
+
+/**
+ * Quanto tempo depois do cancelamento a nova tentativa ainda completa a soltura. É o "tente de novo
+ * em instantes" da resposta 503.
+ *
+ * ⚠️ E A ENTRADA DELA É ESTA MODAL, NÃO A TELA RECARREGADA (revisão de 24/09/2026). Com a venda já
+ * `cancelado` e o cadastro preso, a unidade recarregada chega à ficha como `reservada` sem processo:
+ * `acaoDeCancelamento` cai no último caso e não oferece botão nenhum. Enquanto a tela não tiver a
+ * porta própria ("Terminar o cancelamento"), o 503 manda NÃO fechar a janela, e a janela larga serve
+ * a quem deixa a modal aberta e tenta de novo mais tarde. Pendência anotada em
+ * `docs/operations/engineering-operations.md`.
+ */
+const JANELA_DA_RETOMADA_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * A venda tem card de cancelamento ou distrato VIVO na Têmis?
+ *
+ * ⚠️ É ELE QUEM DIZ DE QUEM É A RETOMADA, E NÃO A MARCA DO PEDIDO (revisão de 24/09/2026). O filtro
+ * `cancelamento_pedido_em is null` não prova nada: o indeferimento de um pedido irmão LIMPA a marca
+ * (`indeferimento-na-venda-server.ts`), e o motor da conclusão trata explicitamente a venda de marca
+ * nula (`concluir-cancelamento-server.ts`). Uma venda derrubada pelo motor e parada no passo da
+ * reserva casava todos os filtros daqui, e esta rota mandava os WhatsApps de "proposta cancelada"
+ * para corretor, imobiliária e cliente sobre um cancelamento que o jurídico concluiu.
+ *
+ * ⚠️ CARD INDEFERIDO NÃO SEGURA NADA: ele foi recusado e já não é dono de venda nenhuma. E leitura
+ * que falha é "não sei", que vira "tente de novo" — nunca uma retomada às cegas.
+ */
+async function temCardDeDesfazerVivo(
+  admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  propostaId: string,
+): Promise<"leitura_falhou" | boolean> {
+  const { data, error } = await admin
+    .from("temis_trabalhos")
+    .select("id")
+    .eq("workspace_id", WORKSPACE)
+    .eq("proposta_id", propostaId)
+    .in("tipo", ["cancelamento", "distrato"])
+    .neq("estagio", "indeferido")
+    .limit(1);
+  if (error) {
+    console.error("[hercules][proposta] não deu para ler os cards de cancelamento da venda", error.message);
+    return "leitura_falhou";
+  }
+  return ((data ?? []) as unknown[]).length > 0;
+}
+
+/**
+ * A VEZ DE AVISAR, TOMADA POR COMPARAR-E-TROCAR — uma tentativa só manda os WhatsApps.
+ *
+ * ⚠️ SEM ISTO, DUAS TENTATIVAS JUNTAS AVISAM DUAS VEZES (revisão de 24/09/2026). O caminho normal
+ * tinha a trava do clique duplo na etapa; a retomada não tinha nenhuma, e decidia pelo estado da
+ * reserva: entre o `update` da venda e o da reserva existe uma janela em que a segunda tentativa lê
+ * a venda já `cancelado` com a reserva viva e conclui que ninguém avisou. `atualizado_em` é o
+ * carimbo de versão: quem conseguir trocá-lo pelo valor que leu é quem avisa, e o outro fica sabendo
+ * que os avisos já saíram (é o que a tela mostra).
+ *
+ * ⚠️ O VALOR NOVO É SEMPRE DIFERENTE DO LIDO (o `+ 1` milissegundo): carimbo igual faria as duas
+ * tentativas casarem a condição e avisarem as duas.
+ */
+async function tomarAVezDeAvisar(
+  admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  venda: { atualizadoEm: null | string; id: string },
+): Promise<"erro" | "outra_tentativa" | "minha"> {
+  const lido = venda.atualizadoEm;
+  if (!lido) return "minha";
+  const marca = new Date(Math.max(Date.now(), Date.parse(lido) + 1)).toISOString();
+  const { data, error } = await admin
+    .from("hercules_propostas")
+    .update({ atualizado_em: marca })
+    .eq("id", venda.id)
+    .eq("etapa", "cancelado")
+    .eq("atualizado_em", lido)
+    .select("id");
+  if (error) {
+    console.error("[hercules][proposta] não deu para tomar a vez de avisar", error.message);
+    return "erro";
+  }
+  return ((data ?? []) as unknown[]).length > 0 ? "minha" : "outra_tentativa";
+}
+
+/**
+ * O CANCELAMENTO DESTA ROTA QUE PAROU NO MEIO: a venda já está `cancelado`, mas a reserva ligada
+ * continua viva ou o cadastro do lote continua `reservada`.
+ *
+ * ⚠️ SÓ O QUE ESTA ROTA CANCELOU. `origem = 'panteon'` (a mesma régua da busca da proposta aberta),
+ * `cancelada_em` preenchido, `cancelamento_pedido_em` VAZIO e — o que decide de verdade — NENHUM card
+ * de cancelamento ou distrato vivo na Têmis (`temCardDeDesfazerVivo`). A venda derrubada pelo motor
+ * nasce de um pedido e tem dono próprio para a retomada, o botão Concluir do card; a marca do pedido
+ * sozinha não a separa, porque o indeferimento de um pedido irmão a limpa.
+ *
+ * ⚠️ E SÓ A MAIS RECENTE, DENTRO DA JANELA, E A MESMA QUE A TELA ESTÁ VENDO. A tela manda o id da
+ * proposta que mostrou (`pedido.propostaId`); se for outro, não é retomada.
+ *
+ * ⚠️ ISTO NÃO DECIDE SE O LOTE VOLTA. Quem decide é a trava dentro de `soltarLoteDaVendaDesfeita`,
+ * que conta todos os donos vivos do terreno: com outro dono, o cadastro fica como está.
+ */
+async function cancelamentoQueParouNoMeio(
+  admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  unidade: UnidadeDaProposta,
+  propostaIdDaTela: null | string,
+): Promise<"do_juridico" | "leitura_falhou" | null | { reservaLigadaViva: boolean; venda: PropostaQueCai }> {
+  const { data, error } = await admin
+    .from("hercules_propostas")
+    .select(COLUNAS_DA_PROPOSTA_QUE_CAI)
+    .eq("workspace_id", WORKSPACE)
+    .eq("unidade_id", unidade.id)
+    .eq("origem", "panteon")
+    .eq("etapa", "cancelado")
+    .is("cancelamento_pedido_em", null)
+    .not("cancelada_em", "is", null)
+    .order("cancelada_em", { ascending: false })
+    .limit(1);
+  if (error) {
+    console.error("[hercules][proposta] não deu para procurar o cancelamento que parou no meio", error.message);
+    return "leitura_falhou";
+  }
+  const venda = ((data ?? []) as unknown as PropostaQueCai[])[0];
+  if (!venda) return null;
+  if (propostaIdDaTela && propostaIdDaTela !== venda.id) return null;
+  const quando = Date.parse(String(venda.cancelada_em ?? ""));
+  if (Number.isNaN(quando) || Date.now() - quando > JANELA_DA_RETOMADA_MS) return null;
+
+  let reservaLigadaViva = false;
+  if (venda.reserva_id) {
+    const { data: reserva, error: erroDaReserva } = await admin
+      .from("hercules_reservas")
+      .select("id")
+      .eq("id", venda.reserva_id)
+      .in("situacao", ["ativa", "proposta"])
+      .maybeSingle();
+    if (erroDaReserva) {
+      console.error("[hercules][proposta] não deu para ler a reserva da venda cancelada", erroDaReserva.message);
+      return "leitura_falhou";
+    }
+    reservaLigadaViva = Boolean(reserva);
+  }
+
+  if (!reservaLigadaViva && String(unidade.situacao ?? "").trim() !== "reservada") return null;
+
+  const doJuridico = await temCardDeDesfazerVivo(admin, venda.id);
+  if (doJuridico === "leitura_falhou") return "leitura_falhou";
+  if (doJuridico) return "do_juridico";
+  return { reservaLigadaViva, venda };
+}
+
 export async function PATCH(request: Request) {
   const auth = autorizarOperacaoDeVenda(request);
   if (!auth.ok) return auth.response;
@@ -1939,33 +2102,48 @@ export async function PATCH(request: Request) {
     // que o C2X nunca saberia, e os dois passariam a discordar sobre o mesmo lote.
     const { data: linha } = await admin
       .from("hercules_propostas")
-      .select(
-        "id, etapa, protocolo_numero, codigo, compradores, cliente_nome, reserva_id, imobiliaria_entity_id, corretor_entity_id, empreendimento_id",
-      )
+      .select(COLUNAS_DA_PROPOSTA_QUE_CAI)
       .eq("workspace_id", WORKSPACE)
       .eq("unidade_id", unidade.id)
       .eq("origem", "panteon")
       .eq("etapa", "proposta")
       .maybeSingle();
 
-    const proposta = linha as null | {
-      cliente_nome: null | string;
-      codigo: null | string;
-      compradores: unknown;
-      corretor_entity_id: null | string;
-      empreendimento_id: null | string;
-      etapa: string;
-      id: string;
-      imobiliaria_entity_id: null | string;
-      protocolo_numero: null | number;
-      reserva_id: null | string;
-    };
+    let proposta = linha as null | PropostaQueCai;
 
+    // ⚠️ A NOVA TENTATIVA COMPLETA A SOLTURA (revisão de 24/09/2026). Quando a venda já foi para
+    // `cancelado` e a queda da reserva falhou, a resposta abaixo é 503 "tente de novo". Mas esta
+    // busca só acha venda em `proposta`, e a nova tentativa caía no 409 "Não há proposta aberta":
+    // cancelar a reserva recusa reserva em `proposta` e bloquear exige `disponivel`, então nenhum
+    // botão soltava o lote. Agora, sem proposta aberta, a rota procura o cancelamento que parou no
+    // meio e termina a soltura (`soltarLoteDaVendaDesfeita` é idempotente e a trava nunca solta lote
+    // com outro dono).
+    let retomada: null | { reservaLigadaViva: boolean } = null;
     if (!proposta) {
-      return NextResponse.json(
-        { error: "Não há proposta aberta nesta unidade." },
-        { status: 409 },
-      );
+      const parado = await cancelamentoQueParouNoMeio(admin, unidade, pedido.propostaId ?? null);
+      if (parado === "leitura_falhou") {
+        return NextResponse.json(
+          { error: "Não foi possível conferir a unidade agora. Tente de novo em instantes." },
+          { status: 503 },
+        );
+      }
+      if (parado === "do_juridico") {
+        return NextResponse.json(
+          {
+            error:
+              "Esta venda foi desfeita pelo jurídico na Têmis, e é por lá que a unidade é liberada: abra o card e clique em Concluir.",
+          },
+          { status: 409 },
+        );
+      }
+      if (!parado) {
+        return NextResponse.json(
+          { error: "Não há proposta aberta nesta unidade." },
+          { status: 409 },
+        );
+      }
+      proposta = parado.venda;
+      retomada = { reservaLigadaViva: parado.reservaLigadaViva };
     }
 
     // ⚠️ A TELA DIZ QUAL PROPOSTA ELA ESTÁ VENDO, e aqui as duas têm que ser a mesma. Ver o aviso
@@ -1982,98 +2160,105 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const motivo = motivoEscrito(pedido.motivo, pedido.detalhe);
+    // Na retomada vale o motivo gravado na primeira tentativa: é ele que está na venda.
+    const motivo =
+      (retomada ? String(proposta.cancelada_motivo ?? "").trim() : "") ||
+      motivoEscrito(pedido.motivo, pedido.detalhe);
     const agora = new Date().toISOString();
 
-    const { data: cancelada, error } = await admin
-      .from("hercules_propostas")
-      .update({
-        atualizado_em: agora,
-        cancelada_em: agora,
-        cancelada_motivo: motivo,
-        cancelada_por: sessao.usuarioId,
-        cancelada_por_nome: sessao.usuarioNome,
-        etapa: "cancelado",
-        // ⚠️ O MAPA PINTA PELA PROPOSTA DE `etapa_desde` MAIS RECENTE. Sem mexer nesta data, o
-        // cancelamento entraria no histórico com o carimbo da geração e o lote poderia continuar
-        // pintado como proposto.
-        etapa_desde: agora,
-      })
-      .eq("id", proposta.id)
-      // ⚠️ A CONDIÇÃO REPETIDA É A TRAVA DO CLIQUE DUPLO, igual à da reserva: sem ela, dois
-      // coordenadores no mesmo lote cancelam duas vezes e saem dois WhatsApps de cancelamento.
-      .eq("etapa", "proposta")
-      .select("id");
+    if (!retomada) {
+      const { data: cancelada, error } = await admin
+        .from("hercules_propostas")
+        .update({
+          atualizado_em: agora,
+          cancelada_em: agora,
+          cancelada_motivo: motivo,
+          cancelada_por: sessao.usuarioId,
+          cancelada_por_nome: sessao.usuarioNome,
+          etapa: "cancelado",
+          // ⚠️ O MAPA PINTA PELA PROPOSTA DE `etapa_desde` MAIS RECENTE. Sem mexer nesta data, o
+          // cancelamento entraria no histórico com o carimbo da geração e o lote poderia continuar
+          // pintado como proposto.
+          etapa_desde: agora,
+        })
+        .eq("id", proposta.id)
+        // ⚠️ A CONDIÇÃO REPETIDA É A TRAVA DO CLIQUE DUPLO, igual à da reserva: sem ela, dois
+        // coordenadores no mesmo lote cancelam duas vezes e saem dois WhatsApps de cancelamento.
+        .eq("etapa", "proposta")
+        .select("id");
 
-    if (error) throw new Error(error.message);
+      if (error) throw new Error(error.message);
 
-    // ⚠️ SEM LINHA CASADA, NINGUÉM AVISA NINGUÉM. Outra sessão chegou primeiro: a proposta já não
-    // está em `proposta`, e seguir daqui mandaria o segundo aviso e devolveria "cancelado" para
-    // quem não cancelou nada.
-    if (!cancelada || cancelada.length === 0) {
-      return NextResponse.json(
-        { error: "Esta proposta acabou de ser cancelada em outra tela." },
-        { status: 409 },
-      );
-    }
-
-    // A reserva que virou esta proposta volta a ser história. Ver o aviso do topo: sem isto a
-    // unidade aparece livre e recusa a próxima reserva.
-    //
-    // ⚠️ A RESERVA CAI ANTES DA UNIDADE, E O ERRO É LIDO. Esta ordem não é estética: são três
-    // gravações sem transação (o cliente do Supabase não tem uma), e a única forma de nenhuma
-    // falha deixar lote preso é soltar a unidade POR ÚLTIMO, depois que as duas linhas que a
-    // travam já caíram. Engolir o erro daqui — que era o que este bloco fazia — produzia o pior
-    // estado possível: unidade `disponivel` com a reserva parada em `proposta`, que a tela Venda
-    // NÃO ENXERGA (ela só lê reserva `ativa`) e que o índice
-    // `hercules_reservas_uma_viva_por_unidade` continua ocupando. O lote aparecia verde, o botão
-    // Reservar acendia, e o insert morria em 23505 traduzido como "acabou de ser reservada por
-    // outra pessoa" — mandando o coordenador procurar um colega que não existe. Sem log, sem
-    // saída pela tela, para sempre: exatamente o lote preso que esta rota veio acabar.
-    if (proposta.reserva_id) {
-      // ⚠️ SÓ A SITUAÇÃO, SEM OS CAMPOS `cancelada_*` — e a diferença é o que a ficha do lote conta.
-      // Esta reserva não foi cancelada por ninguém: ela foi CONSUMIDA pela proposta lá atrás, e
-      // agora cai junto com ela. Preenchendo `cancelada_em` aqui, `eventosDaReserva` passava a
-      // emitir "Reserva cancelada" ao lado de "Proposta cancelada" — duas linhas vermelhas no
-      // MESMO segundo, com o mesmo motivo, o mesmo COD e o mesmo autor, para um clique só. A
-      // segunda registra um ato que ninguém praticou, na tela cuja regra é justamente não atribuir
-      // ato a quem não o praticou. O que aconteceu tem um nome, e ele já está na linha de cima.
-      const { error: erroDaReserva } = await admin
-        .from("hercules_reservas")
-        .update({ atualizado_em: agora, situacao: "cancelada" })
-        .eq("id", proposta.reserva_id)
-        .in("situacao", ["ativa", "proposta"]);
-
-      if (erroDaReserva) {
-        console.error(
-          "[hercules][proposta] falha ao cancelar a reserva de origem",
-          erroDaReserva,
-        );
-        // ⚠️ PARA AQUI, COM A UNIDADE AINDA PRESA — e isso é de propósito. A proposta já está
-        // `cancelado`, então este mesmo botão funciona de novo assim que a pessoa tentar outra
-        // vez; parar antes de soltar a unidade mantém o estado CONSISTENTE (lote travado, os três
-        // ainda sem aviso) em vez de deixá-lo travado e anunciado como livre.
+      // ⚠️ SEM LINHA CASADA, NINGUÉM AVISA NINGUÉM. Outra sessão chegou primeiro: a proposta já não
+      // está em `proposta`, e seguir daqui mandaria o segundo aviso e devolveria "cancelado" para
+      // quem não cancelou nada.
+      if (!cancelada || cancelada.length === 0) {
         return NextResponse.json(
-          {
-            error:
-              "A proposta foi cancelada, mas a reserva não. Tente de novo em instantes.",
-          },
-          { status: 503 },
+          { error: "Esta proposta acabou de ser cancelada em outra tela." },
+          { status: 409 },
         );
       }
     }
 
-    // ⚠️ A UNIDADE VOLTA ANTES DO AVISO, como no cancelamento da reserva: se o WhatsApp falhar, o
-    // lote já está livre para vender. O contrário — lote preso porque uma mensagem não saiu —
-    // custaria uma venda.
+    // A reserva que virou esta proposta volta a ser história, e o lote volta pela trava. Ver o aviso
+    // do topo: sem isto a unidade aparece livre e recusa a próxima reserva.
     //
-    // ⚠️ MAS SÓ VOLTA SE O TERRENO FICOU SEM DONO E SE O CADASTRO ESTAVA `reservada` (18/09/2026).
-    // Gravar `disponivel` sem condição devolvia à venda o lote bloqueado no Apolo durante a
-    // proposta, e o lote cuja linha irmã (outra gleba, a linha do pai) ainda tem dono. Quando não
-    // volta, a régua mostra quem é o dono de verdade; o erro barato é o lote ocupado a mais.
-    await devolverCadastroSeNaoHaOutroDono(admin, unidade.id, {
-      reservaId: proposta.reserva_id ?? null,
+    // ⚠️ A RESERVA CAI ANTES DA UNIDADE, E O ERRO É LIDO. São gravações sem transação (o cliente do
+    // Supabase não tem uma), e a única forma de nenhuma falha deixar lote preso é soltar a unidade
+    // POR ÚLTIMO, depois que as linhas que a travam já caíram. Engolir o erro da reserva (o que este
+    // bloco fazia antes) produzia o pior estado possível: unidade `disponivel` com a reserva parada
+    // em `proposta`, que o índice `hercules_reservas_uma_viva_por_unidade` continua ocupando.
+    //
+    // ⚠️ SÓ A SITUAÇÃO DA RESERVA, SEM OS CAMPOS `cancelada_*`: ela foi CONSUMIDA pela proposta lá
+    // atrás e cai junto com ela; preencher `cancelada_em` faria a ficha do lote contar "Reserva
+    // cancelada" ao lado de "Proposta cancelada", um ato que ninguém praticou.
+    //
+    // ⚠️ E O LOTE SÓ VOLTA SE O TERRENO FICOU SEM DONO E SE O CADASTRO ESTAVA `reservada` (18/09/2026).
+    // Desde 24/09/2026 isto é `soltarLoteDaVendaDesfeita`, a MESMA soltura do motor da Têmis (Lucas,
+    // 24/09/2026: *"lembrando que quando tem cancelamento a unidade tem que ficar disponivel, tem que
+    // ter esse reflexo"*): a trava de sempre, mais a reserva esquecida em `proposta` desta venda e a
+    // prova pela régua. E o desfecho vai para a resposta (`loteVoltou`, `porque`): antes a rota o
+    // ignorava, e a tela não tinha como saber que a trava segurou o lote.
+    //
+    // ⚠️ A UNIDADE VOLTA ANTES DO AVISO, como no cancelamento da reserva: se o WhatsApp falhar, o lote
+    // já está livre para vender.
+    const soltura = await soltarLoteDaVendaDesfeita(admin, {
+      aceitos: ["reservada"],
+      agora,
+      venda: { id: proposta.id, reserva_id: proposta.reserva_id ?? null, unidade_id: unidade.id },
     });
+
+    if (!soltura.ok) {
+      // ⚠️ PARA AQUI, COM A UNIDADE AINDA PRESA — e isso é de propósito. A proposta já está
+      // `cancelado`, e este mesmo botão termina a soltura na próxima tentativa
+      // (`cancelamentoQueParouNoMeio`, desde a revisão de 24/09/2026); parar antes de soltar a
+      // unidade mantém o estado CONSISTENTE (lote travado, os três ainda sem aviso) em vez de
+      // deixá-lo travado e anunciado como livre.
+      return NextResponse.json(
+        {
+          error:
+            "A proposta foi cancelada, mas a reserva não. Não feche esta tela e clique de novo em instantes: é por este botão que a unidade é liberada.",
+        },
+        { status: 503 },
+      );
+    }
+    const doLote = desfechoDaUnidade(soltura.desfecho);
+
+    // ⚠️ RETOMADA SÓ PELO LOTE PRESO (a reserva ligada já tinha caído): a venda já estava inteira
+    // cancelada, e a única coisa a fazer era o cadastro. Se a trava não soltou, não há o que
+    // completar aqui: com outro dono é o 409 de sempre, e com leitura que falhou é "tente de novo".
+    // Nada foi escrito no cadastro (a trava grava com a condição) e ninguém é avisado de novo.
+    if (retomada && !retomada.reservaLigadaViva && !doLote.voltou) {
+      const leituraFalhou = !soltura.desfecho.devolvida && soltura.desfecho.porque === "leitura_falhou";
+      return NextResponse.json(
+        {
+          error: leituraFalhou
+            ? "Não foi possível conferir se o lote tem outro dono. Tente de novo em instantes."
+            : "Não há proposta aberta nesta unidade.",
+        },
+        { status: leituraFalhou ? 503 : 409 },
+      );
+    }
 
     const cadastro = await carregarCadastroDeEmpreendimentos();
     const nomeDoEmpreendimento =
@@ -2098,7 +2283,26 @@ export async function PATCH(request: Request) {
     // dela, inclusive o do coordenador. É a mesma regra do cancelamento da reserva.
     let avisos: ResultadoDoAviso[] = [];
     const imobiliariaId = proposta.imobiliaria_entity_id;
-    if (imobiliariaId) {
+    // ⚠️ NA RETOMADA, SÓ AVISA QUEM AINDA NÃO FOI AVISADO. A reserva ligada viva é a prova de que a
+    // primeira tentativa parou no 503 da reserva, ANTES dos avisos. Sem ela a primeira passou da
+    // soltura e já avisou: avisar de novo mandaria o segundo WhatsApp de cancelamento.
+    const jaAvisou = retomada !== null && !retomada.reservaLigadaViva;
+    // ⚠️ E A TELA PRECISA SABER DISSO (revisão de 24/09/2026). Com `avisos: []` a modal montava a
+    // frase "O aviso não chegou a ser enviado", o contrário do que aconteceu, e quem cancelou ligava
+    // para o cliente que já tinha recebido o WhatsApp.
+    let avisosJaSairam = jaAvisou;
+    // ⚠️ A VEZ DE AVISAR É DE QUEM TROCA O CARIMBO. Ver `tomarAVezDeAvisar`: no caminho normal o
+    // carimbo lido é o `agora` que esta requisição acabou de gravar; na retomada, o que veio do
+    // banco. Quem perde não avisa, e diz que os avisos saíram na outra tentativa.
+    const vez =
+      imobiliariaId && !jaAvisou
+        ? await tomarAVezDeAvisar(admin, {
+            atualizadoEm: retomada ? proposta.atualizado_em : agora,
+            id: proposta.id,
+          })
+        : "minha";
+    if (vez === "outra_tentativa") avisosJaSairam = true;
+    if (imobiliariaId && !jaAvisou && vez === "minha") {
       const destinatarios = await destinatariosDaVenda(admin, {
         corretorId: proposta.corretor_entity_id,
         empreendimento: {
@@ -2134,7 +2338,34 @@ export async function PATCH(request: Request) {
           });
     }
 
-    return NextResponse.json({ data: { avisos, codigo, id: proposta.id } });
+    // ⚠️ A TRAVA QUE NÃO CONSEGUIU LER O TERRENO É "TENTE DE NOVO", NÃO "CANCELADA" (revisão de
+    // 24/09/2026). A reserva caiu e a venda caiu, mas o cadastro ficou `reservada` sem dono conferido.
+    // Com 200 a modal fechava, e a tela já não oferecia Cancelar proposta (não há proposta aberta):
+    // o lote ficava preso sem botão. Com 503 a modal fica aberta, e a próxima tentativa entra pela
+    // retomada (`cancelamentoQueParouNoMeio`) e só refaz a soltura. Os avisos já saíram acima, porque
+    // a venda caiu de fato; a retomada sem reserva viva não avisa de novo (`jaAvisou`).
+    if (!soltura.desfecho.devolvida && soltura.desfecho.porque === "leitura_falhou") {
+      return NextResponse.json(
+        {
+          error:
+            "A proposta foi cancelada, mas não deu para conferir se o lote tem outro dono, e ele continua ocupado. Não feche esta tela e clique de novo em instantes.",
+        },
+        { status: 503 },
+      );
+    }
+
+    return NextResponse.json({
+      data: {
+        avisos,
+        /** Os avisos desta venda saíram em outra tentativa: a tela não diz que ninguém foi avisado. */
+        avisosJaSairam,
+        codigo,
+        id: proposta.id,
+        // ⚠️ O LOTE VOLTOU? E, se não voltou, por quê (a frase da trava, a mesma da Têmis).
+        loteVoltou: doLote.voltou,
+        porque: doLote.voltou ? null : doLote.frase,
+      },
+    });
   } catch (erro) {
     console.error("[hercules][proposta] falha ao cancelar", erro);
     return NextResponse.json(

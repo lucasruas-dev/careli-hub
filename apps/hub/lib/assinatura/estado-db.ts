@@ -1,5 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { lerEventoDoWebhook } from "@/lib/assinatura/clicksign/webhook";
+import type { ReflexoNaVenda } from "@/lib/hercules/reflexo-da-temis";
+import {
+  motivoDoReflexo,
+  refletirCardNaVenda,
+  registrarReflexoQueNaoAndou,
+} from "@/lib/hercules/reflexo-da-temis-server";
 import {
   type OrigemDaPassagem,
   registrarPassagemDeEtapa,
@@ -199,6 +205,17 @@ async function acharEnvelope(
  * contrato VELHO na rua e o Panteon dizendo que está tudo em ordem. Sem as duas metades, a decisão
  * deliberada de devolver o card para correção é desfeita por uma operação que ninguém consegue mais
  * cancelar.
+ *
+ * ⚠️ E A VENDA ANDA JUNTO (24/09/2026). Lucas: *"preciso garantir que tudo que acontece na temis
+ * reflete no hercules, pode corrigir isso, o contrato da vitoria tem que estar em assinatura"*.
+ * Medido em produção em 24/09/2026: os 5 envios de 23/09 moveram o card para "assinatura" e deixaram
+ * a venda em `contrato` (5 de 5), porque esta função movia SÓ o card. Agora, depois do `update` e da
+ * passagem de cada card, `refletirCardNaVenda` leva a venda com o MESMO de/para. Como só os `alvos`
+ * (os que passaram por `cardAndouDepoisDe`) andam, a venda só anda se o card andou: o envio de 40 a
+ * 90 s não empurra a venda de um card devolvido no meio.
+ *
+ * ⚠️ DEVOLVE O QUE FEZ, e não mais `void`: os cards movidos e o reflexo de cada um. O envio lê o
+ * reflexo para dizer à tela quando a venda não acompanhou (`avisoDoHercules`), sem trocar o `ok`.
  */
 export async function moverCardDaTemis(
   sb: SupabaseClient,
@@ -206,9 +223,9 @@ export async function moverCardDaTemis(
   estagio: EstagioDoTrabalho,
   autor?: null | { id: null | string; nome: null | string },
   operacaoComecouEm?: null | string,
-): Promise<void> {
+): Promise<{ movidos: CardParaMover[]; reflexos: ReflexoNaVenda[] }> {
   const alvos = await cardsQueAceitam(sb, propostaId, estagio, operacaoComecouEm ?? null);
-  if (alvos.length === 0) return;
+  if (alvos.length === 0) return { movidos: [], reflexos: [] };
 
   const agora = new Date().toISOString();
   const { error } = await sb
@@ -221,7 +238,7 @@ export async function moverCardDaTemis(
 
   if (error) {
     console.error("[temis][card] falha ao mover o card da proposta", error);
-    return;
+    return { movidos: [], reflexos: [] };
   }
 
   // ⚠️ O ESTÁGIO ANTERIOR VEM DE `cardsQueAceitam`, e não de uma segunda consulta. Ela já leu
@@ -243,6 +260,26 @@ export async function moverCardDaTemis(
       trabalhoTipo: card.tipo,
     });
   }
+
+  // ⚠️ O REFLEXO VEM DEPOIS DO CARD E DA PASSAGEM, E NUNCA OS DESFAZ. Card de tipo que não é
+  // contrato (cessão, cancelamento por correção) devolve `nao_se_aplica` sem ler nada; os pedidos
+  // nem chegam aqui (`cardsQueAceitam` os tira).
+  const reflexos: ReflexoNaVenda[] = [];
+  for (const card of alvos) {
+    const passo = {
+      autorNome: autor?.nome ?? null,
+      de: card.estagio,
+      motivo: motivoDoReflexo(card.estagio, estagio),
+      para: estagio,
+      propostaId,
+      trabalhoTipo: card.tipo,
+    };
+    const reflexo = await refletirCardNaVenda(sb, passo);
+    registrarReflexoQueNaoAndou(card.id, passo, reflexo);
+    reflexos.push(reflexo);
+  }
+
+  return { movidos: alvos, reflexos };
 }
 
 /**
@@ -287,6 +324,14 @@ const ORIGEM_POR_DESTINO: Record<EstagioDoTrabalho, OrigemDaPassagem> = {
  *
  * ⚠️ `faturado` E `indeferido` CONTINUAM DE FORA. `faturado` é o fim; `indeferido` é decisão
  * humana, e um webhook atrasado não pode desfazê-la.
+ *
+ * ⚠️ E NADA ANDA PARA TRÁS POR AQUI (revisão de 24/09/2026). Os dois chamadores só EMPURRAM o card:
+ * o Gerar (`contrato-servico.ts`, sem carimbo) para Contrato e o envio (`envio-db.ts`) para Em
+ * assinatura. Antes, uma aba velha que gerasse o contrato com o card em Em assinatura ou no
+ * Pré-faturamento devolvia o card para Contrato, e desde o reflexo levava a venda junto de
+ * `assinatura` para `contrato`, com o envelope vivo ou já assinado. O único caminho de volta é a
+ * volta para correção (`retornarParaAnalise`), que mata o envelope antes de mover. Ficar no mesmo
+ * estágio continua permitido (gerar de novo com o card em Contrato).
  */
 async function cardsQueAceitam(
   sb: SupabaseClient,
@@ -318,6 +363,7 @@ async function cardsQueAceitam(
       c.estagio !== "faturado" &&
       c.estagio !== "indeferido" &&
       estagiosDoTipo(c.tipo).includes(destino) &&
+      !voltariaNoCaminho(c, destino) &&
       !cardAndouDepoisDe(c.estagio_desde, operacaoComecouEm),
   );
 
@@ -331,9 +377,11 @@ async function cardsQueAceitam(
   for (const c of cards) {
     if (podem.includes(c) || c.estagio === "faturado" || c.estagio === "indeferido") continue;
     console.warn(
-      cardAndouDepoisDe(c.estagio_desde, operacaoComecouEm)
-        ? `[temis][card] card ${c.id} (${c.tipo}) não vai para "${destino}": ele andou durante a operação — está em "${c.estagio}" desde ${c.estagio_desde}, e a operação começou em ${operacaoComecouEm}.`
-        : `[temis][card] card ${c.id} (${c.tipo}) não vai para "${destino}": fora do caminho do tipo.`,
+      voltariaNoCaminho(c, destino)
+        ? `[temis][card] card ${c.id} (${c.tipo}) não vai para "${destino}": está em "${c.estagio}", mais adiante no caminho, e daqui o card só anda para a frente. A volta é pela volta para correção.`
+        : cardAndouDepoisDe(c.estagio_desde, operacaoComecouEm)
+          ? `[temis][card] card ${c.id} (${c.tipo}) não vai para "${destino}": ele andou durante a operação — está em "${c.estagio}" desde ${c.estagio_desde}, e a operação começou em ${operacaoComecouEm}.`
+          : `[temis][card] card ${c.id} (${c.tipo}) não vai para "${destino}": fora do caminho do tipo.`,
     );
   }
 
@@ -343,10 +391,24 @@ async function cardsQueAceitam(
 }
 
 /**
+ * O destino fica ANTES do estágio atual no caminho do tipo? (`estagiosDoTipo` é a ordem.)
+ *
+ * ⚠️ SÓ RECUSA COM PROVA, como `cardAndouDepoisDe`: estágio fora do caminho do tipo (o intruso que
+ * `caminhoDoCard` desenha) não tem posição, e o card segue a regra de antes.
+ */
+function voltariaNoCaminho(card: Pick<CardParaMover, "estagio" | "tipo">, destino: EstagioDoTrabalho): boolean {
+  const caminho = estagiosDoTipo(card.tipo);
+  const onde = caminho.indexOf(card.estagio as EstagioDoTrabalho);
+  const para = caminho.indexOf(destino);
+  if (onde < 0 || para < 0) return false;
+  return para < onde;
+}
+
+/**
  * O que `moverCardDaTemis` precisa saber de cada card: quem é, de onde sai, de que tipo é e desde
  * quando está onde está.
  */
-type CardParaMover = {
+export type CardParaMover = {
   estagio: string;
   estagio_desde: null | string;
   id: string;
@@ -472,6 +534,21 @@ export async function concluirAssinaturaDoCard(
     trabalhoId: card.id,
     trabalhoTipo: card.tipo,
   });
+
+  // ⚠️ A VENDA NO ASSINADO (24/09/2026). Contrato vai para o Pré-faturamento e a venda FICA em
+  // `assinatura`: o Hércules não tem etapa de pré-faturamento (decisão pendente do Lucas, lado
+  // conservador). Normalmente é "já estava"; se o reflexo do envio tiver falhado, a venda alcança
+  // `assinatura` aqui, e nunca vai além. Cessão e cancelamento por correção vão a `faturado` e o
+  // reflexo os ignora pelo tipo. Autor nulo: é o webhook, como a passagem acima.
+  const passo = {
+    autorNome: null,
+    de: card.estagio,
+    motivo: motivoDoReflexo(card.estagio, destino),
+    para: destino,
+    propostaId,
+    trabalhoTipo: card.tipo,
+  };
+  registrarReflexoQueNaoAndou(card.id, passo, await refletirCardNaVenda(sb, passo));
 }
 
 /**

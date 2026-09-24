@@ -834,6 +834,33 @@ describe("POST /trabalho", () => {
     info.mockRestore();
   });
 
+  // ⚠️ O AVISO DO HÉRCULES CHEGA À TELA NA VOLTA PARA CORREÇÃO (revisão de 24/09/2026): a volta deu
+  // certo (o card voltou, o envelope foi cancelado) e a venda não voltou junto para contrato.
+  it("portal: a volta deu certo e a venda não acompanhou: 200 com avisoDoHercules; sem ele, nada", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    mocks.retornarParaAnalise.mockResolvedValueOnce({
+      avisoDoHercules: "O card andou, mas a venda no Hércules não acompanhou: a venda já foi desfeita.",
+      de: "assinatura",
+      envelopeCancelado: "env-1",
+      ok: true as const,
+    } as never);
+    const comAviso = await portalTrabalho.POST(
+      post("/api/incorporador/temis/trabalho", { acao: "voltar_para_analise", id: "t-cecilio" }),
+    );
+    expect(comAviso.status).toBe(200);
+    expect(await comAviso.json()).toMatchObject({
+      avisoDoHercules: "O card andou, mas a venda no Hércules não acompanhou: a venda já foi desfeita.",
+      envelopeCancelado: "env-1",
+      ok: true,
+    });
+
+    const semAviso = await portalTrabalho.POST(
+      post("/api/incorporador/temis/trabalho", { acao: "voltar_para_analise", id: "t-cecilio" }),
+    );
+    expect("avisoDoHercules" in ((await semAviso.json()) as Record<string, unknown>)).toBe(false);
+    info.mockRestore();
+  });
+
   it("hub: inalterado (coordenação decide; autor do hub; sem conferir dono)", async () => {
     const r = await hubTrabalho.POST(
       post("/api/temis/trabalho", { id: "t-careli", motivo: "documento_faltando" }),

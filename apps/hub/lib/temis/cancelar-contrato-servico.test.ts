@@ -797,3 +797,45 @@ describe("o card do pedido não nasce: a frase diz o que ficou gravado", () => {
     });
   });
 });
+
+// ── A VENDA EM ASSINATURA (O ESTADO NOVO DO REFLEXO) E O LOTE ────────────────────
+//
+// Desde 24/09/2026 o envio para assinatura leva a venda para `assinatura` (refletirCardNaVenda). Esta
+// porta já aceitava venda em assinatura (DEPOIS_DO_CONTRATO); o teste trava que o cancelamento do
+// contrato pela Têmis, com a venda nesse estado, conclui pelo motor e SOLTA o lote. Lucas,
+// 24/09/2026: *"lembrando que quando tem cancelamento a unidade tem que ficar disponivel, tem que ter
+// esse reflexo"*.
+
+describe("venda em assinatura: cancelar o contrato solta o lote", () => {
+  const LOTE = "3f1c2b4a-0000-4000-8000-000000000306";
+
+  it("sem outro dono: a venda cai pelo motor e o cadastro volta a disponível", async () => {
+    cenario({ estadoDoEnvelope: "parcial", etapaDaVenda: "assinatura" });
+    const venda = linha("hercules_propostas", "venda-maura");
+    if (venda) venda.unidade_id = LOTE;
+    estado.tabelas.hercules_reservas = [];
+    estado.tabelas.prometeu_reservas = [];
+    estado.tabelas.hercules_unidades = [
+      {
+        atualizado_em: "2026-09-01T00:00:00.000Z",
+        codigo: "VOC0306",
+        enterprise_id: "37",
+        espelho_de: null,
+        id: LOTE,
+        lote: "06",
+        origem_c2x_id: 9101,
+        quadra: "03",
+        situacao: "reservada",
+        workspace_id: "careli",
+      },
+    ];
+
+    const r = await cancelarContratoDoCard(clienteComPadroes(), pedido(), portaDeTeste({ get: RODANDO }).porta);
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(linha("hercules_propostas", "venda-maura")?.etapa).toBe("cancelado");
+    expect(linha("hercules_unidades", LOTE)?.situacao).toBe("disponivel");
+    expect(r.conclusao.unidade.voltou).toBe(true);
+  });
+});

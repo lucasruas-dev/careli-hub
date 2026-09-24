@@ -553,7 +553,19 @@ export async function lerSituacaoDasUnidades(
     const lista = propostasPorGrupo.get(grupo) ?? [];
     // ⚠️ A ETAPA É A ETAPA. `data_faturamento` guarda a data PREVISTA do legado
     // (`billing_date`), não o faturamento: em 22/09/2026, 36 das 60 vendas que ela promoveria
-    // seguiam em assinatura no C2X. Quem traz a etapa nova é a carga, e nada mais.
+    // seguiam em assinatura no C2X.
+    // ⚠️ E A ETAPA NOVA DEPOIS DE `contrato` VEM DA TÊMIS, NÃO DA CARGA (encerrada em 21/09/2026).
+    // Medido em 24/09/2026: os 5 envios de 23/09 deixaram a venda em contrato porque só o card
+    // andava. Desde então `refletirCardNaVenda` (lib/hercules/reflexo-da-temis-server.ts) leva a
+    // venda junto no envio para assinatura e na volta para correção. Lucas, 24/09/2026: *"preciso
+    // garantir que tudo que acontece na temis reflete no hercules"*.
+    // ⚠️ HOJE NENHUMA TELA LEVA O CARD DE CONTRATO A FATURADO. O reflexo leva a venda a `faturado`
+    // quando o card chega a Faturado, mas o único caminho até lá é `marcarAtividade`
+    // (lib/temis/trabalhos-db.ts) pela API, com `acao: "atividade"`, e nenhum componente de
+    // modules/ manda essa ação (medido em 24/09/2026). A etapa do Pré-faturamento na tela do card
+    // (tela-de-trabalho.tsx) só oferece "Voltar para análise". A passagem é pendência do Lucas:
+    // *"depois de assinatura vai ter algumas condicoes para finalizado"*. Até lá, venda com
+    // contrato assinado fica em `assinatura` aqui.
     lista.push({
       desde: String(p.etapa_desde ?? p.criado_em_c2x ?? ""),
       emCancelamento: Boolean(p.cancelamento_pedido_em) && DEPOIS_DO_CONTRATO.has(p.etapa),

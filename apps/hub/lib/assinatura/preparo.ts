@@ -127,6 +127,8 @@ export type CorpoDoEnvio = {
  * de sucesso em vez de ficar só no log.
  */
 export type RespostaDoEnvio = AmbienteDoEnvio & {
+  /** A venda do Hércules não acompanhou o card (ver `EnvioFeito.avisoDoHercules`). É aviso: o envio deu certo. */
+  avisoDoHercules?: string;
   envelopeId: string;
   nome: string;
   registroId: string;
