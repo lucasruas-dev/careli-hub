@@ -20,6 +20,7 @@ import {
   montarEmailCobranca,
   montarEmailRecibo,
 } from "@/lib/apolo/emails-prevenda";
+import { resolverEnterpriseIdPorNome } from "@/lib/apolo/limite-credito";
 import {
   aoEnviarPixPrevenda,
   contatosDaFicha,
@@ -154,13 +155,19 @@ async function gerarPdfAmostraCad(): Promise<Buffer> {
 // FICHA (CAD) em PDF, gerada UMA vez a partir da ficha da pessoa. Os dois canais consomem de formas
 // diferentes: o WhatsApp precisa de uma signed URL (a Meta baixa por ela) e o e-mail leva os bytes
 // anexados direto. null = sem ficha (o template com header de documento recusa o envio).
+//
+// ⚠️ `enterpriseId` = a CAD que a bancada plantou (revisão de 24/09/2026). Sem ele saía a CAD mais
+// recente da pessoa, que pode ser de outro produto e agora imprime "Empreendimento <outro>" no
+// cabeçalho. Com `null` (nome não traduzido), `montarCadDeEntidade` omite a linha quando a pessoa
+// tem mais de uma CAD.
 async function montarFichaCad(
   admin: SupabaseClient,
   entityId: string,
   nome: string,
+  enterpriseId: null | string,
 ): Promise<{ bytes: Uint8Array; fileName: string; link: string | null } | null> {
   try {
-    const cad = await montarCadDeEntidade(admin, entityId);
+    const cad = await montarCadDeEntidade(admin, entityId, { enterpriseId });
     if (!cad) return null;
 
     const bytes = await montarCadPdf(cad);
@@ -235,6 +242,9 @@ async function enviarEmailPrevenda(input: {
 async function enviarCobrancaPrevenda(input: {
   admin: SupabaseClient;
   empreendimento: string;
+  // A CAD desta cobrança (a que a bancada plantou): a ficha anexa e o movimento da esteira são os
+  // dela, como no caminho real (lib/apolo/cobranca-prevenda.ts).
+  enterpriseId: null | string;
   entityId: string;
   link: string;
   nome: string;
@@ -256,7 +266,7 @@ async function enviarCobrancaPrevenda(input: {
   const telefone = normalizarTelefone(contatos.telefone ?? undefined);
 
   // A ficha (CAD) é gerada UMA vez: link assinado pro WhatsApp, bytes pro e-mail.
-  const ficha = await montarFichaCad(admin, entityId, input.nome);
+  const ficha = await montarFichaCad(admin, entityId, input.nome, input.enterpriseId);
 
   let messageId: string | null = null;
   let whatsapp = "não enviado";
@@ -319,6 +329,7 @@ async function enviarCobrancaPrevenda(input: {
   // Enviou o PIX: prevenda -> credenciado e entra na fila (sem pagamento ainda, vai pro fim).
   const fluxo = await aoEnviarPixPrevenda({
     client: admin,
+    enterpriseId: input.enterpriseId,
     entityId,
     paymentId: input.paymentId,
   });
@@ -453,9 +464,14 @@ export async function POST(request: Request) {
     }
     const entityId = match.entityId;
 
+    // O PRODUTO DO TESTE, traduzido UMA vez: é a CAD que `plantarFichaPrevenda` planta (ela traduziria
+    // o mesmo nome por conta própria) e a que a cobrança anexa e movimenta.
+    const enterpriseId = await resolverEnterpriseIdPorNome(empreendimento);
+
     await plantarFichaPrevenda(admin, {
       email: corpo.email,
       empreendimento,
+      enterpriseId,
       entityId,
       telefone: corpo.telefone,
     });
@@ -472,6 +488,7 @@ export async function POST(request: Request) {
         const envio = await enviarCobrancaPrevenda({
           admin,
           empreendimento,
+          enterpriseId,
           entityId,
           link,
           nome,
@@ -576,9 +593,12 @@ export async function POST(request: Request) {
 
     // TESTE: grava na arquitetura o telefone/e-mail digitados e garante a ficha em pré-venda, pra
     // este disparo percorrer o MESMO caminho do botão da pré-venda (e não os campos da tela).
+    // Mesmo produto traduzido uma vez só (ver o disparo manual acima).
+    const enterpriseId = await resolverEnterpriseIdPorNome(empreendimento);
     const plantio = await plantarFichaPrevenda(admin, {
       email: corpo.email,
       empreendimento,
+      enterpriseId,
       entityId,
       telefone: corpo.telefone,
     });
@@ -616,6 +636,7 @@ export async function POST(request: Request) {
         : await enviarCobrancaPrevenda({
             admin,
             empreendimento,
+            enterpriseId,
             entityId,
             link: cobranca.data.invoiceUrl,
             nome,

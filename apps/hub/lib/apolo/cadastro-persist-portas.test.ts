@@ -82,14 +82,24 @@ function clienteFake(opcoes: {
         if (tabela === "apolo_contacts") return { data: opcoes.contatosDaFicha ?? [], error: null };
         if (tabela === "apolo_addresses") return { data: opcoes.enderecosDaFicha ?? [], error: null };
         if (tabela === "apolo_relationships") {
-          return { data: opcoes.relacionamentosDaFicha ?? [], error: null };
+          const linhas = (opcoes.relacionamentosDaFicha ?? []).filter((linha) =>
+            filtrosNeq.every(([coluna, valor]) => linha[coluna] !== valor),
+          );
+          return { data: linhas, error: null };
         }
         return { data: [], error: null };
       }
 
-      for (const metodo of ["eq", "in", "is", "limit", "neq", "not", "order", "range", "ilike", "or"]) {
+      for (const metodo of ["eq", "in", "is", "limit", "not", "order", "range", "ilike", "or"]) {
         builder[metodo] = () => builder;
       }
+      // O `neq` é HONRADO (nas leituras que filtram por ele, como a dos vínculos da ficha): é ele que
+      // tira o vínculo ARQUIVADO do "a ficha já tem".
+      const filtrosNeq: Array<[string, unknown]> = [];
+      builder.neq = (coluna: string, valor: unknown) => {
+        filtrosNeq.push([coluna, valor]);
+        return builder;
+      };
       builder.select = (selecao?: string) => {
         if (operacao === "select") colunas = String(selecao ?? "");
         return builder;
@@ -239,6 +249,47 @@ describe("fichaExistente: acrescentar (o portal aproveita a ficha, sem trocar na
   // (16/09/2026, revisão do conjunto) ⚠️ Telefone e e-mail são CHAVE DE IDENTIDADE da Iris (hash do
   // identificador e texto do contato). Na ficha que já existia, o número digitado no portal (que pode
   // ser o WhatsApp de quem opera) nunca vira chave do cliente da Careli, nem quando falta.
+  // (24/09/2026, revisão do Mover CAD) ⚠️ Arquivar é o jeito de o time tirar um vínculo da ficha, e o
+  // Mover CAD arquiva o do empreendimento de origem. A linha arquivada contava como "a ficha já tem":
+  // a CAD nova, que traz o MESMO vínculo, nascia sem ele, e a ficha ficava só com a linha arquivada.
+  it("vínculo ARQUIVADO não conta como 'a ficha já tem': o vínculo da CAD nova entra ativo", async () => {
+    const { client, escritas } = clienteFake({
+      ...FICHA_DA_CARELI,
+      relacionamentosDaFicha: [
+        ...FICHA_DA_CARELI.relacionamentosDaFicha,
+        { label: "IMOB RR", related_entity_id: null, relationship_type: "imobiliaria", status: "archived" },
+      ],
+    });
+    await createApoloEntity(
+      client,
+      { ...NO_GARDEN, perfil: { ...NO_GARDEN.perfil, imobiliariaId: "", imobiliariaLabel: "Imob RR" } },
+      { autor: AUTOR_DO_PORTAL, fichaExistente: "acrescentar" },
+    );
+
+    const inseridos = escritas
+      .filter((e) => e.tabela === "apolo_relationships" && e.operacao === "insert")
+      .flatMap((e) => e.valores as Array<Record<string, unknown>>);
+    expect(inseridos).toEqual([
+      expect.objectContaining({ label: "Imob RR", relationship_type: "imobiliaria", status: "verified" }),
+    ]);
+  });
+
+  it("o mesmo vínculo ATIVO continua contando: nada é duplicado", async () => {
+    const { client, escritas } = clienteFake({
+      ...FICHA_DA_CARELI,
+      relacionamentosDaFicha: [
+        ...FICHA_DA_CARELI.relacionamentosDaFicha,
+        { label: "IMOB RR", related_entity_id: null, relationship_type: "imobiliaria", status: "verified" },
+      ],
+    });
+    await createApoloEntity(
+      client,
+      { ...NO_GARDEN, perfil: { ...NO_GARDEN.perfil, imobiliariaId: "", imobiliariaLabel: "Imob RR" } },
+      { autor: AUTOR_DO_PORTAL, fichaExistente: "acrescentar" },
+    );
+    expect(escritas.filter((e) => e.tabela === "apolo_relationships")).toHaveLength(0);
+  });
+
   it("ficha SEM telefone: o do portal NÃO entra (nem contato nem identificador); fica só como pendência", async () => {
     const { client, escritas } = clienteFake({
       ...FICHA_DA_CARELI,

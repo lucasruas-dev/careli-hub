@@ -7,6 +7,7 @@ import { avisarImobPixEnviado, statusEnvioAoCliente } from "@/lib/apolo/disparo-
 import { montarCadDeEntidade } from "@/lib/apolo/cad-de-entidade";
 import { APOLO_DOCS_BUCKET } from "@/lib/apolo/documentos";
 import { type EmailMontado, montarEmailCobranca } from "@/lib/apolo/emails-prevenda";
+import { normalizarEnterpriseId } from "@/lib/apolo/esteira-cad";
 import {
   aoEnviarPixPrevenda,
   contatosDaFicha,
@@ -92,13 +93,21 @@ export function normalizarTelefone(valor?: string): string | null {
 // FICHA (CAD) em PDF, gerada UMA vez a partir da ficha da pessoa. Os dois canais consomem de formas
 // diferentes: o WhatsApp precisa de uma signed URL (a Meta baixa por ela) e o e-mail leva os bytes
 // anexados direto. null = sem ficha (o template com header de documento recusa o envio).
+//
+// ⚠️ `enterpriseId` = DE QUAL CAD é a ficha (revisão de 24/09/2026). Sem ele, `montarCadDeEntidade`
+// monta a CAD mais recente da pessoa, e a cobrança do 20 de quem também tem CAD no 38 anexava a
+// ficha do 38, agora com "Empreendimento Villa Paris" impresso no cabeçalho. A cobrança SABE de qual
+// CAD é e passa. A CACÁ atende por CPF e não sabe: chama sem, e a CAD sai sem a linha quando a
+// pessoa tem mais de uma (ver `montarCadDeEntidade`).
 export async function montarFichaCad(
   admin: SupabaseClient,
   entityId: string,
   nome: string,
+  opts: { enterpriseId?: null | number | string } = {},
 ): Promise<{ bytes: Uint8Array; fileName: string; link: string | null } | null> {
   try {
-    const cad = await montarCadDeEntidade(admin, entityId);
+    const enterpriseId = normalizarEnterpriseId(opts.enterpriseId);
+    const cad = await montarCadDeEntidade(admin, entityId, { enterpriseId });
     if (!cad) return null;
 
     const bytes = await montarCadPdf(cad);
@@ -106,8 +115,11 @@ export async function montarFichaCad(
 
     const bucket = process.env.APOLO_DOCS_BUCKET ?? APOLO_DOCS_BUCKET;
     // ⚠️ Caminho POR PESSOA. Num lote de 296 um caminho fixo faria todo mundo receber a ficha do
-    // último que passou por aqui.
-    const path = `cobranca-prevenda/${entityId}.pdf`;
+    // último que passou por aqui. E POR CAD quando se sabe qual: a Meta baixa o anexo pela URL
+    // assinada DEPOIS do envio, e a ficha de outra CAD da mesma pessoa (ou a da CACÁ, sem id) gravada
+    // no mesmo caminho nesse meio-tempo seria o PDF que o cliente recebe.
+    const daCad = enterpriseId ? `-${enterpriseId.replace(/[^A-Za-z0-9_-]/g, "_")}` : "";
+    const path = `cobranca-prevenda/${entityId}${daCad}.pdf`;
     const up = await admin.storage.from(bucket).upload(path, bytes, {
       contentType: "application/pdf",
       upsert: true,
@@ -196,8 +208,10 @@ export async function enviarCobrancaPrevenda(input: {
   const contatos = await contatosDaFicha(admin, entityId);
   const telefone = normalizarTelefone(contatos.telefone ?? undefined);
 
-  // A ficha (CAD) é gerada UMA vez: link assinado pro WhatsApp, bytes pro e-mail.
-  const ficha = await montarFichaCad(admin, entityId, input.nome);
+  // A ficha (CAD) é gerada UMA vez: link assinado pro WhatsApp, bytes pro e-mail. A DESTA cobrança.
+  const ficha = await montarFichaCad(admin, entityId, input.nome, {
+    enterpriseId: input.enterpriseId,
+  });
 
   let messageId: string | null = null;
   let whatsapp = "não enviado";

@@ -1105,12 +1105,21 @@ export async function createApoloEntity(
           .from("apolo_entity_identifiers")
           .select("identifier_type")
           .eq("entity_id", entityId),
+        // ⚠️ VÍNCULO ARQUIVADO NÃO É "A FICHA JÁ TEM" (revisão de 24/09/2026). Arquivar é o jeito
+        // de o time tirar um vínculo da ficha (e o Mover CAD arquiva o do empreendimento de
+        // origem). Contar a linha arquivada aqui fazia a CAD nova, que traz o MESMO vínculo, nascer
+        // sem ele: a ficha ficava só com a linha arquivada, como se ninguém o tivesse trazido de
+        // volta. `status` é NOT NULL (default 'pending'), então o `neq` não perde linha sem status.
+        // ⚠️ Isto NÃO cria vínculo de EMPREENDIMENTO para a CAD do portal: o portal e o wizard do hub
+        // não mandam `empreendimentos` para prospect. Medido em 24/09/2026: só as 172 CADs
+        // publico-cad têm vínculo de empreendimento (0 das 38 cadastro-manual, 0 das 575 asana).
         tiposDeRelacionamento.length
           ? adminClient
               .from("apolo_relationships")
               .select("label, related_entity_id, relationship_type")
               .eq("entity_id", entityId)
               .in("relationship_type", tiposDeRelacionamento)
+              .neq("status", "archived")
           : Promise.resolve({ data: [], error: null }),
       ]);
     warn("contatos", contatosDaFicha.error);

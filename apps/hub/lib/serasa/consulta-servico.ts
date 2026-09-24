@@ -2,7 +2,12 @@ import { avisarImobReprovado } from "@/lib/apolo/disparo-imobiliaria";
 import { cnpjValido, cpfValido } from "@/lib/apolo/documento";
 import { destinoAposCredito } from "@/lib/apolo/destino-credito";
 import { atualizarEtapa } from "@/lib/apolo/esteira";
-import { lerCadDaEsteira, normalizarEnterpriseId } from "@/lib/apolo/esteira-cad";
+import {
+  cadComVinculoArquivado,
+  FRASE_TROCA_DE_EMPREENDIMENTO,
+  lerCadDaEsteira,
+  normalizarEnterpriseId,
+} from "@/lib/apolo/esteira-cad";
 import {
   resolverAnaliseHabilitada,
   resolverLimiteCredito,
@@ -739,6 +744,47 @@ export async function consultarCredito(input: {
           "no cadastro antes de consultar.",
       },
       status: 409,
+    };
+  }
+
+  // ⚠️ A CAD NO PRODUTO ERRADO NÃO VAI AO CRÉDITO (24/09/2026, caso do JONATAS). O time trocou o
+  // vínculo de empreendimento no Apolo (arquivou o Veredas do Ouro, 19, e criou o Vale do Ouro, 35) e a
+  // CAD ficou no 19. Vinte e dois segundos depois, o clique em Consultar caiu aqui: a régua leu a
+  // configuração do 19 (análise desligada) e credenciou sem Serasa um cliente de um produto que exige
+  // análise, e o aviso de credenciado foi para o coordenador do Veredas.
+  //
+  // A trava é ESTREITA (`cadComVinculoArquivado`): o vínculo do empreendimento DA CAD foi arquivado e
+  // nenhum vínculo ativo cobre esse empreendimento. CAD sem vínculo nenhum (Asana, manual) segue
+  // normal. Fica aqui, depois de saber qual é a CAD e ANTES de qualquer régua de empreendimento e de
+  // gastar: decidir crédito nesse estado é decidir com a regra de outro produto. A saída é o Mover CAD
+  // do Board, que leva a CAD para o produto do vínculo e aplica a regra certa.
+  //
+  // ⚠️ A frase do hub diz QUE é a coordenação quem move (FRASE_TROCA_DE_EMPREENDIMENTO, a mesma do
+  // arquivamento do vínculo): esta rota aceita o analista, e o Mover CAD é só de admin/leader.
+  //
+  // Leitura que falha antes de gastar vira 503, como o resto deste serviço.
+  try {
+    if (await cadComVinculoArquivado(client, entidade.id, cadDoCredito?.enterprise_id)) {
+      return {
+        corpo: {
+          error: frase(
+            "O vínculo de empreendimento desta CAD foi arquivado e o cliente está vinculado a outro " +
+              `empreendimento. ${FRASE_TROCA_DE_EMPREENDIMENTO} Nada foi consultado nem cobrado.`,
+            "O empreendimento desta CAD foi trocado no cadastro e a CAD ainda não foi movida. Fale " +
+              "com a Careli. Nada foi consultado nem cobrado.",
+          ),
+        },
+        status: 409,
+      };
+    }
+  } catch {
+    return {
+      corpo: {
+        error:
+          "Não foi possível conferir o empreendimento desta CAD agora. Nada foi consultado nem " +
+          "cobrado. Tente de novo em instantes.",
+      },
+      status: 503,
     };
   }
 
@@ -1616,8 +1662,11 @@ export type CreditoDaCad = {
    * De onde veio a resposta: a etapa já passou pelo crédito, a análise está desligada no
    * empreendimento, a última consulta na janela, o override (aprovação com restrição) mais novo que
    * ela, ou nada que prove aprovação.
+   *
+   * `vinculo-arquivado` (24/09/2026): o vínculo do empreendimento da CAD foi arquivado e nenhum
+   * vínculo ativo o cobre (a CAD ficou no produto errado, ver `cadComVinculoArquivado`). Nunca aprova.
    */
-  fonte: "analise-desligada" | "consulta" | "etapa" | "override" | "sem-decisao";
+  fonte: "analise-desligada" | "consulta" | "etapa" | "override" | "sem-decisao" | "vinculo-arquivado";
 };
 
 /**
@@ -1654,6 +1703,14 @@ export async function creditoDaCad(input: {
   if (erroEntidade) throw new Error(`apolo_entities: ${erroEntidade.message}`);
   const documento = (entidade?.document_masked ?? "").replace(/\D/g, "");
   const documentoOk = entidade?.entity_kind === "pj" ? cnpjValido(documento) : cpfValido(documento);
+
+  // ⚠️ A CAD NO PRODUTO ERRADO NÃO TEM CRÉDITO APROVADO (24/09/2026, caso do JONATAS): a mesma trava
+  // de `consultarCredito`, ANTES do atalho da análise desligada. Foi esse atalho, lido no empreendimento
+  // errado (Veredas do Ouro, análise desligada), que credenciou sem Serasa. Lança na falha de leitura,
+  // como o resto desta régua (a porta traduz em 503).
+  if (await cadComVinculoArquivado(client, entityId, enterpriseId)) {
+    return { aprovado: false, fonte: "vinculo-arquivado" };
+  }
 
   // Análise desligada: a mesma régua da consulta ("a ficha com documento OK avança direto").
   if (!(await resolverAnaliseHabilitada(client, entityId, enterpriseId))) {

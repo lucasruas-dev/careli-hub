@@ -160,7 +160,15 @@ export async function POST(request: Request) {
     const cadStruct = payload.cad?.secoes?.length ? payload.cad : null;
     if (cadStruct) {
       try {
-        const bytes = await montarCadPdf({ ...cadStruct, autenticacao: criado.autenticacao });
+        // ⚠️ `empreendimento: undefined` DE PROPÓSITO. A ficha da imobiliária não tem "o"
+        // empreendimento (ela se credencia em vários), e o corpo deste formulário aberto não pode
+        // forjar a linha "Empreendimento" do cabeçalho (Lucas, 24/09/2026: a linha é só da CAD do
+        // cliente).
+        const bytes = await montarCadPdf({
+          ...cadStruct,
+          autenticacao: criado.autenticacao,
+          empreendimento: undefined,
+        });
         cadBase64 = Buffer.from(bytes).toString("base64");
         const cadUpload = await uploadApoloDocument({
           adminClient,
