@@ -21,6 +21,17 @@
 /** As etapas em que a venda já saiu da mão do coordenador e o desfazer é do jurídico. */
 export const DEPOIS_DO_CONTRATO: ReadonlySet<string> = new Set(["assinatura", "contrato", "faturado"]);
 
+/**
+ * AS ETAPAS EM QUE A VENDA JÁ FOI DESFEITA: não há mais venda para nada acompanhar.
+ *
+ * ⚠️ UMA RÉGUA SÓ PARA "ESTA VENDA ESTÁ MORTA?", E ELA ESTAVA ESCRITA EM TRÊS LUGARES. O motor da
+ * conclusão tinha a lista dele (`JA_DESFEITA`), a porta do cancelamento pela Têmis comparava as duas
+ * palavras à mão e a Têmis não perguntava nada. Três cópias da mesma pergunta divergem no dia em que
+ * uma quarta etapa terminal nascer, e a que ficar para trás é a que deixa card andando sobre venda
+ * morta.
+ */
+export const VENDA_DESFEITA: ReadonlySet<string> = new Set(["cancelado", "distrato"]);
+
 export type TipoDaAcaoDeCancelamento = "pedido" | "proposta" | "reserva";
 
 export type AcaoDeCancelamento = {
