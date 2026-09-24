@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-24-lsoft-todos-os-empreendimentos-e-patrimonio",
+    deployedAt: "2026-09-24T18:40:33-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "**O filtro de empreendimento oferece todos os empreendimentos do LSoft**, e não só Garden e Vale do Sol. O Vale do Ouro, que já tinha carteira no sistema e não aparecia, entra também.",
+              "**Nova marca de Patrimônio.** O cliente e a parcela que vêm da carteira de patrimônio ganham um selo, e um filtro mostra só eles.",
+              "**Um bloco mostra quanto do patrimônio falta receber** e quantos clientes têm patrimônio em aberto. Esse valor já está dentro da carteira de cima, e o bloco diz isso para ninguém somar duas vezes.",
+              "**O subtítulo diz o empreendimento que está na tela**, em vez de sempre Garden e Vale do Sol.",
+            ],
+            screen: "LSoft Integração",
+          },
+        ],
+      },
+    ],
+    rollback: "85b8d613",
+    technical: {
+      done:
+        "BANCO (com OK do Lucas): 0188 `a_trilha_sobrevive_a_recarga` (FK de lsoft_clientes_edicoes.parcela_id de CASCADE para SET NULL, impressao_digital + ordinal + retrato no momento, backfill das 948 linhas); 0189 `a_parcela_sabe_de_qual_categoria_veio` (lsoft_parcelas.categoria_lsoft, backfill 124/102/69, CHECK de empreendimento de 3 para 13 nomes, aceita 'Guaimbé' e recusa 'Guaimbê'); 0190 `devolve_mae_e_nascimento_do_most` (200 mães e 218 nascimentos que as cargas de 08/09 e 16/09 tinham trocado por nulo, só onde o CPF do MOST é o do cliente: 222 de 222). CARGA (lib/lsoft/carga.ts): grava antes de apagar com uma marca em sincronizado_em, apaga só as CATEGORIAS da carga (a 17 mistura produtos; por empreendimento, carregar a 17 apagaria o Vale do Sol da 102), desfaz o que gravou se falhar, e depois de erro no DELETE conta o que sobrou antes de desfazer (DELETE que efetivou com a resposta perdida esvaziaria o empreendimento). Cadastro MESCLADO (lib/lsoft/mesclar-cliente.ts): LSoft em branco não apaga, edição da tela vence, lista de empreendimentos soma. Conferência antes de gravar (lib/lsoft/divergencia-da-carga.ts): recusa a carga que desfaria baixa ou correção do time, salvo --aceitar-perda-de-edicao. Religadores da trilha (lib/lsoft/religar-trilha.ts) e da classificação rodam no fim; leitura paginada com order(id) e conferência de ids distintos (sem ordem, uma página pulava uma parcela e o total batia). Regra da categoria 17 por texto (lib/lsoft/categorias.ts), presa por teste ao catálogo de boletos e ao CHECK da 0189. Extrator novo scripts/lsoft/extrair-por-categoria.ps1. TELA: seletor com os 13, filtro e bloco de patrimônio, selo no cliente e na parcela. REVISÃO ADVERSARIAL: 35 agentes, 31 achados, 16 confirmados. Suíte: 586 arquivos, 8.942 testes; typecheck limpo. ⚠️ A CARGA DOS EMPREENDIMENTOS NOVOS roda logo depois deste deploy; a do Garden e do Vale do Sol continua travada pela divergência do cliente 00000587.",
+      motivation:
+        "Lucas, 24/09/2026: trazer os demais empreendimentos para o LSoft Integração, para o time analisar e corrigir, e a categoria 17 com uma tag de patrimônio: \"ele deve estar vinculado ao empreendimento, mas ter uma tag de patrimonio e que eu pudesse ver esse valor, ter filtros\".",
+    },
+    title: "Todos os empreendimentos e a marca de patrimônio no LSoft Integração",
+    type: "novidade",
+    version: "1.374.0",
+  },
+  {
     buildTag: "2026-09-24-promessa-vencida-volta-a-acionar",
     deployedAt: "2026-09-24T17:56:11-03:00",
     modules: [

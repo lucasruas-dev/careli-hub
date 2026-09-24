@@ -98,6 +98,15 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
     titulo: "A \"correção\" fantasma no extrato: mora entrando como reajuste",
   },
   {
+    id: "PAN-122",
+    entregueEm: "2026-09-24",
+    evidencia: "v1.374.0. Migrations 0188 (a trilha de edição sobrevive à carga), 0189 (`lsoft_parcelas.categoria_lsoft` e o CHECK com 13 empreendimentos) e 0190 (200 mães e 218 nascimentos devolvidos do MOST), aplicadas com OK do Lucas. A carga (`lib/lsoft/carga.ts`) grava antes de apagar, substitui por categoria de origem, desfaz o que gravou se falhar, e recusa quando desfaria edição do time (`lib/lsoft/divergencia-da-carga.ts`). Revisão adversarial: 35 agentes, 16 achados confirmados. A tela oferece os 13 empreendimentos e mostra o patrimônio. ⚠️ A carga do Garden e do Vale do Sol continua travada pelo cliente 00000587 (R$ 2.207,18 na tela contra R$ 4.414,36 no LSoft).",
+    modulo: "Portal do incorporador",
+    porque: "Lucas (24/09/2026): subir os demais empreendimentos para o LSoft Integração e marcar a categoria 17 como patrimônio, vinculada ao empreendimento, com o valor à vista e filtro. A carga antiga apagava tudo antes de gravar: em 08/09 o espelho ficou vazio por 41 minutos, e as cargas de setembro apagaram 200 nomes de mãe e 218 nascimentos que o MOST tinha trazido. ⚠️ Não é o PAN-036: aquele é cadastrar essas carteiras como empreendimentos no Panteon; este traz a carteira delas para o LSoft Integração.",
+    situacao: "entregue",
+    titulo: "Os demais empreendimentos e o patrimônio no LSoft Integração, com uma carga que não apaga o trabalho do time",
+  },
+  {
     id: "PAN-121",
     entregueEm: "2026-09-24",
     evidencia: "v1.372.0. `lib/apolo/mover-cad.ts` e POST /api/apolo/board/[id]/mover-empreendimento (só coordenação), trava em relationships/archive e no crédito (`cadComVinculoArquivado`), rótulo do card pela CAD, e o empreendimento de volta no PDF (`lib/apolo/empreendimento-de-mercado.ts`). O caso do Jonatas (CAD no Veredas, vínculo trocado para o Vale do Ouro, credenciado sem Serasa, fora do CRM do Huber) foi corrigido no banco com OK do Lucas. ⚠️ Decisões padrão do Zeus a confirmar: CAD com cobrança de pré-venda não é movida (hoje isso barra 432 credenciados do VLO); credenciado não volta para a pré-venda no destino.",
