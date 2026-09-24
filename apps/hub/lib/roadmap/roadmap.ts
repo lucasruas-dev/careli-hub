@@ -98,6 +98,15 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
     titulo: "A \"correção\" fantasma no extrato: mora entrando como reajuste",
   },
   {
+    id: "PAN-121",
+    entregueEm: "2026-09-24",
+    evidencia: "v1.372.0. `lib/apolo/mover-cad.ts` e POST /api/apolo/board/[id]/mover-empreendimento (só coordenação), trava em relationships/archive e no crédito (`cadComVinculoArquivado`), rótulo do card pela CAD, e o empreendimento de volta no PDF (`lib/apolo/empreendimento-de-mercado.ts`). O caso do Jonatas (CAD no Veredas, vínculo trocado para o Vale do Ouro, credenciado sem Serasa, fora do CRM do Huber) foi corrigido no banco com OK do Lucas. ⚠️ Decisões padrão do Zeus a confirmar: CAD com cobrança de pré-venda não é movida (hoje isso barra 432 credenciados do VLO); credenciado não volta para a pré-venda no destino.",
+    modulo: "Apolo",
+    porque: "Lucas (24/09/2026): o cliente foi vinculado ao empreendimento errado, a exclusão manual não moveu a CAD, o Huber não o via e o crédito foi pulado. Trocar de empreendimento passa a ser uma ação só, que move tudo junto e aplica a regra do crédito do empreendimento novo: *\"validação não precisa pois já foi feita\"*; sem análise recente vai para a análise; com análise recente, só confere os valores e aponta se passou.",
+    situacao: "entregue",
+    titulo: "Mover CAD de empreendimento, com a regra do crédito do destino, e o empreendimento no PDF da CAD",
+  },
+  {
     id: "PAN-120",
     entregueEm: "2026-09-24",
     evidencia: "v1.370.0. `lib/apolo/reajuste/quadro-anual.ts` (`montarQuadroAnual`) e a curva única `parcelaDoCicloSacoc` em `lib/apolo/planos-comerciais.ts`, que o gerador de proposta do Hércules também usa. Revisão adversarial antes do deploy corrigiu 9 defeitos (sistema declarado pelo C2X, parcela 1 pelo número, carência, quadro só com a conta inteira), e a varredura da carteira deu 803 quadros e zero violações. Prova no LOS0617: ago/25 a jul/26 = R$ 484,00 (452,43 + juros 19,37 + correção 12,20, IPCA 5,13%), total do contrato R$ 136.250,54. ⚠️ Em aberto, para a Nívea: no 2º aniversário, o template LOU divide 12 meses de juros por 11 (LOU1819 aplicado 477,98), e a curva da casa divide o ano cheio (466,12).",

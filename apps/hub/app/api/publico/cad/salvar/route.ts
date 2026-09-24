@@ -14,6 +14,7 @@ import {
   caminhoUploadDiretoValido,
   uploadApoloDocument,
 } from "@/lib/apolo/documentos";
+import { nomeDeMercadoDoEmpreendimento } from "@/lib/apolo/empreendimento-de-mercado";
 import { exigeComprovanteRenda } from "@/lib/apolo/enterprise-settings";
 import {
   gravarVinculoEsteira,
@@ -148,8 +149,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    const empreendimentoNome =
-      (await nomeDoEmpreendimento(adminClient, sessao.enterpriseId)) || "Empreendimento";
+    // `nomeDoCatalogo` fica guardado cru porque é a RESERVA do nome impresso na CAD (passo 6): o
+    // "Empreendimento" genérico abaixo serve à esteira e ao grafo, mas não é nome para o papel.
+    const nomeDoCatalogo = await nomeDoEmpreendimento(adminClient, sessao.enterpriseId);
+    const empreendimentoNome = nomeDoCatalogo || "Empreendimento";
 
     // 1) A entidade. `role`/`ownerUserId` forçados; a imobiliária vem do TOKEN, sobrescrevendo o
     //    corpo — é o ponto exato que fecha o furo do formulário anônimo.
@@ -254,10 +257,19 @@ export async function POST(request: Request) {
     const cadStruct = payload.cad?.secoes?.length ? payload.cad : null;
     if (cadStruct) {
       try {
+        // EMPREENDIMENTO abaixo do corretor (Lucas, 24/09/2026). Do TOKEN, como imobiliária e
+        // corretor, e nunca do corpo. Sai o nome de MERCADO, o do pai: o corretor recebe esta CAD e
+        // não vê divisão interna. Nunca derruba o envio (o resolvedor não lança).
+        const empreendimento = await nomeDeMercadoDoEmpreendimento(
+          adminClient,
+          sessao.enterpriseId,
+          nomeDoCatalogo,
+        );
         const bytes = await montarCadPdf({
           ...cadStruct,
           autenticacao: criado.autenticacao,
           corretor: sessao.corretorNome,
+          empreendimento: empreendimento || undefined,
           imobiliaria: sessao.imobiliariaNome,
         });
         cadBase64 = Buffer.from(bytes).toString("base64");

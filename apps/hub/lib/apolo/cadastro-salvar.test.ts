@@ -10,10 +10,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 //   • a autoria vem da PORTA (um `autor` forjado no corpo não entra), com `owner_user_id` dela;
 //   • a esteira só é gravada com empreendimento E imobiliária, com a origem que a porta mandou;
 //   • a MARCA do produto (`metadata.enterpriseId`): a CAD em PDF leva em toda porta; os documentos
-//     enviados só na porta do portal (decisão do Lucas, 16/09/2026).
+//     enviados só na porta do portal (decisão do Lucas, 16/09/2026);
+//   • o EMPREENDIMENTO impresso no cabeçalho da CAD sai do ID do vínculo, resolvido no servidor, e
+//     nunca do texto que o browser mandou (Lucas, 24/09/2026: "pode ser abaixo de corretor").
 
 const estado = vi.hoisted(() => ({
   criar: vi.fn(),
+  // O resolvedor de nome de mercado (lib/apolo/empreendimento-de-mercado.ts) tem teste próprio;
+  // aqui ele responde como o banco de produção: 37 (VOC) e 35 (VLO) são "Vale do Ouro".
+  mercado: vi.fn(async (_client: unknown, id: unknown) =>
+    String(id ?? "").trim() === "37" || String(id ?? "").trim() === "35" ? "Vale do Ouro" : "",
+  ),
+  // Captura o CadDoc que o servidor manda desenhar: é ELE que prova o que sai impresso.
+  pdf: vi.fn(async (_cad: Record<string, unknown>) => new Uint8Array([1, 2, 3])),
   renda: vi.fn(async () => false),
   upload: vi.fn(async () => ({ ok: true })),
 }));
@@ -29,8 +38,9 @@ vi.mock("@/lib/apolo/documentos", async (original) => ({
   ...(await original<typeof import("@/lib/apolo/documentos")>()),
   uploadApoloDocument: estado.upload,
 }));
-vi.mock("@/modules/apolo/blocks/cadastro/cad-pdf", () => ({
-  montarCadPdf: async () => new Uint8Array([1, 2, 3]),
+vi.mock("@/modules/apolo/blocks/cadastro/cad-pdf", () => ({ montarCadPdf: estado.pdf }));
+vi.mock("@/lib/apolo/empreendimento-de-mercado", () => ({
+  nomeDeMercadoDoEmpreendimento: estado.mercado,
 }));
 
 import { prefixoUploadDireto } from "@/lib/apolo/documentos";
@@ -84,6 +94,8 @@ beforeEach(() => {
   });
   estado.upload.mockClear();
   estado.renda.mockClear();
+  estado.mercado.mockClear();
+  estado.pdf.mockClear();
 });
 
 describe("salvarCadastroDoApolo", () => {
@@ -286,6 +298,71 @@ describe("salvarCadastroDoApolo", () => {
       imobiliaria_entity_id: IMOB,
       origem: "portal-incorporador",
     });
+  });
+
+  it("o empreendimento da CAD vem do ID do vínculo, mesmo com o texto do browser forjado", async () => {
+    // O corpo manda a divisão ("VOC") no `cad.empreendimento` e um nome de vínculo qualquer. O que
+    // sai impresso é o nome de MERCADO do id 37, resolvido no servidor.
+    const cad = {
+      arquivo: "CAD - MARIA",
+      empreendimento: "Vale do Ouro · VOC",
+      secoes: [{ fields: [{ label: "CPF", value: "1" }], title: "Dados" }],
+    } as never;
+    await salvarCadastroDoApolo({
+      adminClient: clienteFalso().client,
+      autor: autorDoHub(),
+      origemDaEsteira: "cadastro-manual",
+      origemPadrao: "cadastro-formulario",
+      payload: payload({
+        cad,
+        perfil: { imobiliariaId: IMOB, imobiliariaLabel: "RR" },
+        vinculo: { empreendimentoNome: "VOC", enterpriseId: "37" },
+      }),
+    });
+
+    expect(estado.mercado).toHaveBeenCalledTimes(1);
+    // Só o ID vai para o resolvedor: nenhum texto do browser entra como reserva.
+    expect(estado.mercado.mock.calls[0]?.slice(1)).toEqual(["37"]);
+    expect(estado.pdf).toHaveBeenCalledTimes(1);
+    expect(estado.pdf.mock.calls[0]?.[0]).toMatchObject({
+      autenticacao: "CAD-2026-ABCD1234",
+      empreendimento: "Vale do Ouro",
+    });
+  });
+
+  it("sem empreendimento no vínculo, o texto forjado no corpo não chega ao PDF", async () => {
+    const cad = {
+      arquivo: "CAD - MARIA",
+      empreendimento: "Vale do Ouro · VOC",
+      secoes: [{ fields: [{ label: "CPF", value: "1" }], title: "Dados" }],
+    } as never;
+    await salvarCadastroDoApolo({
+      adminClient: clienteFalso().client,
+      autor: autorDoHub(),
+      origemDaEsteira: "cadastro-manual",
+      origemPadrao: "cadastro-formulario",
+      payload: payload({ cad }),
+    });
+    const desenhado = estado.pdf.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect("empreendimento" in desenhado).toBe(true);
+    expect(desenhado.empreendimento).toBeUndefined();
+  });
+
+  it("a ficha da IMOBILIÁRIA sai sem empreendimento, e nem consulta o cadastro", async () => {
+    const cad = {
+      arquivo: "Imobiliaria - RR",
+      empreendimento: "Vale do Ouro",
+      secoes: [{ fields: [{ label: "CNPJ", value: "1" }], title: "Empresa" }],
+    } as never;
+    await salvarCadastroDoApolo({
+      adminClient: clienteFalso().client,
+      autor: autorDoHub(),
+      origemDaEsteira: "cadastro-manual",
+      origemPadrao: "cadastro-formulario",
+      payload: payload({ cad, persona: "pj", role: "imobiliaria", vinculo: { enterpriseId: "35" } }),
+    });
+    expect(estado.mercado).not.toHaveBeenCalled();
+    expect((estado.pdf.mock.calls[0]?.[0] as Record<string, unknown>).empreendimento).toBeUndefined();
   });
 
   it("recusa da ficha volta inteira para a porta decidir o que mostrar", async () => {

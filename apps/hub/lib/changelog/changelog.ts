@@ -36,6 +36,48 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-24-mover-cad-de-empreendimento",
+    deployedAt: "2026-09-24T16:42:50-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Nova ação: Mover CAD.** Quando o cliente foi cadastrado no empreendimento errado, a coordenação troca pelo card do Board. A CAD, os vínculos e os documentos mudam juntos, e o cliente passa a aparecer para o coordenador certo.",
+              "**A troca segue a regra do crédito do empreendimento novo.** Não volta para a validação. Se o empreendimento novo exige análise de crédito e o cliente não tem consulta nos últimos 30 dias, a CAD vai para a análise. Se já tem consulta nesse prazo, o sistema confere os valores contra o limite do empreendimento novo e mostra se passou ou não.",
+              "**O card mostra o empreendimento onde a CAD realmente está.** Antes ele podia mostrar um empreendimento e agir sobre outro.",
+            ],
+            screen: "Board de cadastro",
+          },
+          {
+            items: [
+              "**Excluir o vínculo de empreendimento que é o da CAD não é mais possível.** A tela avisa que a troca é pelo Mover CAD. Era esse excluir e adicionar que deixava a CAD para trás no empreendimento antigo.",
+            ],
+            screen: "Ficha do cliente · Relacionamentos",
+          },
+          {
+            items: [
+              "**O PDF da CAD volta a mostrar o empreendimento**, abaixo do Corretor, sempre com o nome do empreendimento e nunca a divisão interna.",
+              "**O Enviado em passa a ser a data real do envio**, no horário de Brasília. Antes o PDF regerado mostrava a hora da regeneração, três horas adiantada.",
+            ],
+            screen: "CAD em PDF",
+          },
+        ],
+      },
+    ],
+    rollback: "fc91a75c",
+    technical: {
+      done:
+        "CAUSA (caso do Jonatas, 24/09/2026): a CAD vive em apolo_esteira, com PK (entity_id, enterprise_id); o vínculo de empreendimento vive em apolo_relationships. O time trocou só o vínculo (arquivou o 19 VDO e criou o 35 VLO). A CAD ficou no 19. O card tirava o NOME do vínculo e o ID das ações da CAD, então mostrou Vale do Ouro e agiu no Veredas. O crédito leu a config do 19 (análise desligada) e credenciou sem Serasa, com WhatsApp de credenciado para o corretor e para a coordenadora do VDO. O CRM do coordenador filtra por apolo_esteira.enterprise_id, e o Huber não via o cliente. NÃO era pai/filho. O dado do Jonatas foi corrigido por SQL com OK do Lucas (CAD 19→35 em crédito, 2 PDFs remarcados, evento cad_movida). CÓDIGO: (1) lib/apolo/mover-cad.ts + POST /api/apolo/board/[id]/mover-empreendimento (authorizeApoloCoordenacao). Canoniza o destino para o id de mercado (pai), valida contra listEnterprisesRecebendo('cad') (lista vazia = 503, porque a leitura não lança), recusa CAD já existente no destino, CAD com cobrança de pré-venda (pagamento_ref ou pago_em, também no WHERE do UPDATE) e concorrência (UPDATE filtra pela etapa lida). Regra de etapa do Lucas: antes do crédito não muda; destino sem análise não muda; com análise e consulta recente (consultaRecenteDoDocumento, 30 dias) avalia com avaliarCredito contra o limite do destino (passou sobe por atualizarEtapa; não passou vai para revisão); sem consulta vai para crédito. Rebaixar vai no MESMO UPDATE da troca, então nunca sobra credenciado sem análise; fila e aviso depois, best-effort. Vínculo da origem arquivado e do destino criado, exceto para imobiliária (lá o vínculo verified é a habilitação). Documentos pessoais remarcados; PDFs de CAD não (o de envio é o registro do que o corretor mandou; o automático é regerado no destino). Resposta com avisos e incompleto (só passos de dado). (2) Travas: relationships/archive dá 409 quando o vínculo é equivalente (canonizador) ao de uma CAD viva; consultarCredito e creditoDaCad recusam CAD cujo vínculo foi arquivado DEPOIS de ela nascer (menor de chegou_em e created_at, contra metadata.arquivadoEm ou updated_at). (3) board-do-servidor.ts: rótulo do card sai da CAD; destinos sem o fallback group:*. (4) PDF: CadDoc.empreendimento, resolvedor lib/apolo/empreendimento-de-mercado.ts (pai via hercules_empreendimentos.pai_id, tira o sufixo de divisão de qualquer fonte, olha o error das consultas), preenchido em cad-de-entidade, cadastro-salvar e no CAD público pelo id do token; ficha da imobiliária sem a linha; CAD montada sem enterpriseId e com mais de uma CAD omite a linha. Enviado em = chegou_em em America/Sao_Paulo. Regressão de 21/07 (f085d6b9 apagou a rota que imprimia o empreendimento). (5) cadastro-persist: vínculo arquivado não conta como já existente no modo acrescentar. REVISÃO: três rodadas adversariais (17 + 6 + 3 agentes), com todos os achados corrigidos e reconferidos, e testes de mutação. Pastas afetadas: 3.391 testes verdes. Suíte inteira depois do merge com a 1.371.0: 573 arquivos, 8.812 testes passando; typecheck limpo.",
+      motivation:
+        "Lucas, 24/09/2026: esse cliente foi vinculado ao empreendimento errado, era para ser vale do ouro e foi para veredas do ouro. Fizemos manualmente a exclusão, incluímos vale do ouro, mas no portal do coordenador ele não aparece no crm do Huber. Ao fazer essa troca ele caiu para análise de crédito do vale do ouro e o sistema já encaminhou para credenciado sem fazer análise. E: vamos trazer o empreendimento a qual aquela cad está vinculada, pode ser abaixo de corretor. Regra da troca: validação não precisa pois já foi feita; se o empreendimento novo tiver análise de crédito e a cad não tiver análise recente, vai para análise; se já foi feita, é só validar os valores e apontar se passou ou não.",
+    },
+    title: "Mover CAD de empreendimento, e o empreendimento de volta no PDF da CAD",
+    type: "melhoria",
+    version: "1.372.0",
+  },
+  {
     buildTag: "2026-09-24-temis-reflete-no-hercules",
     deployedAt: "2026-09-24T14:03:31-03:00",
     modules: [

@@ -36,9 +36,13 @@ import {
 import { contatoDaEntidadeImobiliaria } from "@/lib/apolo/disparo-imobiliaria";
 import { canonizador } from "@/lib/apolo/empreendimento-equivalencia";
 import { loadApoloEnterpriseCadastro } from "@/lib/apolo/empreendimentos";
+import { listEnterprisesRecebendo } from "@/lib/apolo/enterprise-settings";
 import { atualizarEtapa, ehEtapaValida } from "@/lib/apolo/esteira";
 import {
+  type EmpreendimentoDoCadastro,
+  idDeMercado,
   lerCadDaEsteira,
+  lerEmpreendimentosDoCadastro,
   maisRecentePorEntidade,
   normalizarEnterpriseId,
 } from "@/lib/apolo/esteira-cad";
@@ -129,6 +133,12 @@ export type ItemDaFila = {
   documento: string;
   empreendimentos: string[];
   enterpriseId: null | string;
+  /**
+   * (24/09/2026) O id de MERCADO da CAD (`idDeMercado`: a divisão 36 vira o 35, a 27 vira
+   * `group:Lagoa Bonita`). Presente SÓ junto com `moverCad` (coordenação, porta do hub): é por ele que
+   * o seletor do Mover tira o próprio produto da lista. Ver `moverCadDoUsuario`.
+   */
+  enterpriseIdDeMercado?: null | string;
   entidadeStatus: null | string;
   erroEnvio: boolean;
   etapa: null | string;
@@ -148,6 +158,16 @@ export type FilaDoBoard = {
   analistas: Array<{ id: string; nome: string }>;
   empreendimentos: string[];
   itens: ItemDaFila[];
+  /**
+   * (24/09/2026) O "Mover CAD" do card: os empreendimentos para onde a CAD pode ir. Presente SÓ na
+   * porta do hub e SÓ para a coordenação (admin e leader); ausente = a tela não mostra o botão. O
+   * portal nunca recebe. Ver `destinosDaCad` e `podeMoverCad`.
+   *
+   * ⚠️ `destinos` VAZIO = A LISTA NÃO CARREGOU (catálogo do C2X ou portão de CAD fora do ar). Hoje oito
+   * ids recebem CAD, então lista vazia só sai por falha, e a tela diz "Não foi possível carregar os
+   * empreendimentos agora." em vez de afirmar que nenhum destino recebe CAD. Ver `moverCadDoUsuario`.
+   */
+  moverCad?: { destinos: DestinoDaCad[] };
   usuarioAtual: null | { id: string; nome: string };
 };
 
@@ -631,19 +651,15 @@ export async function montarFilaDoBoard(
       temLinhaSync: tentadasNoC2x.has(row.id),
     });
 
-    // O empreendimento vem, nesta ordem: do VÍNCULO habilitado (a fonte de verdade, e a única que
-    // existe para quem veio do C2X), do cadastro (quem nasceu no wizard) ou da esteira (importado
-    // do Asana, cadastro antigo sem `metadata.cadastro`).
-    const doVinculo = [...(vinculosPorEntidade.get(row.id) ?? [])];
-    const doCadastro = nomesEmpreendimentos(cadastro?.empreendimentos);
-    const empreendimentos =
-      doVinculo.length > 0
-        ? doVinculo
-        : doCadastro.length > 0
-          ? doCadastro
-          : esteira?.empreendimento
-            ? [esteira.empreendimento]
-            : [];
+    // O rótulo do card: com CAD, o empreendimento DA CAD; sem CAD (a imobiliária), a ordem de
+    // sempre (vínculo, cadastro, esteira). A regra e o caso que a motivou moram em
+    // `empreendimentosDoCard`, no fim deste bloco.
+    const empreendimentos = empreendimentosDoCard({
+      doCadastro: nomesEmpreendimentos(cadastro?.empreendimentos),
+      doVinculo: [...(vinculosPorEntidade.get(row.id) ?? [])],
+      esteira,
+      nomeDoGrupo,
+    });
 
     return {
       // Responsável salvo. Sem isto o Board volta a mostrar "Sem analista" a cada carga.
@@ -779,10 +795,210 @@ export async function montarFilaDoBoard(
     };
   }
 
+  // (24/09/2026) O "MOVER CAD" SÓ NA PORTA DO HUB, e só para a coordenação. Fica DEPOIS do recorte
+  // de propósito: a fila do portal (acima) nunca carrega o campo, então o coordenador do Hércules
+  // não recebe nem a lista de destinos.
+  const moverCad = await moverCadDoUsuario(adminClient, opts.usuarioId, nomeDoGrupo);
+
+  // ⚠️ O ID DE MERCADO DA CAD VAI NO ITEM, e só para quem tem o Mover (revisão de 24/09/2026). O card
+  // da CAD 36 (Vale do Ouro · VOL) diz VALE DO OURO, e o seletor tirava só o "36" da lista: o "Vale do
+  // Ouro" (35) aparecia como destino, e a rota, que sobe o 36 para o 35, respondia 400 sempre. A tela
+  // não tem o cadastro para fazer essa conta; o servidor faz com a MESMA régua da rota (`idDeMercado`).
+  const itensDoHub = moverCad
+    ? itens.map((item) => ({
+        ...item,
+        enterpriseIdDeMercado: item.enterpriseId ? moverCad.mercadoDe(item.enterpriseId) : null,
+      }))
+    : itens;
+  const destinosDoMover = moverCad ? { destinos: moverCad.destinos } : undefined;
+
   return {
-    data: { analistas, empreendimentos: empreendimentosDoCatalogo, itens, usuarioAtual },
+    // `moverCad` ausente (undefined) some do JSON: a tela sem o campo não mostra o botão. (A linha
+    // fica inteira: analistas-do-portal.test.ts usa o começo dela para achar o fim do recorte.)
+    data: { analistas, empreendimentos: empreendimentosDoCatalogo, itens: itensDoHub, moverCad: destinosDoMover, usuarioAtual },
     ok: true,
   };
+}
+
+/**
+ * O EMPREENDIMENTO QUE O CARD MOSTRA.
+ *
+ * ⚠️ QUEM TEM CAD MOSTRA O EMPREENDIMENTO DA CAD, e o vínculo não entra. Caso real (24/09/2026): a
+ * CAD do JONATAS nasceu no VEREDAS DO OURO (19) e deveria ser VALE DO OURO (35). O time trocou só o
+ * VÍNCULO no Apolo (arquivou o 19, criou o 35). O card passou a dizer "Vale do Ouro", porque o rótulo
+ * vinha do vínculo primeiro, mas toda ação do card continuou na CAD 19, porque o `enterpriseId` do card
+ * sai da esteira. O crédito leu a configuração do Veredas (análise desligada) e credenciou sem Serasa,
+ * e o time achou que a troca tinha funcionado porque o card dizia o nome certo. Card nunca mostra um
+ * produto e age em outro: rótulo e chave saem da MESMA fonte.
+ *
+ * O nome vem do CATÁLOGO pelo id da CAD (já agrupado: divisão vira o nome de mercado, "Vale do Ouro · VOL"
+ * vira VALE DO OURO), e o texto da esteira, sem o sufixo de divisão, fica de reserva para quando o
+ * catálogo não conhece o id (C2X fora do ar, id de teste). O corretor não vê divisão interna.
+ *
+ * A ordem "vínculo primeiro" continua valendo só para quem NÃO tem CAD, que é a imobiliária: para ela o
+ * vínculo habilitado é a fonte de verdade (a DANY CASTRO, 17/08, veio do C2X sem cadastro nenhum).
+ */
+export function empreendimentosDoCard(entrada: {
+  doCadastro: string[];
+  doVinculo: string[];
+  esteira?: null | { empreendimento: null | string; enterprise_id: null | string };
+  nomeDoGrupo: ReadonlyMap<string, string>;
+}): string[] {
+  const { doCadastro, doVinculo, esteira, nomeDoGrupo } = entrada;
+  const idDaCad = String(esteira?.enterprise_id ?? "").trim();
+
+  if (idDaCad) {
+    const nome = nomeDoGrupo.get(idDaCad) ?? semSufixoDeDivisao(esteira?.empreendimento);
+    // Sem nome nenhum para o id da CAD, o card fica sem rótulo. Cair no vínculo aqui seria o defeito
+    // de volta: um nome que pode não ser o do produto em que o card age.
+    return nome ? [nome] : [];
+  }
+
+  if (doVinculo.length > 0) return doVinculo;
+  if (doCadastro.length > 0) return doCadastro;
+  const daEsteira = semSufixoDeDivisao(esteira?.empreendimento);
+  return daEsteira ? [daEsteira] : [];
+}
+
+/**
+ * "Vale do Ouro · VOL" vira "Vale do Ouro". A esteira guarda o nome do FILHO (medido em 24/09/2026:
+ * "Lagoa Bonita · LBR", "Vale do Ouro · VOC", "Lavra do Ouro · LOS"...), e a sigla da divisão é
+ * interna: o mercado vê um empreendimento só.
+ */
+export function semSufixoDeDivisao(texto: null | string | undefined): string {
+  return String(texto ?? "")
+    .replace(/\s*·\s*[A-Z0-9]{2,5}\s*$/u, "")
+    .trim();
+}
+
+/**
+ * Um destino do "Mover CAD": empreendimento de MERCADO que recebe CAD. `id` é o id de mercado (o que a
+ * esteira grava e o que a rota compara), então ele se compara direto com `enterpriseIdDeMercado`.
+ */
+export type DestinoDaCad = { id: string; nome: string };
+
+/**
+ * Quem vê o "Mover CAD": a COORDENAÇÃO (admin e leader), a mesma régua do `authorizeApoloCoordenacao`.
+ * Mover a CAD troca o empreendimento, a etapa e, no destino com análise ligada, manda a ficha para o
+ * crédito: não é ação do analista (`operator`). O servidor da rota confere de novo; aqui é o que aparece.
+ */
+export function podeMoverCad(papel: null | string | undefined): boolean {
+  return papel === "admin" || papel === "leader";
+}
+
+/**
+ * Os destinos do "Mover CAD", a partir dos ids com o PORTÃO DE CAD aberto (`credenciamento_ativo` e
+ * `recepcao_cad`): é exatamente onde o CAD público teria gravado a CAD, então é o mesmo id que o
+ * corretor teria escolhido (35 no Vale do Ouro, `group:Lagoa Bonita` na Lagoa Bonita). Pai ou grupo,
+ * nunca divisão.
+ *
+ * ⚠️ POR QUE O PORTÃO DE CAD, E NÃO A LISTA DO SELETOR (`credenciamento_ativo` sozinho): medido em
+ * 24/09/2026, o `group:Vale do Ouro` está ativo com a recepção de CAD DESLIGADA, ao lado do 35. Pela
+ * lista do seletor o operador veria dois "VALE DO OURO" e poderia mandar a CAD para um id em que
+ * nenhuma CAD mora (0 CADs no grupo).
+ *
+ * ⚠️ SEM NOME NO CATÁLOGO, O DESTINO NÃO ENTRA (fail-closed), e isso vale também para o `group:*`.
+ * Com o C2X fora do ar a lista sai vazia em vez de oferecer ids crus para escolher. Dois ids com o mesmo
+ * nome (não acontece hoje) aparecem os dois, com o id ao lado: escolher calado entre eles seria pior.
+ *
+ * ⚠️ O `group:*` NÃO SE NOMEIA MAIS PELO PRÓPRIO ID (revisão de 24/09/2026). A tela tirava o nome do id
+ * ("group:Lagoa Bonita" virava LAGOA BONITA) e a rota deixou de fazer isso (D4): sem o catálogo ela
+ * nomeia pela sigla do settings ("LBF + LBR + LBP", medido) ou responde 400 quando não acha nome. Com
+ * o C2X fora na carga, o seletor oferecia justamente o destino que a rota gravaria com a sigla ou
+ * recusaria. Tela e rota usam a mesma régua: sem nome no catálogo, o destino não é oferecido.
+ *
+ * ⚠️ O ID SAI NO IDIOMA DE MERCADO (`mercadoDe`, a régua `idDeMercado` da rota), e dois ids do mesmo
+ * produto viram um só. Medido em 24/09/2026: os oito ids que recebem CAD já são de mercado (19, 20,
+ * 29, 35, 38, 40, 42 e `group:Lagoa Bonita`, nenhum com pai no cadastro), então hoje nada muda. É a
+ * garantia de que o destino e o `enterpriseIdDeMercado` da CAD falam a mesma língua quando uma divisão
+ * passar a receber CAD, em vez de o seletor voltar a oferecer o próprio produto com outro id.
+ */
+export function destinosDaCad(
+  ids: readonly string[],
+  nomeDoGrupo: ReadonlyMap<string, string>,
+  mercadoDe: (id: string) => null | string = (id) => id,
+): DestinoDaCad[] {
+  const vistos = new Set<string>();
+  const destinos: DestinoDaCad[] = [];
+  for (const bruto of ids) {
+    const cru = String(bruto ?? "").trim();
+    if (!cru) continue;
+    const id = String(mercadoDe(cru) ?? "").trim() || cru;
+    if (vistos.has(id)) continue;
+    vistos.add(id);
+    const nome = String(nomeDoGrupo.get(id) ?? nomeDoGrupo.get(cru) ?? "").trim();
+    if (nome) destinos.push({ id, nome });
+  }
+
+  const porNome = new Map<string, number>();
+  for (const destino of destinos) porNome.set(destino.nome, (porNome.get(destino.nome) ?? 0) + 1);
+
+  return destinos
+    .map((destino) =>
+      (porNome.get(destino.nome) ?? 0) > 1
+        ? { ...destino, nome: `${destino.nome} (${destino.id})` }
+        : destino,
+    )
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+}
+
+/**
+ * `idDeMercado` com o cadastro já lido e memória por id: a fila tem centenas de cards e poucos ids
+ * distintos, e cada chamada de `idDeMercado` remonta os mapas do cadastro.
+ */
+export function mercadoPeloCadastro(
+  cadastro: readonly EmpreendimentoDoCadastro[],
+): (id: string) => null | string {
+  const memoria = new Map<string, null | string>();
+  return (id) => {
+    const chave = String(id ?? "").trim();
+    if (!memoria.has(chave)) memoria.set(chave, idDeMercado(chave, cadastro));
+    return memoria.get(chave) ?? null;
+  };
+}
+
+// Lê o papel do usuário do hub e, se for da coordenação, os destinos e a régua do id de mercado.
+// `undefined` = sem o botão. Leitura que falha vira `undefined` (fechado): o Board carrega igual, só
+// sem o "Mover CAD".
+//
+// ⚠️ SEM O CADASTRO, SEM O BOTÃO. A rota do Mover lê o mesmo cadastro (`hercules_empreendimentos`) e
+// responde 503 quando ele não vem; oferecer o botão sem ele seria oferecer um seletor que não sabe
+// qual é o produto da CAD (e que voltaria a mostrar o próprio produto como destino).
+//
+// ⚠️ PORTÃO OU CATÁLOGO FORA DO AR = `destinos` VAZIO (revisão de 24/09/2026). `listEnterprisesRecebendo`
+// falha fechada e devolve [] em erro de leitura; o catálogo fora do ar deixa todo destino sem nome, e
+// `destinosDaCad` não oferece destino sem nome. As duas falhas chegam à tela como lista vazia, que ela
+// lê como "não carregou". Se a leitura do portão passar a LANÇAR, também vira lista vazia aqui: uma
+// exceção nesta leitura derrubaria a fila inteira por causa de um seletor.
+async function moverCadDoUsuario(
+  adminClient: AdminClient,
+  usuarioId: string,
+  nomeDoGrupo: ReadonlyMap<string, string>,
+): Promise<undefined | { destinos: DestinoDaCad[]; mercadoDe: (id: string) => null | string }> {
+  // Sem uuid não há usuário do hub para consultar (o atalho local devolve "local-hub-user").
+  if (!ehUuid(usuarioId)) return undefined;
+
+  const { data, error } = await adminClient
+    .from("hub_users")
+    .select("role")
+    .eq("id", usuarioId)
+    .maybeSingle<{ role: null | string }>();
+  if (error || !podeMoverCad(data?.role)) return undefined;
+
+  let mercadoDe: (id: string) => null | string;
+  try {
+    mercadoDe = mercadoPeloCadastro(await lerEmpreendimentosDoCadastro(adminClient));
+  } catch {
+    return undefined;
+  }
+
+  let ids: string[];
+  try {
+    ids = await listEnterprisesRecebendo(adminClient, "cad");
+  } catch {
+    ids = [];
+  }
+  return { destinos: destinosDaCad(ids, nomeDoGrupo, mercadoDe), mercadoDe };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════

@@ -30,7 +30,8 @@ import type { C2xOption } from "@/lib/apolo/c2x-fields";
 import { C2X_PROFISSOES } from "@/lib/apolo/c2x-professions";
 import { profissaoDeclarada, profissaoExibida } from "@/lib/apolo/profissao";
 import { gerarCodigoAutenticacao } from "@/lib/apolo/cadastro-persist";
-import { lerCadDaEsteira } from "@/lib/apolo/esteira-cad";
+import { nomeDeMercadoDoEmpreendimento } from "@/lib/apolo/empreendimento-de-mercado";
+import { lerCadDaEsteira, lerCadsDaEsteira, normalizarEnterpriseId } from "@/lib/apolo/esteira-cad";
 import { createApoloAdminClient, fetchC2xCadastroByEntity } from "@/lib/apolo/server";
 import type { ApoloC2xCadastro } from "@/lib/apolo/types";
 import { formatarTelefoneBR } from "@/lib/format/phone-br";
@@ -39,6 +40,17 @@ import { resolverLimiteCredito } from "@/lib/apolo/limite-credito";
 import type { CadCampo, CadDoc, CadSecao } from "@/modules/apolo/blocks/cadastro/cad-pdf";
 
 type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
+
+type LinhaDaEsteira = {
+  chegou_em: string | null;
+  corretor: string | null;
+  empreendimento: string | null;
+  enterprise_id: string | null;
+  ficha: Record<string, unknown> | null;
+  imobiliaria: string | null;
+};
+
+const COLUNAS_DA_ESTEIRA = "ficha, corretor, imobiliaria, empreendimento, enterprise_id, chegou_em";
 
 type EntityRow = {
   created_at: string;
@@ -137,11 +149,10 @@ export function mapearC2xParaFicha(c2x: ApoloC2xCadastro): Record<string, string
 
 // ---- Análise de crédito ----------------------------------------------------------------------
 
+// No fuso de Brasília (ver `dataHoraEmBrasilia`): com getDate() cru, no servidor em UTC, uma
+// consulta feita depois das 21h saía com o dia seguinte.
 function dataBR(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
+  return dataHoraEmBrasilia(new Date(iso))?.data ?? "";
 }
 
 // Monta a seção "Análise de crédito" a partir da última consulta de sucesso. SÓ o status
@@ -170,12 +181,39 @@ function secaoAnaliseCredito(consulta: ConsultaRow | null, limite: number | null
   };
 }
 
+// ---- data e hora no fuso de Brasília ---------------------------------------------------------
+
+// ⚠️ A CAD É LIDA NO BRASIL, E O SERVIDOR RODA EM UTC. `toLocale*("pt-BR")` sem `timeZone` formata
+// no fuso da máquina: na Vercel, UTC. Foi assim que o Lucas leu "Enviado em 24/09/2026 as 15:23"
+// numa CAD regenerada às 12:23 de Brasília (24/09/2026). O fuso vai explícito em toda data impressa.
+const FUSO_DA_CAD = "America/Sao_Paulo";
+
+/** dd/mm/aaaa e HH:MM de um instante, no fuso de Brasília. `null` para instante inválido. */
+export function dataHoraEmBrasilia(instante: Date): { data: string; hora: string } | null {
+  if (Number.isNaN(instante.getTime())) return null;
+  return {
+    data: instante.toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      timeZone: FUSO_DA_CAD,
+      year: "numeric",
+    }),
+    hora: instante.toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      hour12: false,
+      minute: "2-digit",
+      timeZone: FUSO_DA_CAD,
+    }),
+  };
+}
+
 // ---- montagem principal ----------------------------------------------------------------------
 
 // `enterpriseId` diz de QUAL CAD é o PDF. Desde a 0080 a mesma pessoa pode ter CAD em vários
 // empreendimentos, e "a CAD do fulano" deixou de ser uma coisa só: cada uma tem a sua ficha, o
 // seu corretor e a sua imobiliária. Sem o id, monta a MAIS RECENTE — mesmo default do Board, que
-// hoje mostra um card por pessoa. Quem chamar com o id em mãos deve passar.
+// hoje mostra um card por pessoa, e SEM a linha Empreendimento quando a pessoa tem mais de uma CAD
+// (ver lá embaixo). Quem chamar com o id em mãos deve passar.
 export async function montarCadDeEntidade(
   adminClient: AdminClient,
   entityId: string,
@@ -192,10 +230,15 @@ export async function montarCadDeEntidade(
   const entity = (entityData ?? null) as EntityRow | null;
   if (!entity) return null;
 
+  // De qual CAD é o PDF. Sem o id, a leitura traz até DUAS linhas: a primeira é a mesma "mais
+  // recente" de `lerCadDaEsteira` (mesma ordem), e a segunda só diz que a pessoa tem mais de uma CAD
+  // (ver a linha Empreendimento, lá embaixo). Uma consulta só, nos dois casos.
+  const enterpriseIdInformado = normalizarEnterpriseId(opts.enterpriseId);
+
   const [
     { data: enderecos },
     { data: contatos },
-    esteiraData,
+    esteiraLida,
     { data: relConjugeData },
     { data: consultaData },
   ] = await Promise.all([
@@ -209,13 +252,16 @@ export async function montarCadDeEntidade(
       .select("contact_type, value")
       .eq("entity_id", entityId)
       .limit(20),
-    lerCadDaEsteira<{
-      corretor: string | null;
-      ficha: Record<string, unknown> | null;
-      imobiliaria: string | null;
-    }>(adminClient, entityId, "ficha, corretor, imobiliaria", {
-      enterpriseId: opts.enterpriseId,
-    }),
+    // ⚠️ Empreendimento, `enterprise_id` e `chegou_em` vêm da MESMA linha que dá imobiliária e
+    // corretor: desde a 0080 a CAD é por (pessoa, empreendimento), e misturar linhas imprimiria o
+    // corretor de uma CAD com o empreendimento de outra.
+    enterpriseIdInformado
+      ? lerCadDaEsteira<LinhaDaEsteira>(adminClient, entityId, COLUNAS_DA_ESTEIRA, {
+          enterpriseId: enterpriseIdInformado,
+        }).then((linha) => ({ linha, variasCads: false }))
+      : lerCadsDaEsteira<LinhaDaEsteira>(adminClient, entityId, COLUNAS_DA_ESTEIRA, {
+          limite: 2,
+        }).then((linhas) => ({ linha: linhas[0] ?? null, variasCads: linhas.length > 1 })),
     adminClient
       .from("apolo_relationships")
       .select("label, metadata")
@@ -254,7 +300,7 @@ export async function montarCadDeEntidade(
       }
     : null;
   const lista = (contatos ?? []) as ContactRow[];
-  const esteira = esteiraData;
+  const { linha: esteira, variasCads } = esteiraLida;
   const daEsteira = (esteira?.ficha ?? {}) as Record<string, unknown>;
   const relConjuge = (relConjugeData ?? null) as RelConjugeRow | null;
   const consulta = (consultaData ?? null) as ConsultaRow | null;
@@ -446,12 +492,45 @@ export async function montarCadDeEntidade(
     : null;
   secoes.push(secaoAnaliseCredito(consulta, limiteCredito));
 
-  const agora = new Date();
-  const data = agora.toLocaleDateString("pt-BR");
-  const hora = agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  // EMPREENDIMENTO no cabeçalho (Lucas, 24/09/2026: "pode ser abaixo de corretor"). O NOME DE
+  // MERCADO, o do pai, resolvido pelo `enterprise_id` desta linha da esteira; o texto da coluna
+  // `empreendimento` é só reserva (ver lib/apolo/empreendimento-de-mercado.ts).
+  //
+  // ⚠️ SÓ SAI QUANDO SE SABE DE QUAL CAD É ESTE PDF (revisão de 24/09/2026):
+  //   • COM `enterpriseId`: é a CAD daquele empreendimento, e a linha sai. Vale também para a ficha
+  //     que nasceu IMOBILIÁRIA e tem CAD de cliente (medido em 24/09/2026: 1 entidade, CAD
+  //     publico-cad no 20). Quem decide é a EXISTÊNCIA da CAD, não o perfil: a mesma régua que o
+  //     Zeus fixou para a trava do arquivamento e para o botão Mover no Board (D7, 24/09/2026);
+  //   • SEM `enterpriseId` e com UMA CAD: é ela, e a linha sai;
+  //   • SEM `enterpriseId` e com DUAS OU MAIS: a "mais recente" pode não ser a CAD de quem chamou (a
+  //     CACÁ atende por CPF, a bancada e o teste de disparo não sabem o produto, o botão CAD do Board
+  //     reusa a automática). Imprimir o empreendimento dela seria afirmar no papel o produto de OUTRA
+  //     CAD: uma cobrança do 20 saindo com "Villa Paris". A linha é OMITIDA, que é o lado seguro. Em
+  //     24/09/2026 eram 6 pessoas com 2 CADs e 1 com 36 (todas de teste), contra 792 com uma só;
+  //   • a ficha da IMOBILIÁRIA sem `enterpriseId` segue sem a linha: ela não tem "o" empreendimento
+  //     (se credencia em vários).
+  const sabeQualCad =
+    esteira !== null && (enterpriseIdInformado !== null || (!variasCads && !isImobiliaria));
+  const empreendimento = sabeQualCad
+    ? await nomeDeMercadoDoEmpreendimento(
+        adminClient,
+        esteira?.enterprise_id,
+        esteira?.empreendimento,
+      )
+    : "";
+
+  // ⚠️ "ENVIADO EM" É O ENVIO, NÃO A REGENERAÇÃO. Esta CAD é regerada a cada troca de etapa, e o
+  // cabeçalho imprimia a hora da regeneração, em UTC: em 24/09/2026 o Lucas leu "24/09/2026 as
+  // 15:23" na CAD do Jonatas, enviada em 21/09/2026 às 15:14. Agora é `apolo_esteira.chegou_em`, a
+  // chegada real da CAD na fila, no fuso de Brasília. Sem `chegou_em`, a hora atual (também em
+  // Brasília). O NOME DO ARQUIVO continua com a hora da GERAÇÃO: é ele que diferencia uma
+  // regeneração da outra no drive.
+  const geradoEm = dataHoraEmBrasilia(new Date()) ?? { data: "", hora: "" };
+  const enviadoEm =
+    (esteira?.chegou_em ? dataHoraEmBrasilia(new Date(esteira.chegou_em)) : null) ?? geradoEm;
 
   return {
-    arquivo: `CAD - ${nome} - ${data} ${hora}`,
+    arquivo: `CAD - ${nome} - ${geradoEm.data} ${geradoEm.hora}`,
     // Toda CAD tem autenticação (regra do Lucas): usa o código salvo ou gera um determinístico
     // a partir do id da entidade — assim as importadas do C2X, que não têm o selo, também saem
     // com autenticação no rodapé.
@@ -459,8 +538,9 @@ export async function montarCadDeEntidade(
       texto(entity.metadata?.autenticacao?.codigo) ||
       gerarCodigoAutenticacao(entity.id, new Date(entity.created_at)),
     corretor: esteira?.corretor ?? undefined,
-    data,
-    hora,
+    data: enviadoEm.data,
+    empreendimento: empreendimento || undefined,
+    hora: enviadoEm.hora,
     imobiliaria: esteira?.imobiliaria ?? undefined,
     nome,
     papel: isImobiliaria ? "Imobiliária" : isPj ? "Pessoa jurídica" : "Prospect",
