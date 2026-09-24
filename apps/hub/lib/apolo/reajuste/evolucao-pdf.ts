@@ -7,7 +7,6 @@ import {
   desenharTabelaLimpa,
   dinheiro,
   garantirEspaco,
-  mesPorExtenso,
   paragrafo,
   sanitizarNomeDeArquivo,
   tituloDeSecao,
@@ -15,46 +14,55 @@ import {
 } from "@/lib/apolo/pdf-timbrado";
 import { type CenarioDeProjecao } from "@/lib/apolo/reajuste/projecao";
 import { type EvolucaoDoContrato } from "@/lib/apolo/reajuste/projecao-do-contrato";
+import { type QuadroAnual } from "@/lib/apolo/reajuste/quadro-anual";
 
-// A EVOLUÇÃO DA PARCELA EM PDF TIMBRADO — o mesmo papel dos outros relatórios da casa.
+// A EVOLUÇÃO DA PARCELA EM PDF TIMBRADO — o quadro do contrato, nos três cenários.
 //
-// Lucas (23/09/2026): *"agora falta criar o relatório em PDF igual temos os outros"*.
+// Lucas (23/09/2026): *"agora falta criar o relatório em PDF igual temos os outros"*; (24/09):
+// *"pode fazer as três visões em um relatório só"*, *"podemos dividir pelas visões, ter um quadro
+// otimista, tendência, conservador"* e *"trazer o quadro desde a primeira parcela, aplicar os juros e
+// apontar o crescimento do juros e da correção"*.
 //
-// ⚠️ MESMA APURAÇÃO DA TELA, e é por isso que o PDF sai de `EvolucaoDoContrato` em vez de refazer
-// a conta: tela e papel divergirem sobre a parcela de um cliente é o tipo de erro que vira
-// reunião. Quem monta os números é `projecao-do-contrato.ts`; aqui só se desenha.
+// ⚠️ MESMA APURAÇÃO DA TELA: o PDF desenha o `QuadroAnual` que `projecao-do-contrato.ts` montou, e
+// não refaz conta nenhuma. A regra (a da Lavra: índice + juros em soma simples, na curva SACOC da
+// casa, no aniversário do contrato) está escrita em `quadro-anual.ts`.
 //
-// ⚠️ ESTE PAPEL PODE CHEGAR AO CLIENTE, e por isso a honestidade é estrutural, não uma nota de
-// rodapé em corpo 6: cada linha da tabela diz se é o valor de hoje ou estimativa, a premissa vai
-// escrita por extenso, e o fecho afirma que o valor que vale é o do boleto. A folha do espelho já
-// resolve isso assim ("não constitui proposta"); esta segue o mesmo caminho.
+// ⚠️ UM QUADRO POR CENÁRIO, cada um do primeiro ao último ano. Os anos já apurados são IGUAIS nos
+// três (índice publicado); só os estimados divergem. Três quadros deixam isso visível: o leitor vê
+// onde termina o fato e começa a faixa.
 //
-// ⚠️ O QUE ESTE PDF NÃO FAZ: não promete, não corrige parcela e não substitui o extrato. Ele
-// responde uma pergunta só — "para onde a minha parcela caminha?" — e o extrato continua sendo a
-// peça do saldo.
+// ⚠️ ESTE PAPEL PODE CHEGAR AO CLIENTE: o ano estimado vem marcado com asterisco, a premissa de cada
+// cenário vai escrita, e o rodapé de TODA página diz que é a conta do contrato e que o valor devido é
+// o do boleto — a folha circula solta, e a página 2 sozinha não pode virar promessa.
 //
-// ⚠️ OS TRÊS CENÁRIOS VÃO NA MESMA FOLHA, lado a lado (Lucas, 24/09/2026: *"pode fazer as três
-// visões em um relatório só"*). E isso é mais honesto do que três PDFs separados: um papel com um
-// número só é lido como previsão; três colunas mostram que o resultado é uma FAIXA, que é o que a
-// estimativa realmente é. Quem receber vê o piso e o teto na mesma linha.
+// ⚠️ O QUE FICOU DE FORA, DE PROPÓSITO: o valor que a cobrança lançou e os degraus que já aconteceram
+// no caixa. Lucas (24/09/2026): *"não quero saber se recebemos ou não esses valores"*. Misturar o
+// caixa com a conta do contrato poria dois números para a mesma parcela na mesma folha.
 
 const TITULO_DA_PECA = "Evolução da Parcela";
 
-const ROTULO_DO_CENARIO: Record<string, string> = {
-  conservador: "conservador (média de 10 anos, com folga para cima)",
-  otimista: "otimista (média dos últimos 3 anos, com folga para baixo)",
-  tendencia: "tendência (média dos últimos 5 anos)",
+const ORDEM: CenarioDeProjecao[] = ["otimista", "tendencia", "conservador"];
+
+const NOME_DO_CENARIO: Record<CenarioDeProjecao, string> = {
+  conservador: "Cenário conservador",
+  otimista: "Cenário otimista",
+  tendencia: "Cenário tendência",
 };
 
-/** "AAAAMM" -> "set/2026". Usa a régua da casa quando dá; cai no formato curto quando não. */
-function competencia(aaaamm: null | string): string {
-  if (!aaaamm || aaaamm.length !== 6) return "-";
-  const porExtenso = mesPorExtenso(`${aaaamm.slice(0, 4)}-${aaaamm.slice(4, 6)}-01`);
-  if (porExtenso) return porExtenso;
-  return `${aaaamm.slice(4, 6)}/${aaaamm.slice(0, 4)}`;
+const JANELA_DO_CENARIO: Record<CenarioDeProjecao, string> = {
+  conservador: "média de 10 anos do índice, com folga para cima",
+  otimista: "média dos últimos 3 anos do índice, com folga para baixo",
+  tendencia: "média dos últimos 5 anos do índice",
+};
+
+const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+
+/** "AAAAMM" -> "ago/25". Curto de propósito: o período ocupa duas datas na mesma célula. */
+function mesCurto(aaaamm: string): string {
+  return `${MESES[Number(aaaamm.slice(4, 6)) - 1] ?? "?"}/${aaaamm.slice(2, 4)}`;
 }
 
-function percentual(valor: number, casas = 1): string {
+function percentual(valor: number, casas = 2): string {
   return `${valor.toFixed(casas).replace(".", ",")}%`;
 }
 
@@ -86,83 +94,76 @@ export async function montarEvolucaoPdf(dados: DadosDaEvolucaoPdf): Promise<Uint
   ctx.y -= 4;
   paragrafo(
     ctx,
-    "Este relatório mostra quanto a mensalidade tende a ficar nos próximos anos, aplicando sobre o " +
-      "valor que você paga hoje a média histórica do índice de correção do seu contrato. São três " +
-      "cenários, do mais otimista ao mais conservador, porque o resultado é uma faixa e não um " +
-      "número: é uma estimativa, e não um compromisso.",
+    "Este relatório mostra a evolução da parcela do contrato, do primeiro ao último ano, separando " +
+      "o que é amortização, o que é juros e o que é correção pelo índice. Os anos já apurados usam o " +
+      "índice publicado; os seguintes são estimados em três cenários, do mais otimista ao mais " +
+      "conservador, porque o índice futuro é uma faixa e não um número.",
     { justificado: true, size: 8.2 },
   );
 
   for (const contrato of dados.contratos) {
-    desenharContrato(ctx, contrato, dados.cenario);
+    desenharContrato(ctx, contrato);
   }
 
   ctx.y -= 8;
-  tituloDeSecao(ctx, "O que este relatório considera");
+  tituloDeSecao(ctx, "Como a parcela é calculada");
   topico(
     ctx,
-    "O ponto de partida é o valor da parcela que está sendo cobrada hoje, e não o valor original " +
-      "do contrato. A diferença entre os dois é a correção que já foi aplicada.",
+    "No primeiro ano do contrato a parcela é a amortização: o valor financiado dividido pelo " +
+      "número de parcelas.",
   );
   topico(
     ctx,
-    "A correção é lançada na emissão de cada boleto. Por isso as parcelas mais distantes ainda " +
-      "aparecem no extrato pelo valor de origem: elas serão corrigidas quando forem emitidas.",
+    "A cada aniversário do contrato, a taxa do ano é o índice de correção acumulado dos 12 meses " +
+      "até o aniversário somado aos juros do contrato. Na tabela SACOC, a parcela passa a cobrar os " +
+      "juros teóricos do ano anterior, e fica fixa até o próximo aniversário.",
   );
   topico(
     ctx,
-    "A projeção sobe uma vez por ano, no aniversário do reajuste, do jeito que o contrato " +
-      "determina — e não mês a mês.",
+    "Na tabela PRICE os juros já estão dentro da parcela desde o início, e o aniversário aplica " +
+      "apenas a correção pelo índice.",
   );
   topico(
     ctx,
-    "O índice futuro ninguém conhece. O que está aqui é a média do passado, que pode não se " +
-      "repetir: o valor definitivo de cada parcela é sempre o do boleto.",
+    "Os anos marcados com asterisco (*) usam um índice estimado, conforme o cenário. O índice real " +
+      "pode vir acima ou abaixo, e o valor devido de cada parcela é sempre o do boleto.",
   );
 
-  // ⚠️ O AVISO DO RODAPÉ REPETE EM TODA PÁGINA, de propósito: a folha circula solta, e a
-  // página 2 sem a ressalva vira "a Careli disse que vai custar isso".
   desenharRodapes(
     ctx.doc,
     ctx.font,
-    "Estimativa de correção, sem valor de compromisso. O valor devido de cada parcela é o do boleto.",
+    "Conta do contrato, com índice estimado nos anos futuros. O valor devido de cada parcela é o do boleto.",
   );
   return ctx.doc.save();
 }
 
-function desenharContrato(ctx: Ctx, contrato: EvolucaoDoContrato, cenario: string): void {
+function desenharContrato(ctx: Ctx, contrato: EvolucaoDoContrato): void {
   ctx.y -= 10;
   garantirEspaco(ctx, 120);
+  tituloDeSecao(ctx, `${contrato.empreendimento ?? "Contrato"} · ${contrato.codigo}`);
 
-  tituloDeSecao(
-    ctx,
-    `${contrato.empreendimento ?? "Contrato"} · ${contrato.codigo}`,
-  );
-
+  const ehPrice = contrato.sistema === "price";
   const cartoes: Cartao[] = [
     {
-      apoio: "o valor de origem",
+      apoio: "a amortização, parcela do 1º ano",
       icone: "igual",
       rotulo: "Valor de contrato",
       valor: dinheiro(contrato.mensalidadeBase),
     },
     {
-      apoio:
-        contrato.defasagemPct > 0.05
-          ? `${percentual(contrato.defasagemPct)} acima do contrato`
-          : "sem correção aplicada ainda",
+      apoio: ehPrice ? "PRICE: juros já na parcela" : "SACOC: juros + índice no aniversário",
       icone: "moeda",
-      rotulo: "Parcela de hoje",
-      valor: dinheiro(contrato.mensalidadeVigente),
+      rotulo: "Juros do contrato",
+      valor: ehPrice ? "na parcela" : `${percentual(contrato.jurosAnualPct ?? 0)} a.a.`,
     },
     {
-      apoio: contrato.indiceDoContrato ?? "não registrado no contrato",
+      apoio:
+        contrato.indiceNoAno != null
+          ? `${percentual(contrato.indiceNoAno)} nos últimos 12 meses`
+          : "índice de correção",
       icone: "relogio",
       rotulo: "Correção do contrato",
-      valor:
-        contrato.indiceNoAno != null
-          ? `${percentual(contrato.indiceNoAno, 2)} em 12 meses`
-          : "-",
+      valor: contrato.indiceDoContrato ?? "não registrada",
     },
   ];
   desenharCartoes(ctx, cartoes);
@@ -172,104 +173,65 @@ function desenharContrato(ctx: Ctx, contrato: EvolucaoDoContrato, cenario: strin
     paragrafo(ctx, contrato.motivo, { size: 8 });
   }
 
-  // ⚠️ A ORDEM DAS COLUNAS É OTIMISTA → TENDÊNCIA → CONSERVADOR, do menor para o maior. Quem lê
-  // da esquerda para a direita vê a faixa crescer, e o número do meio é o que a casa considera
-  // mais provável.
-  const ORDEM: CenarioDeProjecao[] = ["otimista", "tendencia", "conservador"];
-  const porCenario = contrato.porCenario;
+  if (!contrato.quadros) return;
 
-  if (porCenario) {
-    // A régua de linhas é a do cenário do meio: os três projetam as MESMAS competências, porque o
-    // degrau é anual em todos. Usar um deles como esqueleto evita cruzar listas por data.
-    const esqueleto = porCenario.tendencia ?? [];
-
-    if (esqueleto.length > 0) {
-      ctx.y -= 8;
-      desenharTabelaLimpa(ctx, {
-        colunas: [
-          { label: "Quando", peso: 0.19 },
-          { label: "O que é", peso: 0.21 },
-          { align: "right", label: "Otimista", peso: 0.2 },
-          { align: "right", label: "Tendência", peso: 0.2 },
-          { align: "right", label: "Conservador", peso: 0.2 },
-        ],
-        linhas: esqueleto.map((linha, indice) => [
-          competencia(linha.competencia),
-          linha.origem === "real"
-            ? "O que paga hoje"
-            : linha.origem === "represado"
-              ? "Correção já publicada"
-              : "Estimativa",
-          ...ORDEM.map((c) => {
-            const daColuna = porCenario[c]?.[indice];
-            return daColuna ? dinheiro(daColuna.valor) : "-";
-          }),
-        ]),
-        vazio: "Sem projeção para este contrato.",
-      });
-
-      ctx.y -= 6;
-      paragrafo(
-        ctx,
-        "Cada coluna aplica uma média diferente do mesmo índice, ao mês, em degrau anual: " +
-          ORDEM.map((c) => {
-            const taxa = contrato.mesTipicoPorCenario?.[c];
-            return `${ROTULO_DO_CENARIO[c] ?? c}, ${
-              taxa != null ? percentual(taxa, 2) : "média"
-            }`;
-          }).join("; ") +
-          ". O índice real pode vir acima, abaixo ou fora dessa faixa.",
-        { justificado: true, size: 7.8 },
-      );
-    }
-  } else if (contrato.linhas.length > 0) {
-    // Caminho de um cenário só, que a tela usa quando pede a rota JSON.
-    ctx.y -= 8;
-    desenharTabelaLimpa(ctx, {
-      colunas: [
-        { label: "Quando", peso: 0.22 },
-        { label: "O que é", peso: 0.32 },
-        { align: "right", label: "Parcela estimada", peso: 0.26 },
-        { align: "right", label: "Sobre hoje", peso: 0.2 },
-      ],
-      linhas: contrato.linhas.map((linha) => {
-        const sobreHoje =
-          contrato.mensalidadeVigente > 0
-            ? (linha.valor / contrato.mensalidadeVigente - 1) * 100
-            : 0;
-        return [
-          competencia(linha.competencia),
-          linha.origem === "real"
-            ? "O que paga hoje"
-            : linha.origem === "represado"
-              ? "Correção já publicada"
-              : "Estimativa",
-          dinheiro(linha.valor),
-          sobreHoje <= 0.05 ? "-" : `+${percentual(sobreHoje)}`,
-        ];
-      }),
-      vazio: "Sem projeção para este contrato.",
-    });
-
-    ctx.y -= 6;
-    paragrafo(
-      ctx,
-      `A estimativa aplica ${
-        contrato.mesTipicoPct != null ? percentual(contrato.mesTipicoPct, 2) : "a média"
-      } ao mês, que é a média do ${contrato.indice ?? "índice"} no cenário ${
-        ROTULO_DO_CENARIO[cenario] ?? cenario
-      }. O índice real pode vir acima ou abaixo disso.`,
-      { size: 7.8 },
-    );
+  for (const cenario of ORDEM) {
+    const quadro = contrato.quadros[cenario];
+    if (!quadro) continue;
+    desenharQuadro(ctx, contrato, quadro, cenario);
   }
+}
 
-  if (contrato.eventos.length > 0) {
-    ctx.y -= 6;
-    paragrafo(ctx, "O que já aconteceu com esta parcela:", { size: 8 });
-    for (const evento of contrato.eventos) {
-      topico(ctx, evento.rotulo);
-    }
-  }
+function desenharQuadro(
+  ctx: Ctx,
+  contrato: EvolucaoDoContrato,
+  quadro: QuadroAnual,
+  cenario: CenarioDeProjecao,
+): void {
+  ctx.y -= 10;
+  garantirEspaco(ctx, 80);
+
+  const taxa = contrato.mesTipicoPorCenario?.[cenario];
+  paragrafo(
+    ctx,
+    `${NOME_DO_CENARIO[cenario]}: nos anos estimados (*), ${
+      taxa != null ? `${percentual(taxa)} ao mês` : "a média"
+    } de ${contrato.indice ?? "índice"}, ${JANELA_DO_CENARIO[cenario]}.`,
+    { size: 8.2 },
+  );
+
+  ctx.y -= 4;
+  desenharTabelaLimpa(ctx, {
+    colunas: [
+      { label: "Período", peso: 0.2 },
+      { align: "right", label: "Parcelas", peso: 0.1 },
+      { align: "right", label: "Amortização", peso: 0.17 },
+      { align: "right", label: "Juros", peso: 0.16 },
+      { align: "right", label: `Correção${contrato.indice ? ` (${contrato.indice})` : ""}`, peso: 0.19 },
+      { align: "right", label: "Parcela", peso: 0.18 },
+    ],
+    linhas: quadro.linhas.map((l) => [
+      `${mesCurto(l.de)} a ${mesCurto(l.ate)}${l.origem === "estimado" ? " *" : ""}`,
+      l.deParcela === l.ateParcela ? String(l.deParcela) : `${l.deParcela} a ${l.ateParcela}`,
+      dinheiro(l.amortizacao),
+      l.juros > 0 ? dinheiro(l.juros) : "-",
+      l.correcao > 0
+        ? `${dinheiro(l.correcao)} (${percentual(l.indicePct)})`
+        : l.origem === "indisponivel"
+          ? "não calculada"
+          : "-",
+      dinheiro(l.parcela),
+    ]),
+    total: [
+      "Total do contrato",
+      "",
+      dinheiro(quadro.totalDeAmortizacao),
+      dinheiro(quadro.totalDeJuros),
+      dinheiro(quadro.totalDeCorrecao),
+      dinheiro(quadro.totalDoContrato),
+    ],
+    vazio: "Sem quadro para este contrato.",
+  });
 }
 
 /** O contexto do pdf-timbrado, só para tipar o desenho acima. */

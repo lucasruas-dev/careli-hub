@@ -1,4 +1,9 @@
-import { type ExtratoClienteRelatorio } from "@/lib/apolo/extrato-cliente";
+import {
+  type ExtratoClienteRelatorio,
+  TIPO_ATO,
+  TIPO_MENSAL,
+  TIPO_SINAL,
+} from "@/lib/apolo/extrato-cliente";
 import { loadExtratoDoCliente } from "@/lib/apolo/extrato-cliente-c2x";
 import {
   acumuladoDoUltimoAno,
@@ -7,6 +12,13 @@ import {
   type ParcelaProjetada,
   projetarParcela,
 } from "@/lib/apolo/reajuste/projecao";
+import {
+  jurosAnualDoContrato,
+  montarQuadroAnual,
+  type QuadroAnual,
+  type SistemaDeAmortizacao,
+  sistemaDoContrato,
+} from "@/lib/apolo/reajuste/quadro-anual";
 import {
   buscarSerie,
   type CodigoDeIndice,
@@ -54,6 +66,16 @@ export type EvolucaoDoContrato = {
   porCenario?: Record<CenarioDeProjecao, ParcelaProjetada[]>;
   /** O % ao mês de cada cenário, para o papel escrever a premissa de cada coluna. */
   mesTipicoPorCenario?: Record<CenarioDeProjecao, null | number>;
+  /**
+   * O QUADRO ANUAL, da primeira à última parcela, nos três cenários: juros e correção calculados
+   * como o contrato manda (Lucas, 24/09/2026). É conta do CONTRATO, não do caixa — ver
+   * `quadro-anual.ts`. Ausente só quando falta o mínimo (parcela, prazo ou primeiro vencimento).
+   */
+  quadros?: Record<CenarioDeProjecao, QuadroAnual>;
+  /** A taxa do contrato, já efetiva ao ano, como a proposta registra. */
+  jurosAnualPct?: number;
+  /** SACOC (juros no aniversário) ou PRICE (juros já na parcela). */
+  sistema?: SistemaDeAmortizacao;
   /** Mensalidade original do contrato. */
   mensalidadeBase: number;
   /** O que a cobrança pratica hoje. */
@@ -128,7 +150,63 @@ export async function evolucaoDosContratos(input: {
     const indice = indiceDoNome(contrato.indiceCorrecao);
     const serie = indice ? series.get(indice) : undefined;
 
+    // ── O QUADRO ANUAL ─────────────────────────────────────────────────────────────────────
+    // ⚠️ O JURO E O ÍNDICE VÊM DA PROPOSTA (Lucas, 24/09/2026: "vc tem que pegar da proposta qual é
+    // o juros e o índice de correção"), pelo MESMO caminho que o extrato lê: o plano de
+    // `acquisition_requests.commercial_plan_id`. O plano "próprio" do contrato
+    // (`commercial_plans.acquisition_request_id`) é casca vazia — no LOS0617 ele tem nome em branco,
+    // zero parcelas e juro nulo — e por isso não é lido.
+    const mensais = [...relatorio.realizados, ...relatorio.abertas].filter(
+      (p) => p.tipoId === TIPO_MENSAL && p.vencimento,
+    );
+    const primeiroVencimento =
+      mensais
+        .map((p) => String(p.vencimento))
+        .sort()[0]
+        ?.slice(0, 10) ?? null;
+    // ⚠️ O ANIVERSÁRIO É O DO CONTRATO (o ato), e não o da primeira parcela: é daqui que o índice é
+    // medido e é daqui que o ciclo vira. Medido em agosto/2026, `act_date + 12 × ciclo` bate em 459
+    // de 463 contratos da Lavra. Sem data de ato, a assinatura; sem as duas, o primeiro vencimento.
+    const dataDoContrato = contrato.dataAto ?? contrato.dataAssinatura ?? null;
+    const prazo = contrato.planoParcelas ?? mensais.length;
+    const entrada = [...relatorio.realizados, ...relatorio.abertas]
+      .filter((p) => p.tipoId === TIPO_ATO || p.tipoId === TIPO_SINAL)
+      .reduce((soma, p) => soma + p.valorContratual, 0);
+    const financiado = contrato.precoTabela ? contrato.precoTabela - entrada : null;
+    const jurosAnualPct = jurosAnualDoContrato(contrato.jurosContratuais);
+    const sistema = sistemaDoContrato({
+      financiado,
+      jurosAnualPct,
+      parcela: totais.mensalidadeBase,
+      prazo,
+    });
+    const semCorrecao = /SEM\s*CORRE/i.test(contrato.indiceCorrecao ?? "");
+    const correcao = semCorrecao ? ("sem-correcao" as const) : !serie ? ("indisponivel" as const) : undefined;
+
+    const quadros =
+      primeiroVencimento && prazo > 0 && totais.mensalidadeBase > 0
+        ? (Object.fromEntries(
+            (["otimista", "tendencia", "conservador"] as const).map((c) => [
+              c,
+              montarQuadroAnual({
+                correcao,
+                dataDoContrato,
+                jurosAnualPct,
+                mesTipicoPct: serie ? (mesTipico(serie, c) ?? 0) : 0,
+                parcelaBase: totais.mensalidadeBase,
+                prazo,
+                primeiroVencimento,
+                serie: serie ?? null,
+                sistema,
+              }),
+            ]),
+          ) as Record<CenarioDeProjecao, QuadroAnual>)
+        : undefined;
+
     const base = {
+      jurosAnualPct,
+      quadros,
+      sistema,
       codigo: contrato.codigo,
       contratoId: contrato.id,
       defasagemPct: totais.defasagem * 100,
@@ -192,11 +270,10 @@ export async function evolucaoDosContratos(input: {
         ) as Record<CenarioDeProjecao, ParcelaProjetada[]>)
       : undefined;
 
-    const mesTipicoPorCenario = input.cenarios
-      ? (Object.fromEntries(
-          input.cenarios.map((c) => [c, mesTipico(serie, c)]),
-        ) as Record<CenarioDeProjecao, null | number>)
-      : undefined;
+    // Sempre os três: a tela cita a taxa do cenário escolhido, e é conta pura sobre a série carregada.
+    const mesTipicoPorCenario = Object.fromEntries(
+      (["otimista", "tendencia", "conservador"] as const).map((c) => [c, mesTipico(serie, c)]),
+    ) as Record<CenarioDeProjecao, null | number>;
 
     return {
       ...base,

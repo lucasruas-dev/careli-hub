@@ -35,6 +35,27 @@ vi.mock("@/modules/apolo/data/apolo-operations", () => ({
 
 const { EvolucaoDaParcela } = await import("./evolucao-da-parcela");
 
+// O quadro anual real do LOS0617 (aniversário 02/08, IPCA mês a mês), três primeiros ciclos.
+const QUADRO = {
+  jurosAnualPct: 8,
+  linhas: [
+    { amortizacao: 452.43, ate: "202507", ateParcela: 11, ciclo: 1, correcao: 0, de: "202409",
+      deParcela: 1, indicePct: 0, juros: 0, origem: "sem-reajuste" as const, parcela: 452.43,
+      taxaDoAnoPct: 0, totalDoCiclo: 4976.73 },
+    { amortizacao: 452.43, ate: "202607", ateParcela: 23, ciclo: 2, correcao: 12.2, de: "202508",
+      deParcela: 12, indicePct: 5.13, juros: 19.37, origem: "publicado" as const, parcela: 484.0,
+      taxaDoAnoPct: 13.13, totalDoCiclo: 5808.0 },
+    { amortizacao: 452.43, ate: "202807", ateParcela: 47, ciclo: 4, correcao: 72.51, de: "202708",
+      deParcela: 36, indicePct: 5.37, juros: 97.88, origem: "estimado" as const, parcela: 622.82,
+      taxaDoAnoPct: 13.37, totalDoCiclo: 7473.84 },
+  ],
+  sistema: "sacoc" as const,
+  totalDeAmortizacao: 65149.92,
+  totalDeCorrecao: 35933.66,
+  totalDeJuros: 35166.96,
+  totalDoContrato: 136250.54,
+};
+
 const CONTRATO = {
   codigo: "LOS0617",
   contratoId: 1066,
@@ -65,6 +86,14 @@ const CONTRATO = {
   mensalidadeBase: 452.43,
   mensalidadeVigente: 481.94,
   mesTipicoPct: 0.437,
+  jurosAnualPct: 8,
+  sistema: "sacoc" as const,
+  mesTipicoPorCenario: { conservador: 0.498, otimista: 0.296, tendencia: 0.437 },
+  quadros: {
+    conservador: QUADRO,
+    otimista: QUADRO,
+    tendencia: QUADRO,
+  },
 };
 
 let container: HTMLDivElement;
@@ -125,27 +154,55 @@ afterEach(() => {
 });
 
 describe("EvolucaoDaParcela", () => {
-  it("mostra o valor de contrato e o de hoje lado a lado, com a defasagem", async () => {
+  it("mostra os insumos do quadro: valor de contrato, juros e índice do contrato", async () => {
     await montar();
     const t = texto();
     expect(t).toContain("452,43");
-    expect(t).toContain("481,94");
-    expect(t).toContain("6,5% acima do contrato");
+    expect(t).toContain("8,00% a.a.");
     expect(t).toContain("IPCA ANUAL");
   });
 
-  it("⚠️ cada linha diz se é FATO ou ESTIMATIVA: a peça vai para a mão do cliente", async () => {
+  it("⚠️ NÃO mostra a 'parcela de hoje': ela é caixa, e contradiria o quadro do contrato", async () => {
+    // R$ 481,94 é o que o lote da Lavra lançou (IPCA de 2025 fechado); o quadro, pela regra do
+    // contrato, dá R$ 484,00 no mesmo ano. Os dois lado a lado fariam o leitor duvidar dos dois.
+    await montar();
+    expect(texto()).not.toContain("481,94");
+  });
+
+  it("⚠️ cada ciclo decompõe a parcela: amortização, juros, correção e valor", async () => {
     await montar();
     const t = texto();
-    expect(t).toContain("O que paga hoje");
-    expect(t).toContain("Estimativa");
-    // E o aviso de que não é promessa fica no corpo, não numa nota escondida.
+    expect(t).toContain("ago/2025 a jul/2026");
+    expect(t).toContain("19,37");
+    expect(t).toContain("12,20");
+    expect(t).toContain("484,00");
+    // O índice do aniversário aparece ao lado da correção.
+    expect(t).toContain("5,13%");
+  });
+
+  it("⚠️ o ano estimado vem MARCADO, e o aviso de que não é promessa fica no corpo", async () => {
+    await montar();
+    const t = texto();
+    expect(t).toContain("estimativa");
     expect(t).toContain("Não é promessa");
   });
 
-  it("⚠️ a premissa fica visível: quem lê sabe de onde saiu o número", async () => {
+  it("fecha o contrato inteiro: amortização + juros + correção = total", async () => {
     await montar();
-    expect(texto()).toContain("0,44% ao mês");
+    const t = texto();
+    expect(t).toContain("Total do contrato");
+    expect(t).toContain("65.149,92");
+    expect(t).toContain("35.166,96");
+    expect(t).toContain("35.933,66");
+    expect(t).toContain("136.250,54");
+  });
+
+  it("⚠️ a premissa fica visível: a regra SACOC e a taxa do cenário", async () => {
+    await montar();
+    const t = texto();
+    expect(t).toContain("SACOC");
+    expect(t).toContain("somado");
+    expect(t).toContain("0,44% ao mês");
   });
 
   it("mostra até quando o índice está publicado, porque a fonte atrasa um mês", async () => {
@@ -181,7 +238,7 @@ describe("EvolucaoDaParcela", () => {
     expect(cabecalhos.Authorization).toBe("Bearer token-de-teste");
   });
 
-  it("⚠️ contrato sem índice DIZ por quê, em vez de sumir com a seção", async () => {
+  it("⚠️ contrato sem quadro DIZ por quê, em vez de sumir com a seção", async () => {
     await montar([
       {
         ...CONTRATO,
@@ -189,13 +246,13 @@ describe("EvolucaoDaParcela", () => {
         indiceDoContrato: null,
         linhas: [],
         motivo: "O contrato não registra índice de correção, então não dá para projetar.",
+        quadros: undefined,
       },
     ]);
     const t = texto();
     expect(t).toContain("não registra índice de correção");
-    // O que é FATO continua aparecendo: valor de contrato e valor de hoje.
+    // O insumo continua aparecendo.
     expect(t).toContain("452,43");
-    expect(t).toContain("481,94");
   });
 
   it("⚠️ o PDF sai no cenário que está na TELA, e não sempre na tendência", async () => {

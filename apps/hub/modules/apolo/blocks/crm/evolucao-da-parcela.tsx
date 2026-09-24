@@ -227,14 +227,21 @@ export function EvolucaoDaParcela({ entity }: Props) {
       </section>
 
       {dados.map((contrato) => (
-        <ContratoProjetado contrato={contrato} key={contrato.contratoId} />
+        <ContratoProjetado cenario={cenario} contrato={contrato} key={contrato.contratoId} />
       ))}
     </section>
   );
 }
 
-function ContratoProjetado({ contrato }: { contrato: EvolucaoDoContrato }) {
-  const temDefasagem = contrato.defasagemPct > 0.05;
+function ContratoProjetado({
+  cenario,
+  contrato,
+}: {
+  cenario: CenarioDeProjecao;
+  contrato: EvolucaoDoContrato;
+}) {
+  const quadro = contrato.quadros?.[cenario];
+  const ehPrice = quadro?.sistema === "price";
 
   return (
     <section className="rounded-xl border border-line bg-surface p-4">
@@ -250,16 +257,27 @@ function ContratoProjetado({ contrato }: { contrato: EvolucaoDoContrato }) {
         </p>
       </header>
 
+      {/* ⚠️ OS CARTÕES SÃO OS INSUMOS DO QUADRO, e não o caixa. "Parcela de hoje" saiu daqui em
+          24/09/2026: ela é o que a cobrança lançou (R$ 481,94 no LOS0617, com o IPCA de 2025 fechado
+          do lote da Lavra), e ficava ao lado de um quadro que, pela regra do contrato, dá R$ 484,00
+          no mesmo ano. Dois números para a mesma parcela, lado a lado, fazem o leitor duvidar dos
+          dois. */}
       <div className="mt-3 grid gap-3 sm:grid-cols-3">
-        <Numero rotulo="Valor de contrato" valor={reais(contrato.mensalidadeBase)} />
+        <Numero
+          rotulo="Valor de contrato"
+          valor={reais(contrato.mensalidadeBase)}
+          nota="a amortização, parcela do 1º ano"
+        />
         <Numero
           destaque
-          rotulo="Parcela de hoje"
-          valor={reais(contrato.mensalidadeVigente)}
+          rotulo="Juros do contrato"
+          valor={
+            ehPrice
+              ? "na parcela"
+              : `${(contrato.jurosAnualPct ?? 0).toFixed(2).replace(".", ",")}% a.a.`
+          }
           nota={
-            temDefasagem
-              ? `${contrato.defasagemPct.toFixed(1).replace(".", ",")}% acima do contrato`
-              : "sem correção aplicada ainda"
+            ehPrice ? "PRICE: o aniversário aplica só o índice" : "SACOC: juros + índice no aniversário"
           }
         />
         <Numero
@@ -276,66 +294,115 @@ function ContratoProjetado({ contrato }: { contrato: EvolucaoDoContrato }) {
         </p>
       ) : null}
 
-      {contrato.linhas.length > 0 ? (
+      {quadro ? (
         <>
           <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[420px] border-collapse text-[12.5px]">
+            <table className="w-full min-w-[720px] border-collapse text-[12.5px]">
               <thead>
                 <tr className="bg-subtle text-left text-ink-soft">
-                  <th className="px-3 py-2 font-medium">Quando</th>
-                  <th className="px-3 py-2 font-medium">O que é</th>
-                  <th className="px-3 py-2 text-right font-medium">Parcela estimada</th>
-                  <th className="px-3 py-2 text-right font-medium">Sobre hoje</th>
+                  <th className="px-3 py-2 font-medium">Período</th>
+                  <th className="px-3 py-2 text-right font-medium">Parcelas</th>
+                  <th className="px-3 py-2 text-right font-medium">Amortização</th>
+                  <th className="px-3 py-2 text-right font-medium">Juros</th>
+                  <th className="px-3 py-2 text-right font-medium">
+                    Correção{contrato.indice ? ` (${contrato.indice})` : ""}
+                  </th>
+                  <th className="px-3 py-2 text-right font-medium">Valor da parcela</th>
+                  <th className="px-3 py-2 text-right font-medium">Total do período</th>
                 </tr>
               </thead>
               <tbody>
-                {contrato.linhas.map((linha) => {
-                  const sobreHoje =
-                    contrato.mensalidadeVigente > 0
-                      ? (linha.valor / contrato.mensalidadeVigente - 1) * 100
-                      : 0;
-                  return (
-                    <tr className="border-t border-line" key={linha.competencia}>
-                      <td className="px-3 py-2 tabular-nums">{mes(linha.competencia)}</td>
-                      <td className="px-3 py-2">
-                        {linha.origem === "real" ? (
-                          <span className="font-semibold text-ink">O que paga hoje</span>
-                        ) : linha.origem === "represado" ? (
-                          <span className="text-ink">Correção já publicada</span>
-                        ) : (
-                          <span className="text-ink-soft">Estimativa</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums text-ink">
-                        {reais(linha.valor)}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-ink-soft">
-                        {sobreHoje <= 0.05
-                          ? "-"
-                          : `+${sobreHoje.toFixed(1).replace(".", ",")}%`}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {quadro.linhas.map((linha) => (
+                  <tr className="border-t border-line" key={linha.ciclo}>
+                    <td className="px-3 py-2 tabular-nums">
+                      {mes(linha.de)} a {mes(linha.ate)}
+                      {linha.origem === "estimado" ? (
+                        <span className="ml-1.5 text-[11px] text-ink-soft">estimativa</span>
+                      ) : null}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-ink-soft">
+                      {linha.deParcela === linha.ateParcela
+                        ? linha.deParcela
+                        : `${linha.deParcela} a ${linha.ateParcela}`}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">{reais(linha.amortizacao)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {linha.juros > 0 ? reais(linha.juros) : "-"}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {linha.correcao > 0 ? (
+                        <>
+                          {reais(linha.correcao)}
+                          <span className="ml-1 text-[11px] text-ink-soft">
+                            {linha.indicePct.toFixed(2).replace(".", ",")}%
+                          </span>
+                        </>
+                      ) : linha.origem === "indisponivel" ? (
+                        <span className="text-[11px] text-ink-soft">não calculada</span>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right font-semibold tabular-nums text-ink">
+                      {reais(linha.parcela)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-ink-soft">
+                      {reais(linha.totalDoCiclo)}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-line font-semibold text-ink">
+                  <td className="px-3 py-2" colSpan={2}>
+                    Total do contrato
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {reais(quadro.totalDeAmortizacao)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{reais(quadro.totalDeJuros)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {reais(quadro.totalDeCorrecao)}
+                  </td>
+                  <td className="px-3 py-2" />
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {reais(quadro.totalDoContrato)}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
 
           <p className="mt-3 flex items-start gap-2 text-[12px] leading-relaxed text-ink-soft">
             <TrendingUp className="mt-0.5 size-3.5 shrink-0" />
             <span>
-              A estimativa aplica{" "}
-              {contrato.mesTipicoPct != null ? (
+              {ehPrice ? (
+                <>
+                  Contrato em <strong className="text-ink">PRICE</strong>: os juros já estão dentro
+                  da parcela, e a cada aniversário do contrato ela é corrigida só pelo{" "}
+                  {contrato.indice ?? "índice"} acumulado dos 12 meses até o aniversário.
+                </>
+              ) : (
+                <>
+                  Contrato em <strong className="text-ink">SACOC</strong>: no primeiro ano a parcela
+                  é só a amortização. A cada aniversário do contrato, a taxa do ano é o{" "}
+                  {contrato.indice ?? "índice"} acumulado dos 12 meses até o aniversário{" "}
+                  <strong className="text-ink">somado</strong> aos juros de{" "}
+                  {(contrato.jurosAnualPct ?? 0).toFixed(2).replace(".", ",")}% a.a., e a parcela
+                  passa a cobrar os juros teóricos do ano anterior pela tabela SACOC.
+                </>
+              )}{" "}
+              Os anos marcados como estimativa usam{" "}
+              {contrato.mesTipicoPorCenario?.[cenario] != null ? (
                 <strong className="text-ink">
-                  {contrato.mesTipicoPct.toFixed(2).replace(".", ",")}% ao mês
+                  {contrato.mesTipicoPorCenario[cenario]?.toFixed(2).replace(".", ",")}% ao mês
                 </strong>
               ) : (
                 "a média"
-              )}
-              , que é a média do {contrato.indice} no período do cenário escolhido, em degrau anual
-              — do jeito que o contrato reajusta. <strong className="text-ink">Não é promessa</strong>
-              : o índice real pode vir acima ou abaixo, e o valor definitivo de cada parcela é o do
-              boleto.
+              )}{" "}
+              de {contrato.indice ?? "índice"}, a média do cenário escolhido.{" "}
+              <strong className="text-ink">Não é promessa</strong>: é a conta do contrato, e o valor
+              de cada parcela é o do boleto.
             </span>
           </p>
         </>
