@@ -78,6 +78,17 @@ async function montar(payload: unknown = [CONTRATO], entity: unknown = { c2xId: 
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
       pedidos.push({ init, url });
+      // A rota do PDF devolve blob, não JSON: o dublê precisa das duas formas, senão o teste do
+      // botão passaria por um caminho que não existe em produção.
+      if (url.includes("/pdf")) {
+        return {
+          blob: async () => new Blob(["%PDF-1.7"], { type: "application/pdf" }),
+          headers: new Headers({
+            "content-disposition": 'attachment; filename="Evolucao.pdf"',
+          }),
+          ok: true,
+        };
+      }
       return { json: async () => ({ data: payload }), ok: true };
     }),
   );
@@ -174,6 +185,34 @@ describe("EvolucaoDaParcela", () => {
     // O que é FATO continua aparecendo: valor de contrato e valor de hoje.
     expect(t).toContain("452,43");
     expect(t).toContain("481,94");
+  });
+
+  it("⚠️ o PDF sai no cenário que está na TELA, e não sempre na tendência", async () => {
+    await montar();
+
+    const conservador = [...container.querySelectorAll("button")].find(
+      (b) => b.textContent === "Conservador",
+    );
+    await act(async () => {
+      conservador?.click();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const pdf = [...container.querySelectorAll("button")].find((b) => b.textContent === "PDF");
+    expect(pdf).toBeDefined();
+    await act(async () => {
+      pdf?.click();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const doPdf = pedidos.find((p) => p.url.includes("/pdf"));
+    expect(doPdf?.url).toContain("cenario=conservador");
+    const cabecalhos = (doPdf?.init?.headers ?? {}) as Record<string, string>;
+    expect(cabecalhos.Authorization).toBe("Bearer token-de-teste");
   });
 
   it("cadastro sem ligação com o C2X explica, em vez de girar para sempre", async () => {

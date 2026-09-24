@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Loader2, TrendingUp } from "lucide-react";
+import { AlertTriangle, Download, Loader2, TrendingUp } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import type { EvolucaoDoContrato } from "@/lib/apolo/reajuste/projecao-do-contrato";
@@ -56,6 +56,8 @@ export function EvolucaoDaParcela({ entity }: Props) {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<null | string>(null);
   const [cenario, setCenario] = useState<CenarioDeProjecao>("tendencia");
+  const [baixando, setBaixando] = useState(false);
+  const [erroPdf, setErroPdf] = useState<null | string>(null);
 
   const carregar = useCallback(async () => {
     if (c2xId == null) {
@@ -88,6 +90,50 @@ export function EvolucaoDaParcela({ entity }: Props) {
   useEffect(() => {
     void carregar();
   }, [carregar]);
+
+  /**
+   * Baixa o PDF timbrado, no cenário que está na tela.
+   *
+   * ⚠️ NÃO DÁ PARA APONTAR UM <a href> PARA A ROTA: ela é autenticada por Bearer e o navegador não
+   * manda o header. Busca-se o blob e dispara-se o download local, igual ao PDF do extrato.
+   */
+  const baixarPdf = useCallback(async () => {
+    if (c2xId == null) return;
+    setBaixando(true);
+    setErroPdf(null);
+    try {
+      const token = await getApoloAccessToken();
+      const resposta = await fetch(
+        `/api/apolo/evolucao-da-parcela/pdf?c2xId=${c2xId}&cenario=${cenario}`,
+        { cache: "no-store", headers: token ? { Authorization: `Bearer ${token}` } : undefined },
+      );
+      if (!resposta.ok) {
+        const corpo = (await resposta.json().catch(() => null)) as { error?: string } | null;
+        setErroPdf(corpo?.error ?? "Não foi possível gerar o PDF.");
+        return;
+      }
+
+      const nome =
+        /filename="([^"]+)"/.exec(resposta.headers.get("content-disposition") ?? "")?.[1] ??
+        "evolucao-da-parcela.pdf";
+      const blob = await resposta.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.download = nome;
+      link.href = url;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      // ⚠️ A REVOGAÇÃO ESPERA. Revogar na mesma linha do clique é corrida com o navegador: ele
+      // pode ainda não ter começado a ler o blob, e o download morre CALADO. Foi o defeito que o
+      // Isac relatou em 08/09/2026 no PDF do extrato; os outros downloads da casa já adiavam.
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      setErroPdf("Não foi possível gerar o PDF.");
+    } finally {
+      setBaixando(false);
+    }
+  }, [c2xId, cenario]);
 
   if (c2xId == null) {
     return (
@@ -142,7 +188,8 @@ export function EvolucaoDaParcela({ entity }: Props) {
               do contrato. É estimativa, não compromisso: o índice futuro ninguém sabe.
             </p>
           </div>
-          <nav className="flex shrink-0 gap-1 rounded-lg border border-line p-1" aria-label="Cenário">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <nav className="flex gap-1 rounded-lg border border-line p-1" aria-label="Cenário">
             {CENARIOS.map((c) => (
               <button
                 aria-current={cenario === c.id ? "true" : undefined}
@@ -159,7 +206,24 @@ export function EvolucaoDaParcela({ entity }: Props) {
               </button>
             ))}
           </nav>
+          {/* O PDF sai no cenário que está na tela: gerar sempre na tendência faria a tela
+              mostrar um número e o papel imprimir outro. */}
+          <button
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-line px-3 text-xs font-semibold text-ink transition-colors hover:bg-subtle disabled:opacity-50"
+            disabled={baixando}
+            onClick={() => void baixarPdf()}
+            type="button"
+          >
+            {baixando ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Download className="size-3.5" />
+            )}
+            PDF
+          </button>
+          </div>
         </div>
+        {erroPdf ? <p className="m-0 mt-2 text-xs text-danger">{erroPdf}</p> : null}
       </section>
 
       {dados.map((contrato) => (
