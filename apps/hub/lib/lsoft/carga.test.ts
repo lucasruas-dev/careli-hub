@@ -6,7 +6,7 @@ import { type BancoDaCarga, executarCarga } from "./carga";
 // usa no Supabase. A pergunta de cada teste é a mesma: depois que a carga termina, bem ou mal,
 // o que a tela da Cecílio veria?
 
-type Parcela = Record<string, unknown> & { empreendimento: string; id: string; sincronizado_em: string };
+type Parcela = Record<string, unknown> & { categoria_lsoft: number; empreendimento: string; id: string; sincronizado_em: string };
 
 function espelhoFalso(
   inicial: Parcela[],
@@ -23,18 +23,18 @@ function espelhoFalso(
   let parcelas = [...inicial];
   let lotesGravados = 0;
   let seq = 0;
-  const antigas = (empreendimentos: string[], marca: string) =>
-    parcelas.filter((p) => empreendimentos.includes(p.empreendimento) && p.sincronizado_em !== marca);
+  const antigas = (categorias: number[], marca: string) =>
+    parcelas.filter((p) => categorias.includes(p.categoria_lsoft) && p.sincronizado_em !== marca);
   const banco: BancoDaCarga = {
-    async apagarAntigas(empreendimentos, marca) {
+    async apagarAntigas(categorias, marca) {
       if (falhas.apagarAntigas) return { erro: "timeout no delete" };
-      parcelas = parcelas.filter((p) => !(empreendimentos.includes(p.empreendimento) && p.sincronizado_em !== marca));
+      parcelas = parcelas.filter((p) => !(categorias.includes(p.categoria_lsoft) && p.sincronizado_em !== marca));
       if (falhas.apagarEfetivaMasErra) return { erro: "fetch failed" };
       return {};
     },
-    async contarAntigas(empreendimentos, marca) {
+    async contarAntigas(categorias, marca) {
       if (falhas.contar) return { erro: "sem conexão" };
-      return { total: antigas(empreendimentos, marca).length };
+      return { total: antigas(categorias, marca).length };
     },
     async apagarDaCarga(marca) {
       if (falhas.desfazer) return { erro: "sem conexão" };
@@ -59,14 +59,17 @@ function espelhoFalso(
   return { banco, ver: () => parcelas };
 }
 
-const antiga = (id: string, empreendimento: string): Parcela => ({
+const CATEGORIA: Record<string, number> = { Garden: 124, "Giant Towers": 118, "Vale do Sol": 102 };
+
+const antiga = (id: string, empreendimento: string, categoria = CATEGORIA[empreendimento] ?? 0): Parcela => ({
+  categoria_lsoft: categoria,
   empreendimento,
   id,
   sincronizado_em: "2026-09-16T21:09:52.664886+00:00",
 });
 
-const nova = (empreendimento: string, n: number) =>
-  Array.from({ length: n }, (_, i) => ({ empreendimento, parcela: `${i + 1}/${n}` }));
+const nova = (empreendimento: string, n: number, categoria = CATEGORIA[empreendimento] ?? 0) =>
+  Array.from({ length: n }, (_, i) => ({ categoria_lsoft: categoria, empreendimento, parcela: `${i + 1}/${n}` }));
 
 const MARCA = "2026-09-24T20:00:00.000000+00:00";
 
@@ -79,12 +82,42 @@ describe("a carga do LSoft", () => {
 
     const r = await executarCarga({ banco, clientes: [{ codigo: "1" }], marca: MARCA, parcelas: nova("Garden", 3) });
 
-    expect(r).toEqual({ clientes: 1, empreendimentos: ["Garden"], ok: true, parcelas: 3 });
+    expect(r).toEqual({ categorias: [124], clientes: 1, empreendimentos: ["Garden"], ok: true, parcelas: 3 });
     const depois = ver();
     expect(depois.filter((p) => p.empreendimento === "Garden").every((p) => p.sincronizado_em === MARCA)).toBe(true);
     expect(depois.filter((p) => p.empreendimento === "Garden")).toHaveLength(3);
     // ⚠️ O Vale do Sol não veio na carga, então não sai. Antes, sairia.
     expect(depois.find((p) => p.id === "s1")).toBeDefined();
+  });
+
+  it("a carga da categoria 17 traz Vale do Sol e NÃO apaga o Vale do Sol da 102", async () => {
+    // ⚠️ O motivo da migration 0189. Substituindo por empreendimento, esta carga apagaria as 6.844
+    // parcelas do Vale do Sol que vêm da 102, com as baixas do time, e deixaria só as da 17.
+    const vdsDa102 = Array.from({ length: 6 }, (_, i) => antiga(`s${i}`, "Vale do Sol", 102));
+    const { banco, ver } = espelhoFalso(vdsDa102);
+
+    const r = await executarCarga({
+      banco,
+      clientes: [],
+      marca: MARCA,
+      parcelas: [...nova("Vale do Sol", 2, 17), ...nova("Guaimbé", 3, 17)],
+    });
+
+    expect(r).toMatchObject({ categorias: [17], ok: true });
+    expect(ver().filter((p) => p.categoria_lsoft === 102)).toHaveLength(6);
+    expect(ver().filter((p) => p.categoria_lsoft === 17)).toHaveLength(5);
+  });
+
+  it("parcela sem categoria recusa a carga antes de gravar qualquer coisa", async () => {
+    const { banco, ver } = espelhoFalso([antiga("g1", "Garden")]);
+    const r = await executarCarga({
+      banco,
+      clientes: [],
+      marca: MARCA,
+      parcelas: [...nova("Garden", 2), { empreendimento: "Garden", parcela: "9/9" }],
+    });
+    expect(r).toMatchObject({ ok: false, passo: "validacao" });
+    expect(retrato(ver())).toEqual(["g1"]);
   });
 
   it("a carga do Giant Towers não apaga o Garden (o 08/09 ao contrário)", async () => {
@@ -179,7 +212,7 @@ describe("a carga do LSoft", () => {
     // Restos com outra marca, do mesmo empreendimento: são "antigas" para a carga nova, e saem.
     const restos: Parcela[] = [
       antiga("g1", "Garden"),
-      { empreendimento: "Garden", id: "resto-1", sincronizado_em: "2026-09-20T10:00:00+00:00" },
+      { categoria_lsoft: 124, empreendimento: "Garden", id: "resto-1", sincronizado_em: "2026-09-20T10:00:00+00:00" },
     ];
     const { banco, ver } = espelhoFalso(restos);
 
@@ -205,7 +238,7 @@ describe("a carga do LSoft", () => {
       banco,
       clientes: [],
       marca: MARCA,
-      parcelas: [...nova("Garden", 2), { empreendimento: "", parcela: "1/1" }],
+      parcelas: [...nova("Garden", 2), { categoria_lsoft: 124, empreendimento: "", parcela: "1/1" }],
     });
     expect(r).toMatchObject({ ok: false, passo: "validacao" });
     expect(retrato(ver())).toEqual(["g1"]);

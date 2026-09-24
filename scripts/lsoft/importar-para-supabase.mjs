@@ -33,6 +33,7 @@ const lib = (arquivo) => jiti.import(path.resolve(process.cwd(), "apps/hub/lib/l
 const { executarCarga } = await lib("carga.ts");
 const { mesclarCliente } = await lib("mesclar-cliente.ts");
 const { divergenciasDaCarga } = await lib("divergencia-da-carga.ts");
+const { classificarTitulo } = await lib("categorias.ts");
 
 const aceitarPerdaDeEdicao = process.argv.includes("--aceitar-perda-de-edicao");
 
@@ -185,15 +186,42 @@ const clientes = clientesCsv.map((c) => ({
 
 const codigosConhecidos = new Set(clientes.map((c) => c.codigo));
 
+// ⚠️ DE QUAL CATEGORIA VEIO, E DE QUAL EMPREENDIMENTO É (migration 0189).
+//
+// Os extratores antigos (Garden e Vale do Sol, Vale do Ouro) mandam o NOME pronto e não mandam a
+// categoria; cada um desses nomes veio de uma categoria só, então ela é deduzida do nome. O extrator
+// por categoria (extrair-por-categoria.ps1) manda a CATEGORIA e deixa o nome em branco: quem decide o
+// nome é a regra testada de lib/lsoft/categorias.ts, que lê o texto de OBSERVACOES quando a
+// categoria mistura produtos (a 17 e a 115).
+//
+// Título que nem a categoria nem o texto identificam vai para "A classificar", e NÃO é descartado:
+// o time precisa vê-lo para classificar. Antes, sem empreendimento, ele sumia em silêncio.
+const CATEGORIA_DO_NOME = { Garden: 124, "Vale do Sol": 102, "Vale do Ouro - 2": 69 };
+function origemDaParcela(l) {
+  const categoria = texto(l.CATEGORIA);
+  if (categoria !== null) {
+    const c = classificarTitulo({ categoria, observacoes: l.OBSERVACOES });
+    return { categoria_lsoft: Number(categoria), empreendimento: c.empreendimento ?? "A classificar" };
+  }
+  const nome = texto(l.EMPREENDIMENTO);
+  const deduzida = nome ? CATEGORIA_DO_NOME[nome] : undefined;
+  if (deduzida === undefined) {
+    throw new Error(`linha sem CATEGORIA e com empreendimento "${nome}", que não tem categoria conhecida. Use extrair-por-categoria.ps1.`);
+  }
+  return { categoria_lsoft: deduzida, empreendimento: nome };
+}
+
 function montarParcela(l, origem) {
   const partes = partesDaParcela(l.PARCELA);
   const unidade = unidadeDasObservacoes(l.OBSERVACOES);
   const recebido = numero(l.VALORRECEBIDO);
+  const daOrigem = origemDaParcela(l);
   return {
     boleto: texto(l.BOLETO),
+    categoria_lsoft: daOrigem.categoria_lsoft,
     cliente_codigo: texto(l.CLIENTE),
     data_recebido: data(l.DATARECEBIDO),
-    empreendimento: texto(l.EMPREENDIMENTO),
+    empreendimento: daOrigem.empreendimento,
     lote: unidade.lote,
     nro_nota: texto(l.NRONOTA),
     observacoes: texto(l.OBSERVACOES),
@@ -269,12 +297,30 @@ const preservados = clientesMesclados.reduce(
 console.log(`cadastro: ${clientesDoBanco.size} clientes já no banco · ${preservados} campo(s) preservados do banco em vez de apagados`);
 
 // ── A CARGA DESFARIA ALGUMA EDIÇÃO DO TIME? ─────────────────────────────────
-const trilha = await lerTudo(
+//
+// ⚠️ SÓ A TRILHA DAS PARCELAS QUE ESTA CARGA VAI APAGAR, ou seja, das categorias dela. Filtrar pelo
+// nome do empreendimento misturaria as coisas: a carga da 17 traz "Vale do Sol", mas não apaga o Vale
+// do Sol da 102, e a trilha dele não corre risco nenhum. Contar essa trilha como "sem par" travaria
+// a carga à toa.
+const categoriasDaCarga = new Set(parcelas.map((p) => p.categoria_lsoft));
+const trilhaToda = await lerTudo(
   "lsoft_clientes_edicoes",
   "id, parcela_id, impressao_digital, ordinal, cliente_codigo, empreendimento_no_momento, vencimento_no_momento, valor_no_momento, campo, valor_novo, criado_em, parcela_rotulo",
   "id",
-  (q) => q.not("impressao_digital", "is", null).in("empreendimento_no_momento", empreendimentosDaCarga),
+  (q) => q.not("impressao_digital", "is", null).not("parcela_id", "is", null),
 );
+const categoriaDaParcela = new Map();
+const idsReferenciados = [...new Set(trilhaToda.map((l) => l.parcela_id))];
+for (let i = 0; i < idsReferenciados.length; i += 100) {
+  // Lotes de 100: `.in()` longo estoura a URL do PostgREST (ver reference_postgrest_in_url_limite).
+  const { data: bloco, error } = await supabase
+    .from("lsoft_parcelas")
+    .select("id, categoria_lsoft")
+    .in("id", idsReferenciados.slice(i, i + 100));
+  if (error) throw new Error(`lsoft_parcelas (categoria da trilha): ${error.message}`);
+  for (const p of bloco ?? []) categoriaDaParcela.set(p.id, p.categoria_lsoft);
+}
+const trilha = trilhaToda.filter((l) => categoriasDaCarga.has(categoriaDaParcela.get(l.parcela_id)));
 const conferencia = divergenciasDaCarga(
   trilha,
   parcelas.map((p, i) => ({ ...p, id: `carga-${String(i).padStart(6, "0")}` })),
@@ -358,11 +404,13 @@ const banco = {
     const { error } = await supabase.from("lsoft_parcelas").insert(lote);
     return error ? { erro: error.message } : {};
   },
-  async apagarAntigas(empreendimentos, marcaDaCarga) {
+  // ⚠️ POR CATEGORIA, não por empreendimento (migration 0189): a carga da 17 traz Vale do Sol e não
+  // pode apagar o Vale do Sol que veio da 102.
+  async apagarAntigas(categorias, marcaDaCarga) {
     const { error } = await supabase
       .from("lsoft_parcelas")
       .delete()
-      .in("empreendimento", empreendimentos)
+      .in("categoria_lsoft", categorias)
       .neq("sincronizado_em", marcaDaCarga);
     return error ? { erro: error.message } : {};
   },
@@ -371,11 +419,11 @@ const banco = {
     return error ? { erro: error.message } : {};
   },
   // Só leitura, com o MESMO filtro do apagamento: é a prova de que ele efetivou ou não.
-  async contarAntigas(empreendimentos, marcaDaCarga) {
+  async contarAntigas(categorias, marcaDaCarga) {
     const { count, error } = await supabase
       .from("lsoft_parcelas")
       .select("id", { count: "exact", head: true })
-      .in("empreendimento", empreendimentos)
+      .in("categoria_lsoft", categorias)
       .neq("sincronizado_em", marcaDaCarga);
     return error ? { erro: error.message } : { total: count ?? undefined };
   },

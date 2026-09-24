@@ -13,9 +13,9 @@
 //   2. Falhou em qualquer ponto depois de começar a gravar: apaga as parcelas desta carga (a
 //      marca) e o espelho volta a ser exatamente o de antes. Não existe estado intermediário
 //      permanente.
-//   3. Só saem as parcelas antigas DOS EMPREENDIMENTOS QUE VIERAM NESTA CARGA. Antes, uma carga
-//      só do Vale do Ouro apagava o Garden. Agora carregar o Giant Towers não encosta no Garden,
-//      e é isso que permite subir os empreendimentos um por um.
+//   3. Só saem as parcelas antigas DAS CATEGORIAS QUE VIERAM NESTA CARGA. Antes, uma carga só do
+//      Vale do Ouro apagava o Garden. Agora carregar o Giant Towers não encosta no Garden, e a
+//      carga da 17 não encosta no Vale do Sol da 102. É o que permite subir um por um.
 //
 // ⚠️ POR QUE NÃO UMA TRANSAÇÃO: o PostgREST não tem transação entre requisições, e 20 mil linhas
 // não cabem numa só. Gravar-antes-de-apagar com marca é o que dá o mesmo efeito para quem lê: em
@@ -34,10 +34,10 @@ export type ResultadoDoPasso = { erro?: string };
 
 /** O mínimo de banco que a carga usa. O importador liga isto no Supabase; o teste, num falso. */
 export type BancoDaCarga = {
-  /** Remove as parcelas antigas dos empreendimentos desta carga: `empreendimento in (...)` e marca diferente. */
-  apagarAntigas(empreendimentos: string[], marca: string): Promise<ResultadoDoPasso>;
+  /** Remove as parcelas antigas das CATEGORIAS desta carga: `categoria_lsoft in (...)` e marca diferente. */
+  apagarAntigas(categorias: number[], marca: string): Promise<ResultadoDoPasso>;
   /** Quantas antigas ainda existem, com o MESMO filtro de `apagarAntigas`. É só leitura. */
-  contarAntigas(empreendimentos: string[], marca: string): Promise<{ erro?: string; total?: number }>;
+  contarAntigas(categorias: number[], marca: string): Promise<{ erro?: string; total?: number }>;
   /** Remove tudo que tem a marca desta carga. É o "desfazer". */
   apagarDaCarga(marca: string): Promise<ResultadoDoPasso>;
   gravarClientes(lote: Array<Record<string, unknown>>): Promise<ResultadoDoPasso>;
@@ -48,6 +48,7 @@ export type ResultadoDaCarga =
   | {
       /** O apagamento das antigas respondeu com erro, mas a contagem provou que ele efetivou. */
       aviso?: string;
+      categorias: number[];
       clientes: number;
       empreendimentos: string[];
       ok: true;
@@ -92,6 +93,16 @@ export async function executarCarga(args: {
   }
   const empreendimentos = [...new Set(parcelas.map((p) => String(p.empreendimento)))].sort();
 
+  // ⚠️ A UNIDADE QUE A CARGA SUBSTITUI É A CATEGORIA DE ORIGEM, não o empreendimento (migration 0189).
+  // A categoria 17 do LSoft mistura produtos: carregar a 17 para trazer o Guaimbé não pode apagar as
+  // parcelas do Vale do Sol que vêm da 102. Parcela sem categoria recusa a carga inteira, porque
+  // não há como saber o que ela substitui.
+  const semCategoria = parcelas.filter((p) => !Number.isInteger(Number(p.categoria_lsoft)) || p.categoria_lsoft === null || p.categoria_lsoft === "").length;
+  if (semCategoria > 0) {
+    return { erro: `${semCategoria} parcela(s) sem categoria_lsoft`, espelhoIntacto: true, ok: false, passo: "validacao" };
+  }
+  const categorias = [...new Set(parcelas.map((p) => Number(p.categoria_lsoft)))].sort((a, b) => a - b);
+
   // ── Clientes: upsert por código, não destrutivo ─────────────────────────────
   // Falhar aqui não deixa estrago: nenhuma parcela foi tocada, e o upsert é idempotente.
   for (let i = 0; i < clientes.length; i += TAMANHO_DO_LOTE) {
@@ -125,9 +136,9 @@ export async function executarCarga(args: {
     progresso("parcelas", Math.min(i + TAMANHO_DO_LOTE, comMarca.length), comMarca.length);
   }
 
-  // ── Só agora as antigas saem, e só dos empreendimentos desta carga ─────────
-  const r = await banco.apagarAntigas(empreendimentos, marca);
-  if (!r.erro) return { clientes: clientes.length, empreendimentos, ok: true, parcelas: parcelas.length };
+  // ── Só agora as antigas saem, e só das categorias desta carga ─────────────
+  const r = await banco.apagarAntigas(categorias, marca);
+  if (!r.erro) return { categorias, clientes: clientes.length, empreendimentos, ok: true, parcelas: parcelas.length };
 
   // ⚠️ ERRO NO APAGAMENTO NÃO QUER DIZER QUE ELE NÃO ACONTECEU. Um DELETE pode efetivar no banco e a
   // resposta se perder no caminho (timeout, queda de rede). Se o desfazer rodasse às cegas, ele
@@ -136,7 +147,7 @@ export async function executarCarga(args: {
   //
   // A regra: só desfaz com PROVA de que as antigas ainda estão lá. Sem prova, não mexe. Parcela em
   // dobro se conserta rodando a carga de novo; empreendimento vazio na tela da Cecílio, não.
-  const antigas = await banco.contarAntigas(empreendimentos, marca);
+  const antigas = await banco.contarAntigas(categorias, marca);
   if (antigas.erro !== undefined || antigas.total === undefined) {
     return {
       erro: `apagar as parcelas antigas respondeu "${r.erro}", e não deu para contar o que sobrou (${antigas.erro ?? "sem total"}). NADA foi desfeito de propósito: rode a carga de novo, que ela limpa o que estiver em dobro.`,
@@ -149,6 +160,7 @@ export async function executarCarga(args: {
     // O apagamento efetivou; só a resposta se perdeu. A carga deu certo.
     return {
       aviso: `o apagamento das antigas respondeu "${r.erro}", mas a contagem mostra que ele efetivou`,
+      categorias,
       clientes: clientes.length,
       empreendimentos,
       ok: true,
