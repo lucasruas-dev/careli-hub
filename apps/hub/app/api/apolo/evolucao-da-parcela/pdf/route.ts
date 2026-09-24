@@ -68,6 +68,18 @@ export async function GET(request: Request) {
     if (evolucao.data.length === 0) {
       return json({ error: "Cliente sem contrato com carteira no C2X." }, 404);
     }
+    // ⚠️ SÉRIE FORA DO AR NÃO VIRA PAPEL. É falha de agora, não do contrato: imprimir o PDF sem o
+    // quadro entregaria ao cliente uma folha que diz "não consegui buscar". Melhor o atendente
+    // tentar de novo em alguns minutos.
+    const semSerie = evolucao.data.find((contrato) => contrato.serieIndisponivel);
+    if (semSerie) {
+      return json(
+        {
+          error: `Não consegui buscar a série do ${semSerie.indice ?? "índice"} agora. Tente de novo em alguns minutos.`,
+        },
+        503,
+      );
+    }
 
     const dados = {
       cenario,

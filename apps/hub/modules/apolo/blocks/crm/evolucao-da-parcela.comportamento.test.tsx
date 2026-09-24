@@ -8,15 +8,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // EVOLUÇÃO DA PARCELA — o que esta sub-aba não pode deixar de fazer.
 //
 // Os números do dublê são os do contrato REAL do print do Lucas (LOS0617, Thiago): contrato de
-// R$ 452,43, parcela de hoje R$ 481,94, 6,52% acima, IPCA ANUAL. É o mesmo caso que o extrato
-// mostra ao lado, e as duas abas precisam contar a mesma história.
+// R$ 452,43, 8% a.a. + IPCA ANUAL, e o quadro anual que a regra do contrato dá para ele.
 //
 // ⚠️ O QUE ESTE ARQUIVO TRAVA:
-//   • o valor de contrato e o de hoje aparecem LADO A LADO, que é o que explica a defasagem;
-//   • cada linha da projeção diz se é FATO ou ESTIMATIVA — a peça vai para a mão do cliente;
-//   • a premissa (% ao mês) fica VISÍVEL, e não escondida no código;
-//   • trocar de cenário REFAZ a busca, senão a tela mostra o número do cenário anterior;
-//   • contrato sem índice reconhecido DIZ por quê, em vez de sumir com a seção;
+//   • é a conta do CONTRATO: nem a parcela que a cobrança lançou (R$ 481,94) nem os degraus do
+//     caixa aparecem, porque contradiriam o quadro (R$ 484,00 no mesmo ano);
+//   • cada linha decompõe a parcela, e o ano estimado vem marcado;
+//   • a premissa (% ao mês) fica VISÍVEL, e só quando há ano estimado;
+//   • trocar de cenário NÃO refaz a busca: os três quadros vêm na mesma resposta;
+//   • PRICE não chama de amortização a parcela que já tem juros;
+//   • correção negativa aparece com sinal;
+//   • contrato sem quadro DIZ por quê, em vez de sumir com a seção;
 //   • manda o Bearer (a lição que custou a v1.366.0, no mesmo dia).
 //
 // ⚠️ NÃO MOCKE `apolo-derive` AQUI, e a razão é medida: mockar o módulo inteiro (só para trocar
@@ -56,6 +58,17 @@ const QUADRO = {
   totalDoContrato: 136250.54,
 };
 
+// O conservador diverge do tendência SÓ no ano estimado: é o que prova que o cenário troca o quadro.
+const QUADRO_CONSERVADOR = {
+  ...QUADRO,
+  linhas: [
+    ...QUADRO.linhas.slice(0, 2),
+    { ...QUADRO.linhas[2]!, correcao: 83.38, indicePct: 6.14, parcela: 633.69, totalDoCiclo: 7604.28 },
+  ],
+  totalDeCorrecao: 42103.66,
+  totalDoContrato: 142420.54,
+};
+
 const CONTRATO = {
   codigo: "LOS0617",
   contratoId: 1066,
@@ -69,7 +82,8 @@ const CONTRATO = {
       parcela: 10,
       para: 481.94,
       persistencia: 3,
-      rotulo: "Correção anual aplicada na emissão do boleto",
+      // O rótulo no formato REAL de `rotuloDoEvento`: ele traz o valor que a cobrança lançou.
+      rotulo: "Reajuste contratual aplicado em 03/2026: de R$ 452,43 para R$ 481,94 (+6,5%).",
       tipo: "reajuste" as const,
       variacao: 0.0652,
     },
@@ -90,7 +104,7 @@ const CONTRATO = {
   sistema: "sacoc" as const,
   mesTipicoPorCenario: { conservador: 0.498, otimista: 0.296, tendencia: 0.437 },
   quadros: {
-    conservador: QUADRO,
+    conservador: QUADRO_CONSERVADOR,
     otimista: QUADRO,
     tendencia: QUADRO,
   },
@@ -162,11 +176,13 @@ describe("EvolucaoDaParcela", () => {
     expect(t).toContain("IPCA ANUAL");
   });
 
-  it("⚠️ NÃO mostra a 'parcela de hoje': ela é caixa, e contradiria o quadro do contrato", async () => {
+  it("⚠️ NÃO mostra a 'parcela de hoje' nem os degraus do caixa: contradiriam o quadro", async () => {
     // R$ 481,94 é o que o lote da Lavra lançou (IPCA de 2025 fechado); o quadro, pela regra do
-    // contrato, dá R$ 484,00 no mesmo ano. Os dois lado a lado fariam o leitor duvidar dos dois.
+    // contrato, dá R$ 484,00 no mesmo ano. O dublê traz o evento com o rótulo REAL, que carrega o
+    // 481,94: se a lista de degraus voltar para a tela, este teste cai.
     await montar();
     expect(texto()).not.toContain("481,94");
+    expect(texto()).not.toContain("O que já aconteceu");
   });
 
   it("⚠️ cada ciclo decompõe a parcela: amortização, juros, correção e valor", async () => {
@@ -212,10 +228,11 @@ describe("EvolucaoDaParcela", () => {
     expect(t).toContain("a fonte atrasa um mês");
   });
 
-  it("⚠️ trocar de cenário REFAZ a busca, e não reaproveita o número do anterior", async () => {
+  it("⚠️ trocar de cenário troca o QUADRO sem refazer a busca (C2X e IBGE custam)", async () => {
     await montar();
     expect(pedidos).toHaveLength(1);
-    expect(pedidos[0]?.url).toContain("cenario=tendencia");
+    expect(pedidos[0]?.url).not.toContain("cenario=");
+    expect(texto()).toContain("622,82");
 
     const botao = [...container.querySelectorAll("button")].find(
       (b) => b.textContent === "Conservador",
@@ -228,8 +245,10 @@ describe("EvolucaoDaParcela", () => {
       await Promise.resolve();
     });
 
-    expect(pedidos).toHaveLength(2);
-    expect(pedidos[1]?.url).toContain("cenario=conservador");
+    expect(pedidos).toHaveLength(1);
+    expect(texto()).toContain("633,69");
+    expect(texto()).toContain("142.420,54");
+    expect(texto()).toContain("0,50% ao mês");
   });
 
   it("⚠️ manda o Bearer: sem ele a rota devolve 401", async () => {
@@ -245,7 +264,7 @@ describe("EvolucaoDaParcela", () => {
         indice: null,
         indiceDoContrato: null,
         linhas: [],
-        motivo: "O contrato não registra índice de correção, então não dá para projetar.",
+        motivo: "O contrato não registra índice de correção, então o quadro não pode ser calculado.",
         quadros: undefined,
       },
     ]);
@@ -255,7 +274,91 @@ describe("EvolucaoDaParcela", () => {
     expect(t).toContain("452,43");
   });
 
-  it("⚠️ o PDF sai no cenário que está na TELA, e não sempre na tendência", async () => {
+  it("⚠️ juro NÃO registrado aparece como tal, e não como '0,00% a.a.'", async () => {
+    await montar([
+      {
+        ...CONTRATO,
+        jurosAnualPct: null,
+        motivo: "O plano do contrato não registra a taxa de juros, então o quadro não pode ser calculado.",
+        quadros: undefined,
+      },
+    ]);
+    const t = texto();
+    expect(t).toContain("não registrado");
+    expect(t).not.toContain("0,00% a.a.");
+  });
+
+  it("⚠️ PRICE: a coluna é 'Parcela de origem' (ela já tem juros), e o total de juros não diz R$ 0,00", async () => {
+    const price = {
+      ...QUADRO,
+      jurosAnualPct: 0,
+      linhas: QUADRO.linhas.map((l) => ({ ...l, juros: 0, parcela: l.amortizacao + l.correcao })),
+      sistema: "price" as const,
+      totalDeJuros: 0,
+    };
+    await montar([
+      { ...CONTRATO, quadros: { conservador: price, otimista: price, tendencia: price }, sistema: "price" },
+    ]);
+    const t = texto();
+    expect(t).toContain("Parcela de origem");
+    expect(t).not.toContain("Amortização");
+    expect(t).toContain("já com juros");
+    expect(t).toContain("PRICE");
+    expect(t).not.toContain("R$ 0,00");
+  });
+
+  it("⚠️ correção NEGATIVA (IGP-M de 2023/24) aparece com sinal, e não como '-'", async () => {
+    const negativo = {
+      ...QUADRO,
+      linhas: [
+        QUADRO.linhas[0]!,
+        { ...QUADRO.linhas[1]!, correcao: -20.64, indicePct: -7.71, parcela: 451.16 },
+      ],
+    };
+    await montar([
+      { ...CONTRATO, quadros: { conservador: negativo, otimista: negativo, tendencia: negativo } },
+    ]);
+    const t = texto();
+    expect(t).toContain("-7,71%");
+    expect(t).toMatch(/-R\$\s?20,64/);
+  });
+
+  it("sem ano estimado, a tela não fala em taxa de cenário", async () => {
+    const soPublicado = { ...QUADRO, linhas: QUADRO.linhas.slice(0, 2) };
+    await montar([
+      {
+        ...CONTRATO,
+        quadros: { conservador: soPublicado, otimista: soPublicado, tendencia: soPublicado },
+      },
+    ]);
+    const t = texto();
+    expect(t).not.toContain("marcados como estimativa");
+    expect(t).toContain("Não é promessa");
+  });
+
+  it("contrato SEM correção diz 'sem correção' na linha e não soma R$ 0,00 de correção", async () => {
+    const semCorrecao = {
+      ...QUADRO,
+      linhas: [
+        QUADRO.linhas[0]!,
+        { ...QUADRO.linhas[1]!, correcao: 0, indicePct: 0, origem: "sem-correcao" as const, parcela: 471.8 },
+      ],
+      totalDeCorrecao: 0,
+    };
+    await montar([
+      {
+        ...CONTRATO,
+        indice: null,
+        indiceDoContrato: "SEM CORREÇÃO",
+        quadros: { conservador: semCorrecao, otimista: semCorrecao, tendencia: semCorrecao },
+      },
+    ]);
+    const t = texto();
+    expect(t).toContain("sem correção");
+    expect(t).not.toContain("R$ 0,00");
+  });
+
+  it("⚠️ o PDF leva o cenário que está na TELA (para a rota saber qual é o destacado)", async () => {
     await montar();
 
     const conservador = [...container.querySelectorAll("button")].find(

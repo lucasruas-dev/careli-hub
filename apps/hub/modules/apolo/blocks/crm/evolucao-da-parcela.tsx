@@ -4,6 +4,7 @@ import { AlertTriangle, Download, Loader2, TrendingUp } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import type { EvolucaoDoContrato } from "@/lib/apolo/reajuste/projecao-do-contrato";
+import type { LinhaDoQuadro } from "@/lib/apolo/reajuste/quadro-anual";
 import type { CenarioDeProjecao } from "@/lib/apolo/reajuste/projecao";
 import { entityC2xId } from "@/modules/apolo/data/apolo-derive";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
@@ -15,9 +16,9 @@ import type { ApoloEntity } from "@/lib/apolo/types";
 // cliente, é um relatório"*. A primeira tentativa virou painel de carteira (`/apolo/defasagem`),
 // que é outra coisa e continua valendo para a operação.
 //
-// ⚠️ A PEÇA SEPARA O QUE É FATO DO QUE É PALPITE, e a separação é visual, não uma nota de rodapé:
-// o que já aconteceu e o valor de hoje são medidos; a curva para a frente é estimativa e está
-// rotulada como tal em cada linha.
+// ⚠️ É A CONTA DO CONTRATO, NÃO A DO CAIXA (Lucas, 24/09/2026: "não quero saber se recebemos ou
+// não esses valores"). O quadro vem de `quadro-anual.ts`; os anos com índice publicado são fato, os
+// estimados vêm rotulados em cada linha. Nada aqui mostra o que a cobrança lançou.
 //
 // ⚠️ SEM O BEARER A ROTA DEVOLVE 401 (a lição da v1.366.0, no mesmo dia): `authorizeApoloRead` lê
 // só o header, e cookie de sessão não conta.
@@ -59,6 +60,9 @@ export function EvolucaoDaParcela({ entity }: Props) {
   const [baixando, setBaixando] = useState(false);
   const [erroPdf, setErroPdf] = useState<null | string>(null);
 
+  // ⚠️ A BUSCA NÃO DEPENDE DO CENÁRIO. Os três quadros vêm na mesma resposta, e trocar de cenário só
+  // escolhe qual desenhar. Refazer a busca a cada clique custava três consultas ao C2X (que tem
+  // poucas conexões) e a série inteira do IBGE para mostrar o que já estava na tela.
   const carregar = useCallback(async () => {
     if (c2xId == null) {
       setCarregando(false);
@@ -68,10 +72,10 @@ export function EvolucaoDaParcela({ entity }: Props) {
     setErro(null);
     try {
       const token = await getApoloAccessToken();
-      const resposta = await fetch(
-        `/api/apolo/evolucao-da-parcela?c2xId=${c2xId}&cenario=${cenario}`,
-        { cache: "no-store", headers: token ? { Authorization: `Bearer ${token}` } : undefined },
-      );
+      const resposta = await fetch(`/api/apolo/evolucao-da-parcela?c2xId=${c2xId}`, {
+        cache: "no-store",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       const corpo = (await resposta.json().catch(() => null)) as
         | { data?: EvolucaoDoContrato[]; error?: string }
         | null;
@@ -85,14 +89,14 @@ export function EvolucaoDaParcela({ entity }: Props) {
     } finally {
       setCarregando(false);
     }
-  }, [c2xId, cenario]);
+  }, [c2xId]);
 
   useEffect(() => {
     void carregar();
   }, [carregar]);
 
   /**
-   * Baixa o PDF timbrado, no cenário que está na tela.
+   * Baixa o PDF timbrado, com os três cenários (o `cenario` só diz à rota qual está na tela).
    *
    * ⚠️ NÃO DÁ PARA APONTAR UM <a href> PARA A ROTA: ela é autenticada por Bearer e o navegador não
    * manda o header. Busca-se o blob e dispara-se o download local, igual ao PDF do extrato.
@@ -184,8 +188,9 @@ export function EvolucaoDaParcela({ entity }: Props) {
               Evolução da parcela
             </p>
             <p className="m-0 mt-1 max-w-2xl text-sm text-ink-muted">
-              Quanto a mensalidade tende a ficar, aplicando sobre o valor de hoje a média do índice
-              do contrato. É estimativa, não compromisso: o índice futuro ninguém sabe.
+              A parcela do contrato do primeiro ao último ano, separando amortização, juros e
+              correção pelo índice. Os anos já apurados usam o índice publicado; os seguintes são
+              estimados no cenário escolhido, porque o índice futuro ninguém sabe.
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -206,8 +211,8 @@ export function EvolucaoDaParcela({ entity }: Props) {
               </button>
             ))}
           </nav>
-          {/* O PDF sai no cenário que está na tela: gerar sempre na tendência faria a tela
-              mostrar um número e o papel imprimir outro. */}
+          {/* O PDF leva os três cenários numa folha só (Lucas, 24/09/2026), então o papel nunca
+              contradiz o cenário que está na tela: ele o contém. */}
           <button
             className="inline-flex h-9 items-center gap-2 rounded-lg border border-line px-3 text-xs font-semibold text-ink transition-colors hover:bg-subtle disabled:opacity-50"
             disabled={baixando}
@@ -233,6 +238,11 @@ export function EvolucaoDaParcela({ entity }: Props) {
   );
 }
 
+/** "5,13%", com sinal quando negativo: o IGP-M acumulou 12 meses negativos entre 2023 e 2024. */
+function pct(valor: number): string {
+  return `${valor.toFixed(2).replace(".", ",")}%`;
+}
+
 function ContratoProjetado({
   cenario,
   contrato,
@@ -241,7 +251,10 @@ function ContratoProjetado({
   contrato: EvolucaoDoContrato;
 }) {
   const quadro = contrato.quadros?.[cenario];
-  const ehPrice = quadro?.sistema === "price";
+  const ehPrice = (quadro?.sistema ?? contrato.sistema) === "price";
+  const temEstimativa = quadro?.linhas.some((linha) => linha.origem === "estimado") ?? false;
+  const semCorrecao = quadro?.linhas.some((linha) => linha.origem === "sem-correcao") ?? false;
+  const juros = contrato.jurosAnualPct;
 
   return (
     <section className="rounded-xl border border-line bg-surface p-4">
@@ -251,9 +264,7 @@ function ContratoProjetado({
         </h3>
         <p className="m-0 text-xs text-ink-soft">
           Correção {contrato.indiceDoContrato ?? "não registrada no contrato"}
-          {contrato.indiceNoAno != null
-            ? ` · ${contrato.indiceNoAno.toFixed(2).replace(".", ",")}% nos últimos 12 meses`
-            : ""}
+          {contrato.indiceNoAno != null ? ` · ${pct(contrato.indiceNoAno)} nos últimos 12 meses` : ""}
         </p>
       </header>
 
@@ -261,21 +272,18 @@ function ContratoProjetado({
           24/09/2026: ela é o que a cobrança lançou (R$ 481,94 no LOS0617, com o IPCA de 2025 fechado
           do lote da Lavra), e ficava ao lado de um quadro que, pela regra do contrato, dá R$ 484,00
           no mesmo ano. Dois números para a mesma parcela, lado a lado, fazem o leitor duvidar dos
-          dois. */}
+          dois. Pelo mesmo motivo saiu a lista "O que já aconteceu com esta parcela": os degraus que
+          a cobrança lançou traziam o 481,94 de volta, e o PDF já não os imprimia. */}
       <div className="mt-3 grid gap-3 sm:grid-cols-3">
         <Numero
           rotulo="Valor de contrato"
           valor={reais(contrato.mensalidadeBase)}
-          nota="a amortização, parcela do 1º ano"
+          nota={ehPrice ? "parcela do 1º ano, já com juros" : "a amortização, parcela do 1º ano"}
         />
         <Numero
           destaque
           rotulo="Juros do contrato"
-          valor={
-            ehPrice
-              ? "na parcela"
-              : `${(contrato.jurosAnualPct ?? 0).toFixed(2).replace(".", ",")}% a.a.`
-          }
+          valor={ehPrice ? "na parcela" : juros == null ? "não registrado" : `${pct(juros)} a.a.`}
           nota={
             ehPrice ? "PRICE: o aniversário aplica só o índice" : "SACOC: juros + índice no aniversário"
           }
@@ -302,7 +310,11 @@ function ContratoProjetado({
                 <tr className="bg-subtle text-left text-ink-soft">
                   <th className="px-3 py-2 font-medium">Período</th>
                   <th className="px-3 py-2 text-right font-medium">Parcelas</th>
-                  <th className="px-3 py-2 text-right font-medium">Amortização</th>
+                  {/* Na PRICE a parcela de origem já traz juros: chamá-la de amortização seria
+                      mentir na coluna. */}
+                  <th className="px-3 py-2 text-right font-medium">
+                    {ehPrice ? "Parcela de origem" : "Amortização"}
+                  </th>
                   <th className="px-3 py-2 text-right font-medium">Juros</th>
                   <th className="px-3 py-2 text-right font-medium">
                     Correção{contrato.indice ? ` (${contrato.indice})` : ""}
@@ -330,18 +342,7 @@ function ContratoProjetado({
                       {linha.juros > 0 ? reais(linha.juros) : "-"}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">
-                      {linha.correcao > 0 ? (
-                        <>
-                          {reais(linha.correcao)}
-                          <span className="ml-1 text-[11px] text-ink-soft">
-                            {linha.indicePct.toFixed(2).replace(".", ",")}%
-                          </span>
-                        </>
-                      ) : linha.origem === "indisponivel" ? (
-                        <span className="text-[11px] text-ink-soft">não calculada</span>
-                      ) : (
-                        "-"
-                      )}
+                      <CorrecaoDaLinha linha={linha} />
                     </td>
                     <td className="px-3 py-2 text-right font-semibold tabular-nums text-ink">
                       {reais(linha.parcela)}
@@ -360,9 +361,11 @@ function ContratoProjetado({
                   <td className="px-3 py-2 text-right tabular-nums">
                     {reais(quadro.totalDeAmortizacao)}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums">{reais(quadro.totalDeJuros)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">
-                    {reais(quadro.totalDeCorrecao)}
+                    {ehPrice ? "-" : reais(quadro.totalDeJuros)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {semCorrecao ? "-" : reais(quadro.totalDeCorrecao)}
                   </td>
                   <td className="px-3 py-2" />
                   <td className="px-3 py-2 text-right tabular-nums">
@@ -387,40 +390,53 @@ function ContratoProjetado({
                   Contrato em <strong className="text-ink">SACOC</strong>: no primeiro ano a parcela
                   é só a amortização. A cada aniversário do contrato, a taxa do ano é o{" "}
                   {contrato.indice ?? "índice"} acumulado dos 12 meses até o aniversário{" "}
-                  <strong className="text-ink">somado</strong> aos juros de{" "}
-                  {(contrato.jurosAnualPct ?? 0).toFixed(2).replace(".", ",")}% a.a., e a parcela
-                  passa a cobrar os juros teóricos do ano anterior pela tabela SACOC.
+                  <strong className="text-ink">somado</strong> aos juros de {pct(juros ?? 0)} a.a., e
+                  a parcela passa a cobrar os juros teóricos do ano anterior pela tabela SACOC.
                 </>
               )}{" "}
-              Os anos marcados como estimativa usam{" "}
-              {contrato.mesTipicoPorCenario?.[cenario] != null ? (
-                <strong className="text-ink">
-                  {contrato.mesTipicoPorCenario[cenario]?.toFixed(2).replace(".", ",")}% ao mês
-                </strong>
-              ) : (
-                "a média"
-              )}{" "}
-              de {contrato.indice ?? "índice"}, a média do cenário escolhido.{" "}
+              {temEstimativa ? (
+                <>
+                  Os anos marcados como estimativa usam{" "}
+                  {contrato.mesTipicoPorCenario?.[cenario] != null ? (
+                    <strong className="text-ink">
+                      {pct(contrato.mesTipicoPorCenario[cenario] ?? 0)} ao mês
+                    </strong>
+                  ) : (
+                    "a média"
+                  )}{" "}
+                  de {contrato.indice ?? "índice"}, a média do cenário escolhido.{" "}
+                </>
+              ) : null}
               <strong className="text-ink">Não é promessa</strong>: é a conta do contrato, e o valor
               de cada parcela é o do boleto.
             </span>
           </p>
         </>
       ) : null}
-
-      {contrato.eventos.length > 0 ? (
-        <details className="mt-3">
-          <summary className="cursor-pointer text-[12.5px] font-semibold text-ink-soft">
-            O que já aconteceu com esta parcela ({contrato.eventos.length})
-          </summary>
-          <ul className="mt-2 grid gap-1 pl-4 text-[12.5px] text-ink-muted">
-            {contrato.eventos.map((evento, indice) => (
-              <li key={`${evento.competencia ?? indice}-${evento.parcela}`}>{evento.rotulo}</li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
     </section>
+  );
+}
+
+/**
+ * A célula da correção.
+ *
+ * ⚠️ COM SINAL. O teste antigo era `correcao > 0`, e a correção NEGATIVA (IGP-M de 2023/24, que
+ * acumulou 12 meses abaixo de zero) caía no "-": a linha mostrava amortização + juros + "-" sem
+ * fechar com a parcela, e o índice sumia. Travessão só onde não há correção a mostrar.
+ */
+function CorrecaoDaLinha({ linha }: { linha: LinhaDoQuadro }) {
+  if (linha.origem === "indisponivel") {
+    return <span className="text-[11px] text-ink-soft">não calculada</span>;
+  }
+  if (linha.origem === "sem-correcao") {
+    return <span className="text-[11px] text-ink-soft">sem correção</span>;
+  }
+  if (linha.origem === "sem-reajuste") return <>-</>;
+  return (
+    <>
+      {reais(linha.correcao)}
+      <span className="ml-1 text-[11px] text-ink-soft">{pct(linha.indicePct)}</span>
+    </>
   );
 }
 

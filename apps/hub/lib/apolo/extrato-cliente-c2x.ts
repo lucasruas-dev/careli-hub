@@ -43,6 +43,7 @@ type ContratoRow = RowDataPacket & {
   contractual_interest: null | number | string;
   enterprise_code: null | string;
   enterprise_name: null | string;
+  enterprise_table: null | string;
   id: number;
   index_name: null | string;
   custom_plan: null | number;
@@ -53,6 +54,7 @@ type ContratoRow = RowDataPacket & {
   percentage_3: null | number | string;
   percentage_4: null | number | string;
   percentage_5: null | number | string;
+  plan_name: null | string;
   price: null | number | string;
   sign_date: null | string;
   stage_id: number;
@@ -165,7 +167,11 @@ export async function loadExtratoDoCliente(
          e.name as enterprise_name,
          cp.parcels,
          cp.contractual_interest,
+         cp.name as plan_name,
          imc.name as index_name,
+         -- PRICE | SACOOC do empreendimento: e o C2X que DECLARA o sistema de amortizacao (a
+         -- Evolucao da parcela deduzia pela parcela e errava o MDS, medido em 24/09/2026).
+         et.name as enterprise_table,
          -- O C2X MARCA O PLANO PERSONALIZADO, e a gente ignorava: custom_commercial_plan e 1 em
          -- 428 contratos. Neles o plano comercial e ponto de partida, nao descricao, e e por isso
          -- que o parcelamento do molde discordava do contrato.
@@ -173,6 +179,7 @@ export async function loadExtratoDoCliente(
        from acquisition_requests ar
        join enterprise_unities eu on eu.id = ar.enterprise_unity_id
        join enterprises e on e.id = eu.enterprise_id
+       left join enterprise_tables et on et.id = e.enterprise_table_id
        left join acquisition_request_stages ars on ars.id = ar.acquisition_request_stage_id
        left join commercial_plans cp on cp.id = ar.commercial_plan_id
        left join index_monetary_corrections imc on imc.id = cp.index_monetary_correction_id
@@ -386,11 +393,13 @@ function mapearContrato(row: ContratoRow, pessoas: PessoaMap): ExtratoClienteCon
     indiceCorrecao: texto(row.index_name),
     jurosContratuais: numeroOuNulo(row.contractual_interest),
     lote: texto(row.lot),
+    planoNome: texto(row.plan_name),
     planoPadraoParcelas: numeroOuNulo(row.parcels),
     planoParcelas: numeroOuNulo(row.parcels),
     planoPersonalizado: Boolean(row.custom_plan),
     precoTabela: numeroOuNulo(row.price),
     quadra: texto(row.block),
+    tabelaDoEmpreendimento: texto(row.enterprise_table),
     titulares,
   };
 }

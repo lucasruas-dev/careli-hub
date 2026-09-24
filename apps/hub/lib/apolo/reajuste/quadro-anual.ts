@@ -146,10 +146,17 @@ function centavos(valor: number): number {
  * ⚠️ O C2X NÃO DIZ A UNIDADE: 8.0000 é ao ano (Lavra do Ouro) e 0.6434 é ao mês (Villa Paris), a
  * mesma taxa econômica gravada de dois jeitos. A régua é a da casa (`periodicidadeDaTaxa`, corte em
  * 2), a mesma que o extrato e o cadastro de planos usam — e o mensal vira anual por composição.
+ *
+ * ⚠️ TAXA AUSENTE É `null`, E NÃO ZERO. O pedido sem plano comercial ligado no C2X chega com o juro
+ * nulo (79 contratos com carteira, medido em 24/09/2026, entre eles o LOS0619, que é o mesmo produto
+ * de 8% + IPCA do LOS0617). Devolver 0 fazia o quadro afirmar "Juros do contrato 0,00% a.a." e um
+ * total R$ 71 mil abaixo do real. Juro DESCONHECIDO não se desenha; juro ZERO (plano curto) sim.
  */
-export function jurosAnualDoContrato(taxaCrua: null | number | undefined): number {
-  const taxa = Number(taxaCrua ?? 0);
-  if (!Number.isFinite(taxa) || taxa <= 0) return 0;
+export function jurosAnualDoContrato(taxaCrua: null | number | undefined): null | number {
+  if (taxaCrua == null) return null;
+  const taxa = Number(taxaCrua);
+  if (!Number.isFinite(taxa)) return null;
+  if (taxa <= 0) return 0;
   return periodicidadeDaTaxa(taxa) === "anual" ? taxa : ((1 + taxa / 100) ** 12 - 1) * 100;
 }
 
@@ -165,12 +172,37 @@ export function taxaMensalDoAniversario(jurosAnualPct: number, indicePct: number
 }
 
 /**
- * O sistema do contrato, deduzido da própria parcela.
+ * O sistema que o C2X DECLARA para o contrato: primeiro o nome do plano, depois a tabela do
+ * empreendimento (`enterprises.enterprise_table_id -> enterprise_tables.name`, PRICE | SACOOC).
  *
- * O C2X não guarda o sistema de amortização. Mas as duas regras deixam assinatura: na SACOC a
- * parcela é o financiado dividido pelo prazo; na PRICE ela já tem juro, e é bem maior. Medido em
- * 24/09/2026, 797 de 850 contratos batem com a SACOC e 1 com a PRICE. Na dúvida (sem preço, sem
- * entrada, ou nenhum dos dois encaixa), vale a SACOC, que é a regra da carteira.
+ * ⚠️ DECLARADO VENCE DEDUZIDO. Medido em 24/09/2026 na carteira inteira: a tabela do empreendimento
+ * bate com a dedução pela parcela em tudo, menos no MDS e no ACP (tabela PRICE). Lá a dedução errava
+ * o MDS0805 (erro PRICE de 2,1%, fora da tolerância de 2%) e o MDS0306, que caíam em SACOC e
+ * ganhavam os 8% a.a. POR CIMA de uma parcela que já tem juros: no MDS0713 o total ia de
+ * R$ 120 mil para R$ 185 mil. O nome do plano vem antes porque o Veredas do Ouro vende as duas
+ * tabelas no mesmo empreendimento e as distingue só pelo nome ("PLANO NORMAL PRICE" e "PLANO
+ * NORMAL SACOC"), como `planos-comerciais-c2x.ts` já registra.
+ */
+export function sistemaDeclarado(input: {
+  planoNome: null | string | undefined;
+  tabelaDoEmpreendimento: null | string | undefined;
+}): null | SistemaDeAmortizacao {
+  const plano = (input.planoNome ?? "").toUpperCase();
+  if (/\bPRICE\b/.test(plano)) return "price";
+  if (/\bSAC/.test(plano)) return "sacoc";
+  const tabela = (input.tabelaDoEmpreendimento ?? "").trim().toUpperCase();
+  if (tabela === "PRICE") return "price";
+  if (tabela.startsWith("SAC")) return "sacoc";
+  return null;
+}
+
+/**
+ * O sistema do contrato, deduzido da própria parcela. ⚠️ SÓ QUANDO O C2X NÃO DECLARA (ver
+ * `sistemaDeclarado`), porque a dedução depende do preço ATUAL da unidade e erra quando ele mudou.
+ *
+ * As duas regras deixam assinatura: na SACOC a parcela é o financiado dividido pelo prazo; na PRICE
+ * ela já tem juro, e é bem maior. Na dúvida (sem preço, sem entrada, ou nenhum dos dois encaixa),
+ * vale a SACOC, que é a regra da carteira.
  */
 export function sistemaDoContrato(input: {
   financiado: null | number;
@@ -188,6 +220,55 @@ export function sistemaDoContrato(input: {
   const erroPrice = Math.abs(price - parcela) / parcela;
   const erroNominal = Math.abs(nominal - parcela) / parcela;
   return erroPrice < 0.02 && erroPrice < erroNominal ? "price" : "sacoc";
+}
+
+/** 'YYYY-MM-DD' andada `meses` meses (pode ser negativo), com o dia preso ao fim do mês. */
+function andarMeses(data: string, meses: number): string {
+  const total = Number(data.slice(0, 4)) * 12 + (Number(data.slice(5, 7)) - 1) + meses;
+  const ano = Math.floor(total / 12);
+  const mes = (total % 12) + 1;
+  const ultimoDia = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+  const dia = Math.min(Number(data.slice(8, 10)) || 1, ultimoDia);
+  return `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+}
+
+/**
+ * O vencimento da PARCELA 1 do contrato, reconstruído pelo número de cada mensal.
+ *
+ * ⚠️ NÃO É O MENOR VENCIMENTO QUE O C2X TEM. Medido em 24/09/2026: em 4 contratos as primeiras
+ * mensais simplesmente não existem no legado (LOS0404 começa na 18ª, MDS0203 na 25ª, LOU0231 na
+ * 27ª). Tratar a primeira que sobrou como parcela 1 empurrava o contrato inteiro para a frente: no
+ * LOS0404 o quadro terminava em jan/2038 em vez de ago/2036, e o total saía R$ 14,5 mil acima.
+ *
+ * Cada mensal numerada "vota" na data da parcela 1 (o próprio vencimento recuado `n − 1` meses), e
+ * vale a data mais votada. É voto, e não a menor numerada, porque acordo MUDA vencimento: uma
+ * parcela renegociada sozinha não pode arrastar a âncora do contrato. Sem mensal numerada, cai no
+ * menor vencimento, como antes.
+ */
+export function primeiroVencimentoDoContrato(
+  mensais: ReadonlyArray<{ ordem: number; vencimento: null | string }>,
+): null | string {
+  const votos = new Map<string, number>();
+  for (const m of mensais) {
+    if (!m.vencimento || !(m.ordem > 0)) continue;
+    const ancora = andarMeses(m.vencimento.slice(0, 10), -(m.ordem - 1));
+    votos.set(ancora, (votos.get(ancora) ?? 0) + 1);
+  }
+  let melhor: null | string = null;
+  let maisVotos = 0;
+  for (const [data, n] of [...votos].sort(([a], [b]) => a.localeCompare(b))) {
+    if (n > maisVotos) {
+      melhor = data;
+      maisVotos = n;
+    }
+  }
+  if (melhor) return melhor;
+  return (
+    mensais
+      .map((m) => m.vencimento?.slice(0, 10))
+      .filter((v): v is string => Boolean(v))
+      .sort()[0] ?? null
+  );
 }
 
 /**
@@ -270,8 +351,18 @@ export function montarQuadroAnual(input: {
     cicloDaParcela.push(cicloAtual);
   }
 
+  // ⚠️ O CICLO DO ANIVERSÁRIO NÃO É O CICLO DA CURVA. O aniversário escolhe o ÍNDICE; a curva SACOC
+  // conta os juros a partir da PARCELA 1. Quando o contrato tem carência de 12 meses ou mais (a
+  // primeira mensal vence depois do 1º aniversário: MDS0306, ato em 05/2024 e 1ª parcela em
+  // 03/2026), o primeiro ciclo com parcela é o 2º ou o 3º. Passar esse número direto para a curva
+  // cobrava juros já na parcela 1 e, no fim, estourava a janela da curva: as últimas parcelas
+  // voltavam para a amortização pura, com juros e correção zerados (revisão de 24/09/2026). O
+  // primeiro ano PAGO é sempre só amortização, como em todo contrato.
+  const deslocamento = (cicloDaParcela[0] ?? 1) - 1;
+
   const ciclos = cicloDaParcela.at(-1) ?? 0;
   for (let ciclo = 1; ciclo <= ciclos; ciclo += 1) {
+    const cicloDaCurva = ciclo - deslocamento;
     const doCiclo = cicloDaParcela
       .map((c, indice) => (c === ciclo ? indice + 1 : 0))
       .filter((n) => n > 0);
@@ -287,7 +378,7 @@ export function montarQuadroAnual(input: {
 
     let origem: OrigemDoIndice = "sem-reajuste";
     let indicePct = 0;
-    if (ciclo > 1) {
+    if (cicloDaCurva > 1) {
       if (input.correcao) {
         origem = input.correcao;
       } else if (serie) {
@@ -306,15 +397,15 @@ export function montarQuadroAnual(input: {
 
     if (sistema === "price") {
       // O juro já mora na parcela: só a correção, acumulada.
-      if (ciclo > 1) fatorPrice *= 1 + indicePct / 100;
+      if (cicloDaCurva > 1) fatorPrice *= 1 + indicePct / 100;
       soJuros = amortizacao;
       parcela = truncarCentavos(amortizacao * fatorPrice);
     } else {
       // A MESMA curva duas vezes: com (índice + juros) e só com os juros. A diferença é a correção.
       const mComTudo = taxaMensalDoAniversario(jurosDoContrato, indicePct);
       const mSoJuros = taxaMensalDoAniversario(jurosDoContrato, 0);
-      parcela = truncarCentavos(parcelaDoCicloSacoc(financiado, mComTudo, prazo, ciclo));
-      soJuros = truncarCentavos(parcelaDoCicloSacoc(financiado, mSoJuros, prazo, ciclo));
+      parcela = truncarCentavos(parcelaDoCicloSacoc(financiado, mComTudo, prazo, cicloDaCurva));
+      soJuros = truncarCentavos(parcelaDoCicloSacoc(financiado, mSoJuros, prazo, cicloDaCurva));
     }
 
     const juros = centavos(soJuros - amortizacao);
@@ -337,7 +428,7 @@ export function montarQuadroAnual(input: {
       juros,
       origem,
       parcela,
-      taxaDoAnoPct: ciclo > 1 ? jurosDoContrato + indicePct : 0,
+      taxaDoAnoPct: cicloDaCurva > 1 ? jurosDoContrato + indicePct : 0,
       totalDoCiclo,
     });
   }

@@ -4,6 +4,8 @@ import { parcelaDoCicloSacoc } from "@/lib/apolo/planos-comerciais";
 import {
   jurosAnualDoContrato,
   montarQuadroAnual,
+  primeiroVencimentoDoContrato,
+  sistemaDeclarado,
   sistemaDoContrato,
   somarMeses,
   taxaMensalDoAniversario,
@@ -61,9 +63,77 @@ describe("jurosAnualDoContrato", () => {
     expect(jurosAnualDoContrato(0.7207)).toBeCloseTo(9.0, 1);
   });
 
-  it("taxa ausente ou zero é zero, e não NaN", () => {
-    expect(jurosAnualDoContrato(null)).toBe(0);
+  it("⚠️ taxa AUSENTE é null (desconhecida), e não zero: juro zero é outra coisa", () => {
+    // LOS0619: pedido sem plano ligado, mesmo produto de 8% + IPCA do LOS0617. Devolver 0 fazia o
+    // quadro afirmar "0,00% a.a." e um total R$ 71 mil abaixo do real.
+    expect(jurosAnualDoContrato(null)).toBeNull();
+    expect(jurosAnualDoContrato(undefined)).toBeNull();
+    expect(jurosAnualDoContrato(Number.NaN)).toBeNull();
+    // O plano curto da Lavra tem juro ZERO de verdade, e esse continua sendo zero.
     expect(jurosAnualDoContrato(0)).toBe(0);
+  });
+});
+
+describe("sistemaDeclarado", () => {
+  it("⚠️ o nome do plano vem antes: o Veredas do Ouro vende as duas tabelas no mesmo empreendimento", () => {
+    expect(
+      sistemaDeclarado({ planoNome: "PLANO NORMAL PRICE", tabelaDoEmpreendimento: "SACOOC" }),
+    ).toBe("price");
+    expect(
+      sistemaDeclarado({ planoNome: "PLANO NORMAL SACOC", tabelaDoEmpreendimento: "PRICE" }),
+    ).toBe("sacoc");
+  });
+
+  it("sem sistema no nome, vale a tabela do empreendimento (o MDS é PRICE)", () => {
+    expect(sistemaDeclarado({ planoNome: "MDS-NORMAL", tabelaDoEmpreendimento: "PRICE" })).toBe(
+      "price",
+    );
+    expect(sistemaDeclarado({ planoNome: "PLANO-NORMAL", tabelaDoEmpreendimento: "SACOOC" })).toBe(
+      "sacoc",
+    );
+  });
+
+  it("sem nada declarado, devolve null e a dedução pela parcela decide", () => {
+    expect(sistemaDeclarado({ planoNome: null, tabelaDoEmpreendimento: null })).toBeNull();
+    expect(sistemaDeclarado({ planoNome: "12% ENTRADA + 36 VEZES", tabelaDoEmpreendimento: "" })).toBeNull();
+  });
+});
+
+describe("primeiroVencimentoDoContrato", () => {
+  const mensaisDesde = (ordem: number, vencimento: string, quantas: number) =>
+    Array.from({ length: quantas }, (_, i) => {
+      const total = Number(vencimento.slice(0, 4)) * 12 + Number(vencimento.slice(5, 7)) - 1 + i;
+      const mes = String((total % 12) + 1).padStart(2, "0");
+      return { ordem: ordem + i, vencimento: `${Math.floor(total / 12)}-${mes}${vencimento.slice(7)}` };
+    });
+
+  it("contrato inteiro: a parcela 1 é o primeiro vencimento", () => {
+    expect(primeiroVencimentoDoContrato(mensaisDesde(1, "2024-09-20", 144))).toBe("2024-09-20");
+  });
+
+  it("⚠️ LOS0404: o C2X começa na 18ª parcela, e a parcela 1 é reconstruída para set/2024", () => {
+    // Antes: a primeira que sobrou virava parcela 1, e o contrato terminava em jan/2038.
+    expect(primeiroVencimentoDoContrato(mensaisDesde(18, "2026-02-20", 127))).toBe("2024-09-20");
+  });
+
+  it("⚠️ uma parcela renegociada (vencimento mudado por acordo) não arrasta a âncora", () => {
+    const mensais = mensaisDesde(1, "2024-09-20", 20);
+    mensais[0] = { ordem: 1, vencimento: "2025-03-10" };
+    expect(primeiroVencimentoDoContrato(mensais)).toBe("2024-09-20");
+  });
+
+  it("dia 31 recuado para fevereiro fica no último dia do mês, sem virar março", () => {
+    expect(primeiroVencimentoDoContrato([{ ordem: 2, vencimento: "2025-03-31" }])).toBe("2025-02-28");
+  });
+
+  it("sem número de parcela, cai no menor vencimento", () => {
+    expect(
+      primeiroVencimentoDoContrato([
+        { ordem: 0, vencimento: "2025-05-10" },
+        { ordem: 0, vencimento: "2025-04-10" },
+      ]),
+    ).toBe("2025-04-10");
+    expect(primeiroVencimentoDoContrato([])).toBeNull();
   });
 });
 
@@ -206,6 +276,65 @@ describe("montarQuadroAnual", () => {
   it("nenhum valor sai como zero negativo (que a tela imprimiria como -R$ 0,00)", () => {
     const q = montarQuadroAnual({ ...LOS0617, serie, sistema: "price" });
     for (const l of q.linhas) expect(Object.is(l.juros, -0)).toBe(false);
+  });
+
+  describe("⚠️ carência: a primeira mensal vence DEPOIS do 1º aniversário", () => {
+    // O LOS0617 com o ato um ano antes: o 1º ciclo de aniversário fica sem parcela nenhuma.
+    const comCarencia = { ...LOS0617, dataDoContrato: "2023-08-02" };
+
+    it("o primeiro ano PAGO continua sendo só a amortização", () => {
+      const q = montarQuadroAnual({ ...comCarencia, serie });
+      expect(q.linhas[0]).toMatchObject({
+        correcao: 0,
+        deParcela: 1,
+        juros: 0,
+        origem: "sem-reajuste",
+        parcela: 452.43,
+      });
+    });
+
+    it("⚠️ nenhum ciclo do fim volta para a amortização pura (a janela da curva não estoura)", () => {
+      // Antes: o último ciclo saía a R$ 452,43, com juros e correção zerados, logo depois de um
+      // ciclo a R$ 1.700 e tantos, porque o número do aniversário ia direto para a curva.
+      const q = montarQuadroAnual({ ...comCarencia, serie });
+      const parcelas = q.linhas.reduce((t, l) => t + (l.ateParcela - l.deParcela + 1), 0);
+      expect(parcelas).toBe(144);
+      for (const l of q.linhas.slice(1)) {
+        expect(l.juros).toBeGreaterThan(0);
+        expect(l.parcela).toBeGreaterThan(l.amortizacao);
+      }
+      const ultima = q.linhas.at(-1);
+      const penultima = q.linhas.at(-2);
+      expect(ultima?.parcela ?? 0).toBeGreaterThanOrEqual(penultima?.parcela ?? 0);
+    });
+
+    it("com a carência, a curva é a MESMA de um contrato sem ela: só o índice muda de mês", () => {
+      const sem = montarQuadroAnual({ ...LOS0617, correcao: "sem-correcao", serie: null });
+      const com = montarQuadroAnual({ ...comCarencia, correcao: "sem-correcao", serie: null });
+      expect(com.linhas.map((l) => l.parcela)).toEqual(sem.linhas.map((l) => l.parcela));
+    });
+
+    it("no formato do MDS0306 (ato em 05/2024, 1ª parcela em 03/2026), o fim não despenca", () => {
+      const q = montarQuadroAnual({
+        ...LOS0617,
+        dataDoContrato: "2024-05-19",
+        primeiroVencimento: "2026-03-20",
+        serie,
+      });
+      for (const l of q.linhas.slice(1)) expect(l.parcela).toBeGreaterThan(l.amortizacao);
+    });
+  });
+
+  it("⚠️ índice NEGATIVO (IGP-M de 2023/24) entra com sinal, e a parcela continua fechando", () => {
+    const negativa = serieDe("202608", 240, -0.6);
+    const q = montarQuadroAnual({ ...LOS0617, serie: negativa });
+    const ano2 = q.linhas[1];
+    expect(ano2?.indicePct ?? 0).toBeLessThan(0);
+    expect(ano2?.correcao ?? 0).toBeLessThan(0);
+    expect((ano2?.amortizacao ?? 0) + (ano2?.juros ?? 0) + (ano2?.correcao ?? 0)).toBeCloseTo(
+      ano2?.parcela ?? 0,
+      2,
+    );
   });
 });
 

@@ -15,8 +15,10 @@ import {
 import {
   jurosAnualDoContrato,
   montarQuadroAnual,
+  primeiroVencimentoDoContrato,
   type QuadroAnual,
   type SistemaDeAmortizacao,
+  sistemaDeclarado,
   sistemaDoContrato,
 } from "@/lib/apolo/reajuste/quadro-anual";
 import {
@@ -69,18 +71,23 @@ export type EvolucaoDoContrato = {
   /**
    * O QUADRO ANUAL, da primeira à última parcela, nos três cenários: juros e correção calculados
    * como o contrato manda (Lucas, 24/09/2026). É conta do CONTRATO, não do caixa — ver
-   * `quadro-anual.ts`. Ausente só quando falta o mínimo (parcela, prazo ou primeiro vencimento).
+   * `quadro-anual.ts`. Ausente quando a conta inteira não é possível, e aí `motivo` diz por quê.
    */
   quadros?: Record<CenarioDeProjecao, QuadroAnual>;
-  /** A taxa do contrato, já efetiva ao ano, como a proposta registra. */
-  jurosAnualPct?: number;
+  /** A taxa do contrato, já efetiva ao ano, como a proposta registra. `null` = não registrada. */
+  jurosAnualPct?: null | number;
+  /**
+   * O contrato tem índice com série pública, mas a série não pôde ser lida AGORA. É transitório:
+   * o PDF recusa em vez de imprimir um papel sem o quadro.
+   */
+  serieIndisponivel?: boolean;
   /** SACOC (juros no aniversário) ou PRICE (juros já na parcela). */
   sistema?: SistemaDeAmortizacao;
   /** Mensalidade original do contrato. */
   mensalidadeBase: number;
   /** O que a cobrança pratica hoje. */
   mensalidadeVigente: number;
-  /** Por que não deu para projetar, quando não deu. */
+  /** Por que o quadro não saiu, quando não saiu. Só existe SEM quadro. */
   motivo?: string;
   /** O % ao mês usado no trecho estimado (para a tela poder mostrar a premissa). */
   mesTipicoPct: null | number;
@@ -159,11 +166,9 @@ export async function evolucaoDosContratos(input: {
     const mensais = [...relatorio.realizados, ...relatorio.abertas].filter(
       (p) => p.tipoId === TIPO_MENSAL && p.vencimento,
     );
-    const primeiroVencimento =
-      mensais
-        .map((p) => String(p.vencimento))
-        .sort()[0]
-        ?.slice(0, 10) ?? null;
+    // ⚠️ A PARCELA 1 PELO NÚMERO DE CADA MENSAL, e não o menor vencimento que sobrou no C2X: há
+    // contrato cujas primeiras mensais não existem no legado (ver `primeiroVencimentoDoContrato`).
+    const primeiroVencimento = primeiroVencimentoDoContrato(mensais);
     // ⚠️ O ANIVERSÁRIO É O DO CONTRATO (o ato), e não o da primeira parcela: é daqui que o índice é
     // medido e é daqui que o ciclo vira. Medido em agosto/2026, `act_date + 12 × ciclo` bate em 459
     // de 463 contratos da Lavra. Sem data de ato, a assinatura; sem as duas, o primeiro vencimento.
@@ -174,25 +179,58 @@ export async function evolucaoDosContratos(input: {
       .reduce((soma, p) => soma + p.valorContratual, 0);
     const financiado = contrato.precoTabela ? contrato.precoTabela - entrada : null;
     const jurosAnualPct = jurosAnualDoContrato(contrato.jurosContratuais);
-    const sistema = sistemaDoContrato({
-      financiado,
-      jurosAnualPct,
-      parcela: totais.mensalidadeBase,
-      prazo,
-    });
+    // ⚠️ O QUE O C2X DECLARA VENCE O QUE A PARCELA SUGERE (ver `sistemaDeclarado`).
+    const sistema =
+      sistemaDeclarado({
+        planoNome: contrato.planoNome,
+        tabelaDoEmpreendimento: contrato.tabelaDoEmpreendimento,
+      }) ??
+      sistemaDoContrato({
+        financiado,
+        jurosAnualPct: jurosAnualPct ?? 0,
+        parcela: totais.mensalidadeBase,
+        prazo,
+      });
     const semCorrecao = /SEM\s*CORRE/i.test(contrato.indiceCorrecao ?? "");
-    const correcao = semCorrecao ? ("sem-correcao" as const) : !serie ? ("indisponivel" as const) : undefined;
+    const serieIndisponivel = !semCorrecao && Boolean(indice) && !serie;
+
+    // Sempre os três quando há série: a tela e o papel citam a taxa de cada cenário.
+    const mesTipicoPorCenario = serie
+      ? (Object.fromEntries(
+          (["otimista", "tendencia", "conservador"] as const).map((c) => [c, mesTipico(serie, c)]),
+        ) as Record<CenarioDeProjecao, null | number>)
+      : undefined;
+
+    // ⚠️ O QUADRO SÓ SAI QUANDO A CONTA INTEIRA É POSSÍVEL (revisão de 24/09/2026). Cada uma destas
+    // saídas já desenhou número errado para cliente: contrato encerrado projetado até 2036; juro nulo
+    // impresso como "0,00% a.a." (LOS0619, R$ 71 mil abaixo do real); série fora do ar virando total
+    // SEM correção. Meio quadro é pior que nenhum, porque parece inteiro.
+    const motivo = contrato.encerrado
+      ? "Contrato encerrado: o quadro da parcela só é montado para contrato em andamento."
+      : sistema === "sacoc" && jurosAnualPct == null
+        ? contrato.indiceCorrecao
+          ? "O plano do contrato não registra a taxa de juros, então o quadro não pode ser calculado."
+          : "O contrato não tem plano comercial ligado no C2X (juros e índice), então o quadro não pode ser calculado."
+        : !semCorrecao && !contrato.indiceCorrecao
+          ? "O contrato não registra índice de correção, então o quadro não pode ser calculado."
+          : !semCorrecao && !indice
+            ? `O índice "${contrato.indiceCorrecao}" não tem série pública, então a correção não pode ser calculada.`
+            : serieIndisponivel
+              ? `Não consegui buscar a série do ${indice} agora. Tente de novo em alguns minutos.`
+              : !primeiroVencimento || !(prazo > 0) || !(totais.mensalidadeBase > 0)
+                ? "Não encontrei a parcela de origem ou o primeiro vencimento deste contrato."
+                : undefined;
 
     const quadros =
-      primeiroVencimento && prazo > 0 && totais.mensalidadeBase > 0
+      motivo === undefined && primeiroVencimento
         ? (Object.fromEntries(
             (["otimista", "tendencia", "conservador"] as const).map((c) => [
               c,
               montarQuadroAnual({
-                correcao,
+                correcao: semCorrecao ? "sem-correcao" : undefined,
                 dataDoContrato,
-                jurosAnualPct,
-                mesTipicoPct: serie ? (mesTipico(serie, c) ?? 0) : 0,
+                jurosAnualPct: jurosAnualPct ?? 0,
+                mesTipicoPct: mesTipicoPorCenario?.[c] ?? 0,
                 parcelaBase: totais.mensalidadeBase,
                 prazo,
                 primeiroVencimento,
@@ -205,7 +243,10 @@ export async function evolucaoDosContratos(input: {
 
     const base = {
       jurosAnualPct,
+      mesTipicoPorCenario,
+      motivo,
       quadros,
+      serieIndisponivel,
       sistema,
       codigo: contrato.codigo,
       contratoId: contrato.id,
@@ -223,20 +264,7 @@ export async function evolucaoDosContratos(input: {
       mesTipicoPct: null as null | number,
     };
 
-    if (contrato.encerrado) {
-      return { ...base, motivo: "Contrato encerrado: não há parcela futura para projetar." };
-    }
-    if (!indice) {
-      return {
-        ...base,
-        motivo: contrato.indiceCorrecao
-          ? `O índice "${contrato.indiceCorrecao}" não tem série pública para projetar.`
-          : "O contrato não registra índice de correção, então não dá para projetar.",
-      };
-    }
-    if (!serie) {
-      return { ...base, motivo: `Não consegui buscar a série do ${indice} agora.` };
-    }
+    if (contrato.encerrado || !indice || !serie) return base;
 
     // ⚠️ O PONTO DE PARTIDA É A MENSALIDADE VIGENTE, e não a base: é o que o cliente paga hoje.
     // A diferença entre as duas é a defasagem, que o extrato já mede e a tela mostra ao lado.
@@ -270,18 +298,13 @@ export async function evolucaoDosContratos(input: {
         ) as Record<CenarioDeProjecao, ParcelaProjetada[]>)
       : undefined;
 
-    // Sempre os três: a tela cita a taxa do cenário escolhido, e é conta pura sobre a série carregada.
-    const mesTipicoPorCenario = Object.fromEntries(
-      (["otimista", "tendencia", "conservador"] as const).map((c) => [c, mesTipico(serie, c)]),
-    ) as Record<CenarioDeProjecao, null | number>;
-
+    // ⚠️ O `motivo` da projeção antiga ("não encontrei a mensalidade vigente") NÃO sobe: as linhas
+    // dela não são mais desenhadas, e o aviso ficaria ao lado de um quadro que está certo.
     return {
       ...base,
       indicePublicadoAte: projetada.indicePublicadoAte,
       linhas: projetada.linhas,
       mesTipicoPct: mesTipico(serie, input.cenario),
-      mesTipicoPorCenario,
-      motivo: projetada.motivo,
       porCenario,
     };
   });
