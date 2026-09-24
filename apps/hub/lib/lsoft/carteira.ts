@@ -9,6 +9,7 @@
 // toda leitura devolve junto o `sincronizadoEm`: a tela precisa dizer de quando é o dado, senão o
 // usuário decide em cima de uma foto achando que é filmagem.
 import { createApoloAdminClient } from "@/lib/apolo/server";
+import { CATEGORIA_PATRIMONIO, EMPREENDIMENTOS_DO_ESPELHO } from "@/lib/lsoft/categorias";
 import { digitalDaParcela } from "@/lib/lsoft/impressao-digital";
 
 export type ClienteDaCarteira = {
@@ -48,6 +49,13 @@ export type ClienteDaCarteira = {
   valorAValidar: number;
   /** "Q08 L109" — vem do parse das observações, então pode estar vazio. */
   unidades: string[];
+  /**
+   * O que o cliente ainda deve em parcelas de PATRIMÔNIO (categoria 17 do LSoft). Já está DENTRO de
+   * `saldoAberto`: patrimônio é dívida de verdade, a tag só separa de onde ela veio. Decisão do Lucas
+   * (24/09/2026): vinculado ao empreendimento, com a tag, o valor à vista e filtro.
+   */
+  patrimonioAReceber: number;
+  patrimonioParcelasAbertas: number;
 };
 
 export type ParcelaDaCarteira = {
@@ -76,6 +84,8 @@ export type ParcelaDaCarteira = {
   valor: number;
   valorRecebido: number;
   vencimento: null | string;
+  /** Veio da categoria 17 do LSoft, a carteira de patrimônio (migration 0189). */
+  patrimonio: boolean;
 };
 
 export type CadastroDoCliente = {
@@ -139,6 +149,10 @@ export type ResumoDaCarteira = {
   totalRecebido: number;
   /** Valor esperando decisao humana. */
   valorAValidar: number;
+  /** Patrimônio (categoria 17) em aberto neste recorte. Já contado dentro de `saldoAberto`. */
+  patrimonioAReceber: number;
+  patrimonioClientes: number;
+  patrimonioParcelasAbertas: number;
 };
 
 /**
@@ -225,8 +239,13 @@ const texto = (valor: unknown): null | string => {
   return t === "" ? null : t;
 };
 
-/** Os empreendimentos que a POC cobre. Filtro fora desta lista é ignorado, não vira busca vazia. */
-export const EMPREENDIMENTOS_DO_LSOFT = ["Garden", "Vale do Sol"] as const;
+/**
+ * Os empreendimentos do espelho. Filtro fora desta lista é ignorado, não vira busca vazia.
+ *
+ * Até 24/09/2026 eram só Garden e Vale do Sol, e o Vale do Ouro tinha 621 parcelas no banco que a
+ * tela não oferecia. Agora é a mesma lista do CHECK do banco (migration 0189), presa por teste.
+ */
+export const EMPREENDIMENTOS_DO_LSOFT = EMPREENDIMENTOS_DO_ESPELHO;
 
 export type FiltroDaCarteira = {
   /** Nome, CPF ou unidade ("109", "Q08"). */
@@ -271,6 +290,9 @@ function clienteDaLinha(linha: LinhaDaView): ClienteDaCarteira {
     totalRecebido: numero(linha.total_recebido),
     valorAValidar: numero(linha.valor_a_validar),
     unidades: Array.isArray(linha.unidades) ? (linha.unidades as string[]) : [],
+    // As views não conhecem a categoria de origem; o patrimônio é somado em `lerCarteiraDoLsoft`.
+    patrimonioAReceber: 0,
+    patrimonioParcelasAbertas: 0,
   };
 }
 
@@ -339,10 +361,50 @@ export async function lerCarteiraDoLsoft(filtro: FiltroDaCarteira = {}): Promise
     .limit(1)
     .maybeSingle();
 
+  // ── O PATRIMÔNIO (categoria 17) ──────────────────────────────────────────
+  //
+  // ⚠️ SOMADO AQUI, E NÃO NUMA VIEW. As views agregam por cliente e não sabem de qual categoria veio
+  // cada parcela; mudar a view é migration. A 17 inteira em aberto cabe em poucas páginas.
+  //
+  // ⚠️ PAGINADO COM ORDEM FIXA E CONFERÊNCIA DE DISTINTOS: sem `order`, o PostgREST pode repetir uma
+  // linha e pular outra entre páginas, e o total bate (medido em 24/09/2026). Se a leitura falhar,
+  // o patrimônio fica zerado e a carteira segue: perder a tela inteira por causa da tag seria pior.
+  const doCliente = new Map(clientes.map((c) => [c.codigo, c]));
+  try {
+    const vistas = new Set<string>();
+    for (let de = 0; ; de += 1000) {
+      let q = admin
+        .from("lsoft_parcelas")
+        .select("id, cliente_codigo, valor")
+        .eq("categoria_lsoft", CATEGORIA_PATRIMONIO)
+        .eq("paga", false)
+        .order("id")
+        .range(de, de + 999);
+      if (porEmpreendimento) q = q.eq("empreendimento", empreendimento as string);
+      const { data: bloco, error: erroPatrimonio } = await q;
+      if (erroPatrimonio) throw new Error(erroPatrimonio.message);
+      for (const p of (bloco ?? []) as LinhaDaView[]) {
+        const id = String(p.id ?? "");
+        if (vistas.has(id)) continue;
+        vistas.add(id);
+        const cliente = doCliente.get(String(p.cliente_codigo ?? ""));
+        if (!cliente) continue;
+        cliente.patrimonioAReceber += numero(p.valor);
+        cliente.patrimonioParcelasAbertas += 1;
+      }
+      if (!bloco || bloco.length < 1000) break;
+    }
+  } catch (falha) {
+    console.error("[lsoft] leitura do patrimônio falhou; a carteira segue sem a tag", falha);
+  }
+
   const somar = (pega: (c: ClienteDaCarteira) => number) =>
     clientes.reduce((total, c) => total + pega(c), 0);
 
   const resumo: ResumoDaCarteira = {
+    patrimonioAReceber: somar((c) => c.patrimonioAReceber),
+    patrimonioClientes: clientes.filter((c) => c.patrimonioParcelasAbertas > 0).length,
+    patrimonioParcelasAbertas: somar((c) => c.patrimonioParcelasAbertas),
     caixaALiberar: somar((c) => c.caixaALiberar),
     caixaJaLiberado: somar((c) => c.caixaJaLiberado),
     clientes: clientes.length,
@@ -460,6 +522,7 @@ export async function lerFichaDoLsoft(codigo: string): Promise<
       parcela: texto(p.parcela),
       parcelaNumero: p.parcela_numero === null ? null : numero(p.parcela_numero),
       parcelaTotal: p.parcela_total === null ? null : numero(p.parcela_total),
+      patrimonio: Number(p.categoria_lsoft) === CATEGORIA_PATRIMONIO,
       quadra: texto(p.quadra),
       valor: numero(p.valor),
       valorRecebido: numero(p.valor_recebido),

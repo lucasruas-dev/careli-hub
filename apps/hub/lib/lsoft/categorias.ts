@@ -57,6 +57,35 @@ export const ED_ESMERALDA = "Ed. Esmeralda";
 // "indefinido" junto com o que é de verdade desconhecido.
 export const MIRAGE = "Mirage Residence";
 export const MANHATTAN = "Manhattan";
+/**
+ * O balde dos títulos cujo produto nem a categoria nem o texto dizem (medido em 24/09/2026: 199 em
+ * aberto na categoria 17, R$ 6,3 mi; galpões, salas em BH, veículos, apartamentos sem o prédio).
+ * Existem no espelho para o time classificar na tela, em vez de sumirem na carga.
+ */
+export const A_CLASSIFICAR = "A classificar";
+
+/**
+ * Os empreendimentos que o espelho aceita, na ordem em que a tela os oferece.
+ *
+ * ⚠️ É O MESMO CONJUNTO DO CHECK `lsoft_parcelas_empreendimento_check` (migration 0189), e um teste
+ * lê o SQL da migration e compara. Acrescentar um nome aqui sem migration faz a carga falhar no
+ * banco; acrescentar na migration sem aqui faz o empreendimento sumir do seletor.
+ */
+export const EMPREENDIMENTOS_DO_ESPELHO = [
+  GARDEN,
+  VALE_DO_SOL,
+  VALE_DO_OURO,
+  GIANT_TOWERS,
+  ON_SKY,
+  GUAIMBE,
+  ED_CRISTAL,
+  ED_ESMERALDA,
+  ED_JADE,
+  ED_RUBI,
+  MIRAGE,
+  MANHATTAN,
+  A_CLASSIFICAR,
+] as const;
 
 /**
  * A categoria que responde sozinha pelo empreendimento.

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Loader2, Pencil, RefreshCw, Search, Sparkles, X } from "lucide-react";
+import { Check, Landmark, Loader2, Pencil, RefreshCw, Search, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { type ApiDoLsoft, apiInterna } from "./api";
@@ -14,6 +14,7 @@ import type {
   ResumoDaCarteira,
   StatusDaValidacao,
 } from "@/lib/lsoft/carteira";
+import { EMPREENDIMENTOS_DO_ESPELHO } from "@/lib/lsoft/categorias";
 import { unidadeParaExibir } from "@/lib/lsoft/unidade";
 
 import { SubsidioDaCaixa } from "./SubsidioDaCaixa";
@@ -81,6 +82,9 @@ export function CarteiraLsoft({ api = apiInterna }: { api?: ApiDoLsoft }) {
   const [buscaAtiva, setBuscaAtiva] = useState("");
   const [empreendimento, setEmpreendimento] = useState("");
   const [somentePendentes, setSomentePendentes] = useState(false);
+  // O PATRIMÔNIO é a categoria 17 do LSoft (Lucas, 24/09/2026: "ele deve estar vinculado ao
+  // empreendimento, mas ter uma tag de patrimonio e que eu pudesse ver esse valor, ter filtros").
+  const [somentePatrimonio, setSomentePatrimonio] = useState(false);
 
   const [aberto, setAberto] = useState<null | string>(null);
   // A VISAO: carteira (o que o cliente deve) x subsidio (o que a Caixa tem para pagar).
@@ -116,8 +120,11 @@ export function CarteiraLsoft({ api = apiInterna }: { api?: ApiDoLsoft }) {
     : null;
 
   const lista = (carteira?.clientes ?? []).filter(
-    (cliente) => !somentePendentes || cliente.statusValidacao !== "validado",
+    (cliente) =>
+      (!somentePendentes || cliente.statusValidacao !== "validado") &&
+      (!somentePatrimonio || cliente.patrimonioParcelasAbertas > 0),
   );
+  const temPatrimonio = (carteira?.resumo.patrimonioParcelasAbertas ?? 0) > 0;
 
   const carteiraTotal = (carteira?.resumo.saldoAberto ?? 0) + (carteira?.resumo.totalRecebido ?? 0);
   // Onde existe dinheiro da Caixa (Vale do Sol / MCMV) a tela mostra DUAS carteiras separadas.
@@ -133,7 +140,7 @@ export function CarteiraLsoft({ api = apiInterna }: { api?: ApiDoLsoft }) {
         <div className="min-w-0">
           <h1 className="m-0 text-base font-bold text-ink">LSoft Integração</h1>
           <p className="m-0 text-xs text-ink-soft">
-            Garden e Vale do Sol ·{" "}
+            {empreendimento || "Todos os empreendimentos"} ·{" "}
             {carimbo ? `dados de ${carimbo}` : "aguardando o primeiro sincronismo"}
           </p>
         </div>
@@ -172,8 +179,12 @@ export function CarteiraLsoft({ api = apiInterna }: { api?: ApiDoLsoft }) {
           value={empreendimento}
         >
           <option value="">Todos os empreendimentos</option>
-          <option value="Garden">Garden</option>
-          <option value="Vale do Sol">Vale do Sol</option>
+          {/* A mesma lista do CHECK do banco (migration 0189), presa por teste em categorias.test.ts. */}
+          {EMPREENDIMENTOS_DO_ESPELHO.map((nome) => (
+            <option key={nome} value={nome}>
+              {nome}
+            </option>
+          ))}
         </select>
 
         <label className="flex items-center gap-2 text-sm text-ink-soft">
@@ -185,6 +196,20 @@ export function CarteiraLsoft({ api = apiInterna }: { api?: ApiDoLsoft }) {
           />
           Só o que falta validar
         </label>
+
+        {/* Só aparece onde existe patrimônio: antes da carga das demais categorias, não há nenhum. */}
+        {temPatrimonio || somentePatrimonio ? (
+          <label className="flex items-center gap-2 text-sm text-ink-soft">
+            <input
+              checked={somentePatrimonio}
+              className="h-4 w-4"
+              onChange={(evento) => setSomentePatrimonio(evento.target.checked)}
+              type="checkbox"
+            />
+            <Landmark size={14} />
+            Só patrimônio
+          </label>
+        ) : null}
 
         <form
           className="flex items-center gap-2"
@@ -342,6 +367,37 @@ export function CarteiraLsoft({ api = apiInterna }: { api?: ApiDoLsoft }) {
               </section>
             ) : null}
 
+            {/* ⚠️ O PATRIMÔNIO JÁ ESTÁ DENTRO DA CARTEIRA ACIMA: é dívida de verdade do cliente, e a
+                tag só diz de onde ela veio (a categoria 17 do LSoft). Somar de novo dobraria o
+                número. Por isso o bloco mostra a PARTE, não um segundo total. */}
+            {temPatrimonio ? (
+              <section className="grid gap-2">
+                <h3 className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
+                  <Landmark size={12} />
+                  Patrimônio
+                  <span className="ml-1 font-normal normal-case tracking-normal text-ink-soft/70">
+                    já incluído na carteira acima
+                  </span>
+                </h3>
+                <div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(190px,1fr))]">
+                  <Cartao
+                    dica={`${inteiro(carteira.resumo.patrimonioParcelasAbertas)} parcela(s)`}
+                    rotulo="A receber"
+                    valor={brl(carteira.resumo.patrimonioAReceber)}
+                  />
+                  <Cartao
+                    dica={
+                      carteira.resumo.saldoAberto > 0
+                        ? `${pct((carteira.resumo.patrimonioAReceber / carteira.resumo.saldoAberto) * 100)} do que falta receber`
+                        : "—"
+                    }
+                    rotulo="Clientes"
+                    valor={inteiro(carteira.resumo.patrimonioClientes)}
+                  />
+                </div>
+              </section>
+            ) : null}
+
             <section className="grid gap-2">
               <h3 className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
                 Cadastro para o C2X
@@ -388,6 +444,7 @@ export function CarteiraLsoft({ api = apiInterna }: { api?: ApiDoLsoft }) {
                         <span className="ml-2 text-xs text-ink-soft">
                           {cliente.empreendimentos.join(" · ")}
                         </span>
+                        {cliente.patrimonioParcelasAbertas > 0 ? <SeloDePatrimonio /> : null}
                       </td>
                       <td className="px-4 py-2.5 tabular-nums text-ink-soft">
                         {cliente.cpfFormatado ?? "—"}
@@ -540,6 +597,19 @@ function BotaoDeEnriquecimento({
         Enriquecer {situacao.pendentes} na MOST
       </button>
     </div>
+  );
+}
+
+/** A tag de patrimônio: parcela ou cliente com título da categoria 17 do LSoft. */
+function SeloDePatrimonio() {
+  return (
+    <span
+      className="ml-2 inline-flex items-center gap-1 rounded-full border border-black/10 px-1.5 py-px align-middle text-[10px] font-semibold text-ink-soft dark:border-white/15"
+      title="Patrimônio: veio da categoria 17 do LSoft"
+    >
+      <Landmark size={10} />
+      Patrimônio
+    </span>
   );
 }
 
@@ -1113,7 +1183,10 @@ function TabelaDeParcelas({
 
             return (
               <tr className="border-t border-black/[0.06] dark:border-white/[0.06]" key={parcela.id}>
-                <td className="px-3 py-2 text-xs text-ink-soft">{parcela.empreendimento}</td>
+                <td className="px-3 py-2 text-xs text-ink-soft">
+                  {parcela.empreendimento}
+                  {parcela.patrimonio ? <SeloDePatrimonio /> : null}
+                </td>
                 <td className="px-3 py-2 tabular-nums text-ink-soft">
                   {parcela.parcela ?? "—"}
                   {repetidas.has(`${parcela.parcela}|${parcela.vencimento}`) ? (

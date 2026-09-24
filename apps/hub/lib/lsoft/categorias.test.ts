@@ -1,9 +1,13 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { EMPREENDIMENTOS_DE_BOLETO } from "@/lib/apolo/boletos/empreendimentos";
 
 import {
   CATEGORIA_E_O_EMPREENDIMENTO,
+  EMPREENDIMENTOS_DO_ESPELHO,
   ED_ESMERALDA,
   MANHATTAN,
   CATEGORIA_PATRIMONIO,
@@ -93,6 +97,20 @@ describe("os nomes batem com o catálogo de boletos", () => {
       if (foraDoCatalogo.has(nome)) continue;
       expect(doCatalogo.has(nome), `"${nome}" não existe no catálogo de boletos`).toBe(true);
     }
+  });
+});
+
+describe("a lista da tela é a lista do banco", () => {
+  it("EMPREENDIMENTOS_DO_ESPELHO é exatamente o CHECK da migration 0189", () => {
+    // ⚠️ Lê o SQL de verdade: se alguém mexer num lado só, o seletor oferece um nome que o banco
+    // recusa, ou o banco aceita um nome que o seletor não mostra.
+    const sql = readFileSync(
+      join(__dirname, "../../../../packages/database/migrations/0189_a_parcela_sabe_de_qual_categoria_veio.sql"),
+      "utf8",
+    );
+    const bloco = sql.slice(sql.indexOf("add constraint lsoft_parcelas_empreendimento_check"));
+    const doCheck = [...bloco.slice(0, bloco.indexOf("]::text[]")).matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    expect([...doCheck].sort()).toEqual([...EMPREENDIMENTOS_DO_ESPELHO].sort());
   });
 });
 
