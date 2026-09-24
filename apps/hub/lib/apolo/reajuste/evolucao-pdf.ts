@@ -13,6 +13,7 @@ import {
   tituloDeSecao,
   topico,
 } from "@/lib/apolo/pdf-timbrado";
+import { type CenarioDeProjecao } from "@/lib/apolo/reajuste/projecao";
 import { type EvolucaoDoContrato } from "@/lib/apolo/reajuste/projecao-do-contrato";
 
 // A EVOLUÇÃO DA PARCELA EM PDF TIMBRADO — o mesmo papel dos outros relatórios da casa.
@@ -31,6 +32,11 @@ import { type EvolucaoDoContrato } from "@/lib/apolo/reajuste/projecao-do-contra
 // ⚠️ O QUE ESTE PDF NÃO FAZ: não promete, não corrige parcela e não substitui o extrato. Ele
 // responde uma pergunta só — "para onde a minha parcela caminha?" — e o extrato continua sendo a
 // peça do saldo.
+//
+// ⚠️ OS TRÊS CENÁRIOS VÃO NA MESMA FOLHA, lado a lado (Lucas, 24/09/2026: *"pode fazer as três
+// visões em um relatório só"*). E isso é mais honesto do que três PDFs separados: um papel com um
+// número só é lido como previsão; três colunas mostram que o resultado é uma FAIXA, que é o que a
+// estimativa realmente é. Quem receber vê o piso e o teto na mesma linha.
 
 const TITULO_DA_PECA = "Evolução da Parcela";
 
@@ -81,8 +87,9 @@ export async function montarEvolucaoPdf(dados: DadosDaEvolucaoPdf): Promise<Uint
   paragrafo(
     ctx,
     "Este relatório mostra quanto a mensalidade tende a ficar nos próximos anos, aplicando sobre o " +
-      "valor que você paga hoje a média histórica do índice de correção do seu contrato. " +
-      "É uma estimativa, e não um compromisso.",
+      "valor que você paga hoje a média histórica do índice de correção do seu contrato. São três " +
+      "cenários, do mais otimista ao mais conservador, porque o resultado é uma faixa e não um " +
+      "número: é uma estimativa, e não um compromisso.",
     { justificado: true, size: 8.2 },
   );
 
@@ -165,7 +172,58 @@ function desenharContrato(ctx: Ctx, contrato: EvolucaoDoContrato, cenario: strin
     paragrafo(ctx, contrato.motivo, { size: 8 });
   }
 
-  if (contrato.linhas.length > 0) {
+  // ⚠️ A ORDEM DAS COLUNAS É OTIMISTA → TENDÊNCIA → CONSERVADOR, do menor para o maior. Quem lê
+  // da esquerda para a direita vê a faixa crescer, e o número do meio é o que a casa considera
+  // mais provável.
+  const ORDEM: CenarioDeProjecao[] = ["otimista", "tendencia", "conservador"];
+  const porCenario = contrato.porCenario;
+
+  if (porCenario) {
+    // A régua de linhas é a do cenário do meio: os três projetam as MESMAS competências, porque o
+    // degrau é anual em todos. Usar um deles como esqueleto evita cruzar listas por data.
+    const esqueleto = porCenario.tendencia ?? [];
+
+    if (esqueleto.length > 0) {
+      ctx.y -= 8;
+      desenharTabelaLimpa(ctx, {
+        colunas: [
+          { label: "Quando", peso: 0.19 },
+          { label: "O que é", peso: 0.21 },
+          { align: "right", label: "Otimista", peso: 0.2 },
+          { align: "right", label: "Tendência", peso: 0.2 },
+          { align: "right", label: "Conservador", peso: 0.2 },
+        ],
+        linhas: esqueleto.map((linha, indice) => [
+          competencia(linha.competencia),
+          linha.origem === "real"
+            ? "O que paga hoje"
+            : linha.origem === "represado"
+              ? "Correção já publicada"
+              : "Estimativa",
+          ...ORDEM.map((c) => {
+            const daColuna = porCenario[c]?.[indice];
+            return daColuna ? dinheiro(daColuna.valor) : "-";
+          }),
+        ]),
+        vazio: "Sem projeção para este contrato.",
+      });
+
+      ctx.y -= 6;
+      paragrafo(
+        ctx,
+        "Cada coluna aplica uma média diferente do mesmo índice, ao mês, em degrau anual: " +
+          ORDEM.map((c) => {
+            const taxa = contrato.mesTipicoPorCenario?.[c];
+            return `${ROTULO_DO_CENARIO[c] ?? c}, ${
+              taxa != null ? percentual(taxa, 2) : "média"
+            }`;
+          }).join("; ") +
+          ". O índice real pode vir acima, abaixo ou fora dessa faixa.",
+        { justificado: true, size: 7.8 },
+      );
+    }
+  } else if (contrato.linhas.length > 0) {
+    // Caminho de um cenário só, que a tela usa quando pede a rota JSON.
     ctx.y -= 8;
     desenharTabelaLimpa(ctx, {
       colunas: [

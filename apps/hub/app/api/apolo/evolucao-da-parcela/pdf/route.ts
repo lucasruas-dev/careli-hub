@@ -44,17 +44,22 @@ export async function GET(request: Request) {
     return json({ error: "Informe um contrato valido." }, 400);
   }
 
+  // ⚠️ O PAPEL LEVA OS TRÊS CENÁRIOS (Lucas, 24/09/2026: "pode fazer as três visões em um
+  // relatório só"), e não o que estava na tela. Um papel com um número só é lido como previsão;
+  // três colunas mostram que o resultado é uma FAIXA. O `?cenario=` continua aceito e decide
+  // apenas qual coluna o texto de apoio trata como a mais provável.
   const pedido = params.get("cenario");
   const cenario = CENARIOS.includes(pedido as never)
     ? (pedido as CenarioDeProjecao)
     : "tendencia";
+  const TODOS: CenarioDeProjecao[] = ["otimista", "tendencia", "conservador"];
 
   try {
     // ⚠️ DUAS LEITURAS, E ELAS NÃO SÃO REDUNDANTES: a evolução traz os números; o extrato traz o
     // TITULAR (nome e documento mascarado), que o papel precisa no cabeçalho e o payload da
     // evolução não carrega de propósito — a tela já tem o cliente aberto na frente.
     const [evolucao, extrato] = await Promise.all([
-      evolucaoDosContratos({ c2xId, cenario, contratoId }),
+      evolucaoDosContratos({ c2xId, cenario, cenarios: TODOS, contratoId }),
       loadExtratoDoCliente({ c2xId, contratoId }),
     ]);
 

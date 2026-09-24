@@ -44,6 +44,16 @@ export type EvolucaoDoContrato = {
   /** O acumulado de 12 meses do índice, para a tela mostrar "o IPCA do último ano". */
   indiceNoAno: null | number;
   linhas: ParcelaProjetada[];
+  /**
+   * Os TRÊS cenários de uma vez, quando `cenarios` é pedido. É o que o PDF usa.
+   *
+   * ⚠️ MESMA LEITURA PARA OS TRÊS: pedir o PDF três vezes, uma por cenário, custaria três varreduras
+   * do C2X e três buscas de série para desenhar a mesma folha. O que muda entre eles é só a média
+   * aplicada, que é conta pura sobre a série já carregada.
+   */
+  porCenario?: Record<CenarioDeProjecao, ParcelaProjetada[]>;
+  /** O % ao mês de cada cenário, para o papel escrever a premissa de cada coluna. */
+  mesTipicoPorCenario?: Record<CenarioDeProjecao, null | number>;
   /** Mensalidade original do contrato. */
   mensalidadeBase: number;
   /** O que a cobrança pratica hoje. */
@@ -77,6 +87,8 @@ function mesDe(iso: string): string {
 export async function evolucaoDosContratos(input: {
   c2xId: number;
   cenario?: CenarioDeProjecao;
+  /** Quando presente, projeta TAMBÉM estes cenários e os devolve em `porCenario`. */
+  cenarios?: CenarioDeProjecao[];
   contratoId?: null | number;
   /** Quantos meses projetar. Padrão: 60 (cinco anos), que cabe na tela sem virar lista. */
   meses?: number;
@@ -162,12 +174,38 @@ export async function evolucaoDosContratos(input: {
       valorDeHoje: totais.mensalidadeVigente,
     });
 
+    // Os demais cenários saem da MESMA série já carregada: só a média muda.
+    const porCenario = input.cenarios
+      ? (Object.fromEntries(
+          input.cenarios.map((c) => [
+            c,
+            projetarParcela({
+              cenario: c,
+              hoje,
+              indice,
+              meses,
+              serie,
+              ultimaCorrecaoEm: hoje,
+              valorDeHoje: totais.mensalidadeVigente,
+            }).linhas,
+          ]),
+        ) as Record<CenarioDeProjecao, ParcelaProjetada[]>)
+      : undefined;
+
+    const mesTipicoPorCenario = input.cenarios
+      ? (Object.fromEntries(
+          input.cenarios.map((c) => [c, mesTipico(serie, c)]),
+        ) as Record<CenarioDeProjecao, null | number>)
+      : undefined;
+
     return {
       ...base,
       indicePublicadoAte: projetada.indicePublicadoAte,
       linhas: projetada.linhas,
       mesTipicoPct: mesTipico(serie, input.cenario),
+      mesTipicoPorCenario,
       motivo: projetada.motivo,
+      porCenario,
     };
   });
 
