@@ -10,6 +10,7 @@ import {
   MapPinned,
   Network,
   ReceiptText,
+  TrendingUp,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -45,6 +46,9 @@ export const apoloUnitSubtabs = [
 // A ordem manda: o extrato do cliente e a primeira subaba porque e o que o backoffice abre.
 export const apoloFinancialSubtabs = [
   { icon: ReceiptText, id: "extrato", label: "Extrato do cliente" },
+  // A EVOLUÇÃO fica ao lado do extrato porque é a mesma pergunta em outro tempo: o extrato diz o
+  // que o cliente paga hoje e deve; esta diz para onde a parcela dele caminha.
+  { icon: TrendingUp, id: "evolucao", label: "Evolução da parcela" },
   { icon: HandCoins, id: "acordos", label: "Acordos" },
 ] as const satisfies readonly {
   icon: LucideIcon;
