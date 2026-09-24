@@ -36,6 +36,54 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-24-promessa-vencida-volta-a-acionar",
+    deployedAt: "2026-09-24T17:56:11-03:00",
+    modules: [
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "**Promessa que venceu sem pagamento volta para A acionar.** Antes o cliente ficava em Promessa de pagamento para sempre, e a próxima ação mandava aguardar uma data que já tinha passado. Hoje são três casos: Vitorino Energy, Michel Flávio Guimarães e Cristina Guimarães Pinto.",
+              "**A frase manda conferir o pagamento, não acusa o cliente.** Diz quando a promessa venceu e pede a conferência no C2X antes de retomar o contato, porque a baixa da parcela nem sempre chega ao Panteon.",
+              "**A fila e a ficha do cliente passam a dizer a mesma coisa.** A regra que calcula a etapa vivia escrita em dois lugares, e agora é uma só.",
+              "**A coluna Pagamento mostra a data em que o cliente pagou.** Antes mostrava a hora em que a rotina percebeu o pagamento, que podia ser dias depois.",
+            ],
+            screen: "Cobrança",
+          },
+          {
+            items: [
+              "**O reenvio do convite de assinatura do acordo voltou a funcionar.** O identificador que a Clicksign devolve no envio passou a ser guardado, e é ele que o reenvio usa. Era a causa do erro 422.",
+              "**Quando não dá para reenviar, o botão explica o porquê** em vez de sumir da tela sem dizer nada.",
+            ],
+            screen: "Cobrança · Acordos",
+          },
+        ],
+      },
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O reenvio do convite no contrato ganhou a mesma correção do acordo**, e também explica quando não é possível reenviar.",
+            ],
+            screen: "Quadro de trabalho",
+          },
+        ],
+      },
+    ],
+    rollback: "012eace1",
+    technical: {
+      done:
+        "⚠️ NUNCA EXISTIU PEÇA QUE QUEBRASSE PROMESSA. Medido em 24/09/2026: 59 compromissos, `broken_at` NULO em 59, `status='quebrado'` em 0 e ZERO lembretes entregues na história da tabela. O único escritor de quebra é um PATCH de API sem nenhum chamador na UI, e o cron diário só sabe CUMPRIR (`maybeFulfillCompromisso`). A etapa saía de kind+status+approval_status e `promised_date` nem entrava no SELECT de `listGuardianCompromissoStages`, então o ramo `Quebra` estava morto por construção. PEÇA NOVA: `etapaDoCompromisso` (lib/guardian/etapa-do-compromisso.ts), pura, que recebe as linhas e o dia de hoje e devolve {stage, nextAction}. A etapa é DERIVADA NA LEITURA: sem rotina nova, sem rota nova e sem segredo novo (os crons da casa não são autenticados, `x-vercel-cron` é forjável). A regra vivia DUPLICADA palavra por palavra entre a fila (compromissos.ts) e o detalhe (ClientDetailPanel.tsx), e o `map` do detalhe saiu de dentro do `@ts-nocheck` para poder ser testado. ⚠️ O DIA É O DA CASA, não o do UTC: `hoje-na-casa.ts` resolve o fuso de Brasília, senão das 21h à meia-noite a promessa que vence amanhã já apareceria vencida. `mudanca-da-etapa.ts` leva a frase nova à fila e ao copiloto, que antes só reagiam à troca de etapa e ignoravam a próxima ação. DATA DE PAGAMENTO: `pagamentosDoC2x` passou a devolver a data além do id, `markParcelaPaid` a recebe em vez de chamar `new Date()`, e `dataDaBaixa` usa a do C2X quando existe, gravada ao MEIO-DIA UTC para o dia exibido não andar para trás no fuso do Brasil. CLICKSIGN: `congelar-signatarios.ts` guarda em `chave` o id que o provedor devolve no envio (o mesmo campo que a troca de e-mail já usava), e o reenvio passa a mandá-lo em vez do e-mail, que é o que devolvia 422; `recusa-de-reenvio.ts` dá o motivo quando não dá para reenviar, e o botão deixa de sumir. REVISÃO ADVERSARIAL (3 revisores, 3 lentes): reprovou com 1 bloqueante e 5 altas, todas corrigidas. A bloqueante gravava `paid_at` à meia-noite UTC e a tela mostraria o DIA ANTERIOR do pagamento; outra fazia o botão de reenvio sumir em 100% dos envelopes que existem hoje, porque nenhum tem `chave` congelada. Suíte: 565 arquivos, 8.646 testes. Typecheck limpo. ⚠️ FORA DESTE LOTE, à espera do Lucas: o filtro de Promessa e Acordo na Central de Propostas (a forma do controle é escolha dele), barrar segundo acordo vivo na mesma unidade (o Iago tem dois envelopes abertos), a promessa de mais de uma parcela amarrada às parcelas do C2X (394 de 397 parcelas em aberto estão sem `payment_c2x_id`), e o acerto dos 3 `paid_at` já gravados com a hora do robô.",
+      motivation:
+        "Nívea, 24/09/2026: Erro no processo. O comprador fez promessa e não pagou. Deve voltar para o status de acionar. E: O Hades está apresentando uma informação que não procede. E ainda: Deu erro no envio dos acordos. Não recebi e não consigo reenviar. Lucas repassou os quatro apontamentos dela: olha esses erros e melhorias por favor.",
+    },
+    title: "Promessa vencida volta para A acionar, e o convite de assinatura volta a ser reenviado",
+    type: "correcao",
+    version: "1.373.0",
+  },
+  {
     buildTag: "2026-09-24-mover-cad-de-empreendimento",
     deployedAt: "2026-09-24T16:42:50-03:00",
     modules: [
