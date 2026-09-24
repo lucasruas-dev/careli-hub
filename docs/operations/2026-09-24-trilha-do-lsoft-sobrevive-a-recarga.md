@@ -15,7 +15,10 @@ testado) e um LEIA-ME.
 
 ## O que foi aplicado
 
-Migration `0188_a_trilha_sobrevive_a_recarga`, aplicada em 24/09/2026 com OK do Lucas.
+Migration `0188_a_trilha_sobrevive_a_recarga`, aplicada em 24/09/2026 no projeto
+`bxgukywoxgivlrhjkwjx` (produção), por `apply_migration`. Autorização do Lucas, 24/09/2026:
+*"tem o meu ok"*, em resposta ao pedido explícito para aplicar a 0188. Registro no banco:
+`20260924191343 a_trilha_sobrevive_a_recarga`.
 
 1. A FK `parcela_id` passou de `CASCADE` para `SET NULL`: quando a parcela some, a linha fica órfã
    e visível em vez de morrer.
@@ -35,6 +38,31 @@ Migration `0188_a_trilha_sobrevive_a_recarga`, aplicada em 24/09/2026 com OK do 
 | regra da FK | `SET NULL` |
 | índice | criado |
 
+## Conferido por objeto, como pede a skill `migration-supabase`
+
+- **Schema**, `information_schema.columns`: `impressao_digital text null` · `ordinal integer not
+  null default 1` · `empreendimento_no_momento text null` · `vencimento_no_momento date null` ·
+  `valor_no_momento numeric(14,2) null`.
+- **RLS**: continua ligada em `lsoft_clientes_edicoes` e `lsoft_parcelas`.
+- **Advisors de segurança**: `lsoft_clientes_edicoes` só como `rls_enabled_no_policy` (INFO, o padrão
+  da casa: acesso só por service role). Nenhum `rls_disabled_in_public`. Os WARNs restantes
+  (`search_path` de três funções, `btree_gist` em `public`, `has_chronos_permission`) são anteriores
+  e não tocam o LSoft.
+- **Prova viva**, num bloco `DO` que termina sempre em `raise exception` (nada persiste): inseri uma
+  parcela e uma linha de trilha apontando para ela, apaguei a parcela, e a linha **sobreviveu com
+  `parcela_id` nulo** e `ordinal` 1. Depois: trilha 948, parcelas 20.866, zero resto da prova.
+
+## O religamento (commit 861532c7)
+
+`scripts/lsoft/reconciliar-trilha.mjs --simular-recarga` finge a carga em memória (ids novos,
+trilha zerada) e não grava. Contra produção: **160 de 160 parcelas com trilha religadas, zero
+órfãs**, em cinco execuções seguidas.
+
+⚠️ Na primeira execução deu 159 e 1 órfã. Causa: a leitura paginada sem `order` pulava uma parcela
+e repetia outra, e o total batia. Corrigido com `order("id")` e conferência de ids distintos, aqui e
+no `reconciliar-classificacao.mjs`, que tinha o mesmo defeito. O backup de 24/09 foi conferido
+depois disso: 20.866 ids distintos, íntegro.
+
 ## A prova da fórmula
 
 A digital é `md5(concat_ws('|', cliente_codigo, empreendimento, parcela, vencimento, valor,
@@ -45,10 +73,12 @@ quatro hashes reais lidos do banco.
 
 ## O que ainda falta para a carga ser segura
 
-- O reconciliador (`scripts/lsoft/reconciliar-classificacao.mjs`) religa só a classificação. Ele
-  precisa religar também a trilha, senão depois da carga as 948 linhas ficam órfãs (vivas, mas sem
-  apontar para a parcela nova).
-- O importador não chama o reconciliador: hoje é passo manual. Vale o importador rodá-lo no fim.
+- ~~Religar a trilha depois da carga~~: feito, `reconciliar-trilha.mjs`.
+- O importador não chama os dois reconciliadores: hoje é passo manual, e entre a carga e a mão que
+  roda o script a tela mostra a trilha sem parcela e o dinheiro da Caixa como dívida do cliente.
+- O CHECK `lsoft_parcelas_empreendimento_check` ainda só aceita três nomes.
+- Existem 3 classificações da Caixa, confirmadas, que já estavam órfãs antes deste trabalho:
+  clientes 00000443, 00000476 e 00000612.
 
 ## Achados no caminho, fora deste conserto
 
