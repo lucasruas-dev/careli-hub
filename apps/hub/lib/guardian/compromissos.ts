@@ -1,6 +1,8 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import { carimboAoCriar } from "@/lib/guardian/aprovacao-da-proposta";
+import { etapaDoCompromisso } from "@/lib/guardian/etapa-do-compromisso";
+import { hojeNaCasa } from "@/lib/guardian/hoje-na-casa";
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 
 // Motor da Cobranca (Hades) — Acordos & Promessas + Regua de lembretes.
@@ -936,11 +938,13 @@ export type GuardianClientStage = {
 
 type StageRow = {
   approval_status: GuardianApprovalStatus;
+  approved_at: null | string;
   client_c2x_id: number | string;
   created_at: string;
   created_by_user_id: string | null;
   kind: GuardianCompromissoKind;
   metadata: Record<string, unknown> | null;
+  promised_date: null | string;
   status: GuardianCompromissoStatus;
 };
 
@@ -953,8 +957,11 @@ export async function listGuardianCompromissoStages(
 ): Promise<GuardianClientStage[]> {
   const { data, error } = await client
     .from("guardian_compromissos")
+    // ⚠️ `promised_date` E `approved_at` ENTRAM AQUI, e a ausência deles era metade do defeito de
+    // 24/09/2026: sem a data prometida no select, a etapa não tinha como saber que a promessa
+    // venceu, e a tela seguia mandando "aguardar a data prometida" seis dias depois dela.
     .select(
-      "client_c2x_id,kind,status,approval_status,created_at,created_by_user_id,metadata",
+      "client_c2x_id,kind,status,approval_status,approved_at,promised_date,created_at,created_by_user_id,metadata",
     )
     .order("created_at", { ascending: false })
     .limit(20000)
@@ -1021,45 +1028,21 @@ export async function listGuardianCompromissoStages(
   return stages;
 }
 
+// ⚠️ A REGRA MORA EM `etapa-do-compromisso.ts`, E ESTA FUNÇÃO SÓ TRADUZ AS COLUNAS. A mesma
+// derivação existe no detalhe do cliente (`ClientDetailPanel.tsx`), e as duas têm de bater: uma
+// cópia a mais da regra divergiria no primeiro conserto. Ver a nota do arquivo da peça.
 function deriveStageFromRows(
   rows: StageRow[],
 ): { nextAction: string; stage: string } | null {
-  const active = rows.filter((row) => row.status === "ativo");
-  const hasApprovedAcordo = active.some(
-    (row) => row.kind === "acordo" && row.approval_status === "aprovado",
+  return etapaDoCompromisso(
+    rows.map((row) => ({
+      approvalStatus: row.approval_status,
+      approvedAt: row.approved_at,
+      kind: row.kind,
+      promisedDate: row.promised_date,
+      status: row.status,
+    })),
   );
-  const hasApprovedPromessa = active.some(
-    (row) => row.kind === "promessa" && row.approval_status === "aprovado",
-  );
-  const hasPending = active.some((row) => row.approval_status === "pendente");
-  const hasBroken = rows.some((row) => row.status === "quebrado");
-
-  if (hasApprovedAcordo) {
-    return {
-      nextAction: "Acompanhar o pagamento das parcelas do acordo.",
-      stage: "Acordo",
-    };
-  }
-  if (hasApprovedPromessa) {
-    return {
-      nextAction: "Aguardar a data prometida (régua de lembretes).",
-      stage: "Promessa de pagamento",
-    };
-  }
-  if (hasPending) {
-    return {
-      nextAction: "Proposta registrada aguardando aprovação do gestor.",
-      stage: "Negociação",
-    };
-  }
-  if (hasBroken) {
-    return {
-      nextAction: "Acordo quebrado — reabrir negociação.",
-      stage: "Quebra",
-    };
-  }
-
-  return null;
 }
 
 export type CompromissoDecision = "aprovado" | "reprovado" | "devolvido";
@@ -1301,6 +1284,16 @@ export async function getGuardianCompromissosFinancialSummary(
     if (parcela.status === "paga") {
       recuperadoAll += amount;
       bucket(empreendimento).recuperado += amount;
+      // ⚠️ "RECUPERADO (30d)" PASSOU A CONTAR PELO DIA EM QUE O CLIENTE PAGOU, e não pelo dia em
+      // que o Panteon percebeu. `paid_at` era a hora do cron — então TODA baixa detectada caía
+      // dentro da janela por construção — e desde 24/09/2026 é a `payment_date` do C2X, por causa
+      // do apontamento da Nívea (*"o Hades está apresentando uma informação que não procede"*).
+      // Consequência medida no mesmo dia: a defasagem entre pagar e conciliar foi de 44 e 49 dias
+      // nas únicas 3 baixas do sistema, então uma parcela percebida hoje e paga há mais de 30 dias
+      // NÃO entra mais aqui. O indicador responde "quanto o cliente pagou nos últimos 30 dias"; se
+      // a pergunta da gestão for "quanto a cobrança baixou nos últimos 30 dias", a janela tem de
+      // olhar outra coluna (o `updated_at` da parcela, ou um `conciliado_em` novo) — decisão do
+      // Lucas, e o mesmo vale para o gêmeo em `lib/apolo/cobranca.ts`.
       if (parcela.paid_at && Date.parse(parcela.paid_at) >= since30d) {
         recuperado30d += amount;
         recuperado30dCount += 1;
@@ -1813,6 +1806,11 @@ export function addDaysToDateOnly(value: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
+// ⚠️ HOJE É O DIA DE BRASÍLIA, NÃO O DE GREENWICH. Até 24/09/2026 isto era
+// `now.toISOString().slice(0, 10)`: a Vercel roda em UTC, então das 21h à meia-noite daqui o motor
+// já achava que era amanhã e a parcela que vence hoje sumia da Previsibilidade (pendência escrita
+// no changelog no mesmo dia). A conta mora em `hoje-na-casa.ts` porque a etapa do workflow usa a
+// MESMA, e duas versões de "hoje" no mesmo motor foi o defeito que este lote veio eliminar.
 export function todayDateOnly(now: Date = new Date()) {
-  return now.toISOString().slice(0, 10);
+  return hojeNaCasa(now);
 }

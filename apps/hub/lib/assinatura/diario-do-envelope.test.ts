@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { diarioDoEnvelope, quemAssinou } from "./diario-do-envelope";
+import { juntarComOsCongelados } from "./diario-do-envelope-db";
+import {
+  diarioDoEnvelope,
+  quemAssinou,
+  type SignatarioDoEnvelope,
+} from "./diario-do-envelope";
 
 import payloadReal from "./__fixtures__/clicksign-sign-com-bounce.json";
 
@@ -285,3 +290,74 @@ function comEventosExtras(extras: unknown[]): unknown {
     document: { ...documento, events: [...extras, ...documento.events] },
   };
 }
+
+// ── A CHAVE QUE O REENVIO USA ───────────────────────────────────────────────
+//
+// ⚠️ A `signer.key` DO WEBHOOK NÃO É O SIGNER ID DA API v3, e foi isso que devolveu 422 para a
+// Nívea em 24/09/2026 (*"não consigo reenviar"*). O reenvio é
+// `POST /envelopes/{id}/signers/{signer_id}/notifications`: o id que serve ali é o que a Clicksign
+// devolveu no passo 3 do envio, e ele passou a ser congelado em `temis_envelopes.signatarios`.
+// Quando não houver chave congelada, o signatário vem marcado e o botão NÃO tenta.
+describe("juntarComOsCongelados: quem pode ser reenviado", () => {
+  const doPayload = (patch: Partial<SignatarioDoEnvelope> = {}): SignatarioDoEnvelope => ({
+    assinouEm: null,
+    chave: "key-do-webhook",
+    comecouEm: null,
+    convite: "sem_noticia",
+    conviteDetalhe: null,
+    conviteQuando: null,
+    email: "comprador@exemplo.test",
+    nome: "Iago Barbosa Ferreira Mesquita",
+    ...patch,
+  });
+
+  it("a chave do signatário é a congelada no envio quando ela existe, e nunca o e-mail", () => {
+    const juntos = juntarComOsCongelados(
+      [doPayload()],
+      [
+        {
+          chave: "sig-clicksign-1",
+          email: "Comprador@Exemplo.test",
+          nome: "Iago Barbosa Ferreira Mesquita",
+          papel: "comprador",
+        },
+      ],
+    );
+
+    expect(juntos[0]?.chave).toBe("sig-clicksign-1");
+    expect(juntos[0]?.reenvioIndisponivel).toBe(false);
+  });
+
+  it("sem chave congelada o signatário vem marcado como reenvio indisponível", () => {
+    // É o caso medido do AC-000051: envelope enviado em 23/09, antes desta correção.
+    const juntos = juntarComOsCongelados(
+      [doPayload()],
+      [{ chave: null, email: "comprador@exemplo.test", nome: "Iago", papel: "comprador" }],
+    );
+
+    expect(juntos[0]?.reenvioIndisponivel).toBe(true);
+    // A chave antiga continua servindo para a tela casar a linha; o que ela não faz é ir para a
+    // Clicksign como se fosse signer id.
+    expect(juntos[0]?.chave).toBe("key-do-webhook");
+  });
+
+  it("quem só existe na lista congelada, sem chave, nunca vira e-mail reenviável", () => {
+    const juntos = juntarComOsCongelados(
+      [],
+      [{ chave: null, email: "vendedora@exemplo.test", nome: "Fulana", papel: "vendedora" }],
+    );
+
+    expect(juntos[0]?.chave).toBe("vendedora@exemplo.test");
+    expect(juntos[0]?.reenvioIndisponivel).toBe(true);
+  });
+
+  it("quem só existe na lista congelada, COM chave, pode ser reenviado antes do primeiro webhook", () => {
+    const juntos = juntarComOsCongelados(
+      [],
+      [{ chave: "sig-clicksign-9", email: "vendedora@exemplo.test", nome: "Fulana", papel: "vendedora" }],
+    );
+
+    expect(juntos[0]?.chave).toBe("sig-clicksign-9");
+    expect(juntos[0]?.reenvioIndisponivel).toBe(false);
+  });
+});

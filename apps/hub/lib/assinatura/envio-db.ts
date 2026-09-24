@@ -13,6 +13,7 @@ import { dadosDaProposta } from "@/lib/temis/dados-do-contrato";
 
 import { enviarParaAssinatura, type FalhaNoEnvio, type PedidoDeEnvio } from "./clicksign/envelope";
 import { type PortaDaClicksign } from "./clicksign/cliente";
+import { congelarSignatarios } from "./congelar-signatarios";
 import { moverCardDaTemis } from "./estado-db";
 import { ordenarSignatarios, type RegraDeOrdem } from "./ordem";
 import { assinantesDoQuadro, empresasDoEmpreendimento } from "./quadro-db";
@@ -766,7 +767,12 @@ async function abrirRegistro(
 async function carimbarSucesso(
   sb: SupabaseClient,
   registroId: string,
-  resultado: { documentoId: string; envelopeId: string },
+  resultado: {
+    documentoId: string;
+    envelopeId: string;
+    /** `{ e-mail -> id do signatario }`, como a Clicksign devolveu no passo 3 do envio. */
+    signatarios?: Record<string, string>;
+  },
   signatarios: readonly Signatario[],
 ): Promise<void> {
   const { error } = await sb
@@ -780,12 +786,9 @@ async function carimbarSucesso(
       envelope_id: resultado.envelopeId,
       enviado_em: new Date().toISOString(),
       provedor_documento_id: resultado.documentoId,
-      signatarios: signatarios.map((s) => ({
-        email: s.email,
-        nome: s.nome,
-        ordem: s.ordem,
-        papel: s.papel,
-      })),
+      // ⚠️ COM A `chave` DA CLICKSIGN. Ver `lib/assinatura/congelar-signatarios.ts`: sem ela o
+      // reenvio de convite manda a key do webhook (ou o e-mail) e leva 422.
+      signatarios: congelarSignatarios(signatarios, resultado.signatarios),
     })
     .eq("id", registroId);
 

@@ -336,6 +336,42 @@ describe("o registro em temis_envelopes", () => {
     expect(carimbo?.patch.estado_cru).toBe("clicksign:running");
     expect(carimbo?.patch.provedor_documento_id).toBe("doc-acordo");
   });
+
+  // ⚠️ O ID DO SIGNATÁRIO É O QUE A CLICKSIGN DEVOLVEU, E O CARIMBO É O ÚNICO LUGAR ONDE ELE CABE.
+  // Nívea, 24/09/2026: *"Deu erro no envio dos acordos. Não recebi e não consigo reenviar."* O envio
+  // de AC-000051 não falhou; quem devolvia 422 era o REENVIO, que precisa do signer id do endpoint
+  // `POST /envelopes/{id}/signers/{signer_id}/notifications`. Esse id existia por milissegundos
+  // dentro de `enviarParaAssinatura` e morria ali.
+  it("o carimbo de sucesso congela a chave da Clicksign de cada signatário", async () => {
+    const { escritas, sb } = bancoDeTeste({});
+    // Um id DIFERENTE por pessoa: com um id só, o teste passaria mesmo se a junção casasse errado.
+    let n = 0;
+    const { porta } = portaDeTeste();
+    const portaComIds = async <T = unknown>(
+      caminho: string,
+      opcoes: { metodo?: string } = {},
+    ): Promise<T> => {
+      if (caminho.endsWith("/signers") && (opcoes.metodo ?? "GET") === "POST") {
+        n += 1;
+        return { data: { id: `sig-clicksign-${n}` } } as T;
+      }
+      return porta<T>(caminho, opcoes);
+    };
+
+    await enviarAcordoParaAssinatura(sb, acordo(), {}, { montarPdf: PDF_PRONTO, porta: portaComIds });
+
+    const carimbo = escritas.find((e) => e.patch.envelope_id === "env-acordo");
+    const congelados = (carimbo?.patch.signatarios ?? []) as Array<{
+      chave?: string;
+      papel: string;
+    }>;
+    expect(congelados.map((s) => s.papel)).toEqual(["comprador", "vendedora", "careli"]);
+    expect(congelados.map((s) => s.chave)).toEqual([
+      "sig-clicksign-1",
+      "sig-clicksign-2",
+      "sig-clicksign-3",
+    ]);
+  });
 });
 
 // ── A MIGRATION QUE PODE NÃO TER ENTRADO ────────────────────────────────────

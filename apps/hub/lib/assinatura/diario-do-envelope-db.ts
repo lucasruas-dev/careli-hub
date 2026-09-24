@@ -32,6 +32,17 @@ export type SignatarioDaProposta = SignatarioDoEnvelope & {
    * apareceu nos eventos e não está na lista congelada (signatário acrescentado por fora).
    */
   papel: null | string;
+  /**
+   * O reenvio de convite NÃO PODE ser tentado para esta pessoa.
+   *
+   * ⚠️ É O DEFEITO DE 24/09/2026, VIRADO DO AVESSO. O endpoint do reenvio é
+   * `POST /envelopes/{id}/signers/{signer_id}/notifications`, e o único id que serve nele é o que
+   * a Clicksign devolveu no envio. Enquanto ele não estava congelado (todos os envelopes anteriores
+   * a 24/09/2026, AC-000051 incluso), a tela mandava a `key` do webhook ou o próprio e-mail, levava
+   * 422, e a faixa vermelha mandava a operadora procurar um erro que era nosso. Marcado, o botão
+   * não tenta e diz que o reenvio se faz no painel da Clicksign.
+   */
+  reenvioIndisponivel: boolean;
 };
 
 export type EnvelopeDoDiario = {
@@ -276,7 +287,13 @@ async function payloadMaisRecente(
   return null;
 }
 
-type SignatarioCongelado = { email: string; nome: string; papel: null | string };
+export type SignatarioCongelado = {
+  /** O id na Clicksign, congelado no envio (ou gravado por uma troca de e-mail). */
+  chave: null | string;
+  email: string;
+  nome: string;
+  papel: null | string;
+};
 
 /** A lista que o envio congelou em `temis_envelopes.signatarios` (`{ nome, email, ordem, papel }`). */
 function signatariosCongelados(bruto: unknown): SignatarioCongelado[] {
@@ -286,6 +303,7 @@ function signatariosCongelados(bruto: unknown): SignatarioCongelado[] {
     if (!item || typeof item !== "object" || Array.isArray(item)) continue;
     const pessoa = item as Record<string, unknown>;
     saida.push({
+      chave: typeof pessoa.chave === "string" && pessoa.chave.trim() ? pessoa.chave.trim() : null,
       email: typeof pessoa.email === "string" ? pessoa.email.trim() : "",
       nome: typeof pessoa.nome === "string" ? pessoa.nome.trim() : "",
       papel: typeof pessoa.papel === "string" ? pessoa.papel : null,
@@ -307,28 +325,37 @@ function signatariosCongelados(bruto: unknown): SignatarioCongelado[] {
  * e-mail repetido por pessoa (`lib/apolo/email-unico.ts`) — e continua não sendo o nome, que é o
  * campo que se repete e muda de acento.
  */
-function juntarComOsCongelados(
+export function juntarComOsCongelados(
   doPayload: SignatarioDoEnvelope[],
   congelados: SignatarioCongelado[],
 ): SignatarioDaProposta[] {
-  const papelPorEmail = new Map<string, null | string>();
+  const congeladoPorEmail = new Map<string, SignatarioCongelado>();
   for (const c of congelados) {
-    if (c.email) papelPorEmail.set(c.email.toLowerCase(), c.papel);
+    if (c.email) congeladoPorEmail.set(c.email.toLowerCase(), c);
   }
 
-  const juntos: SignatarioDaProposta[] = doPayload.map((s) => ({
-    ...s,
-    papel: papelPorEmail.get(s.email.toLowerCase()) ?? null,
-  }));
+  // ⚠️ A CHAVE CONGELADA VENCE A DO WEBHOOK, e é essa troca que conserta o reenvio. A `signer.key`
+  // que chega no payload identifica a pessoa para NÓS (ela casa a linha na tela), mas não é o
+  // `signer_id` que o endpoint de notificação da Clicksign espera — e mandá-la para lá é o 422 que
+  // a Nívea viu em 24/09/2026.
+  const juntos: SignatarioDaProposta[] = doPayload.map((s) => {
+    const congelado = congeladoPorEmail.get(s.email.toLowerCase());
+    return {
+      ...s,
+      chave: congelado?.chave ?? s.chave,
+      papel: congelado?.papel ?? null,
+      reenvioIndisponivel: !congelado?.chave,
+    };
+  });
 
   const jaTem = new Set(juntos.map((s) => s.email.toLowerCase()).filter((e) => e !== ""));
   for (const c of congelados) {
     if (c.email && jaTem.has(c.email.toLowerCase())) continue;
     juntos.push({
       assinouEm: null,
-      // Sem `signer.key` — ela só existe depois que a Clicksign responde. O e-mail é a identidade
-      // possível aqui, e é o mesmo campo por onde a junção acima procura.
-      chave: c.email,
+      // Sem a chave congelada sobra o e-mail, que identifica a linha na tela e NÃO vai para a
+      // Clicksign: `reenvioIndisponivel` é o que impede isso.
+      chave: c.chave ?? c.email,
       comecouEm: null,
       convite: "sem_noticia",
       conviteDetalhe: null,
@@ -336,6 +363,7 @@ function juntarComOsCongelados(
       email: c.email,
       nome: c.nome,
       papel: c.papel,
+      reenvioIndisponivel: !c.chave,
     });
   }
 

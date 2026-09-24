@@ -30,6 +30,7 @@ import { QueuePanel } from "@/modules/guardian/attendance/components/QueuePanel"
 import { WhatsAppConversationPanel } from "@/modules/guardian/attendance/components/WhatsAppConversationPanel";
 import { IrisPage } from "@/modules/caredesk/IrisPage";
 import { useAuth } from "@/providers/auth-provider";
+import { mudancaDaEtapa } from "@/lib/guardian/mudanca-da-etapa";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import type {
   AttendancePriority,
@@ -1251,8 +1252,20 @@ function applyClientStage(
   // card e o histórico mentiam juntos, com uma linha atribuída ao "Hades" que nunca existiu no
   // banco. Era o chamado TI-000138 desfeito pela porta dos fundos, justamente nos clientes em
   // negociação ativa, que são os mais trabalhados.
-  const stageChanged =
-    !client.workflow.stageManual && derived.stage !== client.workflow.stage;
+  //
+  // ⚠️ E A PRÓXIMA AÇÃO TAMBÉM ENTRA NA COMPARAÇÃO. Enquanto só a etapa era comparada, a promessa
+  // vencida (que deriva "A acionar", a MESMA etapa base do read-model) não mudava nada aqui: a
+  // fila e o copiloto seguiam com a frase genérica enquanto o card do detalhe já dizia "Promessa
+  // vencida em 18/09 sem baixa registrada". A regra mora em `lib/guardian/mudanca-da-etapa.ts`
+  // porque este arquivo tem `@ts-nocheck` na linha 2 e o typecheck não cobre nada do que está aqui.
+  const { escreveEtapa: stageChanged, escreveProximaAcao } = mudancaDaEtapa(
+    {
+      nextAction: client.workflow.nextAction ?? null,
+      stage: client.workflow.stage ?? null,
+      stageManual: client.workflow.stageManual,
+    },
+    derived,
+  );
   // Operador que esta tratando = quem enviou a proposta mais recente. Cai pro
   // responsavel atual quando nao houver proposta.
   const responsavel =
@@ -1261,8 +1274,18 @@ function applyClientStage(
       : client.responsavel;
   const responsavelChanged = responsavel !== client.responsavel;
 
-  if (!stageChanged && !responsavelChanged) {
+  if (!stageChanged && !escreveProximaAcao && !responsavelChanged) {
     return client; // mesma referencia: idempotente (evita loop de render)
+  }
+
+  // ⚠️ SÓ A ETAPA VIRA LINHA DE HISTÓRICO. A frase muda calada: carimbar "A acionar → A acionar"
+  // seria inventar uma transição que não houve, atribuída ao "Hades".
+  if (!stageChanged && escreveProximaAcao) {
+    return {
+      ...client,
+      responsavel,
+      workflow: { ...client.workflow, nextAction: derived.nextAction },
+    };
   }
 
   return {

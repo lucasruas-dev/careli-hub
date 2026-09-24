@@ -8,6 +8,7 @@ import {
   fraseDaFalhaDepoisDeRemover,
   lerSignatariosCongelados,
   RECUSA_DE_QUEM_JA_ASSINOU,
+  reenviarConvite,
   type SignatarioCongelado,
   trocarEmailDoSignatario,
 } from "./trocar-signatario";
@@ -445,6 +446,62 @@ describe("a troca de e-mail, do começo ao fim", () => {
     expect(atualizacoes[0]?.signatarios).toEqual([
       { email: "titular@x.com", nome: "Henrique Sales do Vale", ordem: 1, papel: "comprador" },
       { chave: "sig-novo", email: "maria@x.com", nome: "Maria Souza Lima", ordem: 1, papel: "conjuge" },
+    ]);
+  });
+});
+
+// ── O REENVIO DO CONVITE ────────────────────────────────────────────────────
+//
+// ⚠️ O QUE DEVOLVIA 422 ERA O REENVIO, E A FRASE NÃO DIZIA O QUE FAZER. Nívea, 24/09/2026: *"Deu
+// erro no envio dos acordos. Não recebi e não consigo reenviar."* Medido no mesmo dia: o ENVIO de
+// AC-000051 não falhou (`falha` vazia, `estado='aguardando'`, `enviado_em` 23/09 13:11:33Z). O
+// endpoint do reenvio é `POST /envelopes/{id}/signers/{signer_id}/notifications`, e a tela mandava
+// ali a `chave` do diário — que é a `signer.key` do webhook ou, quando a pessoa só existe na lista
+// congelada, o PRÓPRIO E-MAIL. Nenhum dos dois é o signer id que a Clicksign criou.
+describe("o reenvio do convite", () => {
+  const doEnvelope = { envelopeId: "env-30", signerId: "sig-titular" };
+
+  it("e-mail no lugar do signer id é recusado ANTES da chamada que cobra", async () => {
+    const { sb } = bancoDeTeste({ envelope: envelopeGravado });
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await reenviarConvite(sb, { ...doEnvelope, signerId: "titular@x.com" }, porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(400);
+    expect(r.erro).toContain("painel da Clicksign");
+    // ⚠️ ZERO CHAMADAS: mandar e-mail nesse endpoint é pedir 422 e escrever na tela um erro nosso
+    // como se fosse do provedor.
+    expect(chamadas).toEqual([]);
+  });
+
+  it("o 422 da Clicksign devolve frase que diz o que fazer, e não só o detalhe cru do provedor", async () => {
+    const { sb } = bancoDeTeste({ envelope: envelopeGravado });
+    const { porta } = portaDeTeste({
+      "POST /envelopes/env-30/signers/sig-titular/notifications": new FalhaDaClicksign(
+        "Clicksign 422",
+        { detalhes: ["Unprocessable Entity"], requestId: "req-1", status: 422 },
+      ),
+    });
+
+    const r = await reenviarConvite(sb, doEnvelope, porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.erro).toContain("painel da Clicksign");
+    expect(r.erro).toContain("O envelope continua como estava");
+  });
+
+  it("o convite que sai continua saindo", async () => {
+    const { sb } = bancoDeTeste({ envelope: envelopeGravado });
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await reenviarConvite(sb, doEnvelope, porta);
+
+    expect(r.ok).toBe(true);
+    expect(chamadas).toEqual([
+      { caminho: "/envelopes/env-30/signers/sig-titular/notifications", metodo: "POST" },
     ]);
   });
 });

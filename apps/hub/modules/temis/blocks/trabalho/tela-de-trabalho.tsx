@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { Tooltip } from "@repo/uix";
 import type { AnaliseDoTrabalho, CampoDaAnalise } from "@/lib/temis/analise-do-trabalho";
 import type { DescontoDaProposta } from "@/lib/temis/comercial-da-analise";
 import type { PedidoDoTrabalho } from "@/lib/temis/pedido-do-trabalho";
@@ -41,6 +42,7 @@ import {
 import { contratoVigente } from "@/lib/temis/contrato-guardado";
 import { MOTIVOS } from "@/lib/temis/indeferimento";
 import { recadoDaGeracao } from "@/lib/temis/minuta-da-cadeia";
+import { RECUSA_DE_REENVIO_SEM_ID } from "@/lib/assinatura/recusa-de-reenvio";
 import { pedidoDoTrabalho } from "@/lib/temis/pedido-do-trabalho";
 import {
   caminhoDoCard,
@@ -216,6 +218,15 @@ type SignatarioNaTela = {
    * verdade quer dizer: apareceu nos eventos e não está na lista congelada do envio.
    */
   papel: null | string;
+  /**
+   * O reenvio de convite não pode ser tentado para esta pessoa.
+   *
+   * ⚠️ O ENDPOINT DO REENVIO QUER O SIGNER ID DA CLICKSIGN, e até 24/09/2026 ele nunca foi guardado
+   * do nosso lado: a tela mandava a `chave` (a key do webhook, ou o e-mail) e levava 422, que
+   * aparecia em vermelho como se fosse defeito do provedor. Nos envelopes antigos o botão some, e
+   * o reenvio se faz no painel da Clicksign. `trocar_email` continua valendo.
+   */
+  reenvioIndisponivel?: boolean;
 };
 
 type Card = {
@@ -3055,21 +3066,46 @@ function LinhaDoSignatario({
                   10/09/2026 (*"coloca esses botões no topo somente o ícone"*). E reenviar convite
                   para quem JÁ ASSINOU é gesto sem sentido: a tela oferecia, e oferecer o que não
                   serve é o que faz o operador duvidar do que serve. */}
+              {/* ⚠️ E QUANDO NÃO TEMOS O ID DO SIGNATÁRIO NA CLICKSIGN ELE FICA DESABILITADO, NÃO
+                  SOME. O endpoint do reenvio espera o signer id criado no envio, e nos envelopes
+                  anteriores a 24/09/2026 ele nunca foi guardado do nosso lado: a chamada volta 422
+                  e a tela escreve, em vermelho, um erro que é nosso. Medido em 24/09/2026: 21
+                  envelopes em `temis_envelopes`, ZERO com `chave` congelada — ou seja, sumir aqui
+                  era sumir em 100% dos envelopes que existem. E para quem está em "sem notícia"
+                  (`precisaDeConserto` falso) a faixa de ações ficava COMPLETAMENTE VAZIA, contra o
+                  que o Lucas pediu em 12/09/2026, duas telas acima: *"temos que conduzir o usuário
+                  na tela, ele tem que saber o que fazer"*. O Hades já faz assim
+                  (`PropostasPanel.tsx`), e as duas telas do painel de assinatura têm de bater.
+                  `trocar_email` continua valendo — ele reencontra a pessoa pelo diário —, e por
+                  isso `podeMexer` não muda. */}
               {signatario.assinouEm ? null : (
-                <button
-                  aria-label="Reenviar o convite para este e-mail"
-                  className="grid size-7 shrink-0 place-items-center rounded-lg border border-line text-ink-muted transition-colors hover:bg-subtle hover:text-ink disabled:opacity-50"
-                  disabled={acaoNoAr !== null}
-                  onClick={() => void executar({ acao: "reenviar" })}
-                  title="Reenviar o convite para este e-mail"
-                  type="button"
+                <Tooltip
+                  content={
+                    signatario.reenvioIndisponivel
+                      ? RECUSA_DE_REENVIO_SEM_ID
+                      : "Reenviar o convite para este e-mail"
+                  }
+                  placement="top"
                 >
-                  {acaoNoAr === "reenviar" ? (
-                    <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw aria-hidden="true" className="size-3.5" />
-                  )}
-                </button>
+                  <button
+                    aria-label="Reenviar o convite para este e-mail"
+                    className="grid size-7 shrink-0 place-items-center rounded-lg border border-line text-ink-muted transition-colors hover:bg-subtle hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={acaoNoAr !== null || signatario.reenvioIndisponivel === true}
+                    onClick={() => void executar({ acao: "reenviar" })}
+                    title={
+                      signatario.reenvioIndisponivel
+                        ? RECUSA_DE_REENVIO_SEM_ID
+                        : "Reenviar o convite para este e-mail"
+                    }
+                    type="button"
+                  >
+                    {acaoNoAr === "reenviar" ? (
+                      <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw aria-hidden="true" className="size-3.5" />
+                    )}
+                  </button>
+                </Tooltip>
               )}
             </div>
           )}

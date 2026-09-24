@@ -39,6 +39,7 @@ import {
 } from "@/lib/hades/dossie/termo-de-acordo-gate";
 import { motivoParaNaoEnviarParaAssinatura } from "@/lib/hades/acordo/envio-gate";
 import { TERMO_DE_ACORDO_LIBERADO } from "@/lib/apolo/termos-liberados";
+import { RECUSA_DE_REENVIO_SEM_ID } from "@/lib/assinatura/recusa-de-reenvio";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import type {
   GuardianCompromissoDetail,
@@ -569,6 +570,17 @@ type QuemAssinouNaTela = {
   email: string;
   nome: string;
   papel: null | string;
+  /**
+   * O botão de reenviar convite não pode nem tentar.
+   *
+   * ⚠️ O BOTÃO QUE TENTA E FALHA É PIOR DO QUE O BOTÃO DESABILITADO. Nívea, 24/09/2026: *"Deu erro
+   * no envio dos acordos. Não recebi e não consigo reenviar."* O envio de AC-000051 não falhou; o
+   * que falhava era este botão, que mandava a `chave` do diário para um endpoint que espera o
+   * signer id da Clicksign, levava 422 e escrevia na tela, em vermelho, um erro nosso como se
+   * fosse do provedor. Nos envelopes enviados antes de 24/09/2026 o id não existe do nosso lado:
+   * o reenvio se faz no painel da Clicksign, e o tooltip diz isso.
+   */
+  reenvioIndisponivel?: boolean;
 };
 
 type AssinaturaDoCard = {
@@ -841,11 +853,26 @@ function AssinaturaDoAcordo({ item }: { item: GuardianCompromissoDetail }) {
                         : s.email}
                   </span>
                   {!s.assinouEm && assinatura.envelope.envelopeId ? (
-                    <Tooltip content="Reenvia o convite desta pessoa. Nada é criado nem removido no envelope." placement="top">
+                    <Tooltip
+                      content={
+                        // ⚠️ A FRASE É A MESMA DA TÊMIS, E VEM DA MESMA CONSTANTE. Estava copiada
+                        // à mão aqui, com outras palavras; as duas telas do painel de assinatura
+                        // têm de contar a mesma história (a casa já pagou caro para mantê-las
+                        // iguais).
+                        s.reenvioIndisponivel || s.chave.includes("@")
+                          ? RECUSA_DE_REENVIO_SEM_ID
+                          : "Reenvia o convite desta pessoa. Nada é criado nem removido no envelope."
+                      }
+                      placement="top"
+                    >
                       <button
                         type="button"
                         onClick={() => void agir("reenviar", { signerId: s.chave })}
-                        disabled={trabalhando !== null}
+                        disabled={
+                          trabalhando !== null ||
+                          s.reenvioIndisponivel === true ||
+                          s.chave.includes("@")
+                        }
                         className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-line text-ink-soft transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
                         aria-label={`Reenviar o convite de ${s.nome}`}
                       >

@@ -325,7 +325,9 @@ function deriveUnitCobranca(
   return null;
 }
 
-function buildFunnel(
+// Exportada para teste: é ela que responde o "Recuperado (30d)" do painel do incorporador, e a
+// janela desse KPI mudou de significado em 24/09/2026 (ver o aviso dentro da função).
+export function buildFunnel(
   compromissos: CompromissoScopeRow[],
   parcelas: ParcelaScopeRow[],
 ): ApoloCobrancaFunnel {
@@ -369,6 +371,12 @@ function buildFunnel(
     }
   }
 
+  // ⚠️ MESMA MUDANÇA DE SIGNIFICADO DO GÊMEO EM `lib/guardian/compromissos.ts`: desde 24/09/2026
+  // `paid_at` é o dia em que o CLIENTE pagou (a `payment_date` do C2X), e não a hora em que o cron
+  // percebeu. Uma baixa conciliada hoje mas paga há mais de 30 dias não entra mais nesta janela, e
+  // a defasagem medida entre pagar e conciliar foi de 44 e 49 dias. O painel do incorporador muda
+  // de número junto com o do gestor, no mesmo dia: se a pergunta for "baixado em 30 dias", a
+  // janela precisa de outra coluna.
   let recCount = 0;
   let recValue = 0;
   for (const parcela of parcelas) {
