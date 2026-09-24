@@ -54,7 +54,38 @@ Ficaram para depois:
   duplicata na próxima carga. Hoje há zero edições desse campo; o caminho é tirar da edição.
 - **Nome fora do CHECK** suja o cadastro de clientes novos antes da carga falhar nas parcelas.
 
-## ⚠️ O que ainda impede subir os demais empreendimentos
+## Atualização, fim de 24/09: migrations 0189 e 0190 APLICADAS, tela pronta
+
+Autorização do Lucas: *"tem o meu ok"* (migration e devolução do cadastro do MOST).
+
+- **0189** `a_parcela_sabe_de_qual_categoria_veio`: `lsoft_parcelas.categoria_lsoft` (20.866 de
+  20.866 preenchidas: Garden 124, Vale do Sol 102, Vale do Ouro 69), índice, CHECK de 3 para 13
+  nomes. Prova em bloco que desfaz tudo: aceita "Guaimbé" e recusa "Guaimbê".
+- **0190** `devolve_mae_e_nascimento_do_most`: 200 mães e 218 nascimentos de volta, só onde o CPF do
+  MOST é o do cliente (222 de 222) e só onde estava nulo. As 200 mães batem com o MOST.
+- A carga passou a substituir por **categoria de origem**; a mesma coluna é a tag de patrimônio.
+- `scripts/lsoft/extrair-por-categoria.ps1`: extrator no formato do importador, que recusa
+  124/102/69.
+- Tela: seletor com os 13, subtítulo com o empreendimento escolhido, filtro "Só patrimônio", bloco
+  de patrimônio e selo no cliente e na parcela.
+
+**Ensaio das categorias novas** (118, 66, 126, 70, 115, 17): 243 clientes, 11.794 parcelas, nenhuma
+descartada, 0 edição do time afetada. A carga pode rodar.
+
+**Verificação completa do worktree:** o typecheck do hub acusava 181 erros porque os pacotes
+`@repo/*` exportam de `dist/`, que não existia no worktree novo. Depois de
+`npx turbo run build --filter="@repo/hub^..."`: **0 erros, exit 0**. Lint dos 14 arquivos: exit 0.
+84 testes.
+
+### A ordem que falta
+
+1. Subir a branch (preview) e conferir o build na Vercel.
+2. Deploy da tela em produção, com changelog e roadmap: **OK do Lucas**.
+3. Logo depois, a carga das categorias novas: **OK do Lucas**. Antes do deploy não, porque a tela no
+   ar soma tudo o que está no espelho e mostraria os novos sem seletor nem tag.
+4. A carga do Garden e do Vale do Sol continua travada pela divergência do cliente `00000587`.
+
+## ⚠️ O que ainda impede subir os demais empreendimentos (texto da manhã, antes da 0189)
 
 1. **O CHECK** de `lsoft_parcelas.empreendimento` só aceita Garden, Vale do Sol e Vale do Ouro - 2.
 2. **A categoria 17 mistura empreendimentos.** Vale do Sol, Guaimbê, Giant Towers e On Sky recebem
