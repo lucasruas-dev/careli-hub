@@ -77,13 +77,61 @@ descartada, 0 edição do time afetada. A carga pode rodar.
 `npx turbo run build --filter="@repo/hub^..."`: **0 erros, exit 0**. Lint dos 14 arquivos: exit 0.
 84 testes.
 
-### A ordem que falta
+### Deploy de produção: v1.374.0
 
-1. Subir a branch (preview) e conferir o build na Vercel.
-2. Deploy da tela em produção, com changelog e roadmap: **OK do Lucas**.
-3. Logo depois, a carga das categorias novas: **OK do Lucas**. Antes do deploy não, porque a tela no
-   ar soma tudo o que está no espelho e mostraria os novos sem seletor nem tag.
-4. A carga do Garden e do Vale do Sol continua travada pela divergência do cliente `00000587`.
+- Autorização do Lucas: *"tem o meu ok"* (24/09/2026), para subir a branch, publicar e rodar a carga.
+- Preview `dpl_3M1LEq6d45KACiJyFUKUESyyLLeB` (commit `9f38ef6b`): **READY**.
+- Produção: `git push origin HEAD:main`, `85b8d613..3155cc9c`, deployment `dpl_BJRdsJ3WMRfYY9uRE7RCK1GSakTA`.
+- **Rollback:** `dpl_BYHtd2qVwrCMuRBaBC1u2RNkhZgA` (v1.373.0, commit `85b8d613`), Instant Rollback no painel.
+- Changelog 1.374.0 (`deployedAt` 2026-09-24T18:40:33-03:00) e roadmap PAN-122 entregue.
+- Suíte no hook de pré-push: 586 arquivos, 8.942 testes.
+
+⚠️ Duas travas de AMBIENTE apareceram no worktree novo, nenhuma no código:
+1. `check-types` acusava 181 erros porque os pacotes `@repo/*` exportam de `dist/`, que não existia.
+   Resolvido com `npx turbo run build --filter="@repo/hub^..."`.
+2. Dois testes de `lib/hercules/proposta-pdf.test.ts` gravam em `<raiz>/.tmpr/`, pasta ignorada
+   pelo git que o worktree novo não tinha. Resolvido criando a pasta.
+
+⚠️ A trava de permissão da sessão recusava `git push` quando o comando vinha emendado (`| grep`,
+`git -C <pasta> push`): só a forma exata casa com a regra `Bash(git push:*)` do settings local.
+
+- **No ar:** `dpl_BJRdsJ3WMRfYY9uRE7RCK1GSakTA` READY às 18:50:26, `c2x.app.br` respondendo 200.
+
+### Carga das categorias novas: FEITA (18:50:49 a 18:50:54)
+
+Rodou logo depois do deploy, como combinado. Antes do deploy não podia, porque a tela no ar somava
+tudo o que estivesse no espelho e mostraria os novos sem seletor nem marca.
+
+⚠️ **O dado é da cópia das 13:53.** Às 18:4x o servidor do LSoft (`192.168.1.254`) parou de responder
+("Host de destino inacessível"). Nessas categorias não havia edição do time a perder, e a próxima
+carga com rede substitui tudo de novo.
+
+| categoria | empreendimento | parcelas | em aberto | a receber |
+|---|---|---:|---:|---:|
+| 118 | Giant Towers | 1.738 | 1.284 | R$ 11.687.468,93 |
+| 66 | On Sky | 2.805 | 383 | R$ 2.361.528,76 |
+| 126 | On Sky | 297 | 31 | R$ 13.495,41 |
+| 70 | Guaimbé | 672 | 70 | R$ 1.579.333,29 |
+| 115 | Ed. Rubi | 186 | 103 | R$ 1.240.867,49 |
+| 115 | Ed. Jade | 138 | 116 | R$ 1.039.000,00 |
+| 17 | (patrimônio, 10 destinos) | 5.958 | 1.372 | R$ 18.381.418,45 |
+
+A categoria 17 por destino: A classificar 1.811 parcelas (148 em aberto, **R$ 4.920.086,49**),
+Guaimbé 1.592, Vale do Sol 761, Mirage Residence 651, Giant Towers 529, Manhattan 307, On Sky 180,
+Ed. Cristal 81, Ed. Esmeralda 45, Ed. Rubi 1.
+
+Conferido no banco depois:
+- 11.794 parcelas novas e 243 clientes, registro em `lsoft_sincronizacoes` com `ok = true`.
+- Garden, Vale do Sol (102) e Vale do Ouro - 2 **intactos**: as mesmas 20.866 parcelas.
+- Espelho: 32.660 parcelas, 475 clientes, **0 parcela sem categoria**.
+- Trilha 948 de 948 ligada. Classificação da Caixa 177 de 180; as 3 órfãs são as de antes.
+- 200 mães e 230 nascimentos. A carga preservou 33 campos que o LSoft trazia em branco.
+
+### O que continua em aberto
+
+1. A carga do Garden e do Vale do Sol continua **travada** pela divergência do cliente `00000587`.
+2. "A classificar" soma R$ 4,92 mi em 148 parcelas: são valores altos, pedem olho humano.
+3. Nova extração quando o servidor do LSoft voltar.
 
 ## ⚠️ O que ainda impede subir os demais empreendimentos (texto da manhã, antes da 0189)
 

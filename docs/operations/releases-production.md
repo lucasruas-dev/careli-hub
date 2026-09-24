@@ -95,6 +95,47 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Portal do incorporador/LSoft] Todos os empreendimentos e a marca de patrimonio no LSoft Integracao (v1.374.0)`.
+- Squad/agente responsavel: `Zeus (sessao do portal da Cecilio Rocha)`.
+- Data e hora local: `2026-09-24 18:50:26 -03:00` (deployment READY); carga do LSoft `18:50:49` a `18:50:54`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK explicito do Lucas ("tem o meu ok", 24/09) para push, deploy e rodar a carga logo depois do deploy; preview dpl_3M1LEq6d45KACiJyFUKUESyyLLeB (commit 9f38ef6b) READY antes`.
+- Escopo publicado:
+  - `LSoft Integracao com os 13 empreendimentos no seletor e subtitulo com o empreendimento escolhido`;
+  - `marca de patrimonio (categoria 17 do LSoft): filtro "So patrimonio", bloco de cards proprio e selo no cliente e na parcela`;
+  - `carga do LSoft segura: grava antes de apagar, substitui por categoria de origem, desfaz se falhar, mescla o cadastro, recusa se desfizer edicao do time, religa a trilha e a classificacao no fim`.
+- Commit publicado: `3155cc9ced50cd6c0b1b93391d344b5af9ba2137`.
+- Deployment anterior: `dpl_BYHtd2qVwrCMuRBaBC1u2RNkhZgA` (commit `85b8d613`, v1.373.0).
+- Deployment novo: `dpl_BJRdsJ3WMRfYY9uRE7RCK1GSakTA`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Arquivos/modulos incluidos: `lib/lsoft/categorias.ts`, `lib/lsoft/impressao-digital.ts`, `lib/lsoft/religar-trilha.ts`, `lib/lsoft/carga.ts`, `lib/lsoft/mesclar-cliente.ts`, `lib/lsoft/divergencia-da-carga.ts`, `lib/lsoft/carteira.ts`, `modules/lsoft/CarteiraLsoft.tsx`, `scripts/lsoft/importar-para-supabase.mjs`, `scripts/lsoft/reconciliar-trilha.mjs`, `scripts/lsoft/reconciliar-classificacao.mjs`, `scripts/lsoft/extrair-por-categoria.ps1` e os testes.
+- Arquivos/modulos excluidos: `migrations 0188, 0189 e 0190 JA estavam aplicadas em producao antes do deploy, cada uma com OK proprio do Lucas (ver docs/operations/2026-09-24-carga-do-lsoft-segura.md)`.
+- Validacoes executadas:
+  - `check-types`: `0 erros, depois de npx turbo run build --filter="@repo/hub^..." (o worktree novo nao tinha o dist dos pacotes)`;
+  - `hook de pre-push`: `586 arquivos, 8.942 testes passando`;
+  - `ensaio da carga (--ensaio) contra producao`: `243 clientes, 11.794 parcelas, nenhuma descartada, 0 edicao do time afetada`.
+- Carga pos-deploy (escrita no banco, autorizada no mesmo OK):
+  - `categorias 118, 66, 126, 70, 115 e 17: 243 clientes e 11.794 parcelas gravadas; registro em lsoft_sincronizacoes ok=true`;
+  - `Garden (124), Vale do Sol (102) e Vale do Ouro - 2 (69) intactos: 20.866 parcelas, as mesmas de antes`;
+  - `total do espelho: 32.660 parcelas, 475 clientes, 0 parcela sem categoria`;
+  - `trilha 948 de 948 ligada; classificacao da Caixa 177 de 180 (as 3 orfas sao antigas: 00000443, 00000476, 00000612)`;
+  - `200 maes e 230 nascimentos no cadastro (a carga preservou os 33 campos que o LSoft trazia em branco)`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200, build READY em ~227s, alias apontado`.
+- Logs recentes: `sem erro critico`.
+- Rollback definido: `Instant Rollback para dpl_BYHtd2qVwrCMuRBaBC1u2RNkhZgA (commit 85b8d613). A carga se desfaz apagando as parcelas das categorias 118, 66, 126, 70, 115 e 17; o backup das seis tabelas lsoft_* de antes da 0188 esta em Documents\Relatorios Panteon\2026-09-24 backup lsoft`.
+- Riscos conhecidos:
+  - `os dados da carga sao da COPIA DAS 13:53 de 24/09: o servidor do LSoft (192.168.1.254) ficou inacessivel a partir das 18:4x. A proxima carga com rede substitui tudo de novo`;
+  - `"A classificar" (categoria 17 sem produto no texto) tem 148 parcelas em aberto somando R$ 4,92 mi: parcelas altas, pedem olho humano`;
+  - `a tela ainda mostra um carimbo "dados de" GLOBAL: depois de carga parcial, parece que tudo foi atualizado`.
+- Pendencias: `a carga do Garden e do Vale do Sol continua TRAVADA pela divergencia do cliente 00000587 (parcela 007/084 de 10/09: R$ 2.207,18 na tela contra R$ 4.414,36 no LSoft) ate alguem conferir; achados de acesso (rotas LSoft com authorizeApoloRead, rota do portal sem escopo do cliente) devolvidos ao Lucas`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas validar a tela LSoft Integracao por print (seletor com os 13, filtro So patrimonio); conferir o 00000587; nova extracao quando o servidor do LSoft voltar`.
+
+Registro de producao:
+
 - Assunto: `[Temis/Hades] A imobiliaria assina, e a ordem cadastrada volta a valer (v1.363.0)`.
 - Squad/agente responsavel: `Zeus`.
 - Data e hora local: `2026-09-23 09:38:10 -03:00`.
