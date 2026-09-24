@@ -111,6 +111,10 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
   vi.unstubAllGlobals();
+  // ⚠️ O DOWNLOAD AGENDA UM TIMER DE 60 s para revogar o blob (a correção do defeito do Isac).
+  // Sem limpar, cada teste que clica no PDF deixa esse timer pendurado no ambiente do jsdom até o
+  // fim da suíte — e a suíte inteira roda com 8.292 testes disputando a mesma máquina.
+  vi.clearAllTimers();
 });
 
 describe("EvolucaoDaParcela", () => {
