@@ -677,6 +677,42 @@ export async function salvarParcelaDoLsoft(args: {
     vencimento: texto(antes.vencimento),
   });
 
+  // ⚠️ O ORDINAL DESEMPATA GÊMEAS GENUÍNAS: duas parcelas byte a byte iguais têm a mesma digital, e
+  // o religamento escolhe entre elas pela posição na lista ordenada por id. Gravar sempre 1 faria a
+  // baixa da segunda gêmea ir parar na primeira depois da carga. Medido em 24/09/2026: existem 2
+  // parcelas assim na base; nenhuma tinha trilha ainda, mas a primeira edição de uma delas erraria.
+  // As candidatas a gêmea têm o mesmo cliente, empreendimento, parcela e vencimento: a consulta é
+  // pequena, e a digital decide o resto. Se ela falhar, fica 1: a trilha não derruba a edição.
+  let ordinal = 1;
+  {
+    let consulta = admin
+      .from("lsoft_parcelas")
+      .select("id, cliente_codigo, empreendimento, parcela, vencimento, valor, observacoes, origem")
+      .eq("cliente_codigo", String(antes.cliente_codigo))
+      .eq("empreendimento", String(antes.empreendimento));
+    consulta = antes.parcela === null ? consulta.is("parcela", null) : consulta.eq("parcela", String(antes.parcela));
+    consulta =
+      antes.vencimento === null ? consulta.is("vencimento", null) : consulta.eq("vencimento", String(antes.vencimento));
+    const { data: candidatas } = await consulta;
+    const gemeas = ((candidatas ?? []) as Array<Record<string, unknown>>)
+      .filter(
+        (p) =>
+          digitalDaParcela({
+            cliente_codigo: texto(p.cliente_codigo),
+            empreendimento: texto(p.empreendimento),
+            observacoes: texto(p.observacoes),
+            origem: texto(p.origem),
+            parcela: texto(p.parcela),
+            valor: p.valor as null | number | string,
+            vencimento: texto(p.vencimento),
+          }) === digital,
+      )
+      .map((p) => String(p.id))
+      .sort((a, b) => a.localeCompare(b));
+    const posicao = gemeas.indexOf(args.parcelaId);
+    if (posicao >= 0) ordinal = posicao + 1;
+  }
+
   const mudancas: Record<string, unknown> = {};
   const trilha: Record<string, unknown>[] = [];
 
@@ -690,6 +726,7 @@ export async function salvarParcelaDoLsoft(args: {
       // ainda diz de quem era a linha e alimenta as redes mais frouxas do reconciliador.
       empreendimento_no_momento: texto(antes.empreendimento),
       impressao_digital: digital,
+      ordinal,
       parcela_id: args.parcelaId,
       parcela_rotulo: rotulo,
       valor_anterior: velho,
