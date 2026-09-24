@@ -53,8 +53,13 @@ export function OrganizacaoDaAssinatura({
   compacto = false,
   propostaId,
 }: {
-  /** Chamado DEPOIS de o envelope existir na Clicksign. Quem recebe fecha a tela e avisa o quadro. */
-  aoEnviar?: (envelope: { envelopeId: string; nome: string }) => void;
+  /**
+   * Chamado DEPOIS de o envelope existir na Clicksign. Quem recebe fecha a tela e avisa o quadro.
+   *
+   * ⚠️ `avisoDoHercules` VAI JUNTO (revisão de 24/09/2026): quem fecha a tela é quem escreve o recado
+   * que fica, e o aviso de que a venda não acompanhou o card tem de estar nele.
+   */
+  aoEnviar?: (envelope: { avisoDoHercules?: string; envelopeId: string; nome: string }) => void;
   /**
    * O envio está no ar (`true`) ou acabou (`false`, inclusive quando falhou).
    *
@@ -76,7 +81,11 @@ export function OrganizacaoDaAssinatura({
   const [carregando, setCarregando] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
-  const [enviado, setEnviado] = useState<null | { envelopeId: string; nome: string }>(null);
+  const [enviado, setEnviado] = useState<null | {
+    avisoDoHercules?: string;
+    envelopeId: string;
+    nome: string;
+  }>(null);
   /**
    * O botão NÃO VOLTA: pode ter sobrado envelope na conta, e só quem olhar a Clicksign resolve.
    *
@@ -256,8 +265,15 @@ export function OrganizacaoDaAssinatura({
         setConfirmando(false);
         return;
       }
-      setEnviado({ envelopeId: payload.data.envelopeId, nome: payload.data.nome });
-      aoEnviar?.({ envelopeId: payload.data.envelopeId, nome: payload.data.nome });
+      // ⚠️ O AVISO DO HÉRCULES É PARTE DO SUCESSO, NÃO UM ERRO (revisão de 24/09/2026): o envelope
+      // saiu, e a venda não acompanhou o card. Vai para a caixa verde e para quem fecha a tela.
+      const feito = {
+        ...(payload.data.avisoDoHercules ? { avisoDoHercules: payload.data.avisoDoHercules } : {}),
+        envelopeId: payload.data.envelopeId,
+        nome: payload.data.nome,
+      };
+      setEnviado(feito);
+      aoEnviar?.(feito);
     } catch (e) {
       // ⚠️ NENHUMA RESPOSTA NÃO É "NÃO ENVIOU". Ver a nota de `precisaConferirNaClicksign`: a
       // mensagem não pode convidar a tentar de novo às cegas, porque o envelope pode estar lá,
@@ -306,6 +322,12 @@ export function OrganizacaoDaAssinatura({
             O envelope <span className="font-semibold">{enviado.nome}</span> foi criado, ativado e os
             convites saíram. Id na Clicksign: {enviado.envelopeId}.
           </p>
+        </div>
+      ) : null}
+
+      {enviado?.avisoDoHercules ? (
+        <div className="mt-2">
+          <Linha tom="aviso">{enviado.avisoDoHercules}</Linha>
         </div>
       ) : null}
 

@@ -153,6 +153,43 @@ describe("o fluxo do envelope", () => {
   });
 });
 
+// ⚠️ O ID DO SIGNATÁRIO É O QUE VOLTA DO PASSO 3, E É O ÚNICO QUE SERVE PARA REENVIAR CONVITE. O
+// reenvio é `POST /envelopes/{id}/signers/{signer_id}/notifications`; mandar ali a `signer.key` do
+// webhook ou o e-mail da pessoa devolve 422 (Nívea, 24/09/2026: *"não consigo reenviar"*). Este
+// teste prende o contrato do retorno: sem ele, o carimbo do envio não tem o que congelar.
+describe("o envio devolve o id de cada signatário", () => {
+  it("um id por e-mail, e não só o envelope e o documento", async () => {
+    const { porta } = duplo();
+
+    const r = await enviarParaAssinatura(
+      pedido([
+        pessoa("Henrique Sales do Vale", "h@x.com", "comprador", 1),
+        pessoa("Fulana Representante", "v@x.com", "vendedora", 2),
+      ]),
+      porta,
+    );
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.envelopeId).toBe("env_1");
+    expect(r.documentoId).toBe("doc_1");
+    expect(r.signatarios).toEqual({ "h@x.com": "sig_1", "v@x.com": "sig_2" });
+  });
+
+  it("a chave do mapa é o e-mail em minúsculas, que é como o carimbo procura", async () => {
+    const { porta } = duplo();
+
+    const r = await enviarParaAssinatura(
+      pedido([pessoa("Henrique Sales do Vale", "  H@X.com ", "comprador", 1)]),
+      porta,
+    );
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.signatarios).toEqual({ "h@x.com": "sig_1" });
+  });
+});
+
 describe("a ordem vira `group`", () => {
   // ⚠️ O `group` DA CLICKSIGN COMEÇA EM 1 (default deles). Nossa `ordenarSignatarios` devolve 0
   // quando ninguém espera ninguém; mandar 0 seria um valor que a doc não prevê.

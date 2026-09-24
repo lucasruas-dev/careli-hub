@@ -1,3 +1,4 @@
+import { soDigitos } from "@/lib/apolo/c2x-integracao";
 import { numeroDaParcela } from "@/lib/apolo/numero-da-parcela";
 import { getHadesDbPool } from "@/lib/guardian/db";
 import {
@@ -100,11 +101,22 @@ export type MesDaSerie = {
 /**
  * Uma linha do extrato analítico (a tabela da página "Gestão de Carteira" do BI).
  *
- * ⚠️ SÓ NOME, NUNCA DOCUMENTO. Cliente e imobiliária por nome é permitido (o incorporador é parte
- * do contrato); CPF/CNPJ, telefone e e-mail não saem por aqui em hipótese nenhuma.
+ * ⚠️ NOME E DOCUMENTO SIM; CONTATO NÃO. Até 23/09/2026 esta linha não carregava documento nenhum,
+ * por cautela minha ao montar o portal. Lucas, 23/09/2026: *"preciso trazer o CPF para esse
+ * painel"* — e o pedido é coerente com o resto da tela: o incorporador é parte do contrato e já vê
+ * nome, unidade e o valor de cada parcela do comprador dele. **Telefone e e-mail continuam fora**,
+ * porque esses servem para ABORDAR o cliente, e a abordagem é da Careli, não do loteador.
+ *
+ * ⚠️ O DOCUMENTO VEM DO LEGADO, e não do Apolo. Lucas levantou, com razão, que o cadastral mora no
+ * Apolo. Só que o extrato nasce do C2X e a chave dele é `acquisition_requests.client_id`: ir ao
+ * Apolo exigiria casar por CPF (circular, é o dado que se quer descobrir) ou por `client_c2x_id`,
+ * que colide. O `users` que o join da carteira já carrega cobre 856 de 856 clientes (839 CPF, 18
+ * CNPJ, zero em branco — medido em 23/09/2026), então a fonte certa aqui é ele.
  */
 export type ExtratoParcela = {
   cliente: null | string;
+  /** CPF ou CNPJ do comprador, só dígitos. `cli.cpf`, com o `cnpj` no lugar dele quando é PJ. */
+  documento: null | string;
   /** Nome de MERCADO do empreendimento (via `nomePorCode`), nunca o código da divisão interna. */
   empreendimento: null | string;
   imobiliaria: null | string;
@@ -243,6 +255,8 @@ export type CarteiraLiquida = {
 export type LinhaCruaDaCarteira = {
   cliente: null | string;
   competence: null | string;
+  /** `users.cpf`, ou o `cnpj` quando o comprador e PJ. Vem PONTUADO do legado. */
+  documento: null | string;
   /** 'YYYY-MM-DD'. Formatada no MySQL para a comparação com "hoje" ser de string, sem fuso. */
   due_date: null | string;
   enterprise_code: string;
@@ -526,6 +540,13 @@ export function montarIndicadores(
     filtroDoExtrato?: FiltroDoExtrato;
     nomeDoIncorporador?: null | string;
     politicaPorCode: Map<string, PoliticaDoEmpreendimento>;
+    /**
+     * Teto de LINHAS ENVIADAS. Padrão `EXTRATO_TETO` (o da tela); a EXPORTAÇÃO passa o dela.
+     *
+     * ⚠️ É TETO DE ENVIO, NÃO DE CONTA. `extratoTotal` e `totaisDoRecorte` continuam saindo do
+     * recorte inteiro — quem corta aqui corta só o que viaja.
+     */
+    tetoDoExtrato?: number;
   },
 ): IndicadoresDaCarteira {
   const hoje = isoDia(opcoes.agoraMs);
@@ -603,6 +624,7 @@ export function montarIndicadores(
     // ── Extrato analítico ───────────────────────────────────────────────────
     extrato.push({
       cliente: cliente || null,
+      documento: soDigitos(linha.documento) || null,
       empreendimento:
         opcoes.nomePorCode?.get(String(linha.enterprise_code ?? "").trim().toUpperCase()) ?? null,
       imobiliaria: String(linha.imobiliaria ?? "").trim() || null,
@@ -667,7 +689,7 @@ export function montarIndicadores(
       parcelas: linhas.length,
       unidades: unidades.size,
     },
-    extrato: recorte.slice(0, EXTRATO_TETO),
+    extrato: recorte.slice(0, opcoes.tetoDoExtrato ?? EXTRATO_TETO),
     extratoTotal: recorte.length,
     kpis: {
       // Sem nenhum vencimento ainda, o percentual é 0 e não divisão por zero: antes do primeiro
@@ -713,6 +735,12 @@ function filtrarExtrato(
     if (perfil && parcela.perfil !== perfil) return false;
     if (situacao && parcela.situacao !== situacao) return false;
     if (!busca) return true;
+
+    // ⚠️ O DOCUMENTO CASA POR DÍGITO, e só com 6 ou mais. Quem procura um CPF digita com ponto e
+    // traço ou sem, e as duas formas têm que achar. O piso de 6 existe porque a busca é um OU:
+    // sem ele, procurar a unidade "L18" viraria "18" e traria de brinde todo CPF que contém 18.
+    const digitos = busca.replace(/\D/g, "");
+    if (digitos.length >= 6 && (parcela.documento ?? "").includes(digitos)) return true;
 
     return [parcela.unidade, parcela.cliente, parcela.imobiliaria]
       .filter(Boolean)
@@ -800,6 +828,8 @@ async function lerLinhasDaCarteira(
          eu.price                              as unit_price,
          pt.name                               as parcel_type,
          ${nome("cli")}                        as cliente,
+         coalesce(nullif(trim(cli.cpf), ''), nullif(trim(cli.cnpj), ''))
+                                               as documento,
          ${nome("imo")}                        as imobiliaria,
          p.current_total_parcel                as parcela_n,
          p.total_parcels                       as parcela_total,
@@ -879,6 +909,8 @@ export async function carteiraLiquidaDoIncorporador(input: {
     /** O recorte do extrato, aplicado no servidor. Ver `FiltroDoExtrato`. */
     filtroDoExtrato?: FiltroDoExtrato;
     nomePorCode?: Map<string, string>;
+    /** Teto de linhas enviadas no extrato. Ver `montarIndicadores`. */
+    tetoDoExtrato?: number;
   };
   nomeDoIncorporador?: null | string;
   politicaPorCode: Map<string, PoliticaDoEmpreendimento>;
@@ -957,6 +989,7 @@ export async function carteiraLiquidaDoIncorporador(input: {
               nomeDoIncorporador: input.nomeDoIncorporador,
               nomePorCode: input.indicadores.nomePorCode,
               politicaPorCode: input.politicaPorCode,
+              tetoDoExtrato: input.indicadores.tetoDoExtrato,
             })
           : null,
         liquido,

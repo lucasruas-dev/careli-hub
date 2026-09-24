@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { APOLO_DOCS_BUCKET } from "@/lib/apolo/documentos";
+import { avisoDoHercules } from "@/lib/hercules/reflexo-da-temis";
 import {
   contratoVigente,
   type IdentidadeDoContrato,
@@ -12,6 +13,7 @@ import { dadosDaProposta } from "@/lib/temis/dados-do-contrato";
 
 import { enviarParaAssinatura, type FalhaNoEnvio, type PedidoDeEnvio } from "./clicksign/envelope";
 import { type PortaDaClicksign } from "./clicksign/cliente";
+import { congelarSignatarios } from "./congelar-signatarios";
 import { moverCardDaTemis } from "./estado-db";
 import { ordenarSignatarios, type RegraDeOrdem } from "./ordem";
 import { assinantesDoQuadro, empresasDoEmpreendimento } from "./quadro-db";
@@ -152,6 +154,13 @@ export async function prepararEnvio(
 }
 
 export type EnvioFeito = {
+  /**
+   * A venda do Hércules NÃO acompanhou o card (24/09/2026). Ausente quando acompanhou.
+   *
+   * ⚠️ É AVISO, NÃO ERRO: o envelope já está ativo na Clicksign, e trocar o `ok` mandaria alguém
+   * clicar de novo num envio que não se repete. Ver `refletirCardNaVenda`.
+   */
+  avisoDoHercules?: string;
   envelopeId: string;
   nome: string;
   ok: true;
@@ -305,20 +314,61 @@ export async function enviarContratoParaAssinatura(
   // ⚠️ E VAI COM O CARIMBO DO COMEÇO. Se o card tiver andado de lá para cá — a devolução para a
   // Análise que aconteceu com este POST no ar —, ele NÃO é empurrado de volta: quem decidiu por
   // último decidiu com o quadro na frente, e este envio é o passado. Ver `cardAndouDepoisDe`.
-  await moverCardDaTemis(
-    sb,
-    pedido.propostaId,
-    "assinatura",
-    { id: pedido.usuarioId ?? null, nome: pedido.usuarioNome ?? null },
+  //
+  // ⚠️ E A VENDA VAI JUNTO (24/09/2026): `moverCardDaTemis` leva a venda de `contrato` para
+  // `assinatura` (o DEFEITO 1: os 5 envios de 23/09 deixaram a venda em `contrato`). Se ela não
+  // acompanhar, o envio continua `ok` e a resposta leva o aviso. Ver `fecharEnvioNoQuadro`.
+  return fecharEnvioNoQuadro(sb, {
     comecouEm,
-  );
-
-  return {
     envelopeId: resultado.envelopeId,
     nome: resultado.nome,
-    ok: true,
+    propostaId: pedido.propostaId,
     registroId: registro.id,
     signatarios: preparo.signatarios,
+    usuarioId: pedido.usuarioId ?? null,
+    usuarioNome: pedido.usuarioNome ?? null,
+  });
+}
+
+/**
+ * O FIM DO ENVIO QUE DEU CERTO: o card vai para Em assinatura, a venda vai junto, e a resposta diz
+ * quando a venda não acompanhou.
+ *
+ * ⚠️ SEPARADO PARA SER TESTADO DE VERDADE (revisão de 24/09/2026). O resto do envio exige o
+ * contrato guardado, o bucket e a Clicksign; este pedaço só exige o card e a venda, e é nele que mora
+ * a promessa "o envio responde `ok` COM `avisoDoHercules`". A varredura que só procurava a palavra
+ * no arquivo deixava apagar o spread abaixo sem derrubar teste nenhum
+ * (envio-aviso-do-hercules.test.ts).
+ */
+export async function fecharEnvioNoQuadro(
+  sb: SupabaseClient,
+  envio: {
+    comecouEm: string;
+    envelopeId: string;
+    nome: string;
+    propostaId: string;
+    registroId: string;
+    signatarios: Signatario[];
+    usuarioId: null | string;
+    usuarioNome: null | string;
+  },
+): Promise<EnvioFeito> {
+  const movimento = await moverCardDaTemis(
+    sb,
+    envio.propostaId,
+    "assinatura",
+    { id: envio.usuarioId, nome: envio.usuarioNome },
+    envio.comecouEm,
+  );
+  const aviso = avisoDoHercules(movimento.reflexos);
+
+  return {
+    ...(aviso ? { avisoDoHercules: aviso } : {}),
+    envelopeId: envio.envelopeId,
+    nome: envio.nome,
+    ok: true,
+    registroId: envio.registroId,
+    signatarios: envio.signatarios,
   };
 }
 
@@ -717,7 +767,12 @@ async function abrirRegistro(
 async function carimbarSucesso(
   sb: SupabaseClient,
   registroId: string,
-  resultado: { documentoId: string; envelopeId: string },
+  resultado: {
+    documentoId: string;
+    envelopeId: string;
+    /** `{ e-mail -> id do signatario }`, como a Clicksign devolveu no passo 3 do envio. */
+    signatarios?: Record<string, string>;
+  },
   signatarios: readonly Signatario[],
 ): Promise<void> {
   const { error } = await sb
@@ -731,12 +786,9 @@ async function carimbarSucesso(
       envelope_id: resultado.envelopeId,
       enviado_em: new Date().toISOString(),
       provedor_documento_id: resultado.documentoId,
-      signatarios: signatarios.map((s) => ({
-        email: s.email,
-        nome: s.nome,
-        ordem: s.ordem,
-        papel: s.papel,
-      })),
+      // ⚠️ COM A `chave` DA CLICKSIGN. Ver `lib/assinatura/congelar-signatarios.ts`: sem ela o
+      // reenvio de convite manda a key do webhook (ou o e-mail) e leva 422.
+      signatarios: congelarSignatarios(signatarios, resultado.signatarios),
     })
     .eq("id", registroId);
 

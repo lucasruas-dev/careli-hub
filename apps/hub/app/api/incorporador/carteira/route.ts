@@ -16,6 +16,11 @@ import {
   type SituacaoDaParcela,
 } from "@/lib/apolo/incorporador/carteira-liquida";
 import { codigosDoPedido } from "@/lib/apolo/incorporador/codigos-do-pedido";
+import {
+  LIMITE_DO_EXTRATO,
+  nomeDoArquivo,
+  planilhaDoExtrato,
+} from "@/lib/apolo/incorporador/planilha-do-extrato";
 import { empreendimentosDoPortal } from "@/lib/apolo/incorporador/empreendimentos-do-portal";
 import { autorizar, codigosDaSessao, idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { ehPortalComercial } from "@/lib/apolo/incorporador/perfis-de-portal";
@@ -52,9 +57,19 @@ import {
 // faz duas abas da mesma tela divergirem. O parâmetro existe porque a leitura ampliada (parcelas
 // em aberto) custa mais: a aba Carteira não paga por ela; a aba Indicadores pede quando abre.
 //
-// ⚠️ O QUE NUNCA SAI DAQUI: documento pessoal, telefone, e-mail e id interno de entidade do CRM.
-// Cliente e imobiliária vão por NOME (o incorporador é parte do contrato). Cada unidade sai com o
-// nome de MERCADO do empreendimento, nunca com a divisão interna.
+// ⚠️ O QUE NUNCA SAI DAQUI: telefone, e-mail e id interno de entidade do CRM. Cliente e
+// imobiliária vão por NOME (o incorporador é parte do contrato), e cada unidade sai com o nome de
+// MERCADO do empreendimento, nunca com a divisão interna.
+//
+// O CPF/CNPJ do comprador PASSOU A SAIR em 23/09/2026, e SÓ no extrato. Lucas: *"preciso trazer o
+// CPF para esse painel e ter um botão para exportar em xlsx"*. Telefone e e-mail continuam fora —
+// esses servem para ABORDAR o cliente, e a abordagem é da Careli, não do loteador. O documento não
+// entra em `units`: lá ele não teria uso, e o que não tem uso não atravessa.
+//
+// ⚠️ A EXPORTAÇÃO É DESTA MESMA ROTA (`?formato=xlsx`), e não de uma sub-rota. Uma rota própria
+// teria que repetir a resolução de escopo, o seletor de produtos, o mapa de nomes e a política
+// comercial — e é exatamente a segunda leitura "quase igual" que faz a planilha e a tela contarem
+// histórias diferentes. Aqui o arquivo sai das MESMAS linhas, com o MESMO filtro.
 //
 // O CONTRATO passou a ser sinalizado em 18/08/2026, por ordem do Lucas: *"temos que trazer o
 // contrato e nas parcelas dentro de carteira o link do boleto do asaas"*. Sai SÓ `temContrato`
@@ -261,7 +276,10 @@ export async function GET(request: Request) {
 
   const params = new URL(request.url).searchParams;
   const filtro = params.get("code")?.trim() || null;
-  const comIndicadores = params.get("indicadores") === "1";
+  // ⚠️ XLSX IMPLICA INDICADORES: o extrato só existe na leitura ampliada. Sem isto, um link com
+  // `formato=xlsx` e sem `indicadores=1` baixaria uma planilha vazia em silêncio.
+  const comoArquivo = params.get("formato") === "xlsx";
+  const comIndicadores = comoArquivo || params.get("indicadores") === "1";
 
   // ⚠️ O RECORTE DO EXTRATO VEM NA URL, e é aplicado NO SERVIDOR. Antes a tela filtrava o que já
   // tinha recebido — e o que ela recebia era um corte de `EXTRATO_TETO` linhas feito ANTES do
@@ -432,7 +450,15 @@ export async function GET(request: Request) {
       codes,
       // Os KPIs do BI só quando a tela pede: a leitura ampliada (parcelas em aberto) custa mais.
       indicadores: comIndicadores
-        ? { agoraMs: Date.now(), filtroDoExtrato, nomePorCode }
+        ? {
+            agoraMs: Date.now(),
+            filtroDoExtrato,
+            nomePorCode,
+            // ⚠️ O ARQUIVO LEVA O RECORTE INTEIRO; a tela leva o teto de payload. Exportar as
+            // 2.000 linhas que couberam no envio entregaria um pedaço com cara de planilha
+            // completa — e o rodapé somaria um total que não é o do filtro.
+            ...(comoArquivo ? { tetoDoExtrato: LIMITE_DO_EXTRATO } : null),
+          }
         : undefined,
       // Casa o split quando a linha não traz `perfil` — em boa parte das parcelas o único campo
       // presente é a razão social.
@@ -459,6 +485,54 @@ export async function GET(request: Request) {
       { error: "Não foi possível carregar a carteira agora." },
       { status: 503 },
     );
+  }
+
+  // ── A EXPORTAÇÃO SAI AQUI, antes de montar o payload da tela ───────────────
+  //
+  // O arquivo é o EXTRATO, e nada mais: quem exporta quer a lista de parcelas, não os KPIs nem a
+  // carteira por unidade. Se o líquido não pôde ser lido, não há extrato para exportar — e é
+  // melhor dizer isso do que baixar uma planilha só com o cabeçalho.
+  if (comoArquivo) {
+    if (!liquida.ok || !liquida.data.indicadores) {
+      return NextResponse.json(
+        { error: "Não foi possível montar o extrato agora." },
+        { status: 503 },
+      );
+    }
+
+    const { extrato, extratoTotal } = liquida.data.indicadores;
+
+    // O nome do arquivo diz DE QUAL carteira ele é. Com filtro, o empreendimento escolhido; sem
+    // filtro e com um produto só, esse produto; com vários, só a data — porque nomear pelo
+    // primeiro da lista faria a planilha consolidada parecer a de um loteamento só.
+    const escolhido = filtro
+      ? (produtos.find((produto) => produto.id === filtro)?.nome ??
+         produtos.flatMap((produto) => produto.filhos).find((filho) => filho.id === filtro)?.nome ??
+         null)
+      : produtos.length === 1
+        ? (produtos[0]?.nome ?? null)
+        : null;
+
+    const arquivo = await planilhaDoExtrato({
+      carteira: escolhido,
+      // ⚠️ O ARQUIVO CARREGA O AVISO DE TRUNCAMENTO. A leitura do C2X para em 30.000 linhas, e há
+      // empreendimento que passa disso sozinho (medido em 23/09/2026: LOS 37.956, LOU 30.252). A
+      // tela já avisa; a planilha viaja por e-mail sem a tela junto, então o aviso vai dentro.
+      leituraParcial: liquida.data.parcial,
+      parcelas: extrato,
+      total: extratoTotal,
+    });
+
+    return new NextResponse(arquivo, {
+      headers: {
+        "Cache-Control": "no-store",
+        "Content-Disposition": `attachment; filename="${nomeDoArquivo(escolhido, new Date().toISOString())}"`,
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        // `true` = falta linha no arquivo, por qualquer um dos dois cortes (o do filtro ou o da
+        // leitura). A tela lê isto para avisar quem clicou.
+        "X-Parcial": String(extratoTotal > extrato.length || liquida.data.parcial),
+      },
+    });
   }
 
   // ⚠️ O LÍQUIDO CASA PELO PEDIDO, NÃO PELA UNIDADE. A linha do bruto nasce por pedido; casar por

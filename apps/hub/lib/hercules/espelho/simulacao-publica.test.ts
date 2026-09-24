@@ -7,10 +7,21 @@ import { ENTRADA_VEZES_MAXIMA } from "../proposta";
 import { descontoDoPlanoNoPrazo } from "../tabela-do-lote";
 import { valoresDaSimulacaoPublica } from "./simulacao-publica";
 
-// O que a rota pública do PDF da simulação aceita (18/09/2026, revisão 3): o valor entre a tabela com
-// o desconto DO PLANO ESCOLHIDO no prazo pedido e a tabela; o prazo até o do plano; as anuais até uma
-// por aniversário; a entrada entre a régua da tela (piso do empreendimento e faixa do prazo) e o
-// valor; a entrada em 1 a `ENTRADA_VEZES_MAXIMA` vezes.
+// O que a rota pública do PDF da simulação aceita: o valor até a tabela, sem piso; o prazo até o do
+// plano; as anuais até uma por aniversário; a entrada que vier da tela; a entrada em 1 a
+// `ENTRADA_VEZES_MAXIMA` vezes.
+//
+// ⚠️ O PISO DO PREÇO SAIU DE VEZ EM 23/09/2026, EM DOIS PASSOS NO MESMO DIA. Até a revisão 3 (18/09)
+// ele era o preço do PLANO ESCOLHIDO no prazo pedido, e o número da tela era PRESO nele; com o campo
+// de desconto liberado no espelho público (Lucas: **"Liberar para todo mundo"**), prender viraria a
+// folha desmentindo a tela em silêncio, e o piso virou um teto de desconto de 15%; perguntado sobre
+// o teto, Lucas: **"pode liberar tudo"**, e o teto saiu também. Hoje NÃO HÁ PISO: desconto de
+// qualquer tamanho passa, e o número da tela vai ao papel como está.
+//
+// ⚠️ O QUE NÃO SAIU, E ESTE ARQUIVO GUARDA: preço ACIMA da tabela é RECUSA (não é desconto, é a
+// página anunciando a unidade mais cara do que a casa vende); lixo, negativo, zero ou ausente é a
+// tabela; o prazo, as anuais e a entrada continuam presos no plano. Os casos da liberação estão em
+// `simulacao-publica.desconto-liberado.test.ts`.
 
 const NORMAL = {
   anuaisQuantidade: 5,
@@ -70,38 +81,58 @@ describe("valoresDaSimulacaoPublica: o preço (item 2)", () => {
       entrada: 31_023,
       valor: 387_780,
     });
+    // ⚠️ O CENTAVO ABAIXO DO PREÇO DO PLANO ERA EMPURRADO PARA 387.780 ATÉ 22/09/2026, porque o
+    // preço do plano era o piso. Agora ele é um desconto à mão de 8,000002%, cabe no teto e vai ao
+    // papel como está: é o número que a tela mostrou.
     expect(aceito({ entrada: 31_022.4, valor: 387_779.99 })).toMatchObject({
       entrada: 31_022.4,
-      valor: 387_780,
+      valor: 387_779.99,
     });
   });
 
-  it("⚠️ o piso é o desconto DO PLANO ESCOLHIDO, e não o maior do empreendimento", () => {
-    // Corpo forjado pedindo metade do preço: cada plano sobe para o preço DELE.
-    expect(aceito({ plano: PARCELADO, valor: 210_750 }).valor).toBe(387_780); // 8%
-    expect(aceito({ plano: INVESTIDOR, valor: 210_750 }).valor).toBe(370_920); // 12%
-    expect(aceito({ plano: NORMAL, valor: 210_750 }).valor).toBe(421_500); // sem desconto
-    expect(aceito({ plano: NORMAL, valor: 210_750 }).descontoPercentual).toBe(
-      0,
-    );
+  it("⚠️ o piso do preço acabou: metade do preço passa nos três planos, e o desconto do plano continua sendo lido", () => {
+    // ⚠️ A PRIMEIRA METADE DESTE CASO VIROU DE LADO EM 23/09/2026, E É DECISÃO DO LUCAS. Ela pedia
+    // recusa com a frase "15% de desconto" para os R$ 210.750 (50% de R$ 421.500); antes disso, na
+    // revisão 3, ela pedia que o valor fosse EMPURRADO para o preço de cada plano. Perguntado com o
+    // risco escrito na frente, Lucas: *"Liberar para todo mundo"* e, sobre o teto, **"pode liberar
+    // tudo"**. Quem reintroduzir piso ou teto aqui está desfazendo a decisão dele.
+    for (const plano of GARDEN)
+      expect(aceito({ parcelas: plano.parcelas, plano, valor: 210_750 }).valor).toBe(210_750);
+    // ⚠️ E A SEGUNDA METADE É A COBERTURA QUE NÃO PODE SE PERDER COM A PRIMEIRA: o desconto DO
+    // PLANO continua sendo lido no prazo do plano, porque é ele que a folha chama de desconto de
+    // tabela — e é o que separa "a casa deu 12%" de "alguém digitou 12% na página sem login".
+    expect(aceito({ plano: PARCELADO, valor: 387_780 }).descontoPercentual).toBe(8);
+    expect(aceito({ parcelas: 36, plano: INVESTIDOR, valor: 370_920 }).descontoPercentual).toBe(12);
+    expect(aceito({ parcelas: 60, plano: NORMAL, valor: 421_500 }).descontoPercentual).toBe(0);
   });
 
-  it("⚠️ fora do prazo do plano, desconto zero: o piso é a própria tabela", () => {
-    // INVESTIDOR encurtado para 30 vezes: os 12% são de 36 vezes.
+  it("⚠️ fora do prazo do plano o desconto do plano zera, e o preço da tela passa inteiro", () => {
+    // INVESTIDOR encurtado para 30 vezes: os 12% são de 36 vezes, então aqui eles são desconto à
+    // MÃO. Até 22/09/2026 o valor era empurrado de volta para a tabela; agora ele passa — e o que a
+    // folha não pode é chamar isso de desconto de tabela.
     const r = aceito({ parcelas: 30, plano: INVESTIDOR, valor: 370_920 });
     expect(r.descontoPercentual).toBe(0);
-    expect(r.valor).toBe(421_500);
+    expect(r.valor).toBe(370_920);
     // INVESTIDOR PARCELADO em 60 vezes: idem.
-    expect(aceito({ parcelas: 60, valor: 387_780 }).valor).toBe(421_500);
+    expect(aceito({ parcelas: 60, valor: 387_780 }).valor).toBe(387_780);
     // No prazo do plano, o desconto dele.
     expect(aceito({ parcelas: 84, valor: 387_780 })).toMatchObject({
       descontoPercentual: 8,
       valor: 387_780,
     });
+    // ⚠️ ESTAS DUAS LINHAS MEDIAM O TETO DE 15% FORA DO PRAZO DO PLANO (421.500 × 0,85 = 358.275:
+    // o valor passava, o centavo abaixo dele era recusa). O teto saiu em 23/09/2026 por decisão do
+    // Lucas (**"pode liberar tudo"**), e as duas passam a medir o que sobrou no lugar dele: fora do
+    // prazo do plano NÃO há piso nenhum, e o centavo continua não sendo arredondado no caminho.
+    expect(aceito({ parcelas: 30, plano: INVESTIDOR, valor: 358_275 }).valor).toBe(358_275);
+    expect(aceito({ parcelas: 30, plano: INVESTIDOR, valor: 358_274.99 }).valor).toBe(358_274.99);
   });
 
-  it("acima da tabela desce para ela; lixo, negativo, zero ou ausente é a tabela", () => {
-    expect(aceito({ valor: 1_000_000 }).valor).toBe(421_500);
+  it("acima da tabela é RECUSA, e não uma descida silenciosa; lixo, negativo, zero ou ausente é a tabela", () => {
+    // ⚠️ MUDOU EM 23/09/2026 JUNTO COM O CAMPO. Enquanto o campo do lote era somente leitura no
+    // espelho, a tela não tinha como pedir mais que a tabela e prender era inofensivo. Com o botão
+    // de acréscimo à mão de qualquer visitante, prender viraria a mesma troca silenciosa do piso.
+    expect(() => aceito({ valor: 1_000_000 })).toThrow(/tabela/);
     for (const valor of [undefined, "abc", -5, 0])
       expect(aceito({ valor }).valor).toBe(421_500);
   });
@@ -206,10 +237,17 @@ describe("valoresDaSimulacaoPublica: as regras do plano (item 3)", () => {
       plano: CURTO,
       planos: [CURTO],
       precoDeTabela: 185_400.5,
-      valorPedido: 100_000,
+      // ⚠️ ERA `100_000` ATÉ 23/09/2026, quando o piso empurrava qualquer valor de volta ao preço do
+      // plano. Com o teto de 15%, 100.000 num lote de 185.400,50 é 46% de desconto e vira recusa —
+      // o que este caso mede é o empreendimento SEM desconto, e para isso o valor da tela é a tabela.
+      valorPedido: 185_400.5,
     });
     expect(r).toEqual({
       anuais: { quantidade: 0, valor: 0 },
+      // ⚠️ VAZIA, E NÃO AUSENTE (23/09/2026): o corpo não mandou bem nenhum, e a régua devolve a
+      // lista conferida mesmo assim. Esta é a única asserção de FORMA INTEIRA da resposta, e é por
+      // ela que um campo novo aparece na revisão em vez de passar despercebido.
+      bens: [],
       descontoPercentual: 0,
       entrada: 40_000,
       // Sem montagem à mão no corpo, a entrada em vezes é repartida pelo cronograma como sempre, e

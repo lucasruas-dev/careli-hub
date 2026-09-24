@@ -28,6 +28,11 @@ import {
   X,
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
+
+import {
+  etapaDoCompromisso,
+  linhasDaEtapaDoDetalhe,
+} from "@/lib/guardian/etapa-do-compromisso";
 import { HadesAttendanceModal } from "@/modules/guardian/attendance/components/HadesAttendanceModal";
 import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
@@ -1989,50 +1994,24 @@ function RiskAnalysisModal({
   );
 }
 
-// Deriva a etapa do workflow a partir dos compromissos do motor (Auto - Hades):
-// proposta registrada/pendente -> Negociacao; acordo aprovado -> Acordo;
-// promessa aprovada -> Promessa de pagamento; tudo quebrado -> Quebra.
+// Deriva a etapa do workflow a partir dos compromissos do motor (Auto - Hades).
+//
+// ⚠️ A REGRA NÃO MORA MAIS AQUI, E ISSO É O CONSERTO. Ela vivia copiada palavra por palavra em
+// `lib/guardian/compromissos.ts` (a FILA) e aqui (o DETALHE), para as duas telas baterem — e por
+// isso uma promessa vencida aparecia como "Promessa de pagamento" nos dois lugares. Consertar só um
+// lado faria as duas divergirem, que é pior que o defeito. A peça única é
+// `lib/guardian/etapa-do-compromisso.ts`, com teste próprio — e isto importa duas vezes aqui, porque
+// este arquivo tem `@ts-nocheck` na linha 2 e o typecheck não cobre nada do que está escrito nele.
 function deriveMotorWorkflow(items) {
   if (!Array.isArray(items) || items.length === 0) {
     return null;
   }
 
-  const active = items.filter((item) => item.status === "ativo");
-  const hasApprovedAcordo = active.some(
-    (item) => item.kind === "acordo" && item.approvalStatus === "aprovado",
-  );
-  const hasApprovedPromessa = active.some(
-    (item) => item.kind === "promessa" && item.approvalStatus === "aprovado",
-  );
-  const hasPending = active.some((item) => item.approvalStatus === "pendente");
-  const hasBroken = items.some((item) => item.status === "quebrado");
-
-  if (hasApprovedAcordo) {
-    return {
-      nextAction: "Acompanhar o pagamento das parcelas do acordo.",
-      stage: "Acordo",
-    };
-  }
-  if (hasApprovedPromessa) {
-    return {
-      nextAction: "Aguardar a data prometida (régua de lembretes).",
-      stage: "Promessa de pagamento",
-    };
-  }
-  if (hasPending) {
-    return {
-      nextAction: "Proposta registrada aguardando aprovação do gestor.",
-      stage: "Negociação",
-    };
-  }
-  if (hasBroken) {
-    return {
-      nextAction: "Acordo quebrado — reabrir negociação.",
-      stage: "Quebra",
-    };
-  }
-
-  return null;
+  // ⚠️ E O `map` TAMBÉM SAIU DAQUI. Ele traduzia cinco campos à mão dentro do `@ts-nocheck`: um
+  // nome trocado (`promisedDate` virando `promised_date`, por exemplo) passaria pelo `tsc` calado
+  // e a promessa vencida voltaria a dizer "Promessa de pagamento" no detalhe, com a fila certa ao
+  // lado. `linhasDaEtapaDoDetalhe` é tipada, tem teste e falha na hora.
+  return etapaDoCompromisso(linhasDaEtapaDoDetalhe(items));
 }
 
 // "Ultimos eventos" compacto (coluna unica), ligado a timeline/motor, na faixa

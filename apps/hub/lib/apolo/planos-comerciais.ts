@@ -160,11 +160,25 @@ export const INDICES: Record<IndiceCorrecao, string> = {
  * herdada em silêncio — num financiamento de 120 parcelas ela custa ~1% a mais por parcela.
  */
 export function taxaMensal(plano: PlanoComercial): number {
-  const taxa = plano.jurosTaxa;
+  return taxaMensalDaTaxa(plano.jurosTaxa, plano.jurosPeriodicidade, plano.jurosConvencao);
+}
+
+/**
+ * A mesma conversão de `taxaMensal`, a partir dos três campos soltos — para quem tem a taxa do
+ * contrato e não um plano inteiro (o relatório de Evolução da parcela, que lê o C2X).
+ *
+ * ⚠️ `taxaMensal` DELEGA PARA CÁ, e não o contrário: é uma conversão só, e duas cópias dela
+ * divergiriam na primeira vez que alguém mexesse na convenção.
+ */
+export function taxaMensalDaTaxa(
+  taxa: null | number,
+  periodicidade: PeriodicidadeJuros,
+  convencao: ConvencaoJuros = "equivalente",
+): number {
   if (taxa == null || taxa <= 0) return 0;
   const fracao = taxa / 100;
-  if (plano.jurosPeriodicidade === "mensal") return fracao;
-  if (plano.jurosConvencao === "proporcional") return fracao / 12;
+  if (periodicidade === "mensal") return fracao;
+  if (convencao === "proporcional") return fracao / 12;
   return (1 + fracao) ** (1 / 12) - 1;
 }
 
@@ -236,6 +250,46 @@ export function parcelaNiveladaSacoc(
     juros += amortizacao * (1 + taxaAoMes) ** k - amortizacao;
   }
   return amortizacao + juros / ciclo;
+}
+
+/**
+ * A parcela de um CICLO do SACOC: a amortização mais os juros teóricos do ciclo ANTERIOR, diluídos.
+ *
+ * É o modelo da casa, decodificado na Lavra do Ouro e validado em 9 de 9 empreendimentos com
+ * parcelas emitidas: no primeiro ano o boleto cobra SÓ a amortização; os juros teóricos daquele
+ * ano ficam acumulados e passam a ser cobrados, diluídos, do 13º mês em diante. A tabela anda um
+ * ciclo para trás, e por isso o degrau do 2º ano NÃO é a taxa cheia do ano — é a média dos juros
+ * dos meses 1 a 12.
+ *
+ * ⚠️ MORAVA DENTRO DE `montarCronograma` e saiu para cá em 24/09/2026, quando o relatório de
+ * Evolução da parcela passou a precisar do mesmo degrau. O aviso que já existia lá vale dobrado:
+ * duas curvas de juros do SACOC divergiriam no dia em que alguém corrigisse só uma — e a proposta
+ * que o comprador assina e o relatório que ele recebe depois contariam histórias diferentes.
+ * O degrau sai da DIFERENÇA ENTRE DUAS NIVELADAS, e não de uma fórmula nova.
+ */
+export function parcelaDoCicloSacoc(
+  financiado: number,
+  taxaAoMes: number,
+  parcelas: number,
+  ciclo: number,
+  mesesDoCiclo = 12,
+): number {
+  const amortizacao = parcelaSacoc(financiado, parcelas);
+  if (taxaAoMes <= 0 || parcelas <= 0) return amortizacao;
+
+  /** Os juros teóricos acumulados do mês 1 até `meses`, extraídos da média que a nivelada devolve. */
+  const jurosAcumulados = (meses: number): number => {
+    const ate = Math.min(meses, parcelas);
+    if (ate <= 0) return 0;
+    return (parcelaNiveladaSacoc(financiado, taxaAoMes, parcelas, ate) - amortizacao) * ate;
+  };
+
+  // A janela cobrada é a do ciclo ANTERIOR — e o `max(0, …)` é o que faz o ciclo 1 não pegar
+  // emprestada a janela de um ciclo zero que não existe.
+  const fim = Math.min(Math.max(0, (ciclo - 1) * mesesDoCiclo), parcelas);
+  const inicio = Math.min(Math.max(0, (ciclo - 2) * mesesDoCiclo), parcelas);
+  if (fim - inicio <= 0) return amortizacao;
+  return amortizacao + (jurosAcumulados(fim) - jurosAcumulados(inicio)) / (fim - inicio);
 }
 
 /**

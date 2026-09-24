@@ -54,6 +54,7 @@ import {
   type MovimentoDoHistorico,
   type PropostaDoHistorico,
 } from "@/lib/hercules/historico-da-unidade";
+import { VENDA_DESFEITA } from "@/lib/hercules/acao-de-cancelamento";
 import { devolverVendaNoIndeferimento } from "@/lib/hercules/indeferimento-na-venda-server";
 
 import {
@@ -1142,8 +1143,16 @@ export async function decidirSobreOTrabalho(
     });
     // ⚠️ A RESPOSTA DIZ O QUE ACONTECEU, não só que deu certo: `envelopeCancelado` é o que permite à
     // tela contar que o contrato saiu da mão de quem ia assinar.
+    //
+    // ⚠️ E `avisoDoHercules` QUANDO A VENDA NÃO VOLTOU JUNTO PARA CONTRATO (24/09/2026): o card voltou,
+    // e a resposta continua `ok`.
     return NextResponse.json(
-      { de: feito.de, envelopeCancelado: feito.envelopeCancelado, ok: true },
+      {
+        ...(feito.avisoDoHercules ? { avisoDoHercules: feito.avisoDoHercules } : {}),
+        de: feito.de,
+        envelopeCancelado: feito.envelopeCancelado,
+        ok: true,
+      },
       { headers: { "Cache-Control": "no-store" } },
     );
   }
@@ -1226,6 +1235,48 @@ export async function decidirSobreOTrabalho(
       },
       { status: 409 },
     );
+  }
+
+  // ⚠️ CONTRATO NA MÃO DO CLIENTE, COM A VENDA VIVA, NÃO SE INDEFERE (24/09/2026). A tela já não
+  // oferecia Indeferir em "Em assinatura" nem no Pré-faturamento (indeferimento-na-venda-server.ts), e
+  // o servidor aceitava. Agora que a venda anda junto com o card (Lucas, 24/09/2026: *"preciso
+  // garantir que tudo que acontece na temis reflete no hercules"*), indeferir aqui deixaria a venda em
+  // `assinatura` com o card fora do caminho, e o indeferimento não a devolveria: `devolverAQuemVendeu`
+  // só age em venda em `contrato`. O caminho é voltar para correção (que mata o envelope e devolve a
+  // venda para contrato) ou pedir o cancelamento.
+  //
+  // ⚠️ COM A VENDA DESFEITA CONTINUA PERMITIDO: é o card de contrato assinado que fica pendurado em
+  // Pré-faturamento ou Em assinatura depois de um distrato (concluir-cancelamento-server.ts), e
+  // indeferir é a única saída dele do quadro. Leitura que falha recusa: não se indefere no escuro.
+  //
+  // ⚠️ E A GUARDA OLHA A ETAPA DA VENDA, NÃO SÓ O ESTÁGIO DO CARD (revisão de 24/09/2026). Se o
+  // reflexo da volta para correção falhar, o card fica na Análise com a venda em `assinatura`: a guarda
+  // do estágio deixava passar, `devolverAQuemVendeu` (indeferimento-na-venda-server.ts) não mexia,
+  // porque só age em `contrato`, e a venda ficava viva em assinatura prendendo o lote, sem card
+  // nenhum. Venda em `assinatura` ou `faturado` com o card de contrato ainda aberto é a mesma recusa.
+  if (card.tipo === "contrato") {
+    const naMaoDoCliente = card.estagio === "assinatura" || card.estagio === "prazo_legal";
+    const vendaViva = card.proposta_id ? await etapaDaVendaDoCard(sb, card.proposta_id) : { etapa: "" };
+    if (vendaViva === null) {
+      return NextResponse.json({ error: "Nao foi possivel conferir a venda. Nada foi indeferido." }, { status: 503 });
+    }
+    if (naMaoDoCliente && card.proposta_id && !VENDA_DESFEITA.has(vendaViva.etapa)) {
+      return NextResponse.json(
+        {
+          error:
+            "Este contrato está com o cliente (em assinatura ou no Pré-faturamento) e a venda continua de pé. Não se indefere daqui: use Voltar para correção, que cancela o envelope e devolve a venda para contrato, ou peça o cancelamento na tela da venda.",
+        },
+        { status: 409 },
+      );
+    }
+    if (vendaViva.etapa === "assinatura" || vendaViva.etapa === "faturado") {
+      return NextResponse.json(
+        {
+          error: `A venda deste contrato está em ${vendaViva.etapa === "faturado" ? "Faturado" : "Assinatura"} no Hércules, adiante do card. Indeferir agora deixaria a venda de pé e o lote preso, sem card nenhum. Nada foi indeferido: avise a Careli para acertar a etapa da venda, ou peça o cancelamento na tela da venda.`,
+        },
+        { status: 409 },
+      );
+    }
   }
 
   // ⚠️ PEDIDO CUJA VENDA JÁ CAIU NÃO SE INDEFERE (revisão de 18/09/2026). É a conclusão que parou no
@@ -1858,4 +1909,23 @@ async function caminhoDoDocumentoDoProponente(
 
   if (error) throw new Error(error.message);
   return data?.storage_path ?? null;
+}
+
+/**
+ * A etapa da venda de um card, lida para uma guarda. `null` = a leitura falhou (quem chama recusa).
+ * Venda não encontrada volta com etapa vazia: elo quebrado não é venda desfeita, e a guarda trata
+ * como viva (o lado que recusa).
+ */
+async function etapaDaVendaDoCard(sb: SupabaseClient, propostaId: string): Promise<null | { etapa: string }> {
+  const { data, error } = await sb
+    .from("hercules_propostas")
+    .select("etapa")
+    .eq("workspace_id", WORKSPACE)
+    .eq("id", propostaId)
+    .maybeSingle<{ etapa: null | string }>();
+  if (error) {
+    console.error("[temis][trabalho] falha ao ler a venda antes de indeferir o contrato", error);
+    return null;
+  }
+  return { etapa: String(data?.etapa ?? "").trim() };
 }

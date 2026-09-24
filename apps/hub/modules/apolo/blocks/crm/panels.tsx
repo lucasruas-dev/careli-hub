@@ -73,6 +73,7 @@ import {
 import type { ApoloCarteiraRoleKind } from "../../data/apolo-derive";
 import { ScopedPortfolioPanel } from "./scoped-portfolio-panel";
 import { ExtratoClientePanel } from "./extrato-cliente-panel";
+import { EvolucaoDaParcela } from "./evolucao-da-parcela";
 import { StatementPanel } from "./statement-panel";
 import { getApoloAccessToken } from "../../data/apolo-operations";
 import {
@@ -1290,6 +1291,7 @@ function AgreementsFinancialPanel({ entity }: { entity: ApoloEntity }) {
         />
       </section>
       {activeFinancialSubtab === "extrato" ? <ExtratoClientePanel entity={entity} /> : null}
+      {activeFinancialSubtab === "evolucao" ? <EvolucaoDaParcela entity={entity} /> : null}
       {activeFinancialSubtab === "acordos" ? (
         <>
       <section className="rounded-xl border border-line bg-surface p-4">

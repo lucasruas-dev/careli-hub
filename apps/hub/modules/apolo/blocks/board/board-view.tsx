@@ -69,8 +69,10 @@ import { formatarTelefoneBR } from "@/lib/format/phone-br";
 import { buscarEnderecoPorCep } from "../../lib/cep";
 
 import { CreditoSerasa } from "./credito-serasa";
+import { MoverCad, resumoDaMudanca, type DestinoDaCad, type ResultadoDaMudanca } from "./mover-cad";
 import {
   BASE_DO_BOARD_NO_HUB,
+  ehPortaDoPortal,
   rotasDoCredito,
   rotuloDaColuna,
   vocabularioDoCredito,
@@ -241,6 +243,10 @@ type ItemFila = {
   // é o entityId), mas as AÇÕES precisam dizer em qual CAD estão mexendo — senão a etapa iria
   // parar na CAD que a pessoa tem em outro loteamento.
   enterpriseId?: string | null;
+  // (24/09/2026) O id de MERCADO da CAD (36, a divisão VOL, vira 35, o Vale do Ouro). Só chega junto
+  // com o "Mover CAD" (coordenação, porta do hub): é por ele que o seletor tira o próprio produto da
+  // lista de destinos. Ver `destinosParaEscolher` em mover-cad.tsx.
+  enterpriseIdDeMercado?: string | null;
   // Etapa PERSISTIDA (metadata.esteira.etapa). É o ponto de partida do item na tela: quem foi
   // importado do Asana como credenciado precisa nascer na coluna certa, não em Validação.
   etapa?: string | null;
@@ -499,6 +505,9 @@ export function BoardView({
   // Lista canônica de empreendimentos, vinda do servidor. Ver `empreendimentosDisponiveis`.
   const [catalogoEmpreendimentos, setCatalogoEmpreendimentos] = useState<string[]>([]);
   const [usuarioAtual, setUsuarioAtual] = useState<Analista | null>(null);
+  // (24/09/2026) Destinos do "Mover CAD". Só chega do servidor para a coordenação (admin e leader)
+  // na porta do hub; `null` = o card não mostra o botão. Ver mover-cad.tsx.
+  const [moverCad, setMoverCad] = useState<null | { destinos: DestinoDaCad[] }>(null);
   // Quem está analisando cada item. Local por enquanto (a atribuição real entra com a gravação).
   const [analistaPorItem, setAnalistaPorItem] = useState<Record<string, string>>({});
   const [carregando, setCarregando] = useState(true);
@@ -980,6 +989,7 @@ export function BoardView({
           analistas?: Analista[];
           empreendimentos?: string[];
           itens?: ItemFila[];
+          moverCad?: { destinos?: DestinoDaCad[] };
           usuarioAtual?: Analista | null;
         };
       };
@@ -988,6 +998,7 @@ export function BoardView({
       setAnalistas(payload.data?.analistas ?? []);
       setCatalogoEmpreendimentos(payload.data?.empreendimentos ?? []);
       setUsuarioAtual(payload.data?.usuarioAtual ?? null);
+      setMoverCad(payload.data?.moverCad ? { destinos: payload.data.moverCad.destinos ?? [] } : null);
 
       // O item ABERTO é um estado à parte de `itens` (não é derivado por id), e o título da
       // tela de detalhe lê dele. Sem esta linha, corrigir o nome arrumava o card e a tabela e
@@ -1338,6 +1349,11 @@ export function BoardView({
 
           <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-line bg-surface p-5">
             <DetalheBoard
+              // (24/09/2026) "Mover CAD": só na porta do hub, fora do "só consulta" e só quando o
+              // servidor mandou os destinos (coordenação). A rota confere tudo de novo.
+              destinosDaCad={
+                !ehPortaDoPortal(porta.api) && !porta.somenteLeitura ? (moverCad?.destinos ?? null) : null
+              }
               emCorrecao={Boolean(emCorrecao[selecionado.id])}
               emRevisao={Boolean(emRevisao[selecionado.id])}
               etapaAtual={progresso[selecionado.id] ?? 0}
@@ -1347,6 +1363,19 @@ export function BoardView({
               onAbrirChat={() => setPainelAberto(true)}
               onAprovarRestricao={() => setModalRestricao(true)}
               onAvancar={(etapaAtualId) => avancarEtapa(selecionado, etapaAtualId)}
+              onCadMovida={(resultado) => {
+                // A etapa e o rótulo novos vêm do banco no reload (o banco vence a sessão, ver
+                // `carregarFila`); aqui só fica o registro no histórico local.
+                registrarEvento(
+                  selecionado.id,
+                  "sistema",
+                  resultado ? `CAD movida: ${resumoDaMudanca(resultado)}` : "CAD movida de empreendimento",
+                );
+                void carregarFila();
+              }}
+              // Resposta incerta do "Mover CAD" (rede, 5xx sem corpo): a CAD pode ter mudado de
+              // empreendimento, e só o reload traz o `enterpriseId` de verdade para o card.
+              onCadIncerta={() => void carregarFila()}
               onCorrecao={() => setModalMotivo("correcao")}
               onHabilitar={habilitarImobiliaria}
               onIdentidadeSalva={() => void carregarFila()}
@@ -3029,6 +3058,7 @@ function MiniChip({ label }: { label: string }) {
 }
 
 function DetalheBoard({
+  destinosDaCad,
   emCorrecao,
   emRevisao,
   etapaAtual,
@@ -3046,7 +3076,11 @@ function DetalheBoard({
   onIndeferir,
   onReabrir,
   onVoltar,
+  onCadIncerta,
+  onCadMovida,
 }: {
+  // Destinos do "Mover CAD" (coordenação, porta do hub). `null`/ausente = sem o botão.
+  destinosDaCad?: DestinoDaCad[] | null;
   etapaAtual: number;
   item: ItemFila;
   emCorrecao: boolean;
@@ -3073,6 +3107,10 @@ function DetalheBoard({
   onReabrir: () => void;
   // Mesma ideia do `onAvancar`: o Board nomeia a etapa, não conta posições.
   onVoltar: (etapaAtualId: string) => void;
+  // Depois do "Mover CAD" com 200: a tela recarrega a fila.
+  onCadMovida?: (resultado: null | ResultadoDaMudanca) => void;
+  // "Mover CAD" sem resposta confiável (rede, 5xx sem corpo): a tela recarrega a fila para conferir.
+  onCadIncerta?: () => void;
 }) {
   // O que esta porta não mostra, e quem decide o crédito nela (ver "A PORTA DO BOARD").
   // `somenteLeitura` (D1): o produto é só consulta, e o rodapé fica sem nenhuma ação que grava.
@@ -3102,7 +3140,32 @@ function DetalheBoard({
             {imob ? "Imobiliária" : "CAD · prospect"}
             {item.documento ? ` · ${item.documento}` : ""}
             {imob && item.corretores ? ` · ${item.corretores} corretor(es)` : ""}
+            {/* O empreendimento DA CAD (o rótulo sai da esteira, a mesma fonte das ações): é onde
+                o "Mover CAD" logo abaixo vai tirar a ficha. Na imobiliária sem CAD o rótulo é o dos
+                vínculos dela, e a linha segue sem ele, como sempre. */}
+            {(!imob || item.enterpriseId) && item.empreendimentos[0]
+              ? ` · ${toTitleCase(item.empreendimentos[0])}`
+              : ""}
           </p>
+          {/* A CAD só se move de onde ela está: sem `enterpriseId` (ficha sem CAD) não há o que mover.
+              ⚠️ QUEM DECIDE É A EXISTÊNCIA DA CAD, NÃO O PAPEL (decisão D7 da revisão de 24/09/2026).
+              Medido em produção: uma PJ nascida imobiliária (perfis imobiliaria e prospect) tem CAD
+              real no Recanto do Pará (20). Com o `!imob` que havia aqui, o crédito dela mandava usar o
+              Mover CAD e o Board escondia o botão: CAD travada sem saída pela tela. A imobiliária sem
+              CAD continua sem o botão, porque não tem linha na esteira (`enterpriseId` nulo).
+              `key` só pelo item: ao ir para o próximo card o resultado do anterior some, e o da
+              própria ficha sobrevive ao reload (a CAD muda de `enterpriseId` depois de movida). */}
+          {item.enterpriseId && destinosDaCad && onCadMovida ? (
+            <MoverCad
+              de={item.enterpriseId}
+              destinos={destinosDaCad}
+              entityId={item.id}
+              key={item.id}
+              mercado={item.enterpriseIdDeMercado ?? null}
+              onConferir={onCadIncerta}
+              onMovida={onCadMovida}
+            />
+          ) : null}
         </div>
 
         <div className="flex items-center gap-2">

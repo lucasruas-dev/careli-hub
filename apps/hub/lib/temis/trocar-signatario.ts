@@ -7,6 +7,7 @@ import {
   removerSignatario,
 } from "@/lib/assinatura/clicksign/envelope";
 import { diarioDaProposta } from "@/lib/assinatura/diario-do-envelope-db";
+import { RECUSA_DE_REENVIO_SEM_ID } from "@/lib/assinatura/recusa-de-reenvio";
 import { conferirSignatarios, type Pessoa } from "@/lib/assinatura/signatarios";
 import { PAPEIS, type PapelNoContrato } from "@/lib/assinatura/tipos";
 
@@ -221,7 +222,7 @@ export function fraseDaFalhaDepoisDeRemover(pedido: {
 
 export type ConviteReenviado = { ok: true };
 
-export type FalhaNoReenvio = { erro: string; ok: false; status: 404 | 429 | 502 | 503 };
+export type FalhaNoReenvio = { erro: string; ok: false; status: 400 | 404 | 429 | 502 | 503 };
 
 /**
  * MANDA O CONVITE DE NOVO, SÓ PARA ESTA PESSOA — o caso mais comum dos dois.
@@ -249,6 +250,18 @@ export async function reenviarConvite(
     return { erro: "Sem o envelope e o signatário não dá para reenviar o convite.", ok: false, status: 404 };
   }
 
+  // ⚠️ E-MAIL NÃO É SIGNER ID, E MANDÁ-LO PARA LÁ É PEDIR 422. Nívea, 24/09/2026: *"não consigo
+  // reenviar"*. O endpoint espera o id que a Clicksign criou no passo 3 do envio; a tela manda a
+  // `chave` do diário, que nos envelopes anteriores a 24/09/2026 é a `key` do webhook ou o próprio
+  // e-mail (`diario-do-envelope-db.ts`). A recusa vem ANTES da chamada que cobra, e diz o caminho.
+  if (signerId.includes("@")) {
+    return {
+      erro: RECUSA_DE_REENVIO_SEM_ID,
+      ok: false,
+      status: 400,
+    };
+  }
+
   const linha = await lerEnvelope(sb, envelopeId);
   if (!linha.ok) return { erro: linha.erro, ok: false, status: linha.status };
 
@@ -267,12 +280,34 @@ export async function reenviarConvite(
     };
   }
 
+  // ⚠️ O 422 NÃO É ERRO DE REDE, E NÃO ADIANTA CLICAR DE NOVO. Ele quer dizer que o id mandado não
+  // é um signatário deste envelope — o caso dos envelopes enviados antes de o Panteon congelar a
+  // `chave` da Clicksign. Repetir só o detalhe cru do provedor mandava a operadora procurar um
+  // defeito que é nosso.
+  if (enviado.status === 422) {
+    return {
+      erro: `${RECUSA_DE_REENVIO_SEM_ID} O envelope continua como estava.`,
+      ok: false,
+      status: 502,
+    };
+  }
+
   return {
     erro: `Não foi possível reenviar o convite: ${enviado.erro}. O envelope continua como estava.`,
     ok: false,
     status: 502,
   };
 }
+
+/**
+ * A frase de quando não se sabe o id do signatário na Clicksign.
+ *
+ * ⚠️ ELA DIZ O QUE FAZER, e é por isso que existe como constante: as DUAS telas do painel de
+ * assinatura usam a mesma explicação no tooltip do botão desabilitado, e as três não podem contar
+ * histórias diferentes. O texto mora em `lib/assinatura/recusa-de-reenvio.ts` porque este arquivo
+ * arrasta a porta da Clicksign (que lê `process.env`) e não pode entrar num componente de cliente.
+ */
+export { RECUSA_DE_REENVIO_SEM_ID } from "@/lib/assinatura/recusa-de-reenvio";
 
 export type TrocaFeita = {
   /**

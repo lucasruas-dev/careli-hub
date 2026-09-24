@@ -1321,3 +1321,96 @@ describe("a corrida com o Indeferir", () => {
     expect(banco.linha("hercules_propostas", "venda-21")?.etapa).toBe("contrato");
   });
 });
+
+// ── A UNIDADE SOLTA NO CANCELAMENTO: A GARANTIA ESCRITA (24/09/2026) ─────────────
+//
+// Lucas, 24/09/2026: *"lembrando que quando tem cancelamento a unidade tem que ficar disponivel, tem
+// que ter esse reflexo"*. Medido em 24/09/2026: as 9 conclusões de setembro soltaram o lote; os que
+// hoje aparecem ocupados foram reocupados DEPOIS (VOL1106 reservado de novo às 22:02 de 21/09, depois
+// do cancelamento das 20:49; VOC0911 bloqueado pela Nívea depois do distrato). Estes testes travam os
+// dois lados: o lote volta, e a retomada nunca solta o lote de quem chegou depois.
+
+describe("a unidade na conclusão: a prova pela régua e os lotes reocupados", () => {
+  it("irmã de outra gleba com cadastro vendida: o recado diz que a irmã ainda tem dono, e não 'voltou para a disponibilidade'", async () => {
+    const banco = cenario();
+    // O pai VLO aponta para uma unidade da VOR: a VOR vira gleba irmã, e a VOR0306 é o mesmo chão.
+    banco.semear("hercules_unidades", unidade("vlo-1206", "VLO1206", VLO, "12", "06", { espelho_de: "vor-1206", origem_c2x_id: 9002 }));
+    banco.semear("hercules_unidades", unidade("vor-1206", "VOR1206", "38", "12", "06", { origem_c2x_id: 9201 }));
+    banco.semear("hercules_unidades", unidade("vor-0306", "VOR0306", "38", "03", "06", { origem_c2x_id: 9202, situacao: "vendida" }));
+
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), portaDeTeste().porta);
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.unidade.voltou).toBe(false);
+    expect(r.unidade.frase).toContain("VOR0306");
+    expect(r.recado).not.toContain("a unidade voltou para a disponibilidade");
+    // A irmã não é soltada (decisão pendente do Lucas).
+    expect(banco.linha("hercules_unidades", "vor-0306")?.situacao).toBe("vendida");
+    const passagem = banco.linhas("temis_trabalho_etapas").find((l) => l.trabalho_id === "card-pedido");
+    expect(String(passagem?.observacao)).toContain("VOR0306");
+  });
+
+  it("o caso VOL1106: o lote foi reservado de novo depois da queda, e a retomada NÃO solta", async () => {
+    const banco = cenario({
+      pedido: { estagio: "faturado" },
+      venda: { cancelada_em: "2026-09-21T23:49:00.000Z", etapa: "cancelado" },
+    });
+    banco.linha("hercules_reservas", "res-21")!.situacao = "cancelada";
+    banco.semear("hercules_reservas", {
+      empreendimento_id: "emp-voc",
+      id: "res-nova",
+      origem: "coordenador",
+      situacao: "ativa",
+      unidade_id: "voc-0306",
+      workspace_id: "careli",
+    });
+
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), portaDeTeste().porta);
+
+    expect(r.ok && r.unidade.voltou).toBe(false);
+    expect(banco.linha("hercules_unidades", "voc-0306")?.situacao).toBe("reservada");
+    expect(banco.linha("hercules_reservas", "res-nova")?.situacao).toBe("ativa");
+  });
+
+  it("o caso VOC0911: bloqueado pela Nívea depois do distrato, a retomada NÃO solta", async () => {
+    const banco = cenario({
+      pedido: { estagio: "faturado", tipo: "distrato" },
+      venda: { cancelada_em: "2026-09-22T03:14:00.000Z", etapa: "distrato" },
+      vocSituacao: "bloqueada",
+    });
+    banco.linha("hercules_reservas", "res-21")!.situacao = "cancelada";
+
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), portaDeTeste().porta);
+
+    expect(r.ok && r.unidade.voltou).toBe(false);
+    expect(banco.linha("hercules_unidades", "voc-0306")?.situacao).toBe("bloqueada");
+  });
+
+  it("reserva em `proposta` de OUTRA venda viva no pai: não cai, e o lote não volta", async () => {
+    const banco = cenario();
+    banco.semear("hercules_reservas", {
+      empreendimento_id: "emp-vlo",
+      id: "res-outra",
+      origem: "coordenador",
+      situacao: "proposta",
+      unidade_id: "vlo-0306",
+      workspace_id: "careli",
+    });
+    banco.semear("hercules_propostas", {
+      etapa: "proposta",
+      etapa_desde: "2026-09-20T00:00:00.000Z",
+      id: "venda-outra",
+      origem: "panteon",
+      reserva_id: "res-outra",
+      unidade_id: "vlo-0306",
+      workspace_id: "careli",
+    });
+
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), portaDeTeste().porta);
+
+    expect(r.ok && r.unidade.voltou).toBe(false);
+    expect(banco.linha("hercules_reservas", "res-outra")?.situacao).toBe("proposta");
+    expect(banco.linha("hercules_unidades", "voc-0306")?.situacao).toBe("reservada");
+  });
+});

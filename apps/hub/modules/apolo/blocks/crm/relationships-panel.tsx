@@ -16,7 +16,7 @@ import {
 import { useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 
-import type { ApoloEntity, ApoloRelationship } from "@/lib/apolo/types";
+import type { ApoloEntity, ApoloProfile, ApoloRelationship } from "@/lib/apolo/types";
 
 import { normalizeText } from "../../data/apolo-derive";
 import { getApoloAccessToken } from "../../data/apolo-operations";
@@ -38,6 +38,62 @@ function isVinculado(rel: ApoloRelationship): boolean {
 }
 function isEmpreendimento(rel: ApoloRelationship): boolean {
   return /empreendimento/i.test(rel.relation);
+}
+
+/**
+ * A frase que diz ONDE se troca o empreendimento de uma CAD.
+ *
+ * ⚠️ A MESMA NOS QUATRO LUGARES (decisão D1 da revisão de 24/09/2026): o 409 do arquivamento, o 409 da
+ * consulta de crédito e, aqui, a dica do botão e a mensagem de reserva. Antes cada lugar dizia "use
+ * Mover CAD no Board" para QUALQUER usuário, e o botão só existe para a coordenação (admin e leader):
+ * o analista, que é quem mais cai na trava, era mandado para uma ação que ele não vê e que a rota
+ * recusaria com 403. A frase diz quem faz.
+ */
+export const FRASE_DO_MOVER_CAD =
+  "Para trocar o empreendimento, a coordenação usa Mover CAD no Board.";
+
+/**
+ * A dica do botão de excluir. No vínculo de EMPREENDIMENTO de quem pode ter CAD, excluir e adicionar
+ * outro NÃO troca o empreendimento da CAD: a troca é o "Mover CAD" do Board. Na imobiliária pura o
+ * vínculo é o credenciamento dela, e excluir continua sendo o caminho.
+ *
+ * ⚠️ IMOBILIÁRIA COM PERFIL DE PROSPECT TAMBÉM (decisão D7 da revisão de 24/09/2026). Medido em
+ * produção: uma PJ nascida imobiliária (perfis imobiliaria e prospect) tem CAD real no Recanto do Pará
+ * (20). A trava do arquivamento decide pela existência da CAD, não pelo perfil; o painel não sabe se há
+ * CAD, então usa o que tem: o perfil de prospect, que é o de quem compra.
+ */
+export function dicaDoExcluir(rel: ApoloRelationship, perfis: readonly ApoloProfile[]): string {
+  const podeTerCad = !perfis.includes("imobiliaria") || perfis.includes("prospect");
+  if (isEmpreendimento(rel) && podeTerCad) {
+    return `Excluir vínculo. ${FRASE_DO_MOVER_CAD}`;
+  }
+  return "Excluir vínculo";
+}
+
+/**
+ * O que a tela diz quando o arquivamento NÃO passa. A mensagem da ROTA vem primeiro, sempre.
+ *
+ * ⚠️ O 409 DO EMPREENDIMENTO DA CAD (24/09/2026). A rota de arquivar passou a recusar o vínculo de
+ * empreendimento que é a chave de uma CAD viva, e a resposta explica o caminho (o "Mover CAD"). É essa
+ * frase que o operador precisa ler: foi o "exclui e adiciona" deste painel que deixou a CAD do JONATAS
+ * no Veredas do Ouro enquanto o vínculo dizia Vale do Ouro. Sem texto da rota, o 409 de empreendimento
+ * ainda aponta a saída em vez do genérico "tente de novo", que mandaria repetir o que não vai passar.
+ */
+export function mensagemDaExclusao(
+  status: number,
+  corpo: null | { error?: string },
+  ehEmpreendimento: boolean,
+): string {
+  // O 404 acontece quando o vínculo JÁ foi arquivado (a rota ignora arquivados).
+  if (status === 404) {
+    return "Este vínculo já tinha sido excluído. Atualize a página para ver a lista atual.";
+  }
+  const daRota = (corpo?.error ?? "").trim();
+  if (daRota) return daRota;
+  if (status === 409 && ehEmpreendimento) {
+    return `Este empreendimento é o da CAD e não sai por aqui. ${FRASE_DO_MOVER_CAD}`;
+  }
+  return "Não foi possível excluir o vínculo agora. Tente de novo.";
 }
 
 // Mesma pessoa em papéis diferentes vira UMA linha, juntando os papéis.
@@ -144,8 +200,16 @@ export function RelationshipsPanel({
   const contatoGroups = groups.filter((group) => group.tone === "clay");
   const active = groups.find((group) => group.key === openGroup) ?? null;
 
-  // Exclui (arquiva) um vínculo. Some da lista, fica no histórico. Para TROCAR: exclui o antigo aqui
-  // e usa o "Adicionar" para o novo. Identifica pela entidade (ou pelo nome, no contato leve).
+  // Exclui (arquiva) um vínculo. Some da lista, fica no histórico. Identifica pela entidade (ou pelo
+  // nome, no contato leve). Para TROCAR um vínculo: exclui o antigo aqui e usa o "Adicionar" para o
+  // novo.
+  //
+  // ⚠️ MENOS O EMPREENDIMENTO DE QUEM TEM CAD (24/09/2026). Para o prospect, o vínculo de empreendimento
+  // é só o espelho da CAD, que mora em `apolo_esteira`; excluir e adicionar troca o espelho e deixa a
+  // CAD onde estava (o caso do JONATAS: vínculo no Vale do Ouro, CAD no Veredas, crédito lido do
+  // Veredas). A troca do empreendimento da CAD é o "Mover CAD" do Board (só a coordenação o vê, ver
+  // `FRASE_DO_MOVER_CAD`), e a rota de arquivar recusa
+  // com 409 o vínculo que é chave de uma CAD viva; a mensagem dela aparece aqui.
   async function excluir(rel: ApoloRelationship) {
     const chave = rel.entityId ?? rel.label;
     if (!chave) return;
@@ -173,14 +237,10 @@ export function RelationshipsPanel({
         onCreated();
       } else {
         // NÃO ficar em silêncio: antes, falha aqui não mudava nada na tela e o botão parecia
-        // morto. O 404 acontece quando o vínculo JÁ foi arquivado (a rota ignora arquivados),
-        // então a mensagem diz isso em vez de um erro genérico.
-        const corpo = (await resp.json().catch(() => ({}))) as { error?: string };
-        window.alert(
-          resp.status === 404
-            ? "Este vínculo já tinha sido excluído. Atualize a página para ver a lista atual."
-            : corpo.error || "Não foi possível excluir o vínculo agora. Tente de novo.",
-        );
+        // morto. A régua do texto (404, 409 do empreendimento da CAD, genérico) mora em
+        // `mensagemDaExclusao`.
+        const corpo = (await resp.json().catch(() => null)) as null | { error?: string };
+        window.alert(mensagemDaExclusao(resp.status, corpo, isEmpreendimento(rel)));
       }
     } finally {
       setExcluindo(null);
@@ -230,6 +290,7 @@ export function RelationshipsPanel({
 
       {active ? (
         <RelationshipListModal
+          perfis={entity.profiles}
           excluindo={excluindo}
           group={active}
           onClose={() => setOpenGroup(null)}
@@ -304,6 +365,7 @@ function RelationshipListModal({
   onExcluir,
   onOpenEnterprise,
   onOpenEntity,
+  perfis,
 }: {
   excluindo: string | null;
   group: Group;
@@ -311,6 +373,8 @@ function RelationshipListModal({
   onExcluir: (rel: ApoloRelationship) => void;
   onOpenEnterprise: (name: string) => void;
   onOpenEntity: (label: string, entityId: string) => void;
+  // Os perfis da ficha: decidem se a dica do excluir aponta o Mover CAD (ver `dicaDoExcluir`).
+  perfis: readonly ApoloProfile[];
 }) {
   const [search, setSearch] = useState("");
   const [asc, setAsc] = useState(true);
@@ -407,6 +471,7 @@ function RelationshipListModal({
           {items.length ? (
             items.map((rel) => (
               <RelRow
+                dicaExcluir={dicaDoExcluir(rel, perfis)}
                 excluindo={excluindo === (rel.entityId ?? rel.label)}
                 key={`${rel.label}-${rel.relation}`}
                 onExcluir={() => onExcluir(rel)}
@@ -470,6 +535,7 @@ function relationshipBadge(
 
 // Card padrão: Nome · Telefone · E-mail · Nível. Clicável quando é uma entidade Apolo.
 function RelRow({
+  dicaExcluir,
   excluindo,
   onExcluir,
   onOpenEnterprise,
@@ -477,6 +543,7 @@ function RelRow({
   rel,
   tone,
 }: {
+  dicaExcluir: string;
   excluindo: boolean;
   onExcluir: () => void;
   onOpenEnterprise: (name: string) => void;
@@ -538,7 +605,7 @@ function RelRow({
       className="shrink-0 rounded-md p-1.5 text-ink-muted transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 dark:hover:bg-rose-500/10"
       disabled={excluindo}
       onClick={onExcluir}
-      title="Excluir vínculo"
+      title={dicaExcluir}
       type="button"
     >
       {excluindo ? (

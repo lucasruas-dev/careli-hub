@@ -13,10 +13,18 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { type EnvelopeDaProposta, envelopeQueSegura } from "@/lib/assinatura/envio-db";
+// A régua de "esta venda está morta" mora num lugar só, e é pura — ver `VENDA_DESFEITA`.
+import { VENDA_DESFEITA } from "@/lib/hercules/acao-de-cancelamento";
+import {
+  motivoDoReflexo,
+  refletirCardNaVenda,
+  registrarReflexoQueNaoAndou,
+} from "@/lib/hercules/reflexo-da-temis-server";
 
 import { type ContratoNoCard, contratosDasPropostas } from "./contrato-guardado-db";
 import { registrarPassagemDeEtapa } from "./passagem-de-etapa-db";
 import {
+  ESTAGIOS_ENCERRADOS,
   type EstagioDoTrabalho,
   type TipoDeTrabalho,
   type Trabalho,
@@ -955,6 +963,10 @@ export async function abrirTrabalho(
  * ⚠️ DESMARCAR NÃO FAZ O CARD VOLTAR. Quem já passou de estágio e desmarca uma atividade está
  * corrigindo o registro, não desfazendo trabalho: puxar o card para trás sozinho tiraria da fila de
  * assinatura um documento que já foi despachado.
+ *
+ * ⚠️ E O CARD NÃO ANDA SOBRE VENDA MORTA (`recusaPorVendaDesfeita`). Ver a nota dela: esta função
+ * nunca lia `hercules_propostas`, e era por isso que um card de contrato cancelado ou distratado
+ * podia atravessar as marcações até "Faturado" mostrando FATURADO sobre uma venda desfeita.
  */
 export async function marcarAtividade(input: {
   atividade: string;
@@ -976,6 +988,11 @@ export async function marcarAtividade(input: {
   if (erroLeitura || !atual) return { erro: "trabalho não encontrado", ok: false };
 
   const trabalho = mapear(atual as LinhaCrua);
+
+  // ⚠️ ANTES DE QUALQUER MARCAÇÃO, E NÃO SÓ ANTES DO AVANÇO. Ver `recusaPorVendaDesfeita`.
+  const recusa = await recusaPorVendaDesfeita(supabase, trabalho);
+  if (recusa) return recusa;
+
   const feitas = new Set(trabalho.atividadesFeitas);
   if (input.feita) feitas.add(input.atividade);
   else feitas.delete(input.atividade);
@@ -983,6 +1000,21 @@ export async function marcarAtividade(input: {
   const depois = { ...trabalho, atividadesFeitas: [...feitas] };
   const avanca = input.feita && podeAvancar(depois);
   const seguinte = avanca ? proximoEstagio(depois.tipo, depois.estagio) : null;
+
+  // ⚠️ O PEDIDO NÃO CHEGA A CONCLUÍDO PELA MARCAÇÃO (24/09/2026). O Concluído do card de cancelamento
+  // ou de distrato é o botão Concluir (`concluirCancelamentoDoCard`), que derruba a venda, a reserva e
+  // devolve o lote pela trava. Pela marcação, o card chegava a "Concluído" com a venda viva, a reserva
+  // viva e o lote preso, e o quadro dizia que estava tudo feito. Lucas, 24/09/2026: *"lembrando que
+  // quando tem cancelamento a unidade tem que ficar disponivel, tem que ter esse reflexo"*. Medido em
+  // 24/09/2026: nunca aconteceu (as 9 passagens "atividade" de pedido são conclusões pelo botão,
+  // gravadas com a origem antiga porque a 0177 não está aplicada), e a trava fecha a porta antes.
+  // Marcar ou desmarcar sem avançar continua livre.
+  if (seguinte === "faturado" && (depois.tipo === "cancelamento" || depois.tipo === "distrato")) {
+    return {
+      erro: `esta é a última atividade antes de Concluído, e quem conclui o ${depois.tipo === "distrato" ? "distrato" : "cancelamento"} é o botão Concluir, que derruba a venda e solta o lote. Use Concluir no card; nada foi marcado.`,
+      ok: false,
+    };
+  }
 
   const mudanca: Record<string, unknown> = {
     atividades_feitas: [...feitas],
@@ -1015,9 +1047,92 @@ export async function marcarAtividade(input: {
       trabalhoId: input.id,
       trabalhoTipo: depois.tipo,
     });
+
+    // ⚠️ E A VENDA VAI JUNTO (24/09/2026): Pré-faturamento → Faturado leva a venda de `assinatura`
+    // para `faturado`; Contrato → Em assinatura sem envelope leva de `contrato` para `assinatura`. O
+    // reflexo nunca escreve o cadastro da unidade nem `data_faturamento` (decisão pendente do Lucas)
+    // e nunca desfaz o card: falha vira log.
+    const passo = {
+      autorNome: input.quemNome ?? null,
+      de: trabalho.estagio,
+      motivo: motivoDoReflexo(trabalho.estagio, seguinte),
+      para: seguinte,
+      propostaId: trabalho.propostaId,
+      trabalhoTipo: depois.tipo,
+    };
+    registrarReflexoQueNaoAndou(input.id, passo, await refletirCardNaVenda(supabase, passo));
   }
 
   return { andou: Boolean(seguinte), estagio: seguinte ?? trabalho.estagio, ok: true };
+}
+
+/**
+ * O CARD NÃO ANDA QUANDO A VENDA DELE JÁ FOI DESFEITA — a trava na RAIZ do avanço.
+ *
+ * ⚠️ `marcarAtividade` NUNCA LEU `hercules_propostas`, E ESSE ERA O DEFEITO. Com a venda cancelada
+ * ou distratada, as atividades que restaram no card continuavam podendo ser marcadas, `proximoEstagio`
+ * levava o card adiante e a última marcação o deixava em **Faturado**: o quadro mostrando FATURADO
+ * sobre uma venda morta, e `arrependimento_inicio` contando prazo de um contrato que não existe mais.
+ *
+ * ⚠️ O CONSERTO É AQUI, E NÃO NO BOTÃO NOVO DE CANCELAR. O estado nasce do pedido pela tela Venda do
+ * Hércules desde que ele existe: nas etapas em que o contrato está assinado por todos o motor RECUSA
+ * indeferir o card de contrato e só empilha aviso, então o card sobrevive à queda da venda. Consertar
+ * só a porta nova deixaria a porta antiga produzindo o mesmo card mentiroso.
+ *
+ * ⚠️ ALCANCE MEDIDO EM PRODUÇÃO (23/09/2026), ANTES DE ESCREVER A TRAVA: 13 cards têm a venda morta,
+ * e os 13 estão em `faturado` (9) ou `indeferido` (4) — nenhum num estágio de onde se ande. Ou seja:
+ * NENHUM card mente na tela hoje, e esta trava não muda uma linha do que está lá. Ela fecha o caminho
+ * pelo qual o próximo mentiria.
+ *
+ * ⚠️ CARD JÁ ENCERRADO NÃO É CONSULTADO, DE PROPÓSITO. De `faturado` e `indeferido` não há próximo
+ * estágio (`estagiosDoTipo`), então card encerrado não anda de jeito nenhum: travar a marcação dele
+ * tiraria de quem arruma registro antigo (os 13 acima, entre eles os 9 pedidos já concluídos, que por
+ * definição TÊM a venda desfeita) a correção que nunca fez mal a ninguém.
+ *
+ * ⚠️ LEITURA QUE FALHA RECUSA, e não deixa passar. "Não consegui perguntar" não é "a venda está
+ * viva", e o preço dos dois lados é assimétrico: recusar custa um clique repetido, deixar passar
+ * custa um card em Faturado sobre venda distratada, que ninguém desfaz sozinho.
+ *
+ * ⚠️ VENDA NÃO ENCONTRADA PASSA. `proposta_id` apontando para linha que não existe é elo quebrado, e
+ * não venda desfeita: travar por causa dele congelaria o card sem ter medido nada. O log grita.
+ */
+async function recusaPorVendaDesfeita(
+  supabase: SupabaseClient,
+  trabalho: Pick<TrabalhoDoBoard, "estagio" | "propostaId">,
+): Promise<null | { erro: string; ok: false }> {
+  if (!trabalho.propostaId) return null;
+  if ((ESTAGIOS_ENCERRADOS as readonly string[]).includes(trabalho.estagio)) return null;
+
+  const { data, error } = await supabase
+    .from("hercules_propostas")
+    .select("etapa")
+    .eq("workspace_id", "careli")
+    .eq("id", trabalho.propostaId)
+    .maybeSingle<{ etapa: null | string }>();
+
+  if (error) {
+    console.error("[temis] não foi possível conferir a venda do card antes de marcar", {
+      erro: error.message,
+      proposta: trabalho.propostaId,
+    });
+    return {
+      erro: "não foi possível conferir agora se a venda deste card continua de pé; nada foi marcado, tente de novo em instantes",
+      ok: false,
+    };
+  }
+
+  if (!data) {
+    console.error("[temis] card com proposta_id sem venda no banco", { proposta: trabalho.propostaId });
+    return null;
+  }
+
+  const etapa = String(data.etapa ?? "").trim();
+  if (!VENDA_DESFEITA.has(etapa)) return null;
+
+  return {
+    erro: `a venda deste card já foi ${etapa === "distrato" ? "distratada" : "cancelada"}: o card não anda mais. Indefira o card para ele sair da fila.`,
+    ok: false,
+  };
 }
 
 /**

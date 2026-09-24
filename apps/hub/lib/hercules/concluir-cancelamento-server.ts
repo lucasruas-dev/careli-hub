@@ -14,7 +14,10 @@ import { registrarPassagemDeEtapa } from "@/lib/temis/passagem-de-etapa-db";
 import { carimbarCancelamento, decisaoDoEstadoReal } from "@/lib/temis/retorno-para-correcao";
 import { ATIVIDADES, ESTAGIOS_ENCERRADOS, NOME_DO_TIPO } from "@/lib/temis/trabalhos";
 
-import { type DevolucaoDoCadastro, devolverCadastroDaUnidade } from "./cancelar-reserva-server";
+// ⚠️ A LISTA DE "VENDA MORTA" VEM DE UM LUGAR SÓ (`VENDA_DESFEITA`): a cópia local daqui
+// (`JA_DESFEITA`) era a segunda de três, e a terceira, na Têmis, nem existia.
+import { VENDA_DESFEITA } from "./acao-de-cancelamento";
+import { type DesfechoDaUnidade, desfechoDaUnidade, soltarLoteDaVendaDesfeita } from "./cancelar-reserva-server";
 import { codigoDaVenda } from "./codigo-da-venda";
 import { lerFatosDoContrato } from "./fatos-do-contrato-server";
 import { ETAPAS_DO_FLUXO } from "./fluxo-de-venda";
@@ -64,8 +67,9 @@ export type PedidoDeConclusao = {
   usuarioNome: null | string;
 };
 
-/** O que aconteceu com a unidade, pronto para a tela e para o histórico. */
-export type DesfechoDaUnidade = { frase: string; voltou: boolean };
+// ⚠️ O DESFECHO DA UNIDADE MORA AGORA EM cancelar-reserva-server.ts (24/09/2026), junto com a
+// soltura: o Cancelar proposta do Hércules passou a dizer à tela o mesmo que a Têmis diz.
+export { type DesfechoDaUnidade, desfechoDaUnidade } from "./cancelar-reserva-server";
 
 export type ConclusaoFeita = {
   /** Tudo o que não impediu a conclusão, mas precisa ser dito (card de contrato, histórico). */
@@ -118,9 +122,6 @@ type VendaDaConclusao = {
   reserva_id: null | string;
   unidade_id: null | string;
 };
-
-/** As etapas de onde a venda já saiu do caminho: concluir de novo não tem o que fazer nela. */
-const JA_DESFEITA = new Set(["cancelado", "distrato"]);
 
 /**
  * Conclui o card de cancelamento ou de distrato: a venda cai, a reserva cai, o card fecha e o lote
@@ -206,7 +207,7 @@ export async function concluirCancelamentoDoCard(
    */
   const aVenda = `${codigo ? `a venda COD ${codigo}` : "a venda"}${nomeDaUnidade ? ` (${nomeDaUnidade})` : ""}`;
   const etapaLida = String(venda.etapa ?? "").trim();
-  const jaEstavaDesfeita = JA_DESFEITA.has(etapaLida);
+  const jaEstavaDesfeita = VENDA_DESFEITA.has(etapaLida);
 
   // ⚠️ AS DECLARAÇÕES VÊM ANTES DE QUALQUER CHAMADA À CLICKSIGN: sem elas o distrato não derruba a
   // venda. Na retomada de venda JÁ desfeita elas foram dadas na conclusão, e não se pedem de novo.
@@ -517,19 +518,31 @@ export async function concluirCancelamentoDoCard(
   // grava a situação sem mexer em `atualizado_em`, então o carimbo de tempo não separa o `vendida`
   // desta venda do de uma revenda feita no legado. Na retomada, só `reservada` volta; o `vendida`
   // que sobrar é conferido e liberado por gente (o recado diz o porquê).
+  //
+  // ⚠️ E A SOLTURA PASSA POR `soltarLoteDaVendaDesfeita` (24/09/2026), a mesma do Cancelar proposta
+  // do Hércules. Lucas, 24/09/2026: *"lembrando que quando tem cancelamento a unidade tem que ficar
+  // disponivel, tem que ter esse reflexo"*. Ela acrescenta à trava de sempre a reserva esquecida em
+  // `proposta` desta venda no terreno e a PROVA PELA RÉGUA: com a irmã de outra gleba com dono no
+  // cadastro, o recado diz qual irmã em vez de "voltou". A reserva ligada já caiu no passo 2, com o
+  // erro lido e antes dos cards; aqui ela não é gravada de novo (`reservaLigadaJaCaiu`).
   const aceitos: string[] = jaEstavaDesfeita ? ["reservada"] : ["reservada", "vendida"];
-  const unidade: DesfechoDaUnidade = !venda.unidade_id
-    ? { frase: "a venda não tem unidade ligada no Panteon", voltou: false }
-    : !terreno.ok
-      ? desfechoDaUnidade({ devolvida: false, porque: "leitura_falhou" })
-      : desfechoDaUnidade(
-          await devolverCadastroDaUnidade(
-            sb,
-            venda.unidade_id,
-            {},
-            { aceitos, jaLida: terreno.situacoes ?? undefined },
-          ),
-        );
+  let unidade: DesfechoDaUnidade;
+  if (!venda.unidade_id) {
+    unidade = { frase: "a venda não tem unidade ligada no Panteon", voltou: false };
+  } else if (!terreno.ok) {
+    unidade = desfechoDaUnidade({ devolvida: false, porque: "leitura_falhou" });
+  } else {
+    const soltura = await soltarLoteDaVendaDesfeita(sb, {
+      aceitos,
+      agora,
+      jaLida: terreno.situacoes ?? undefined,
+      reservaLigadaJaCaiu: true,
+      venda: { id: venda.id, reserva_id: venda.reserva_id, unidade_id: venda.unidade_id },
+    });
+    unidade = desfechoDaUnidade(
+      soltura.ok ? soltura.desfecho : { devolvida: false, porque: "leitura_falhou" },
+    );
+  }
 
   // ⚠️ A PASSAGEM DO CARD É GRAVADA DEPOIS DA UNIDADE, e é a única coisa fora da ordem acima — de
   // propósito: ela é HISTÓRICO, não estado, e só depois do passo 5 dá para escrever nela se o lote
@@ -587,42 +600,6 @@ export async function concluirCancelamentoDoCard(
     tipo,
     unidade,
   };
-}
-
-/**
- * A frase do que aconteceu com a unidade, a partir do desfecho da trava.
- *
- * ⚠️ "NÃO VOLTOU" SEMPRE COM O PORQUÊ. Quem concluiu um cancelamento e vê o lote ocupado precisa
- * saber se é outro dono (e qual), um bloqueio do Apolo ou uma leitura que falhou: são três conversas
- * diferentes, com três pessoas diferentes.
- */
-export function desfechoDaUnidade(d: DevolucaoDoCadastro): DesfechoDaUnidade {
-  if (d.devolvida) return { frase: "a unidade voltou para a disponibilidade", voltou: true };
-  switch (d.porque) {
-    case "ja_disponivel":
-      return { frase: "o cadastro da unidade já dizia disponível", voltou: true };
-    case "outro_dono":
-      return {
-        frase: `a unidade NÃO voltou para a disponibilidade: o lote tem outro dono (${d.donos[0]?.descricao ?? "outro processo vivo"})`,
-        voltou: false,
-      };
-    case "bloqueada":
-      return {
-        frase: "a unidade NÃO voltou para a disponibilidade: ela está bloqueada no cadastro",
-        voltou: false,
-      };
-    case "cadastro":
-      return {
-        frase: `a unidade NÃO voltou para a disponibilidade: o cadastro dela está "${d.situacao ?? "sem situação"}"`,
-        voltou: false,
-      };
-    default:
-      return {
-        frase:
-          "a unidade NÃO voltou para a disponibilidade: não deu para conferir se o lote tem outro dono, e ela fica ocupada até alguém conferir",
-        voltou: false,
-      };
-  }
 }
 
 /**

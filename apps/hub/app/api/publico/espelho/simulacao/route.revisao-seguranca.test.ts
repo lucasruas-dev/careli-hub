@@ -168,11 +168,23 @@ beforeEach(() => {
 });
 
 describe("revisão de segurança: o que um corpo forjado NÃO consegue imprimir (conferido)", () => {
-  it("desconto: nenhuma combinação de plano × prazo × valor imprime mais que o desconto do plano no prazo dele", async () => {
+  // ⚠️ ESTE CASO MUDOU DE PERGUNTA DUAS VEZES EM 23/09/2026, PELA DECISÃO DO LUCAS. Ele media
+  // "nenhuma folha imprime mais desconto do que o PLANO dá", porque no espelho o campo de desconto
+  // era somente leitura e a rota EMPURRAVA qualquer valor menor para o preço do plano; com o campo
+  // liberado (*"Liberar para todo mundo"*) empurrar viraria a folha desmentindo a tela, e a
+  // pergunta virou "nenhuma folha passa do teto de 15%". Perguntado sobre o teto, com o risco
+  // escrito na frente, Lucas: **"pode liberar tudo"**, e o teto saiu.
+  //
+  // ⚠️ A PERGUNTA QUE SOBRA É A QUE AINDA PROTEGE A MARCA DA CASA, E ELA NÃO É O TETO: nenhuma
+  // folha anuncia a unidade MAIS CARA do que a tabela (desconto negativo), nenhuma sai de graça, e
+  // o que é recusado não vira folha nenhuma. Desconto para baixo é decisão do Lucas; preço para
+  // cima é a página mentindo, e continua recusado.
+  it("desconto: nenhuma folha passa da tabela para cima, e recusa nenhuma imprime", async () => {
     const valores: unknown[] = [1, 0, -1, "1", "abc", null, 1e308, 217_500, 382_800, 400_199.99, "400200", 3.5e5];
     const prazos: unknown[] = [undefined, 0, -84, 1, 12, 35, 36, 36.4, 35.6, "36", 59, 60, 61, 83, 83.5, 84, "84", 84.4, "1e1"];
     let folhas = 0;
-    let maiorExcesso = -Infinity;
+    let recusas = 0;
+    let maiorDesconto = -Infinity;
     for (const plano of Object.keys(REGRA) as Array<keyof typeof REGRA>) {
       for (const parcelas of prazos) {
         for (const valor of valores) {
@@ -180,21 +192,37 @@ describe("revisão de segurança: o que um corpo forjado NÃO consegue imprimir 
           const r = await pedir({ ...DA_TELA, anuaisQuantidade: 0, entrada: 0, parcelas, plano, valor });
           if (r.status !== 200) {
             expect([422]).toContain(r.status);
+            // ⚠️ RECUSA NÃO IMPRIME NADA. É a metade que importa: sem isto, "passou do teto" poderia
+            // virar uma folha com o número trocado, que é o defeito que esta rodada veio matar.
+            expect(estado.folhas.length).toBe(antes);
+            recusas += 1;
             continue;
           }
           expect(estado.folhas.length).toBe(antes + 1);
           folhas += 1;
-          const mensais = Number(condicao("Parcelas mensais"));
-          // O desconto só vale no prazo EXATO do plano; fora dele, zero.
-          const permitido = mensais === REGRA[plano].parcelas || mensais === 0 ? REGRA[plano].desconto : 0;
-          maiorExcesso = Math.max(maiorExcesso, descontoImpresso() - permitido);
-          expect(descontoImpresso()).toBeLessThanOrEqual(permitido);
+          maiorDesconto = Math.max(maiorDesconto, descontoImpresso());
+          // ⚠️ ZERO É O PISO DESTA LINHA, E NÃO OS 15% DE ANTES. Desconto negativo seria a folha
+          // anunciando o lote ACIMA da tabela, que é o único lado que a decisão do Lucas não
+          // liberou: desconto é desconto, acréscimo na página sem login é a casa mentindo para
+          // cima. E 100% seria a folha dando o lote de graça, que nenhum corpo consegue: valor
+          // zero, negativo ou lixo é lido como "não mandou valor" e volta à tabela.
+          // ⚠️ ZERO É O PISO DESTA LINHA, E NÃO OS 15% DE ANTES. Desconto NEGATIVO seria a folha
+          // anunciando o lote acima da tabela, que é o único lado que a decisão do Lucas não
+          // liberou: desconto para baixo é escolha de quem está na tela; preço para cima, numa
+          // página sem login, é a casa mentindo. É o que continua recusado (ver o caso do 1e308).
+          expect(descontoImpresso()).toBeGreaterThanOrEqual(0);
         }
       }
     }
-    // Medido: 12 valores × 19 prazos × 3 planos, e nenhuma folha passou do desconto do plano.
-    expect(folhas).toBeGreaterThan(400);
-    expect(maiorExcesso).toBeLessThanOrEqual(0);
+    // ⚠️ MEDIDO EM 23/09/2026, DEPOIS DE O TETO SAIR, E O NÚMERO É O PREÇO DA DECISÃO: 12 valores ×
+    // 19 prazos × 3 planos deram 473 folhas e 211 recusas, e o desconto mais fundo impresso foi
+    // 100% — o corpo de `valor: 1` num lote de R$ 435.000 sai numa folha que diz "Desconto 100%",
+    // porque `percentual()` arredonda os 99,99977% em duas casas. Está escrito em vez de escondido:
+    // é isto que uma página SEM LOGIN passa a poder imprimir com a marca da casa, e quem segura o
+    // papel é a frase de que ele não vincula, não esta régua.
+    expect(folhas).toBeGreaterThan(300);
+    expect(recusas).toBeGreaterThan(100);
+    expect(maiorDesconto).toBe(100);
   });
 
   // ⚠️ ESTE CASO MUDOU DE PERGUNTA EM 22/09/2026, E NÃO FOI AFROUXAMENTO POR DESCUIDO. Ele media
@@ -208,7 +236,9 @@ describe("revisão de segurança: o que um corpo forjado NÃO consegue imprimir 
     const entradas: unknown[] = [0, -1, 1, "abc", null, "1e3", 32_015.99, Number.MIN_VALUE, 1e-9, 1e12];
     for (const plano of Object.keys(REGRA) as Array<keyof typeof REGRA>) {
       for (const entrada of entradas) {
-        const r = await pedir({ ...DA_TELA, anuaisQuantidade: 0, entrada, parcelas: REGRA[plano].parcelas, plano, valor: 1 });
+        // ⚠️ `valor: 1` SAIU DAQUI EM 23/09/2026: com o teto de 15%, um real num lote de 435 mil é
+        // recusa, e o que este caso forja é a ENTRADA, não o preço. O valor é o que a tela manda.
+        const r = await pedir({ ...DA_TELA, anuaisQuantidade: 0, entrada, parcelas: REGRA[plano].parcelas, plano });
         expect(r.status).toBe(200);
         const valor = reaisDoTexto(destaque("Valor da unidade")?.valor);
         const impressa = reaisDoTexto(destaque("Entrada")?.valor);
@@ -231,7 +261,8 @@ describe("revisão de segurança: o que um corpo forjado NÃO consegue imprimir 
       [11, 5, 0],
     ] as const) {
       const plano = parcelas === 36 ? "INVESTIDOR" : "INVESTIDOR PARCELADO";
-      const r = await pedir({ ...DA_TELA, anuaisQuantidade: pedidas, anuaisValor: 1_000, entrada: 0, parcelas, plano, valor: 1 });
+      // `valor: 1` saiu com o teto de 23/09/2026; o que se forja aqui é a quantidade de anuais.
+      const r = await pedir({ ...DA_TELA, anuaisQuantidade: pedidas, anuaisValor: 1_000, entrada: 0, parcelas, plano, valor: 435_000 });
       expect(r.status).toBe(200);
       const texto = condicao("Parcelas anuais");
       expect(texto ? Number(texto.split(" ")[0]) : 0).toBe(esperado);
@@ -271,7 +302,9 @@ describe("revisão de segurança: o que um corpo forjado NÃO consegue imprimir 
   it("sem a coluna do desconto (0178 não aplicada), nenhum plano imprime desconto", async () => {
     estado.semColunaDeDesconto = true;
     for (const plano of Object.keys(REGRA) as Array<keyof typeof REGRA>) {
-      const r = await pedir({ ...DA_TELA, anuaisQuantidade: 0, entrada: 0, parcelas: REGRA[plano].parcelas, plano, valor: 1 });
+      // `valor: 1` saiu com o teto de 23/09/2026; aqui o valor da tela é a própria tabela, que é o
+      // que a tela mostra quando nenhum plano tem desconto cadastrado.
+      const r = await pedir({ ...DA_TELA, anuaisQuantidade: 0, entrada: 0, parcelas: REGRA[plano].parcelas, plano, valor: 435_000 });
       expect(r.status).toBe(200);
       expect(condicao("Desconto")).toBeUndefined();
       expect(destaque("Valor da unidade")?.valor).toBe("R$ 435.000,00");
@@ -280,7 +313,7 @@ describe("revisão de segurança: o que um corpo forjado NÃO consegue imprimir 
 
   it("plano com nome forjado cai no primeiro plano (NORMAL), sem desconto", async () => {
     for (const plano of ["investidor", "INVESTIDOR ", { nome: "INVESTIDOR" }, ["INVESTIDOR"], null]) {
-      const r = await pedir({ ...DA_TELA, anuaisQuantidade: 0, entrada: 0, parcelas: 60, plano, valor: 1 });
+      const r = await pedir({ ...DA_TELA, anuaisQuantidade: 0, entrada: 0, parcelas: 60, plano, valor: 435_000 });
       expect(r.status).toBe(200);
       expect(condicao("Desconto")).toBeUndefined();
     }

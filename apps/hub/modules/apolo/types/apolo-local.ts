@@ -31,7 +31,7 @@ export type ApoloTabItem = {
 export type ApoloUnitSubtab = "summary" | "installments" | "timeline" | "contract";
 // Subabas da area Financeira do cockpit. "extrato" e o EXTRATO DO CLIENTE COMPRADOR (o que ele
 // ja pagou + saldo devedor) -- e o padrao, porque e o pedido que chega toda hora ao backoffice.
-export type ApoloFinancialSubtab = "acordos" | "extrato";
+export type ApoloFinancialSubtab = "acordos" | "evolucao" | "extrato";
 
 export type ApoloPortfolioUnit = {
   area: string;

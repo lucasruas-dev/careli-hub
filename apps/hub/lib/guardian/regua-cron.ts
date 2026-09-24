@@ -213,7 +213,11 @@ export async function runGuardianReguaCron(
     // Pagamento confirmado no C2X -> liquida e encerra a regua daquela parcela.
     if (parcela && isParcelaPaid(parcela, paidByPaymentId)) {
       if (!options.dryRun) {
-        await markParcelaPaid(client, parcela);
+        await markParcelaPaid(
+          client,
+          parcela,
+          dataDaBaixa(parcela, paidByPaymentId, options.now),
+        );
         await cancelParcelaLembretes(client, compromisso, parcela);
         await maybeFulfillCompromisso(client, compromisso.id);
       }
@@ -279,12 +283,11 @@ export async function runGuardianReguaCron(
 
 async function loadC2xPaidStatuses(
   paymentIds: number[],
-): Promise<Map<number, boolean>> {
-  const map = new Map<number, boolean>();
+): Promise<Map<number, PagamentoDoC2x>> {
   const ids = unique(paymentIds);
 
   if (ids.length === 0) {
-    return map;
+    return new Map();
   }
 
   const poolResult = getHadesDbPool();
@@ -292,7 +295,7 @@ async function loadC2xPaidStatuses(
   if (!poolResult.ok) {
     // Sem C2X configurado (preview/local): trata como nao-pago para nao
     // suprimir lembrete por engano.
-    return map;
+    return new Map();
   }
 
   const placeholders = ids.map(() => "?").join(", ");
@@ -305,20 +308,87 @@ async function loadC2xPaidStatuses(
     ids,
   );
 
-  for (const row of rows) {
-    const paid =
-      Number(row.payment_status_id) === C2X_PAID_STATUS_ID ||
-      row.payment_date !== null;
-
-    map.set(Number(row.id), paid);
-  }
-
-  return map;
+  return pagamentosDoC2x(rows);
 }
 
-function isParcelaPaid(
-  parcela: ParcelaLite,
-  paidByPaymentId: Map<number, boolean>,
+/** O que o C2X sabe sobre um pagamento: se foi pago e QUANDO. */
+export type PagamentoDoC2x = {
+  pago: boolean;
+  /** A data em que o CLIENTE pagou, em ISO. Nula quando o C2X liquidou sem data. */
+  pagoEm: null | string;
+};
+
+/** Uma linha de `payments` do C2X, no recorte que a regua le. */
+type LinhaDePagamento = {
+  id: number | string;
+  payment_date: Date | null | string;
+  payment_status_id: null | number | string;
+};
+
+/**
+ * Traduz as linhas do C2X para o que a regua precisa saber — COM A DATA.
+ *
+ * ⚠️ ELA JA ERA LIDA E JOGADA FORA. Ate 24/09/2026 este mapa guardava so um booleano, e
+ * `markParcelaPaid` entao gravava `new Date()`: a coluna "Pagamento" da Central de Propostas
+ * mostrava o relogio do cron das 12:00 UTC, e nao o dia em que o comprador pagou.
+ */
+export function pagamentosDoC2x(
+  linhas: readonly LinhaDePagamento[],
+): Map<number, PagamentoDoC2x> {
+  const mapa = new Map<number, PagamentoDoC2x>();
+
+  for (const linha of linhas) {
+    const pagoEm = dataDoPagamento(linha.payment_date);
+    const pago = Number(linha.payment_status_id) === C2X_PAID_STATUS_ID || pagoEm !== null;
+    mapa.set(Number(linha.id), { pago, pagoEm });
+  }
+
+  return mapa;
+}
+
+/**
+ * A `payment_date` do C2X em ISO, sem escorregar de dia.
+ *
+ * ⚠️ `Date.toISOString()` DIRETO NAO SERVE. O mysql2 devolve coluna DATE como `Date` na meia-noite
+ * LOCAL do processo: em fuso a leste de Greenwich isso vira o dia ANTERIOR em UTC. Por isso o dia,
+ * o mes e o ano saem dos componentes locais e sao remontados a mao.
+ *
+ * ⚠️ E A HORA GRAVADA E MEIO-DIA UTC, NAO MEIA-NOITE. `paid_at` e `timestamptz`
+ * (migration 0036:137) e quem le a coluna "Pagamento" formata no fuso do NAVEGADOR da Nivea
+ * (`formatDateOnly`, ManagerApprovalCenter.tsx). Meia-noite UTC e 21h do dia ANTERIOR em Sao
+ * Paulo: gravar `T00:00:00.000Z` imprimiria 12/07 para quem pagou em 13/07, trocando 44 dias de
+ * defasagem por 1 dia de defasagem na MESMA coluna do apontamento. Meio-dia UTC cai no mesmo dia
+ * civil em qualquer fuso entre -11 e +11, e e a mesma hora que as 3 linhas ja gravadas tem
+ * (26/08 e 01/09 as 12:00 UTC, medido em 24/09/2026), entao a coluna nao passa a misturar formas.
+ */
+const HORA_QUE_NAO_ESCORREGA_DE_DIA = "T12:00:00.000Z";
+
+function dataDoPagamento(bruto: Date | null | string | undefined): null | string {
+  if (bruto === null || bruto === undefined) return null;
+
+  if (bruto instanceof Date) {
+    if (Number.isNaN(bruto.getTime())) return null;
+    const ano = bruto.getFullYear();
+    const mes = String(bruto.getMonth() + 1).padStart(2, "0");
+    const dia = String(bruto.getDate()).padStart(2, "0");
+    return `${ano}-${mes}-${dia}${HORA_QUE_NAO_ESCORREGA_DE_DIA}`;
+  }
+
+  const texto = String(bruto).trim();
+  if (!texto) return null;
+
+  const soData = /^(\d{4})-(\d{2})-(\d{2})/.exec(texto);
+  if (soData) {
+    return `${soData[1]}-${soData[2]}-${soData[3]}${HORA_QUE_NAO_ESCORREGA_DE_DIA}`;
+  }
+
+  const quando = new Date(texto);
+  return Number.isNaN(quando.getTime()) ? null : quando.toISOString();
+}
+
+export function isParcelaPaid(
+  parcela: Pick<ParcelaLite, "payment_c2x_id" | "status">,
+  paidByPaymentId: Map<number, PagamentoDoC2x>,
 ) {
   if (parcela.status === "paga") {
     return true;
@@ -330,7 +400,31 @@ function isParcelaPaid(
     return false;
   }
 
-  return paidByPaymentId.get(paymentId) === true;
+  return paidByPaymentId.get(paymentId)?.pago === true;
+}
+
+/**
+ * O que vai para `paid_at` — A DATA DO C2X, e a hora da rodada so quando ela nao existe.
+ *
+ * ⚠️ "PAGO EM" E A DATA DO C2X, NAO A HORA EM QUE O CRON PERCEBEU. Ate 24/09/2026 `markParcelaPaid`
+ * gravava `new Date()`, entao a coluna "Pagamento" mostrava o relogio da regua das 12:00 UTC.
+ * Medido em 24/09/2026: PR-000006 (DEBORA SANTANA VIANA, VALE08) foi paga no C2X em 13/07/2026 e a
+ * tela dizia 26/08/2026, 44 dias de defasagem; PR-000008 (JOSE ARNALDO DE MOURA, REPD132) pagou em
+ * 08/07/2026 e a tela dizia 26/08/2026, 49 dias. Eram 3 de 3 das unicas parcelas pagas do sistema
+ * inteiro. Nivea, 24/09/2026: *"O Hades esta apresentando uma informacao que nao procede."*
+ *
+ * ⚠️ E AS 3 LINHAS JA GRAVADAS CONTINUAM ERRADAS. Isto acerta o futuro; o passado e UPDATE em
+ * producao e depende do sim do Lucas.
+ */
+export function dataDaBaixa(
+  parcela: Pick<ParcelaLite, "payment_c2x_id" | "status">,
+  paidByPaymentId: Map<number, PagamentoDoC2x>,
+  agora: Date = new Date(),
+): string {
+  const paymentId = toNullableNumber(parcela.payment_c2x_id);
+  const doC2x = paymentId === null ? null : paidByPaymentId.get(paymentId)?.pagoEm ?? null;
+
+  return doC2x ?? agora.toISOString();
 }
 
 // --- Mutacoes do motor ---
@@ -338,6 +432,7 @@ function isParcelaPaid(
 async function markParcelaPaid(
   client: GuardianMotorClient,
   parcela: ParcelaLite,
+  paidAt: string,
 ) {
   if (parcela.status === "paga") {
     return;
@@ -345,7 +440,8 @@ async function markParcelaPaid(
 
   await client
     .from("guardian_compromisso_parcelas")
-    .update({ paid_at: new Date().toISOString(), status: "paga" })
+    // ⚠️ `paidAt` VEM DE FORA, E VEM DO C2X. Ver `dataDaBaixa`.
+    .update({ paid_at: paidAt, status: "paga" })
     .eq("id", parcela.id);
 }
 
@@ -437,7 +533,7 @@ async function failLembrete(
  */
 async function conciliarPagamentos(
   client: GuardianMotorClient,
-  options: { dryRun?: boolean },
+  options: { dryRun?: boolean; now?: Date },
 ): Promise<number> {
   const { data: emAberto } = await client
     .from("guardian_compromisso_parcelas")
@@ -468,7 +564,7 @@ async function conciliarPagamentos(
     if (!isParcelaPaid(parcela, pagas)) continue;
 
     if (!options.dryRun) {
-      await markParcelaPaid(client, parcela);
+      await markParcelaPaid(client, parcela, dataDaBaixa(parcela, pagas, options.now));
       await cancelParcelaLembretes(client, compromisso, parcela);
       await maybeFulfillCompromisso(client, compromisso.id);
     }

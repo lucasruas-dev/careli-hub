@@ -174,11 +174,17 @@ describe("os três nomes novos do Garden respondem na rota pública", () => {
 });
 
 describe("medição: a janela da troca, com a tela velha ainda aberta", () => {
-  // ⚠️ ESTE É O CUSTO DA TROCA, EM DINHEIRO. O tablet de antes do UPDATE manda o nome velho do
-  // plano de 36 vezes ("INVESTIDOR", 12% de desconto). Depois da troca esse nome é do plano de 60
-  // vezes, 0%. O find casa, a rota responde 200 e a folha sai pelo preço CHEIO: nenhum erro, em
-  // lugar nenhum. Travar isso no código não resolve, porque o nome que chegou É um nome válido.
-  it("o nome velho do plano de 12% passa a imprimir o de 0%, sem erro", async () => {
+  // ⚠️ ESTE É O CUSTO DA TROCA, E ELE MUDOU DE LUGAR EM 23/09/2026. O tablet de antes do UPDATE
+  // manda o nome velho do plano de 36 vezes ("INVESTIDOR", 12% de desconto, sem juros). Depois da
+  // troca esse nome é do plano de 60 vezes, 0% e 6% ao ano. O find casa na linha errada, a rota
+  // responde 200, e nenhum erro aparece em lugar nenhum. Travar no código não resolve, porque o
+  // nome que chegou É um nome válido.
+  //
+  // O que mudou: até 22/09 o estrago era no PREÇO (a folha subia para os R$ 435.000 cheios, porque
+  // o piso era o do plano casado). Com o preço da tela passando (decisão do Lucas, *"Liberar para
+  // todo mundo"*), os R$ 382.800 da tela velha vão ao papel — e o estrago passou a ser a CONDIÇÃO:
+  // a folha sai com os juros do plano de 60 vezes, que a tela velha não mostrou.
+  it("o nome velho do plano de 12% passa a imprimir as condições do de 0%, sem erro", async () => {
     const r = await pedir({
       anuaisQuantidade: 3,
       anuaisValor: 30_000,
@@ -190,13 +196,14 @@ describe("medição: a janela da troca, com a tela velha ainda aberta", () => {
       valor: 382_800,
     });
 
-    // A tela velha pediu o plano de 12%; a folha sai sem desconto nenhum.
     expect(r.status).toBe(200);
-    expect(condicao("Desconto")).toBeUndefined();
-    expect(destaque("Valor da unidade")).toBe("R$ 435.000,00");
-
-    // R$ 435.000 em vez de R$ 382.800: R$ 52.200 a mais na folha que o cliente recebe.
-    expect(435_000 - 382_800).toBe(52_200);
+    // O preço da tela velha sobrevive, e a folha o chama de desconto (à mão, não mais de tabela).
+    expect(destaque("Valor da unidade")).toBe("R$ 382.800,00");
+    expect(condicao("Desconto")).toBe("12% · R$ 52.200,00");
+    // ⚠️ MAS OS JUROS SÃO OS DO PLANO QUE HERDOU O NOME. O plano de 36 vezes do Garden não tem
+    // juros; o de 60 tem 6% ao ano, e é o que o cliente lê no papel.
+    expect(condicao("Juros")).not.toBe("sem juros");
+    expect(condicao("Parcelas mensais")).toBe("36");
   });
 
   it("o nome velho do parcelado deixa de existir e cai no primeiro plano", async () => {

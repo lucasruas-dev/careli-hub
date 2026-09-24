@@ -57,6 +57,19 @@ describe("a porta do envio para assinatura", () => {
     expect(metodo("PATCH")).toContain("motivoParaNaoEnviarParaAssinatura(acordo)");
   });
 
+  // ⚠️ O SIGNER ID É O DA CLICKSIGN, E E-MAIL NÃO É SIGNER ID. Nívea, 24/09/2026: *"não consigo
+  // reenviar"*. A tela manda a `chave` do diário, que até 24/09/2026 podia ser a `signer.key` do
+  // webhook ou o PRÓPRIO E-MAIL da pessoa (quando ela só existe na lista congelada do envio).
+  // `POST /envelopes/{id}/signers/{signer_id}/notifications` com um e-mail no lugar do id devolve
+  // 422, e a tela escrevia esse 422 como se fosse defeito do provedor.
+  it("o PATCH recusa e-mail no lugar do signer id antes de qualquer chamada que cobra", () => {
+    const patch = metodo("PATCH");
+
+    expect(patch).toContain('corpo.signerId.includes("@")');
+    // E a recusa vem ANTES de abrir o acordo, que é onde começa o trabalho pago.
+    expect(patch.indexOf('corpo.signerId.includes("@")')).toBeLessThan(patch.indexOf("comOAcordo("));
+  });
+
   // ⚠️ O CANCELAMENTO NÃO PASSA PELO GATE, E A AUSÊNCIA É DELIBERADA. Ele é o gesto CORRETIVO: o
   // caso em que mais se precisa dele é exatamente o acordo que o gestor reprovou DEPOIS de o termo
   // ter saído. Gatear o cancelamento deixaria o termo errado na mão do cliente, sem saída.

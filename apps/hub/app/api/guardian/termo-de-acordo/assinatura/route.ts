@@ -17,7 +17,7 @@ import {
   prepararEnvioDoAcordo,
 } from "@/lib/hades/acordo/envio-db";
 import { motivoParaNaoEnviarParaAssinatura } from "@/lib/hades/acordo/envio-gate";
-import { reenviarConvite } from "@/lib/temis/trocar-signatario";
+import { RECUSA_DE_REENVIO_SEM_ID, reenviarConvite } from "@/lib/temis/trocar-signatario";
 
 // O TERMO DE ACORDO INDO PARA A ASSINATURA — a porta do Hades.
 //
@@ -211,6 +211,13 @@ export async function PATCH(request: Request) {
   const corpo = await lerCorpo(request);
   if (!UUID.test(corpo.acordo)) return erro("Acordo não informado.", 400);
   if (!corpo.signerId) return erro("Sem o signatário não dá para reenviar o convite.", 400);
+  // ⚠️ E-MAIL NÃO É SIGNER ID. Nívea, 24/09/2026: *"não consigo reenviar"*. O endpoint da Clicksign
+  // é `POST /envelopes/{id}/signers/{signer_id}/notifications` e devolve 422 para qualquer coisa
+  // que não seja o id criado no envio; a tela mandava a `chave` do diário, que nos envelopes
+  // anteriores a 24/09/2026 podia ser o próprio e-mail. A recusa vem aqui, antes de abrir o acordo,
+  // que é onde começa o trabalho pago. A mesma régua vive em `reenviarConvite`, para quem chamar
+  // por outra porta.
+  if (corpo.signerId.includes("@")) return erro(RECUSA_DE_REENVIO_SEM_ID, 400);
 
   return comOAcordo(corpo.acordo, async (acordo, sb) => {
     // ⚠️ O GATE DO LUCAS VALE PARA O REENVIO, E ELE É CHAMADO DIRETO AQUI. Lucas, 20/09/2026: a

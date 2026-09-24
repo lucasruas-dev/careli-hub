@@ -27,6 +27,13 @@ export type CadDoc = {
   // a concatenacao que fez so a imobiliaria chegar ate aqui.
   corretor?: string;
   data: string; // dd/mm/aaaa
+  // Empreendimento da CAD, impresso ABAIXO do Corretor. Lucas (24/09/2026): "vamos trazer o
+  // empreendimento a qual aquela cad esta vinculada? pode ser abaixo de corretor".
+  // ⚠️ SEMPRE o nome de MERCADO, o do pai ("Vale do Ouro", nunca "VOC" nem "Vale do Ouro · VOL"):
+  // esta CAD vai para corretor e coordenador, e o mercado não vê divisão interna. Quem monta o
+  // CadDoc resolve no SERVIDOR pelo id da CAD (lib/apolo/empreendimento-de-mercado.ts) e sobrescreve
+  // o que vier do browser. Vazio = linha omitida (a ficha da IMOBILIÁRIA não tem "o" empreendimento).
+  empreendimento?: string;
   hora: string; // HH:MM
   imobiliaria?: string;
   nome: string;
@@ -261,8 +268,12 @@ export async function montarCadPdf(cad: CadDoc): Promise<Uint8Array> {
     x: MARGIN,
     y: ctx.y - 3,
   });
-  // meta a direita (duas linhas).
-  const metaRight = (rot: string, val: string, dy: number) => {
+  // meta a direita (uma linha por campo preenchido).
+  // ⚠️ O VALOR PASSA PELO clean(), como todo o resto do documento. Antes ia cru: um nome com
+  // caractere fora do WinAnsi (travessão, aspas curvas, emoji num nome digitado) derrubava a geração
+  // inteira da CAD, e a CAD é o fim de um fluxo longo do corretor.
+  const metaRight = (rot: string, bruto: string, dy: number) => {
+    const val = clean(bruto);
     const full = `${rot} ${val}`;
     const w = font.widthOfTextAtSize(full, 8.5);
     const x = A4.w - MARGIN - w;
@@ -284,6 +295,13 @@ export async function montarCadPdf(cad: CadDoc): Promise<Uint8Array> {
   if (cad.corretor) {
     linhasMeta += 1;
     metaRight("Corretor", cad.corretor, 11 * linhasMeta);
+  }
+  // Empreendimento ABAIXO do Corretor (Lucas, 24/09/2026). A régua logo abaixo já desce
+  // (linhasMeta - 1) * 11, então a linha nova cabe sem mexer no resto do cabeçalho.
+  const empreendimento = (cad.empreendimento ?? "").trim();
+  if (empreendimento) {
+    linhasMeta += 1;
+    metaRight("Empreendimento", empreendimento, 11 * linhasMeta);
   }
 
   // A regua horizontal fica abaixo do titulo/meta -- a logo ja esta acima, em linha propria.

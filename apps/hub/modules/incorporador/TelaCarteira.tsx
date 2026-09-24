@@ -5,14 +5,17 @@ import {
   ArrowUpDown,
   ChevronDown,
   Copy,
+  Download,
   ExternalLink,
   FileText,
+  Loader2,
   MessageCircle,
   Search,
   WalletCards,
   X,
 } from "lucide-react";
 
+import { formatarDocumento } from "@/lib/apolo/documento";
 import { diaNaTela, mesNaTela } from "@/lib/apolo/incorporador/dia-na-tela";
 import { fonte } from "@/modules/publico/ui/tokens";
 import type {
@@ -502,17 +505,7 @@ export function TelaCarteira({
     setIndicadoresCarregando(true);
     setIndicadoresErro(null);
     try {
-      const parametros = new URLSearchParams({ indicadores: "1" });
-      if (emp) parametros.set("code", emp);
-      if (filtro.ano) parametros.set("ano", filtro.ano);
-      if (filtro.mes) parametros.set("mes", filtro.mes);
-      if (filtro.perfil) parametros.set("perfil", filtro.perfil);
-      if (filtro.situacao) parametros.set("situacao", filtro.situacao);
-      if (filtro.busca) parametros.set("q", filtro.busca);
-      if (filtro.ordenarPor) parametros.set("ordenarPor", filtro.ordenarPor);
-      if (filtro.direcao) parametros.set("direcao", filtro.direcao);
-
-      const endereco = `/api/incorporador/carteira?${parametros}`;
+      const endereco = `/api/incorporador/carteira?${parametrosDoExtrato(emp, filtro)}`;
       const r = await fetch(endereco, { cache: "no-store" });
       const corpo = (await r.json().catch(() => null)) as { data?: Dados; error?: string } | null;
       if (!r.ok || !corpo?.data) {
@@ -721,6 +714,7 @@ export function TelaCarteira({
       ) : (
         <AbaIndicadores
           carregando={indicadoresCarregando}
+          empreendimento={alvo}
           erro={indicadoresErro}
           filtro={filtroExtrato}
           indicadores={indicadores}
@@ -1583,12 +1577,15 @@ const botaoIcone = {
 
 function AbaIndicadores({
   carregando,
+  empreendimento,
   erro,
   filtro,
   indicadores,
   onFiltro,
 }: {
   carregando: boolean;
+  /** O `?code=` da aba, para a exportação baixar a MESMA carteira que está na tela. */
+  empreendimento: null | string;
   erro: null | string;
   filtro: FiltroDoExtrato;
   indicadores: IndicadoresDaCarteira | null;
@@ -1675,6 +1672,7 @@ function AbaIndicadores({
 
       <ExtratoAnalitico
         carregando={carregando}
+        empreendimento={empreendimento}
         extrato={indicadores.extrato}
         extratoTotal={indicadores.extratoTotal}
         filtro={filtro}
@@ -1805,6 +1803,25 @@ function Legenda({ opacidade, rotulo }: { opacidade: number; rotulo: string }) {
 const PAGINA_DO_EXTRATO = 60;
 
 /**
+ * O recorte do extrato, do jeito que a rota o lê.
+ *
+ * ⚠️ MONTAR ISTO EM DOIS LUGARES É COMO A PLANILHA PASSA A DISCORDAR DA TELA. A busca da aba e o
+ * botão de exportar mandam exatamente os mesmos parâmetros; o arquivo só acrescenta `formato`.
+ */
+function parametrosDoExtrato(emp: null | string, filtro: FiltroDoExtrato): URLSearchParams {
+  const parametros = new URLSearchParams({ indicadores: "1" });
+  if (emp) parametros.set("code", emp);
+  if (filtro.ano) parametros.set("ano", filtro.ano);
+  if (filtro.mes) parametros.set("mes", filtro.mes);
+  if (filtro.perfil) parametros.set("perfil", filtro.perfil);
+  if (filtro.situacao) parametros.set("situacao", filtro.situacao);
+  if (filtro.busca) parametros.set("q", filtro.busca);
+  if (filtro.ordenarPor) parametros.set("ordenarPor", filtro.ordenarPor);
+  if (filtro.direcao) parametros.set("direcao", filtro.direcao);
+  return parametros;
+}
+
+/**
  * As colunas do extrato e por qual chave cada uma ordena.
  *
  * `chave: null` = coluna que NÃO ordena. Imobiliária, Perfil e Parcela ficam de fora porque o
@@ -1814,6 +1831,9 @@ const PAGINA_DO_EXTRATO = 60;
 const COLUNAS_DO_EXTRATO: { chave: ColunaDoExtrato | null; rotulo: string }[] = [
   { chave: "unidade", rotulo: "Unidade" },
   { chave: "cliente", rotulo: "Cliente" },
+  // Documento não ordena: o servidor não oferece essa chave, e ordenar só o pedaço visível
+  // mentiria para quem clica — a mesma razão de Imobiliária, Perfil e Parcela.
+  { chave: null, rotulo: "CPF/CNPJ" },
   { chave: null, rotulo: "Imobiliária" },
   { chave: null, rotulo: "Perfil" },
   { chave: null, rotulo: "Parcela" },
@@ -1910,6 +1930,7 @@ const ROTULO_DA_SITUACAO: Record<string, string> = {
  */
 function ExtratoAnalitico({
   carregando,
+  empreendimento,
   extrato,
   extratoTotal,
   filtro,
@@ -1917,6 +1938,7 @@ function ExtratoAnalitico({
   opcoes,
 }: {
   carregando: boolean;
+  empreendimento: null | string;
   extrato: ExtratoParcela[];
   extratoTotal: number;
   filtro: FiltroDoExtrato;
@@ -1924,6 +1946,10 @@ function ExtratoAnalitico({
   opcoes: { anos: string[]; perfis: string[] };
 }) {
   const [visiveis, setVisiveis] = useState(PAGINA_DO_EXTRATO);
+  const [exportando, setExportando] = useState(false);
+  const [erroDaExportacao, setErroDaExportacao] = useState<null | string>(null);
+  /** `true` quando o arquivo que acabou de baixar NÃO tem a carteira inteira. Ver `X-Parcial`. */
+  const [exportouParcial, setExportouParcial] = useState(false);
 
   // ⚠️ A BUSCA TEM ESTADO PRÓPRIO, espelhando o filtro do pai. Ligar o input direto ao filtro faria
   // cada tecla esperar a ida ao servidor para reaparecer na tela, e o campo engasgaria enquanto se
@@ -1955,6 +1981,48 @@ function ExtratoAnalitico({
       ),
     [filtradas],
   );
+
+  /**
+   * Baixa o extrato em xlsx.
+   *
+   * ⚠️ O ARQUIVO É O RECORTE INTEIRO, e não as linhas que estão na tela. O extrato chega cortado
+   * em 2.000 linhas (teto de payload) e a carteira tem muito mais: mandar para o Excel o que o
+   * navegador recebeu entregaria um pedaço com cara de planilha completa. Por isso a rota refaz a
+   * leitura com o MESMO filtro — `parametrosDoExtrato` é o mesmo de quem busca a aba — e devolve
+   * o arquivo pronto.
+   */
+  const exportar = useCallback(async () => {
+    setExportando(true);
+    setErroDaExportacao(null);
+    setExportouParcial(false);
+    try {
+      const parametros = parametrosDoExtrato(empreendimento, filtro);
+      parametros.set("formato", "xlsx");
+
+      const r = await fetch(`/api/incorporador/carteira?${parametros}`, { cache: "no-store" });
+      if (!r.ok) throw new Error(`Não consegui gerar a planilha (${r.status}).`);
+
+      // ⚠️ O AVISO DE INCOMPLETO NÃO É ERRO: o arquivo baixou e serve. Mas quem vai mandar a
+      // planilha para o contador precisa saber que falta linha nela — e o aviso também vai
+      // escrito dentro do arquivo, que é o que viaja por e-mail.
+      setExportouParcial(r.headers.get("X-Parcial") === "true");
+
+      // O download acontece no navegador: o arquivo vem no corpo e o link some logo depois.
+      const arquivo = await r.blob();
+      const endereco = URL.createObjectURL(arquivo);
+      const link = document.createElement("a");
+      link.download =
+        /filename="([^"]+)"/.exec(r.headers.get("Content-Disposition") ?? "")?.[1] ??
+        "extrato.xlsx";
+      link.href = endereco;
+      link.click();
+      URL.revokeObjectURL(endereco);
+    } catch (e) {
+      setErroDaExportacao(e instanceof Error ? e.message : "Não consegui gerar a planilha.");
+    } finally {
+      setExportando(false);
+    }
+  }, [empreendimento, filtro]);
 
   /** Clique no cabeçalho: mesma coluna inverte o sentido; coluna nova começa crescente. */
   function ordenarPor(coluna: ColunaDoExtrato) {
@@ -2008,7 +2076,7 @@ function ExtratoAnalitico({
                 setVisiveis(PAGINA_DO_EXTRATO);
                 onFiltro({ busca: evento.target.value });
               }}
-              placeholder="Unidade ou cliente"
+              placeholder="Unidade, cliente ou CPF"
               style={{
                 background: "transparent",
                 border: "none",
@@ -2063,11 +2131,56 @@ function ExtratoAnalitico({
             <option value="a_vencer">A vencer</option>
             <option value="vencida">Vencida</option>
           </select>
+
+          {/* ⚠️ O BOTÃO LEVA O FILTRO JUNTO, e o título diz isso: quem filtrou "vencidas de 2026"
+              e clicou aqui recebe vencidas de 2026, não a carteira inteira. */}
+          <button
+            disabled={exportando || extratoTotal === 0}
+            onClick={() => void exportar()}
+            style={{
+              alignItems: "center",
+              background: "transparent",
+              border: `1px solid ${T.border}`,
+              borderRadius: 10,
+              color: extratoTotal === 0 ? T.sub : T.text,
+              cursor: exportando || extratoTotal === 0 ? "default" : "pointer",
+              display: "inline-flex",
+              fontFamily: fonte,
+              fontSize: 13,
+              fontWeight: 600,
+              gap: 6,
+              padding: "8px 14px",
+            }}
+            title="Baixa o extrato deste recorte em Excel, com o filtro e a ordem da tela"
+            type="button"
+          >
+            {exportando ? (
+              <Loader2 className="inc-girando" size={14} />
+            ) : (
+              <Download size={14} />
+            )}
+            Excel
+          </button>
         </div>
       </div>
 
+      {erroDaExportacao || exportouParcial ? (
+        <p
+          style={{
+            borderBottom: `1px solid ${T.border}`,
+            color: erroDaExportacao ? T.danger : T.sub,
+            fontSize: 12.5,
+            margin: 0,
+            padding: "8px 16px",
+          }}
+        >
+          {erroDaExportacao ??
+            "A planilha baixou, mas não cabe a carteira inteira nela: estreite o recorte para levar tudo. O aviso também está escrito na última linha do arquivo."}
+        </p>
+      ) : null}
+
       <div style={{ overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", fontSize: 12.5, minWidth: 960, width: "100%" }}>
+        <table style={{ borderCollapse: "collapse", fontSize: 12.5, minWidth: 1080, width: "100%" }}>
           <thead>
             <tr style={{ background: T.soft }}>
               {/* ⚠️ A ORDENAÇÃO É DO SERVIDOR e vale sobre a carteira INTEIRA, não sobre as linhas
@@ -2132,6 +2245,11 @@ function ExtratoAnalitico({
                 <td style={{ ...celula, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {parcela.cliente ?? "-"}
                 </td>
+                {/* Tabular para os documentos ficarem alinhados na coluna: 11 e 14 dígitos lado a
+                    lado com fonte proporcional dançam e atrapalham a conferência. */}
+                <td style={{ ...celula, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+                  {parcela.documento ? formatarDocumento(parcela.documento) : "-"}
+                </td>
                 <td style={{ ...celula, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {parcela.imobiliaria ?? "-"}
                 </td>
@@ -2162,7 +2280,7 @@ function ExtratoAnalitico({
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={7} style={{ ...celula, color: T.text, fontWeight: 700, paddingLeft: 16 }}>
+              <td colSpan={8} style={{ ...celula, color: T.text, fontWeight: 700, paddingLeft: 16 }}>
                 Total do recorte
               </td>
               <td style={{ ...celula, color: T.text, fontWeight: 700, textAlign: "right", whiteSpace: "nowrap" }}>

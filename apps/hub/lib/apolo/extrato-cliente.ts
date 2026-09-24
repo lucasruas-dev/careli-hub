@@ -261,6 +261,11 @@ export type ExtratoClienteContrato = {
   indiceCorrecao: null | string;
   jurosContratuais: null | number;
   lote: null | string;
+  /**
+   * `commercial_plans.name` do plano da proposta. O Veredas do Ouro diz o sistema de amortização
+   * no NOME ("PLANO NORMAL PRICE" e "PLANO NORMAL SACOC"). Opcional: só a Evolução da parcela lê.
+   */
+  planoNome?: null | string;
   /** O parcelamento do CONTRATO (de `payments.total_parcels`). */
   planoParcelas: null | number;
   /** O do plano comercial, para comparar quando o contrato é personalizado. */
@@ -270,6 +275,11 @@ export type ExtratoClienteContrato = {
   /** `enterprise_unities.price` — preço de tabela da unidade. */
   precoTabela: null | number;
   quadra: null | string;
+  /**
+   * `enterprise_tables.name` do empreendimento (PRICE | SACOOC): é como o C2X declara o sistema de
+   * amortização. Opcional: só a Evolução da parcela lê.
+   */
+  tabelaDoEmpreendimento?: null | string;
   titulares: ExtratoClienteTitular[];
 };
 
@@ -598,7 +608,7 @@ export function mensalidadeVigente(
  * é exatamente o valor original do contrato: ali o boleto novo saiu com o valor velho porque
  * ninguém aplicou a correção, e a parcela maior continua sendo a mensalidade vigente.
  */
-function superadasPorCobrancaMenor(
+export function superadasPorCobrancaMenor(
   plausiveis: ExtratoClienteParcelaBruta[],
 ): ReadonlySet<number> {
   // A linha original é a MAIS BAIXA da série, não a primeira: reajuste só sobe, e existe

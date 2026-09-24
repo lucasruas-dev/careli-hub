@@ -8,6 +8,7 @@ import {
   Eye,
   FilePlus2,
   FileText,
+  FileX2,
   Loader2,
   Mail,
   MailCheck,
@@ -18,10 +19,16 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { Tooltip } from "@repo/uix";
 import type { AnaliseDoTrabalho, CampoDaAnalise } from "@/lib/temis/analise-do-trabalho";
 import type { DescontoDaProposta } from "@/lib/temis/comercial-da-analise";
 import type { PedidoDoTrabalho } from "@/lib/temis/pedido-do-trabalho";
 import { PAPEIS, type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
+import {
+  avisoDoCancelamentoDoContrato,
+  MOTIVO_MINIMO_DO_CANCELAMENTO,
+  podeCancelarOContrato,
+} from "@/lib/temis/cancelamento-do-contrato";
 import {
   avisoDaConclusao,
   type ChaveDaDeclaracao,
@@ -35,6 +42,7 @@ import {
 import { contratoVigente } from "@/lib/temis/contrato-guardado";
 import { MOTIVOS } from "@/lib/temis/indeferimento";
 import { recadoDaGeracao } from "@/lib/temis/minuta-da-cadeia";
+import { RECUSA_DE_REENVIO_SEM_ID } from "@/lib/assinatura/recusa-de-reenvio";
 import { pedidoDoTrabalho } from "@/lib/temis/pedido-do-trabalho";
 import {
   caminhoDoCard,
@@ -210,6 +218,15 @@ type SignatarioNaTela = {
    * verdade quer dizer: apareceu nos eventos e não está na lista congelada do envio.
    */
   papel: null | string;
+  /**
+   * O reenvio de convite não pode ser tentado para esta pessoa.
+   *
+   * ⚠️ O ENDPOINT DO REENVIO QUER O SIGNER ID DA CLICKSIGN, e até 24/09/2026 ele nunca foi guardado
+   * do nosso lado: a tela mandava a `chave` (a key do webhook, ou o e-mail) e levava 422, que
+   * aparecia em vermelho como se fosse defeito do provedor. Nos envelopes antigos o botão some, e
+   * o reenvio se faz no painel da Clicksign. `trocar_email` continua valendo.
+   */
+  reenvioIndisponivel?: boolean;
 };
 
 type Card = {
@@ -281,6 +298,13 @@ export function TelaDeTrabalho({
    * qualquer etapa do card (o distrato pode ser concluído de Contrato ou de Em assinatura).
    */
   const [concluindo, setConcluindo] = useState(false);
+  /**
+   * A confirmação de "Cancelar o contrato" está aberta.
+   *
+   * ⚠️ MORA AQUI, COMO AS DUAS DE CIMA, porque o botão é do topo e a confirmação aparece nas três
+   * etapas em que o contrato se cancela (Contrato, Em assinatura e Pré-faturamento).
+   */
+  const [cancelandoContrato, setCancelandoContrato] = useState(false);
   /** A falha da última ação disparada pelo topo. */
   const [erroDaAcao, setErroDaAcao] = useState<null | string>(null);
   /**
@@ -296,7 +320,12 @@ export function TelaDeTrabalho({
   const [recadoDaAcao, setRecadoDaAcao] = useState<null | string>(null);
   // ⚠️ A PORTA VEM DO PROVEDOR: no hub, `/api/temis` com Bearer; no portal que confecciona,
   // `/api/incorporador/temis` com o cookie. Ver `modules/temis/api-da-temis.tsx`.
-  const { temisFetch } = useApiDaTemis();
+  //
+  // ⚠️ `autenticacao` É LIDA PARA O CANCELAMENTO DO CONTRATO, e é a única coisa nesta tela que muda
+  // com a porta. A rota `/trabalho/cancelar-contrato` só existe no hub: a régua dela é nominal
+  // (`temis-contrato-editar`, hoje Nívea e Northon) e essas pessoas não existem na sessão do portal.
+  // Sem esta leitura, o botão apareceria no portal e daria 404 na cara de quem clicasse.
+  const { autenticacao, temisFetch } = useApiDaTemis();
 
   const carregar = useCallback(async () => {
     setErro(null);
@@ -482,6 +511,58 @@ export function TelaDeTrabalho({
   );
 
   /**
+   * CANCELA O CONTRATO — a saída que faltava, e que NÃO é o "Voltar para análise".
+   *
+   * Lucas (23/09/2026): *"coloca por favor um botão de cancelamento de contrato na temis. o time vai
+   * precisar cancelar"*, com o print do contrato da MAURA em Em assinatura, 1 de 11 assinado.
+   *
+   * ⚠️ O SERVIDOR FAZ TUDO, E NESTA ORDEM: abre o pedido na fila (com o motivo), cancela o envelope na
+   * Clicksign lendo o estado real antes, derruba a venda e a reserva, indefere este card de contrato,
+   * fecha o card do pedido e solta o lote pela trava. Ver `lib/temis/cancelar-contrato-servico.ts`.
+   *
+   * ⚠️ A FALHA SOBE COMO VEIO, LETRA POR LETRA. Quando a Clicksign recusa, a frase do servidor diz
+   * que o pedido FICOU ABERTO na fila e que é por ele que se termina — trocá-la por "não consegui"
+   * faria o jurídico tentar de novo e abrir um segundo pedido do mesmo contrato.
+   */
+  const cancelarContrato = useCallback(
+    async (
+      motivo: string,
+      declaracoes: Partial<Record<ChaveDaDeclaracao, boolean>>,
+    ): Promise<null | string> => {
+      setOcupado(true);
+      try {
+        const r = await temisFetch("/trabalho/cancelar-contrato", {
+          body: JSON.stringify({ declaracoes, id: trabalhoId, motivo }),
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        });
+        const corpo = (await r.json().catch(() => ({}))) as {
+          avisos?: string[];
+          erro?: string;
+          recado?: string;
+          unidade?: { voltou?: boolean };
+        };
+        if (!r.ok) return corpo.erro ?? "Não consegui cancelar o contrato.";
+        if (aoConcluir) {
+          // ⚠️ O LOTE QUE NÃO VOLTOU PEDE AÇÃO, como na conclusão do pedido: o recado verde de oito
+          // segundos escondeu esse aviso uma vez, e foi a queixa que abriu o trabalho de 18/09/2026.
+          aoConcluir(
+            corpo.recado ?? "Contrato cancelado.",
+            corpo.unidade?.voltou === false || (corpo.avisos?.length ?? 0) > 0,
+          );
+        } else {
+          await carregar();
+          aoMudar();
+        }
+        return null;
+      } finally {
+        setOcupado(false);
+      }
+    },
+    [aoConcluir, aoMudar, carregar, temisFetch, trabalhoId],
+  );
+
+  /**
    * DEVOLVE O CARD PARA A ANÁLISE — o caminho de correção que substituiu o "Gerar versão N".
    *
    * Lucas (11/09/2026): *"caso queira fazer algum ajuste no contrato, podemos ter um botão para
@@ -533,21 +614,31 @@ export function TelaDeTrabalho({
       // continuaria funcionando no `if` por ser uma string não vazia — e quebraria calado no dia em
       // que alguém escrevesse `=== true`, ou quisesse mostrar o número na mensagem.
       const corpo = (await r.json().catch(() => ({}))) as {
-        data?: { envelopeCancelado?: null | string };
+        avisoDoHercules?: string;
+        data?: { avisoDoHercules?: string; envelopeCancelado?: null | string };
         envelopeCancelado?: null | string;
         error?: string;
       };
       if (!r.ok) return corpo.error ?? "Não consegui voltar o card para a análise.";
       const envelopeCancelado = corpo.envelopeCancelado ?? corpo.data?.envelopeCancelado ?? null;
+      // ⚠️ O AVISO DO HÉRCULES VAI NO RECADO (revisão de 24/09/2026): o card voltou, e a venda não
+      // voltou junto para contrato. É aviso, não falha: a volta aconteceu e não se repete.
+      const avisoDoHercules = corpo.avisoDoHercules ?? corpo.data?.avisoDoHercules ?? null;
       await carregar();
       // ⚠️ `aoConcluir` JÁ RECARREGA O QUADRO E FECHA A TELA — chamar `aoMudar` junto faria a mesma
       // busca duas vezes. O `aoMudar` fica para quem montou a tela sem passar o `aoConcluir`: ali
       // ninguém fecha nada, e o quadro por baixo precisaria saber que o card mudou de coluna.
       if (aoConcluir) {
+        const recado = envelopeCancelado
+          ? "Envelope cancelado na Clicksign e card de volta na Análise. Quem já tinha recebido o convite perdeu o acesso."
+          : "O card voltou para Análise.";
+        // ⚠️ O AVISO DO HÉRCULES PEDE AÇÃO, e por isso vai com o segundo argumento (revisão de
+        // 24/09/2026). Sem ele o quadro pinta a faixa VERDE de confirmação, com ícone de visto, e a
+        // apaga sozinha em oito segundos (temis-kanban.tsx): um recado que termina em "Avise a
+        // Careli para conferir a etapa da venda" era lido como "deu certo" e sumia antes.
         aoConcluir(
-          envelopeCancelado
-            ? "Envelope cancelado na Clicksign e card de volta na Análise. Quem já tinha recebido o convite perdeu o acesso."
-            : "O card voltou para Análise.",
+          avisoDoHercules ? `${recado} ${avisoDoHercules}` : recado,
+          Boolean(avisoDoHercules),
         );
       } else {
         aoMudar();
@@ -602,6 +693,22 @@ export function TelaDeTrabalho({
    */
   const podeIndeferir =
     card.estagio === "analise" || (ehTipoQueConclui(card.tipo) && podeConcluir(card.tipo, card.estagio));
+  /**
+   * O CANCELAMENTO DO CONTRATO — o botão que faltava (Lucas, 23/09/2026).
+   *
+   * ⚠️ SÓ NO HUB. A rota é só do hub, com régua nominal (`temis-contrato-editar`): oferecê-lo no
+   * portal daria 404 para quem clicasse. O portal continua com o caminho dele, o pedido pela tela
+   * Venda.
+   *
+   * ⚠️ ESCONDER O BOTÃO NÃO FECHA A PORTA, e não é para isso que este `if` serve: quem recorta quem
+   * pode é `autorizarCancelamentoDoContrato`, no servidor. Aqui só se decide o que a tela OFERECE — e
+   * a coordenação que não tem a permissão lê a recusa em português ao abrir a confirmação, antes de
+   * escrever o motivo.
+   */
+  const podeCancelarContrato =
+    autenticacao === "hub" &&
+    Boolean(card.proposta_id) &&
+    podeCancelarOContrato(card.tipo, card.estagio);
   /** "COD 000019", como o pedido do Hércules gravou: é o que a confirmação diz que cai. */
   const codigoDoPedido =
     pedidoDoTrabalho({ observacao: card.observacao, tipo: card.tipo })?.itens.find(
@@ -736,7 +843,7 @@ export function TelaDeTrabalho({
             com título e parágrafo, para três cliques; e ficavam abaixo de tudo que se lê, então
             era preciso rolar a análise inteira para agir sobre ela. Cada botão diz o que faz
             pelo `title` e pelo `aria-label` — ícone sem nome nenhum é adivinhação. */}
-        {card.estagio === "analise" || tipoQueConclui || podeIndeferir ? (
+        {card.estagio === "analise" || tipoQueConclui || podeIndeferir || podeCancelarContrato ? (
           <div className="flex items-center gap-1.5">
             {card.estagio === "analise" && card.proposta_id ? (
               <BotaoDeAcao
@@ -756,6 +863,7 @@ export function TelaDeTrabalho({
                 icone={CircleCheck}
                 onClick={() => {
                   setIndeferindo(false);
+                  setCancelandoContrato(false);
                   setConcluindo((v) => !v);
                 }}
                 principal
@@ -789,10 +897,31 @@ export function TelaDeTrabalho({
                 icone={Ban}
                 onClick={() => {
                   setConcluindo(false);
+                  setCancelandoContrato(false);
                   setIndeferindo((v) => !v);
                 }}
                 perigo
                 rotulo="Indeferir"
+              />
+            ) : null}
+
+            {/* ⚠️ CANCELAR O CONTRATO FICA AO LADO DAS OUTRAS DUAS SAÍDAS, e é a terceira coisa que
+                se pode fazer com um card: concluir DESFAZ a venda de um pedido, indeferir RECUSA o
+                pedido, e este ENCERRA o contrato. Ele é `perigo` (contorno vermelho) porque é o único
+                da barra que não se desfaz de jeito nenhum: o envelope morre na Clicksign e a venda
+                cai. O "Voltar para análise", que é o vizinho semântico dele, continua no rodapé da
+                etapa: quem procura conserto olha para lá, quem precisa encerrar olha para cá. */}
+            {podeCancelarContrato ? (
+              <BotaoDeAcao
+                ativo={cancelandoContrato}
+                icone={FileX2}
+                onClick={() => {
+                  setConcluindo(false);
+                  setIndeferindo(false);
+                  setCancelandoContrato((v) => !v);
+                }}
+                perigo
+                rotulo="Cancelar o contrato"
               />
             ) : null}
           </div>
@@ -814,6 +943,19 @@ export function TelaDeTrabalho({
           alta da tela — caber numa faixa com rolagem própria, com a conversa escondida embaixo. */}
       <div className="mt-3 grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex min-h-0 flex-col pr-1 lg:overflow-auto">
+          {/* ⚠️ A CONFIRMAÇÃO DO CANCELAMENTO VEM ANTES DE TUDO NA COLUNA, como as outras duas: ela é
+              o que o olho precisa achar depois de clicar no ícone do topo. E ela BUSCA a apuração no
+              servidor antes de oferecer o botão — é ali que se descobre se este contrato vira
+              cancelamento ou distrato, e o distrato pede as duas declarações. */}
+          {cancelandoContrato && podeCancelarContrato ? (
+            <ConfirmarCancelamentoDoContrato
+              aoCancelar={() => setCancelandoContrato(false)}
+              aoConfirmar={cancelarContrato}
+              envelopeVivo={envelopeVivo}
+              trabalhoId={trabalhoId}
+            />
+          ) : null}
+
           {concluindo && tipoQueConclui ? (
             <ConfirmarConclusao
               aoCancelar={() => setConcluindo(false)}
@@ -864,8 +1006,18 @@ export function TelaDeTrabalho({
               // enviar ficaria vivo em cima de um envelope já criado e o segundo clique criaria o
               // SEGUNDO envelope — que também é cobrado. É o mesmo desenho da geração de contrato:
               // recado primeiro, volta ao quadro depois.
-              aoEnviado={() =>
-                aoConcluir?.("Contrato enviado para assinatura. O card foi para Em assinatura.")
+              // ⚠️ E O AVISO DO HÉRCULES ENTRA NO RECADO (revisão de 24/09/2026): a tela fecha
+              // aqui, e o recado é o único lugar que sobra para dizer que a venda ficou para trás.
+              // ⚠️ E O AVISO PEDE AÇÃO (revisão de 24/09/2026): com o segundo argumento o quadro o
+              // mantém em âmbar até alguém fechar, em vez de apagá-lo em oito segundos numa faixa
+              // verde de sucesso.
+              aoEnviado={(avisoDoHercules) =>
+                aoConcluir?.(
+                  avisoDoHercules
+                    ? `Contrato enviado para assinatura. O card foi para Em assinatura. ${avisoDoHercules}`
+                    : "Contrato enviado para assinatura. O card foi para Em assinatura.",
+                  Boolean(avisoDoHercules),
+                )
               }
               aoVoltarParaAnalise={voltarParaAnalise}
               contratos={card.contratos}
@@ -1571,6 +1723,246 @@ function ConfirmarConclusao({
   );
 }
 
+/** O que o servidor apurou sobre este contrato, para a confirmação escrever antes do clique. */
+type PreviaDoCancelamento = {
+  assinaturaCompleta: boolean;
+  codigo: null | string;
+  comoSoube: { assinatura: string; pagamento: string };
+  devolveValores: boolean;
+  houvePagamento: boolean;
+  /** Já existe pedido de cancelamento na fila? O id do card — e aí não se oferece o botão. */
+  pedidoAberto: null | string;
+  porque: string;
+  tipo: TipoQueConclui;
+  vendaDoLegado: boolean;
+};
+
+/**
+ * A CONFIRMAÇÃO DE CANCELAR O CONTRATO — o motivo escrito, o que o sistema apurou e o preço.
+ *
+ * Lucas (23/09/2026): *"coloca por favor um botão de cancelamento de contrato na temis. o time vai
+ * precisar cancelar"*.
+ *
+ * ⚠️ ELA PERGUNTA AO SERVIDOR ANTES DE OFERECER O BOTÃO, e é isso que a separa das outras duas
+ * confirmações desta tela. Quem decide se este contrato vira CANCELAMENTO simples ou DISTRATO é
+ * `classificarCancelamento`, por duas perguntas que leem o banco (assinou? pagou?) — a tela não tem
+ * como saber, e um botão que prometesse "cancelamento" sobre um contrato pago mentiria exatamente no
+ * caso que tem dinheiro do cliente no meio.
+ *
+ * ⚠️ E O MOTIVO É OBRIGATÓRIO NOS DOIS LADOS. Aqui ele destrava o botão; no servidor
+ * (`conferirMotivoDoCancelamento`) ele recusa o pedido. A tela sozinha não protege registro nenhum: a
+ * rota é HTTP como outra qualquer.
+ */
+function ConfirmarCancelamentoDoContrato({
+  aoCancelar,
+  aoConfirmar,
+  envelopeVivo,
+  trabalhoId,
+}: {
+  aoCancelar: () => void;
+  /** Devolve o texto da falha, ou `null` quando cancelou (e a tela já voltou ao quadro). */
+  aoConfirmar: (
+    motivo: string,
+    declaracoes: Partial<Record<ChaveDaDeclaracao, boolean>>,
+  ) => Promise<null | string>;
+  /** O envelope vivo desta venda — é ele que decide se a frase fala do envelope. */
+  envelopeVivo: EnvelopeVivo | null;
+  trabalhoId: string;
+}) {
+  const { temisFetch } = useApiDaTemis();
+  const [previa, setPrevia] = useState<null | PreviaDoCancelamento>(null);
+  const [erro, setErro] = useState<null | string>(null);
+  const [motivo, setMotivo] = useState("");
+  const [marcadas, setMarcadas] = useState<Partial<Record<ChaveDaDeclaracao, boolean>>>({});
+  const [enviando, setEnviando] = useState(false);
+
+  useEffect(() => {
+    let vivo = true;
+    void (async () => {
+      try {
+        const r = await temisFetch(
+          `/trabalho/cancelar-contrato?id=${encodeURIComponent(trabalhoId)}`,
+        );
+        const corpo = (await r.json().catch(() => ({}))) as {
+          data?: PreviaDoCancelamento;
+          erro?: string;
+        };
+        if (!vivo) return;
+        // ⚠️ A RECUSA DE QUEM NÃO PODE CANCELAR CHEGA AQUI, e em português: é o 403 da régua nominal.
+        // Ler isso antes de escrever o motivo é o que evita digitar uma justificativa para nada.
+        if (!r.ok || !corpo.data) {
+          setErro(corpo.erro ?? "Não consegui conferir a situação deste contrato.");
+          return;
+        }
+        setPrevia(corpo.data);
+      } catch {
+        if (vivo) setErro("Não consegui conferir a situação deste contrato.");
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [temisFetch, trabalhoId]);
+
+  const pedeDeclaracoes = previa?.tipo === "distrato";
+  const faltaDeclarar =
+    pedeDeclaracoes && DECLARACOES_DO_DISTRATO.some((d) => marcadas[d.chave] !== true);
+  const motivoCurto = motivo.trim().length < MOTIVO_MINIMO_DO_CANCELAMENTO;
+  const impedido = enviando || !previa || Boolean(previa.pedidoAberto) || motivoCurto || faltaDeclarar;
+
+  return (
+    // ⚠️ ÂMBAR, E NÃO A MOLDURA NEUTRA DA CONCLUSÃO: aqui não há pedido nenhum sendo despachado, há um
+    // contrato vivo sendo encerrado por quem está olhando para ele.
+    <section className="mb-3 rounded-xl border border-rose-500/40 bg-rose-500/5 p-4">
+      <h3 className="m-0 flex items-center gap-1.5 text-sm font-semibold text-ink">
+        <FileX2 aria-hidden="true" className="size-4" />
+        Cancelar o contrato
+      </h3>
+
+      {erro ? (
+        <p className="m-0 mt-2 text-xs text-rose-600 dark:text-rose-300">{erro}</p>
+      ) : !previa ? (
+        <p className="m-0 mt-2 flex items-center gap-2 text-xs text-ink-muted">
+          <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+          Conferindo o que já aconteceu neste contrato…
+        </p>
+      ) : previa.pedidoAberto ? (
+        // ⚠️ UM PEDIDO POR VENDA. Com um card já na fila, o caminho é concluir por ele: um segundo
+        // pedido do mesmo contrato deixa quem lê o quadro sem saber qual dos dois vale.
+        <p className="m-0 mt-2 text-xs text-ink-soft">
+          Esta venda já tem um pedido de cancelamento na fila da Têmis. Abra esse card no quadro e
+          conclua por ele.
+        </p>
+      ) : (
+        <>
+          <p className="m-0 mt-2 text-xs text-ink-soft">
+            {avisoDoCancelamentoDoContrato({ codigo: previa.codigo, envelopeVivo })}
+          </p>
+
+          {/* ⚠️ O QUE O SISTEMA APUROU FICA NA CARA DE QUEM CLICA, e não escondido no card: é o que
+              decide entre cancelamento e distrato, e é a única coisa que o jurídico pode CONFERIR
+              antes. A frase do "porque" vem pronta do servidor — reescrevê-la aqui criaria uma
+              segunda régua para a mesma pergunta. */}
+          <dl className="m-0 mt-3 grid gap-1 text-[11px] text-ink-soft">
+            <div className="flex flex-wrap gap-x-1.5">
+              <dt className="m-0 font-semibold uppercase tracking-wide text-ink-muted">
+                Instrumento
+              </dt>
+              <dd className="m-0 font-semibold text-ink">
+                {NOME_DO_TIPO[previa.tipo]}
+                {previa.devolveValores ? " · com devolução de valores" : ""}
+              </dd>
+            </div>
+            <div className="flex flex-wrap gap-x-1.5">
+              <dt className="m-0 font-semibold uppercase tracking-wide text-ink-muted">Porque</dt>
+              <dd className="m-0">{previa.porque}</dd>
+            </div>
+            <div className="flex flex-wrap gap-x-1.5">
+              <dt className="m-0 font-semibold uppercase tracking-wide text-ink-muted">Apurado</dt>
+              <dd className="m-0">
+                {previa.comoSoube.assinatura}, {previa.comoSoube.pagamento}
+              </dd>
+            </div>
+          </dl>
+
+          {previa.vendaDoLegado ? (
+            <p className="m-0 mt-2 text-[11px] text-amber-700 dark:text-amber-300">
+              Venda importada do C2X: o Panteon não altera o legado. Se o cancelamento precisar
+              aparecer lá, o ajuste é manual.
+            </p>
+          ) : null}
+
+          <label className="mt-3 block text-xs font-semibold text-ink" htmlFor="motivo-cancelamento">
+            Motivo do cancelamento
+          </label>
+          <textarea
+            className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-xs text-ink placeholder:text-ink-muted"
+            disabled={enviando}
+            id="motivo-cancelamento"
+            onChange={(ev) => setMotivo(ev.target.value)}
+            placeholder="Por que este contrato está sendo cancelado? Fica gravado na venda e no histórico do card."
+            rows={2}
+            value={motivo}
+          />
+
+          {pedeDeclaracoes ? (
+            <fieldset className="m-0 mt-3 grid gap-2 border-0 p-0">
+              <legend className="sr-only">Confirmações obrigatórias do distrato</legend>
+              {DECLARACOES_DO_DISTRATO.map((d) => (
+                <label
+                  className="flex items-center gap-2 text-xs font-semibold text-ink"
+                  key={d.chave}
+                >
+                  <input
+                    checked={marcadas[d.chave] === true}
+                    className="size-4 accent-current"
+                    disabled={enviando}
+                    onChange={(ev) =>
+                      setMarcadas((m) => ({ ...m, [d.chave]: ev.target.checked }))
+                    }
+                    type="checkbox"
+                  />
+                  {d.rotulo}
+                </label>
+              ))}
+            </fieldset>
+          ) : null}
+        </>
+      )}
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/40 bg-surface px-3.5 py-2 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-500/10 disabled:opacity-50 dark:text-rose-300"
+          disabled={impedido}
+          onClick={async () => {
+            setErro(null);
+            setEnviando(true);
+            try {
+              // ⚠️ SÓ `true` VAI PARA O SERVIDOR, e ele só aceita `true`: caixa que ninguém marcou não
+              // pode chegar lá como declaração feita.
+              const declaracoes = Object.fromEntries(
+                DECLARACOES_DO_DISTRATO.filter((d) => marcadas[d.chave] === true).map((d) => [
+                  d.chave,
+                  true,
+                ]),
+              ) as Partial<Record<ChaveDaDeclaracao, boolean>>;
+              const falha = await aoConfirmar(motivo.trim(), declaracoes);
+              if (falha) setErro(falha);
+            } finally {
+              // O cancelamento que deu certo fecha a tela, e este `set` cai no vazio; o que falhou
+              // devolve o botão para quem vai ler o motivo.
+              setEnviando(false);
+            }
+          }}
+          title={
+            motivoCurto
+              ? "Escreva o motivo do cancelamento"
+              : faltaDeclarar
+                ? "Marque as duas confirmações do distrato"
+                : "Cancelar o contrato"
+          }
+          type="button"
+        >
+          {enviando ? (
+            <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+          ) : (
+            <FileX2 aria-hidden="true" className="size-3.5" />
+          )}
+          {enviando ? "Cancelando…" : "Confirmo: cancelar o contrato"}
+        </button>
+        <button
+          className="inline-flex items-center rounded-lg px-3 py-2 text-xs font-semibold text-ink-muted transition-colors hover:text-ink disabled:opacity-50"
+          disabled={enviando}
+          onClick={aoCancelar}
+          type="button"
+        >
+          Cancelar
+        </button>
+      </div>
+    </section>
+  );
+}
+
 /**
  * Um bloco da análise: moldura, título em caixa alta e, opcionalmente, um número à direita.
  *
@@ -1654,7 +2046,8 @@ function EtapaDoContrato({
   tipo,
 }: {
   /** O envelope já existe na Clicksign: quem recebe fecha a tela e avisa o quadro. */
-  aoEnviado: () => void;
+  /** O envio saiu. `avisoDoHercules` = a venda não acompanhou o card (é aviso: o envio deu certo). */
+  aoEnviado: (avisoDoHercules: null | string) => void;
   /** Devolve o texto da falha, ou `null` quando o card voltou para a análise. */
   aoVoltarParaAnalise: () => Promise<null | string>;
   contratos: ContratoNoCard[];
@@ -1747,7 +2140,7 @@ function EtapaDoContrato({
           </section>
         ) : propostaId ? (
           <OrganizacaoDaAssinatura
-            aoEnviar={() => aoEnviado()}
+            aoEnviar={(envio) => aoEnviado(envio.avisoDoHercules ?? null)}
             aoMudarEnvio={setEnviando}
             compacto
             propostaId={propostaId}
@@ -2673,21 +3066,46 @@ function LinhaDoSignatario({
                   10/09/2026 (*"coloca esses botões no topo somente o ícone"*). E reenviar convite
                   para quem JÁ ASSINOU é gesto sem sentido: a tela oferecia, e oferecer o que não
                   serve é o que faz o operador duvidar do que serve. */}
+              {/* ⚠️ E QUANDO NÃO TEMOS O ID DO SIGNATÁRIO NA CLICKSIGN ELE FICA DESABILITADO, NÃO
+                  SOME. O endpoint do reenvio espera o signer id criado no envio, e nos envelopes
+                  anteriores a 24/09/2026 ele nunca foi guardado do nosso lado: a chamada volta 422
+                  e a tela escreve, em vermelho, um erro que é nosso. Medido em 24/09/2026: 21
+                  envelopes em `temis_envelopes`, ZERO com `chave` congelada — ou seja, sumir aqui
+                  era sumir em 100% dos envelopes que existem. E para quem está em "sem notícia"
+                  (`precisaDeConserto` falso) a faixa de ações ficava COMPLETAMENTE VAZIA, contra o
+                  que o Lucas pediu em 12/09/2026, duas telas acima: *"temos que conduzir o usuário
+                  na tela, ele tem que saber o que fazer"*. O Hades já faz assim
+                  (`PropostasPanel.tsx`), e as duas telas do painel de assinatura têm de bater.
+                  `trocar_email` continua valendo — ele reencontra a pessoa pelo diário —, e por
+                  isso `podeMexer` não muda. */}
               {signatario.assinouEm ? null : (
-                <button
-                  aria-label="Reenviar o convite para este e-mail"
-                  className="grid size-7 shrink-0 place-items-center rounded-lg border border-line text-ink-muted transition-colors hover:bg-subtle hover:text-ink disabled:opacity-50"
-                  disabled={acaoNoAr !== null}
-                  onClick={() => void executar({ acao: "reenviar" })}
-                  title="Reenviar o convite para este e-mail"
-                  type="button"
+                <Tooltip
+                  content={
+                    signatario.reenvioIndisponivel
+                      ? RECUSA_DE_REENVIO_SEM_ID
+                      : "Reenviar o convite para este e-mail"
+                  }
+                  placement="top"
                 >
-                  {acaoNoAr === "reenviar" ? (
-                    <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw aria-hidden="true" className="size-3.5" />
-                  )}
-                </button>
+                  <button
+                    aria-label="Reenviar o convite para este e-mail"
+                    className="grid size-7 shrink-0 place-items-center rounded-lg border border-line text-ink-muted transition-colors hover:bg-subtle hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={acaoNoAr !== null || signatario.reenvioIndisponivel === true}
+                    onClick={() => void executar({ acao: "reenviar" })}
+                    title={
+                      signatario.reenvioIndisponivel
+                        ? RECUSA_DE_REENVIO_SEM_ID
+                        : "Reenviar o convite para este e-mail"
+                    }
+                    type="button"
+                  >
+                    {acaoNoAr === "reenviar" ? (
+                      <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw aria-hidden="true" className="size-3.5" />
+                    )}
+                  </button>
+                </Tooltip>
               )}
             </div>
           )}

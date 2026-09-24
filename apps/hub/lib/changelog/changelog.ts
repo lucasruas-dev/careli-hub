@@ -36,6 +36,387 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-24-promessa-vencida-volta-a-acionar",
+    deployedAt: "2026-09-24T17:56:11-03:00",
+    modules: [
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "**Promessa que venceu sem pagamento volta para A acionar.** Antes o cliente ficava em Promessa de pagamento para sempre, e a próxima ação mandava aguardar uma data que já tinha passado. Hoje são três casos: Vitorino Energy, Michel Flávio Guimarães e Cristina Guimarães Pinto.",
+              "**A frase manda conferir o pagamento, não acusa o cliente.** Diz quando a promessa venceu e pede a conferência no C2X antes de retomar o contato, porque a baixa da parcela nem sempre chega ao Panteon.",
+              "**A fila e a ficha do cliente passam a dizer a mesma coisa.** A regra que calcula a etapa vivia escrita em dois lugares, e agora é uma só.",
+              "**A coluna Pagamento mostra a data em que o cliente pagou.** Antes mostrava a hora em que a rotina percebeu o pagamento, que podia ser dias depois.",
+            ],
+            screen: "Cobrança",
+          },
+          {
+            items: [
+              "**O reenvio do convite de assinatura do acordo voltou a funcionar.** O identificador que a Clicksign devolve no envio passou a ser guardado, e é ele que o reenvio usa. Era a causa do erro 422.",
+              "**Quando não dá para reenviar, o botão explica o porquê** em vez de sumir da tela sem dizer nada.",
+            ],
+            screen: "Cobrança · Acordos",
+          },
+        ],
+      },
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O reenvio do convite no contrato ganhou a mesma correção do acordo**, e também explica quando não é possível reenviar.",
+            ],
+            screen: "Quadro de trabalho",
+          },
+        ],
+      },
+    ],
+    rollback: "012eace1",
+    technical: {
+      done:
+        "⚠️ NUNCA EXISTIU PEÇA QUE QUEBRASSE PROMESSA. Medido em 24/09/2026: 59 compromissos, `broken_at` NULO em 59, `status='quebrado'` em 0 e ZERO lembretes entregues na história da tabela. O único escritor de quebra é um PATCH de API sem nenhum chamador na UI, e o cron diário só sabe CUMPRIR (`maybeFulfillCompromisso`). A etapa saía de kind+status+approval_status e `promised_date` nem entrava no SELECT de `listGuardianCompromissoStages`, então o ramo `Quebra` estava morto por construção. PEÇA NOVA: `etapaDoCompromisso` (lib/guardian/etapa-do-compromisso.ts), pura, que recebe as linhas e o dia de hoje e devolve {stage, nextAction}. A etapa é DERIVADA NA LEITURA: sem rotina nova, sem rota nova e sem segredo novo (os crons da casa não são autenticados, `x-vercel-cron` é forjável). A regra vivia DUPLICADA palavra por palavra entre a fila (compromissos.ts) e o detalhe (ClientDetailPanel.tsx), e o `map` do detalhe saiu de dentro do `@ts-nocheck` para poder ser testado. ⚠️ O DIA É O DA CASA, não o do UTC: `hoje-na-casa.ts` resolve o fuso de Brasília, senão das 21h à meia-noite a promessa que vence amanhã já apareceria vencida. `mudanca-da-etapa.ts` leva a frase nova à fila e ao copiloto, que antes só reagiam à troca de etapa e ignoravam a próxima ação. DATA DE PAGAMENTO: `pagamentosDoC2x` passou a devolver a data além do id, `markParcelaPaid` a recebe em vez de chamar `new Date()`, e `dataDaBaixa` usa a do C2X quando existe, gravada ao MEIO-DIA UTC para o dia exibido não andar para trás no fuso do Brasil. CLICKSIGN: `congelar-signatarios.ts` guarda em `chave` o id que o provedor devolve no envio (o mesmo campo que a troca de e-mail já usava), e o reenvio passa a mandá-lo em vez do e-mail, que é o que devolvia 422; `recusa-de-reenvio.ts` dá o motivo quando não dá para reenviar, e o botão deixa de sumir. REVISÃO ADVERSARIAL (3 revisores, 3 lentes): reprovou com 1 bloqueante e 5 altas, todas corrigidas. A bloqueante gravava `paid_at` à meia-noite UTC e a tela mostraria o DIA ANTERIOR do pagamento; outra fazia o botão de reenvio sumir em 100% dos envelopes que existem hoje, porque nenhum tem `chave` congelada. Suíte: 565 arquivos, 8.646 testes. Typecheck limpo. ⚠️ FORA DESTE LOTE, à espera do Lucas: o filtro de Promessa e Acordo na Central de Propostas (a forma do controle é escolha dele), barrar segundo acordo vivo na mesma unidade (o Iago tem dois envelopes abertos), a promessa de mais de uma parcela amarrada às parcelas do C2X (394 de 397 parcelas em aberto estão sem `payment_c2x_id`), e o acerto dos 3 `paid_at` já gravados com a hora do robô.",
+      motivation:
+        "Nívea, 24/09/2026: Erro no processo. O comprador fez promessa e não pagou. Deve voltar para o status de acionar. E: O Hades está apresentando uma informação que não procede. E ainda: Deu erro no envio dos acordos. Não recebi e não consigo reenviar. Lucas repassou os quatro apontamentos dela: olha esses erros e melhorias por favor.",
+    },
+    title: "Promessa vencida volta para A acionar, e o convite de assinatura volta a ser reenviado",
+    type: "correcao",
+    version: "1.373.0",
+  },
+  {
+    buildTag: "2026-09-24-mover-cad-de-empreendimento",
+    deployedAt: "2026-09-24T16:42:50-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Nova ação: Mover CAD.** Quando o cliente foi cadastrado no empreendimento errado, a coordenação troca pelo card do Board. A CAD, os vínculos e os documentos mudam juntos, e o cliente passa a aparecer para o coordenador certo.",
+              "**A troca segue a regra do crédito do empreendimento novo.** Não volta para a validação. Se o empreendimento novo exige análise de crédito e o cliente não tem consulta nos últimos 30 dias, a CAD vai para a análise. Se já tem consulta nesse prazo, o sistema confere os valores contra o limite do empreendimento novo e mostra se passou ou não.",
+              "**O card mostra o empreendimento onde a CAD realmente está.** Antes ele podia mostrar um empreendimento e agir sobre outro.",
+            ],
+            screen: "Board de cadastro",
+          },
+          {
+            items: [
+              "**Excluir o vínculo de empreendimento que é o da CAD não é mais possível.** A tela avisa que a troca é pelo Mover CAD. Era esse excluir e adicionar que deixava a CAD para trás no empreendimento antigo.",
+            ],
+            screen: "Ficha do cliente · Relacionamentos",
+          },
+          {
+            items: [
+              "**O PDF da CAD volta a mostrar o empreendimento**, abaixo do Corretor, sempre com o nome do empreendimento e nunca a divisão interna.",
+              "**O Enviado em passa a ser a data real do envio**, no horário de Brasília. Antes o PDF regerado mostrava a hora da regeneração, três horas adiantada.",
+            ],
+            screen: "CAD em PDF",
+          },
+        ],
+      },
+    ],
+    rollback: "fc91a75c",
+    technical: {
+      done:
+        "CAUSA (caso do Jonatas, 24/09/2026): a CAD vive em apolo_esteira, com PK (entity_id, enterprise_id); o vínculo de empreendimento vive em apolo_relationships. O time trocou só o vínculo (arquivou o 19 VDO e criou o 35 VLO). A CAD ficou no 19. O card tirava o NOME do vínculo e o ID das ações da CAD, então mostrou Vale do Ouro e agiu no Veredas. O crédito leu a config do 19 (análise desligada) e credenciou sem Serasa, com WhatsApp de credenciado para o corretor e para a coordenadora do VDO. O CRM do coordenador filtra por apolo_esteira.enterprise_id, e o Huber não via o cliente. NÃO era pai/filho. O dado do Jonatas foi corrigido por SQL com OK do Lucas (CAD 19→35 em crédito, 2 PDFs remarcados, evento cad_movida). CÓDIGO: (1) lib/apolo/mover-cad.ts + POST /api/apolo/board/[id]/mover-empreendimento (authorizeApoloCoordenacao). Canoniza o destino para o id de mercado (pai), valida contra listEnterprisesRecebendo('cad') (lista vazia = 503, porque a leitura não lança), recusa CAD já existente no destino, CAD com cobrança de pré-venda (pagamento_ref ou pago_em, também no WHERE do UPDATE) e concorrência (UPDATE filtra pela etapa lida). Regra de etapa do Lucas: antes do crédito não muda; destino sem análise não muda; com análise e consulta recente (consultaRecenteDoDocumento, 30 dias) avalia com avaliarCredito contra o limite do destino (passou sobe por atualizarEtapa; não passou vai para revisão); sem consulta vai para crédito. Rebaixar vai no MESMO UPDATE da troca, então nunca sobra credenciado sem análise; fila e aviso depois, best-effort. Vínculo da origem arquivado e do destino criado, exceto para imobiliária (lá o vínculo verified é a habilitação). Documentos pessoais remarcados; PDFs de CAD não (o de envio é o registro do que o corretor mandou; o automático é regerado no destino). Resposta com avisos e incompleto (só passos de dado). (2) Travas: relationships/archive dá 409 quando o vínculo é equivalente (canonizador) ao de uma CAD viva; consultarCredito e creditoDaCad recusam CAD cujo vínculo foi arquivado DEPOIS de ela nascer (menor de chegou_em e created_at, contra metadata.arquivadoEm ou updated_at). (3) board-do-servidor.ts: rótulo do card sai da CAD; destinos sem o fallback group:*. (4) PDF: CadDoc.empreendimento, resolvedor lib/apolo/empreendimento-de-mercado.ts (pai via hercules_empreendimentos.pai_id, tira o sufixo de divisão de qualquer fonte, olha o error das consultas), preenchido em cad-de-entidade, cadastro-salvar e no CAD público pelo id do token; ficha da imobiliária sem a linha; CAD montada sem enterpriseId e com mais de uma CAD omite a linha. Enviado em = chegou_em em America/Sao_Paulo. Regressão de 21/07 (f085d6b9 apagou a rota que imprimia o empreendimento). (5) cadastro-persist: vínculo arquivado não conta como já existente no modo acrescentar. REVISÃO: três rodadas adversariais (17 + 6 + 3 agentes), com todos os achados corrigidos e reconferidos, e testes de mutação. Pastas afetadas: 3.391 testes verdes. Suíte inteira depois do merge com a 1.371.0: 573 arquivos, 8.812 testes passando; typecheck limpo.",
+      motivation:
+        "Lucas, 24/09/2026: esse cliente foi vinculado ao empreendimento errado, era para ser vale do ouro e foi para veredas do ouro. Fizemos manualmente a exclusão, incluímos vale do ouro, mas no portal do coordenador ele não aparece no crm do Huber. Ao fazer essa troca ele caiu para análise de crédito do vale do ouro e o sistema já encaminhou para credenciado sem fazer análise. E: vamos trazer o empreendimento a qual aquela cad está vinculada, pode ser abaixo de corretor. Regra da troca: validação não precisa pois já foi feita; se o empreendimento novo tiver análise de crédito e a cad não tiver análise recente, vai para análise; se já foi feita, é só validar os valores e apontar se passou ou não.",
+    },
+    title: "Mover CAD de empreendimento, e o empreendimento de volta no PDF da CAD",
+    type: "melhoria",
+    version: "1.372.0",
+  },
+  {
+    buildTag: "2026-09-24-temis-reflete-no-hercules",
+    deployedAt: "2026-09-24T14:03:31-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Mandar o contrato para assinatura agora move a venda no Hércules.** Antes o card andava sozinho e a venda ficava parada em Contrato: os cinco contratos enviados em 23/09 estavam assim, e já foram acertados.",
+              "**Devolver o card para correção traz a venda de volta para Contrato**, junto com o cancelamento do envelope.",
+              "**Se a venda não acompanhar o card, a tela avisa na hora**, com o motivo e sem sumir sozinha. Antes isso só aparecia no log e ninguém via.",
+              "**Gerar o contrato de novo com o card já adiante não puxa mais a venda para trás.** Numa aba antiga, gerar a segunda via com o contrato já em assinatura derrubava a venda de volta, com o envelope vivo na Clicksign.",
+              "**Indeferir um contrato cuja venda já está em assinatura ou faturada passa a ser recusado**, com a frase dizendo o que fazer: devolver para correção, ou pedir o cancelamento pela tela da Venda.",
+              "**Marcar a última atividade de um pedido de cancelamento não conclui mais o pedido.** Quem conclui é o botão Concluir, que é o único que derruba a venda e solta o lote.",
+            ],
+            screen: "Quadro de trabalho",
+          },
+        ],
+      },
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**Concluir um cancelamento ou distrato solta o lote, e a tela prova que soltou.** Se o lote continuar ocupado, aparece o motivo, inclusive quando quem segura é o mesmo lote cadastrado em outra gleba.",
+              "**Cancelar proposta que falha no meio agora se completa na tentativa seguinte.** Antes, se a reserva não caísse, a segunda tentativa respondia que não havia proposta aberta e o lote ficava preso sem saída.",
+              "**O lote nunca é solto quando ainda tem outro dono.** Vale para toda porta: conclusão na Têmis, cancelar proposta, cancelar reserva e cupom do salão.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "9b1e89e4",
+    technical: {
+      done:
+        "⚠️ SÓ A CARGA DO C2X AVANÇAVA A ETAPA DEPOIS DE `contrato`, e ela foi encerrada em 21/09/2026. Medido em 24/09: 5 de 5 cards de contrato enviados para assinatura em 23/09 tinham a venda em `contrato` (os dados foram corrigidos à parte, com OK do Lucas, e 5 reservas importadas duplicadas foram removidas). PEÇA NOVA: `refletirCardNaVenda` (lib/hercules/reflexo-da-temis-server.ts), ponto único chamado por TODO caminho que move card de contrato (envio, webhook `assinado`, volta para correção, marcação de atividade), com a tradução pura em lib/hercules/reflexo-da-temis.ts. Grava com comparar-e-trocar pela etapa lida, registra a passagem em `hercules_proposta_etapas`, nunca lança e nunca ressuscita venda em `cancelado` ou `distrato`; com 0 linhas relê a etapa e devolve `ja_estava` quando outra mão já gravou o mesmo destino, em vez de alarme falso. `moverCardDaTemis` passou a devolver os cards movidos. ⚠️ O CARD SÓ ANDA PARA A FRENTE (`voltariaNoCaminho`, lib/assinatura/estado-db.ts): o Gerar contrato de aba velha movia o card de `assinatura` ou `prazo_legal` de volta para `contrato`, e com o reflexo levaria a venda junto. PARTE 2, A UNIDADE: `soltarLoteDaVendaDesfeita` (lib/hercules/cancelar-reserva-server.ts) derruba a reserva ligada, chama `devolverCadastroDaUnidade` com a trava `outrosDonosDoLote` e PROVA pela régua que o lote saiu; quando a irmã de outra gleba segura, devolve `irma_com_dono` com o código dela, em vez de dizer que voltou. Usada pelo motor da Têmis (concluir-cancelamento-server.ts) e pelo PATCH de cancelar proposta, que ganhou RETOMADA idempotente (`cancelamentoQueParouNoMeio` + `tomarAVezDeAvisar`, com trava de vencedor único por `atualizado_em`) para o caso de a soltura falhar no meio. `marcarAtividade` recusa levar card de cancelamento ou distrato a Concluído. O indeferir passou a ler a ETAPA DA VENDA, e não só o estágio do card. VARREDURA COMO TESTE (lib/temis/reflexo-na-venda.varredura.test.ts): todo ponto de escrita em `temis_trabalhos.estagio` precisa chamar o reflexo ou ser exceção NOMEADA, e todo update que leva a venda a `cancelado`/`distrato` precisa chamar a soltura; a tabela é resolvida por constante do módulo e o que não se consegue ler entra como `desconhecida`, em vez de sumir. REVISÃO ADVERSARIAL EM DUAS RODADAS (6 revisores, 3 lentes cada): confirmou 7 defeitos na primeira e 8 na segunda, todos corrigidos aqui, entre eles o aviso do Hércules que chegava ao quadro em faixa verde e sumia em 8 segundos, e a modal que dizia 'o aviso não chegou a ser enviado' quando ele já tinha saído. DECISÕES CONSERVADORAS, à espera do Lucas: em pré-faturamento a venda fica em `assinatura` até o card faturar; envelope recusado ou expirado não devolve a venda sozinho; faturar não grava `data_faturamento` nem `vendida` no cadastro. ⚠️ NENHUMA TELA LEVA O CARD DE CONTRATO A FATURADO HOJE (a regra dos 7 dias mais entrada paga está escrita em docs/operations/temis-redesenho-decisoes.md e ainda não tem porta), e um teste trava esse comentário contra o fato. Suíte: 555 arquivos, 8.523 testes. Typecheck limpo.",
+      motivation:
+        "Lucas, 24/09/2026: bom dia, olha por favor o porque não atualizou o estágio no hercules. Depois: preciso garantir que tudo que acontece na temis reflete no hercules, pode corrigir isso, o contrato da vitoria tem que estar em assinatura. E: lembrando que quando tem cancelamento a unidade tem que ficar disponivel, tem que ter esse reflexo. A regra de fundo é a de 18/09: eu não posso vender dois lotes para pessoas diferentes, eu tomo processo por conta disso.",
+    },
+    title: "A Têmis e o Hércules param de discordar: a venda anda com o card, e o cancelamento solta o lote",
+    type: "correcao",
+    version: "1.371.0",
+  },
+  {
+    buildTag: "2026-09-24-quadro-anual-da-parcela",
+    deployedAt: "2026-09-24T10:36:44-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**A Evolução da parcela agora mostra o contrato inteiro, do primeiro ao último ano.** Cada linha é um período entre dois aniversários do contrato e separa o que é amortização, o que é juros e o que é correção pelo índice. No fim vem o total do contrato.",
+              "**Um quadro para cada cenário: otimista, tendência e conservador.** Os anos que já passaram usam o índice publicado e são iguais nos três. Os anos futuros vêm marcados como estimativa.",
+              "**A conta segue a regra do contrato.** No aniversário, soma o índice acumulado dos 12 meses até aquele mês aos juros do contrato, na mesma tabela SACOC que o gerador de proposta usa. Contrato em PRICE mostra só a correção, porque os juros já estão dentro da parcela.",
+              "**O PDF traz os três quadros na mesma folha.**",
+              "**Quando o quadro não pode ser calculado, a tela diz por quê.** Pode ser contrato encerrado, pedido sem plano comercial no C2X ou contrato sem índice de correção. Nesses casos não aparece uma conta pela metade.",
+              "**Saiu da tela a parcela que a cobrança lançou.** O relatório é a conta do contrato. O valor devido de cada parcela continua sendo o do boleto.",
+            ],
+            screen: "Financeiro · Evolução da parcela",
+          },
+        ],
+      },
+    ],
+    rollback: "eb722ad2",
+    technical: {
+      done:
+        "MOTOR NOVO `lib/apolo/reajuste/quadro-anual.ts` (`montarQuadroAnual`), com a regra da Lavra do Ouro, que funcionou no reajuste em massa. (1) O CICLO É O ANIVERSÁRIO DO CONTRATO: a data do ato (se faltar, a de assinatura; se faltar, o 1º vencimento). A parcela entra no ciclo pela data de vencimento comparada com a data do aniversário. No LOS0617 (ato 02/08/2024, 1º vencimento 20/09/2024), o ciclo 1 tem 11 parcelas, de set/24 a jul/25. (2) O ÍNDICE DO CICLO é o acumulado dos 12 meses que terminam no mês do aniversário, olhado mês a mês. Mês sem índice publicado usa a média mensal do cenário, e a linha vai marcada como estimada. (3) SACOC: a taxa do ano é índice + juros do contrato em soma simples. A mensal é (1+a)^(1/12)-1, truncada em 7 casas, e a parcela é truncada no centavo. A conta não depende do caminho: cada ciclo parte da amortização original com a taxa daquele aniversário. Para separar juros de correção, a mesma curva roda duas vezes, com índice+juros e com só juros. PRICE aplica só o fator do índice. (4) A CURVA É UMA SÓ: `parcelaDoCicloSacoc` saiu de `hercules/cronograma.ts` e foi para `apolo/planos-comerciais.ts`. O gerador de proposta e o quadro chamam a mesma função, e os 1.510 testes de Hércules e planos passaram sem nenhuma mudança. `taxaMensal` agora delega para `taxaMensalDaTaxa`. (5) JUROS E ÍNDICE VÊM DA PROPOSTA, isto é, do plano comercial `ar.commercial_plan_id`, porque o plano próprio do C2X é uma casca vazia. PROVA NO LOS0617, cenário tendência: set/24 a jul/25 = 452,43; ago/25 a jul/26 = 484,00 (452,43 + juros 19,37 + correção 12,20, com IPCA de 5,13%); ago/26 a jul/27 = 540,75 (4,22%); total do contrato 136.250,54 = amortização 65.149,92 + juros 35.166,96 + correção 35.933,66. A regra, com o IPCA de 4,26% do lote, reproduz o 481,94 lançado no C2X. Esse lote usou o IPCA fechado de 2025, e isso foi pontual. A PARCELA DE HOJE SAIU DA TELA porque é caixa: 481,94 ao lado de 484,00 no mesmo ano faria o leitor duvidar dos dois. DIVERGÊNCIA EM ABERTO, para a Nívea decidir: no 2º aniversário, o template LOU da Lavra divide 12 meses de juros por 11 (LOU1819 aplicado = 477,98). A curva da casa divide o ano cheio (dá 466,12). O quadro segue a curva da casa. REVISÃO ADVERSARIAL ANTES DO DEPLOY (quatro leituras independentes do diff e um verificador tentando derrubar cada achado, 17 agentes): confirmou nove defeitos, e esta versão corrige todos. (a) O SISTEMA passa a ser o que o C2X DECLARA: primeiro o nome do plano, porque o Veredas do Ouro diz PRICE ou SACOC no nome, e depois `enterprise_tables` do empreendimento. A dedução pela parcela ficou só como último recurso. Ela errava o MDS0805, o MDS0306 e o MDS0713, que caíam em SACOC e ganhavam 8% a.a. por cima de uma parcela que já tem juros; no MDS0713 o total ia de 126 mil para 185 mil. O extrato passou a ler `cp.name` e `et.name`, com um LEFT JOIN pela chave, só SELECT. (b) A PARCELA 1 É RECONSTRUÍDA PELO NÚMERO de cada mensal, por votação, e não pelo menor vencimento. No LOS0404 as mensais 1 a 17 não existem no C2X, e o contrato terminava em jan/2038 com R$ 14,5 mil a mais. No MDS0306 um acordo empilhou as parcelas 1 a 16 em maio/2026. (c) Com carência, o ciclo de aniversário não é mais passado direto para a curva, e as últimas parcelas deixam de despencar para a amortização pura. (d) O quadro só sai quando a conta inteira é possível. Contrato encerrado, pedido sem plano comercial (juro nulo deixou de ser 0,00% a.a.: LOS0619, R$ 71 mil abaixo do real), contrato sem índice e série fora do ar saem sem quadro e com o motivo. O PDF devolve 503 quando a série falha agora. (e) Correção negativa (IGP-M de 2023/24) aparece com sinal. PRICE chama a coluna de Parcela de origem, e o total de juros não diz R$ 0,00. O quadro do PDF não se parte entre páginas. Os degraus do caixa saíram da tela. Trocar de cenário não refaz a leitura do C2X e do IBGE. VARREDURA NA CARTEIRA INTEIRA, só leitura: 1.041 pedidos com carteira, 803 com quadro, zero violações das invariantes (decomposição fecha, nenhum ciclo despenca, todo quadro começa na parcela 1). PRICE só no MDS (24) e no ACP (8). Testes: 37 do quadro, 10 da montagem (novo), 19 de comportamento da tela e 2 da rota do PDF (novo). Suíte inteira: 551 arquivos, 8.445 testes passando. PDF do LOS0617 com os três quadros: 39,0 KB, mesmos números, e o quadro conservador agora vai inteiro para a página 2.",
+      motivation:
+        "Lucas, 24/09/2026: pode trazer o quadro desde a primeira parcela, além disso aplicar os juros, e apontar o crescimento do juros e da correção. E: podemos dividir pelas visões, ter um quadro otimista, tendência, conservador. Sobre a regra: o juros é aplicado todo aniversário do contrato, isso na sacoc; price trariamos somente a correção do indice; estuda o calculo que fizemos para ajustar as parcelas do lavra do ouro, funcionou perfeitamente; o indice a gente olha mes a mes, para aplica-lo no aniversario. Sempre aniversario do contrato.",
+    },
+    title: "Quadro anual da parcela: amortização, juros e correção, do primeiro ao último ano",
+    type: "melhoria",
+    version: "1.370.0",
+  },
+  {
+    buildTag: "2026-09-24-pdf-da-evolucao",
+    deployedAt: "2026-09-24T00:49:29-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**A Evolucao da parcela agora sai em PDF timbrado**, no mesmo padrao dos outros relatorios da casa.",
+              "**O papel traz os tres cenarios lado a lado** (otimista, tendencia e conservador), porque o resultado e uma faixa e nao um numero. A premissa de cada coluna vai escrita.",
+              "**Em toda pagina esta dito que e estimativa**, e que o valor devido de cada parcela e o do boleto: a folha circula sozinha e nao pode ser lida como promessa.",
+            ],
+            screen: "Financeiro · Evolucao da parcela",
+          },
+        ],
+      },
+    ],
+    rollback: "4c981613",
+    technical: {
+      done:
+        "O PAPEL SAI DA MESMA APURACAO DA TELA: as duas rotas chamam `evolucaoDosContratos`, entao tela e PDF nunca divergem sobre a parcela de um cliente. E a mesma regra que o extrato segue, e existe porque divergencia de dinheiro entre duas telas da casa vira reuniao. OS TRES CENARIOS NA MESMA FOLHA, e isso e decisao de honestidade, nao de economia de papel: um documento com um numero so e lido como PREVISAO; tres colunas mostram que o resultado e uma FAIXA. No contrato usado para provar (LOS0617), em 2031 a parcela vai de R$ 575,41 no otimista a R$ 649,30 no conservador, com R$ 626,06 na tendencia. A ordem e do menor para o maior, e a premissa de cada coluna vai escrita por extenso embaixo da tabela. UMA LEITURA PARA OS TRES: `evolucaoDosContratos` ganhou `cenarios`, e o que muda entre eles e so a media aplicada -- conta pura sobre a serie ja carregada. Tres chamadas custariam tres varreduras do C2X e tres buscas de serie para desenhar a MESMA folha. Medido: 1.177ms de leitura, 67ms de montagem, 32,9 KB. A RESSALVA E ESTRUTURAL, nao nota em corpo 6: cada linha diz se e o valor de hoje ou estimativa, ha uma secao explicando que a correcao so alcanca a parcela na emissao do boleto (que e por que as parcelas distantes ainda aparecem pelo valor de origem), e o rodape repete em TODA pagina que nao e compromisso -- a folha circula solta, e a pagina 2 sozinha nao pode virar promessa. ⚠️ A REVOGACAO DO BLOB ESPERA 60s, que e a correcao do defeito que o Isac relatou em 08/09/2026 no PDF do extrato: revogar na mesma linha do clique e corrida com o navegador e mata o download CALADO. O molde e o `pdf-timbrado` de sempre (logo, cartoes, tabela limpa), e o nome do arquivo segue o formato do extrato para os dois cairem juntos na pasta de download do atendente. 12 testes de comportamento, um deles travando que o PDF sai no cenario da tela quando a rota e chamada com um cenario so.",
+      motivation:
+        "Lucas, 23/09/2026: agora falta criar o relatorio em PDF igual temos os outros. E, vendo a primeira versao do papel, em 24/09: pode fazer as tres visoes em um relatorio so.",
+    },
+    title: "PDF da Evolucao da parcela, com os tres cenarios juntos",
+    type: "novidade",
+    version: "1.369.0",
+  },
+  {
+    buildTag: "2026-09-23-o-juridico-cancela-o-contrato",
+    // ⚠️ AJUSTAR NO DEPLOY: esta entrada foi escrita junto com o código, antes do push. A hora é a
+    // prevista; `rollback` é o deployment anterior, que só existe no momento do go-live.
+    deployedAt: "2026-09-24T00:55:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Dá para cancelar o contrato de dentro da Têmis.** No card de um contrato em Contrato, Em assinatura ou Pré-faturamento apareceu um botão novo no topo: ele encerra o contrato, cancela o envelope na Clicksign, desfaz a venda, derruba a reserva e devolve a unidade para a disponibilidade se não houver outro dono. Antes a tela tinha um botão só, o **Voltar para análise** — que devolve o card para a etapa anterior e não desfaz venda nenhuma. Quem precisasse cancelar tinha de pedir pela tela Venda, no portal, onde o time do jurídico não entra.",
+              "**O motivo é obrigatório, e fica guardado em três lugares:** na venda, no card do pedido que nasce na fila e no histórico do card.",
+              "**A tela diz o preço antes do clique.** Ela mostra o que o sistema apurou (assinou? pagou?), se aquilo é cancelamento ou distrato, e avisa que o envelope é cancelado na Clicksign, que quem já recebeu o convite perde o acesso e que quem já assinou terá assinado um contrato que não vale mais.",
+              "**Quando o contrato já foi assinado por todos, ou já houve pagamento, o botão vira distrato** e pede as duas confirmações de sempre (termo assinado e devolução acertada com o cliente). Não dá para cancelar um contrato pago sem declarar isso.",
+              "**Se a Clicksign recusar o cancelamento do envelope, nada é desfeito:** a venda continua onde estava, o contrato continua valendo, e o pedido fica aberto na fila com o motivo registrado para alguém terminar por ele.",
+              "**Cancelar contrato é do time de contratos** (a mesma régua de quem edita contrato à mão: hoje Nívea e Northon). A coordenação continua podendo tudo o que podia: gerar, mandar assinar, voltar para análise, indeferir e concluir cancelamento.",
+            ],
+            screen: "Tela de trabalho · card de contrato",
+          },
+          {
+            items: [
+              "**Card com a venda já desfeita para de andar.** Marcar atividade num card cuja venda foi cancelada ou distratada passa a recusar, dizendo para indeferir o card. Antes as atividades restantes podiam ser marcadas e o card chegava a **Faturado** mostrando faturamento sobre uma venda que não existe mais. Nenhum card do quadro está nessa situação hoje: a trava fecha o caminho, não conserta card nenhum.",
+            ],
+            screen: "Tela de trabalho · atividades",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "O FLUXO DE CANCELAMENTO JA EXISTIA INTEIRO E JA RODOU EM PRODUCAO (9 cards concluidos); o que faltava era a PORTA. Medido em 23/09/2026: a unica entrada do pedido e `POST /api/incorporador/venda/cancelamento-de-contrato`, guardada por `autorizarOperacaoDeVenda` (cookie `apolo_inc`), e a `TelaVenda` que a chama so e montada no portal -- o hub nao tem pasta de venda nenhuma. Os 11 pedidos existentes foram todos abertos por contas de portal (`canal = 'hercules'` nos 11, conferido no banco). NENHUM MOTOR NOVO: `lib/temis/cancelar-contrato-servico.ts` abre o pedido e chama `concluirCancelamentoDoCard`, que ja cancela o envelope lendo o estado REAL na Clicksign antes, derruba venda e reserva, indefere o card de contrato irmao, fecha o card e solta o lote pela trava -- um segundo caminho que derrubasse a venda por conta propria divergiria do primeiro no primeiro conserto, e a divergencia aqui e dinheiro do cliente e lote vendido duas vezes. A ORDEM DAS ESCRITAS e o desenho: (1) a marca do pedido na venda, que e REFAZIVEL e nao mexe na etapa; (2) o card do pedido na fila, com rollback da marca se ele nao nascer; (3) a conclusao, que e onde mora tudo o que nao se desfaz. Falha na Clicksign para no passo 3 sem gravar nada na venda, e a frase manda terminar pelo card do pedido em vez de tentar de novo (o segundo pedido do mesmo contrato deixa quem le o quadro sem saber qual vale). ⚠️ `temis_trabalhos` NAO TEM `unidade_id` (conferido em `information_schema`): so `unidade` como TEXTO. A porta e chaveada por `proposta_id`, e o `unidade_id` quem le e o motor, da propria venda -- casar pelo texto \"Quadra 03 · Lote 06\" colaria o pedido no lote errado. A REGUA E A NOMINAL, `temis-contrato-editar` (`autorizarCancelamentoDoContrato`, a mesma permissao de quem edita o contrato a mao): cancelar mata o contrato e solta o lote, entao nao pode ser mais barato que reescrever uma clausula; rota PROPRIA e so do hub, porque `POST /api/temis/trabalho` e compartilhado com a porta do portal e guardado pela regua mais larga (coordenacao, 7 pessoas). NAO HA AJUSTE MANUAL da classificacao por aqui, de proposito: rebaixar um distrato a cancelamento simples e sair sem devolver dinheiro do cliente, e aqui quem clica e tambem quem conclui. NAO HA MIGRATION. O que fica de fora, medido: boleto e Asaas (115 eventos `PAYMENT_RECEIVED` em `apolo_asaas_eventos`, e 252 cobrancas `RECEIVED` em `boletos_pagamentos`) nao entram na apuracao, que le `hercules_proposta_eventos`, as 3 datas da proposta e o envelope `assinado` -- nenhuma das 5 vendas em risco hoje tem boleto, mas uma venda faturada com entrada paga pelo Asaas sairia classificada como cancelamento simples. ⚠️ A REVISAO ADVERSARIAL VOLTOU COM QUATRO DEFEITOS, E OS QUATRO FORAM CONSERTADOS ANTES DO PUSH. (1) A PROTECAO CONTRA CLIQUE DUPLO NAO TINHA PROVA: trocando a comparacao-e-troca de `marcarOPedido` por um `update` seco, os 48 testes do lote continuavam VERDES -- sem ela, duas requisicoes que leem `cancelamento_pedido_em = null` passam as duas pelo `jaNaFila`, abrem as duas um card na fila e chamam a Clicksign DUAS VEZES na conta de producao. Agora ha dois testes que CAEM quando ela sai: a requisicao irma que grava a marca entre a nossa leitura e a nossa escrita, e dois cliques de verdade na mesma volta do laco de eventos. (2) A FRASE \"Nada foi gravado\" MENTIA no caminho da marca orfa: ali `marcarOPedido` arquiva o pedido antigo em `hercules_proposta_etapas` e substitui a marca, e o desfazer devolve a marca a NULO, nao a antiga. Escolha: a FRASE passou a dizer a verdade (`frasePorTrasDoDesfazer`), porque ressuscitar a marca exigiria APAGAR a linha de historia que o proprio arquivo se recusa a perder na ida, e a marca orfa nao tem card em fila nenhuma -- de volta, ela so voltaria a apagar o botao do pedido no Hercules, o defeito que a casa ja consertou duas vezes (VOL1106 e VOC0306). E o `atualizado_em` passou a ser DEVOLVIDO ao valor lido, o que torna \"Nada foi gravado\" literalmente verdadeiro quando nao havia marca antiga. (3) O numero de testes estava errado nesta propria entrada (39 onde eram 61), e a conferencia dos vizinhos achou o segundo: eram 11 pedidos existentes, nao 10. (4) CANCELAR DE `prazo_legal` DEIXAVA O CARD ANDANDO SOBRE VENDA MORTA, e este e um defeito PRE-EXISTENTE que o botao novo apenas alargava: `marcarAtividade` nunca leu `hercules_propostas`, entao as atividades que restavam no card de um contrato cancelado podiam ser marcadas e a ultima levava o card a FATURADO sobre uma venda distratada. O conserto fecha o caminho de QUEM MARCA ATIVIDADE, que e o unico consumidor de `proximoEstagio` (`marcarAtividade`) -- e NAO e a raiz inteira, porque `temis_trabalhos.estagio` e escrito em outros quatro lugares: em especial `concluirAssinaturaDoCard` (`lib/assinatura/estado-db.ts`), que o webhook chama e que move o card para `prazo_legal` carimbando `arrependimento_inicio` sem ler a venda. A janela ali e estreita (o motor cancela o envelope antes de derrubar a venda) e nao foi reproduzida, mas fica dito: card com venda em `cancelado` ou `distrato` recusa com \"a venda deste card ja foi cancelada: o card nao anda mais. Indefira o card para ele sair da fila\". Leitura que falha RECUSA (nao consegui perguntar nao e a venda esta viva); card ja encerrado nao consulta a venda, porque de `faturado` e `indeferido` nao ha proximo estagio e travar ali tiraria a correcao de registro antigo. A regua de \"venda morta\" virou uma so (`VENDA_DESFEITA`, em `acao-de-cancelamento.ts`), no lugar da copia que o motor tinha e da que a Temis nao tinha. ⚠️ ALCANCE MEDIDO NO BANCO DE PRODUCAO ANTES DE ESCREVER A TRAVA: 13 cards tem a venda morta, e os 13 estao em `faturado` (9) ou `indeferido` (4) -- NENHUM card mente na tela hoje, e a trava nao muda uma linha do que esta la. E o banco em memoria dos testes da Temis passou a devolver COPIA na leitura, como o PostgREST faz: devolvendo a linha viva, um teste de \"devolvi esta coluna ao valor que li\" passava com a coluna ja sobrescrita pela escrita do meio. 61 testes novos (9 da regra pura + 9 da rota + 25 do servico + 9 da tela + 9 da trava do avanco), com o motor de verdade rodando contra banco em memoria e a Clicksign dublada.",
+      motivation:
+        "Lucas, 23/09/2026: coloca por favor um botao de cancelamento de contrato na temis, o time vai precisar cancelar. Com o print do contrato da MAURA MARIA PASSOS (VOC, Quadra 03 Lote 06) em Em assinatura, 1 de 11 assinantes ja tendo assinado e um botao so na tela.",
+    },
+    title: "O jurídico cancela o contrato pela Têmis",
+    type: "novidade",
+    version: "1.368.0",
+  },
+  {
+    buildTag: "2026-09-23-evolucao-da-parcela",
+    deployedAt: "2026-09-23T23:34:31-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Aba nova no Financeiro do cliente: Evolucao da parcela.** Ela mostra o valor de contrato e o que o cliente paga hoje lado a lado, e projeta para onde a parcela caminha, usando a serie do indice do proprio contrato.",
+              "**Tres cenarios** (otimista, tendencia e conservador), cada um com a premissa escrita na tela: quem le sabe de onde saiu o numero.",
+              "**Cada linha diz se e fato ou estimativa.** O que ja aconteceu e medido; o que vem pela frente e palpite bem-feito, e esta dito assim, porque o valor definitivo de cada parcela e o do boleto.",
+            ],
+            screen: "Financeiro · Evolucao da parcela",
+          },
+        ],
+      },
+    ],
+    rollback: "0155f4e6",
+    technical: {
+      done:
+        "O RELATORIO QUE O LUCAS PEDIU DE MANHA, agora no lugar certo. A primeira entrega (1.366.0) virou painel de carteira em /apolo/defasagem: util, mas nao era o pedido. Com a tela do Financeiro aberta ele apontou: 'queria aqui na tela do financeiro por cliente, e um relatorio'. NADA RECALCULA O QUE O EXTRATO JA SABE: mensalidade base, mensalidade vigente, defasagem medida e indice do contrato saem todos de `loadExtratoDoCliente`; esta peca so acrescenta o TEMPO. Duas contas do mesmo numero em duas abas vizinhas e como elas comecam a divergir. A PROJECAO SOBE EM DEGRAU ANUAL, e nao em rampa mensal: e assim que o contrato reajusta, e a rampa mostraria uma subida suave que nenhum boleto do cliente teve. O ponto de partida e a parcela VIGENTE (o que a cobranca pratica), nao a base -- a diferenca entre as duas e a defasagem, que aparece ao lado. Tres cenarios com janelas diferentes da mesma serie (3, 5 e 10 anos), com media GEOMETRICA: a aritmetica de variacoes percentuais superestima o acumulado. ⚠️ CADA LINHA DIZ SE E FATO OU ESTIMATIVA, e a premissa (% ao mes) fica visivel na tela. A peca pode ir para a mao do cliente, e numero de 2031 sem essa marcacao vira expectativa. ⚠️ FONTE EXTERNA FORA DO AR NAO DERRUBA A ABA: sem a serie, o que e fato (valor de contrato, parcela de hoje, defasagem, historico) continua aparecendo e a curva sai com o motivo escrito. Uma busca de serie por INDICE, nao por contrato. PROVADO NO CONTRATO DO PRINT (LOS0617, AR 1066): contrato R$ 452,43, hoje R$ 481,94, 6,52% acima, IPCA ANUAL, IPCA 12m 4,22% -- os mesmos numeros que o extrato mostra ao lado. Projecao na tendencia: R$ 507,83 em 1 ano, R$ 563,85 em 3, R$ 626,06 em 5. ⚠️ ACHADO DE PASSAGEM: esse cliente tem CADASTRO DUPLICADO no C2X (id 1390 sem parcela nenhuma, 1398 com as 146). A peca acerta porque o extrato segue quem tem parcela, que e a regua da casa. 10 testes de comportamento, com os numeros do contrato real.",
+      motivation:
+        "Lucas, 23/09/2026: preciso que a gente crie um novo relatorio la no financeiro do Apolo, que mostra ao cliente a evolucao das parcelas com base na serie historica do indice de correcao do contrato, e uma projecao para o futuro. E, vendo a primeira entrega: queria aqui na tela do financeiro por cliente, e um relatorio.",
+    },
+    title: "Evolucao da parcela: para onde a mensalidade do cliente caminha",
+    type: "novidade",
+    version: "1.367.0",
+  },
+  {
+    buildTag: "2026-09-23-parcelas-a-corrigir-correcao",
+    deployedAt: "2026-09-23T19:00:11-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**A tela Parcelas a corrigir voltou a abrir.** Ela subiu de manha sem conseguir carregar os dados.",
+              "**O valor que a cobranca pratica passou a ignorar majoracao temporaria de acordo.** Vinte e cinco contratos apareciam com defasagem maior do que a real, e um deles estava no topo da lista.",
+            ],
+            screen: "Parcelas a corrigir",
+          },
+        ],
+      },
+    ],
+    rollback: "6322d223",
+    technical: {
+      done:
+        "DOIS DEFEITOS DE GRAVIDADE ALTA na v1.366.0, achados por revisao adversarial que rodava enquanto eu subia. (1) A TELA NUNCA CARREGAVA: o fetch nao mandava `Authorization: Bearer`, e `authorizeApoloRead` devolve 401 sem ele -- inclusive em ambiente local, porque o atalho de dev vem DEPOIS da checagem do token (auth.ts:87-102). Todo painel irmao do Apolo pega o token antes (painel-assinatura, painel-contratos, preview-asaas); este nao pegava. ⚠️ TYPECHECK NAO PEGA, porque e so um fetch, e o teste de comportamento tambem nao pegava, porque o duble de fetch respondia 200 a qualquer chamada. Agora o duble guarda o pedido e um teste confere o header. (2) O VALOR PRATICADO PEGAVA MAJORACAO TEMPORARIA DE ACORDO: o `Math.max` sobre as parcelas com boleto nao usava `superadasPorCobrancaMenor`, a regua que o extrato escreveu exatamente contra isso. No AR 417 (LOS Q16 L14) ha quatro parcelas de R$ 672,80 com boleto vencendo ANTES de seis de R$ 557,37 tambem com boleto: os R$ 672,80 sao acordo, nao o valor praticado. A tela publicava 48,71% onde o real e 23,19%, e jogava esse contrato para o TOPO da lista, que e ordenada pelo maior rombo -- a operacao comecaria pelo caso errado. Medido: 25 contratos inflados, R$ 1.279,36/mes. O total corrigido e R$ 49.482,69 (era R$ 50.762,05) e a mediana de 22,63% nao muda. A funcao era PRIVADA com um leitor so; virou export e e a porta unica do valor praticado nas duas pecas. Teste novo com a forma medida do AR 417. A LICAO, escrita no doc: os dois defeitos eram invisiveis para typecheck, para 8.273 testes e para uma medicao que batia com a soma das linhas -- o primeiro porque o numero PARECIA plausivel, o segundo porque o duble de teste era generoso demais.",
+      motivation:
+        "Revisao adversarial do proprio lote, pedida antes do deploy e concluida depois dele. O Lucas autorizou subir sem esperar por ela; os dois achados que sobreviveram a refutacao estao corrigidos aqui.",
+    },
+    title: "Correcao: a tela abre, e o acordo escalonado nao infla mais a defasagem",
+    type: "correcao",
+    version: "1.366.1",
+  },
+  {
+    buildTag: "2026-09-23-parcelas-a-corrigir",
+    deployedAt: "2026-09-23T18:36:35-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Tela nova: Parcelas a corrigir.** Ela lista os contratos cuja parcela FUTURA ainda esta no valor antigo, porque a correcao so alcanca a parcela quando o boleto dela e emitido. Sao 527 contratos, R$ 50.762,05 por mes que a carteira deixa de cobrar.",
+              "**Mostra os dois valores lado a lado:** o que o sistema tem hoje na parcela do cliente e o que a cobranca ja pratica. Com busca, filtro por empreendimento e exportacao em CSV.",
+              "**Ela nao corrige nada, e isso e de proposito.** Quem aplica a correcao e a operacao, pela tela do C2X: aqui e so o mapa de onde o dinheiro esta parado.",
+            ],
+            screen: "Parcelas a corrigir",
+          },
+        ],
+      },
+    ],
+    rollback: "21e39421",
+    technical: {
+      done:
+        "NASCEU DE OUTRO PEDIDO, e o desvio e o ponto. O Lucas pediu um relatorio de projecao de reajuste para o cliente; ao medir o terreno antes de desenhar, apareceu isto: o VALOR CONTRATUAL DA PARCELA NUNCA E ATUALIZADO NO C2X. So a parcela que recebe BOLETO e corrigida, cumulativamente desde a data-base. O AR 206 (LOU) mostra o mecanismo inteiro: R$ 535,99 em 135 de 144 parcelas, ZERO com boleto; R$ 566,81 em 3 parcelas com boleto; R$ 657,27 em 6 parcelas com boleto (+22,63% sobre o contratual). Medido na carteira: 527 de 870 contratos (60%) com parcela futura defasada, mediana 22,63%, somando R$ 50.762,05 por mes (LOS 26.840, LOU 19.656, MDS 2.246, REP 1.832). A DEFASAGEM E MEDIDA, NAO DEDUZIDA DE INDICE: compara o MAIOR valor entre as parcelas com boleto com a MODA das futuras sem boleto vencendo depois da ultima com boleto. ⚠️ TENTEI DEDUZIR DE INDICE ANTES E O TESTE ME ENGANOU: casar o degrau com indice acumulado em janela livre de 1 a 5 anos e tolerancia de 1,5 ponto deu 97,8% de encaixe, e o BACKTEST honesto (prever o degrau seguinte so com o passado do contrato) acertou 4,1%. Com cinco janelas e essa folga, encaixa por acaso. Os degraus nao sao aplicacoes sucessivas de reajuste: sao LOTES DE BOLETO emitidos em momentos diferentes. Esta tudo em docs/operations/2026-09-23-como-o-reajuste-realmente-anda.md, com a versao errada preservada e avisada, porque ela mostra como a conclusao ruim foi construida. ⚠️ O PRIMEIRO NUMERO QUE APUREI, R$ 72.338, ESTAVA INFLADO em R$ 21.576 pelo balao de R$ 22 mil do AR 3716 contado como mensalidade; a regua do extrato (mensalidadePlausivel, que existe por causa desse mesmo AR) o poe no lugar, com a defasagem real dele de 38,55%. A TELA NAO CORRIGE NADA, de proposito: o legado e READ-ONLY daqui e corrigir parcela tem cliente do outro lado -- e decisao da operacao. Ela mostra onde o dinheiro esta parado, com CSV. Uma consulta so para a carteira inteira (118.033 mensais em 868ms), sem polling. Entra tambem, SEM TELA AINDA, o motor de projecao futura e o buscador das series publicas (IPCA na API v3 do IBGE, INCC-M e IGP-M no SGS do Banco Central), com as armadilhas medidas anotadas: o host apisidra falha no TLS daqui, as series DIARIAS (Poupanca 195, TR 226) devolvem 406 sem janela de datas, e as duas fontes tem UM MES de defasagem. ⚠️ FICA UM ACHADO DE ENGENHARIA: o dev server do preview sobe a partir do CHECKOUT PRINCIPAL e nao do worktree, entao pagina criada em worktree da 404 nele -- a validacao da tela foi por teste de comportamento (jsdom), que e melhor: fica no repo. 51 testes novos.",
+      motivation:
+        "Lucas, 23/09/2026: preciso que a gente crie um novo relatorio la no financeiro do Apolo, que mostra ao cliente a evolucao das parcelas com base na serie historica do indice de correcao do contrato, e uma projecao para o futuro. A medicao feita antes de desenhar mostrou que havia algo mais urgente na frente: 60% da carteira com parcela futura no valor de anos atras. O relatorio para o cliente continua de pe e vem em seguida, apoiado na mesma medicao.",
+    },
+    title: "Parcelas a corrigir: a carteira que ficou no valor antigo",
+    type: "novidade",
+    version: "1.366.0",
+  },
+  {
+    buildTag: "2026-09-23-cpf-e-excel-no-extrato",
+    deployedAt: "2026-09-23T16:01:53-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "**O CPF/CNPJ do comprador passa a aparecer no extrato da carteira**, ao lado do nome. A busca do extrato acha por documento tambem, com ou sem ponto e traco.",
+              "**Botao Excel no extrato.** Ele baixa o recorte que esta na tela (o filtro e a ordem vao junto) com TODAS as linhas, e nao so as que couberam na tela: o Vale do Ouro inteiro sai com 27.721 parcelas. Valor e valor liquido saem como numero, para somar na planilha.",
+              "**Quando a planilha nao cabe inteira, ela diz isso** na ultima linha do arquivo e na tela. Antes nao havia planilha nenhuma; agora nao ha planilha que minta o total.",
+            ],
+            screen: "Carteira · extrato",
+          },
+        ],
+      },
+    ],
+    rollback: "30c38dcc",
+    technical: {
+      done:
+        "O DOCUMENTO VEM DO LEGADO, e a medicao decidiu isso. Lucas levantou, com razao, que o cadastral mora no Apolo -- so que o extrato nasce do C2X e a chave dele e `acquisition_requests.client_id`: ir ao Apolo exigiria casar por CPF (circular: e o dado que se quer descobrir) ou por `client_c2x_id`, que colide. Medido em 23/09: o `users` que o join da carteira JA carrega cobre 856 de 856 clientes (839 com CPF de 11 digitos, 18 com CNPJ, ZERO em branco). Entao e uma linha no SELECT, sem join novo e sem risco de colar a ficha na pessoa errada. Sai SO no extrato, e SO o documento: telefone e e-mail continuam fora, porque servem para ABORDAR o cliente, e a abordagem e da Careli, nao do loteador. O teste que travava documento no payload foi ESTREITADO, nao desligado -- continua acusando email, telefone, entityId e link de boleto. A EXPORTACAO ENTROU NA PROPRIA ROTA DA CARTEIRA (`?formato=xlsx`), e nao numa sub-rota: uma rota propria teria que repetir a resolucao de escopo, o seletor de produtos, o mapa de nomes e a politica comercial, e e exatamente a segunda leitura quase igual que faz a planilha e a tela contarem historias diferentes. Pelo mesmo motivo, os parametros do recorte passaram a ser montados em UM lugar (`parametrosDoExtrato`), usado pela busca da aba e pelo botao. ⚠️ O ARQUIVO NAO PODE SAIR DO QUE ESTA NA TELA, ao contrario da planilha de boletos: la a competencia inteira cabe no envio (334 boletos no maior mes), aqui o extrato tem teto de payload de 2.000 linhas e o Vale do Ouro sozinho tem 27.721 parcelas. Por isso `montarIndicadores` ganhou `tetoDoExtrato` -- teto de ENVIO, nunca de conta: `extratoTotal` e os totais do recorte continuam saindo do recorte inteiro. Medido de ponta a ponta com dado real: 783ms de leitura no C2X, 1.067ms de montagem, 1,39 MB de arquivo, bem dentro do maxDuration de 30s. ⚠️ ACHADO DE BORDA, e ele JA vale para a tela de hoje: a leitura da carteira para em 30.000 linhas, e ha empreendimento que passa disso SOZINHO (medido: LOS 37.956, LOU 30.252). O sinal `parcial` que a rota ja produzia agora atravessa para o arquivo e vira aviso escrito na linha do total, alem do header `X-Parcial` que a tela le. Planilha truncada em silencio e pior do que planilha nenhuma. 18 testes novos.",
+      motivation:
+        "Lucas, 23/09/2026: no portal do incorporador, na parte de carteira, temos a parte do extrato. preciso trazer o CPF para esse painel e ter um botao para exportar em xlsx. E, sobre a fonte do dado: acho que todo o cliente esta dentro do apolo, o que vem do legado e a parte financeira, a cadastral temos no apolo.",
+    },
+    title: "CPF e exportacao em Excel no extrato da carteira",
+    type: "novidade",
+    version: "1.365.0",
+  },
+  {
+    buildTag: "2026-09-23-o-espelho-negocia",
+    deployedAt: "2026-09-23T15:50:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O link que o corretor manda passou a montar a negociação inteira.** Dá para ajustar o preço e registrar bem ou permuta ali mesmo, e a folha sai com esses números. Antes só dava para olhar o preço de tabela.",
+              "**A folha continua dizendo que não vincula.** Ela não constitui proposta, não reserva a unidade e não obriga ninguém: quem fecha venda é a proposta, no portal, com login.",
+              "**O rodapé parou de chamar de proposta o que é simulação.** Ele escrevia que aquelas eram as condições que iriam para a proposta, num lugar onde nada vira proposta.",
+            ],
+            screen: "Espelho de vendas",
+          },
+        ],
+      },
+    ],
+    rollback: "77a9deec",
+    technical: {
+      done:
+        "O espelho publico (`/e/<apelido>-<selo>`, sem login) ganhou o ajuste de preco e o bloco de bens e permutas. ⚠️ E DECISAO DO LUCAS, COM O RISCO POSTO: perguntado com tres opcoes e o risco escrito em cada uma, respondeu \"Liberar para todo mundo\" e, sobre o teto de desconto, \"pode liberar tudo\". Quem repuser um teto aqui esta desfazendo decisao, nao consertando esquecimento -- esta escrito no codigo, com data e frase. AS TRES PECAS ANDARAM JUNTAS, e tinham de andar: a tela (`ehSimulacao` carregava PALAVRA e AUTORIDADE misturadas; a palavra ficou, a autoridade soltou), a rota (`simulacao-publica.ts` refaz a regua no servidor de proposito, entao sem ela a tela mostraria um numero e o PDF imprimiria outro, calado) e o rodape. `conferirBensEPermutasDoCorpo` saiu da rota da proposta para `lib/hercules/bens-e-permutas.ts` e agora serve as DUAS portas: a casa nao pode ter duas conferencias da mesma lista, uma com login e outra sem. O QUE A PORTA PUBLICA AINDA RECUSA, medido: preco ACIMA da tabela (isso nao e desconto, e a pagina anunciando a unidade mais cara do que a casa vende), preco zero ou ausente, prazo maior que o do plano, e todo item de bem torto (tipo invalido, `entraComo` invalido, valor vazio ou nao positivo, descricao em branco, mais itens que o teto). ⚠️ E NAO HA TETO DE VALOR NOS BENS: um visitante pode zerar o financiado com um bem do tamanho do lote e imprimir folha de R$ 0,00 a financiar. Segue a mesma decisao do desconto, e esta dito aqui para ninguem descobrir depois. ⚠️ TRES DEFEITOS PEGOS POR REVISAO ADVERSARIAL: o botao de ACRESCIMO ficou visivel no espelho oferecendo o que o servidor sempre recusou (422 em todo valor acima da tabela); a tela nao avisava antes do clique em tres entradas que o servidor recusa; e o rodape caia no ramo da proposta porque o espelho passa `aoMudarCondicoes`, deixando o ramo da simulacao como codigo morto. 532 arquivos, 8.188 testes, typecheck limpo.",
+      motivation:
+        "Lucas, 23/09/2026: \"sabe aquela parte do desconto que incluimos no comercial, vamos colocar para cecilio também\". A medicao mostrou que o PORTAL da Cecilio JA tinha o ajuste (e a mesma TelaVenda do comercial desde 16/09) e que o print dele dizia \"Valor simulado\", o rotulo do ESPELHO. Perguntado como fazer, respondeu \"Liberar para todo mundo\". Sobre a permuta ficar de fora, que era decisao MINHA e nao dele: \"permuta tem que entrar, não entendi sua colocação\". E sobre o teto: \"pode liberar tudo\".",
+    },
+    title: "O espelho passou a negociar",
+    type: "novidade",
+    version: "1.364.0",
+  },
+  {
     buildTag: "2026-09-23-a-imobiliaria-assina",
     deployedAt: "2026-09-23T09:38:10-03:00",
     modules: [

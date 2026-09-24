@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 import { ProposalChat } from "@/modules/guardian/attendance/components/ProposalChat";
+import { diaNaTela } from "@/lib/apolo/incorporador/dia-na-tela";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { hasProposalUpdate } from "@/lib/guardian/proposal-seen";
 import { useAuth } from "@/providers/auth-provider";
@@ -1706,15 +1707,16 @@ function formatBrDate(value: string | null) {
   return `${day}/${month}/${year}`;
 }
 
+// ⚠️ "PAGAMENTO" É UM DIA, E DIA NÃO PASSA POR `new Date(...).toLocaleDateString()` CRU. `paid_at`
+// é `timestamptz` e a régua grava ali a data do C2X: se o valor chegar como dia puro
+// (`2026-07-13`) ou como meia-noite exata em UTC, formatar no fuso do navegador da Nívea jogaria
+// três horas para trás e imprimiria 12/07 para quem pagou em 13/07. É a armadilha já registrada da
+// casa, com este mesmo desenho, em `lib/apolo/incorporador/dia-na-tela.ts` (Lucas, 18/08/2026: a
+// Carteira do portal mostrava TODO vencimento um dia antes). `diaNaTela` trata dia puro e
+// meia-noite exata em UTC como DIA, e qualquer outra hora como instante no fuso de São Paulo —
+// que é o caso das 3 baixas já gravadas (12:00 UTC).
 function formatDateOnly(value: string | null) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  return diaNaTela(value, "—");
 }
 
 // Execucao da proposta (2o status): so para acordo/promessa APROVADO. Antes

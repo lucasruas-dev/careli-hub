@@ -26,7 +26,7 @@
 
 import {
   type PlanoComercial,
-  parcelaNiveladaSacoc,
+  parcelaDoCicloSacoc,
   parcelaPrice,
   parcelaSacoc,
   primeiraParcelaSac,
@@ -516,15 +516,6 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
 
   const amortizacao = parcelaSacoc(financiado, mensais);
 
-  /** Os juros teóricos acumulados do mês 1 até `meses`, extraídos da média que a nivelada devolve. */
-  const jurosAcumulados = (meses: number): number => {
-    const ate = Math.min(meses, mensais);
-    if (ate <= 0 || i <= 0) return 0;
-    return (
-      (parcelaNiveladaSacoc(financiado, i, mensais, ate) - amortizacao) * ate
-    );
-  };
-
   /**
    * ⚠️ O PRIMEIRO CICLO É A AMORTIZAÇÃO PURA, E A NIVELADA DE UM CICLO SÓ APARECE NO SEGUINTE.
    * É o modelo SACOC da casa, decodificado na Lavra do Ouro e validado em 9 de 9 empreendimentos
@@ -539,17 +530,10 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
    * (acumulado até 24 − acumulado até 12) ÷ 12. Reescrever o somatório aqui criaria uma segunda
    * curva de juros do SACOC, e as duas divergiriam no dia em que alguém corrigisse só uma.
    */
-  const valorDoCiclo = (ciclo: number): number => {
-    // A janela cobrada é a do ciclo ANTERIOR — e o `max(0, …)` é o que faz o ciclo 1 não pegar
-    // emprestada a janela de um ciclo zero que não existe.
-    const fim = Math.min(Math.max(0, (ciclo - 1) * MESES_DO_CICLO), mensais);
-    const inicio = Math.min(Math.max(0, (ciclo - 2) * MESES_DO_CICLO), mensais);
-    if (fim - inicio <= 0) return amortizacao;
-    return (
-      amortizacao +
-      (jurosAcumulados(fim) - jurosAcumulados(inicio)) / (fim - inicio)
-    );
-  };
+  // A curva mora em `planos-comerciais.ts` desde 24/09/2026: o relatório de Evolução da parcela
+  // usa o MESMO degrau, e duas curvas do SACOC divergiriam no dia em que alguém mexesse numa só.
+  const valorDoCiclo = (ciclo: number): number =>
+    parcelaDoCicloSacoc(financiado, i, mensais, ciclo, MESES_DO_CICLO);
 
   const valorDaMensal = (k: number): number => {
     if (mensais <= 0) return 0;

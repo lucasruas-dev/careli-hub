@@ -843,10 +843,16 @@ function PainelDoLote({
   // duas contas para a mesma pergunta, divergindo no primeiro ajuste — e a divergência apareceria
   // na frente do cliente, entre o que o site mostrou e o que o corretor apresenta.
   //
-  // ⚠️ SEM `aoMudarCondicoes`, E É ISSO QUE TIRA O VENCIMENTO. A prop é opcional no componente, e
-  // a ausência dela já esconde o dia de cobrança e a data da primeira parcela — Lucas: *"tira
-  // essa coisa de vencimento (...) como é um simulador"*. Nada aqui gera proposta: não há a quem
-  // mandar, e a página não tem sessão.
+  // ⚠️ `aoMudarCondicoes` VAI JUNTO, E QUEM TIRA O VENCIMENTO É `vocabulario`. A prop é opcional no
+  // componente, mas o espelho PRECISA dela: é por ela que a composição da tela sobe para o corpo do
+  // PDF. O dia de cobrança e a data da primeira parcela somem porque os dois blocos pedem
+  // `aoMudarCondicoes && !ehSimulacao` — Lucas: *"tira essa coisa de vencimento (...) como é um
+  // simulador"*. Nada aqui gera proposta: não há a quem mandar, e a página não tem sessão.
+  //
+  // ⚠️ LER ISTO COMO "O ESPELHO NÃO MANDA `aoMudarCondicoes`" JÁ CUSTOU UM DEFEITO: o rodapé do
+  // simulador escolhia a frase por essa prop e, por isso, escrevia "Estas são as condições que vão
+  // para a proposta" na página pública, contra o próprio PDF, que sai como simulação. Corrigido em
+  // 23/09/2026 com a ordem dos ramos (`SimuladorDeProposta`, o parágrafo do rodapé).
   //
   // ⚠️ E O TEMA VEM JUNTO. O simulador pinta com os tokens `--inc-*` do portal, que só existem
   // sob a classe `.inc`; sem o `TEMA_CSS` e a classe, ele apareceria sem cor nenhuma. É o mesmo
@@ -945,6 +951,13 @@ function PainelDoLote({
           body: JSON.stringify({
             anuaisQuantidade: atual.anuaisQuantidade,
             anuaisValor: atual.anuaisValor,
+            // ⚠️ OS BENS E PERMUTAS VÃO JUNTO (23/09/2026), e sem esta linha o bloco novo do
+            // simulador seria decoração: a tela abateria os R$ 80.000 do carro no cartão e a folha
+            // sairia com o valor cheio, calada. É a mesma família do item 4 do Lucas de 22/09
+            // (*"mesmo eu alterando o valor de entrada (...) ele não traz o valor que eu tinha
+            // colocado"*) — três campos desta tela já caíram nela. Nulo = sem permuta, e o servidor
+            // trata como a simulação em dinheiro de sempre.
+            bensEPermutas: atual.bensEPermutas,
             codigo: lote.codigo,
             entrada: atual.entradaValor,
             // E as DATAS escolhidas para essas parcelas, pelo mesmo motivo: o campo de data fica

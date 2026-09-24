@@ -22,6 +22,7 @@ import {
   removerDocumentoDoStorage,
   uploadApoloDocument,
 } from "@/lib/apolo/documentos";
+import { nomeDeMercadoDoEmpreendimento } from "@/lib/apolo/empreendimento-de-mercado";
 import { exigeComprovanteRenda } from "@/lib/apolo/enterprise-settings";
 import { normalizarEnterpriseId } from "@/lib/apolo/esteira-cad";
 import type { createApoloAdminClient } from "@/lib/apolo/server";
@@ -499,16 +500,30 @@ export async function salvarCadastroDoApolo(
       // `cad` inteiro (inclusive `vinculo`) e montado no BROWSER e a rota so repassava: quem
       // envia ditava o que sai impresso na propria CAD. Agora o nome sai do id que o autor
       // autenticado escolheu (perfil.imobiliariaId).
-      // O `corretor` fica vazio no fluxo interno: o wizard de operador nao coleta corretor
-      // hoje. Quem preenche os dois e o formulario publico (/api/publico/cad/enviar).
+      // O `corretor` NÃO é impresso por esta função: o PDF sai só com o que o `cad` do browser
+      // trouxer nesse campo. O wizard interno até manda o corretor escolhido em
+      // `payload.vinculo.corretorNome`, mas imprimi-lo daqui é decisão pendente com o Lucas. A CAD
+      // do corretor pelo link público é outra rota (/api/publico/cad/salvar), que imprime
+      // imobiliária e corretor do TOKEN. (O comentário antigo citava /api/publico/cad/enviar,
+      // apagada em 21/07/2026.)
       const imobiliariaNome = await nomeDaImobiliaria(
         adminClient,
         payload.perfil?.imobiliariaId,
         payload.perfil?.imobiliariaLabel,
       );
+      // EMPREENDIMENTO abaixo do corretor (Lucas, 24/09/2026). ⚠️ Pelo ID do vínculo, que a porta
+      // já conferiu, e NUNCA pelo texto do browser: o `cad.empreendimento` que vier no corpo é
+      // sobrescrito aqui, mesmo quando não há id (aí a linha simplesmente não sai). Sai o nome de
+      // MERCADO, o do pai; a divisão (VOC, LBF) não vai para o papel. Só a CAD do CLIENTE leva: a
+      // ficha da imobiliária não tem "o" empreendimento.
+      const empreendimento =
+        role === "prospect"
+          ? await nomeDeMercadoDoEmpreendimento(adminClient, payload.vinculo?.enterpriseId)
+          : "";
       const bytes = await montarCadPdf({
         ...cad,
         autenticacao: result.autenticacao,
+        empreendimento: empreendimento || undefined,
         imobiliaria: imobiliariaNome || cad.vinculo || "",
       });
       cadBase64 = Buffer.from(bytes).toString("base64");

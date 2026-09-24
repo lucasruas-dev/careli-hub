@@ -92,6 +92,45 @@ export const PERMISSAO_ALTERAR_CONTRATO = "temis-contrato-editar";
 export async function autorizarAlteracaoManualDoContrato(
   request: Request,
 ): Promise<ApoloAuthResult> {
+  return comPermissaoDeContrato(
+    request,
+    "Alterar o contrato à mão é do time de contratos. Peça a alteração a quem tem esse acesso.",
+  );
+}
+
+/**
+ * CANCELAR O CONTRATO PELA TÊMIS: a MESMA régua de quem altera o contrato à mão.
+ *
+ * Lucas (23/09/2026): *"coloca por favor um botão de cancelamento de contrato na temis"*.
+ *
+ * ⚠️ É A RÉGUA NOMINAL, E NÃO A DA COORDENAÇÃO, porque cancelar é pelo menos tão grave quanto
+ * editar. Editar reescreve uma cláusula de um contrato que continua vivo; cancelar mata o contrato,
+ * cancela o envelope na Clicksign (quem já assinou perde o que assinou), derruba a venda e solta o
+ * lote para outra pessoa comprar. Se a casa decidiu que a frase do contrato só duas pessoas mudam
+ * (Nívea e Northon, 21/09/2026), a morte dele não pode ser mais barata — e as sete pessoas da
+ * coordenação continuam podendo tudo o que podiam: emitir, mandar assinar, voltar para análise,
+ * indeferir e concluir um pedido de cancelamento que nasceu no Hércules.
+ *
+ * ⚠️ E É A MESMA PERMISSÃO, `temis-contrato-editar`, e não uma segunda concessão. Uma permissão nova
+ * exigiria migration e nasceria concedida a ninguém: no dia do deploy o botão não funcionaria para
+ * pessoa nenhuma, e quem fosse investigar acharia a tela quebrada. Entra e sai gente das duas
+ * capacidades com a mesma linha em `hub_user_permissions`. Se um dia elas tiverem de separar, a
+ * troca é DENTRO desta função.
+ */
+export async function autorizarCancelamentoDoContrato(
+  request: Request,
+): Promise<ApoloAuthResult> {
+  return comPermissaoDeContrato(
+    request,
+    "Cancelar o contrato é do time de contratos. Peça o cancelamento a quem tem esse acesso.",
+  );
+}
+
+/** A sessão do hub MAIS a permissão nominal do contrato, com a frase de quem chamou na recusa. */
+async function comPermissaoDeContrato(
+  request: Request,
+  recusaSemPermissao: string,
+): Promise<ApoloAuthResult> {
   // Primeiro a sessão: quem não entrou, ou está desativado, para aqui — e sem consultar nada.
   const sessao = await authorizeApoloRead(request);
   if (!sessao.ok) return sessao;
@@ -118,12 +157,7 @@ export async function autorizarAlteracaoManualDoContrato(
     return recusa("Não foi possível conferir o acesso agora.", 503);
   }
 
-  if (!data) {
-    return recusa(
-      "Alterar o contrato à mão é do time de contratos. Peça a alteração a quem tem esse acesso.",
-      403,
-    );
-  }
+  if (!data) return recusa(recusaSemPermissao, 403);
 
   return sessao;
 }

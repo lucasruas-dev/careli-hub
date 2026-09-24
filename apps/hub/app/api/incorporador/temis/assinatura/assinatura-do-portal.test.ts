@@ -330,6 +330,35 @@ describe("hub: mesma função, sem recorte e com o autor de sempre", () => {
     expect(estado.consultas).toHaveLength(0);
   });
 
+  // ⚠️ O SERVIÇO REPASSA O AVISO DO HÉRCULES (revisão de 24/09/2026). Sem este teste, apagar o
+  // repasse em assinatura-servico.ts não derrubava nada, e a tela nunca saberia que a venda ficou para
+  // trás do card.
+  it("o envio deu certo e a venda não acompanhou: 200 com avisoDoHercules na resposta", async () => {
+    estado.cards = [{ enterprise_id: "37", operado_por: null }];
+    espioes.enviarContratoParaAssinatura.mockResolvedValueOnce({
+      avisoDoHercules: "O card andou, mas a venda no Hércules não acompanhou: a venda já foi desfeita.",
+      envelopeId: "env-novo",
+      nome: "Contrato v1.pdf",
+      ok: true,
+      registroId: "reg-1",
+      signatarios: [{ email: "a@b.com", nome: "Henrique", ordem: 1, papel: "comprador" }],
+    } as never);
+    const r = await HUB_ENVIAR(post(`${HUB}/enviar`, { propostaId: PROPOSTA }, BEARER));
+    expect(r.status).toBe(200);
+    const corpo = (await r.json()) as { data: { avisoDoHercules?: string; envelopeId: string } };
+    expect(corpo.data.envelopeId).toBe("env-novo");
+    expect(corpo.data.avisoDoHercules).toBe(
+      "O card andou, mas a venda no Hércules não acompanhou: a venda já foi desfeita.",
+    );
+  });
+
+  it("o envio deu certo e a venda acompanhou: a resposta não leva avisoDoHercules", async () => {
+    estado.cards = [{ enterprise_id: "37", operado_por: null }];
+    const r = await HUB_ENVIAR(post(`${HUB}/enviar`, { propostaId: PROPOSTA }, BEARER));
+    const corpo = (await r.json()) as { data: Record<string, unknown> };
+    expect("avisoDoHercules" in corpo.data).toBe(false);
+  });
+
   it("conserta signatário sem ler o envelope por conta própria (quem lê é trocar-signatario)", async () => {
     estado.envelopes = [];
     const r = await HUB_SIGNATARIO(
