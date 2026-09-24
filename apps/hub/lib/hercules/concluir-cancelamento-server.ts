@@ -14,6 +14,9 @@ import { registrarPassagemDeEtapa } from "@/lib/temis/passagem-de-etapa-db";
 import { carimbarCancelamento, decisaoDoEstadoReal } from "@/lib/temis/retorno-para-correcao";
 import { ATIVIDADES, ESTAGIOS_ENCERRADOS, NOME_DO_TIPO } from "@/lib/temis/trabalhos";
 
+// ⚠️ A LISTA DE "VENDA MORTA" VEM DE UM LUGAR SÓ (`VENDA_DESFEITA`): a cópia local daqui
+// (`JA_DESFEITA`) era a segunda de três, e a terceira, na Têmis, nem existia.
+import { VENDA_DESFEITA } from "./acao-de-cancelamento";
 import { type DevolucaoDoCadastro, devolverCadastroDaUnidade } from "./cancelar-reserva-server";
 import { codigoDaVenda } from "./codigo-da-venda";
 import { lerFatosDoContrato } from "./fatos-do-contrato-server";
@@ -119,9 +122,6 @@ type VendaDaConclusao = {
   unidade_id: null | string;
 };
 
-/** As etapas de onde a venda já saiu do caminho: concluir de novo não tem o que fazer nela. */
-const JA_DESFEITA = new Set(["cancelado", "distrato"]);
-
 /**
  * Conclui o card de cancelamento ou de distrato: a venda cai, a reserva cai, o card fecha e o lote
  * volta se a trava deixar.
@@ -206,7 +206,7 @@ export async function concluirCancelamentoDoCard(
    */
   const aVenda = `${codigo ? `a venda COD ${codigo}` : "a venda"}${nomeDaUnidade ? ` (${nomeDaUnidade})` : ""}`;
   const etapaLida = String(venda.etapa ?? "").trim();
-  const jaEstavaDesfeita = JA_DESFEITA.has(etapaLida);
+  const jaEstavaDesfeita = VENDA_DESFEITA.has(etapaLida);
 
   // ⚠️ AS DECLARAÇÕES VÊM ANTES DE QUALQUER CHAMADA À CLICKSIGN: sem elas o distrato não derruba a
   // venda. Na retomada de venda JÁ desfeita elas foram dadas na conclusão, e não se pedem de novo.

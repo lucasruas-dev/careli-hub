@@ -28,6 +28,12 @@ import {
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
+import {
+  decidirOQuePainelFazComOAtendimento,
+  hidratarTicketDoAtendimento,
+  mensagensDoAtendimento,
+  resolverAtendimentoDoPainel,
+} from "@/lib/guardian/atendimento-existente";
 import type {
   OperationalTimelineEvent,
   PortfolioUnit,
@@ -45,7 +51,7 @@ type WhatsAppConversationPanelProps = {
   open: boolean;
 };
 
-type MessageStatus = "enviada" | "entregue" | "lida";
+type MessageStatus = "enviada" | "entregue" | "falhou" | "lida";
 type MessageKind = "text" | "audio" | "document";
 type OperationDrawerMode = "promise" | "agreement" | "boleto" | "installments";
 type ContextTab = "info" | "actions" | "ai" | "history";
@@ -246,7 +252,9 @@ export function WhatsAppConversationPanel({
   const [showPreviousTickets, setShowPreviousTickets] = useState(false);
   const [conversationListCollapsed, setConversationListCollapsed] = useState(false);
   const [contextCollapsed, setContextCollapsed] = useState(false);
-  const [messages, setMessages] = useState<WhatsAppMessage[]>(() => buildMessages(client));
+  // ⚠️ COMEÇA VAZIO E QUEM PREENCHE É `caredesk_messages`. O `buildMessages(client)` antigo
+  // devolvia UMA mensagem de placeholder com corpo "-": o histórico da tela era falso.
+  const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [irisTicketOptions, setIrisTicketOptions] = useState<IrisTicketOptions>({
     channels: [],
     operator: { label: EMPTY_FIELD },
@@ -255,6 +263,13 @@ export function WhatsAppConversationPanel({
     templates: [],
   });
   const [irisOptionsLoading, setIrisOptionsLoading] = useState(false);
+  // ⚠️ O CATÁLOGO DA IRIS PRECISA TER CHEGADO ANTES DE RESOLVER O ATENDIMENTO, e
+  // `irisOptionsLoading` não serve para isso: ele nasce `false`, ou seja, "ainda não comecei" e
+  // "já terminei" são o mesmo valor. Sem esta bandeira o efeito de resolução dispara duas vezes, e
+  // a primeira hidrata o ticket com a lista de perfis VAZIA: perfil "-", checklist reprovado,
+  // composer trancado de novo. Medido no teste de comportamento: duas chamadas a
+  // `?clientPhone=` na montagem.
+  const [irisOptionsReady, setIrisOptionsReady] = useState(false);
   const [irisOptionsError, setIrisOptionsError] = useState("");
   const [sendingMessage, setSendingMessage] = useState(false);
   const autoTicketLoggedRef = useRef(false);
@@ -273,6 +288,8 @@ export function WhatsAppConversationPanel({
   const irisTicketProfiles = irisTicketOptions.profiles;
   const irisWhatsAppChannels = irisTicketOptions.channels;
   const operatorLabel = irisTicketOptions.operator.label || client.responsavel;
+  // A identidade do cliente no WhatsApp: o mesmo campo que o `sendMessage()` manda em `to`.
+  const clientPhone = client.dados360.telefone;
 
   const ticketClosed = ticket.status === "Encerrado" || ticket.status === "Cancelado";
   const ticketActive = ticket.status !== "Pendente" && !ticketClosed;
@@ -352,6 +369,7 @@ export function WhatsAppConversationPanel({
         }
 
         setIrisTicketOptions(mapIrisTicketOptions(payload));
+        setIrisOptionsReady(true);
       } catch (error) {
         if (!cancelled) {
           setIrisOptionsError(
@@ -380,6 +398,98 @@ export function WhatsAppConversationPanel({
       cancelled = true;
     };
   }, [open]);
+
+  // ⚠️ AQUI O PAINEL CARREGA O ATENDIMENTO QUE JÁ EXISTE: era isso que faltava no TI-000137.
+  // Sem este efeito, `irisTicketId` só nascia dentro de `openTicket()`, então recarregar a página
+  // ou entrar por um atendimento já aberto deixava o composer travado em "Ticket incompleto".
+  //
+  // ⚠️ E A CHAVE É O CLIENTE, NÃO O PROTOCOLO. O painel SEMPRE tem o cliente, porque o cliente é
+  // o que ele abre; o `linkedAttendanceProtocol` vem vazio no caminho real (a prop só nasce de
+  // parâmetros de URL que nenhum arquivo do repo gera, e o `client.timeline` chega `[]` do
+  // servidor). A identidade usada é o telefone, o MESMO campo que o `sendMessage()` já manda em
+  // `to`. Medida e prova completas em `lib/guardian/atendimento-existente.ts`.
+  //
+  // ⚠️ E A GUARDA `!ticket.irisTicketId` PROTEGE OS DOIS LADOS: ela impede que este efeito
+  // sobrescreva o ticket recém-aberto na mesma montagem (o caminho que HOJE funciona), e como a
+  // resolução só emite GET (`resolverAtendimentoDoPainel`), nenhum atendimento novo é criado.
+  useEffect(() => {
+    if (!open || !irisOptionsReady) return;
+    if (ticket.irisTicketId) return;
+
+    let cancelled = false;
+
+    async function carregarAtendimentoExistente() {
+      try {
+        const token = await getIrisAccessToken();
+        const resultado = await resolverAtendimentoDoPainel({
+          buscar: (url, init) => fetch(url, init),
+          protocolo: linkedAttendanceProtocol,
+          telefone: clientPhone,
+          token,
+        });
+
+        if (cancelled || !resultado.encontrado) return;
+
+        const hidratado = hidratarTicketDoAtendimento({
+          collectionProtocol: resultado.collectionProtocol,
+          perfis: irisTicketProfiles,
+          ticket: resultado.ticket,
+        });
+
+        // ⚠️ ATENDIMENTO ENCERRADO É HISTÓRICO, E A TELA NÃO O ASSUME. Medido em 23/09/2026:
+        // 8.163 dos 8.180 tickets estão `closed` (99,8%), contra 14 `waiting_customer` e 3
+        // `waiting_operator`. Ou seja, assumir o encerrado seria o caso NORMAL, não a exceção, e
+        // o painel passaria a oferecer envio num canal que já foi fechado.
+        //
+        // ⚠️ E ASSUMIR SÓ PARA MOSTRAR A CONVERSA QUEBRARIA A ABERTURA DO PRÓXIMO CICLO. A tela
+        // só desenha as mensagens cujo `ticketProtocol` é igual ao `ticket.protocol`, então exibir
+        // o histórico exigiria colar o protocolo encerrado no ticket da tela; e aí o
+        // `openTicket()` mandaria esse protocolo como `linkedAttendanceProtocol` no POST, onde a
+        // rota ATUALIZA o atendimento vinculado em vez de criar um novo, mantendo o status
+        // fechado quando ele já está fechado (`app/api/iris/tickets/route.ts`, ramo
+        // `if (linkedAttendanceTicket)`). A "abertura" reescreveria o ticket morto e o composer
+        // continuaria trancado.
+        //
+        // ⚠️ E ABRIR UM NOVO AQUI É LEGÍTIMO, PORQUE A RÉGUA FALA DE ABERTO. "Um atendimento
+        // aberto por cliente" proíbe dois vivos ao mesmo tempo, não o segundo ciclo depois que o
+        // primeiro fechou. Por isso a tela avisa qual foi o último e deixa a abertura no lugar.
+        if (decidirOQuePainelFazComOAtendimento(resultado.ticket.status) !== "assumir") {
+          setFeedback(
+            `O último atendimento deste cliente na Iris (${hidratado.attendanceProtocol}) está ${hidratado.status.toLowerCase()}. Abra um novo atendimento para falar com ele.`,
+          );
+          return;
+        }
+
+        setTicket((current) => ({ ...current, ...hidratado }));
+        setMessages(
+          mensagensDoAtendimento(resultado.mensagens, {
+            operador: operatorLabel,
+            protocolo: hidratado.protocol,
+          }),
+        );
+        // O atendimento existe e está aberto: nada de formulário de abertura nem de trava.
+        setTicketIncomplete(false);
+        setTicketSetupOpen(false);
+      } catch {
+        // Silêncio proposital: sem o atendimento resolvido o painel segue trancado, que é o
+        // estado seguro. Abrir ticket novo por causa de falha de leitura é o que não pode.
+      }
+    }
+
+    void carregarAtendimentoExistente();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    clientPhone,
+    irisOptionsReady,
+    irisTicketProfiles,
+    linkedAttendanceProtocol,
+    open,
+    operatorLabel,
+    ticket.irisTicketId,
+  ]);
 
   if (!open) return null;
 
@@ -1124,6 +1234,9 @@ function MessageContent({ message }: { message: WhatsAppMessage }) {
 function MessageStatusIcon({ status }: { status: MessageStatus }) {
   if (status === "lida") return <CheckCheck className="size-3.5 text-sky-500" aria-hidden="true" />;
   if (status === "entregue") return <CheckCheck className="size-3.5 text-ink-muted" aria-hidden="true" />;
+  // ⚠️ 183 templates da fila Cobrança estão `failed` (medido em 23/09/2026). Sem este ramo eles
+  // cairiam no check simples de "enviada" e a tela afirmaria uma entrega que não aconteceu.
+  if (status === "falhou") return <X className="size-3.5 text-rose-500" aria-hidden="true" />;
   return <Check className="size-3.5 text-ink-muted" aria-hidden="true" />;
 }
 
@@ -2641,170 +2754,6 @@ function DateSeparator({ label }: { label: string }) {
       </span>
     </div>
   );
-}
-
-function buildMessages(client: QueueClient): WhatsAppMessage[] {
-  const currentProtocol = EMPTY_FIELD;
-
-  return [
-    {
-      id: `${client.id}-msg-empty`,
-      author: "operator",
-      body: EMPTY_FIELD,
-      date: EMPTY_FIELD,
-      kind: "text",
-      operator: client.responsavel,
-      status: "entregue",
-      ticketProtocol: currentProtocol,
-      time: EMPTY_FIELD,
-    },
-  ];
-
-  return [
-    {
-      id: `${client.id}-msg-history-1`,
-      author: "operator",
-      body: "Primeiro contato realizado para confirmar melhor canal de atendimento.",
-      date: "02/05/2026",
-      kind: "text",
-      operator: client.responsavel,
-      status: "lida",
-      ticketProtocol: guardianProtocol(179),
-      time: "10:12",
-    },
-    {
-      id: `${client.id}-msg-history-2`,
-      author: "client",
-      body: "Prefiro tratar pelo WhatsApp, consigo responder mais rápido por aqui.",
-      date: "02/05/2026",
-      kind: "text",
-      ticketProtocol: guardianProtocol(179),
-      time: "10:18",
-    },
-    {
-      id: `${client.id}-msg-history-3`,
-      author: "operator",
-      body: "Enviei o boleto original do C2X e mantive o vencimento exibido na consulta.",
-      date: "05/05/2026",
-      fileName: "boleto-c2x-parcela-03.pdf",
-      kind: "document",
-      operator: client.responsavel,
-      status: "entregue",
-      ticketProtocol: guardianProtocol(180),
-      time: "14:03",
-    },
-    {
-      id: `${client.id}-msg-history-4`,
-      author: "client",
-      body: "Recebi, mas não vou conseguir pagar tudo nessa data.",
-      date: "05/05/2026",
-      kind: "text",
-      ticketProtocol: guardianProtocol(180),
-      time: "14:26",
-    },
-    {
-      id: `${client.id}-msg-history-5`,
-      author: "operator",
-      body: "Podemos registrar uma promessa parcial e acompanhar a compensação.",
-      date: "07/05/2026",
-      kind: "text",
-      operator: client.responsavel,
-      status: "lida",
-      ticketProtocol: guardianProtocol(181),
-      time: "11:35",
-    },
-    {
-      id: `${client.id}-msg-history-6`,
-      author: "client",
-      body: EMPTY_FIELD,
-      date: "07/05/2026",
-      kind: "text",
-      ticketProtocol: guardianProtocol(181),
-      time: "11:42",
-    },
-    {
-      id: `${client.id}-msg-history-7`,
-      author: "operator",
-      body: "Não localizamos a compensação da promessa. Quer reagendar ou simular um acordo?",
-      date: "09/05/2026",
-      kind: "text",
-      operator: client.responsavel,
-      status: "entregue",
-      ticketProtocol: guardianProtocol(182),
-      time: "15:08",
-    },
-    {
-      id: `${client.id}-msg-history-8`,
-      author: "client",
-      body: "Vamos simular acordo, tive uma despesa fora do previsto.",
-      date: "09/05/2026",
-      kind: "text",
-      ticketProtocol: guardianProtocol(182),
-      time: "15:21",
-    },
-    {
-      id: `${client.id}-msg-1`,
-      author: "operator",
-      body: `Olá, ${firstName(client.nome)} ??. Identificamos pendências no empreendimento ${client.carteira.empreendimento}. Podemos te ajudar a regularizar?`,
-      date: "10/05/2026",
-      kind: "text",
-      operator: client.responsavel,
-      status: "lida",
-      ticketProtocol: guardianProtocol(183),
-      time: "16:48",
-    },
-    {
-      id: `${client.id}-msg-2`,
-      author: "client",
-      body: "Boa tarde. Consigo pagar uma parte essa semana, mas preciso entender o valor atualizado.",
-      date: "10/05/2026",
-      kind: "text",
-      ticketProtocol: guardianProtocol(183),
-      time: "17:02",
-    },
-    {
-      id: `${client.id}-msg-3`,
-      author: "operator",
-      body: "Boleto original do C2X enviado",
-      date: "10/05/2026",
-      fileName: "boleto-original-c2x.pdf",
-      kind: "document",
-      operator: client.responsavel,
-      status: "entregue",
-      ticketProtocol: guardianProtocol(183),
-      time: "17:04",
-    },
-    {
-      id: `${client.id}-msg-4`,
-      author: "operator",
-      body: `Hoje o saldo em atraso está em ${client.saldoDevedor}. Posso simular entrada e parcelamento para reduzir o impacto.`,
-      date: "10/05/2026",
-      kind: "text",
-      operator: client.responsavel,
-      status: "entregue",
-      ticketProtocol: currentProtocol,
-      time: "17:05",
-    },
-    {
-      id: `${client.id}-msg-5`,
-      author: "client",
-      body: "Áudio recebido",
-      date: "Hoje",
-      duration: "0:19",
-      kind: "audio",
-      ticketProtocol: currentProtocol,
-      time: "09:16",
-    },
-    {
-      id: `${client.id}-msg-6`,
-      author: "client",
-      body: EMPTY_FIELD,
-      date: "Hoje",
-      kind: "text",
-      ticketProtocol: currentProtocol,
-      time: "09:18",
-    },
-  ];
 }
 
 function buildTicketCycles(

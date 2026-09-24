@@ -130,6 +130,12 @@ export function clienteEmMemoria(estado: EstadoDoBanco) {
       let saida = alvo;
       if (faixa) saida = saida.slice(faixa[0], faixa[1] + 1);
       if (limite !== null) saida = saida.slice(0, limite);
+      // ⚠️ A LEITURA DEVOLVE CÓPIA, E NÃO A LINHA GUARDADA. O PostgREST responde JSON: quem leu fica
+      // com um retrato, e um `update` seguinte não muda o objeto que ele está segurando. Devolvendo a
+      // referência viva, um teste de "devolvi esta coluna ao valor que li" PASSAVA com a coluna já
+      // sobrescrita pela própria escrita do meio — medido em 23/09/2026, no rollback da marca do
+      // pedido de cancelamento, que compara `atualizado_em` antes e depois.
+      saida = saida.map((l) => ({ ...l }));
       if (contagem) return { count: alvo.length, data: cabeca ? null : saida, error: null };
       return { data: saida, error: null };
     };

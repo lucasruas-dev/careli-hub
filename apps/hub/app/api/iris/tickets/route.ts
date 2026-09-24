@@ -50,12 +50,21 @@ export async function GET(request: NextRequest) {
   }
 
   const { client } = authorization;
-  const protocol = normalizeOperationalProtocol(
-    new URL(request.url).searchParams.get("protocol"),
-  );
+  const searchParams = new URL(request.url).searchParams;
+  const protocol = normalizeOperationalProtocol(searchParams.get("protocol"));
 
   if (protocol) {
     return resolveTicketByProtocol(client, protocol);
+  }
+
+  // ⚠️ ESTA É A CHAVE QUE EXISTE NO CAMINHO REAL DO PAINEL DO HADES. Medido em 23/09/2026: dos
+  // 8.180 tickets, ZERO tem `source_module='hades'`, ZERO tem `metadata.hadesClientId` e ZERO tem
+  // `source_context.clientId`; o que existe em 8.180 de 8.180 é o `contact_id`, e o contato se
+  // acha pelo telefone. Ver `lib/guardian/atendimento-existente.ts` (chamado TI-000137).
+  const clientPhone = searchParams.get("clientPhone");
+
+  if (clientPhone) {
+    return resolveTicketByClientPhone(client, clientPhone);
   }
 
   try {
@@ -1319,6 +1328,7 @@ async function resolveTicketByProtocol(client: SupabaseClient, protocol: string)
 
     const sourceContext = normalizeRecord(ticket.source_context);
     const metadata = normalizeRecord(ticket.metadata);
+    const mensagens = await loadTicketMessages(client, String(ticket.id));
 
     return NextResponse.json(
       {
@@ -1326,6 +1336,7 @@ async function resolveTicketByProtocol(client: SupabaseClient, protocol: string)
           normalizeOperationalProtocol(sourceContext.collectionProtocol) ??
           normalizeOperationalProtocol(metadata.collectionProtocol) ??
           null,
+        mensagens,
         ok: true,
         ticket,
       },
@@ -1342,6 +1353,200 @@ async function resolveTicketByProtocol(client: SupabaseClient, protocol: string)
       { status: 500 },
     );
   }
+}
+
+/**
+ * Os status que a Iris considera ATENDIMENTO VIVO.
+ *
+ * ⚠️ A LISTA É EXPLÍCITA, E NÃO O COMPLEMENTO DE `isClosedTicketStatus`. O enum
+ * `caredesk_ticket_status` tem oito valores (new, open, waiting_customer, waiting_operator,
+ * pending, resolved, closed, cancelled); enumerar os vivos faz um valor novo do enum nascer
+ * FECHADO para esta busca, que é o lado seguro: o painel não assume um ticket que ele não sabe
+ * ler, em vez de assumir qualquer coisa que ainda não aprendeu a fechar.
+ */
+const OPEN_TICKET_STATUSES = [
+  "new",
+  "open",
+  "waiting_customer",
+  "waiting_operator",
+  "pending",
+];
+
+/**
+ * O atendimento do CLIENTE, achado pelo telefone. Só leitura.
+ *
+ * ⚠️ O ABERTO GANHA DO MAIS RECENTE, E SÃO DUAS CONSULTAS POR ISSO. Buscar as N últimas e filtrar
+ * na memória deixaria um buraco medido: 7 contatos têm mais de 40 tickets (o maior tem 1.118), e
+ * o atendimento aberto deles pode estar fora de qualquer janela razoável. A primeira consulta
+ * pergunta pelo vivo, a segunda só serve para devolver histórico quando não há nenhum.
+ *
+ * ⚠️ E ISTO NUNCA CRIA NADA. É o GET da régua "um atendimento ABERTO por cliente": o painel
+ * precisa ENCONTRAR o card que já existe justamente para não abrir o segundo.
+ */
+async function resolveTicketByClientPhone(client: SupabaseClient, rawPhone: string) {
+  try {
+    const candidates = buildContactPhoneCandidates(rawPhone);
+
+    if (!candidates.length) {
+      return NextResponse.json(
+        { error: "Telefone do cliente fora de um formato utilizavel." },
+        { status: 400 },
+      );
+    }
+
+    const [byWhatsApp, byPhone] = await Promise.all([
+      client.from("caredesk_contacts").select("id").in("whatsapp_phone", candidates).limit(64),
+      client.from("caredesk_contacts").select("id").in("phone", candidates).limit(64),
+    ]);
+
+    if (byWhatsApp.error) {
+      throw byWhatsApp.error;
+    }
+
+    if (byPhone.error) {
+      throw byPhone.error;
+    }
+
+    const contactIds = Array.from(
+      new Set(
+        [...(byWhatsApp.data ?? []), ...(byPhone.data ?? [])]
+          .map((row) => normalizeUuid((row as { id?: string | null }).id))
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ).slice(0, 64);
+
+    if (!contactIds.length) {
+      return NextResponse.json(
+        { error: "Cliente ainda nao tem contato na Iris." },
+        { status: 404 },
+      );
+    }
+
+    const colunas =
+      "id,protocol,status,priority,queue_id,profile_id,opened_at,metadata,source_context";
+    const aberto = await client
+      .from("caredesk_tickets")
+      .select(colunas)
+      .in("contact_id", contactIds)
+      .in("status", OPEN_TICKET_STATUSES)
+      .order("opened_at", { ascending: false })
+      .limit(1);
+
+    if (aberto.error) {
+      throw aberto.error;
+    }
+
+    let ticket = (aberto.data ?? [])[0] ?? null;
+
+    if (!ticket) {
+      const ultimo = await client
+        .from("caredesk_tickets")
+        .select(colunas)
+        .in("contact_id", contactIds)
+        .order("opened_at", { ascending: false })
+        .limit(1);
+
+      if (ultimo.error) {
+        throw ultimo.error;
+      }
+
+      ticket = (ultimo.data ?? [])[0] ?? null;
+    }
+
+    if (!ticket) {
+      return NextResponse.json(
+        { error: "Cliente ainda nao tem atendimento na Iris." },
+        { status: 404 },
+      );
+    }
+
+    const sourceContext = normalizeRecord(ticket.source_context);
+    const metadata = normalizeRecord(ticket.metadata);
+    const mensagens = await loadTicketMessages(client, String(ticket.id));
+
+    return NextResponse.json(
+      {
+        collectionProtocol:
+          normalizeOperationalProtocol(sourceContext.collectionProtocol) ??
+          normalizeOperationalProtocol(metadata.collectionProtocol) ??
+          null,
+        mensagens,
+        ok: true,
+        ticket,
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Nao foi possivel localizar o atendimento do cliente na Iris.",
+      },
+      { status: 500 },
+    );
+  }
+}
+
+/**
+ * As formas do número que podem estar gravadas em `caredesk_contacts`.
+ *
+ * ⚠️ O VALOR CRU ENTRA JUNTO COM AS VARIANTES E.164. Medido em 23/09/2026: dos 1.670 contatos com
+ * telefone, 1.650 guardam só dígitos e 20 guardam a máscara "(31) 99232-6981", que é exatamente o
+ * formato que a fila do Hades usa; 6 desses 20 batem letra a letra com um telefone da fila. Sem o
+ * cru, esses contatos ficariam invisíveis para a tela que os exibe.
+ *
+ * ⚠️ E O RESTO É `buildBrazilianPhoneVariants`, A RÉGUA ÚNICA DO 9º DÍGITO. Caso real medido: a
+ * fila guarda "(31) 8964-7019" (10 dígitos, sem o 9) e o contato do atendimento ABERTO AT-010419
+ * guarda "5531989647019" (13, com o 9). Sem cruzar as duas formas, esse atendimento não é achado.
+ */
+function buildContactPhoneCandidates(value: unknown) {
+  const raw = String(value ?? "").trim();
+
+  // ⚠️ MENOS DE 8 DÍGITOS NÃO É TELEFONE, E NÃO PODE VIRAR CONSULTA. É o mesmo piso do
+  // `buildBrazilianPhoneVariants`. Sem ele, um "-" ou um pedaço de número viraria um `.in()` de
+  // lixo no banco e um 404 que parece "cliente sem atendimento" em vez de "número inválido".
+  if (raw.replace(/\D/g, "").length < 8) {
+    return [];
+  }
+
+  const normalized = normalizeWhatsAppDestination(raw);
+  const variants = normalized ? buildBrazilWhatsAppDestinationCandidates(normalized) : [];
+
+  return Array.from(new Set([...variants, raw])).slice(0, 16);
+}
+
+/**
+ * As mensagens reais do atendimento, para o painel do Hades mostrar a conversa.
+ *
+ * ⚠️ A ORDEM É `created_at`, NUNCA `sent_at`. Medido em 23/09/2026 na fila Cobrança: as 4.906
+ * mensagens inbound têm 100% `sent_at` ANTES do `created_at`, e 1.965 das 2.148 outbound têm
+ * `sent_at` DEPOIS — ordenar por `sent_at` embaralharia o turno da conversa. E as 99 internas
+ * têm `sent_at` NULO.
+ *
+ * ⚠️ E FALHA DE LEITURA NÃO DERRUBA A RESOLUÇÃO DO TICKET. Sem isso, um erro ao buscar o
+ * histórico voltaria a trancar o composer, que é exatamente o defeito do TI-000137.
+ *
+ * O teto de 200 tem folga medida: em 23/09/2026 a maior conversa da fila Cobrança tinha 100
+ * mensagens, a média 2,9, e NENHUMA das 2.509 passava de 200. Se um dia passar, a ordem
+ * crescente faria o corte cair nas mais NOVAS — é aí que o teto precisa subir (ou virar página).
+ */
+async function loadTicketMessages(client: SupabaseClient, ticketId: string) {
+  const { data, error } = await client
+    .from("caredesk_messages")
+    .select(
+      "id,body,direction,sender_type,message_type,delivery_status,created_at,sent_at",
+    )
+    .eq("ticket_id", ticketId)
+    .order("created_at", { ascending: true })
+    .limit(200);
+
+  if (error) {
+    return [];
+  }
+
+  return data ?? [];
 }
 
 async function findTicketByAttendanceProtocol(client: SupabaseClient, protocol: string) {
