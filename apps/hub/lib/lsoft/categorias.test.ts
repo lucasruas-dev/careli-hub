@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import { EMPREENDIMENTOS_DE_BOLETO } from "@/lib/apolo/boletos/empreendimentos";
+
 import {
+  CATEGORIA_E_O_EMPREENDIMENTO,
+  ED_ESMERALDA,
+  MANHATTAN,
   CATEGORIA_PATRIMONIO,
   classificarTitulo,
   empreendimentoDoTexto,
@@ -62,6 +67,32 @@ describe("o empreendimento que o texto livre denuncia", () => {
     expect(empreendimentoDoTexto("40X 20.000")).toBeNull();
     expect(empreendimentoDoTexto("")).toBeNull();
     expect(empreendimentoDoTexto(null)).toBeNull();
+  });
+});
+
+describe("os nomes batem com o catálogo de boletos", () => {
+  // ⚠️ POR QUE ESTE TESTE EXISTE: em 24/09/2026 esta regra nasceu com "Guaimbê" (circunflexo), e o
+  // catálogo chama o prédio de "Guaimbé" (agudo). A tela de boletos casa por igualdade de texto: a
+  // diferença de um acento não dá erro, devolve carteira vazia. Quem pegou foi a revisão adversarial,
+  // não um teste. Agora é um teste.
+  const doCatalogo = new Set(
+    EMPREENDIMENTOS_DE_BOLETO.flatMap((e) => [e.nome, e.chaveLsoft].filter((x): x is string => Boolean(x))),
+  );
+  // Aparecem na categoria 17 e não estão na tela de boletos: precisam de nome, mas não de par.
+  const foraDoCatalogo = new Set([MIRAGE, MANHATTAN]);
+
+  it("todo empreendimento que a categoria decide existe no catálogo", () => {
+    for (const nome of Object.values(CATEGORIA_E_O_EMPREENDIMENTO)) {
+      expect(doCatalogo.has(nome), `"${nome}" não existe no catálogo de boletos`).toBe(true);
+    }
+  });
+
+  it("todo empreendimento que o texto decide existe no catálogo, fora os dois que não emitem boleto", () => {
+    const doTexto = [GIANT_TOWERS, ED_ESMERALDA, ED_CRISTAL, ED_RUBI, ED_JADE, GUAIMBE, ON_SKY, VALE_DO_OURO, VALE_DO_SOL, GARDEN];
+    for (const nome of doTexto) {
+      if (foraDoCatalogo.has(nome)) continue;
+      expect(doCatalogo.has(nome), `"${nome}" não existe no catálogo de boletos`).toBe(true);
+    }
   });
 });
 
