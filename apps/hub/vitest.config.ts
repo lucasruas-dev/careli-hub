@@ -13,6 +13,22 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["**/*.test.{ts,tsx}"],
+    // ⚠️ 15 s, E NÃO OS 5 s PADRÃO, por uma razão medida em 24/09/2026: a suíte passou de 8.300
+    // testes e o vitest abre um worker por núcleo (36 processos node medidos nesta máquina de 32
+    // núcleos). Não falta memória — 6,1 GB usados, 11,3 GB livres —, falta CPU por processo: um
+    // arquivo que roda em 800 ms isolado leva 15 s quando os 36 disputam, e o teto de 5 s reprova
+    // teste que está CERTO, só lento.
+    //
+    // O sintoma era um hook de pre-push barrando com arquivos vermelhos DIFERENTES a cada rodada,
+    // todos passando isolados, enquanto a mesma suíte fechava verde rodada à mão. Custou seis
+    // pushes barrados para eu parar de culpar a máquina e medir.
+    //
+    // ⚠️ ISTO NÃO AFROUXA NADA: o teste continua tendo de passar. O que muda é só o fôlego de um
+    // ambiente disputado. Se um teste passar a DEPENDER desses 15 s, ele é lento demais e o lugar
+    // de resolver é nele, não aqui.
+    testTimeout: 15_000,
+    // O mesmo vale para os ganchos: `beforeAll` que monta fixture pesada sofre a mesma disputa.
+    hookTimeout: 15_000,
     server: {
       deps: {
         // ⚠️ `@platejs/math` importa `katex/dist/katex.min.css` dentro do próprio dist. Como
