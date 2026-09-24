@@ -4,6 +4,12 @@ import type { PortaDaClicksign } from "@/lib/assinatura/clicksign/cliente";
 import { cancelarEnvelope, consultarEnvelope } from "@/lib/assinatura/clicksign/envelope";
 import { type EnvelopeDaProposta, envelopeQueSegura } from "@/lib/assinatura/envio-db";
 import type { EstadoDaAssinatura } from "@/lib/assinatura/tipos";
+import { avisoDoHercules } from "@/lib/hercules/reflexo-da-temis";
+import {
+  motivoDoReflexo,
+  refletirCardNaVenda,
+  registrarReflexoQueNaoAndou,
+} from "@/lib/hercules/reflexo-da-temis-server";
 import { nomeDaEtapaGravada } from "@/lib/temis/historico-de-etapas";
 import { registrarPassagemDeEtapa } from "@/lib/temis/passagem-de-etapa-db";
 
@@ -359,6 +365,11 @@ export function conferirEstadoRealParaVoltar(
 // ── O CAMINHO INTEIRO, COM O BANCO E A CLICKSIGN ────────────────────────────
 
 export type RetornoFeito = {
+  /**
+   * A venda do Hércules NÃO voltou junto para `contrato` (24/09/2026). Ausente quando voltou, ou
+   * quando não tinha o que voltar. É aviso: o card já voltou e o envelope já foi cancelado.
+   */
+  avisoDoHercules?: string;
   /** De onde o card saiu, para a tela poder contar o que aconteceu. */
   de: string;
   /** O envelope que foi cancelado nesta volta — `null` quando não havia nada vivo. */
@@ -481,7 +492,29 @@ export async function retornarParaAnalise(
     trabalhoTipo: card.tipo,
   });
 
-  return { de: card.estagio, envelopeCancelado: envelope.envelopeCancelado, ok: true };
+  // ⚠️ A VENDA VOLTA JUNTO (24/09/2026). De "Em assinatura" ou do Pré-faturamento, a venda sai de
+  // `assinatura` para `contrato`; de "Contrato", ela já está lá e nada se escreve. Sem esta volta o
+  // Indeferir seguinte não devolve a venda a quem vendeu, porque `devolverAQuemVendeu` só age em
+  // venda em `contrato` (indeferimento-na-venda-server.ts). Falha aqui não desfaz a volta do card: o
+  // envelope velho já foi cancelado, e a resposta leva o aviso.
+  const passo = {
+    autorNome: pedido.usuarioNome,
+    de: card.estagio,
+    motivo: motivoDoReflexo(card.estagio, "analise"),
+    para: "analise" as const,
+    propostaId: card.proposta_id,
+    trabalhoTipo: card.tipo,
+  };
+  const reflexo = await refletirCardNaVenda(sb, passo);
+  registrarReflexoQueNaoAndou(card.id, passo, reflexo);
+  const aviso = avisoDoHercules([reflexo]);
+
+  return {
+    ...(aviso ? { avisoDoHercules: aviso } : {}),
+    de: card.estagio,
+    envelopeCancelado: envelope.envelopeCancelado,
+    ok: true,
+  };
 }
 
 /**

@@ -36,6 +36,51 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-24-temis-reflete-no-hercules",
+    deployedAt: "2026-09-24T14:03:31-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Mandar o contrato para assinatura agora move a venda no Hércules.** Antes o card andava sozinho e a venda ficava parada em Contrato: os cinco contratos enviados em 23/09 estavam assim, e já foram acertados.",
+              "**Devolver o card para correção traz a venda de volta para Contrato**, junto com o cancelamento do envelope.",
+              "**Se a venda não acompanhar o card, a tela avisa na hora**, com o motivo e sem sumir sozinha. Antes isso só aparecia no log e ninguém via.",
+              "**Gerar o contrato de novo com o card já adiante não puxa mais a venda para trás.** Numa aba antiga, gerar a segunda via com o contrato já em assinatura derrubava a venda de volta, com o envelope vivo na Clicksign.",
+              "**Indeferir um contrato cuja venda já está em assinatura ou faturada passa a ser recusado**, com a frase dizendo o que fazer: devolver para correção, ou pedir o cancelamento pela tela da Venda.",
+              "**Marcar a última atividade de um pedido de cancelamento não conclui mais o pedido.** Quem conclui é o botão Concluir, que é o único que derruba a venda e solta o lote.",
+            ],
+            screen: "Quadro de trabalho",
+          },
+        ],
+      },
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**Concluir um cancelamento ou distrato solta o lote, e a tela prova que soltou.** Se o lote continuar ocupado, aparece o motivo, inclusive quando quem segura é o mesmo lote cadastrado em outra gleba.",
+              "**Cancelar proposta que falha no meio agora se completa na tentativa seguinte.** Antes, se a reserva não caísse, a segunda tentativa respondia que não havia proposta aberta e o lote ficava preso sem saída.",
+              "**O lote nunca é solto quando ainda tem outro dono.** Vale para toda porta: conclusão na Têmis, cancelar proposta, cancelar reserva e cupom do salão.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "9b1e89e4",
+    technical: {
+      done:
+        "⚠️ SÓ A CARGA DO C2X AVANÇAVA A ETAPA DEPOIS DE `contrato`, e ela foi encerrada em 21/09/2026. Medido em 24/09: 5 de 5 cards de contrato enviados para assinatura em 23/09 tinham a venda em `contrato` (os dados foram corrigidos à parte, com OK do Lucas, e 5 reservas importadas duplicadas foram removidas). PEÇA NOVA: `refletirCardNaVenda` (lib/hercules/reflexo-da-temis-server.ts), ponto único chamado por TODO caminho que move card de contrato (envio, webhook `assinado`, volta para correção, marcação de atividade), com a tradução pura em lib/hercules/reflexo-da-temis.ts. Grava com comparar-e-trocar pela etapa lida, registra a passagem em `hercules_proposta_etapas`, nunca lança e nunca ressuscita venda em `cancelado` ou `distrato`; com 0 linhas relê a etapa e devolve `ja_estava` quando outra mão já gravou o mesmo destino, em vez de alarme falso. `moverCardDaTemis` passou a devolver os cards movidos. ⚠️ O CARD SÓ ANDA PARA A FRENTE (`voltariaNoCaminho`, lib/assinatura/estado-db.ts): o Gerar contrato de aba velha movia o card de `assinatura` ou `prazo_legal` de volta para `contrato`, e com o reflexo levaria a venda junto. PARTE 2, A UNIDADE: `soltarLoteDaVendaDesfeita` (lib/hercules/cancelar-reserva-server.ts) derruba a reserva ligada, chama `devolverCadastroDaUnidade` com a trava `outrosDonosDoLote` e PROVA pela régua que o lote saiu; quando a irmã de outra gleba segura, devolve `irma_com_dono` com o código dela, em vez de dizer que voltou. Usada pelo motor da Têmis (concluir-cancelamento-server.ts) e pelo PATCH de cancelar proposta, que ganhou RETOMADA idempotente (`cancelamentoQueParouNoMeio` + `tomarAVezDeAvisar`, com trava de vencedor único por `atualizado_em`) para o caso de a soltura falhar no meio. `marcarAtividade` recusa levar card de cancelamento ou distrato a Concluído. O indeferir passou a ler a ETAPA DA VENDA, e não só o estágio do card. VARREDURA COMO TESTE (lib/temis/reflexo-na-venda.varredura.test.ts): todo ponto de escrita em `temis_trabalhos.estagio` precisa chamar o reflexo ou ser exceção NOMEADA, e todo update que leva a venda a `cancelado`/`distrato` precisa chamar a soltura; a tabela é resolvida por constante do módulo e o que não se consegue ler entra como `desconhecida`, em vez de sumir. REVISÃO ADVERSARIAL EM DUAS RODADAS (6 revisores, 3 lentes cada): confirmou 7 defeitos na primeira e 8 na segunda, todos corrigidos aqui, entre eles o aviso do Hércules que chegava ao quadro em faixa verde e sumia em 8 segundos, e a modal que dizia 'o aviso não chegou a ser enviado' quando ele já tinha saído. DECISÕES CONSERVADORAS, à espera do Lucas: em pré-faturamento a venda fica em `assinatura` até o card faturar; envelope recusado ou expirado não devolve a venda sozinho; faturar não grava `data_faturamento` nem `vendida` no cadastro. ⚠️ NENHUMA TELA LEVA O CARD DE CONTRATO A FATURADO HOJE (a regra dos 7 dias mais entrada paga está escrita em docs/operations/temis-redesenho-decisoes.md e ainda não tem porta), e um teste trava esse comentário contra o fato. Suíte: 555 arquivos, 8.523 testes. Typecheck limpo.",
+      motivation:
+        "Lucas, 24/09/2026: bom dia, olha por favor o porque não atualizou o estágio no hercules. Depois: preciso garantir que tudo que acontece na temis reflete no hercules, pode corrigir isso, o contrato da vitoria tem que estar em assinatura. E: lembrando que quando tem cancelamento a unidade tem que ficar disponivel, tem que ter esse reflexo. A regra de fundo é a de 18/09: eu não posso vender dois lotes para pessoas diferentes, eu tomo processo por conta disso.",
+    },
+    title: "A Têmis e o Hércules param de discordar: a venda anda com o card, e o cancelamento solta o lote",
+    type: "correcao",
+    version: "1.371.0",
+  },
+  {
     buildTag: "2026-09-24-quadro-anual-da-parcela",
     deployedAt: "2026-09-24T10:36:44-03:00",
     modules: [

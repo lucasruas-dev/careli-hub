@@ -173,7 +173,13 @@ export function ModalDeCancelamento({
         ? (JSON.parse(texto) as {
             data?: {
               avisos: Array<{ motivo?: string; ok: boolean; para: string }>;
+              /** Só no cancelamento da proposta: a primeira tentativa já mandou os avisos. */
+              avisosJaSairam?: boolean;
               codigo?: string;
+              /** Só no cancelamento da proposta: o lote voltou? Ausente em servidor antigo. */
+              loteVoltou?: boolean;
+              /** Quando não voltou, a frase da trava ("a unidade NÃO voltou para a disponibilidade: ..."). */
+              porque?: null | string;
             };
             erros?: Array<{ mensagem: string }>;
             error?: string;
@@ -192,8 +198,23 @@ export function ModalDeCancelamento({
       const cod = corpo.data?.codigo ? `${corpo.data.codigo} · ` : "";
       // ⚠️ O BLOQUEIO NÃO MANDA AVISO A NINGUÉM, e por isso `comoFoiOAviso` recebe lista vazia nele:
       // não há corretor nem cliente para comunicar — é a empresa retirando o próprio lote.
+      // ⚠️ LISTA VAZIA NÃO É SEMPRE "NINGUÉM FOI AVISADO" (revisão de 24/09/2026). Na nova tentativa
+      // depois de uma falha parcial, os WhatsApps já saíram na primeira: `comoFoiOAviso([])` escreve
+      // "O aviso não chegou a ser enviado", e quem lê isso avisa o cliente uma segunda vez sobre o
+      // mesmo cancelamento. O servidor manda o fato em `avisosJaSairam`, e a frase o repete.
+      const extra = corpo.data?.avisosJaSairam
+        ? "Corretor, imobiliária e coordenador já tinham sido avisados na primeira tentativa."
+        : comoFoiOAviso(corpo.data?.avisos ?? []);
+      // ⚠️ O LOTE PODE NÃO TER VOLTADO, E A FRASE NÃO PODE DIZER QUE VOLTOU (revisão de 24/09/2026).
+      // O PATCH da proposta devolve `loteVoltou` e `porque` desde que a soltura passou pela trava
+      // (outro dono, irmã com dono, bloqueio seguram o lote). A frase fixa "A unidade voltou para a
+      // disponibilidade" mentia justamente quando quem cancelou precisava saber. Sem o campo
+      // (servidor antigo), fica a frase de sempre.
+      const loteFicou = alvo === "proposta" && corpo.data?.loteVoltou === false;
       onCancelada(
-        `${cod}${oQue.sucesso(unidade.nome, comoFoiOAviso(corpo.data?.avisos ?? []))}`,
+        loteFicou
+          ? `${cod}Proposta de ${unidade.nome} cancelada, mas ${corpo.data?.porque ?? "a unidade NÃO voltou para a disponibilidade"}. ${extra}`
+          : `${cod}${oQue.sucesso(unidade.nome, extra)}`,
       );
     } catch {
       setErroDoServidor(

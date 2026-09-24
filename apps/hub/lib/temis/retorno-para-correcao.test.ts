@@ -2,11 +2,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { FalhaDaClicksign, type Opcoes } from "@/lib/assinatura/clicksign/cliente";
 import type { EnvelopeDaProposta } from "@/lib/assinatura/envio-db";
 import type { EstadoDaAssinatura } from "@/lib/assinatura/tipos";
+import { type Banco, criarBanco } from "@/lib/hercules/banco-em-memoria.para-teste";
 
 import {
   AVISO_DA_VOLTA,
@@ -584,5 +585,80 @@ describe("a tela mostra as mesmas frases que este módulo define", () => {
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.erro).toContain("A correção volta pelo Hércules, com quem vendeu.");
+  });
+});
+
+// ── A VENDA VOLTA JUNTO COM O CARD ─────────────────────────────────────────────
+//
+// Lucas, 24/09/2026: *"preciso garantir que tudo que acontece na temis reflete no hercules"*. A volta
+// para correção a partir de "Em assinatura" ou do Pré-faturamento devolve a venda de `assinatura`
+// para `contrato`. E isto não é enfeite: sem a volta, o Indeferir seguinte não devolve a venda a quem
+// vendeu, porque `devolverAQuemVendeu` só age em venda em `contrato`
+// (indeferimento-na-venda-server.ts).
+
+describe("a volta para correção leva a venda de volta para contrato", () => {
+  const bancos: Banco[] = [];
+  afterEach(() => {
+    for (const b of bancos) expect(b.problemas).toEqual([]);
+    bancos.length = 0;
+    vi.restoreAllMocks();
+  });
+
+  const bancoDaVolta = (estagio: string, etapa: string): Banco => {
+    const b = criarBanco({
+      hercules_proposta_etapas: [],
+      hercules_propostas: [
+        { etapa, etapa_desde: "2026-09-23T14:00:00.000Z", id: "venda-1", workspace_id: "careli" },
+      ],
+      temis_envelopes: [],
+      temis_trabalho_etapas: [],
+      temis_trabalhos: [
+        { estagio, estagio_desde: "2026-09-23T14:00:00.000Z", id: "card-1", proposta_id: "venda-1", tipo: "contrato", workspace_id: "careli" },
+      ],
+    });
+    bancos.push(b);
+    return b;
+  };
+
+  it.each(["assinatura", "prazo_legal"])(
+    "de %s: a venda vai de assinatura para contrato, com histórico e autor",
+    async (estagio) => {
+      const b = bancoDaVolta(estagio, "assinatura");
+
+      const r = await retornarParaAnalise(b.cliente, { ...pedido, usuarioNome: "Nivea" }, portaDeTeste().porta);
+
+      expect(r.ok).toBe(true);
+      expect(b.linha("temis_trabalhos", "card-1")?.estagio).toBe("analise");
+      expect(b.linha("hercules_propostas", "venda-1")).toMatchObject({ etapa: "contrato", etapa_por: "Nivea" });
+      expect(b.linhas("hercules_proposta_etapas")).toEqual([
+        expect.objectContaining({
+          autor_nome: "Nivea",
+          de: "assinatura",
+          motivo: "Contrato voltou para correção na Têmis",
+          para: "contrato",
+        }),
+      ]);
+      if (r.ok) expect(r.avisoDoHercules ?? null).toBeNull();
+    },
+  );
+
+  it("de contrato para a análise: a venda já está em contrato e não é tocada (os 8 casos medidos)", async () => {
+    const b = bancoDaVolta("contrato", "contrato");
+    const r = await retornarParaAnalise(b.cliente, pedido, portaDeTeste().porta);
+    expect(r.ok).toBe(true);
+    expect(b.consultas.some((q) => q.tabela === "hercules_propostas" && q.operacao === "update")).toBe(false);
+    expect(b.linhas("hercules_proposta_etapas")).toEqual([]);
+  });
+
+  it("venda que não acompanha (voltou a quem vendeu): o card volta, a resposta é ok com avisoDoHercules", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const b = bancoDaVolta("assinatura", "proposta");
+    const r = await retornarParaAnalise(b.cliente, pedido, portaDeTeste().porta);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(b.linha("temis_trabalhos", "card-1")?.estagio).toBe("analise");
+    expect(b.linha("hercules_propostas", "venda-1")?.etapa).toBe("proposta");
+    expect(r.avisoDoHercules).toContain("a venda no Hércules não acompanhou");
   });
 });

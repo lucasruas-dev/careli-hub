@@ -225,6 +225,7 @@ export async function enviarContratoDoAtor(
   // `envelopeId`, que é o número que o suporte da Clicksign pede, é justamente o que se perde.
   const data: RespostaDoEnvio = {
     ...ambiente(),
+    ...(enviado.avisoDoHercules ? { avisoDoHercules: enviado.avisoDoHercules } : {}),
     envelopeId: enviado.envelopeId,
     nome: enviado.nome,
     registroId: enviado.registroId,

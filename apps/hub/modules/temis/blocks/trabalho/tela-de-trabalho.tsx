@@ -603,21 +603,31 @@ export function TelaDeTrabalho({
       // continuaria funcionando no `if` por ser uma string não vazia — e quebraria calado no dia em
       // que alguém escrevesse `=== true`, ou quisesse mostrar o número na mensagem.
       const corpo = (await r.json().catch(() => ({}))) as {
-        data?: { envelopeCancelado?: null | string };
+        avisoDoHercules?: string;
+        data?: { avisoDoHercules?: string; envelopeCancelado?: null | string };
         envelopeCancelado?: null | string;
         error?: string;
       };
       if (!r.ok) return corpo.error ?? "Não consegui voltar o card para a análise.";
       const envelopeCancelado = corpo.envelopeCancelado ?? corpo.data?.envelopeCancelado ?? null;
+      // ⚠️ O AVISO DO HÉRCULES VAI NO RECADO (revisão de 24/09/2026): o card voltou, e a venda não
+      // voltou junto para contrato. É aviso, não falha: a volta aconteceu e não se repete.
+      const avisoDoHercules = corpo.avisoDoHercules ?? corpo.data?.avisoDoHercules ?? null;
       await carregar();
       // ⚠️ `aoConcluir` JÁ RECARREGA O QUADRO E FECHA A TELA — chamar `aoMudar` junto faria a mesma
       // busca duas vezes. O `aoMudar` fica para quem montou a tela sem passar o `aoConcluir`: ali
       // ninguém fecha nada, e o quadro por baixo precisaria saber que o card mudou de coluna.
       if (aoConcluir) {
+        const recado = envelopeCancelado
+          ? "Envelope cancelado na Clicksign e card de volta na Análise. Quem já tinha recebido o convite perdeu o acesso."
+          : "O card voltou para Análise.";
+        // ⚠️ O AVISO DO HÉRCULES PEDE AÇÃO, e por isso vai com o segundo argumento (revisão de
+        // 24/09/2026). Sem ele o quadro pinta a faixa VERDE de confirmação, com ícone de visto, e a
+        // apaga sozinha em oito segundos (temis-kanban.tsx): um recado que termina em "Avise a
+        // Careli para conferir a etapa da venda" era lido como "deu certo" e sumia antes.
         aoConcluir(
-          envelopeCancelado
-            ? "Envelope cancelado na Clicksign e card de volta na Análise. Quem já tinha recebido o convite perdeu o acesso."
-            : "O card voltou para Análise.",
+          avisoDoHercules ? `${recado} ${avisoDoHercules}` : recado,
+          Boolean(avisoDoHercules),
         );
       } else {
         aoMudar();
@@ -985,8 +995,18 @@ export function TelaDeTrabalho({
               // enviar ficaria vivo em cima de um envelope já criado e o segundo clique criaria o
               // SEGUNDO envelope — que também é cobrado. É o mesmo desenho da geração de contrato:
               // recado primeiro, volta ao quadro depois.
-              aoEnviado={() =>
-                aoConcluir?.("Contrato enviado para assinatura. O card foi para Em assinatura.")
+              // ⚠️ E O AVISO DO HÉRCULES ENTRA NO RECADO (revisão de 24/09/2026): a tela fecha
+              // aqui, e o recado é o único lugar que sobra para dizer que a venda ficou para trás.
+              // ⚠️ E O AVISO PEDE AÇÃO (revisão de 24/09/2026): com o segundo argumento o quadro o
+              // mantém em âmbar até alguém fechar, em vez de apagá-lo em oito segundos numa faixa
+              // verde de sucesso.
+              aoEnviado={(avisoDoHercules) =>
+                aoConcluir?.(
+                  avisoDoHercules
+                    ? `Contrato enviado para assinatura. O card foi para Em assinatura. ${avisoDoHercules}`
+                    : "Contrato enviado para assinatura. O card foi para Em assinatura.",
+                  Boolean(avisoDoHercules),
+                )
               }
               aoVoltarParaAnalise={voltarParaAnalise}
               contratos={card.contratos}
@@ -2015,7 +2035,8 @@ function EtapaDoContrato({
   tipo,
 }: {
   /** O envelope já existe na Clicksign: quem recebe fecha a tela e avisa o quadro. */
-  aoEnviado: () => void;
+  /** O envio saiu. `avisoDoHercules` = a venda não acompanhou o card (é aviso: o envio deu certo). */
+  aoEnviado: (avisoDoHercules: null | string) => void;
   /** Devolve o texto da falha, ou `null` quando o card voltou para a análise. */
   aoVoltarParaAnalise: () => Promise<null | string>;
   contratos: ContratoNoCard[];
@@ -2108,7 +2129,7 @@ function EtapaDoContrato({
           </section>
         ) : propostaId ? (
           <OrganizacaoDaAssinatura
-            aoEnviar={() => aoEnviado()}
+            aoEnviar={(envio) => aoEnviado(envio.avisoDoHercules ?? null)}
             aoMudarEnvio={setEnviando}
             compacto
             propostaId={propostaId}
