@@ -9,6 +9,7 @@
 // toda leitura devolve junto o `sincronizadoEm`: a tela precisa dizer de quando é o dado, senão o
 // usuário decide em cima de uma foto achando que é filmagem.
 import { createApoloAdminClient } from "@/lib/apolo/server";
+import { digitalDaParcela } from "@/lib/lsoft/impressao-digital";
 
 export type ClienteDaCarteira = {
   /** Quantos dos 9 campos que o C2X exige já estão preenchidos. */
@@ -662,6 +663,20 @@ export async function salvarParcelaDoLsoft(args: {
   // edição, e o histórico tem de continuar dizendo sobre qual linha ele falava.
   const rotulo = `${texto(antes.parcela) ?? "?"} · ${texto(antes.vencimento)?.split("-").reverse().join("/") ?? "sem vencimento"}`;
 
+  // ⚠️ A DIGITAL É DA PARCELA COMO ELA ESTÁ ANTES DESTA EDIÇÃO, e é o que religa a trilha depois
+  // que a carga apaga e regrava `lsoft_parcelas` com ids novos (migration 0188). Calculada AQUI,
+  // antes do update: depois, o valor em memória já seria o novo, e o hash não corresponderia a
+  // nenhuma parcela que a próxima carga do LSoft vai trazer.
+  const digital = digitalDaParcela({
+    cliente_codigo: texto(antes.cliente_codigo),
+    empreendimento: texto(antes.empreendimento),
+    observacoes: texto(antes.observacoes),
+    origem: texto(antes.origem),
+    parcela: texto(antes.parcela),
+    valor: antes.valor as null | number | string,
+    vencimento: texto(antes.vencimento),
+  });
+
   const mudancas: Record<string, unknown> = {};
   const trilha: Record<string, unknown>[] = [];
 
@@ -671,10 +686,16 @@ export async function salvarParcelaDoLsoft(args: {
       autor_origem: args.autorOrigem ?? "careli",
       campo: `parcela.${campo}`,
       cliente_codigo: String(antes.cliente_codigo),
+      // Redundância proposital, como na classificação (0103): quando a parcela some, é isto que
+      // ainda diz de quem era a linha e alimenta as redes mais frouxas do reconciliador.
+      empreendimento_no_momento: texto(antes.empreendimento),
+      impressao_digital: digital,
       parcela_id: args.parcelaId,
       parcela_rotulo: rotulo,
       valor_anterior: velho,
+      valor_no_momento: antes.valor ?? null,
       valor_novo: novo,
+      vencimento_no_momento: texto(antes.vencimento),
     });
   };
 
