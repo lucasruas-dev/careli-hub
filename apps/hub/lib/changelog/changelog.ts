@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-24-pdf-da-evolucao",
+    deployedAt: "2026-09-24T00:49:29-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**A Evolucao da parcela agora sai em PDF timbrado**, no mesmo padrao dos outros relatorios da casa.",
+              "**O papel traz os tres cenarios lado a lado** (otimista, tendencia e conservador), porque o resultado e uma faixa e nao um numero. A premissa de cada coluna vai escrita.",
+              "**Em toda pagina esta dito que e estimativa**, e que o valor devido de cada parcela e o do boleto: a folha circula sozinha e nao pode ser lida como promessa.",
+            ],
+            screen: "Financeiro · Evolucao da parcela",
+          },
+        ],
+      },
+    ],
+    rollback: "30add7f2",
+    technical: {
+      done:
+        "O PAPEL SAI DA MESMA APURACAO DA TELA: as duas rotas chamam `evolucaoDosContratos`, entao tela e PDF nunca divergem sobre a parcela de um cliente. E a mesma regra que o extrato segue, e existe porque divergencia de dinheiro entre duas telas da casa vira reuniao. OS TRES CENARIOS NA MESMA FOLHA, e isso e decisao de honestidade, nao de economia de papel: um documento com um numero so e lido como PREVISAO; tres colunas mostram que o resultado e uma FAIXA. No contrato usado para provar (LOS0617), em 2031 a parcela vai de R$ 575,41 no otimista a R$ 649,30 no conservador, com R$ 626,06 na tendencia. A ordem e do menor para o maior, e a premissa de cada coluna vai escrita por extenso embaixo da tabela. UMA LEITURA PARA OS TRES: `evolucaoDosContratos` ganhou `cenarios`, e o que muda entre eles e so a media aplicada -- conta pura sobre a serie ja carregada. Tres chamadas custariam tres varreduras do C2X e tres buscas de serie para desenhar a MESMA folha. Medido: 1.177ms de leitura, 67ms de montagem, 32,9 KB. A RESSALVA E ESTRUTURAL, nao nota em corpo 6: cada linha diz se e o valor de hoje ou estimativa, ha uma secao explicando que a correcao so alcanca a parcela na emissao do boleto (que e por que as parcelas distantes ainda aparecem pelo valor de origem), e o rodape repete em TODA pagina que nao e compromisso -- a folha circula solta, e a pagina 2 sozinha nao pode virar promessa. ⚠️ A REVOGACAO DO BLOB ESPERA 60s, que e a correcao do defeito que o Isac relatou em 08/09/2026 no PDF do extrato: revogar na mesma linha do clique e corrida com o navegador e mata o download CALADO. O molde e o `pdf-timbrado` de sempre (logo, cartoes, tabela limpa), e o nome do arquivo segue o formato do extrato para os dois cairem juntos na pasta de download do atendente. 12 testes de comportamento, um deles travando que o PDF sai no cenario da tela quando a rota e chamada com um cenario so.",
+      motivation:
+        "Lucas, 23/09/2026: agora falta criar o relatorio em PDF igual temos os outros. E, vendo a primeira versao do papel, em 24/09: pode fazer as tres visoes em um relatorio so.",
+    },
+    title: "PDF da Evolucao da parcela, com os tres cenarios juntos",
+    type: "novidade",
+    version: "1.368.0",
+  },
+  {
     buildTag: "2026-09-23-evolucao-da-parcela",
     deployedAt: "2026-09-23T23:34:31-03:00",
     modules: [
