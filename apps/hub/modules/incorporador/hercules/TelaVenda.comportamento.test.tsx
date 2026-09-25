@@ -30,7 +30,20 @@ vi.mock("./ConversaDaVenda", () => ({ ConversaDaVenda: () => null }));
 vi.mock("./DocumentosDaVenda", () => ({ DocumentosDaVenda: () => null }));
 vi.mock("./SimuladorDeProposta", () => ({ SimuladorDeProposta: () => null }));
 vi.mock("./PreviaDoContrato", () => ({ PreviaDoContrato: () => null }));
-vi.mock("./ModalDeCancelamento", () => ({ ModalDeCancelamento: () => null }));
+// ⚠️ A MODAL É DUBLÊ, MAS GUARDA O QUE RECEBEU (revisão de 25/09/2026). `alvoDoCancelamento` é a linha
+// que decide para QUAL ROTA o clique vai, e sem isto ela não tinha teste nenhum: quem simplificasse
+// `alvo` de volta para `cancelando.etapa === "proposta" ? "proposta" : "reserva"` passaria com toda a
+// suíte verde e mandaria as 11 herdadas em `reservado` para a rota da reserva, que não tem o que
+// cancelar. A modal em si já tem teste próprio por alvo (`ModalDeCancelamento.lote.comportamento`); o
+// que falta é o ELO, e é isso que estes props provam.
+const modalDeCancelamento = vi.hoisted(() => ({ props: null as null | Record<string, unknown> }));
+
+vi.mock("./ModalDeCancelamento", () => ({
+  ModalDeCancelamento: (props: Record<string, unknown>) => {
+    modalDeCancelamento.props = props;
+    return null;
+  },
+}));
 vi.mock("./ModalDeContrato", () => ({ ModalDeContrato: () => null }));
 vi.mock("./ModalDePedidoDeCancelamento", () => ({ ModalDePedidoDeCancelamento: () => null }));
 vi.mock("./ModalDeProposta", () => ({ ModalDeProposta: () => null }));
@@ -108,6 +121,7 @@ let root: Root;
 let container: HTMLDivElement;
 
 beforeEach(() => {
+  modalDeCancelamento.props = null;
   window.localStorage.setItem(
     "hercules:venda:lugar",
     JSON.stringify({ etapa: "reservado", visao: "mesa" }),
@@ -215,5 +229,170 @@ describe("TelaVenda: a ficha obedece à régua", () => {
     expect(botao("Gerar proposta")?.disabled).toBe(false);
     expect(botao("Cancelar reserva")?.disabled).toBe(false);
     expect(botao("Reservar")?.disabled).toBe(true);
+  });
+});
+
+// ── A VENDA HERDADA DO C2X VOLTA A TER BOTÃO (Lucas, 25/09/2026) ────────────────
+//
+// Lucas, 25/09/2026: *"As reservas que foram herdadas do c2x, nao estamos conseguindo cancelar ou
+// dar seguimento na proposta. Essas reservas tem que comportar iguais as outras"*.
+//
+// ⚠️ A RECUSA ERA DA TELA PRIMEIRO, E DA ROTA ATRÁS. `processoDaFicha` devolvia
+// `{ causa: "reserva-do-legado", tipo: "apagado" }` para a herdada em `reservado`, isso virava
+// `travaDaFicha`, e a trava reescreve TODAS as ações com `ativo: false`. Acender o botão sem mexer no
+// alvo da modal mandaria o clique para a rota da RESERVA, que é justamente a que não tem o que
+// cancelar (a carga nunca criou linha em `hercules_reservas`): trocaria botão apagado por 409.
+//
+// ⚠️ E A TELA NÃO PROMETE O QUE A ROTA RECUSA. "Gerar proposta" sobre a herdada continua apagado, com
+// o motivo verdadeiro, porque a rota que gera proposta ainda exige reserva do Hércules.
+
+const herdadaReservada = {
+  ...reservaDoHercules,
+  cliente_nome: "NIVEA CARELI PEREIRA DE AVELAR",
+  etapa: "reservado",
+  id: "p-herdada",
+  origem: "c2x",
+  protocolo_numero: null,
+  unidade_id: "u-herdada",
+  unidade_nome: "01 05",
+} as PropostaDaCarga;
+
+const herdadaProposta = {
+  ...herdadaReservada,
+  etapa: "proposta",
+  id: "p-herdada-proposta",
+  unidade_id: "u-herdada-proposta",
+  unidade_nome: "01 06",
+} as PropostaDaCarga;
+
+const DADOS_HERDADA = {
+  ...agregarFluxo({
+    propostas: [herdadaReservada, herdadaProposta],
+    situacaoPorUnidade: new Map([
+      ["u-herdada", "reservado"],
+      ["u-herdada-proposta", "proposta"],
+    ]),
+    unidades: [unidade("u-herdada", "05"), unidade("u-herdada-proposta", "06")],
+  }),
+  escritaPorEmpreendimento: { "39": true },
+};
+
+describe("TelaVenda: a herdada do C2X se cancela aqui", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (/^\/api\/incorporador\/venda(\?|$)/.test(url)) return resposta({ data: DADOS_HERDADA });
+        if (url.startsWith("/api/incorporador/produtos/painel")) return resposta({ data: { linhas: [] } });
+        if (url.startsWith("/api/incorporador/produtos")) return resposta({ data: { produtos: [] } });
+        if (url.startsWith("/api/incorporador/espelho")) return resposta({ data: { produtos: [] } });
+        return resposta({}, false);
+      }),
+    );
+  });
+
+  it("⚠️ reserva herdada: Cancelar ATIVO, com o rótulo da reserva e sem falar do C2X", async () => {
+    await montar();
+    await clicarNoLote("Q01L05");
+
+    expect(container.textContent ?? "").not.toContain("Fale com a coordenação");
+    expect(botao("Cancelar reserva")?.disabled).toBe(false);
+    // ⚠️ O MOTIVO DO CANCELAR NÃO MANDA MAIS NINGUÉM AO LEGADO. A única frase da ficha que ainda diz
+    // "C2X" é a do Gerar proposta, e ali ela é a verdade: essa porta continua fechada (ver o caso
+    // abaixo). Reservar fica apagado porque o lote está reservado, como em qualquer reserva.
+    expect(botao("Cancelar reserva")?.getAttribute("title") ?? "").not.toContain("C2X");
+    expect(botao("Reservar")?.disabled).toBe(true);
+  });
+
+  it("⚠️ no mesmo lote, Gerar proposta continua APAGADO e o motivo diz por quê", async () => {
+    await montar();
+    await clicarNoLote("Q01L05");
+
+    const gerar = botao("Gerar proposta");
+    expect(gerar?.disabled).toBe(true);
+    expect(gerar?.getAttribute("title") ?? "").toContain("veio do C2X");
+    // ⚠️ E O MOTIVO NÃO DÁ CONSELHO QUE NÃO FUNCIONA (revisão de 25/09/2026). Ele mandava "Cancele e
+    // reserve de novo", e em 6 das 11 esse caminho está fechado: para SDT, MDB, CDJ e HDP há ZERO
+    // imobiliárias vinculadas em `apolo_relationships` (medido em 25/09/2026 no projeto
+    // bxgukywoxgivlrhjkwjx, só SELECT), então a modal de reserva sairia vazia. Quem seguisse perderia a
+    // reserva herdada sem conseguir criar a nova.
+    expect(gerar?.getAttribute("title") ?? "").not.toContain("reserve de novo");
+  });
+
+  it("⚠️ proposta herdada: Enviar para contrato ATIVO e Cancelar proposta ATIVO", async () => {
+    await montar();
+    await clicarNoLote("Q01L06");
+
+    expect(botao("Enviar para contrato")?.disabled).toBe(false);
+    expect(botao("Cancelar proposta")?.disabled).toBe(false);
+    const titulos = [...container.querySelectorAll("button")].map((b) => b.getAttribute("title") ?? "");
+    expect(titulos.some((t) => t.includes("C2X"))).toBe(false);
+  });
+});
+
+// ── O ELO ENTRE O BOTÃO E A ROTA (revisão de 25/09/2026) ─────────────────────────
+//
+// ⚠️ `alvoDoCancelamento` É "A ARMADILHA QUE MATARIA TUDO", E NÃO TINHA TESTE. Ela decide se o clique
+// vai para a rota da proposta ou para a da reserva. Os casos acima só olham `disabled` e `title`, e os da
+// modal recebem o alvo pronto: quem trocasse a linha por `cancelando.etapa === "proposta" ? "proposta" :
+// "reserva"` (a forma mais curta, e a que o arquivo tinha antes) passaria com tudo verde e mandaria as 11
+// herdadas em `reservado` para `/api/incorporador/venda/reserva`, que exige linha viva em
+// `hercules_reservas` e não acha nenhuma (ZERO para as 13, medido em 25/09/2026 no projeto
+// bxgukywoxgivlrhjkwjx): botão apagado com explicação viraria 409 sem explicação.
+
+describe("TelaVenda: para qual rota o Cancelar vai", () => {
+  it("⚠️ herdada em `reservado`: alvo `reserva_do_legado`, com o id da linha da proposta", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (/^\/api\/incorporador\/venda(\?|$)/.test(url)) return resposta({ data: DADOS_HERDADA });
+        if (url.startsWith("/api/incorporador/produtos/painel")) return resposta({ data: { linhas: [] } });
+        if (url.startsWith("/api/incorporador/produtos")) return resposta({ data: { produtos: [] } });
+        if (url.startsWith("/api/incorporador/espelho")) return resposta({ data: { produtos: [] } });
+        return resposta({}, false);
+      }),
+    );
+    await montar();
+    await clicarNoLote("Q01L05");
+
+    await act(async () => {
+      botao("Cancelar reserva")?.click();
+    });
+
+    expect(modalDeCancelamento.props?.alvo).toBe("reserva_do_legado");
+    expect(modalDeCancelamento.props?.propostaId).toBe("p-herdada");
+  });
+
+  it("herdada em `proposta`: alvo `proposta`", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (/^\/api\/incorporador\/venda(\?|$)/.test(url)) return resposta({ data: DADOS_HERDADA });
+        if (url.startsWith("/api/incorporador/produtos/painel")) return resposta({ data: { linhas: [] } });
+        if (url.startsWith("/api/incorporador/produtos")) return resposta({ data: { produtos: [] } });
+        if (url.startsWith("/api/incorporador/espelho")) return resposta({ data: { produtos: [] } });
+        return resposta({}, false);
+      }),
+    );
+    await montar();
+    await clicarNoLote("Q01L06");
+
+    await act(async () => {
+      botao("Cancelar proposta")?.click();
+    });
+
+    expect(modalDeCancelamento.props?.alvo).toBe("proposta");
+    expect(modalDeCancelamento.props?.propostaId).toBe("p-herdada-proposta");
+  });
+
+  it("reserva DO HÉRCULES: alvo `reserva`, como sempre", async () => {
+    await montar();
+    await clicarNoLote("Q01L02");
+
+    await act(async () => {
+      botao("Cancelar reserva")?.click();
+    });
+
+    expect(modalDeCancelamento.props?.alvo).toBe("reserva");
   });
 });

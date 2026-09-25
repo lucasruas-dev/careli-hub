@@ -26,9 +26,23 @@ import { abrirTrabalho } from "@/lib/temis/trabalhos-db";
 // sair de verdade, ela é que merece o aviso. A tela mostra o resultado; o histórico do lote guarda
 // quem mandou e quando.
 //
-// ⚠️ SÓ A PROPOSTA NATIVA E ABERTA. `origem = 'panteon'` mantém de fora as 4.857 importadas do
-// C2X: mover para contrato aqui uma venda que corre no legado faria os dois sistemas discordarem
-// sobre a mesma unidade, e o Panteon não tem como escrever a mudança de volta lá.
+// ⚠️ A PROPOSTA ABERTA SEGUE DAQUI, HERDADA OU NÃO (25/09/2026). O filtro `origem = 'panteon'` mantinha
+// de fora as importadas do C2X, pela premissa de que "o Panteon não tem como escrever a mudança de
+// volta lá". A carga do C2X foi ENCERRADA em 21/09/2026: nada volta de lá. Lucas, 25/09/2026: *"As
+// reservas que foram herdadas do c2x, nao estamos conseguindo cancelar ou dar seguimento na
+// proposta. Essas reservas tem que comportar iguais as outras"*. É a mesma revogação que ele já tinha
+// feito para o cancelamento do contrato herdado em 16/09/2026 (*"será feito aqui"*, registrado em
+// `lib/hercules/acao-de-cancelamento.ts`).
+//
+// ⚠️ SÃO 2 AS QUE ESTA PORTA ALCANÇA: as herdadas em etapa `proposta` numa linha viva de unidade
+// (CDJ0403 e MDB1306, medido em 25/09/2026 no projeto bxgukywoxgivlrhjkwjx, só SELECT). As outras 11
+// estão em `reservado` e ainda não geram proposta: a tela as mostra apagadas, com o motivo verdadeiro.
+//
+// ⚠️ ELAS CHEGAM À TÊMIS SEM CONDIÇÕES COMERCIAIS GRAVADAS (`condicoes` e `preco_tabela` nulos) e com
+// `codigo` que se repete entre herdadas. A Têmis responde ao `condicoes` nulo (declarado em
+// `lib/temis/blocos-prontos.ts`); o COD repetido no card é decisão pendente do Lucas.
+// ⚠️ A ETAPA CONTINUA SENDO `proposta`, E SÓ ELA: quem garante que a venda está madura é o estado, não
+// a origem do registro.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -72,7 +86,7 @@ export async function POST(request: Request) {
     const { data: linhaDaUnidade } = await lerComColunasDoApartamento((extras) =>
       admin
         .from("hercules_unidades")
-        .select(`id,codigo,quadra,lote,enterprise_id${extras}`)
+        .select(`id,codigo,quadra,lote,enterprise_id,espelho_de${extras}`)
         .eq("workspace_id", WORKSPACE)
         .eq("id", unidadeId)
         .maybeSingle(),
@@ -82,6 +96,8 @@ export async function POST(request: Request) {
       apartamento?: null | string;
       codigo: string;
       enterprise_id: string;
+      /** Preenchido = o registro antigo do terreno, a linha do pai de um produto dividido. */
+      espelho_de: null | string;
       id: string;
       lote: null | string;
       quadra: null | string;
@@ -91,6 +107,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unidade não encontrada." }, { status: 404 });
     }
 
+    // ⚠️ A LINHA ESPELHO NÃO SEGUE PARA CONTRATO, pela mesma razão do bloqueio (a frase é a de lá, em
+    // `bloquear-unidade-server.ts`): ela é história parada, e quem vende é a gleba. Sem esta recusa, o
+    // corte do filtro `origem = 'panteon'` passou a alcançar as 4 herdadas em `proposta` penduradas na
+    // sombra do pai (medido em 25/09/2026 no projeto bxgukywoxgivlrhjkwjx, só SELECT), abrindo card na
+    // Têmis para uma venda que nenhuma tela mostra.
+    if (unidade.espelho_de) {
+      return NextResponse.json(
+        { error: "Esta linha é o registro antigo do terreno. Siga pela gleba que vende." },
+        { status: 409 },
+      );
+    }
+
     // ⚠️ QUEM OPERA O PRODUTO DECIDE A ESCRITA (Lucas, 16/09/2026). No portal que confecciona (o
     // Cecílio) mandar para contrato só vale no produto operado por ele; no VOC e no VOR é 403 só
     // consulta, e sem a 0170 é 503. A Gurgel passa sem ida ao banco. Antes de mover a etapa.
@@ -98,16 +126,30 @@ export async function POST(request: Request) {
     if (!escrita.ok) return escrita.response;
     const sessao = escrita.sessao;
 
-    const { data: linha } = await admin
+    // ⚠️ O ERRO DESTA LEITURA É 503, NUNCA "NÃO HÁ PROPOSTA ABERTA" (revisão de 25/09/2026). Com o
+    // filtro `origem = 'panteon'` fora, este recorte saiu de baixo do índice único
+    // `hercules_propostas_uma_viva_por_unidade` (ele só vale para `origem = 'panteon'`, definição medida
+    // em 25/09/2026 no projeto bxgukywoxgivlrhjkwjx): nada no banco impede duas herdadas vivas em
+    // `proposta` na mesma unidade, e com duas o `maybeSingle` devolve ERRO com `data` nulo. Engolir o
+    // `error` transformava isso em "Não há proposta aberta nesta unidade" sobre uma ficha que acabou de
+    // acender o botão. Hoje são ZERO unidades nesse estado (medido no mesmo dia): é trava para o futuro.
+    const { data: linha, error: erroDaProposta } = await admin
       .from("hercules_propostas")
       .select(
         "id, codigo, protocolo_numero, cliente_nome, cliente_documento, empreendimento_id, empreendimento_codigo, etapa_desde, etapa_por",
       )
       .eq("workspace_id", WORKSPACE)
       .eq("unidade_id", unidade.id)
-      .eq("origem", "panteon")
       .eq("etapa", "proposta")
       .maybeSingle();
+
+    if (erroDaProposta) {
+      console.error("[hercules][contrato] não deu para ler a proposta aberta da unidade", erroDaProposta.message);
+      return NextResponse.json(
+        { error: "Não foi possível conferir a proposta agora. Tente de novo em instantes." },
+        { status: 503 },
+      );
+    }
 
     const proposta = linha as null | {
       cliente_documento: null | string;

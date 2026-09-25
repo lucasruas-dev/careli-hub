@@ -1095,11 +1095,15 @@ export function agregarFluxo({
 // origem inventada.
 //
 // ⚠️ A REGRA: os botões só agem quando a lista tem uma linha VIVA desta unidade NA MESMA ETAPA que a
-// régua pintou (e, na reserva, uma reserva do Hércules, que é o que as rotas da reserva operam). Fora
-// disso eles apagam, e a ficha diz uma frase que é verdade em qualquer causa. A frase não afirma de
-// onde o processo veio quando a lista não sabe: a reserva do salão, a linha antiga do pai e a irmã
-// de outra gleba chegam aqui iguais, como ausência. Só a origem que está escrita na própria linha
-// (`origem = 'c2x'`) é dita.
+// régua pintou. Fora disso eles apagam, e a ficha diz uma frase que é verdade em qualquer causa. A
+// frase não afirma de onde o processo veio quando a lista não sabe: a reserva do salão, a linha antiga
+// do pai e a irmã de outra gleba chegam aqui iguais, como ausência.
+//
+// ⚠️ E EM `reservado` NÃO SE EXIGE MAIS RESERVA DO HÉRCULES (25/09/2026). A regra antiga era "na
+// reserva, uma reserva do Hércules, que é o que as rotas da reserva operam", e ela apagava os CINCO
+// botões das 11 herdadas do C2X que a carga deixou em `reservado` sem nenhuma linha em
+// `hercules_reservas`. Lucas, 25/09/2026: *"essas reservas tem que comportar iguais as outras"*. Quem
+// decide para qual rota o clique vai é `acaoDeCancelamento`, pela mesma linha.
 //
 // ⚠️ NA DÚVIDA, APAGADO. Botão apagado num lote que tinha dono custa um telefonema para a coordenação;
 // botão aceso num lote de outro dono é o começo da segunda venda. A rota recusa de qualquer jeito
@@ -1125,7 +1129,7 @@ export type ProcessoDaFicha<L extends LinhaDaFicha> =
   | { linha: L; tipo: "na-lista" }
   /** Os botões apagam todos, e a ficha diz a frase. */
   | {
-      causa: "divergente" | "dois-processos" | "fora-da-lista" | "reserva-do-legado";
+      causa: "divergente" | "dois-processos" | "fora-da-lista";
       frase: string;
       tipo: "apagado";
     };
@@ -1133,20 +1137,22 @@ export type ProcessoDaFicha<L extends LinhaDaFicha> =
 /**
  * ⚠️ A RESERVA DO HÉRCULES SE RECONHECE PELO PREFIXO DO ID. É o contrato de `reservaComoLinhaDoFluxo`
  * (`reserva.ts`, com teste): a reserva entra na lista com `reserva:` na frente do uuid. A proposta
- * importada do C2X também pode estar na etapa `reservado` (a etapa 1 do legado), e sobre ela
- * "Gerar proposta" e "Cancelar reserva" não têm o que operar: as duas rotas procuram
- * `hercules_reservas`.
+ * importada do C2X também pode estar na etapa `reservado` (a etapa 1 do legado), e aí a linha mora em
+ * `hercules_propostas`, não em `hercules_reservas`.
+ *
+ * ⚠️ É ISTO QUE DIZ PARA QUAL ROTA O CLIQUE VAI (25/09/2026). Até 25/09/2026 a herdada em `reservado`
+ * apagava os CINCO botões da ficha, porque "as duas rotas procuram `hercules_reservas`". Deixou de ser
+ * verdade para o cancelamento: a rota da PROPOSTA passou a aceitar a herdada (Lucas, 25/09/2026:
+ * *"essas reservas tem que comportar iguais as outras"*). Quem escolhe a rota é
+ * `acaoDeCancelamento`, com este mesmo predicado.
  */
-const ehReservaDoHercules = (linha: LinhaDaFicha) => linha.id.startsWith("reserva:");
+export const ehReservaDoHercules = (linha: { id: string }) => linha.id.startsWith("reserva:");
 
 const FRASE_DIVERGENTE =
   "A situação deste lote não bate com a lista desta tela. Recarregue; se continuar, fale com a coordenação.";
 
 const FRASE_DOIS_PROCESSOS =
   "Este lote tem uma reserva e outro processo abertos ao mesmo tempo. Fale com a coordenação.";
-
-const FRASE_RESERVA_DO_LEGADO =
-  "Reserva importada do C2X: esta tela não gera proposta nem cancela sobre ela. Fale com a coordenação.";
 
 /**
  * ⚠️ "PODE SER", E NÃO "É". A lista não diz de onde veio o processo que ela não mostra, e a frase
@@ -1211,12 +1217,14 @@ export function processoDaFicha<L extends LinhaDaFicha>(
     return { causa: "divergente", frase: FRASE_DIVERGENTE, tipo: "apagado" };
   }
 
-  if (unidade.etapa === "reservado" && !ehReservaDoHercules(naEtapa)) {
-    // A origem está na própria linha: dizer "C2X" aqui não é inventar. Linha de reserva sem ser do
-    // Hércules e sem ser do legado não existe hoje; se aparecer, cai no lado seguro com a frase geral.
-    return naEtapa.origem === "c2x"
-      ? { causa: "reserva-do-legado", frase: FRASE_RESERVA_DO_LEGADO, tipo: "apagado" }
-      : { causa: "divergente", frase: FRASE_DIVERGENTE, tipo: "apagado" };
+  // ⚠️ A HERDADA EM `reservado` VOLTOU A SER OPERÁVEL (Lucas, 25/09/2026: *"essas reservas tem que
+  // comportar iguais as outras"*). Ela é a linha que sustenta a cor (`situacao-da-unidade.ts`) e é
+  // sobre ela que os botões agem: cada botão decide sozinho o que oferece, e o cancelamento vai para a
+  // rota da PROPOSTA (`acaoDeCancelamento`, tipo `reserva_do_legado`). O que sobra apagado aqui é a
+  // linha em `reservado` que não é reserva do Hércules E não tem origem escrita — não existe hoje, e é
+  // o lado seguro que o comentário antigo já previa: na dúvida, apagado, com a frase geral.
+  if (unidade.etapa === "reservado" && !ehReservaDoHercules(naEtapa) && naEtapa.origem !== "c2x") {
+    return { causa: "divergente", frase: FRASE_DIVERGENTE, tipo: "apagado" };
   }
 
   return { linha: naEtapa, tipo: "na-lista" };

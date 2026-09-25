@@ -21,6 +21,7 @@ import {
   andaresDoGrupo,
   ETAPAS_DA_FAIXA,
   ETAPAS_DO_FLUXO,
+  ehReservaDoHercules,
   linhaDaFicha,
   linhaEmCancelamento,
   processoDaFicha,
@@ -179,6 +180,31 @@ type DadosDaVenda = FluxoDeVenda & {
 
 type UnidadeNoMapa = FluxoDeVenda["mapa"][number]["unidades"][number];
 type Proposta = FluxoDeVenda["lista"][number];
+
+/**
+ * PARA QUAL ROTA O CLIQUE DE "Cancelar" VAI — pela MESMA lib que acendeu o botão.
+ *
+ * ⚠️ O ALVO NÃO SAI DA ETAPA (25/09/2026). Havia `etapa === "proposta" ? "proposta" : "reserva"`
+ * cravado na modal, e ele estava certo enquanto os dois únicos casos acesos eram a reserva do Hércules
+ * e a proposta nativa. A reserva HERDADA do C2X é um terceiro caso: pinta o lote de `reservado`, mas a
+ * linha mora em `hercules_propostas` (a carga trouxe a proposta e nunca criou a reserva: ZERO linhas em
+ * `hercules_reservas` para as 13, medido em 25/09/2026 no projeto bxgukywoxgivlrhjkwjx). Mandá-la para a
+ * rota da reserva trocaria botão apagado por 409. Lucas, 25/09/2026: *"essas reservas tem que comportar
+ * iguais as outras"*.
+ */
+function alvoDoCancelamento(
+  unidade: UnidadeNoMapa,
+  lista: readonly Proposta[],
+): "proposta" | "reserva" | "reserva_do_legado" {
+  const linha = linhaDaFicha(unidade, lista);
+  const { tipo } = acaoDeCancelamento({
+    etapa: unidade.etapa ?? null,
+    propostaDoLegado: linha?.origem === "c2x",
+    propostaNativa: linha?.origem === "panteon",
+    reservaDoHercules: linha ? ehReservaDoHercules(linha) : undefined,
+  });
+  return tipo === "proposta" || tipo === "reserva_do_legado" ? tipo : "reserva";
+}
 
 /**
  * O que o painel da direita está mostrando.
@@ -1536,10 +1562,16 @@ export function TelaVenda() {
 
         {cancelando ? (
           <ModalDeCancelamento
-            // ⚠️ O ALVO SAI DA ETAPA DA UNIDADE, e não de um segundo estado: são os dois únicos
-            // pontos do fluxo em que o botão acende, e guardar o alvo à parte abriria a chance de
-            // ele discordar da unidade que está na tela — cancelar a proposta de um lote reservado.
-            alvo={cancelando.etapa === "proposta" ? "proposta" : "reserva"}
+            // ⚠️ O ALVO SAI DA MESMA LIB QUE ACENDEU O BOTÃO, e não de um segundo estado: guardar o
+            // alvo à parte abriria a chance de ele discordar da unidade que está na tela — cancelar a
+            // proposta de um lote reservado.
+            //
+            // ⚠️ E ELE NÃO PODE VIR SÓ DA ETAPA (25/09/2026). Era
+            // `cancelando.etapa === "proposta" ? "proposta" : "reserva"`; com o botão aceso nas 11
+            // herdadas em `reservado`, isso mandaria o clique para a rota da RESERVA, que é justamente
+            // a que não tem o que cancelar (a carga nunca criou a linha em `hercules_reservas`):
+            // trocaria botão apagado por 409. Quem sabe onde a linha mora é `acaoDeCancelamento`.
+            alvo={alvoDoCancelamento(cancelando, dados?.lista ?? [])}
             onCancelada={(mensagem) => {
               setCancelando(null);
               setRecado(mensagem);
@@ -3319,12 +3351,8 @@ function AcoesDaUnidade({
   // para sempre: os quatro botões apagavam, a rota da reserva mandava procurar "o cancelamento da
   // proposta" e não havia nenhum — cliente que desiste ou reprova no crédito deixava a unidade
   // presa, com o preço já circulando por WhatsApp, e só SQL na mão a soltava.
-  // ⚠️ E SÓ A NATIVA: a etapa `proposta` do espelho não distingue quem nasceu aqui de quem veio da
-  // carga do legado, e a rota só cancela a nativa. Ver `propostaViva`.
-  const proposta =
-    unidade?.etapa === "proposta" && propostaViva?.origem === "panteon";
   /**
-   * Proposta do legado pintando o lote: a tela diz Proposta, mas o cancelamento é lá.
+   * Proposta do legado pintando o lote.
    *
    * ⚠️ SÓ COM A ORIGEM ESCRITA NA LINHA. Era `origem !== "panteon"`, e sem linha nenhuma (a proposta
    * que mora na linha antiga do pai) `undefined !== "panteon"` dava verdadeiro: a ficha afirmava
@@ -3332,12 +3360,28 @@ function AcoesDaUnidade({
    */
   const propostaDoLegado =
     unidade?.etapa === "proposta" && propostaViva?.origem === "c2x";
+  // ⚠️ A HERDADA TAMBÉM SEGUE PARA CONTRATO (25/09/2026). Antes era só `origem === "panteon"`, porque a
+  // rota do contrato recusava a importada; a carga do C2X foi ENCERRADA em 21/09/2026 e a rota passou a
+  // aceitar as duas. Lucas, 25/09/2026: *"essas reservas tem que comportar iguais as outras"*.
+  const proposta = unidade?.etapa === "proposta" && (propostaViva?.origem === "panteon" || propostaDoLegado);
+  /**
+   * Reserva HERDADA do C2X pintando o lote: linha de `hercules_propostas`, sem reserva do Hércules.
+   *
+   * ⚠️ GERAR PROPOSTA SOBRE ELA AINDA NÃO EXISTE, e por isso o botão fica apagado com o motivo
+   * verdadeiro. A rota que gera proposta procura reserva ativa em `hercules_reservas` e responderia 409:
+   * a tela não pode prometer o que a rota recusa. O cancelamento, esse sim, já vai pela rota da proposta.
+   */
+  const reservaDoLegado =
+    unidade?.etapa === "reservado" &&
+    propostaViva?.origem === "c2x" &&
+    !ehReservaDoHercules(propostaViva);
 
-  // Qual dos três cancelamentos cabe aqui — ver `lib/hercules/acao-de-cancelamento.ts`.
+  // Qual dos cancelamentos cabe aqui — ver `lib/hercules/acao-de-cancelamento.ts`.
   const cancelamento = acaoDeCancelamento({
     etapa: unidade?.etapa ?? null,
     pedidoAberto: Boolean(propostaViva?.cancelamentoPedidoEm),
-    propostaDoLegado,
+    propostaDoLegado: Boolean(propostaDoLegado) || Boolean(reservaDoLegado),
+    reservaDoHercules: propostaViva ? ehReservaDoHercules(propostaViva) : undefined,
     // ⚠️ SOB A TRAVA, DESTE CÁLCULO SÓ O RÓTULO É USADO (o `ativo` e o `motivo` são da trava), e ele
     // precisa ter o nome do cancelamento do processo que a régua pintou. Sem isto, o lote em Proposta
     // sem linha na lista mostrava "Cancelar reserva", que é o rótulo de "nada a cancelar".
@@ -3378,14 +3422,29 @@ function AcoesDaUnidade({
     // ⚠️ SÓ EM CIMA DE UMA RESERVA (Lucas, 04/09/2026: *"da reserva eu tenho dois caminhos, gerar
     // proposta ou cancelar"*). A proposta herda o cliente e a unidade da reserva; sem ela não há
     // titular definido nem lote travado, e o portão da modal não teria de quem conferir a CAD.
+    // ⚠️ E NÃO SOBRE A RESERVA HERDADA DO C2X (25/09/2026): a rota que gera proposta procura reserva
+    // ativa em `hercules_reservas`, e a carga nunca criou nenhuma para essas 11. Aceso, o botão levaria
+    // o coordenador a um 409 sem explicação; apagado com o motivo, ele sabe o que fazer.
+    //
+    // ⚠️ E O MOTIVO NÃO MANDA MAIS "CANCELE E RESERVE DE NOVO" (revisão de 25/09/2026). O conselho está
+    // FECHADO em 6 das 11, e a medição é direta: para os empreendimentos delas (SDT = c2x_enterprise_id
+    // 2, MDB = 21, CDJ = 22, HDP = 26) há ZERO imobiliárias vinculadas — nenhum vínculo `empreendimento`
+    // não arquivado em `apolo_relationships` com perfil `imobiliaria` aponta para esses ids, e a única
+    // habilitação por grupo que existe é "group:Lagoa Bonita", que não os cobre (medido em 25/09/2026 no
+    // projeto bxgukywoxgivlrhjkwjx, só SELECT). É `lerImobiliariasVinculadas` que monta a lista da modal
+    // de reserva (`quemPodeVender`), então ela sairia VAZIA. Quem seguisse o conselho perderia a reserva
+    // herdada, com a data e o cliente que ela guarda, e não conseguiria criar a nova. O motivo agora diz
+    // só o fato.
     {
-      ativo: reservada,
+      ativo: reservada && !reservaDoLegado,
       aoClicar: aoGerarProposta,
       motivo: !unidade
         ? "Escolha uma unidade."
-        : reservada
-          ? "Confere a CAD do cliente da reserva, monta as condições e gera a proposta com o PDF."
-          : "Precisa de uma reserva ativa.",
+        : reservaDoLegado
+          ? "Esta reserva veio do C2X e não tem reserva do Hércules para gerar proposta em cima. Fale com a coordenação."
+          : reservada
+            ? "Confere a CAD do cliente da reserva, monta as condições e gera a proposta com o PDF."
+            : "Precisa de uma reserva ativa.",
       rotulo: "Gerar proposta",
       tom: "avanca",
     },
@@ -3401,9 +3460,7 @@ function AcoesDaUnidade({
         ? "Escolha uma unidade."
         : proposta
           ? "Entrega a proposta à Têmis, que faz o contrato, e leva a venda para a fase de contrato."
-          : propostaDoLegado
-            ? "Esta proposta veio do C2X: o contrato dela é feito lá."
-            : "Precisa de uma proposta gerada.",
+          : "Precisa de uma proposta gerada.",
       rotulo: "Enviar para contrato",
       tom: "avanca",
     },

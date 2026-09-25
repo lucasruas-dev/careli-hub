@@ -734,10 +734,24 @@ describe("processoDaFicha", () => {
     expect(r.tipo === "apagado" ? r.frase : "").toContain("Recarregue");
   });
 
-  it("reserva importada do C2X: a origem está na linha, e só aí a frase diz C2X", () => {
-    const r = processoDaFicha(lote("reservado"), [linha({ etapa: "reservado", id: "p-1", origem: "c2x" })]);
-    expect(r).toMatchObject({ causa: "reserva-do-legado", tipo: "apagado" });
-    expect(r.tipo === "apagado" ? r.frase : "").toContain("C2X");
+  // ⚠️ A RESERVA HERDADA DO C2X VOLTA A SER OPERÁVEL (Lucas, 25/09/2026: *"essas reservas tem que
+  // comportar iguais as outras"*). Antes a ficha apagava os CINCO botões e mandava falar com a
+  // coordenação: a premissa era que as duas rotas procuram `hercules_reservas`, e desde 25/09/2026 o
+  // cancelamento da herdada é feito pela rota da PROPOSTA, que é onde a linha mora. Ela é a linha que
+  // sustenta a cor (`situacao-da-unidade.ts`), e é sobre ela que os botões agem.
+  it("⚠️ reserva importada do C2X na etapa certa segue para os botões, que decidem cada um", () => {
+    const herdada = linha({ etapa: "reservado", id: "p-1", origem: "c2x" });
+    expect(processoDaFicha(lote("reservado"), [herdada])).toEqual({ linha: herdada, tipo: "na-lista" });
+  });
+
+  // ⚠️ O LADO SEGURO QUE SOBRA: linha em `reservado` que não é reserva do Hércules e não tem origem
+  // escrita continua apagada, agora com a frase geral, e sem afirmar um legado que ela não conhece.
+  it("⚠️ reservado sem reserva do Hércules e SEM origem escrita: apagado, e sem dizer C2X", () => {
+    const r = processoDaFicha(lote("reservado"), [linha({ etapa: "reservado", id: "p-1" })]);
+    expect(r).toMatchObject({ causa: "divergente", tipo: "apagado" });
+    const frase = r.tipo === "apagado" ? r.frase : "";
+    expect(frase).toContain("Recarregue");
+    expect(frase).not.toContain("C2X");
   });
 
   it("proposta do C2X na etapa certa segue para os botões (que explicam o legado)", () => {
@@ -758,7 +772,7 @@ describe("processoDaFicha", () => {
       ["faturado", []],
       ["proposta", [reservaDoHercules]],
       ["proposta", [reservaDoHercules, propostaDoC2x]],
-      ["reservado", [linha({ etapa: "reservado", id: "p-1", origem: "c2x" })]],
+      ["reservado", [linha({ etapa: "reservado", id: "p-1" })]],
     ];
     for (const [etapa, lista] of casos) {
       const r = processoDaFicha(lote(etapa), lista);

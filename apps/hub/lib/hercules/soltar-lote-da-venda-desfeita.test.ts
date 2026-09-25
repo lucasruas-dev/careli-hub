@@ -102,6 +102,83 @@ describe("o lote volta quando o terreno ficou sem dono", () => {
   });
 });
 
+// ⚠️ A VENDA HERDADA DO C2X NÃO TEM RESERVA NENHUMA, E A SOLTURA JÁ AGUENTA ISSO.
+//
+// Lucas, 25/09/2026: *"essas reservas tem que comportar iguais as outras"*. Medido em 25/09/2026
+// (projeto bxgukywoxgivlrhjkwjx, só SELECT): nas 13 propostas herdadas vivas em `reservado` ou
+// `proposta`, `hercules_propostas.reserva_id` é NULO em 13/13 e não existe NENHUMA linha em
+// `hercules_reservas` para essas unidades. A carga trouxe a PROPOSTA e nunca criou a RESERVA.
+//
+// ⚠️ E POR ISSO NÃO SE FABRICA RESERVA PARA ELAS. O passo 1 já é condicional (`venda.reserva_id`),
+// o passo 2 não acha reserva esquecida, e o passo 3 chama a trava como sempre: é este teste que
+// autoriza a porta do cancelamento a mandar a herdada por aqui, sem escrita nova em produção.
+describe("a venda HERDADA do C2X: reserva_id nulo e nenhuma linha em hercules_reservas", () => {
+  const HERDADA = { id: "venda-c2x", reserva_id: null, unidade_id: "vor-1206" };
+
+  const comHerdada = (situacao: string) => {
+    const b = cadastro({
+      propostas: [
+        {
+          etapa: "cancelado",
+          id: "venda-c2x",
+          origem: "c2x",
+          origem_c2x_id: 4234,
+          reserva_id: null,
+          unidade_id: "vor-1206",
+          workspace_id: "careli",
+        },
+      ],
+    });
+    b.linha("hercules_unidades", "vor-1206")!.situacao = situacao;
+    return b;
+  };
+
+  it("cadastro `reservada`: a soltura pula o passo 1, a trava não acha dono e o lote volta", async () => {
+    const b = comHerdada("reservada");
+
+    const r = await soltarLoteDaVendaDesfeita(b.cliente, { aceitos: ["reservada"], venda: HERDADA });
+
+    expect(r).toMatchObject({ desfecho: { devolvida: true }, ok: true, reservasCaidas: [] });
+    expect(b.linha("hercules_unidades", "vor-1206")?.situacao).toBe("disponivel");
+    // Nenhuma escrita em `hercules_reservas`: não há reserva para derrubar nem para inventar.
+    expect(b.consultas.filter((c) => c.operacao === "update").map((c) => c.tabela)).toEqual([
+      "hercules_unidades",
+    ]);
+  });
+
+  it("outra herdada VIVA na linha do mesmo chão continua prendendo: a regra de ouro não muda", async () => {
+    const b = comHerdada("reservada");
+    b.semear("hercules_propostas", {
+      etapa: "reservado",
+      id: "venda-c2x-irma",
+      origem: "c2x",
+      origem_c2x_id: 4235,
+      reserva_id: null,
+      unidade_id: "vor-1206",
+      workspace_id: "careli",
+    });
+
+    const r = await soltarLoteDaVendaDesfeita(b.cliente, { aceitos: ["reservada"], venda: HERDADA });
+
+    expect(r).toMatchObject({ desfecho: { devolvida: false, porque: "outro_dono" }, ok: true });
+    expect(b.linha("hercules_unidades", "vor-1206")?.situacao).toBe("reservada");
+  });
+
+  it("cadastro `vendida` (como a carga marcou 2 das 13) só volta quando o chamador aceita `vendida`", async () => {
+    const preso = comHerdada("vendida");
+    expect(
+      await soltarLoteDaVendaDesfeita(preso.cliente, { aceitos: ["reservada"], venda: HERDADA }),
+    ).toMatchObject({ desfecho: { devolvida: false, porque: "cadastro", situacao: "vendida" } });
+    expect(preso.linha("hercules_unidades", "vor-1206")?.situacao).toBe("vendida");
+
+    const solto = comHerdada("vendida");
+    expect(
+      await soltarLoteDaVendaDesfeita(solto.cliente, { aceitos: ["reservada", "vendida"], venda: HERDADA }),
+    ).toMatchObject({ desfecho: { devolvida: true } });
+    expect(solto.linha("hercules_unidades", "vor-1206")?.situacao).toBe("disponivel");
+  });
+});
+
 describe("a reserva esquecida em `proposta` (a armadilha registrada)", () => {
   // ⚠️ O TESTE ANTIGO PASSAVA PELO PASSO 1 (revisão de 24/09/2026). Ele mandava
   // `venda: { ...VENDA, reserva_id: "res-orfa" }`, e a reserva órfã caía como reserva LIGADA, no

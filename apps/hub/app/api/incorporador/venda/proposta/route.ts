@@ -138,6 +138,14 @@ type UnidadeDaProposta = {
   area: null | number | string;
   codigo: string;
   enterprise_id: string;
+  /**
+   * Preenchido = esta linha é o REGISTRO ANTIGO do terreno, a linha do pai de um produto dividido.
+   *
+   * ⚠️ É O QUE A ROTA PRECISA SABER PARA NÃO ESCREVER NELA (revisão de 25/09/2026). Havia um
+   * comentário afirmando que `unidadePorId` já mantinha as 139 herdadas da sombra do pai fora do
+   * cancelamento; era falso, porque ele nem lia esta coluna. Quem as mantinha fora era só a TELA.
+   */
+  espelho_de: null | string;
   id: string;
   lote: null | string;
   preco_tabela: null | number | string;
@@ -161,7 +169,7 @@ async function unidadePorId(
   const { data } = await lerComColunasDoApartamento((extras) =>
     admin
       .from("hercules_unidades")
-      .select(`id,codigo,quadra,lote,situacao,preco_tabela,area,enterprise_id${extras}`)
+      .select(`id,codigo,quadra,lote,situacao,preco_tabela,area,enterprise_id,espelho_de${extras}`)
       .eq("workspace_id", WORKSPACE)
       .eq("id", unidadeId)
       .maybeSingle(),
@@ -2088,7 +2096,7 @@ async function logoDoEmpreendimento(
 // ⚠️ PATCH, E NÃO DELETE — a mesma razão da reserva. A proposta cancelada continua respondendo
 // "quem tinha este lote e por quê", e o histórico da unidade lê `cancelada_em` para montar o evento.
 const COLUNAS_DA_PROPOSTA_QUE_CAI =
-  "id, etapa, protocolo_numero, codigo, compradores, cliente_nome, reserva_id, imobiliaria_entity_id, corretor_entity_id, empreendimento_id, cancelada_em, cancelada_motivo, atualizado_em";
+  "id, etapa, protocolo_numero, codigo, compradores, cliente_nome, reserva_id, imobiliaria_entity_id, corretor_entity_id, empreendimento_id, cancelada_em, cancelada_motivo, atualizado_em, origem, origem_c2x_id";
 
 type PropostaQueCai = {
   atualizado_em: null | string;
@@ -2102,6 +2110,15 @@ type PropostaQueCai = {
   etapa: string;
   id: string;
   imobiliaria_entity_id: null | string;
+  origem: null | string;
+  /**
+   * A marca de que a linha veio da carga do C2X.
+   *
+   * ⚠️ É ELA QUE DECIDE DE ONDE O CADASTRO PODE SAIR. A carga marcou 2 das 13 herdadas com a unidade
+   * em `vendida` mesmo com a venda em etapa `proposta`; sem saber que a linha é herdada, o
+   * cancelamento derrubaria a venda e deixaria o lote preso em `vendida`.
+   */
+  origem_c2x_id: null | number;
   protocolo_numero: null | number;
   reserva_id: null | string;
 };
@@ -2185,11 +2202,43 @@ async function tomarAVezDeAvisar(
   return ((data ?? []) as unknown[]).length > 0 ? "minha" : "outra_tentativa";
 }
 
+/** A linha veio da carga do C2X? É `origem_c2x_id` que diz, e é ela que abre a saída de `vendida`. */
+const veioDaCargaDoC2x = (venda: { origem_c2x_id?: null | number }): boolean =>
+  venda.origem_c2x_id !== null && venda.origem_c2x_id !== undefined;
+
+/**
+ * DE ONDE ESTE CANCELAMENTO PODE TIRAR O CADASTRO DO LOTE.
+ *
+ * ⚠️ UMA FUNÇÃO PARA OS DOIS PONTOS, E É DE PROPÓSITO (revisão de 25/09/2026). A exceção do cadastro
+ * `vendida` entrou só na IDA (o `aceitos` da soltura) e o portão da RETOMADA continuou exigindo a
+ * literal `reservada`. Nas 2 herdadas que a carga deixou em `vendida` (CDJ0403 e MDB1306: cadastro
+ * `vendida`, `reserva_id` NULO e ZERO linhas em `hercules_reservas`, medido em 25/09/2026 no projeto
+ * bxgukywoxgivlrhjkwjx, só SELECT), `reservaLigadaViva` é sempre falso, então a primeira tentativa que
+ * parasse no 503 da soltura não tinha segunda: a retomada devolvia `null` e a rota respondia "Não há
+ * proposta aberta nesta unidade" sobre o lote que ela mesma acabou de deixar preso em `vendida`, sem
+ * botão nenhum para soltar. Era o meio caminho pior do que o botão apagado, deslocado para o segundo
+ * clique. Os dois pontos lendo a MESMA função nunca mais divergem.
+ *
+ * ⚠️ `bloqueada` E `disponivel` NUNCA ENTRAM, NEM PEDIDAS: quem as filtra é
+ * `devolverCadastroDaUnidade` (*"`bloqueada` E `disponivel` SAEM DOS ACEITOS MESMO PEDIDOS"*, em
+ * `cancelar-reserva-server.ts`), e nada aqui desbloqueia lote por engano.
+ */
+function cadastrosDeOndeOLoteVolta(herdadaDaCarga: boolean): readonly string[] {
+  return herdadaDaCarga ? ["reservada", "vendida"] : ["reservada"];
+}
+
 /**
  * O CANCELAMENTO DESTA ROTA QUE PAROU NO MEIO: a venda já está `cancelado`, mas a reserva ligada
- * continua viva ou o cadastro do lote continua `reservada`.
+ * continua viva ou o cadastro do lote continua num estado de onde este cancelamento tira o lote.
  *
- * ⚠️ SÓ O QUE ESTA ROTA CANCELOU. `origem = 'panteon'` (a mesma régua da busca da proposta aberta),
+ * ⚠️ SÓ O QUE ESTA ROTA CANCELOU, HERDADA OU NÃO (25/09/2026). O filtro `origem = 'panteon'` saiu
+ * junto com o da busca da proposta aberta: sem isso, um cancelamento de herdada que parasse no 503 da
+ * soltura ficaria sem retomada, e o lote ficaria preso sem botão nenhum.
+ *
+ * ⚠️ E QUEM SEPARA AS VELHAS DA CARGA É `cancelada_em`, MEDIDO. Há 2.071 herdadas em etapa `cancelado`
+ * sem marca de pedido, e `cancelada_em` é NULO em 2.071 delas (medido em 25/09/2026 no projeto
+ * bxgukywoxgivlrhjkwjx, só SELECT: a carga não preenche essa coluna). Nenhuma delas entra aqui; entra
+ * só a que ESTA rota cancelou, porque é ela que grava o carimbo. O que resta do recorte é
  * `cancelada_em` preenchido, `cancelamento_pedido_em` VAZIO e — o que decide de verdade — NENHUM card
  * de cancelamento ou distrato vivo na Têmis (`temCardDeDesfazerVivo`). A venda derrubada pelo motor
  * nasce de um pedido e tem dono próprio para a retomada, o botão Concluir do card; a marca do pedido
@@ -2211,7 +2260,6 @@ async function cancelamentoQueParouNoMeio(
     .select(COLUNAS_DA_PROPOSTA_QUE_CAI)
     .eq("workspace_id", WORKSPACE)
     .eq("unidade_id", unidade.id)
-    .eq("origem", "panteon")
     .eq("etapa", "cancelado")
     .is("cancelamento_pedido_em", null)
     .not("cancelada_em", "is", null)
@@ -2242,7 +2290,11 @@ async function cancelamentoQueParouNoMeio(
     reservaLigadaViva = Boolean(reserva);
   }
 
-  if (!reservaLigadaViva && String(unidade.situacao ?? "").trim() !== "reservada") return null;
+  // ⚠️ E O CADASTRO ACEITO AQUI É O MESMO DA IDA (revisão de 25/09/2026). Era a literal `reservada`, e
+  // com ela a retomada era IMPOSSÍVEL nas 2 herdadas que a carga deixou em `vendida` — exatamente as
+  // duas que a exceção do `aceitos` existe para salvar. Ver `cadastrosDeOndeOLoteVolta`.
+  const aceitos = cadastrosDeOndeOLoteVolta(veioDaCargaDoC2x(venda));
+  if (!reservaLigadaViva && !aceitos.includes(String(unidade.situacao ?? "").trim())) return null;
 
   const doJuridico = await temCardDeDesfazerVivo(admin, venda.id);
   if (doJuridico === "leitura_falhou") return "leitura_falhou";
@@ -2295,24 +2347,95 @@ export async function PATCH(request: Request) {
       );
     }
 
+    // ⚠️ A LINHA ESPELHO NÃO RESPONDE POR NADA, E CANCELAR NELA NÃO SOLTA O LOTE. É a MESMA recusa que
+    // o bloqueio já faz, com a mesma frase (*"Esta linha é o registro antigo do terreno"*, em
+    // `bloquear-unidade-server.ts`): o mesmo terreno tem DUAS linhas nos produtos divididos (Lagoa
+    // Bonita, Vale do Ouro), a do pai, que é história parada, e a da gleba que vende.
+    //
+    // ⚠️ E É ESTA LINHA QUE MANTÉM FORA AS 139 HERDADAS DA SOMBRA DO PAI (revisão de 25/09/2026).
+    // Medido em 25/09/2026 no projeto bxgukywoxgivlrhjkwjx (só SELECT): 135 herdadas em `reservado` e 4
+    // em `proposta` moram em unidade com `espelho_de` preenchido, 38 delas com o cadastro em `vendida`.
+    // A régua as ignora de propósito (`noPai`) e a trava também (`doPaiImportada`), então a tela nunca
+    // manda esse id — mas `idsDaSessao` INCLUI o id do grupo, o pai, e sem esta recusa um PATCH com o id
+    // da linha espelho cancelava uma das 139 e rodava a soltura sobre o cadastro do pai, com `vendida`
+    // nos aceitos por a linha ser herdada. O comentário que estava aqui prometia essa guarda sem
+    // implementá-la: quem as mantinha fora era só a TELA.
+    if (unidade.espelho_de) {
+      return NextResponse.json(
+        { error: "Esta linha é o registro antigo do terreno. Cancele pela gleba que vende." },
+        { status: 409 },
+      );
+    }
+
     // A mesma régua do POST: cancelar a proposta é escrita, e no produto só de consulta não se escreve.
     const escrita = await autorizarEscritaNoProduto(request, auth.sessao, [unidade.enterprise_id]);
     if (!escrita.ok) return escrita.response;
     const sessao = escrita.sessao;
 
-    // ⚠️ SÓ A PROPOSTA NATIVA E ABERTA. `origem = 'panteon'` mantém de fora as 4.857 importadas do
-    // C2X — cancelar por aqui uma venda que mora no legado escreveria no Panteon um cancelamento
-    // que o C2X nunca saberia, e os dois passariam a discordar sobre o mesmo lote.
-    const { data: linha } = await admin
+    // ⚠️ A PROPOSTA ABERTA DESTA UNIDADE, HERDADA OU NÃO (25/09/2026). Até aqui o recorte era
+    // `origem = 'panteon'` e `etapa = 'proposta'`, pela premissa de que "cancelar por aqui uma venda
+    // que mora no legado escreveria no Panteon um cancelamento que o C2X nunca saberia". A carga do
+    // C2X foi ENCERRADA em 21/09/2026: nada volta de lá, e o legado não tem mais o que discordar.
+    // Lucas, 25/09/2026: *"As reservas que foram herdadas do c2x, nao estamos conseguindo cancelar ou
+    // dar seguimento na proposta. Essas reservas tem que comportar iguais as outras"*. É a mesma
+    // revogação que ele já tinha feito para o contrato em 16/09/2026 (*"será feito aqui"*).
+    //
+    // ⚠️ E A ETAPA `reservado` ENTRA AQUI, porque é onde a carga deixou 11 das 13. Elas são linha de
+    // `hercules_propostas` com `reserva_id` NULO e ZERO linhas em `hercules_reservas` (medido em
+    // 25/09/2026, projeto bxgukywoxgivlrhjkwjx): a rota da reserva não tem o que cancelar nelas, e é
+    // esta que cancela. A rota da reserva continua exigindo linha viva em `hercules_reservas`, e está
+    // certa.
+    //
+    // ⚠️ O RECORTE É A UNIDADE EM FOCO, E A LINHA ESPELHO JÁ FOI RECUSADA ACIMA: é isso que mantém
+    // fora as 139 herdadas penduradas na sombra do pai (135 em `reservado` e 4 em `proposta`, medido em
+    // 25/09/2026 no projeto bxgukywoxgivlrhjkwjx). A régua na tela nunca mostra a linha do pai, mas a
+    // rota não pode depender disso: quem manda o id decide o que ela lê.
+    //
+    // ⚠️ E AQUI NÃO CABE `maybeSingle` (revisão de 25/09/2026). O recorte antigo era
+    // `origem = 'panteon'` + `etapa = 'proposta'`, exatamente as colunas do índice único
+    // `hercules_propostas_uma_viva_por_unidade` (UNIQUE em `unidade_id` WHERE `origem = 'panteon'` AND
+    // etapa em reservado/proposta/contrato/assinatura, definição medida em 25/09/2026 no mesmo projeto):
+    // o banco garantia uma linha só. Sem o filtro de origem o recorte sai de baixo do índice, e NADA
+    // impede duas herdadas vivas na mesma unidade. Hoje são ZERO unidades com mais de uma linha viva em
+    // ('proposta','reservado') (medido no mesmo dia), então isto é trava para o futuro, não defeito de
+    // hoje — mas o que segurava era um índice, e o índice saiu do caminho.
+    //
+    // ⚠️ E O ERRO DE LEITURA É 503 "TENTE DE NOVO", NUNCA 409 "NÃO HÁ PROPOSTA". Com `maybeSingle` e
+    // duas linhas o PostgREST devolve erro e `data` nulo; com o `error` descartado a rota caía na
+    // retomada e respondia "Não há proposta aberta nesta unidade" sobre uma ficha que acabou de acender
+    // o botão Cancelar, e sem uma linha de log. Banco que não respondeu não é unidade sem venda.
+    const { data: vivas, error: erroDasVivas } = await admin
       .from("hercules_propostas")
       .select(COLUNAS_DA_PROPOSTA_QUE_CAI)
       .eq("workspace_id", WORKSPACE)
       .eq("unidade_id", unidade.id)
-      .eq("origem", "panteon")
-      .eq("etapa", "proposta")
-      .maybeSingle();
+      .in("etapa", ["proposta", "reservado"])
+      // A mesma ordem da régua (`situacao-da-unidade.ts`): quem sustenta a cor é a de `etapa_desde`
+      // mais recente. Duas bastam para saber que há mais de uma.
+      .order("etapa_desde", { ascending: false })
+      .limit(2);
 
-    let proposta = linha as null | PropostaQueCai;
+    if (erroDasVivas) {
+      console.error("[hercules][proposta] não deu para ler a venda viva da unidade", erroDasVivas.message);
+      return NextResponse.json(
+        { error: "Não foi possível conferir a unidade agora. Tente de novo em instantes." },
+        { status: 503 },
+      );
+    }
+
+    const vivasDaUnidade = (vivas ?? []) as unknown as PropostaQueCai[];
+
+    // ⚠️ COM DUAS VENDAS VIVAS, NINGUÉM ESCOLHE POR ELE. É a mesma honestidade que a ficha já pratica
+    // para reserva mais proposta no mesmo lote (`FRASE_DOIS_PROCESSOS`, em `fluxo-de-venda.ts`):
+    // cancelar uma e deixar a outra viva é decisão de gente, não de rota.
+    if (vivasDaUnidade.length > 1) {
+      return NextResponse.json(
+        { error: "Esta unidade tem mais de uma venda viva ao mesmo tempo. Fale com a coordenação." },
+        { status: 409 },
+      );
+    }
+
+    let proposta: null | PropostaQueCai = vivasDaUnidade[0] ?? null;
 
     // ⚠️ A NOVA TENTATIVA COMPLETA A SOLTURA (revisão de 24/09/2026). Quando a venda já foi para
     // `cancelado` e a queda da reserva falhou, a resposta abaixo é 503 "tente de novo". Mas esta
@@ -2387,7 +2510,11 @@ export async function PATCH(request: Request) {
         .eq("id", proposta.id)
         // ⚠️ A CONDIÇÃO REPETIDA É A TRAVA DO CLIQUE DUPLO, igual à da reserva: sem ela, dois
         // coordenadores no mesmo lote cancelam duas vezes e saem dois WhatsApps de cancelamento.
-        .eq("etapa", "proposta")
+        //
+        // ⚠️ E ELA CONFERE A ETAPA DA LINHA LIDA, NÃO A PALAVRA "proposta" (25/09/2026). Com a
+        // literal, as 11 herdadas em `reservado` nunca casariam: a rota responderia "Esta proposta
+        // acabou de ser cancelada em outra tela" sobre o cancelamento que ela mesma acabou de fazer.
+        .eq("etapa", proposta.etapa)
         .select("id");
 
       if (error) throw new Error(error.message);
@@ -2425,8 +2552,19 @@ export async function PATCH(request: Request) {
     //
     // ⚠️ A UNIDADE VOLTA ANTES DO AVISO, como no cancelamento da reserva: se o WhatsApp falhar, o lote
     // já está livre para vender.
+    // ⚠️ A HERDADA SAI TAMBÉM DE `vendida`, E SÓ ELA (25/09/2026). A carga marcou 2 das 13 com a
+    // unidade em `vendida` enquanto a venda está em etapa `proposta` (CDJ0403 e MDB1306, medido em
+    // 25/09/2026 no projeto bxgukywoxgivlrhjkwjx). Sem esta exceção o botão entregaria o pior estado
+    // possível: proposta cancelada e lote preso em `vendida`, pior do que o botão apagado. É a MESMA
+    // exceção que a conclusão de um cancelamento na Têmis já usa, e pelo mesmo motivo escrito lá (ver
+    // `cancelar-reserva-server.ts`): *a venda importada do C2X chega com o cadastro `vendida` pela
+    // carga*. A venda NATIVA em cadastro `vendida` continua sendo do jurídico, e `bloqueada` e
+    // `disponivel` nunca saem, nem pedidas (a devolução as filtra).
+    //
+    // ⚠️ E A MESMA PERGUNTA VALE NA RETOMADA, por isso ela mora em `cadastrosDeOndeOLoteVolta` e não
+    // aqui: o portão de `cancelamentoQueParouNoMeio` lê a mesma função.
     const soltura = await soltarLoteDaVendaDesfeita(admin, {
-      aceitos: ["reservada"],
+      aceitos: cadastrosDeOndeOLoteVolta(veioDaCargaDoC2x(proposta)),
       agora,
       venda: { id: proposta.id, reserva_id: proposta.reserva_id ?? null, unidade_id: unidade.id },
     });

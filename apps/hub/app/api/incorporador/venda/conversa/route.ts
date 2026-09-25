@@ -44,7 +44,21 @@ async function unidadeDoEscopo(
   return unidade;
 }
 
-/** A venda viva do lote: é dela que a mensagem herda protocolo e empreendimento. */
+/**
+ * A venda viva do lote: é dela que a mensagem herda protocolo e empreendimento.
+ *
+ * ⚠️ A VENDA HERDADA DO C2X CONTA TAMBÉM (25/09/2026). O filtro `origem = 'panteon'` daqui não achava a
+ * herdada, caía no fallback de `hercules_reservas`, não achava nada (a carga nunca criou a reserva: ZERO
+ * linhas para as 13, medido em 25/09/2026 no projeto bxgukywoxgivlrhjkwjx) e a mensagem nascia com
+ * `proposta_id` e `protocolo_numero` NULOS. Nada quebrava na cara de quem usa, e nada ficava ligado à
+ * venda: defeito silencioso, do tipo que aparece meses depois. Lucas, 25/09/2026: *"essas reservas tem
+ * que comportar iguais as outras"*.
+ *
+ * ⚠️ E `reservado` ENTRA NA LISTA DE ETAPAS. Tirar só o filtro de origem alcançaria 2 das 13; as outras
+ * 11 estão em etapa `reservado`. Nenhuma venda NATIVA mora em `hercules_propostas` nessa etapa (a
+ * reserva do Hércules é linha de `hercules_reservas`): medido em 25/09/2026 no projeto
+ * bxgukywoxgivlrhjkwjx, as 146 linhas em etapa `reservado` são TODAS `origem = c2x`, zero nativas.
+ */
 async function vendaDoLote(
   admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
   unidadeId: string,
@@ -54,9 +68,8 @@ async function vendaDoLote(
     .select("id,protocolo_numero,empreendimento_codigo")
     .eq("workspace_id", WORKSPACE)
     .eq("unidade_id", unidadeId)
-    .eq("origem", "panteon")
     .is("cancelada_em", null)
-    .in("etapa", ["assinatura", "contrato", "faturado", "proposta"])
+    .in("etapa", ["assinatura", "contrato", "faturado", "proposta", "reservado"])
     .order("etapa_desde", { ascending: false })
     .limit(1)
     .maybeSingle();

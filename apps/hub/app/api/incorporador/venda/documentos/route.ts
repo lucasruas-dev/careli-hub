@@ -81,6 +81,14 @@ async function unidadeDoEscopo(
  * ⚠️ A RESERVA CONTA TAMBÉM, e não só a proposta: o documento chega antes de a venda virar
  * proposta (é justamente o RG que se pede para abrir a CAD). Sem olhar a reserva, tudo o que
  * chegasse nessa fase cairia no grupo "sem protocolo" e o agrupamento perderia a razão de existir.
+ *
+ * ⚠️ E A VENDA HERDADA DO C2X CONTA (25/09/2026). O filtro `origem = 'panteon'` não achava a herdada,
+ * o fallback da reserva não achava nada (a carga nunca criou a reserva: ZERO linhas para as 13, medido
+ * em 25/09/2026 no projeto bxgukywoxgivlrhjkwjx) e o documento nascia com `proposta_id` e
+ * `protocolo_numero` NULOS, fora da ficha do cliente. Lucas, 25/09/2026: *"essas reservas tem que
+ * comportar iguais as outras"*. A etapa `reservado` entra na lista pelo mesmo motivo: é onde a carga
+ * deixou 11 das 13, e nenhuma venda NATIVA mora em `hercules_propostas` nessa etapa (as 146 linhas em
+ * `reservado` são TODAS `origem = c2x`, medido em 25/09/2026 no projeto bxgukywoxgivlrhjkwjx).
  */
 async function vendaDoLote(
   admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
@@ -91,9 +99,8 @@ async function vendaDoLote(
     .select("id,protocolo_numero,empreendimento_codigo,cliente_entity_id,cliente_documento")
     .eq("workspace_id", WORKSPACE)
     .eq("unidade_id", unidadeId)
-    .eq("origem", "panteon")
     .is("cancelada_em", null)
-    .in("etapa", ["assinatura", "contrato", "faturado", "proposta"])
+    .in("etapa", ["assinatura", "contrato", "faturado", "proposta", "reservado"])
     .order("etapa_desde", { ascending: false })
     .limit(1)
     .maybeSingle();
