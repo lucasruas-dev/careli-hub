@@ -489,22 +489,46 @@ export async function listarClientes(filtros: Filtros): Promise<Pagina<unknown>>
         order by ph.is_whatsapp desc, ph.updated_at desc, ph.id desc
         limit 1
      )`;
-  // Relógio do lado C2X (o do Panteon entra no merge): o maior entre o usuário e as três tabelas
-  // polimórficas que alimentam a linha. Trocar telefone, endereço ou cônjuge NÃO toca
-  // `users.updated_at`. Telefone entrou em 24/08; endereço e cônjuge em 25/09/2026, porque
-  // `endereco`, `bairro`, `cidade`, `uf`, `cep` e `conjuge_*` saem de `addresses` e `spouses`, e
-  // uma correção só ali ficava fora do incremental. (Medido em 25/09: nenhum cliente do recorte
-  // tinha, desde 14/08, endereço ou cônjuge mais novo que o resto do cadastro. O buraco existia,
-  // ainda sem vítima.) Cada argumento com coalesce: ver RELOGIO_ZERO_SQL.
+  // Relógio do lado C2X (o do Panteon entra no merge): o maior entre o usuário, as três tabelas
+  // polimórficas que alimentam a linha e os contratos do Lavra de que ele é titular.
+  //
+  // Telefone, endereço e cônjuge: trocar qualquer um deles NÃO toca `users.updated_at`. Telefone
+  // entrou em 24/08; endereço e cônjuge em 25/09/2026, porque `endereco`, `bairro`, `cidade`, `uf`,
+  // `cep` e `conjuge_*` saem de `addresses` e `spouses`, e uma correção só ali ficava fora do
+  // incremental. (Medido em 25/09: nenhum cliente do recorte tinha, desde 14/08, endereço ou cônjuge
+  // mais novo que o resto do cadastro. O buraco existia, ainda sem vítima.)
+  //
+  // O contrato entrou em 25/09/2026, depois da revisão: o cliente ENTRA no recorte quando vira
+  // titular de uma venda do Lavra (venda nova ou troca de titular), e isso não toca o cadastro
+  // dele. Caso medido: o relógio do CLI4258 era o próprio cadastro (10/09 15:01:39), e a VEN-5008
+  // (gleba 4, aberta, a única venda aberta dele no recorte) nasceu em 16/09 18:55:13. O incremental
+  // de clientes não o trazia, e o GLOTES recebia a venda e as parcelas com um `codigo_cliente` que
+  // não tinha. Não é caso isolado, é o fluxo normal: dos 224 clientes que entraram no recorte em
+  // 2024, 88 tinham o cadastro parado mais de 5 minutos antes da primeira venda (em 2026, 2 de 4).
+  // - `ar2.updated_at`, e NÃO RELOGIO_DA_VENDA: as parcelas mudam a cada lote de boletos e trariam
+  //   todos os clientes de volta todo mês.
+  // - Sem `ar2.open = 1`: trazer a mais é seguro (upsert), e o cancelamento não move
+  //   `ar.updated_at` (nenhum audit de `open` no C2X inteiro).
+  // - `ENTERPRISES` entra no texto, e não como `?`: é constante numérica do servidor, e este trecho
+  //   fica na lista do SELECT, ANTES do `in (?)` do recorte. Um `?` a mais aqui deslocaria os
+  //   parâmetros [ENTERPRISES, desde, limite].
+  //
+  // Cada argumento com coalesce: ver RELOGIO_ZERO_SQL.
   const maxDoDono = (tabela: string, apelido: string) => `coalesce(
        (select max(coalesce(${apelido}.updated_at, ${apelido}.created_at)) from ${tabela} ${apelido}
          where ${apelido}.ownertable_type = 'User' and ${apelido}.ownertable_id = u.id),
+       ${RELOGIO_ZERO_SQL})`;
+  const maxDosContratos = `coalesce(
+       (select max(coalesce(ar2.updated_at, ar2.created_at)) from acquisition_requests ar2
+          join enterprise_unities eu2 on eu2.id = ar2.enterprise_unity_id
+         where ar2.client_id = u.id and eu2.enterprise_id in (${ENTERPRISES.join(", ")})),
        ${RELOGIO_ZERO_SQL})`;
   const atualizadoSql = `greatest(
        coalesce(u.updated_at, u.created_at, ${RELOGIO_ZERO_SQL}),
        ${maxDoDono("phones", "ph2")},
        ${maxDoDono("addresses", "ad2")},
-       ${maxDoDono("spouses", "sp2")}
+       ${maxDoDono("spouses", "sp2")},
+       ${maxDosContratos}
      )`;
 
   const paramsBase: unknown[] = [ENTERPRISES];
@@ -618,7 +642,11 @@ export async function listarClientes(filtros: Filtros): Promise<Pagina<unknown>>
   return {
     dados: filtrados,
     proxima_pagina: linhas.length === limite && ultimo ? escreverCursor(Number(ultimo.id)) : null,
-    // Com `alterado_desde`, o total reflete o que passou no corte (a carteira cabe numa página).
+    // Com `alterado_desde`, o total conta o que passou no corte NESTA página: o corte é feito aqui,
+    // depois do merge, página a página. Com o limite padrão de 500 a base de 374 cabe numa página
+    // e o número é o do corte inteiro; com limite menor, não é (revisão de 25/09, limite=100:
+    // totais de 0, 2, 3 e 3, um por página). Por isso o contrato manda usar limite=1000 no
+    // incremental de clientes.
     total: filtros.alteradoDesde ? filtrados.length : total,
   };
 }

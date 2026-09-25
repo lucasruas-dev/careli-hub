@@ -297,11 +297,36 @@ describe("clientes: relógio com endereço e cônjuge, corte no relógio local, 
     const pagina = chamadas.find((c) => !/count\(\*\) as total/.test(c.sql))?.sql ?? "";
     const [relogio] = esperaGreatestProtegido(pagina);
     const juntos = (relogio ?? []).join(" | ");
-    expect(relogio).toHaveLength(4);
+    expect(relogio).toHaveLength(5);
     expect(juntos).toContain("u.updated_at");
     for (const tabela of ["phones", "addresses", "spouses"]) {
       expect(juntos).toMatch(new RegExp(`from ${tabela} \\w+\\s+where \\w+\\.ownertable_type = 'User'`));
     }
+  });
+
+  // 25/09/2026: o CLI4258 virou titular da VEN-5008 em 16/09 e o relógio dele continuou no
+  // cadastro de 10/09, então o incremental de clientes não o trazia (88 dos 224 que entraram no
+  // recorte em 2024 tinham o mesmo desenho). O contrato do Lavra de que ele é titular move o relógio.
+  it("o relógio de clientes inclui os contratos do Lavra de que ele é titular", async () => {
+    const chamadas = c2xRespondendo([]);
+
+    await listarClientes({ alteradoDesde: marcaDaPorta("2026-09-16T00:00:00-03:00") });
+
+    const pagina = chamadas.find((c) => !/count\(\*\) as total/.test(c.sql));
+    const [relogio] = esperaGreatestProtegido(pagina?.sql ?? "");
+    const doContrato = (relogio ?? []).filter(
+      (argumento) =>
+        /^coalesce\(\s*\(select max\(coalesce\((\w+)\.updated_at, \1\.created_at\)\) from acquisition_requests \1\b/.test(
+          argumento,
+        ) && /\b\w+\.client_id = u\.id\b/.test(argumento),
+    );
+    expect(doContrato).toHaveLength(1);
+    // Só as duas glebas do Lavra, no texto: um `?` aqui deslocaria [ENTERPRISES, desde, limite].
+    expect(doContrato[0]).toMatch(/enterprise_id in \(1, 4\)/);
+    expect(doContrato[0]).not.toContain("?");
+    // Sem trava de venda aberta: o cancelamento não move o relógio, e trazer a mais é seguro.
+    expect(doContrato[0]).not.toMatch(/\.open\s*=/);
+    expect(pagina?.params).toEqual([[1, 4], 0, 500]);
   });
 
   it("corta com >= no relógio de Brasília e só formata o fuso na saída", async () => {

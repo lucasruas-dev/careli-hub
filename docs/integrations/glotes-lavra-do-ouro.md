@@ -891,11 +891,17 @@ combinada com o Lucas é pedir ao GLOTES UMA CARGA COMPLETA depois da correção
 listagem completa é a verdade.
 
 **6. Cancelamento.** As 100 vendas fechadas do recorte (estágio 7, "Cancelado") têm a última
-alteração em 20/01/2026 e nenhuma tem audit de `open`: não houve cancelamento no período para
-observar se o relógio anda. As parcelas que sobram nelas são só pagas (116 mensais, 18 de sinal,
-9 de ato, 2 avulsas): as não pagas são apagadas no cancelamento. O código sustenta
+alteração em 20/01/2026 e nenhuma tem audit de `open`. As parcelas que sobram nelas são só pagas
+(116 mensais em 7 vendas, 18 de sinal, 9 de ato, 2 avulsas): as não pagas são apagadas depois, em
+limpeza sem data. A VEN-65 tem `updated_at` de 05/01/2024 e as 140 exclusões de parcela dela
+começaram em 20/08/2026; a VEN-570 tem `updated_at` de 08/08/2024 e as 136 exclusões começaram em
+03/09/2026 (nenhum desses 276 audits de `destroy` traz usuário). O código aceita
 `incluir_canceladas` junto com `alterado_desde` (a trava `ar.open = 1` sai e o corte por relógio
-fica), e o contrato recomenda essa combinação para receber cancelamentos.
+fica), mas o cancelamento não move relógio nenhum (ver 14.6): o contrato deixou de prometer o
+cancelamento pelo incremental. E a carga completa de referência passou a ser feita com
+`incluir_canceladas=true` em clientes, vendas e recebimentos: sem ele, remover do lado do GLOTES o
+que não veio apagaria a venda cancelada e as 116 parcelas pagas (66.501 parcelas sem o parâmetro,
+66.617 com ele; 474 vendas contra 574; 374 clientes contra 434).
 
 **7. `valor_parcela` não é valor corrigido.** É `payments.initial_value`, o valor do cronograma:
 só a parcela que recebe boleto é corrigida, a futura fica no valor do contrato. Das 11.977
@@ -920,10 +926,15 @@ anterior dizia "já com o reajuste embutido pelo cronograma", o que não é verd
 - Relógio de `recebimentos`: maior entre `p.updated_at` e `ar.updated_at`. O mesmo no filtro e no
   `atualizado_em` novo.
 - Relógio de `clientes` (lado C2X): `users` mais `max(updated_at)` de `phones`, `addresses` e
-  `spouses` do usuário.
+  `spouses` do usuário, e (depois da revisão, na mesma data) `max(updated_at)` das vendas das duas
+  glebas de que ele é titular. Sem isso, o cliente que entra no recorte por venda nova ou troca de
+  titular não voltava: o CLI4258 (cadastro de 10/09 15:01:39) virou titular da VEN-5008 em 16/09
+  18:55:13, e 88 dos 224 clientes que entraram no recorte em 2024 tinham o cadastro parado mais de
+  5 minutos antes da primeira venda. É `ar.updated_at`, e não o relógio da venda, porque as
+  parcelas mudam a cada lote de boletos e trariam todos os clientes de volta todo mês.
 - `GREATEST` do MySQL devolve NULL se qualquer argumento for NULL: todo argumento leva
   `coalesce(..., '1970-01-01 00:00:00')`, e esse piso sai como `null`, nunca como data.
-- Testes em `apps/hub/lib/integrations/glotes/consultas.test.ts` (21 casos).
+- Testes em `apps/hub/lib/integrations/glotes/consultas.test.ts` (22 casos).
 
 ### 14.4 Custo medido (C2X real, pool de 5 conexões, páginas de 1.000)
 
@@ -951,13 +962,16 @@ de 1 em cada um dos três conjuntos), o que confirma o `>=` e o formato.
 
 ### 14.5 O que o GLOTES precisa fazer
 
-1. UMA carga completa dos cinco conjuntos depois da publicação, removendo do lado deles o
-   `codigo_recebimento` e o `codigo_venda` que não vierem (as 160 parcelas fantasmas saem assim).
+1. UMA carga completa dos cinco conjuntos depois da publicação, com `incluir_canceladas=true` em
+   clientes, vendas e recebimentos, removendo do lado deles o `codigo_recebimento` e o
+   `codigo_venda` que não vierem (as 160 parcelas fantasmas saem assim; sem o parâmetro, sairiam
+   também as vendas canceladas e as 116 parcelas pagas delas).
 2. Se acrescentavam `-03:00` ao `atualizado_em` de `clientes`, parar: agora vem com fuso, e
    acrescentar de novo produz data inválida (400). Por isso o contrato subiu para 2.0.0.
 3. Guardar o maior `atualizado_em` de cada conjunto e repassar em `alterado_desde` com margem de
    alguns minutos (sugestão: 5), tratando as linhas repetidas como upsert pela chave.
-4. Carga completa periódica (sugestão: semanal) para as exclusões.
+4. Carga completa periódica (sugestão: semanal), também com `incluir_canceladas=true`, para as
+   exclusões e os cancelamentos.
 
 ### 14.6 O que continua em aberto
 
@@ -966,6 +980,12 @@ de 1 em cada um dos três conjuntos), o que confirma o `>=` e o formato.
   custou 41 ms (há índice em `audits.created_at`; a tabela tem cerca de 37 mil linhas). Não foi
   feito agora: depende de o audit cobrir toda exclusão (só cobre o que passa pelo Rails) e de
   decidir o formato com o GLOTES.
-- **Cancelamento move o relógio?** Não observado (nenhum cancelamento no recorte desde
-  20/01/2026). Pelo Rails, mudar `open` ou o estágio toca `updated_at`; a carga completa segue
-  como garantia.
+- **Cancelamento não move relógio nenhum.** Medido em 25/09 (somente leitura): dos 1.563 audits
+  de update de `AcquisitionRequest` no C2X inteiro, 0 mexem em `open` e 0 levam a etapa a 7,
+  enquanto 390 mexem em etapa e 19 em titular: o cancelamento passa por fora dos callbacks do
+  Rails. Nenhuma das 100 canceladas do recorte (todas na etapa 7, nenhuma com audit de update) tem
+  o relógio combinado (venda, parcelas, unidade) em 12/08 ou depois (o maior é de 15/06/2026), e
+  nenhuma foi criada depois disso. O schema não tem tabela de cancelamento, distrato ou rescisão.
+  Indício extra: o contrato escrito em 12/08 contava 98 canceladas e hoje são 100, sem relógio
+  nenhum andar. O cancelamento só aparece na carga completa; vê-lo no incremental exigiria guardar
+  o estado anterior do lado Careli, e essa decisão é do Lucas.

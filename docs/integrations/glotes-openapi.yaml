@@ -67,11 +67,20 @@ info:
        ainda existe. **A listagem completa é a verdade.** Faça uma carga completa periódica
        (sugestão: semanal) e remova do seu lado o `codigo_recebimento` e o `codigo_venda` que
        deixaram de vir.
-    4. **Cancelamentos:** chame `vendas` com `alterado_desde` e `incluir_canceladas=true`. A venda
-       cancelada volta com `situacao: "Cancelado"`. As parcelas não pagas de uma venda cancelada
-       são apagadas na origem (item 3): hoje as 100 vendas canceladas do recorte guardam só
-       parcelas pagas. Ao receber o cancelamento, trate as parcelas em aberto daquele contrato
-       como extintas; a carga completa confirma.
+
+       ⚠️ **A carga completa de referência é feita com `incluir_canceladas=true` em `clientes`,
+       `vendas` e `recebimentos`**, e só depois dela se remove o que não veio. Sem o parâmetro, a
+       venda cancelada e TODAS as parcelas dela, inclusive as pagas, ficam fora da listagem, e a
+       remoção apagaria do seu lado um contrato e um histórico de pagamento que existem. Em
+       25/09/2026 são 100 vendas canceladas no recorte, e 7 delas guardam 116 parcelas mensais
+       pagas.
+    4. **Cancelamentos só aparecem na carga completa.** O cancelamento não move nenhum relógio na
+       origem, porque o C2X não carimba o cancelamento: cancelar não faz a venda voltar em
+       `alterado_desde`, com ou sem `incluir_canceladas`. Na carga completa de referência (item 3) a
+       venda passa a vir com `situacao: "Cancelado"`; na listagem padrão, sem o parâmetro, ela
+       some. As parcelas não pagas do contrato cancelado são apagadas na origem depois, numa
+       limpeza sem data certa. Guarde a venda como cancelada, mantenha as parcelas pagas e trate
+       como extinta toda parcela em aberto de contrato com `situacao: "Cancelado"`.
 
     ## Estado deste documento
 
@@ -82,8 +91,9 @@ info:
     **Carga incremental CORRIGIDA em 25/09/2026** (ver `x-historico` no fim do arquivo). Até
     essa data o incremental de `vendas` e `recebimentos` deixava de entregar alterações: o corte
     estava deslocado em 3 horas e o relógio de cada linha era estreito demais. **Depois da
-    correção, faça UMA carga completa** dos cinco conjuntos para reconciliar: ela traz o que o
-    incremental perdeu e deixa de trazer as parcelas apagadas na origem (item 3 acima).
+    correção, faça UMA carga completa** dos cinco conjuntos para reconciliar, com
+    `incluir_canceladas=true` onde ele existe (item 3 acima): ela traz o que o incremental perdeu
+    e deixa de trazer as parcelas apagadas na origem.
 
     O que continua em aberto está em `x-pendencias`, e nada disso impede começar a integração: os
     campos sem origem já vêm nulos e documentados.
@@ -163,6 +173,16 @@ paths:
         - $ref: "#/components/parameters/Limite"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/AlteradoDesde"
+        - name: incluir_canceladas
+          in: query
+          description: |
+            Por padrão só os titulares de venda ativa (374 em 25/09/2026). Ligando, entram também
+            os titulares de vendas canceladas: 434 com o parâmetro.
+
+            **Use na carga completa de referência** (ver "Como consumir", item 3), junto com
+            `vendas` e `recebimentos`: é o que garante que todo `codigo_cliente` das vendas
+            canceladas exista do seu lado.
+          schema: { type: boolean, default: false }
       responses:
         "200":
           description: Página de clientes.
@@ -285,13 +305,22 @@ paths:
           in: query
           description: |
             Por padrão só vendas ativas. Ligando, entram também as canceladas, com
-            `situacao: "Cancelado"`. São 100 no recorte em 25/09/2026.
+            `situacao: "Cancelado"`. São 100 no recorte em 25/09/2026 (574 vendas com o parâmetro,
+            contra 474 sem ele).
 
-            **Combine com `alterado_desde` para receber cancelamentos:** o corte por relógio
-            continua valendo com as canceladas incluídas, então a venda cancelada depois da marca
-            volta com `situacao: "Cancelado"`. Sem este parâmetro ela apenas some do incremental.
-            As parcelas não pagas do contrato cancelado são apagadas na origem e não voltam em
-            `/recebimentos` (ver "Como consumir", itens 3 e 4).
+            **Use na carga completa de referência** (ver "Como consumir", itens 3 e 4). Sem o
+            parâmetro a venda cancelada some da listagem, e remover do seu lado o que não veio
+            apagaria o contrato e as parcelas pagas dele.
+
+            ⚠️ **Não serve para receber cancelamentos pelo incremental.** O parâmetro é aceito junto
+            com `alterado_desde`, mas o cancelamento não move nenhum relógio na origem (o C2X não
+            carimba o cancelamento): a venda cancelada depois da marca NÃO volta. Ela só aparece
+            na carga completa.
+
+            As parcelas pagas do contrato cancelado continuam em `/recebimentos` com
+            `incluir_canceladas=true`. As não pagas são apagadas na origem depois, numa limpeza sem
+            data certa; enquanto não forem, trate como extinta toda parcela em aberto de contrato
+            com `situacao: "Cancelado"`.
           schema: { type: boolean, default: false }
       responses:
         "200":
@@ -359,6 +388,23 @@ paths:
         - $ref: "#/components/parameters/Limite"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/AlteradoDesde"
+        - name: incluir_canceladas
+          in: query
+          description: |
+            Por padrão só as parcelas de vendas ativas. Ligando, entram também as parcelas dos
+            contratos cancelados (a venda vem com `situacao: "Cancelado"` em `/vendas` com o mesmo
+            parâmetro).
+
+            ⚠️ **Sem este parâmetro, nenhuma parcela de contrato cancelado volta, nem as pagas.**
+            Em 25/09/2026 são 116 parcelas mensais pagas em 7 vendas canceladas: o total vai de
+            66.501 para 66.617 com o parâmetro. Use-o na carga completa de referência (ver "Como
+            consumir", item 3); sem ele, remover do seu lado o que não veio apaga histórico de
+            pagamento que existe.
+
+            Parcela em aberto de contrato com `situacao: "Cancelado"` é tratada como extinta: as
+            não pagas são apagadas na origem depois, numa limpeza sem data certa (ver "Como
+            consumir", item 4).
+          schema: { type: boolean, default: false }
         - name: codigo_venda
           in: query
           description: Todas as parcelas de um contrato.
@@ -455,7 +501,7 @@ components:
 
         | Conjunto | `atualizado_em` é a alteração mais recente entre |
         |---|---|
-        | `clientes` | o cadastro do cliente, os telefones, o endereço e o cônjuge na Careli, e os contatos (e-mail, telefone) atualizados pelo atendimento |
+        | `clientes` | o cadastro do cliente, os telefones, o endereço e o cônjuge na Careli, os contatos (e-mail, telefone) atualizados pelo atendimento e o contrato do Lavra de que ele é titular (uma venda nova ou uma troca de titular traz o cliente de volta) |
         | `vendas` | o contrato, as parcelas de sinal e de mensalidade dele (inclusive as marcadas para exclusão) e a unidade |
         | `recebimentos` | a parcela e o contrato dela (a troca de titular muda `codigo_cliente` de todas as parcelas do contrato) |
 
@@ -469,8 +515,16 @@ components:
         quando você leu pode aparecer depois com carimbo anterior ao maior valor que você viu. A
         margem cobre isso ao custo de algumas linhas repetidas.
 
-        ⚠️ **O que é APAGADO não volta no incremental**: ver "Como consumir", item 3. A carga
-        completa periódica é a garantia de que as duas bases batem.
+        **Cada lote de emissão de boletos devolve quase tudo no incremental seguinte.** A emissão
+        de boletos em lote no Asaas toca as parcelas na origem (grava nelas a referência do
+        boleto), e isso move o relógio das parcelas tocadas e o de quase todas as vendas, mesmo
+        sem mudança em nenhum campo entregue por esta API. É esperado e seguro: trate como
+        upsert. Exemplo medido: em 10/09/2026, entre 01h e 02h, 566 parcelas de 242 vendas
+        abertas foram tocadas assim, e nenhuma foi criada.
+
+        ⚠️ **O que é APAGADO e o que é CANCELADO não voltam no incremental**: ver "Como
+        consumir", itens 3 e 4. A carga completa periódica é a garantia de que as duas bases
+        batem.
       schema: { type: string, format: date-time }
       example: "2026-09-25T12:15:00-03:00"
 
@@ -513,8 +567,11 @@ components:
         total:
           type: integer
           description: |
-            Total de linhas do conjunto inteiro, não da página. Com `alterado_desde`, é o total
-            do que passou no corte.
+            Total de linhas do conjunto inteiro, não da página. Com `alterado_desde`, em `vendas`
+            e `recebimentos` é o total do que passou no corte. Em `clientes` o corte é feito
+            página a página, depois de juntar os contatos do atendimento, e `total` conta só a
+            página: com `alterado_desde` em `clientes`, use `limite=1000` (a base inteira cabe
+            numa página).
         proxima_pagina:
           type: [string, "null"]
           description: Cursor da próxima página. `null` quando acabou.
@@ -594,16 +651,18 @@ components:
           type: [string, "null"]
           format: date-time
           description: |
-            Última alteração do cadastro: dados do cliente, telefones, endereço, cônjuge ou
-            contatos atualizados pelo atendimento, o que for mais recente. ISO 8601 com o fuso de
-            Brasília daquele instante (`-03:00` hoje; `-02:00` em datas do antigo horário de
-            verão). É o relógio do filtro `alterado_desde`, e o valor é aceito nele como veio.
+            Última alteração do cliente: dados do cadastro, telefones, endereço, cônjuge,
+            contatos atualizados pelo atendimento e o contrato do Lavra de que ele é titular (uma
+            venda nova ou uma troca de titular traz o cliente de volta), o que for mais recente.
+            ISO 8601 com o fuso de Brasília daquele instante (`-03:00` hoje; `-02:00` em datas do
+            antigo horário de verão). É o relógio do filtro `alterado_desde`, e o valor é aceito
+            nele como veio.
 
             ⚠️ **Formato mudou em 25/09/2026.** Antes saía `YYYY-MM-DD HH:MM:SS`, sem fuso, e
             repassar esse valor em `alterado_desde` dava 400. Se a sua integração acrescentava
             `-03:00` ao valor recebido, **pare de acrescentar**: no formato novo isso produz uma
-            data inválida e a chamada volta 400. Endereço e cônjuge passaram a mover o relógio na
-            mesma data.
+            data inválida e a chamada volta 400. Endereço, cônjuge e o contrato de que o cliente é
+            titular passaram a mover o relógio na mesma data.
           examples: ["2026-09-18T10:59:44-03:00"]
 
     Lote:
@@ -887,7 +946,8 @@ x-pendencias:
       14/08 não cobria: o corte comparava a marca em UTC com uma coluna gravada no horário de
       Brasília, e o relógio de `vendas` e de `recebimentos` não enxergava tudo o que muda a
       linha. Corrigido na mesma data (ver `x-historico`). O que continua fora do incremental, por
-      natureza, é a EXCLUSÃO: a carga completa periódica é a garantia.
+      natureza, é a EXCLUSÃO e o CANCELAMENTO (que não move relógio nenhum na origem): a carga
+      completa periódica, com `incluir_canceladas=true`, é a garantia.
     de_quem: Careli
   P4:
     assunto: Base legal e minimização de dado pessoal
@@ -922,21 +982,29 @@ x-historico:
       - |
         `vendas` ganhou `atualizado_em`, e o relógio passou a incluir as parcelas de sinal e de
         mensalidade e a unidade (antes era só o contrato). Exemplo medido: desde 10/09 o
-        incremental devolvia 2 vendas; com o relógio novo, 459 das 474 (cronogramas alterados em
-        lote no período).
+        incremental devolvia 2 vendas; com o relógio novo, 459 das 474 (a emissão de boletos em
+        lote no Asaas toca as parcelas: em 10/09, entre 01h e 02h, 566 parcelas de 242 vendas).
       - |
         `clientes.atualizado_em` passou a sair com fuso (quebra de formato: ver a descrição do
-        campo) e a considerar também endereço e cônjuge.
+        campo) e a considerar também endereço, cônjuge e o contrato do Lavra de que o cliente é
+        titular. Uma venda nova ou uma troca de titular agora traz o cliente de volta no
+        incremental. Exemplo medido: um cliente com cadastro de 10/09 virou titular de uma venda
+        criada em 16/09, e o incremental de `clientes` a partir de 16/09 não o devolvia, enquanto
+        `vendas` e `recebimentos` chegavam com o `codigo_cliente` dele.
       - |
-        Documentado o que o incremental não entrega (exclusões), a margem recomendada ao repassar
-        a marca, a borda `>=` (linhas repetidas, tratar como upsert), como receber cancelamentos
-        (`incluir_canceladas` com `alterado_desde`) e o que `valor_parcela` significa de fato.
+        Documentado o que o incremental não entrega (exclusões e cancelamentos), a margem
+        recomendada ao repassar a marca, a borda `>=` (linhas repetidas, tratar como upsert), o
+        volume que cada lote de boletos devolve, que o cancelamento só aparece na carga completa,
+        que a carga completa de referência usa `incluir_canceladas=true` (agora documentado
+        também em `clientes` e `recebimentos`) e o que `valor_parcela` significa de fato.
     acao_do_glotes:
       - |
-        Fazer UMA carga completa dos cinco conjuntos depois desta versão e remover do seu lado o
-        `codigo_recebimento` e o `codigo_venda` que não vierem nela. Em 25/09/2026 a Careli
-        identificou 160 parcelas que foram apagadas na origem e que o incremental não tinha como
-        avisar: 144 da VEN-81 (cronograma refeito naquele dia) e 16 da VEN-524.
+        Fazer UMA carga completa dos cinco conjuntos depois desta versão, com
+        `incluir_canceladas=true` em `clientes`, `vendas` e `recebimentos`, e só então remover do
+        seu lado o `codigo_recebimento` e o `codigo_venda` que não vierem nela. Sem o parâmetro,
+        a remoção apagaria as vendas canceladas e as parcelas pagas delas. Em 25/09/2026 a
+        Careli identificou 160 parcelas que foram apagadas na origem e que o incremental não
+        tinha como avisar: 144 da VEN-81 (cronograma refeito naquele dia) e 16 da VEN-524.
       - |
         Se a integração acrescentava `-03:00` ao `atualizado_em` de `clientes`, parar: o valor
         agora já vem com fuso e deve ser repassado como veio.
