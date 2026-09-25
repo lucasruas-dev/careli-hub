@@ -1020,9 +1020,11 @@ x-historico:
         Careli identificou 160 parcelas que foram apagadas na origem e que o incremental não
         tinha como avisar: 144 da VEN-81 (cronograma refeito naquele dia) e 16 da VEN-524.
       - |
-        A carga completa também corrige o `valor_pago` das parcelas em atraso que vinham com o
-        valor do boleto: elas passam a vir com `valor_pago` nulo. Se o GLOTES somou esses
-        valores como recebidos, refazer a soma depois da carga.
+        A carga completa também corrige o `valor_pago` das parcelas que vinham com o valor do
+        boleto (762 em 25/09/2026: 761 em atraso e 1 aguardando, R$ 411.581,32): elas passam a
+        vir com `valor_pago` nulo. O incremental NÃO traz essa correção, porque o relógio dessas
+        parcelas não muda; só a carga completa. Se o GLOTES somou esses valores como recebidos,
+        refazer a soma depois da carga.
       - |
         Se a integração acrescentava `-03:00` ao `atualizado_em` de `clientes`, parar: o valor
         agora já vem com fuso e deve ser repassado como veio.

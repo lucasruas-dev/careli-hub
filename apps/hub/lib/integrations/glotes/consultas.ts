@@ -1001,8 +1001,8 @@ export async function listarRecebimentos(filtros: Filtros): Promise<Pagina<unkno
   );
 
   const dados = linhas.map((linha) => {
-    // Zero NÃO é pagamento: há 940 linhas com `paid_value = 0` que significam ausência. Elas saem
-    // como null, senão o GLOTES contabiliza pagamento onde não houve.
+    // Zero NÃO é pagamento: `paid_value = 0` significa ausência (940 linhas em 07/08, 2.270 no
+    // recorte em 25/09/2026). Elas saem como null, senão o GLOTES contabiliza pagamento onde não houve.
     const pago = Number(linha.paid_value ?? 0);
     // E valor SEM data também não é pagamento. Medido em 25/09/2026: 761 parcelas ATRASADAS (e 1
     // aguardando) tinham `paid_value` IGUAL ao valor da parcela e nenhuma `payment_date`,

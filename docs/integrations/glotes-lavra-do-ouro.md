@@ -926,8 +926,8 @@ Nenhuma parcial entre as atrasadas: todas com o valor exato da parcela e vencime
 21/09/2026. É o valor do boleto emitido, gravado antes do pagamento, a mesma conclusão do extrato
 do Apolo ("pago é quem tem data"). O GLOTES somando `valor_pago` via R$ 409 mil que não entraram.
 Correção: `valor_pago` só sai com `data_pagamento` ou com status Pago (5); a única Paga sem data
-mantém o valor. As linhas 169, 170 e a correção C2 acima ficam como retrato de 07/08: a leitura
-"pagamento parcial" estava errada.
+mantém o valor. As linhas `data_pagamento` e `valor_pago` da tabela de campos e a correção C2 acima
+ficam como retrato de 07/08: a leitura "pagamento parcial" estava errada.
 
 ### 14.3 O que mudou no código (`apps/hub/lib/integrations/glotes/consultas.ts`)
 
@@ -992,8 +992,10 @@ de 1 em cada um dos três conjuntos), o que confirma o `>=` e o formato.
    alguns minutos (sugestão: 5), tratando as linhas repetidas como upsert pela chave.
 4. Carga completa periódica (sugestão: semanal), também com `incluir_canceladas=true`, para as
    exclusões e os cancelamentos.
-5. Depois da carga completa, refazer qualquer soma de `valor_pago` feita antes dela: as 761
-   parcelas em atraso que vinham com o valor do boleto passam a vir com `valor_pago` nulo.
+5. Depois da carga completa, refazer qualquer soma de `valor_pago` feita antes dela: as 762
+   parcelas que vinham com o valor do boleto (761 em atraso e 1 aguardando, R$ 411.581,32) passam
+   a vir com `valor_pago` nulo. O incremental não traz essa correção, porque o relógio dessas
+   parcelas não muda (desde 10/09 ele devolve só 176 das 762): só a carga completa.
 
 ### 14.6 O que continua em aberto
 
