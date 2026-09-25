@@ -107,6 +107,152 @@ function data(valor: unknown): null | string {
   return /^\d{4}-\d{2}-\d{2}$/.test(bruto) ? bruto : null;
 }
 
+// --- relógio ------------------------------------------------------------------------------------
+//
+// ⚠️ O C2X GRAVA `datetime` SEM FUSO, NO RELÓGIO DE BRASÍLIA, e a sessão do MySQL é UTC. Medido em
+// 25/09/2026: `@@session.time_zone = UTC`, e `created_at`/`updated_at` de payments,
+// acquisition_requests, enterprise_unities, users, addresses, spouses e phones são `datetime`.
+// Três consequências, e as três já custaram dado ao GLOTES:
+//   1. A marca de `alterado_desde` chega da porta em UTC (lerAlteradoDesde) e precisa ir para o
+//      relógio de Brasília ANTES de ser comparada com a coluna. Até 25/09 só `clientes` convertia:
+//      em vendas e recebimentos o corte andava 3 horas para a frente e perdia para sempre o que
+//      mudou nessas 3 horas (desde 10/09, o incremental de recebimentos devolvia 534 linhas contra
+//      1.564 reais).
+//   2. O `atualizado_em` que sai precisa carregar o fuso: o contrato manda o cliente repassar o
+//      maior `atualizado_em` em `alterado_desde`, e a porta recusa marca sem fuso (com razão).
+//   3. O fuso de Brasília NÃO é constante: houve horário de verão até fevereiro de 2019. Colar
+//      `-03:00` fixo erra uma hora nas datas daquele período; o deslocamento sai do banco de fusos
+//      (Intl), instante a instante.
+
+const FUSO_DO_C2X = "America/Sao_Paulo";
+
+/**
+ * Piso dos relógios combinados.
+ *
+ * `GREATEST` do MySQL devolve NULL se QUALQUER argumento for NULL, e NULL no relógio tira a linha
+ * do incremental calada (`NULL >= marca` não é verdadeiro). As colunas de relógio são NOT NULL hoje
+ * (conferido em 25/09/2026), mas o `max()` de uma tabela filha sem linha é NULL: todo argumento
+ * leva `coalesce(..., RELOGIO_ZERO_SQL)`. O piso nunca aparece na saída (relogioComFuso devolve
+ * null para ele).
+ */
+const RELOGIO_ZERO = "1970-01-01 00:00:00";
+const RELOGIO_ZERO_SQL = `cast('${RELOGIO_ZERO}' as datetime)`;
+
+// `hourCycle: h23`, e não `hour12: false`: com este último alguns motores escrevem meia-noite como
+// "24", e a hora 24 viraria o dia seguinte na conta do deslocamento.
+const FORMATO_BRASILIA = new Intl.DateTimeFormat("en-US", {
+  day: "2-digit",
+  hour: "2-digit",
+  hourCycle: "h23",
+  minute: "2-digit",
+  month: "2-digit",
+  second: "2-digit",
+  timeZone: FUSO_DO_C2X,
+  year: "numeric",
+});
+
+type PartesDoRelogio = {
+  ano: number;
+  dia: number;
+  hora: number;
+  mes: number;
+  minuto: number;
+  segundo: number;
+};
+
+function partesEmBrasilia(instante: Date): PartesDoRelogio {
+  const partes: Record<string, number> = {};
+  for (const parte of FORMATO_BRASILIA.formatToParts(instante)) {
+    if (parte.type !== "literal") partes[parte.type] = Number(parte.value);
+  }
+  return {
+    ano: partes.year ?? 0,
+    dia: partes.day ?? 0,
+    hora: (partes.hour ?? 0) % 24,
+    mes: partes.month ?? 0,
+    minuto: partes.minute ?? 0,
+    segundo: partes.second ?? 0,
+  };
+}
+
+function doisDigitos(valor: number): string {
+  return String(valor).padStart(2, "0");
+}
+
+/** `YYYY-MM-DD HH:MM:SS`: o formato do `date_format` do C2X, que compara como texto. */
+function textoDoRelogio(p: PartesDoRelogio): string {
+  return `${String(p.ano).padStart(4, "0")}-${doisDigitos(p.mes)}-${doisDigitos(p.dia)} ${doisDigitos(p.hora)}:${doisDigitos(p.minuto)}:${doisDigitos(p.segundo)}`;
+}
+
+/**
+ * Um instante (ISO com fuso, ex.: o `updated_at` do Supabase) no relógio de Brasília,
+ * `YYYY-MM-DD HH:MM:SS`: o MESMO formato e fuso das colunas do C2X, para comparar como texto.
+ */
+function relogioBrasilia(iso: null | string): null | string {
+  if (!iso) return null;
+  const instante = new Date(iso);
+  if (Number.isNaN(instante.getTime())) return null;
+  return textoDoRelogio(partesEmBrasilia(instante));
+}
+
+/**
+ * A marca de `alterado_desde` no RELÓGIO DO C2X.
+ *
+ * A porta entrega a marca em UTC (`YYYY-MM-DD HH:MM:SS`, ver lerAlteradoDesde); as colunas do C2X
+ * estão no relógio de Brasília. Sem esta conversão a marca `2026-09-10T00:00:00-03:00` virava
+ * `2026-09-10 03:00:00` e comparava com uma coluna local: o corte andava 3 horas.
+ */
+export function marcaNoRelogioDoC2x(alteradoDesde: null | string | undefined): null | string {
+  const bruto = alteradoDesde?.trim();
+  if (!bruto) return null;
+  return relogioBrasilia(`${bruto.replace(" ", "T")}Z`);
+}
+
+/** Deslocamento de Brasília, em minutos (-180 = `-03:00`), NAQUELE instante. */
+function deslocamentoEmMinutos(instanteMs: number): number {
+  const semMilissegundos = Math.floor(instanteMs / 1000) * 1000;
+  const p = partesEmBrasilia(new Date(semMilissegundos));
+  const comoSeFosseUtc = Date.UTC(p.ano, p.mes - 1, p.dia, p.hora, p.minuto, p.segundo);
+  return Math.round((comoSeFosseUtc - semMilissegundos) / 60_000);
+}
+
+/**
+ * O relógio do C2X (`YYYY-MM-DD HH:MM:SS`, Brasília, sem fuso) em ISO 8601 COM o deslocamento de
+ * Brasília daquele instante: `2026-09-25 12:20:00` vira `2026-09-25T12:20:00-03:00`, e
+ * `2018-12-01 12:00:00` (horário de verão) vira `2018-12-01T12:00:00-02:00`.
+ *
+ * É o formato que a porta aceita de volta em `alterado_desde`: repassar o valor recebido devolve
+ * exatamente a mesma marca no relógio do C2X (ida e volta testada). Antes de 25/09/2026 `clientes`
+ * saía sem fuso e repassar o valor dava 400.
+ *
+ * O deslocamento é resolvido em duas voltas: a primeira lê o fuso no instante "como se a hora fosse
+ * UTC", a segunda confere no instante real. Só difere a menos de 3 horas de uma virada de horário
+ * de verão. Na hora repetida do fim do horário de verão fica a primeira ocorrência (`-02:00`).
+ */
+export function relogioComFuso(local: unknown): null | string {
+  const bruto = String(local ?? "").trim();
+  const m = bruto.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/);
+  if (!m) return null;
+  const [, ano, mes, dia, hora, minuto, segundo] = m;
+  const comoTexto = `${ano}-${mes}-${dia} ${hora}:${minuto}:${segundo}`;
+  // O piso dos relógios combinados (e qualquer data "zero" do legado) não é alteração: sai null.
+  if (comoTexto <= RELOGIO_ZERO) return null;
+
+  const comoSeFosseUtc = Date.UTC(
+    Number(ano),
+    Number(mes) - 1,
+    Number(dia),
+    Number(hora),
+    Number(minuto),
+    Number(segundo),
+  );
+  const palpite = deslocamentoEmMinutos(comoSeFosseUtc);
+  const deslocamento = deslocamentoEmMinutos(comoSeFosseUtc - palpite * 60_000);
+  const sinal = deslocamento < 0 ? "-" : "+";
+  const absoluto = Math.abs(deslocamento);
+  return `${ano}-${mes}-${dia}T${hora}:${minuto}:${segundo}${sinal}${doisDigitos(Math.floor(absoluto / 60))}:${doisDigitos(absoluto % 60)}`;
+}
+
 // --- cursor -------------------------------------------------------------------------------------
 
 /**
@@ -189,26 +335,6 @@ type ContatoDoPanteon = {
   email: null | string;
   telefone: null | string;
 };
-
-// Instante do Supabase (UTC) no relógio de Brasília, `YYYY-MM-DD HH:MM:SS` — o MESMO formato
-// e fuso do lado C2X, para o `atualizado_em` e o `alterado_desde` compararem como texto.
-function relogioBrasilia(iso: null | string): null | string {
-  if (!iso) return null;
-  const instante = new Date(iso);
-  if (Number.isNaN(instante.getTime())) return null;
-  return new Intl.DateTimeFormat("sv-SE", {
-    day: "2-digit",
-    hour: "2-digit",
-    hour12: false,
-    minute: "2-digit",
-    month: "2-digit",
-    second: "2-digit",
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-  })
-    .format(instante)
-    .replace("T", " ");
-}
 
 async function contatosDoPanteonPorDocumento(
   documentos: string[],
@@ -363,12 +489,22 @@ export async function listarClientes(filtros: Filtros): Promise<Pagina<unknown>>
         order by ph.is_whatsapp desc, ph.updated_at desc, ph.id desc
         limit 1
      )`;
-  // Relógio do lado C2X (o do Panteon entra no merge): o maior entre o usuário e os telefones
-  // dele — trocar telefone não toca `users.updated_at`.
+  // Relógio do lado C2X (o do Panteon entra no merge): o maior entre o usuário e as três tabelas
+  // polimórficas que alimentam a linha. Trocar telefone, endereço ou cônjuge NÃO toca
+  // `users.updated_at`. Telefone entrou em 24/08; endereço e cônjuge em 25/09/2026, porque
+  // `endereco`, `bairro`, `cidade`, `uf`, `cep` e `conjuge_*` saem de `addresses` e `spouses`, e
+  // uma correção só ali ficava fora do incremental. (Medido em 25/09: nenhum cliente do recorte
+  // tinha, desde 14/08, endereço ou cônjuge mais novo que o resto do cadastro. O buraco existia,
+  // ainda sem vítima.) Cada argumento com coalesce: ver RELOGIO_ZERO_SQL.
+  const maxDoDono = (tabela: string, apelido: string) => `coalesce(
+       (select max(coalesce(${apelido}.updated_at, ${apelido}.created_at)) from ${tabela} ${apelido}
+         where ${apelido}.ownertable_type = 'User' and ${apelido}.ownertable_id = u.id),
+       ${RELOGIO_ZERO_SQL})`;
   const atualizadoSql = `greatest(
-       coalesce(u.updated_at, u.created_at, '1970-01-01'),
-       coalesce((select max(ph2.updated_at) from phones ph2
-                  where ph2.ownertable_type = 'User' and ph2.ownertable_id = u.id), '1970-01-01')
+       coalesce(u.updated_at, u.created_at, ${RELOGIO_ZERO_SQL}),
+       ${maxDoDono("phones", "ph2")},
+       ${maxDoDono("addresses", "ad2")},
+       ${maxDoDono("spouses", "sp2")}
      )`;
 
   const paramsBase: unknown[] = [ENTERPRISES];
@@ -423,7 +559,7 @@ export async function listarClientes(filtros: Filtros): Promise<Pagina<unknown>>
     }),
   );
 
-  const dados = linhas.map((linha) => {
+  const registros = linhas.map((linha) => {
     const pj = Number(linha.person_type_id) === 2;
     const endereco = [texto(linha.logradouro), texto(linha.numero), texto(linha.complemento)]
       .filter(Boolean)
@@ -438,10 +574,10 @@ export async function listarClientes(filtros: Filtros): Promise<Pagina<unknown>>
         ? panteon.atualizadoEm
         : atualizadoC2x;
 
-    return {
-      // Relógio da atualização do cadastro (Panteon OU C2X, o mais novo) — mesmo relógio do
-      // filtro `alterado_desde`, para o GLOTES sincronizar incrementalmente.
-      atualizado_em: atualizadoEm,
+    const saida = {
+      // Relógio da atualização do cadastro (Panteon OU C2X, o mais novo), ISO com o fuso de
+      // Brasília: o mesmo relógio do filtro `alterado_desde`, e aceito de volta nele.
+      atualizado_em: relogioComFuso(atualizadoEm),
       bairro: texto(linha.bairro),
       cep: digitos(linha.cep),
       cidade: texto(linha.cidade),
@@ -460,19 +596,23 @@ export async function listarClientes(filtros: Filtros): Promise<Pagina<unknown>>
       tipo_pessoa: pj ? "J" : "F",
       uf: texto(linha.uf),
     };
+
+    // O relógio LOCAL (`YYYY-MM-DD HH:MM:SS`, Brasília) segue ao lado da saída só para o corte de
+    // `alterado_desde` abaixo, que compara como texto. O fuso entra só na saída.
+    return { relogio: atualizadoEm, saida };
   });
 
   // `alterado_desde` compara o relógio COMBINADO (Panteon + C2X), então o corte é aqui, depois
   // do merge — no SQL só o lado C2X existe e uma atualização feita no Apolo ficaria invisível.
   // A base tem ~375 clientes: uma página cobre tudo, o pós-filtro não custa nada.
-  // ⚠️ FUSO: a porta normaliza a marca para UTC (lerAlteradoDesde), e o `atualizado_em` daqui
-  // está no relógio de Brasília — converter antes de comparar, senão o corte come 3 horas.
-  const marcaBrasilia = filtros.alteradoDesde
-    ? relogioBrasilia(`${filtros.alteradoDesde.replace(" ", "T")}Z`)
-    : null;
-  const filtrados = marcaBrasilia
-    ? dados.filter((d) => d.atualizado_em && d.atualizado_em >= marcaBrasilia)
-    : dados;
+  // ⚠️ FUSO: a porta normaliza a marca para UTC (lerAlteradoDesde), e o relógio daqui está no de
+  // Brasília: converter antes de comparar, senão o corte come 3 horas.
+  const marcaBrasilia = marcaNoRelogioDoC2x(filtros.alteradoDesde);
+  const filtrados = (
+    marcaBrasilia
+      ? registros.filter((r) => r.relogio !== null && r.relogio >= marcaBrasilia)
+      : registros
+  ).map((r) => r.saida);
 
   const ultimo = linhas[linhas.length - 1];
   return {
@@ -562,6 +702,7 @@ export async function listarLotes(filtros: Filtros): Promise<Pagina<unknown>> {
 
 type VendaRow = RowDataPacket & {
   act_date: null | string;
+  atualizado_em: null | string;
   codigo_cliente: null | string;
   codigo_lote: null | string;
   data_1o_vencimento: null | string;
@@ -576,14 +717,43 @@ type VendaRow = RowDataPacket & {
   valor_sinal: null | number | string;
 };
 
+/**
+ * O relógio da VENDA: o maior entre o contrato, as parcelas de Sinal e Parcela dele e a unidade.
+ *
+ * Até 25/09/2026 era só `ar.updated_at`, e isso perdia quase tudo: `qtd_parcelas`, `qtd_sinal`,
+ * `valor_sinal`, `valor_parcela` e `data_1o_vencimento` SAEM das parcelas, e mexer em parcela não
+ * toca `acquisition_requests.updated_at`. Medido em 25/09, das 474 vendas abertas: desde 10/09 o
+ * relógio antigo devolvia 2 e o combinado devolve 459; desde 14/08, 2 contra 466.
+ *
+ * - Parcelas SEM o filtro de `payment_to_delete`: marcar para apagar muda `qtd_parcelas` (a
+ *   contagem exclui as marcadas), então a marcação tem que mover o relógio.
+ * - A unidade entra porque `valor_venda` (`eu.price`) e `codigo_lote` (`eu.name`) saem dela. Hoje
+ *   não acrescenta nenhuma venda (medido), mas mudar o preço da unidade mudaria a linha sem aviso.
+ * - Parcela APAGADA de verdade não deixa rastro aqui (a linha some e o `max` não sobe). Se a régua
+ *   é recriada, as novas movem o relógio; se só é apagada, não. Esse é o limite documentado no
+ *   contrato: a carga completa é a verdade.
+ * - Cada argumento com coalesce: ver RELOGIO_ZERO_SQL.
+ */
+const RELOGIO_DA_VENDA = `greatest(
+       coalesce(ar.updated_at, ar.created_at, ${RELOGIO_ZERO_SQL}),
+       coalesce(
+         (select max(coalesce(pu.updated_at, pu.created_at)) from payments pu
+           where pu.acquisition_request_id = ar.id and pu.parcel_type_id in (2, 3)),
+         ${RELOGIO_ZERO_SQL}),
+       coalesce(eu.updated_at, eu.created_at, ${RELOGIO_ZERO_SQL})
+     )`;
+
 export async function listarVendas(filtros: Filtros): Promise<Pagina<unknown>> {
   const limite = limiteDe(filtros.limite);
   const desde = lerCursor(filtros.cursor);
   const abertas = filtros.incluirCanceladas ? "" : "and ar.open = 1";
-  const alterado = filtros.alteradoDesde ? "and ar.updated_at >= ?" : "";
+  // O MESMO relógio no filtro e no `atualizado_em` da saída: o cliente repassa o maior valor
+  // recebido e o corte tem que medir a mesma coisa que ele viu.
+  const marca = marcaNoRelogioDoC2x(filtros.alteradoDesde);
+  const alterado = marca ? `and ${RELOGIO_DA_VENDA} >= ?` : "";
 
   const paramsBase: unknown[] = [ENTERPRISES];
-  if (filtros.alteradoDesde) paramsBase.push(filtros.alteradoDesde);
+  if (marca) paramsBase.push(marca);
 
   const total = await contar(
     `select count(*) as total
@@ -605,6 +775,7 @@ export async function listarVendas(filtros: Filtros): Promise<Pagina<unknown>> {
        eu.price,
        date_format(ar.act_date, '%Y-%m-%d') as act_date,
        date_format(ar.first_signal_payment, '%Y-%m-%d') as data_sinal,
+       date_format(${RELOGIO_DA_VENDA}, '%Y-%m-%d %H:%i:%s') as atualizado_em,
        st.name as situacao,
        imc.name as indice,
        (select count(*) from payments p
@@ -637,6 +808,10 @@ export async function listarVendas(filtros: Filtros): Promise<Pagina<unknown>> {
   );
 
   const dados = linhas.map((linha) => ({
+    // Relógio da venda (contrato, parcelas de Sinal e Parcela, unidade), ISO com o fuso de
+    // Brasília. Novo em 25/09/2026: o mesmo relógio do filtro `alterado_desde`, e aceito de volta
+    // nele.
+    atualizado_em: relogioComFuso(linha.atualizado_em),
     codigo_cliente: texto(linha.codigo_cliente),
     codigo_lote: texto(linha.codigo_lote),
     // Prefixado para não colidir com código de outro conjunto: a base reaproveita faixas de id
@@ -676,6 +851,7 @@ export async function listarVendas(filtros: Filtros): Promise<Pagina<unknown>> {
 // --- 5. recebimentos ----------------------------------------------------------------------------
 
 type RecebimentoRow = RowDataPacket & {
+  atualizado_em: null | string;
   codigo_cliente: null | string;
   data_pagamento: null | string;
   data_vencimento: null | string;
@@ -690,6 +866,26 @@ type RecebimentoRow = RowDataPacket & {
   venda_id: number;
 };
 
+/**
+ * O relógio do RECEBIMENTO: o maior entre a parcela e a venda dela.
+ *
+ * A venda entra porque `codigo_cliente` sai do titular da venda (`ar.client_id`), e trocar o
+ * titular não toca a parcela. Caso real: a troca de titular da VEN-223 em 15/09/2026 17:18 moveu
+ * `ar.updated_at` (medido: audit e coluna com o mesmo instante), mas só 1 das 144 parcelas foi
+ * tocada depois; as outras 141 continuavam com o titular antigo do lado do GLOTES. Desde 10/09 o
+ * relógio combinado devolve 1.705 parcelas, contra 1.564 só pela parcela (as 141 da VEN-223).
+ *
+ * Custo medido em 25/09 (C2X real, `count` do recorte): 200 a 250 ms com o `greatest`, o mesmo
+ * da lista completa. Não há índice em `payments.updated_at`, então a forma com OR entre as duas
+ * colunas (mesmo resultado) não tem índice para usar e não ganhou nada (200 a 520 ms); ficou o
+ * `greatest`, que é a MESMA expressão do `atualizado_em` da saída. Cada argumento com coalesce:
+ * ver RELOGIO_ZERO_SQL.
+ */
+const RELOGIO_DO_RECEBIMENTO = `greatest(
+       coalesce(p.updated_at, p.created_at, ${RELOGIO_ZERO_SQL}),
+       coalesce(ar.updated_at, ar.created_at, ${RELOGIO_ZERO_SQL})
+     )`;
+
 export async function listarRecebimentos(filtros: Filtros): Promise<Pagina<unknown>> {
   const limite = limiteDe(filtros.limite);
   const desde = lerCursor(filtros.cursor);
@@ -698,9 +894,10 @@ export async function listarRecebimentos(filtros: Filtros): Promise<Pagina<unkno
   const extras: string[] = [];
   const extrasParams: unknown[] = [];
 
-  if (filtros.alteradoDesde) {
-    extras.push("and p.updated_at >= ?");
-    extrasParams.push(filtros.alteradoDesde);
+  const marca = marcaNoRelogioDoC2x(filtros.alteradoDesde);
+  if (marca) {
+    extras.push(`and ${RELOGIO_DO_RECEBIMENTO} >= ?`);
+    extrasParams.push(marca);
   }
   if (filtros.codigoVenda) {
     // O cliente manda "VEN-45"; aqui vira o id. Se vier lixo, `Number` dá NaN e a consulta não
@@ -749,6 +946,7 @@ export async function listarRecebimentos(filtros: Filtros): Promise<Pagina<unkno
        p.interest_value,
        date_format(p.due_date, '%Y-%m-%d') as data_vencimento,
        date_format(p.payment_date, '%Y-%m-%d') as data_pagamento,
+       date_format(${RELOGIO_DO_RECEBIMENTO}, '%Y-%m-%d %H:%i:%s') as atualizado_em,
        -- NULLIF, e nao so COALESCE: as duas colunas vem ZERO (nao nulas) quando nao se aplicam.
        -- Na mensal vale current_total_parcel; no sinal, current_signal_parcel; o Ato e parcela
        -- unica e as duas ficam em zero, entao ele vira 1. Sem o nullif, TODA parcela de Ato e
@@ -778,6 +976,10 @@ export async function listarRecebimentos(filtros: Filtros): Promise<Pagina<unkno
     const pago = Number(linha.paid_value ?? 0);
 
     return {
+      // Relógio do recebimento (parcela ou venda), ISO com o fuso de Brasília. Novo em 25/09/2026,
+      // pedido do GLOTES em 10/09 ("nos recebimentos não tem a coluna da data de atualização"): o
+      // mesmo relógio do filtro `alterado_desde`, e aceito de volta nele.
+      atualizado_em: relogioComFuso(linha.atualizado_em),
       codigo_cliente: texto(linha.codigo_cliente),
       codigo_recebimento: `REC-${linha.id}`,
       codigo_venda: `VEN-${linha.venda_id}`,
@@ -795,7 +997,11 @@ export async function listarRecebimentos(filtros: Filtros): Promise<Pagina<unkno
       valor_juros: dinheiro(linha.interest_value),
       // Sempre nulo: `mulct_value` é zero em 68.356 de 68.356 linhas.
       valor_multa: null,
-      // O C2X não guarda valor original separado — o cronograma já nasce reajustado.
+      // O C2X não guarda valor original separado: é a mesma coluna de `valor_parcela`. E ela é o
+      // valor do CRONOGRAMA, não o corrigido: só a parcela que recebe boleto é atualizada, a futura
+      // fica no valor do contrato. Medido em 25/09/2026: 5.389 das 11.977 parcelas pagas (45%)
+      // têm `valor_pago` maior que ela, R$ 151.872,85 de diferença, e só R$ 8.452,53 (5,6%) disso
+      // está em `interest_value`. O contrato (OpenAPI) avisa o GLOTES.
       valor_original: dinheiro(linha.initial_value),
       valor_pago: pago > 0 ? dinheiro(linha.paid_value) : null,
       valor_parcela: dinheiro(linha.initial_value),

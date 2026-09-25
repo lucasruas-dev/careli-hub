@@ -1,6 +1,7 @@
 # GLOTES x Lavra do Ouro: entrega de dados da carteira
 
 **Status:** levantamento concluído e conferido. Nada implementado.
+**Atualização 25/09/2026:** a API está no ar desde 14/08/2026 (contrato em `docs/integrations/glotes-openapi.yaml`). A carga incremental foi corrigida em 25/09: ver a seção 14.
 **Data da conferência:** 07/08/2026 (queries rodadas direto no C2X de produção, somente leitura).
 **Fonte:** C2X legado (MySQL AWS RDS), acesso por `apps/hub/lib/guardian/db.ts` (`getHadesDbPool` + `withHadesDbRetry`).
 **Mapa de tabelas:** `docs/architecture/c2x-schema-map.md`.
@@ -822,3 +823,149 @@ where table_schema = database()
 
 Regra que vale sempre: **o C2X é somente leitura.** Nenhum `insert`, `update` ou `delete`, em
 nenhuma hipótese. A escrita no legado só existe pela API Rails, e não faz parte deste assunto.
+
+---
+
+## 14. 25/09/2026: correção da carga incremental
+
+A API está no ar desde 14/08/2026 e o GLOTES consome com token. Em 10/09 o desenvolvedor do
+GLOTES reclamou que "nos recebimentos não tem a coluna da data de atualização". A investigação de
+25/09 achou mais que isso: o incremental de `vendas` e `recebimentos` **perdia alterações para
+sempre**. Tudo abaixo foi medido no C2X real, somente leitura, em 25/09/2026 (scripts
+`apps/hub/scratchpad/glotes-v2-*.ts`, fora do git).
+
+### 14.1 O relógio do C2X
+
+MySQL 8.4.8, `@@session.time_zone = UTC`. As colunas `created_at` e `updated_at` de `payments`,
+`acquisition_requests`, `enterprise_unities`, `users`, `addresses`, `spouses` e `phones` são
+`datetime` **sem fuso**, gravadas no horário de Brasília, e todas `NOT NULL` (zero nulos no
+recorte). A porta (`lerAlteradoDesde`) converte a marca de `alterado_desde` para UTC; `clientes`
+convertia de volta para Brasília desde 24/08, `vendas` e `recebimentos` não.
+
+### 14.2 O que estava errado, com os números
+
+**1. Corte deslocado em 3 horas (vendas e recebimentos).** A marca UTC comparada com a coluna
+local empurrava o corte 3 horas para a frente. A chamada seguinte já partia de depois, então o que
+mudou nessas 3 horas não vinha nunca. Recebimentos (parcelamento do recorte, 66.501 linhas):
+
+| Marca (-03:00) | Código de produção | Só com o fuso certo | Relógio novo (parcela ou venda) |
+|---|---|---|---|
+| 10/09/2026 00:00 | 534 | 1.564 | 1.705 |
+| 14/08/2026 00:00 | 2.850 | 2.850 | 2.988 |
+| 25/09/2026 10:00 | 2 | 147 | 147 |
+
+**2. Relógio de vendas estreito demais.** Era só `ar.updated_at`, mas `qtd_parcelas`,
+`qtd_sinal`, `valor_sinal`, `valor_parcela` e `data_1o_vencimento` saem das parcelas, e mexer em
+parcela não toca a venda. Das 474 vendas abertas:
+
+| Marca (-03:00) | Código de produção | Relógio novo |
+|---|---|---|
+| 10/09/2026 00:00 | 2 | 459 |
+| 14/08/2026 00:00 | 2 | 466 |
+| 25/09/2026 10:00 | 0 | 4 |
+
+A unidade (`eu.updated_at`, de onde saem `valor_venda` e `codigo_lote`) entrou no relógio e hoje
+não acrescenta nenhuma venda. Parcelas marcadas para apagar (`payment_to_delete`) entram no relógio
+porque mudam `qtd_parcelas`: são 3 em todo o C2X e nenhuma no recorte.
+
+**3. Recebimentos sem relógio próprio e cego à venda.** `codigo_cliente` vem do titular da venda.
+A troca de titular da VEN-223 em 15/09/2026 17:18:26 **moveu `ar.updated_at`** (conferido: o
+audit de `client_id` e a coluna têm o mesmo instante). Das 144 parcelas da venda, só 1 foi tocada
+depois; as outras 141 continuavam com o titular antigo do lado do GLOTES. Com o relógio
+`greatest(parcela, venda)` as 144 voltam no incremental desde 10/09 (são exatamente as 141 que
+separam 1.564 de 1.705 na tabela acima, mais as 3 que já vinham).
+
+**4. `clientes.atualizado_em` sem fuso.** Saía `YYYY-MM-DD HH:MM:SS`, e o contrato manda repassar
+o maior valor em `alterado_desde`, que exige fuso: repassar dava 400. E o relógio ignorava
+`addresses` e `spouses` (polimórficas, `ownertable_type = 'User'`), de onde saem endereço e
+cônjuge. Medido: nenhum cliente do recorte teve, desde 14/08, endereço ou cônjuge mais novo que o
+resto do cadastro (lado C2X: 10 clientes alterados desde 14/08 e 5 desde 10/09, com ou sem as duas
+tabelas). O buraco existia, ainda sem vítima.
+
+**5. Exclusão some calada.** Parcela apagada deixa de existir e não tem relógio. Audits de
+`Payment` com `destroy` no recorte desde 14/08: VEN-65 (140 em 20/08), VEN-570 (18 em 03/09 e 118
+em 16/09), VEN-449 (1 avulsa em 18/09), VEN-524 (16 em 24/09) e VEN-81 (145 em 25/09, régua
+apagada e recriada entre 12:20 e 12:23). A investigação contou **160 parcelas fantasmas do lado do
+GLOTES** (144 da VEN-81 e 16 da VEN-524). O incremental não tem como avisar remoção: a saída
+combinada com o Lucas é pedir ao GLOTES UMA CARGA COMPLETA depois da correção e documentar que a
+listagem completa é a verdade.
+
+**6. Cancelamento.** As 100 vendas fechadas do recorte (estágio 7, "Cancelado") têm a última
+alteração em 20/01/2026 e nenhuma tem audit de `open`: não houve cancelamento no período para
+observar se o relógio anda. As parcelas que sobram nelas são só pagas (116 mensais, 18 de sinal,
+9 de ato, 2 avulsas): as não pagas são apagadas no cancelamento. O código sustenta
+`incluir_canceladas` junto com `alterado_desde` (a trava `ar.open = 1` sai e o corte por relógio
+fica), e o contrato recomenda essa combinação para receber cancelamentos.
+
+**7. `valor_parcela` não é valor corrigido.** É `payments.initial_value`, o valor do cronograma:
+só a parcela que recebe boleto é corrigida, a futura fica no valor do contrato. Das 11.977
+parcelas pagas do recorte: 5.389 (45%) pagas acima do `valor_parcela`, somando R$ 151.872,85;
+6.575 pelo valor exato; 13 abaixo. Só R$ 8.452,53 do excedente (5,6%, em 624 linhas) está em
+`interest_value`. 4.065 das pagas acima foram pagas em atraso (R$ 114.027,87, média de 5,98%) e
+1.324 em dia (R$ 37.844,98, média de 6,50%): nessas últimas a diferença não é mora. O contrato
+anterior dizia "já com o reajuste embutido pelo cronograma", o que não é verdade.
+
+### 14.3 O que mudou no código (`apps/hub/lib/integrations/glotes/consultas.ts`)
+
+- `marcaNoRelogioDoC2x`: leva a marca UTC da porta para o relógio de Brasília. Usada em
+  `clientes`, `vendas` e `recebimentos`.
+- `relogioComFuso`: `atualizado_em` sai em ISO 8601 com o deslocamento de `America/Sao_Paulo`
+  daquele instante (`2026-09-25T12:20:00-03:00`; `-02:00` em datas do horário de verão, que
+  existiu até fevereiro de 2019), calculado pelo Intl. O valor é aceito de volta pela porta e
+  devolve a mesma marca (ida e volta testada). O corte de `clientes` continua comparando no relógio
+  local; o fuso entra só na saída.
+- Relógio de `vendas`: maior entre `ar.updated_at`, `max(updated_at)` das parcelas de tipo 2 e 3
+  (inclusive as marcadas para apagar) e `eu.updated_at`. O mesmo no filtro e no `atualizado_em`
+  novo.
+- Relógio de `recebimentos`: maior entre `p.updated_at` e `ar.updated_at`. O mesmo no filtro e no
+  `atualizado_em` novo.
+- Relógio de `clientes` (lado C2X): `users` mais `max(updated_at)` de `phones`, `addresses` e
+  `spouses` do usuário.
+- `GREATEST` do MySQL devolve NULL se qualquer argumento for NULL: todo argumento leva
+  `coalesce(..., '1970-01-01 00:00:00')`, e esse piso sai como `null`, nunca como data.
+- Testes em `apps/hub/lib/integrations/glotes/consultas.test.ts` (21 casos).
+
+### 14.4 Custo medido (C2X real, pool de 5 conexões, páginas de 1.000)
+
+| Consulta | Produção (v1.377.0) | Corrigida |
+|---|---|---|
+| vendas, lista completa (474, 1 página) | 896 ms | 1.376 ms |
+| vendas, incremental desde 10/09 | 44 ms (2 linhas) | 1.520 ms (459 linhas) |
+| recebimentos, lista completa (66.501, 67 páginas) | 26,8 s (pior página 673 ms) | 30,0 s (pior página 764 ms) |
+| recebimentos, incremental desde 10/09 | 452 ms (534 linhas) | 838 ms (1.705 linhas, 2 páginas) |
+| clientes, lista completa (374, inclui o Panteon) | 1.943 ms | 1.817 ms |
+| clientes, incremental desde 10/09 | 1.585 ms (8 linhas) | 1.512 ms (8 linhas) |
+
+Em `clientes` o tempo é dominado pela leitura dos contatos no Panteon; as duas subconsultas novas
+(endereço e cônjuge) não aparecem na medição.
+
+O `count` de recebimentos com o filtro `greatest(parcela, venda) >= marca` custa cerca de 200 ms,
+o mesmo da lista completa: não há índice em `payments.updated_at`, então a forma com `OR` entre as
+duas colunas não tem índice para usar e mediu o mesmo (200 a 520 ms). Ficou o `greatest`, que é a
+mesma expressão do `atualizado_em`. Cinco primeiras páginas do incremental de recebimentos em
+paralelo (o pool inteiro) terminaram em 2,4 s. O custo extra de `vendas` (cerca de 0,5 s) vem de
+calcular o relógio com a subconsulta das parcelas; é uma chamada por sincronização.
+
+Ida e volta no banco real: repassar o maior `atualizado_em` recebido devolve a linha da borda (1
+de 1 em cada um dos três conjuntos), o que confirma o `>=` e o formato.
+
+### 14.5 O que o GLOTES precisa fazer
+
+1. UMA carga completa dos cinco conjuntos depois da publicação, removendo do lado deles o
+   `codigo_recebimento` e o `codigo_venda` que não vierem (as 160 parcelas fantasmas saem assim).
+2. Se acrescentavam `-03:00` ao `atualizado_em` de `clientes`, parar: agora vem com fuso, e
+   acrescentar de novo produz data inválida (400). Por isso o contrato subiu para 2.0.0.
+3. Guardar o maior `atualizado_em` de cada conjunto e repassar em `alterado_desde` com margem de
+   alguns minutos (sugestão: 5), tratando as linhas repetidas como upsert pela chave.
+4. Carga completa periódica (sugestão: semanal) para as exclusões.
+
+### 14.6 O que continua em aberto
+
+- **Remoção no incremental.** Os audits de `destroy` de `Payment` permitiriam uma lista de
+  removidos desde a marca: a consulta das parcelas do recorte apagadas desde 10/09 (280 linhas)
+  custou 41 ms (há índice em `audits.created_at`; a tabela tem cerca de 37 mil linhas). Não foi
+  feito agora: depende de o audit cobrir toda exclusão (só cobre o que passa pelo Rails) e de
+  decidir o formato com o GLOTES.
+- **Cancelamento move o relógio?** Não observado (nenhum cancelamento no recorte desde
+  20/01/2026). Pelo Rails, mudar `open` ou o estágio toca `updated_at`; a carga completa segue
+  como garantia.
