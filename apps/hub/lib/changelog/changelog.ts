@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-25-venda-herdada-se-comporta-como-a-nativa",
+    deployedAt: "2026-09-25T18:24:27-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**A reserva e a proposta que vieram do C2X podem ser canceladas pela tela de Venda**, como qualquer outra. Antes os botões apareciam apagados, com o aviso de falar com a coordenação, e não havia caminho nenhum.",
+              "**A proposta herdada também pode ser enviada para contrato.**",
+              "**A conversa e os documentos voltam a aparecer** nessas vendas.",
+              "**O lote continua protegido:** nada é solto se ainda houver outro dono. A única diferença é quem pode acionar a porta, nunca a trava que protege o lote.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "09727ecf",
+    technical: {
+      done:
+        "⚠️ A RECUSA ERA DA TELA, E NÃO DA ROTA. Medido em 25/09/2026: nenhuma das 13 chegava a chamar a API. `processoDaFicha` (fluxo-de-venda.ts) apagava os CINCO botões da ficha quando a linha em `reservado` vinha do legado, com a frase \"Reserva importada do C2X: esta tela não gera proposta nem cancela sobre ela\"; nas 2 em `proposta`, `acaoDeCancelamento` devolvia tipo nulo. ⚠️ E A ROTA TAMBÉM RECUSARIA, por dois motivos diferentes: o PATCH da reserva exige linha viva em `hercules_reservas`, e a carga trouxe a PROPOSTA sem nunca criar a reserva (`reserva_id` nulo em 13/13, e ZERO linha em `hercules_reservas`, nem morta); o PATCH da proposta recortava por `.eq(\"origem\",\"panteon\")`. A REGRA QUE PASSA A VALER: a porta decide pelo ESTADO da venda (etapa, dono do lote pela trava, credenciamento), NUNCA pela coluna `origem`. Quem cancela a herdada é a rota da PROPOSTA, porque no Panteon ela É uma proposta viva: é ela que pinta a cor (`situacao-da-unidade.ts`) e que a trava conta como dono (`trava-do-lote.ts`). NÃO SE FABRICA RESERVA para dado antigo, que seria escrita em produção sem ganho. MUDANÇAS: o PATCH da proposta aceita `reservado` além de `proposta` e perdeu o filtro de origem, com a condição do comparar-e-trocar seguindo a etapa lida; `alvoDoCancelamento` (TelaVenda.tsx) pergunta à MESMA lib que acendeu o botão para onde mandar o clique, que era a armadilha capaz de trocar botão apagado por 409; as 2 com cadastro `vendida` (a carga marcou assim) soltam o lote, exceção SÓ para a herdada, com a nativa continuando a exigir `reservada`; conversa, documentos e envio para contrato deixaram de recortar por origem. ⚠️ NENHUMA EXCEÇÃO NA TRAVA: o lote sai pela ETAPA (a rota grava `cancelado` antes de soltar) e `soltarLoteDaVendaDesfeita` continua provando pela régua que ele saiu. ALCANCE MEDIDO: 13 vendas herdadas vivas em linha de unidade viva, das quais 5 em produto que ainda vende (VDO0305, VDO0706, VDO1224, VDO1225 do Veredas do Ouro e VOR1206 do Vale do Ouro); as outras 8 estão em Cidade Jardim, Haras do Passo, Morada da Brisa e SDT, parados. As 139 penduradas na sombra do pai (VLO e LAB) seguem de fora pela regra `noPai`, e um teste trava isso. Conferido no C2X (somente leitura): as 13 continuam vivas no legado, todas com ZERO parcela; o cancelamento de lá é do time (Lucas: *\"c2x o time faz\"*). REVISÃO ADVERSARIAL (3 revisores, 3 lentes): 12 achados, todos corrigidos, entre eles a exceção do cadastro `vendida` que tinha entrado só na ida e não na retomada, e a modal prometendo aviso de WhatsApp que não teria destinatário. FORA DESTE LOTE: gerar proposta sobre a reserva herdada, que mexe no caminho que calcula preço; Lucas (25/09/2026) resolveu pela operação: *\"vou pedir para cancelar depois subir real\"*. Suíte: 616 arquivos, 9.315 testes. Typecheck limpo.",
+      motivation:
+        "Lucas, 25/09/2026: agora precisamos atacar um bug. As reservas que foram herdadas do c2x, não estamos conseguindo cancelar ou dar seguimento na proposta. Essas reservas tem que comportar iguais as outras, acho que temos no Veredas, mas faz um analise geral para ver.",
+    },
+    title: "A venda que veio do C2X volta a ter porta: cancelar e seguir como qualquer outra",
+    type: "correcao",
+    version: "1.379.0",
+  },
+  {
     buildTag: "2026-09-25-glotes-incremental-e-valor-pago",
     deployedAt: "2026-09-25T18:20:11-03:00",
     // Sem mudança de tela: é a API que o GLotes (sistema do Lavra do Ouro) consome. Por isso interno.
