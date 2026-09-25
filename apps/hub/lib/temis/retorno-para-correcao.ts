@@ -2,7 +2,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { PortaDaClicksign } from "@/lib/assinatura/clicksign/cliente";
 import { cancelarEnvelope, consultarEnvelope } from "@/lib/assinatura/clicksign/envelope";
-import { type EnvelopeDaProposta, envelopeQueSegura } from "@/lib/assinatura/envio-db";
+import {
+  COLUNAS_PARA_CANCELAR,
+  type EnvelopeParaCancelar,
+  envelopeQueSegura,
+} from "@/lib/assinatura/envio-db";
 import type { EstadoDaAssinatura } from "@/lib/assinatura/tipos";
 import { avisoDoHercules } from "@/lib/hercules/reflexo-da-temis";
 import {
@@ -193,8 +197,26 @@ export function conferirEstagioParaVoltar(
 
 export type ConferenciaDoEnvelope =
   | { erro: string; ok: false }
-  /** O id do envelope a cancelar, ou `null` quando não há nada vivo para cancelar. */
-  | { envelopeParaCancelar: null | string; ok: true; registroId: null | string };
+  /**
+   * O que cancelar, ou `null` quando não há nada vivo.
+   *
+   * ⚠️ SÃO DOIS IDS PORQUE O CANCELAMENTO PRECISA DOS DOIS: na v3, cancelar é
+   * `PATCH /envelopes/{envelope_id}/documents/{document_id}` (doc lida em 25/09/2026 — ver
+   * `cancelarEnvelope`).
+   *
+   * ⚠️ E `documentoParaCancelar` PODE VIR `null` COM `envelopeParaCancelar` PREENCHIDO, de propósito:
+   * esta função é PURA e só vê o nosso banco, que atrasa (só o webhook o escreve). Recusar aqui era
+   * recusar ANTES de ler o estado na Clicksign, e isso fazia duas coisas ruins: matava a saída do
+   * webhook perdido (envelope JÁ cancelado lá, nada a cancelar, card podia voltar — o `ja_morreu`) e
+   * mandava um humano cancelar à mão um envelope cujo estado ninguém tinha lido. Quem recusa é
+   * `conferirEMatarOEnvelope`, DEPOIS da leitura, e só quando a decisão medida for "cancelar".
+   */
+  | {
+      documentoParaCancelar: null | string;
+      envelopeParaCancelar: null | string;
+      ok: true;
+      registroId: null | string;
+    };
 
 /**
  * O envelope desta proposta deixa o card voltar? E, se deixar, há o que cancelar?
@@ -222,9 +244,11 @@ export type ConferenciaDoEnvelope =
  * na rua já morreu; não há o que cancelar, e o card volta direto. Vale também para a proposta sem
  * envelope NENHUM — o card que subiu por marcação humana, sem contrato ter saído daqui.
  */
-export function conferirEnvelopeParaVoltar(linhas: EnvelopeDaProposta[]): ConferenciaDoEnvelope {
+export function conferirEnvelopeParaVoltar(linhas: EnvelopeParaCancelar[]): ConferenciaDoEnvelope {
   const vivo = envelopeQueSegura(linhas);
-  if (!vivo) return { envelopeParaCancelar: null, ok: true, registroId: null };
+  if (!vivo) {
+    return { documentoParaCancelar: null, envelopeParaCancelar: null, ok: true, registroId: null };
+  }
 
   if (vivo.estado === "assinado") return { erro: RECUSA_DO_CONTRATO_ASSINADO, ok: false };
 
@@ -261,7 +285,18 @@ export function conferirEnvelopeParaVoltar(linhas: EnvelopeDaProposta[]): Confer
     };
   }
 
-  return { envelopeParaCancelar: vivo.envelope_id, ok: true, registroId: vivo.id };
+  // ⚠️ A FALTA DO ID DO DOCUMENTO NÃO É RECUSADA AQUI, E NÃO POR DESCUIDO. Cancelar na Clicksign v3 é
+  // `PATCH /envelopes/{envelope_id}/documents/{document_id}` (doc lida em 25/09/2026 — ver
+  // `cancelarEnvelope`), então sem o id do documento não há o que cancelar; mas esta função só vê o
+  // NOSSO banco, e recusar antes de ler a Clicksign atropelaria o caso do webhook perdido (envelope
+  // já cancelado lá: nada a cancelar, e o card volta). Quem recusa é `conferirEMatarOEnvelope`, com o
+  // estado real na mão. Ver o JSDoc de `ConferenciaDoEnvelope`.
+  return {
+    documentoParaCancelar: vivo.provedor_documento_id,
+    envelopeParaCancelar: vivo.envelope_id,
+    ok: true,
+    registroId: vivo.id,
+  };
 }
 
 /**
@@ -580,8 +615,10 @@ async function conferirEMatarOEnvelope(
 
   const { data, error } = await sb
     .from("temis_envelopes")
-    // As mesmas colunas que a guarda do envio lê — é a mesma régua, em `envelopeQueSegura`.
-    .select("criado_em, envelope_id, estado, falha, id, provedor")
+    // As mesmas colunas que a guarda do envio lê (é a mesma régua, em `envelopeQueSegura`) MAIS o id
+    // do documento, que é o que se cancela na v3 — `COLUNAS_PARA_CANCELAR` é essa lista, uma só para
+    // os dois lugares que cancelam.
+    .select(COLUNAS_PARA_CANCELAR)
     .eq("proposta_id", card.proposta_id)
     .order("criado_em", { ascending: false })
     .limit(50);
@@ -605,7 +642,7 @@ async function conferirEMatarOEnvelope(
     };
   }
 
-  const veredito = conferirEnvelopeParaVoltar((data ?? []) as EnvelopeDaProposta[]);
+  const veredito = conferirEnvelopeParaVoltar((data ?? []) as unknown as EnvelopeParaCancelar[]);
   if (!veredito.ok) return { erro: veredito.erro, ok: false, status: 409 };
   if (!veredito.envelopeParaCancelar) return { envelopeCancelado: null, ok: true };
 
@@ -642,7 +679,36 @@ async function conferirEMatarOEnvelope(
   // evento que está a caminho.
   if (!real.cancelar) return { envelopeCancelado: null, ok: true };
 
-  const cancelamento = await cancelarEnvelope(veredito.envelopeParaCancelar, porta);
+  // ⚠️ SEM O ID DO DOCUMENTO NÃO DÁ PARA CANCELAR, E A RECUSA VEM AQUI — DEPOIS DA LEITURA, NUNCA
+  // ANTES. Cancelar na Clicksign v3 é `PATCH /envelopes/{envelope_id}/documents/{document_id}` (doc
+  // lida em 25/09/2026 — ver `cancelarEnvelope`): o id do ENVELOPE identifica o que conferir, o do
+  // DOCUMENTO é o que se cancela. Soltar o card aqui deixaria a Análise com um envelope VIVO lá fora,
+  // que é justamente o estado que este arquivo inteiro existe para impedir.
+  //
+  // ⚠️ E O LUGAR DA RECUSA É O QUE FAZ A FRASE PODER MANDAR CANCELAR. Chegar até aqui significa que
+  // `consultarEnvelope` acabou de responder e que `decisaoDoEstadoReal` disse "cancelar", ou seja o
+  // envelope está CORRENDO agora, medido, não suposto pelo nosso banco. Recusar antes da leitura — que
+  // é como isto nasceu, em 25/09/2026 — mandava o operador cancelar à mão um envelope cujo estado
+  // ninguém havia lido: com o último signatário assinando 30 segundos antes e o webhook a caminho, era
+  // instrução para cancelar contrato assinado por todos. E matava também a saída do `ja_morreu` logo
+  // acima, prendendo a linha quando não havia NADA a cancelar.
+  if (!veredito.documentoParaCancelar) {
+    return {
+      erro:
+        `O Panteon não guardou qual documento do envelope ${veredito.envelopeParaCancelar} cancelar na Clicksign, e o cancelamento é feito no documento, não no envelope. Por isso o card NÃO voltou para a análise: as pessoas continuam com o contrato atual para assinar. ` +
+        `Cancele o envelope ${veredito.envelopeParaCancelar} na Clicksign — o webhook grava o cancelamento aqui e libera a volta.`,
+      ok: false,
+      status: 409,
+    };
+  }
+
+  const cancelamento = await cancelarEnvelope(
+    veredito.envelopeParaCancelar,
+    // ⚠️ O QUE SE CANCELA É O DOCUMENTO. Ver `cancelarEnvelope` (doc lida 25/09/2026): mandar o id do
+    // ENVELOPE aqui era o defeito que a Nívea encontrou — 400 `status deve estar em: draft, running`.
+    veredito.documentoParaCancelar,
+    porta,
+  );
 
   // ⚠️ FALHOU O CANCELAMENTO, O CARD NÃO VOLTA — e a mensagem diz o id, porque a saída é cancelar
   // por lá. Sem o id, "confira na Clicksign" manda alguém procurar à mão numa lista que tem contrato
@@ -658,13 +724,24 @@ async function conferirEMatarOEnvelope(
   // desta, na linha ambígua acima, já a cumpria): quem libera a volta é o WEBHOOK gravando o
   // cancelamento aqui, não um segundo clique — e um segundo clique, no caso duvidoso, é justamente
   // quem cancelaria o envelope certo duas vezes ou soltaria o card sobre um que ninguém matou.
+  //
+  // ⚠️ E A FRASE DUVIDOSA NÃO DIZ MAIS "A CLICKSIGN NÃO RESPONDEU", porque desde 25/09/2026 ela cobre
+  // dois fatos e não um: o timeout (o PATCH pode não ter chegado) e a RELEITURA que não confirmou a
+  // morte do envelope, em que o PATCH chegou e foi aceito. O que as duas têm em comum é o que a frase
+  // afirma: o Panteon não conseguiu confirmar que o envelope morreu. Ver `cancelarEnvelope`.
+  //
+  // ⚠️ A FRASE DA RECUSA TAMBÉM PAROU DE AFIRMAR QUE O CONTRATO SEGUE ASSINÁVEL, e isso é medido na
+  // doc: o documento aceita `canceled` só enquanto está `running` ("Editar Documento", 25/09/2026),
+  // então um 4xx aqui é tanto "recusou" quanto "esse documento JÁ está cancelado" — e no segundo caso
+  // dizer "as pessoas continuam com o contrato atual para assinar" é falso, porque ninguém mais assina
+  // aquilo. Ela manda CONFERIR e diz o que fazer em cada um dos dois desfechos.
   if (!cancelamento.ok) {
     return {
       erro: cancelamento.duvidoso
-        ? `A Clicksign não respondeu ao pedido de cancelamento do envelope ${cancelamento.envelopeId}, e NÃO DÁ PARA SABER se ele chegou: o envelope pode ter sido cancelado lá ou continuar valendo. Por isso o card NÃO voltou para a análise. ` +
+        ? `O Panteon não conseguiu confirmar na Clicksign que o envelope ${cancelamento.envelopeId} morreu: ele pode ter sido cancelado lá ou continuar valendo. Por isso o card NÃO voltou para a análise. ` +
           `Confira o envelope ${cancelamento.envelopeId} na Clicksign — se ainda estiver correndo, cancele por lá, e o webhook grava o cancelamento aqui e libera a volta. (${cancelamento.erro}${cancelamento.requestId ? ` · request ${cancelamento.requestId}` : ""})`
-        : `A Clicksign recusou o cancelamento do envelope ${cancelamento.envelopeId}, e por isso o card NÃO voltou para a análise: as pessoas continuam com o contrato atual para assinar. ` +
-          `Cancele o envelope ${cancelamento.envelopeId} na Clicksign — o webhook grava o cancelamento aqui e libera a volta. (${cancelamento.erro}${cancelamento.requestId ? ` · request ${cancelamento.requestId}` : ""})`,
+        : `A Clicksign recusou o cancelamento do contrato do envelope ${cancelamento.envelopeId}, e por isso o card NÃO voltou para a análise. A recusa pode ser porque o documento JÁ está cancelado ou fechado, então daqui não dá para afirmar que as pessoas continuam com o contrato atual para assinar. ` +
+          `Confira o envelope ${cancelamento.envelopeId} na Clicksign — se ainda estiver correndo, cancele por lá, e o webhook grava o cancelamento aqui e libera a volta. (${cancelamento.erro}${cancelamento.requestId ? ` · request ${cancelamento.requestId}` : ""})`,
       ok: false,
       status: 502,
     };

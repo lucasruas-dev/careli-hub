@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { FalhaDaClicksign, type Opcoes } from "@/lib/assinatura/clicksign/cliente";
-import type { EnvelopeDaProposta } from "@/lib/assinatura/envio-db";
+import type { EnvelopeParaCancelar } from "@/lib/assinatura/envio-db";
 import type { EstadoDaAssinatura } from "@/lib/assinatura/tipos";
 import { type Banco, criarBanco } from "@/lib/hercules/banco-em-memoria.para-teste";
 
@@ -91,7 +91,7 @@ describe("o aviso que a tela mostra antes de confirmar", () => {
 });
 
 /** Uma linha de `temis_envelopes`, com o que a régua lê (migration 0149). */
-function linha(patch: Partial<EnvelopeDaProposta>): EnvelopeDaProposta {
+function linha(patch: Partial<EnvelopeParaCancelar>): EnvelopeParaCancelar {
   return {
     criado_em: "2026-09-11T12:00:00.000Z",
     envelope_id: "env-1",
@@ -99,6 +99,7 @@ function linha(patch: Partial<EnvelopeDaProposta>): EnvelopeDaProposta {
     falha: null,
     id: "reg-1",
     provedor: "clicksign",
+    provedor_documento_id: "doc-1",
     ...patch,
   };
 }
@@ -182,6 +183,35 @@ describe("o envelope, na hora de voltar", () => {
     expect(r.erro).not.toContain("o webhook grava o cancelamento aqui");
   });
 
+  // ⚠️ A LINHA SEM O ID DO DOCUMENTO NÃO É RECUSADA AQUI, E ISSO É A CORREÇÃO DE 25/09/2026. Cancelar
+  // na v3 é um PATCH no DOCUMENTO ("Editar Documento",
+  // `PATCH /envelopes/{envelope_id}/documents/{document_id}`), então sem `provedor_documento_id` não
+  // há o que cancelar — mas esta função é PURA e só vê o nosso banco, que atrasa. Recusar aqui era
+  // recusar antes de ler a Clicksign: prendia a linha até quando o envelope JÁ estava morto lá fora
+  // (nada a cancelar) e mandava um humano cancelar à mão um envelope cujo estado ninguém tinha lido.
+  // Quem recusa é `conferirEMatarOEnvelope`, com o estado medido na mão — ver o bloco do caminho
+  // inteiro, mais abaixo.
+  it("envelope vivo sem o id do documento não recusa aqui: devolve o envelope e documento null", () => {
+    const r = conferirEnvelopeParaVoltar([
+      linha({ envelope_id: "env-5", estado: "parcial", provedor_documento_id: null }),
+    ]);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.envelopeParaCancelar).toBe("env-5");
+    expect(r.documentoParaCancelar).toBeNull();
+    expect(r.registroId).toBe("reg-1");
+  });
+
+  it("com o id do documento, diz qual documento cancelar", () => {
+    const r = conferirEnvelopeParaVoltar([
+      linha({ envelope_id: "env-6", estado: "parcial", provedor_documento_id: "doc-6" }),
+    ]);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.envelopeParaCancelar).toBe("env-6");
+    expect(r.documentoParaCancelar).toBe("doc-6");
+  });
+
   // A consulta pede `criado_em desc`: é o envelope mais recente que segura, e é ele que se cancela.
   it("com mais de um, cancela o mais recente que ainda está vivo", () => {
     const r = conferirEnvelopeParaVoltar([
@@ -261,11 +291,21 @@ describe("o estado REAL, lido na Clicksign", () => {
 /** O duplo do Supabase: o card, os envelopes da proposta e o registro do que foi lido. */
 function bancoDeTeste(dados: {
   card: null | { estagio: string; id: string; proposta_id: null | string; tipo: string };
-  envelopes: EnvelopeDaProposta[];
+  envelopes: EnvelopeParaCancelar[];
 }) {
   const tabelas: string[] = [];
   /** O que cada `update` mandou escrever — é onde se confere o campo que a volta LIMPA. */
   const atualizacoes: { patch: Record<string, unknown>; tabela: string }[] = [];
+  /**
+   * As colunas que cada `select` PEDIU, por tabela.
+   *
+   * ⚠️ ESTE DUPLO DEVOLVE A LINHA INTEIRA DA FIXTURE, ENTÃO SEM ISTO O `select` NÃO ESTÁ PRESO POR
+   * NADA. Voltar `COLUNAS_PARA_CANCELAR` para a lista antiga de seis colunas deixava a suíte inteira
+   * verde e o `tsc` também (o cast é `as unknown as`), e em produção `provedor_documento_id` chegaria
+   * `undefined`: a recusa dispararia em toda linha viva e o card da Nívea travaria de novo, com a
+   * frase dizendo que o Panteon não guardou o documento — mentindo sobre o banco.
+   */
+  const colunasPedidas: { colunas: string; tabela: string }[] = [];
 
   const from = (tabela: string) => {
     tabelas.push(tabela);
@@ -278,7 +318,10 @@ function bancoDeTeste(dados: {
       limit: () => Promise.resolve(leitura),
       maybeSingle: () => Promise.resolve({ data: dados.card, error: null }),
       order: () => builder,
-      select: () => builder,
+      select: (colunas?: string) => {
+        if (typeof colunas === "string") colunasPedidas.push({ colunas, tabela });
+        return builder;
+      },
       // O builder do Supabase é um `PromiseLike`: `update().eq().select()` é aguardado direto.
       then: (resolver: (r: { data: unknown; error: null }) => unknown) =>
         Promise.resolve(
@@ -293,17 +336,34 @@ function bancoDeTeste(dados: {
     return builder;
   };
 
-  return { atualizacoes, sb: { from } as unknown as SupabaseClient, tabelas };
+  return { atualizacoes, colunasPedidas, sb: { from } as unknown as SupabaseClient, tabelas };
 }
 
-/** O duplo da porta HTTP: registra o que foi pedido. Ver a nota de `PortaDaClicksign`. */
-function portaDeTeste(respostas: { get?: Error | unknown; patch?: Error | unknown } = {}) {
+/**
+ * O duplo da porta HTTP: registra o que foi pedido. Ver a nota de `PortaDaClicksign`.
+ *
+ * ⚠️ O `get` ACEITA UMA LISTA, E NÃO É CONFORTO DE TESTE. Desde 25/09/2026 o cancelamento faz DUAS
+ * leituras do envelope: a de antes, que decide se pode cancelar, e a de DEPOIS do PATCH, que confirma
+ * que o envelope morreu — o 200 do PATCH no documento não prova isso, e a doc não diz que prova (ver
+ * `cancelarEnvelope`). Um duplo com uma resposta só para os dois GETs não consegue montar o caso que
+ * importa: running antes, running ainda depois. A última resposta da lista repete.
+ */
+function portaDeTeste(
+  respostas: { get?: Error | unknown | (Error | unknown)[]; patch?: Error | unknown } = {},
+) {
   const chamadas: { caminho: string; metodo: string }[] = [];
+  const gets = Array.isArray(respostas.get) ? [...respostas.get] : [respostas.get];
+  let lidos = 0;
 
   const porta = async <T = unknown>(caminho: string, opcoes: Opcoes = {}): Promise<T> => {
     const metodo = opcoes.metodo ?? "GET";
     chamadas.push({ caminho, metodo });
-    const resposta = metodo === "GET" ? respostas.get : respostas.patch;
+    if (metodo !== "GET") {
+      if (respostas.patch instanceof Error) throw respostas.patch;
+      return (respostas.patch ?? {}) as T;
+    }
+    const resposta = gets[Math.min(lidos, gets.length - 1)];
+    lidos += 1;
     if (resposta instanceof Error) throw resposta;
     return (resposta ?? {}) as T;
   };
@@ -381,22 +441,120 @@ describe("o caminho inteiro, com a Clicksign", () => {
     tipo: "contrato",
   };
 
+  const running = { data: { attributes: { status: "running" } } };
+  const canceled = { data: { attributes: { status: "canceled" } } };
+
   it("banco diz parcial e a Clicksign diz running: cancela e volta", async () => {
     const { sb } = bancoDeTeste({
       card: cardEmAssinatura,
       envelopes: [linha({ envelope_id: "env-vivo", estado: "parcial" })],
     });
-    const { chamadas, porta } = portaDeTeste({ get: { data: { attributes: { status: "running" } } } });
+    const { chamadas, porta } = portaDeTeste({ get: [running, canceled] });
 
     const r = await retornarParaAnalise(sb, pedido, porta);
 
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.envelopeCancelado).toBe("env-vivo");
+    // ⚠️ O GET É NO ENVELOPE E O PATCH É NO DOCUMENTO — lido na doc em 25/09/2026. "Detalhes do
+    // Envelope" é `GET /envelopes/{envelope_id}`; "Editar Documento" é
+    // `PATCH /envelopes/{envelope_id}/documents/{document_id}`, e é lá que `canceled` é aceito.
+    //
+    // ⚠️ E SÃO TRÊS CHAMADAS, NÃO DUAS: o GET depois do PATCH é o que CONFIRMA que o envelope morreu.
+    // O 200 do PATCH fala só do documento, e nenhuma das duas páginas da doc diz que um mata o outro.
     expect(chamadas).toEqual([
       { caminho: "/envelopes/env-vivo", metodo: "GET" },
-      { caminho: "/envelopes/env-vivo", metodo: "PATCH" },
+      { caminho: "/envelopes/env-vivo/documents/doc-1", metodo: "PATCH" },
+      { caminho: "/envelopes/env-vivo", metodo: "GET" },
     ]);
+  });
+
+  // ⚠️ O TESTE DA QUINTA INFERÊNCIA, MEDIDA NO CAMINHO INTEIRO: o PATCH no documento volta 200 e o
+  // ENVELOPE continua `running` na conta. Nada disso está na doc (as duas páginas foram lidas em
+  // 25/09/2026 e nenhuma liga uma coisa à outra), então o card NÃO volta e NADA é gravado. Se
+  // voltasse, o Panteon afirmaria na auditoria uma morte que não houve, `cancelado` (terminal) faria o
+  // `auto_close` seguinte ser descartado, e `ESTADOS_QUE_LIBERAM_REENVIO` liberaria um SEGUNDO
+  // envelope pago com o primeiro ainda correndo.
+  it("PATCH 200 e o envelope ainda running: o card NÃO volta e nada é gravado", async () => {
+    const { atualizacoes, sb } = bancoDeTeste({
+      card: cardEmAssinatura,
+      envelopes: [linha({ envelope_id: "env-vivo", estado: "parcial" })],
+    });
+    const { chamadas, porta } = portaDeTeste({ get: [running, running] });
+
+    const r = await retornarParaAnalise(sb, pedido, porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(502);
+    // A frase não afirma a morte nem a vida do envelope: manda conferir.
+    expect(r.erro).toContain("não conseguiu confirmar");
+    expect(r.erro).toContain("env-vivo");
+    expect(r.erro).not.toContain("tente de novo");
+    // Nem o card andou, nem a linha do envelope foi carimbada.
+    expect(atualizacoes).toEqual([]);
+    expect(chamadas.map((c) => c.metodo)).toEqual(["GET", "PATCH", "GET"]);
+  });
+
+  // ⚠️ A RECUSA POR FALTA DO ID DO DOCUMENTO VEM DEPOIS DA LEITURA, e é o que este teste prende. O
+  // envelope foi LIDO e está correndo agora: só então a frase pode mandar cancelar por lá. Antes de
+  // 25/09/2026 esta recusa vinha antes do GET, e mandava cancelar à mão um envelope cujo estado
+  // ninguém havia lido — inclusive um assinado por todos com o webhook a caminho.
+  it("linha viva sem o id do documento: lê primeiro, e só então recusa mandando cancelar por lá", async () => {
+    const { atualizacoes, sb } = bancoDeTeste({
+      card: cardEmAssinatura,
+      envelopes: [linha({ envelope_id: "env-vivo", estado: "parcial", provedor_documento_id: null })],
+    });
+    const { chamadas, porta } = portaDeTeste({ get: running });
+
+    const r = await retornarParaAnalise(sb, pedido, porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(409);
+    expect(r.erro).toContain("env-vivo");
+    expect(r.erro).toContain("o webhook grava o cancelamento aqui");
+    // Leu o estado ANTES de recusar, e não mandou PATCH nenhum.
+    expect(chamadas).toEqual([{ caminho: "/envelopes/env-vivo", metodo: "GET" }]);
+    expect(atualizacoes).toEqual([]);
+  });
+
+  // ⚠️ E A SAÍDA DO WEBHOOK PERDIDO VOLTOU A FUNCIONAR PARA ESSA LINHA: a Clicksign já cancelou, não
+  // há NADA a cancelar, e o card volta sem PATCH. Com a recusa antes da leitura, esta linha ficava
+  // presa para sempre — recusando um cancelamento que não precisava acontecer.
+  it("linha sem o id do documento e envelope já canceled: volta sem PATCH nenhum", async () => {
+    const { sb } = bancoDeTeste({
+      card: cardEmAssinatura,
+      envelopes: [linha({ envelope_id: "env-morto", estado: "parcial", provedor_documento_id: null })],
+    });
+    const { chamadas, porta } = portaDeTeste({ get: canceled });
+
+    const r = await retornarParaAnalise(sb, pedido, porta);
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.envelopeCancelado).toBeNull();
+    expect(chamadas.some((c) => c.metodo === "PATCH")).toBe(false);
+  });
+
+  // ⚠️ O `select` DO CAMINHO DA NÍVEA FICA PRESO AQUI. O duplo devolve a linha inteira da fixture, que
+  // sempre traz `provedor_documento_id`: sem esta asserção, voltar a lista de colunas para a antiga
+  // deixava a suíte verde e o `tsc` também, e em produção o id chegaria `undefined`.
+  it("a consulta dos envelopes PEDE o provedor_documento_id", async () => {
+    const { colunasPedidas, sb } = bancoDeTeste({
+      card: cardEmAssinatura,
+      envelopes: [linha({ envelope_id: "env-vivo", estado: "parcial" })],
+    });
+    const { porta } = portaDeTeste({ get: [running, canceled] });
+
+    await retornarParaAnalise(sb, pedido, porta);
+
+    const doEnvelope = colunasPedidas.find((c) => c.tabela === "temis_envelopes");
+    expect(doEnvelope?.colunas).toContain("provedor_documento_id");
+    // E as colunas da régua continuam lá: é o mesmo `select` das duas perguntas.
+    expect(doEnvelope?.colunas).toContain("envelope_id");
+    expect(doEnvelope?.colunas).toContain("estado");
+    expect(doEnvelope?.colunas).toContain("provedor");
   });
 
   // ⚠️ O CASO QUE O BANCO NÃO PEGA: o webhook ainda não chegou, a linha diz `parcial`, e a Clicksign
@@ -482,8 +640,12 @@ describe("quando o cancelamento não dá certo", () => {
       { detalhes: [], requestId: null, status },
     );
 
-  // A API respondeu: é uma CERTEZA de que o envelope continua vivo.
-  it("recusa da API: afirma que o contrato segue na mão de quem ia assinar", async () => {
+  // ⚠️ A RECUSA DA API PAROU DE AFIRMAR QUE O CONTRATO SEGUE ASSINÁVEL, E ISSO FOI MEDIDO NA DOC EM
+  // 25/09/2026: o documento aceita `canceled` só enquanto está `running` ("Editar Documento"), então um
+  // 4xx aqui é tanto "recusou" quanto "esse documento JÁ está cancelado". O segundo caso é o clique
+  // repetido depois de um carimbo que falhou no banco, e nele a frase antiga dizia ao operador que as
+  // pessoas continuavam com o contrato atual para assinar quando ninguém mais assina aquilo.
+  it("recusa da API: manda conferir, sem afirmar que o contrato segue assinável", async () => {
     const { sb } = bancoComEnvelopeVivo();
     const { porta } = portaDeTeste({
       get: respondeRunning,
@@ -494,21 +656,29 @@ describe("quando o cancelamento não dá certo", () => {
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.status).toBe(502);
-    expect(r.erro).toContain("continuam com o contrato atual para assinar");
+    expect(r.erro).toContain("A Clicksign recusou o cancelamento do contrato do envelope env-vivo");
+    expect(r.erro).toContain("pode ser porque o documento JÁ está cancelado ou fechado");
     expect(r.erro).toContain("o webhook grava o cancelamento aqui e libera a volta");
+    // A frase NÃO afirma mais o que o código não sabe.
+    expect(r.erro).not.toContain("as pessoas continuam com o contrato atual para assinar. Cancele");
     expect(r.erro).not.toContain("tente de novo");
   });
 
   // ⚠️ TIMEOUT NÃO É RECUSA: o PATCH pode ter chegado. Afirmar "continuam com o contrato atual"
   // aqui seria trocar dúvida por certeza falsa — a mesma decisão que `carimbarFalha` toma no envio.
-  it("timeout: diz que NÃO DÁ PARA SABER se o cancelamento chegou", async () => {
+  //
+  // ⚠️ E A FRASE PAROU DE DIZER "A CLICKSIGN NÃO RESPONDEU", porque desde 25/09/2026 ela cobre dois
+  // fatos: o timeout e a releitura que não confirmou a morte do envelope (nesse a Clicksign respondeu,
+  // e aceitou). O que os dois têm em comum é o que ela afirma.
+  it("timeout: diz que o Panteon não conseguiu confirmar a morte do envelope", async () => {
     const { sb } = bancoComEnvelopeVivo();
     const { porta } = portaDeTeste({ get: respondeRunning, patch: falha(0) });
 
     const r = await retornarParaAnalise(sb, pedido, porta);
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(r.erro).toContain("NÃO DÁ PARA SABER");
+    expect(r.erro).toContain("não conseguiu confirmar");
+    expect(r.erro).toContain("pode ter sido cancelado lá ou continuar valendo");
     expect(r.erro).not.toContain("continuam com o contrato atual para assinar");
     expect(r.erro).not.toContain("tente de novo");
   });

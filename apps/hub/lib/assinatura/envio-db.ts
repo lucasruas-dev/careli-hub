@@ -481,6 +481,35 @@ export type EnvelopeDaProposta = {
 };
 
 /**
+ * A MESMA LINHA, PARA QUEM VAI CANCELAR — com o id do DOCUMENTO.
+ *
+ * ⚠️ ELA EXISTE PORQUE CANCELAR NA CLICKSIGN V3 É UM PATCH NO DOCUMENTO, não no envelope (doc lida
+ * em 25/09/2026, citada em `cancelarEnvelope`). Sem `provedor_documento_id` não há o que cancelar.
+ *
+ * ⚠️ E É UM TIPO À PARTE DE PROPÓSITO, EM VEZ DE UM CAMPO NOVO EM `EnvelopeDaProposta` — POR CAUSA DE
+ * DOIS LEITORES, NÃO DOS QUATRO. Conferido select por select em 25/09/2026, entre os quatro que só
+ * PERGUNTAM "existe envelope vivo?":
+ *
+ *   • NÃO trazem a coluna: `lib/temis/trabalho-servico.ts:1001` e
+ *     `lib/hercules/indeferimento-na-venda-server.ts:430`, os dois com a lista de seis colunas.
+ *   • JÁ a trazem e a jogam fora: `lib/temis/trabalhos-db.ts:552` (e `EnvelopeParaContar`, na linha
+ *     455, já a declara) e o gate do acordo, por `COLUNAS_DO_ENVELOPE`
+ *     (`lib/hades/acordo/envelopes-db.ts:47`), que a descarta no mapeador `comoAReguaLe` da linha 105.
+ *
+ * São aqueles DOIS que mantêm o campo fora do tipo comum: pôr o campo em `EnvelopeDaProposta` faria o
+ * `as` do Supabase prometer um valor que o `select` deles não traz — `undefined` vestido de
+ * `string | null`, que é exatamente o jeito de um id faltar calado no dia em que um deles passasse a
+ * cancelar. Quem for mexer em qualquer um dos quatro confere o `select` real, e não este parágrafo.
+ */
+export type EnvelopeParaCancelar = EnvelopeDaProposta & {
+  provedor_documento_id: null | string;
+};
+
+/** As colunas que quem vai CANCELAR precisa pedir no `select`. */
+export const COLUNAS_PARA_CANCELAR =
+  "criado_em, envelope_id, estado, falha, id, provedor, provedor_documento_id";
+
+/**
  * Os estados que LIBERAM um novo envio.
  *
  * ⚠️ O REENVIO LEGÍTIMO É O CASO DE USO, e não uma exceção rara: envelope cancelado na Clicksign
@@ -508,8 +537,13 @@ const ESTADOS_QUE_LIBERAM_REENVIO = new Set<string>([
  * ⚠️ A ORDEM VEM DE QUEM CHAMA. A consulta pede `criado_em desc`, então a linha devolvida é a mais
  * recente que segura — é o id que a frase da recusa manda conferir na Clicksign, e mandar alguém
  * procurar o envelope mais VELHO seria mandar procurar o errado.
+ *
+ * ⚠️ GENÉRICA PARA NÃO PODAR A LINHA DE QUEM CHAMA. Quem vai cancelar lê uma coluna a mais
+ * (`provedor_documento_id`, em `EnvelopeParaCancelar`): com o retorno fixo em `EnvelopeDaProposta`,
+ * o id do documento CHEGAVA do banco e o TypeScript o apagava na saída daqui, e a régua devolveria
+ * uma linha da qual não se consegue cancelar nada.
  */
-export function envelopeQueSegura(linhas: EnvelopeDaProposta[]): EnvelopeDaProposta | null {
+export function envelopeQueSegura<L extends EnvelopeDaProposta>(linhas: L[]): L | null {
   return linhas.find(seguraOEnvio) ?? null;
 }
 
@@ -818,11 +852,27 @@ async function carimbarSucesso(
  * dela já ter virado o status — e afirmar "aguardando" ali seria trocar uma dúvida por uma certeza
  * falsa; o id vai gravado do mesmo jeito, que é o que permite conferir. Ver a ATENÇÃO 1 da migration
  * 0149.
+ *
+ * ⚠️ E O `provedor_documento_id` VAI JUNTO DESDE 25/09/2026, PELO MESMO MOTIVO QUE O `envelope_id`
+ * FOI ACRESCENTADO ANTES. Cancelar na Clicksign v3 é `PATCH
+ * /envelopes/{envelope_id}/documents/{document_id}` (doc lida em 25/09/2026, citada em
+ * `cancelarEnvelope`): sem o id do DOCUMENTO os três caminhos de cancelamento do Panteon (a volta
+ * para a análise, a conclusão do cancelamento da venda e o cancelamento do termo do Hades) recusam a
+ * linha. Até esta data `carimbarFalha` gravava só o `envelope_id`, e o envio que falha no passo
+ * `notificar` — o pior e mais provável desfecho descrito acima — nascia com a coluna NULA e com o
+ * envelope VIVO e pago: nenhum outro lugar do código a preencheria depois, então a recusa valeria
+ * PARA SEMPRE naquela linha. Ver `FalhaNoEnvio.documentoId`.
  */
 async function carimbarFalha(
   sb: SupabaseClient,
   registroId: string,
-  resultado: { envelopeId: null | string; erro: string; passo: FalhaNoEnvio["passo"]; rascunhoApagado: boolean },
+  resultado: {
+    documentoId: null | string;
+    envelopeId: null | string;
+    erro: string;
+    passo: FalhaNoEnvio["passo"];
+    rascunhoApagado: boolean;
+  },
 ): Promise<void> {
   const ativado = resultado.passo === "notificar";
   const sobrou = ativado
@@ -837,6 +887,10 @@ async function carimbarFalha(
       atualizado_em: new Date().toISOString(),
       falha: `passo "${resultado.passo}": ${resultado.erro}${sobrou}`,
       ...(resultado.envelopeId ? { envelope_id: resultado.envelopeId } : {}),
+      // ⚠️ SÓ QUANDO SOBROU ALGO LÁ, na mesma régua do `envelope_id` acima: `falhar` já devolve
+      // `null` quando o rascunho foi apagado, e gravar o id de um documento que não existe mais
+      // mandaria o cancelamento futuro tentar um PATCH no nada.
+      ...(resultado.documentoId ? { provedor_documento_id: resultado.documentoId } : {}),
       ...(ativado ? { estado: "aguardando", estado_cru: "clicksign:running" } : {}),
     })
     .eq("id", registroId);
