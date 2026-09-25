@@ -1,6 +1,8 @@
 // Cenário comercial dos EMPREENDIMENTOS (Apolo). Lê o C2X (read-only) e aplica a regra de
 // governança do Hades — fonte única em lib/guardian/c2x-analytics.ts:
-//   - EXCLUDED_ENTERPRISE_CODES: TSC/SDT/LAB/LAG ficam de fora (teste + masterplan/aditivo).
+//   - EXCLUDED_ENTERPRISE_IDS: 2, 31 e 34 (SDT, LAB, TSC) ficam de fora (teste + masterplan). Era
+//     `EXCLUDED_ENTERPRISE_CODES`, pela SIGLA, e parou de excluir o 30 quando o LAG virou ADT no C2X
+//     (16/07/2026). Pelo id, um renome no legado não muda mais quem sai (PAN-124).
 //   - ENTERPRISE_GROUPS: etapas do mesmo produto viram UMA linha consolidada (Lavra do Ouro =
 //     LOS+LOU, Lagoa Bonita = LBF+LBR+LBP...), com as etapas como sub-linhas expansíveis.
 //   - ENTERPRISE_MIRRORS: o ESPELHO (hoje o VLO) CONTINUA LISTADO mas fica FORA de `totals`.
@@ -16,6 +18,8 @@
 // precisa olhar"*).
 import type { RowDataPacket } from "mysql2";
 
+import { filtroPorIds, filtroSemExcluidos, idDoC2x, semExcluidos } from "@/lib/apolo/c2x-pelo-id";
+import { idsDoC2xDasSiglasAoVivo, type OrigemDaSigla } from "@/lib/apolo/c2x-pelo-id-servidor";
 import { createApoloAdminClient, deterministicUuid } from "@/lib/apolo/server";
 import {
   acharUnidade,
@@ -35,7 +39,6 @@ import {
 import {
   ENTERPRISE_GROUPS,
   ENTERPRISE_MIRRORS,
-  EXCLUDED_ENTERPRISE_CODES,
   findEnterpriseMirror,
 } from "@/lib/guardian/c2x-analytics";
 import { getHadesDbPool } from "@/lib/guardian/db";
@@ -292,7 +295,11 @@ export async function loadApoloEnterprises(
     };
   }
 
-  const placeholders = EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ");
+  // ⚠️ A EXCLUSÃO É PELO ID (`EXCLUDED_ENTERPRISE_IDS`), e não mais pela sigla (PAN-124): a lista por
+  // sigla deixou de excluir o 30 quando o LAG virou ADT no C2X, calada. Hoje o resultado é o mesmo:
+  // `e.id not in` e `e.code not in` só divergiriam numa sigla nula, e o C2X não tem nenhuma (medido
+  // em 25/09/2026).
+  const semExcluidosDoC2x = filtroSemExcluidos();
 
   // As duas leituras do C2X correm juntas. ⚠️ `sale_status_id` e `sale_blocked` NÃO ESTÃO NO
   // SELECT de propósito: a situação é do Panteon, e coluna de status do legado à mão aqui é convite
@@ -310,17 +317,17 @@ export async function loadApoloEnterprises(
        left join cities ci on ci.id = e.city_id
        left join states s on s.id = ci.state_id
        left join users inc on inc.id = e.incorporador_id
-       where e.code not in (${placeholders})
+       where ${semExcluidosDoC2x.sql}
        order by e.code`,
-      [...EXCLUDED_ENTERPRISE_CODES],
+      semExcluidosDoC2x.params,
     ),
     poolResult.pool.query<EnterpriseUnitRow[]>(
       `select u.id, u.name as unit_name, u.block, u.lot, u.price,
               e.id as enterprise_id, e.code as enterprise_code
          from enterprise_unities u
          join enterprises e on e.id = u.enterprise_id
-        where e.code not in (${placeholders})`,
-      [...EXCLUDED_ENTERPRISE_CODES],
+        where ${semExcluidosDoC2x.sql}`,
+      semExcluidosDoC2x.params,
     ),
   ]);
 
@@ -521,6 +528,11 @@ function playerSelect(column: string, alias: string): string {
             limit 1) as ${alias}_address`;
 }
 
+/** Configuração do C2X ausente: o mesmo `ok: false` de sempre, na mesma frase. */
+function erroDeConfiguracaoDoC2x(missing: string[]): { error: string; ok: false } {
+  return { error: `Configuracao C2X ausente: ${missing.join(", ")}.`, ok: false };
+}
+
 // O SELECT do cadastro, com o filtro de quem chama. Um texto só para as duas buscas (por sigla e
 // por id): duas cópias do mesmo SELECT divergiriam no dia em que um player novo entrasse numa delas.
 function sqlDoCadastro(filtro: string): string {
@@ -545,40 +557,50 @@ function sqlDoCadastro(filtro: string): string {
 
 // Cadastro do empreendimento (uma ficha por CÓDIGO — o produto consolidado tem N).
 //
-// ⚠️ É A BUSCA POR SIGLA, E ELA QUEBRA QUANDO ALGUÉM RENOMEIA NO C2X. Serve às telas que já têm na
-// mão a sigla VIVA do C2X (a aba Cadastro do Apolo, a do portal), que leem a sigla e o cadastro no
-// mesmo instante. Para ACHAR O COORDENADOR a partir do que o Panteon guarda, use
-// `loadApoloEnterpriseCadastroPorId` (Lucas, 24/09/2026; ver lib/apolo/coordenador-do-empreendimento.ts).
+// ⚠️ RECEBE SIGLA, MAS PERGUNTA AO C2X PELO ID (PAN-124). A aba Cadastro do Apolo e a do portal
+// mandam a sigla; até aqui ela ia crua para o `e.code in (...)`, e a sigla muda num renome no legado
+// (o 43 de RDV para PDI em 24/09/2026 fez a busca por RDV voltar com zero fichas, sem erro). Agora a
+// sigla é traduzida num lugar só (`idsDoC2xDasSiglasAoVivo`) e a busca é a
+// `loadApoloEnterpriseCadastroPorId`, o mesmo SELECT com o mesmo `order by e.code`.
+//
+// ⚠️ A SIGLA GUARDADA DE ANTES DE UM RENOME (a tela aberta antes dele) só é salva enquanto o catálogo
+// em cache for de antes do renome (até 10 minutos); depois volta sem ficha, como `e.code in` voltava.
+// Só a busca pelo id atravessa. A tela do Apolo passa `conferirNoC2x` (ver `OrigemDaSigla`).
+//
+// ⚠️ A EXCLUSÃO (TSC, SDT, LAB) CONTINUA, NA TRADUÇÃO: ela tira `EXCLUDED_ENTERPRISE_IDS` por padrão,
+// e a busca por id não exclui por conta própria. O resultado é o do filtro por sigla que morava aqui.
+//
+// ⚠️ O NOME E A ASSINATURA FICAM: as rotas e os testes de outras telas chamam (e trocam) esta função.
 export async function loadApoloEnterpriseCadastro(
   codes: string[],
+  origem: OrigemDaSigla = {},
 ): Promise<
   | { cadastros: ApoloEnterpriseCadastro[]; ok: true }
   | { error: string; ok: false }
 > {
-  const validCodes = codes
-    .map((code) => code.trim().toUpperCase())
-    .filter((code) => code && !EXCLUDED_ENTERPRISE_CODES.includes(code));
+  const siglas = codes.map((code) => code.trim().toUpperCase()).filter(Boolean);
 
-  if (!validCodes.length) {
+  if (!siglas.length) {
     return { cadastros: [], ok: true };
   }
 
   const poolResult = getHadesDbPool();
+  if (!poolResult.ok) return erroDeConfiguracaoDoC2x(poolResult.missing);
 
-  if (!poolResult.ok) {
-    return {
-      error: `Configuracao C2X ausente: ${poolResult.missing.join(", ")}.`,
-      ok: false,
-    };
+  const traduzido = await idsDoC2xDasSiglasAoVivo(siglas, origem);
+  if (!traduzido.ok) {
+    return { error: traduzido.erro, ok: false };
   }
 
-  const placeholders = validCodes.map(() => "?").join(", ");
-  const [rows] = await poolResult.pool.query<CadastroQueryRow[]>(
-    sqlDoCadastro(`e.code in (${placeholders})`),
-    validCodes,
-  );
+  const lido = await loadApoloEnterpriseCadastroPorId(traduzido.ids.map(String));
+  if (!lido.ok) return lido;
 
-  return { cadastros: rows.map(mapCadastroRow), ok: true };
+  // ⚠️ SEM O `enterpriseId`: a resposta desta função vai crua para a tela (`{ cadastros }`), e o campo
+  // a mais mudaria o JSON de quem nunca pediu por id.
+  return {
+    cadastros: lido.cadastros.map(({ enterpriseId: _enterpriseId, ...cadastro }) => cadastro),
+    ok: true,
+  };
 }
 
 /** A ficha do C2X com o id de onde ela saiu: quem pediu por id precisa casar a resposta pelo id. */
@@ -594,8 +616,9 @@ export type ApoloEnterpriseCadastroPorId = ApoloEnterpriseCadastro & { enterpris
  * com o 30 (LAG, ADT, ACT). O id do C2X é a chave que o Panteon inteiro já guarda
  * (`hercules_empreendimentos.c2x_enterprise_id`, `apolo_enterprise_settings.enterprise_id`).
  *
- * ⚠️ NÃO FILTRA `EXCLUDED_ENTERPRISE_CODES`, e é de propósito: aquela lista é de SIGLAS (voltaria a
- * depender do nome do legado), e quem pede um id pediu aquele empreendimento. Id que não é número
+ * ⚠️ NÃO EXCLUI NADA POR CONTA PRÓPRIA, e é de propósito: quem pede um id pediu aquele empreendimento.
+ * A exclusão (`EXCLUDED_ENTERPRISE_IDS`) mora na tradução, que a aplica por padrão; é por ela que
+ * `loadApoloEnterpriseCadastro` (a busca pelas siglas) continua sem TSC, SDT e LAB. Id que não é número
  * (`group:...`, uuid) não é id do C2X e fica de fora; o grupo se resolve ANTES, pelas divisões do
  * cadastro do Panteon (lib/apolo/coordenador-do-empreendimento.ts).
  */
@@ -833,29 +856,63 @@ type UnitQueryRow = RowDataPacket & {
 // ⚠️ SEM A SITUAÇÃO DO PANTEON, SEM LISTA. Se a leitura falhar, a função devolve erro e a tela
 // mostra a caixa vermelha. Cair no C2X seria voltar a pintar de livre o que o Panteon travou, e
 // uma lista "toda disponível" por falha de leitura é convite a vender lote que já tem dono.
+//
+// ⚠️ RECEBE SIGLA, MAS PERGUNTA AO C2X PELO ID (PAN-124). A tela manda `?codes=` (e o portal, as siglas
+// do catálogo); a sigla vira `enterprises.id` (`idsDoC2xDasSiglasAoVivo`), com a exclusão de sempre
+// (TSC, SDT, LAB) aplicada ali, pelo id. O SQL mora em `loadApoloEnterpriseUnitsPorIds`. Catálogo
+// ilegível é o C2X fora: `ok: false`, que a rota já responde com 503, e não uma aba vazia com cara de
+// verdade. ⚠️ A sigla guardada de antes de um renome só é salva enquanto o catálogo em cache for de
+// antes dele (até 10 minutos); a tela do Apolo passa `conferirNoC2x` (ver `OrigemDaSigla`).
 export async function loadApoloEnterpriseUnits(
   codes: string[],
+  origem: OrigemDaSigla = {},
 ): Promise<
   { ok: true; units: ApoloEnterpriseUnit[] } | { error: string; ok: false }
 > {
-  const validCodes = codes
-    .map((code) => code.trim().toUpperCase())
-    .filter((code) => code && !EXCLUDED_ENTERPRISE_CODES.includes(code));
+  const siglas = codes.map((code) => code.trim().toUpperCase()).filter(Boolean);
 
-  if (!validCodes.length) {
+  if (!siglas.length) {
     return { ok: true, units: [] };
   }
 
   const poolResult = getHadesDbPool();
+  if (!poolResult.ok) return erroDeConfiguracaoDoC2x(poolResult.missing);
 
-  if (!poolResult.ok) {
-    return {
-      error: `Configuracao C2X ausente: ${poolResult.missing.join(", ")}.`,
-      ok: false,
-    };
+  const traduzido = await idsDoC2xDasSiglasAoVivo(siglas, origem);
+  if (!traduzido.ok) {
+    return { error: traduzido.erro, ok: false };
   }
 
-  const placeholders = validCodes.map(() => "?").join(", ");
+  return loadApoloEnterpriseUnitsPorIds(traduzido.ids);
+}
+
+/**
+ * As unidades pelos ids do C2X (`enterprises.id`), que não mudam num renome.
+ *
+ * ⚠️ OS EXCLUÍDOS NUNCA ENTRAM, como na busca pela sigla: quem pedir o 34 (TSC) recebe a aba vazia, e
+ * não as unidades do teste. Só aceita id do C2X: o nascido no Panteon (>= 100000), `group:` e uuid
+ * ficam de fora (`idDoC2x`). Sem id nenhum, não vai ao C2X.
+ *
+ * ⚠️ SÓ O WHERE MUDOU: o SELECT e o `order by e.code, u.block, u.lot` são os da busca pela sigla, e a
+ * lista sai idêntica para quem não foi renomeado (medido linha a linha em 25/09/2026).
+ */
+export async function loadApoloEnterpriseUnitsPorIds(
+  idsPedidos: ReadonlyArray<number | string>,
+): Promise<
+  { ok: true; units: ApoloEnterpriseUnit[] } | { error: string; ok: false }
+> {
+  const filtro = filtroPorIds(
+    "e.id",
+    semExcluidos(idsPedidos.map(idDoC2x).filter((id): id is number => id !== null)),
+  );
+
+  if (!filtro) {
+    return { ok: true, units: [] };
+  }
+
+  const poolResult = getHadesDbPool();
+  if (!poolResult.ok) return erroDeConfiguracaoDoC2x(poolResult.missing);
+
   const nameSql = (alias: string) =>
     `coalesce(nullif(trim(${alias}.name), ''), nullif(trim(${alias}.fantasy_name), ''), nullif(trim(${alias}.social_name), ''))`;
 
@@ -887,9 +944,9 @@ export async function loadApoloEnterpriseUnits(
        left join acquisition_request_stages st on st.id = ar.acquisition_request_stage_id
        left join users cli on cli.id = ar.client_id
        left join users imo on imo.id = cli.vinculed_by_id
-      where e.code in (${placeholders})
+      where ${filtro.sql}
       order by e.code, u.block, u.lot`,
-    validCodes,
+    filtro.params,
   );
 
   // `enterprise_id` do C2X de cada linha: é a chave que `hercules_unidades` guarda. As duas

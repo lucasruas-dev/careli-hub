@@ -17,7 +17,7 @@ import {
   type ExtratoClienteParcelaBruta,
   type ExtratoClienteTitular,
 } from "@/lib/apolo/extrato-cliente";
-import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
+import { filtroSemExcluidos } from "@/lib/apolo/c2x-pelo-id";
 import { getHadesDbPool } from "@/lib/guardian/db";
 
 /** Estágios que encerram o contrato: o extrato sai só com o histórico pago, sem saldo. */
@@ -126,7 +126,9 @@ export async function loadExtratoDoCliente(
     };
   }
 
-  const excluidos = EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ");
+  // ⚠️ PAN-124: a exclusão é pelo id (`e.id not in (2, 31, 34)`), e não mais pela sigla, que muda
+  // quando alguém renomeia no C2X (o "LAG" da lista antiga não casa com nada desde 16/07/2026).
+  const semExcluidosDoC2x = filtroSemExcluidos();
 
   try {
     // ⚠️ O COMPRADOR PODE SER O COADQUIRENTE. O C2X guarda até cinco titulares na mesma linha
@@ -184,7 +186,7 @@ export async function loadExtratoDoCliente(
        left join commercial_plans cp on cp.id = ar.commercial_plan_id
        left join index_monetary_corrections imc on imc.id = cp.index_monetary_correction_id
        where ? in (ar.client_id, ar.client_2_id, ar.client_3_id, ar.client_4_id, ar.client_5_id)
-         and e.code not in (${excluidos})
+         and ${semExcluidosDoC2x.sql}
          and exists (
            select 1 from payments p
             where p.acquisition_request_id = ar.id
@@ -193,7 +195,7 @@ export async function loadExtratoDoCliente(
          )
        order by e.code, eu.name
        limit 60`,
-      [escopo.c2xId, ...EXCLUDED_ENTERPRISE_CODES],
+      [escopo.c2xId, ...semExcluidosDoC2x.params],
     );
 
     const filtrados = escopo.contratoId

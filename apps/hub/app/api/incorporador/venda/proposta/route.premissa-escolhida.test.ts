@@ -173,6 +173,8 @@ vi.mock("@/lib/hercules/quem-pode-vender", () => ({ familiaDoEmpreendimento: () 
 
 vi.mock("@/lib/apolo/planos-comerciais-c2x", () => ({
   lerPlanosDoC2x: async () => ({ ok: false }) as const,
+  // Desde o PAN-124 a rota lê os planos do C2X pelo id do empreendimento (a sigla muda num renome).
+  lerPlanosDoC2xPorIds: async () => ({ ok: false }) as const,
 }));
 
 vi.mock("@/lib/hercules/planos-do-panteon", () => ({

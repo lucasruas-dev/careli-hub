@@ -37,6 +37,9 @@ const estado = vi.hoisted(() => ({
   folhas: [] as unknown[],
   inserido: [] as Array<{ linha: Record<string, unknown>; tabela: string }>,
   reserva: {} as Record<string, unknown>,
+  /** Com que o C2X foi perguntado pelos planos: pela sigla (`lerPlanosDoC2x`) ou pelo id. */
+  planosDoC2xPorSigla: [] as unknown[],
+  planosDoC2xPorIds: [] as unknown[],
 }));
 
 const UNIDADE = {
@@ -149,7 +152,14 @@ vi.mock("@/lib/hercules/cadastro", () => ({
 vi.mock("@/lib/hercules/quem-pode-vender", () => ({ familiaDoEmpreendimento: () => ["39"] }));
 
 vi.mock("@/lib/apolo/planos-comerciais-c2x", () => ({
-  lerPlanosDoC2x: async () => ({ ok: false }) as const,
+  lerPlanosDoC2x: async (codes: unknown) => {
+    estado.planosDoC2xPorSigla.push(codes);
+    return { ok: false } as const;
+  },
+  lerPlanosDoC2xPorIds: async (ids: unknown) => {
+    estado.planosDoC2xPorIds.push(ids);
+    return { ok: false } as const;
+  },
 }));
 
 vi.mock("@/lib/hercules/planos-do-panteon", () => ({
@@ -410,6 +420,8 @@ beforeEach(() => {
   estado.reservaJaSaiu = false;
   estado.propostasDeOutros = [];
   estado.planos = PLANOS(HOJE);
+  estado.planosDoC2xPorSigla = [];
+  estado.planosDoC2xPorIds = [];
   estado.reserva = {
     corretor_entity_id: "corr-1",
     criado_em: "2026-09-01T12:00:00.000Z",
@@ -420,6 +432,14 @@ beforeEach(() => {
     situacao: "ativa",
     validade_em: "2026-09-07T02:59:59.000Z",
   };
+});
+
+describe("os planos do C2X pelo id do empreendimento (PAN-124)", () => {
+  it("🔴 pergunta ao C2X pelo `enterprise_id` da unidade, e não pela sigla do catálogo, que muda num renome", async () => {
+    await pedir({ planoId: "plano-36x" });
+    expect(estado.planosDoC2xPorIds).toEqual([["39"]]);
+    expect(estado.planosDoC2xPorSigla).toEqual([]);
+  });
 });
 
 describe("o plano da proposta é casado pelo ID da linha, com o nome como reserva", () => {

@@ -1,3 +1,5 @@
+import { type CatalogoParaId, filtroPorIds } from "@/lib/apolo/c2x-pelo-id";
+import { idsDoC2xDasSiglasAoVivo } from "@/lib/apolo/c2x-pelo-id-servidor";
 import { getHadesDbPool } from "@/lib/guardian/db";
 
 // O PERFIL DO COMPRADOR, AGREGADO, para enriquecer o painel de vendas do incorporador.
@@ -186,10 +188,17 @@ export function agregarPerfilDoComprador(
  * O endereço entra deduplicado (o mais recente por pessoa, `max(id)`), senão um comprador com dois
  * endereços viraria duas vendas — o LEFT JOIN direto em `addresses` multiplica linhas.
  *
+ * ⚠️ PELO ID DO C2X, NÃO PELA SIGLA (PAN-124). Os codes viram `enterprises.id` pelo catálogo e o
+ * WHERE é `e.id in (...)`: um renome no legado (o 43, de RDV para PDI em 24/09/2026) zerava o perfil
+ * daquele empreendimento sem erro. Sigla sem id no C2X (produto nascido no Panteon) dá a mesma lista
+ * vazia de antes; catálogo indisponível é C2X fora, e vira o mesmo `ok: false`.
+ *
  * @param codes Códigos JÁ FILTRADOS pelo escopo da sessão (`codigosDaSessao`).
+ * @param opcoes.catalogo O catálogo, quando a rota já o tem (evita reler o cache).
  */
 export async function lerCompradoresDasVendas(
   codes: string[],
+  opcoes: { catalogo?: CatalogoParaId | null } = {},
 ): Promise<{ compradores: CompradorCru[]; ok: true } | { error: string; ok: false }> {
   const limpos = [...new Set(codes.map((c) => c.trim().toUpperCase()).filter(Boolean))];
   if (limpos.length === 0) {
@@ -201,8 +210,16 @@ export async function lerCompradoresDasVendas(
     return { error: `Configuracao C2X ausente: ${pool.missing.join(", ")}.`, ok: false };
   }
 
+  const traduzido = await idsDoC2xDasSiglasAoVivo(limpos, { catalogo: opcoes.catalogo });
+  if (!traduzido.ok) {
+    console.error("[apolo][incorporador] perfil do comprador sem tradução de sigla", traduzido.erro);
+    return { error: "Nao foi possivel ler o perfil do comprador agora.", ok: false };
+  }
+
+  const doEscopo = filtroPorIds("e.id", traduzido.ids);
+  if (!doEscopo) return { compradores: [], ok: true };
+
   try {
-    const marcadores = limpos.map(() => "?").join(", ");
     const [linhas] = await pool.pool.query(
       // A MESMA régua de venda do BI do Vale do Ouro (estágios 3,4,5,6,9 com ar.open = 1) — os
       // dois painéis contam a mesma coisa de propósito, ver o cabeçalho do arquivo.
@@ -228,10 +245,10 @@ export async function lerCompradoresDasVendas(
          left join addresses ad on ad.id = endid.id
          left join cities ci on ci.id = ad.city_id
          left join states st on st.id = ad.state_id
-        where e.code in (${marcadores})
+        where ${doEscopo.sql}
           and ar.open = 1
           and ar.acquisition_request_stage_id in (3, 4, 5, 6, 9)`,
-      limpos,
+      doEscopo.params,
     );
 
     return { compradores: linhas as CompradorCru[], ok: true };

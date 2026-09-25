@@ -99,10 +99,10 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
   },
   {
     id: "PAN-124",
-    evidencia: "Plano revisado em 24/09/2026 (investigação do renome do 43): ~29 consultas do financeiro e de vendas ainda filtram o C2X por `e.code in (...)` (carteira, cobrança, extrato, vendas, planos, política, portal do incorporador, assinaturas, reajuste, analytics); `EXCLUDED_ENTERPRISE_CODES` quebrou em 16/07 quando o 30 virou ADT; o Panteon não tem tela para editar empreendimento (só o INSERT de produto novo). A v1.375.0 fez a primeira parte: coordenador pelo id e as travas.",
+    evidencia: "Plano revisado em 24/09/2026 (investigação do renome do 43): ~29 consultas do financeiro e de vendas ainda filtram o C2X por `e.code in (...)` (carteira, cobrança, extrato, vendas, planos, política, portal do incorporador, assinaturas, reajuste, analytics); `EXCLUDED_ENTERPRISE_CODES` quebrou em 16/07 quando o 30 virou ADT; o Panteon não tem tela para editar empreendimento (só o INSERT de produto novo). A v1.375.0 fez a primeira parte: coordenador pelo id e as travas. A v1.377.0 converteu as consultas de dados ao C2X para o id (régua em `lib/apolo/c2x-pelo-id.ts`; paridade medida em 32 funções x 37 empreendimentos). Falta: nome e sigla vindos do Panteon, a tela de editar e criar, e o vigia de divergência.",
     modulo: "Apolo",
     porque: "Lucas (24/09/2026): *\"temos que ter capacidade de editar cadastros dos empreendimentos bem como criá-los dentro do panteon\"*. Enquanto o financeiro buscar o C2X pela sigla, qualquer renome no legado faz a carteira e as vendas daquele empreendimento sumirem sem aviso. Ordem: primeiro as consultas pelo id (sem mudar tela), depois nome e sigla vindos do Panteon, depois a tela de editar e criar, e um vigia que avisa quando o C2X divergir.",
-    situacao: "proximo",
+    situacao: "fazendo",
     titulo: "Panteon dono do cadastro de empreendimentos: consultas do C2X pelo id, tela de editar e criar",
   },
   {

@@ -5,8 +5,9 @@ import type { RowDataPacket } from "mysql2";
 import { numeroDaParcela as numeroDoBoleto } from "@/lib/apolo/numero-da-parcela";
 import type { Pool } from "mysql2/promise";
 
+import { filtroPorIds, filtroSemExcluidos, semExcluidos } from "@/lib/apolo/c2x-pelo-id";
+import { idsDoC2xDasSiglasAoVivo, type OrigemDaSigla } from "@/lib/apolo/c2x-pelo-id-servidor";
 import { deterministicUuid } from "@/lib/apolo/server";
-import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
 import { getHadesDbPool } from "@/lib/guardian/db";
 
 // Expressões idênticas às do Hades (lib/guardian/overview.ts). Mantidas em sincronia à mão.
@@ -94,34 +95,80 @@ export type ApoloCarteiraData = {
 type SummaryRow = RowDataPacket & Record<string, number | string | null>;
 type UnitRow = RowDataPacket & Record<string, number | string | null>;
 
+type ResultadoDaCarteira =
+  | { data: ApoloCarteiraData; ok: true }
+  | { error: string; ok: false };
+
+function erroDeConfiguracao(missing: string[]): { error: string; ok: false } {
+  return { error: `Configuracao C2X ausente: ${missing.join(", ")}.`, ok: false };
+}
+
+/**
+ * A carteira do empreendimento pelas SIGLAS, que é o que a tela do Apolo (`?codes=`) e parte do portal
+ * do incorporador (`codigosDaSessao`) ainda mandam. Só traduz a sigla no id e chama a versão por id.
+ *
+ * ⚠️ PAN-124: A SIGLA NÃO VAI MAIS AO C2X COMO FILTRO. Ela era o `e.code in (...)`, e a sigla muda
+ * quando alguém renomeia no legado (em 24/09/2026 a Nívea trocou o 43 de RDV para PDI). Agora a
+ * consulta filtra pelo `enterprises.id`, e a sigla só é traduzida (lib/apolo/c2x-pelo-id-servidor.ts).
+ * Para quem não foi renomeado o resultado é o mesmo de antes.
+ *
+ * ⚠️ O QUE ISSO NÃO RESOLVE: a sigla GUARDADA de antes do renome. A tela do Apolo aberta às 09:50 com
+ * RDV, e o 43 renomeado às 10:00, só acha a carteira do 43 enquanto o catálogo em cache for de antes
+ * do renome (até 10 minutos); depois, RDV volta vazio, como `e.code in` voltava. Quem tem o id na mão
+ * chama `loadApoloEnterpriseCarteiraPorIds` e não depende disso. A tela do Apolo passa
+ * `conferirNoC2x` (ver `OrigemDaSigla`): a sigla que ela leu ao vivo é conferida no C2X no mesmo
+ * instante, e uma troca de siglas entre dois empreendimentos não traz a carteira do outro. Medido em 25/09/2026 (só SELECT, apps/hub/scratchpad/
+ * pan124-lote1-medir.ts, a consulta antiga e a nova lado a lado): 67 pedidos por sigla (cada entrada
+ * do catálogo, cada sigla sozinha, excluídas, minúsculas e inexistentes), as mesmas linhas com os
+ * mesmos valores em todos.
+ *
+ * ⚠️ A ORDEM DAS LINHAS EMPATADAS PODE MUDAR. Em 3 dos 67 (VOC, VOL) duas linhas da MESMA unidade
+ * (reserva cancelada e venda, ver `pedidoId`) saíram trocadas entre si: elas empatam no ORDER BY
+ * inteiro (`overdue_amount`, quadra, lote), e o MySQL não define a ordem de empate. A antiga também
+ * não seguia coluna nenhuma (medido: em 11 empates vinha pelo pedido crescente, em 8 decrescente),
+ * então não há desempate que a reproduza. Quem precisa de uma linha só casa pelo `pedidoId`.
+ *
+ * ⚠️ A EXCLUSÃO (teste, masterplan da Lagoa Bonita) SAIU DESTE ARQUIVO: quem exclui é a tradução,
+ * pelo id (`EXCLUDED_ENTERPRISE_IDS`). O filtro antigo por `EXCLUDED_ENTERPRISE_CODES` comparava
+ * sigla, e o "LAG" dele não casa com nada desde 16/07/2026.
+ *
+ * ⚠️ CATÁLOGO FORA É ERRO, NÃO CARTEIRA ZERADA. O catálogo vazio quer dizer C2X fora do ar: devolve
+ * `ok: false`, e a tela mostra o erro, como mostrava quando a consulta caía.
+ */
 export async function loadApoloEnterpriseCarteira(
   codes: string[],
-): Promise<
-  { data: ApoloCarteiraData; ok: true } | { error: string; ok: false }
-> {
-  const validCodes = codes
-    .map((code) => code.trim().toUpperCase())
-    .filter((code) => code && !EXCLUDED_ENTERPRISE_CODES.includes(code));
+  origem: OrigemDaSigla = {},
+): Promise<ResultadoDaCarteira> {
+  const poolResult = getHadesDbPool();
+  if (!poolResult.ok) return erroDeConfiguracao(poolResult.missing);
 
-  if (!validCodes.length) {
+  const traduzido = await idsDoC2xDasSiglasAoVivo(codes, origem);
+  if (!traduzido.ok) return { error: traduzido.erro, ok: false };
+  if (traduzido.ids.length === 0) {
     return { data: { summary: emptySummary(), units: [] }, ok: true };
   }
 
+  return loadApoloEnterpriseCarteiraPorIds(traduzido.ids);
+}
+
+/**
+ * A carteira do empreendimento pelos `enterprises.id` do C2X (PAN-124). É a consulta de sempre: só
+ * o WHERE mudou, de `e.code in (...)` para `e.id in (...)`. O SELECT continua devolvendo `e.code`
+ * (é o `enterpriseCode` da unidade e o prefixo do código dela) e o ORDER BY é o mesmo.
+ *
+ * ⚠️ OS EXCLUÍDOS NUNCA ENTRAM, como na versão por sigla: quem chamar com o 34 (TSC) recebe a
+ * carteira vazia, e não a do teste.
+ */
+export async function loadApoloEnterpriseCarteiraPorIds(
+  ids: number[],
+): Promise<ResultadoDaCarteira> {
+  const filtro = filtroPorIds("e.id", semExcluidos(ids));
+  if (!filtro) return { data: { summary: emptySummary(), units: [] }, ok: true };
+
   const poolResult = getHadesDbPool();
+  if (!poolResult.ok) return erroDeConfiguracao(poolResult.missing);
 
-  if (!poolResult.ok) {
-    return {
-      error: `Configuracao C2X ausente: ${poolResult.missing.join(", ")}.`,
-      ok: false,
-    };
-  }
-
-  const inCodes = validCodes.map(() => "?").join(", ");
-  const data = await runCarteiraQueries(
-    poolResult.pool,
-    `where e.code in (${inCodes})`,
-    validCodes,
-  );
+  const data = await runCarteiraQueries(poolResult.pool, `where ${filtro.sql}`, filtro.params);
   return { data, ok: true };
 }
 
@@ -164,9 +211,11 @@ export async function loadApoloCarteiraScoped(
     imobiliaria: "ar.client_id in (select id from users where vinculed_by_id = ?)",
     incorporador: "e.incorporador_id = ?",
   };
-  const excluded = EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ");
-  const whereScope = `where ${filterByKind[scope.kind]} and e.code not in (${excluded})`;
-  const params: Array<number | string> = [scope.c2xId, ...EXCLUDED_ENTERPRISE_CODES];
+  // ⚠️ PAN-124: a exclusão é pelo id (`e.id not in (2, 31, 34)`), e não mais pela sigla. A lista
+  // por sigla trazia o "LAG", que não casa com nada desde que o 30 foi renomeado em 16/07/2026.
+  const semExcluidosDoC2x = filtroSemExcluidos();
+  const whereScope = `where ${filterByKind[scope.kind]} and ${semExcluidosDoC2x.sql}`;
+  const params: Array<number | string> = [scope.c2xId, ...semExcluidosDoC2x.params];
 
   try {
     const data = await runCarteiraQueries(poolResult.pool, whereScope, params);

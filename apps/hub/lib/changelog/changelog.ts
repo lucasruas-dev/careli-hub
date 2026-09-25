@@ -36,6 +36,66 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-25-glotes-incremental-e-valor-pago",
+    deployedAt: "2026-09-25T18:20:11-03:00",
+    // Sem mudança de tela: é a API que o GLotes (sistema do Lavra do Ouro) consome. Por isso interno.
+    internal: true,
+    modules: [
+      {
+        module: "Integração GLotes",
+        screens: [
+          {
+            items: [
+              "**O GLotes deixa de ver como pago o que era só boleto emitido.** 761 parcelas em atraso (R$ 409.304,99) iam com o valor do boleto no campo de valor pago.",
+              "**A atualização diária do GLotes para de perder alterações.** O corte por data andava 3 horas no fuso e ignorava mudanças nas parcelas de cada venda.",
+              "**Recebimentos e vendas ganham a data de atualização**, como o GLotes pediu em 10/09.",
+            ],
+            screen: "API do GLotes",
+          },
+        ],
+      },
+    ],
+    rollback: "acf7e3e1",
+    technical: {
+      done:
+        "API /api/integrations/glotes, contrato 2.0.0 (docs/integrations/glotes-openapi.yaml, com x-historico) e levantamento seção 14. (1) FUSO: o C2X grava datetime no relógio de Brasília e a sessão do MySQL é UTC; vendas e recebimentos comparavam a marca UTC de alterado_desde direto com a coluna local e o corte andava 3h. marcaNoRelogioDoC2x converte nos três conjuntos. Desde 10/09, recebimentos ia de 534 para 1.705 linhas (1.564 do fuso mais 141 da troca de titular da VEN-223). (2) RELÓGIOS: vendas = maior entre contrato, parcelas de sinal e mensais (inclusive marcadas para apagar) e unidade (2 para 459 desde 10/09); recebimentos = parcela ou contrato (a troca de titular devolve as 144 parcelas com o codigo_cliente novo); clientes = cadastro, telefones, endereço, cônjuge e contrato de que é titular (o comprador novo com cadastro antigo agora volta). Todo argumento de GREATEST com coalesce e piso datetime. (3) atualizado_em em ISO com o fuso real do instante (-02:00 no antigo horário de verão), em clientes (quebra de formato, daí 2.0.0), vendas e recebimentos (novos); a porta aceita o valor de volta. (4) valor_pago só com payment_date ou status Pago: 761 atrasadas + 1 aguardando tinham paid_value igual ao valor da parcela e sem data (boleto emitido), que o contrato chamava de pagamento parcial. (5) Documentado: exclusão e cancelamento não aparecem no incremental (a origem não carimba), carga de referência com incluir_canceladas=true, borda >= como upsert, margem na marca, valor_parcela é o valor do cronograma. VALIDAÇÃO no C2X real, só SELECT: listagem completa igual à produção fora de atualizado_em e valor_pago; incremental bate com SQL independente (459 vendas, 1.705 recebimentos); VEN-223, VEN-81, ida e volta e horário de verão conferidos. Revisão em três lentes, 6 achados corrigidos. 24 testes novos em consultas.test.ts; typecheck limpo.",
+      motivation:
+        "Pedido do dev do GLotes em 10/09 (relatório de 3 clientes e data de atualização nos recebimentos). Lucas, 25/09/2026: pode fazer. A investigação mostrou que o incremental perdia dois terços das alterações e que o valor pago incluía boleto não pago. Depois da publicação, o GLotes precisa fazer uma carga completa com incluir_canceladas=true.",
+    },
+    title: "API do GLotes: valor pago sem boleto fantasma e atualização incremental no fuso certo",
+    type: "correcao",
+    version: "1.378.0",
+  },
+  {
+    buildTag: "2026-09-25-c2x-pelo-id-do-empreendimento",
+    deployedAt: "2026-09-25T14:24:10-03:00",
+    // Sem mudança de tela: as mesmas telas mostram os mesmos números. Por isso interno.
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Carteira, cobrança, vendas e portal buscam o empreendimento no C2X pelo número, e não pela sigla.** Renomear um empreendimento no C2X não faz mais a carteira dele sumir das telas.",
+            ],
+            screen: "Empreendimentos e portal do incorporador",
+          },
+        ],
+      },
+    ],
+    rollback: "607d4086",
+    technical: {
+      done:
+        "PAN-124, primeira etapa. O id do empreendimento no C2X nunca muda; a sigla muda (43 RDV para PDI em 24/09; 30 LAG para ADT em 16/07 e ADT para ACT em 21/09). Toda consulta de dados ao C2X que filtrava empreendimento por e.code in / not in / = passou a filtrar por e.id. Régua comum: lib/apolo/c2x-pelo-id.ts (pura: idDoC2x, filtroPorIds, filtroSemExcluidos, divisoesDoGrupo, idsDoC2xDosPedidos, idsDoC2xDasSiglas) e lib/apolo/c2x-pelo-id-servidor.ts (tradução ao vivo; catálogo fora do ar devolve erro e não carteira zerada; releitura forçada não apaga o cache e tem teto por sigla; a tela do Apolo confere a sigla no C2X no mesmo instante). Exclusão por id: EXCLUDED_ENTERPRISE_IDS = [2, 31, 34] (SDT, LAB, TSC), a lista por sigla estava quebrada desde 16/07 (LAG não existe mais); o 30 fica dentro, como hoje. Convertidos: carteira, cobrança, extrato, extrato do cliente, defasagem, Hades (fila e painel), grafo do CRM, vendas, unidades, cadastro, planos, política, catálogo, credenciamento, cupom do Prometeu, portal do incorporador (assinaturas, contratos, carteira líquida, Ato e Sinal, lotes, perfil, BI, ficha, histórico), painel de contratos, analytics da CACÁ e réguas da esteira e do Hércules. Rotas que já têm o id passaram a chamar as versões PorIds (proposta, políticas do produto, carteira e vendas do portal). Sobra por sigla, de propósito: a tradução da sigla lida ao vivo e o termo livre digitado na CACÁ. PARIDADE no C2X real, só SELECT (~6.900 consultas): 32 funções x 37 empreendimentos, resultado idêntico ao antigo onde não houve renome. REVISÃO: três lentes, 7 achados (2 major) corrigidos e reconferidos. Merge com a 1.376.0 resolveu o conflito de import na rota da proposta e a simulação do teste novo da premissa. Suíte inteira depois do merge com a 1.376.0: 638 arquivos, 9.520 testes passando; typecheck limpo.",
+      motivation:
+        "Lucas, 24/09/2026: temos que ter capacidade de editar cadastros dos empreendimentos bem como criá-los dentro do Panteon. E, em 25/09: pode seguir com o PAN-124. Esta etapa vem antes de o nome e a sigla passarem a sair do Panteon, senão a carteira de qualquer empreendimento com sigla divergente some em silêncio.",
+    },
+    title: "Consultas ao C2X pelo número do empreendimento, e não pela sigla",
+    type: "correcao",
+    version: "1.377.0",
+  },
+  {
     buildTag: "2026-09-25-faixa-manda-e-coordenador-vence",
     deployedAt: "2026-09-25T13:22:55-03:00",
     modules: [

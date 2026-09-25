@@ -1,3 +1,5 @@
+import { filtroPorIds, filtroSemExcluidos } from "@/lib/apolo/c2x-pelo-id";
+import { idsDoC2xDasSiglasAoVivo } from "@/lib/apolo/c2x-pelo-id-servidor";
 import { type ExtratoClienteParcelaBruta, TIPO_MENSAL } from "@/lib/apolo/extrato-cliente";
 import {
   defasagemDoContrato,
@@ -5,7 +7,6 @@ import {
   resumirDefasagem,
   type ResumoDaDefasagem,
 } from "@/lib/apolo/reajuste/defasagem";
-import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
 import { getHadesDbPool } from "@/lib/guardian/db";
 
 // A LEITURA DA DEFASAGEM NO C2X — read-only, uma consulta só.
@@ -91,8 +92,31 @@ export async function carregarDefasagem(
   }
 
   const pedidos = [...new Set(codes.map((c) => c.trim().toUpperCase()).filter(Boolean))];
-  const excluidos = EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ");
-  const filtroDeCodigo = pedidos.length > 0 ? `and e.code in (${pedidos.map(() => "?").join(", ")})` : "";
+  // ⚠️ PAN-124: a exclusão é pelo id (`e.id not in (2, 31, 34)`), e não mais pela sigla, que muda
+  // quando alguém renomeia no C2X (o "LAG" da lista antiga não casa com nada desde 16/07/2026).
+  const semExcluidosDoC2x = filtroSemExcluidos();
+
+  // ⚠️ PAN-124: AS SIGLAS PEDIDAS VIRAM `enterprises.id` ANTES DE IR AO C2X. Sem sigla nenhuma é a
+  // carteira inteira, como sempre (é o que a tela manda hoje). Com sigla, e nenhuma delas com id, a
+  // resposta é VAZIA, e nunca a carteira inteira: `e.code in (...)` com sigla que não existe também
+  // não achava nada. Catálogo fora é o C2X fora: o mesmo erro de quando a leitura caía.
+  //
+  // ⚠️ CONFERIDAS NO C2X (`conferirNoC2x`): a sigla vem da tela do Apolo, que a leu ao vivo. A de hoje
+  // acha o que `e.code in` achava, mesmo com o catálogo em cache (até 10 minutos) desatualizado ou
+  // dando a sigla a outro empreendimento; a de antes de um renome só é salva pelo catálogo em cache
+  // enquanto ele for de antes do renome.
+  let filtroDeCodigo: null | { params: number[]; sql: string } = null;
+  if (pedidos.length > 0) {
+    const traduzido = await idsDoC2xDasSiglasAoVivo(pedidos, { conferirNoC2x: true });
+    if (!traduzido.ok) {
+      console.error("[apolo][defasagem] catálogo do C2X indisponível", traduzido.erro);
+      return { error: "Não foi possível ler a carteira agora.", ok: false };
+    }
+    filtroDeCodigo = filtroPorIds("e.id", traduzido.ids);
+    if (!filtroDeCodigo) {
+      return { data: { linhas: [], parcial: false, resumo: resumirDefasagem([]) }, ok: true };
+    }
+  }
 
   const cruas: LinhaCrua[] = [];
   let cursor = 0;
@@ -132,12 +156,12 @@ export async function carregarDefasagem(
          left join users cli on cli.id = ar.client_id
         where p.parcel_type_id = ${TIPO_MENSAL}
           and coalesce(p.payment_to_delete, 0) = 0
-          and e.code not in (${excluidos})
-          ${filtroDeCodigo}
+          and ${semExcluidosDoC2x.sql}
+          ${filtroDeCodigo ? `and ${filtroDeCodigo.sql}` : ""}
           and p.id > ?
         order by p.id asc
         limit ${LOTE}`,
-        [...EXCLUDED_ENTERPRISE_CODES, ...pedidos, cursor],
+        [...semExcluidosDoC2x.params, ...(filtroDeCodigo?.params ?? []), cursor],
       );
 
       const linhas = lote as LinhaCrua[];

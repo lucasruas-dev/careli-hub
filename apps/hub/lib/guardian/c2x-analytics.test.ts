@@ -1,14 +1,66 @@
 import { describe, expect, it } from "vitest";
 
+import { ENTERPRISES_DO_C2X_EM_25_09_2026 as C2X } from "@/lib/apolo/c2x-pelo-id.fixture";
+
 import {
   ANALYTICS_EXCLUDED_ENTERPRISE_CODES,
+  ANALYTICS_EXCLUDED_ENTERPRISE_IDS,
   displayEnterprise,
+  ENTERPRISE_GROUPS,
   ENTERPRISE_MIRRORS,
+  ENTERPRISE_SUB_ALIASES,
   EXCLUDED_ENTERPRISE_CODES,
+  EXCLUDED_ENTERPRISE_IDS,
   findEnterpriseMirror,
   isMirrorEnterprise,
   MIRROR_ENTERPRISE_CODES,
+  MIRROR_ENTERPRISE_IDS,
 } from "./c2x-analytics";
+
+// O id de cada sigla na tabela do C2X medida em 25/09/2026 (PAN-124).
+const idDaSigla = (code: string): number | undefined => C2X.find((l) => l.code === code)?.id;
+
+describe("PAN-124: os ids ao lado das siglas", () => {
+  it("🔴 a exclusão pelo id devolve as mesmas linhas que a exclusão pela sigla, hoje", () => {
+    const linhas = (fora: (l: { code: string; id: number }) => boolean) =>
+      C2X.filter((l) => !fora(l)).map((l) => l.id);
+    expect(linhas((l) => EXCLUDED_ENTERPRISE_IDS.includes(l.id))).toEqual(
+      linhas((l) => EXCLUDED_ENTERPRISE_CODES.includes(l.code)),
+    );
+    expect(linhas((l) => ANALYTICS_EXCLUDED_ENTERPRISE_IDS.includes(l.id))).toEqual(
+      linhas((l) => ANALYTICS_EXCLUDED_ENTERPRISE_CODES.includes(l.code)),
+    );
+  });
+
+  it("os excluídos são o 2 (SDT), o 31 (LAB) e o 34 (TSC); o 30 (ex-LAG, hoje ACT) fica", () => {
+    expect([...EXCLUDED_ENTERPRISE_IDS].sort((a, b) => a - b)).toEqual([2, 31, 34]);
+    expect(EXCLUDED_ENTERPRISE_IDS).not.toContain(30);
+    expect(EXCLUDED_ENTERPRISE_IDS.map((id) => C2X.find((l) => l.id === id)?.code).sort()).toEqual([
+      "LAB",
+      "SDT",
+      "TSC",
+    ]);
+  });
+
+  it("o espelho continua fora de EXCLUDED e dentro de ANALYTICS, pelo id também", () => {
+    expect(MIRROR_ENTERPRISE_IDS).toEqual([35]);
+    for (const id of MIRROR_ENTERPRISE_IDS) expect(EXCLUDED_ENTERPRISE_IDS).not.toContain(id);
+    expect(ANALYTICS_EXCLUDED_ENTERPRISE_IDS).toEqual([...EXCLUDED_ENTERPRISE_IDS, ...MIRROR_ENTERPRISE_IDS]);
+  });
+
+  it("🔴 cada grupo, espelho e gleba tem o id certo, na mesma posição da sigla", () => {
+    for (const grupo of ENTERPRISE_GROUPS) {
+      expect(grupo.ids, grupo.display).toEqual(grupo.codes.map(idDaSigla));
+    }
+    for (const mirror of ENTERPRISE_MIRRORS) {
+      expect(mirror.id).toBe(idDaSigla(mirror.code));
+      expect(mirror.divisionIds).toEqual(mirror.divisions.map(idDaSigla));
+    }
+    for (const sub of ENTERPRISE_SUB_ALIASES) {
+      expect(sub.id, sub.alias).toBe(idDaSigla(sub.code));
+    }
+  });
+});
 
 // A REGRA DO ESPELHO, medida no C2X em 18/08/2026:
 //   VLO (35) = registro do Vale do Ouro antes da divisão. 298 unidades, TODAS com gêmeo por

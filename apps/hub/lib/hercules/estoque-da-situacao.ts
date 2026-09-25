@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { idsDoC2xDasSiglas } from "@/lib/apolo/c2x-pelo-id";
 import type { EmpreendimentoDoCatalogo } from "@/lib/apolo/catalogo-empreendimentos";
 import type { ApoloEnterpriseScenario } from "@/lib/apolo/empreendimentos";
 import { cenarioVazio } from "@/lib/apolo/incorporador/painel-de-produtos";
@@ -203,27 +204,32 @@ export async function lerEstoquePelaRegua(
  * ⚠️ CÓDIGO QUE NINGUÉM TRADUZ É PARA A ROTA RECUSAR (503), e não para seguir sem ele: a unidade
  * daquele código sairia fora do mapa, e a tela contaria "0" onde há venda.
  *
- * ⚠️ OS CÓDIGOS QUE O FUNIL NUNCA CONTOU CONTINUAM FORA (`EXCLUDED_ENTERPRISE_CODES`: teste,
- * laboratório e o espelho do Lagoa Bonita), a mesma lista que as leituras do C2X pulam.
+ * ⚠️ OS EMPREENDIMENTOS QUE O FUNIL NUNCA CONTOU CONTINUAM FORA (teste, e o LAB, o masterplan do
+ * Lagoa Bonita), a mesma lista que as leituras do C2X pulam, agora PELO ID (`EXCLUDED_ENTERPRISE_IDS`,
+ * aplicado por `idsDoC2xDasSiglas`).
+ *
+ * ⚠️ A TRADUÇÃO É A DE `idsDoC2xDasSiglas` (lib/apolo/c2x-pelo-id.ts, PAN-124), e não mais uma cópia
+ * daqui: a mesma leitura pela posição (`codes[i]` é a sigla de `stageIds[i]`). Os ids saem sem
+ * repetição e em ordem crescente (antes, na ordem do catálogo): quem chama os usa num `in`, onde a
+ * ordem não conta.
+ *
+ * ⚠️ SIGLA EXCLUÍDA NUNCA VIRA `faltando`, e continua sendo regra: `faltando` leva a rota do Resumo a
+ * responder 503. A sigla que o catálogo traduz e cujo id é excluído sai calada pelo id. A que o
+ * catálogo NÃO traduz porque o próprio catálogo a tira (o LAB, o TSC e o SDT não estão nele) só é
+ * reconhecível pela sigla, e por isso a lista legada `EXCLUDED_ENTERPRISE_CODES` ainda aparece aqui,
+ * só para não contar como faltando, nunca para filtrar consulta. Medido em 25/09/2026: o único
+ * chamador (app/api/incorporador/produto/resumo) manda códigos do catálogo ou do cadastro do Panteon,
+ * e nenhum dos dois caminhos deixa o LAB passar; a trava fica para o chamador que um dia deixar.
  */
 export function idsDosCodigos(
-  catalogo: readonly Pick<EmpreendimentoDoCatalogo, "codes" | "stageIds">[],
+  catalogo: readonly Pick<EmpreendimentoDoCatalogo, "codes" | "id" | "stageIds">[],
   codes: readonly string[],
 ): { faltando: string[]; ids: string[] } {
-  const chave = (code: string) => String(code ?? "").trim().toUpperCase();
-  const excluidos = new Set(EXCLUDED_ENTERPRISE_CODES.map(chave));
-  const alvo = new Set(codes.map(chave).filter((code) => code && !excluidos.has(code)));
+  const { ids, semId } = idsDoC2xDasSiglas(codes, { catalogo });
+  const foraDePropositoPelaSigla = new Set(EXCLUDED_ENTERPRISE_CODES);
 
-  const achados = new Set<string>();
-  const ids: string[] = [];
-  for (const emp of catalogo) {
-    emp.codes.forEach((code, indice) => {
-      const id = String(emp.stageIds[indice] ?? "").trim();
-      if (!id || !alvo.has(chave(code))) return;
-      achados.add(chave(code));
-      ids.push(id);
-    });
-  }
-
-  return { faltando: [...alvo].filter((code) => !achados.has(code)), ids };
+  return {
+    faltando: semId.filter((code) => !foraDePropositoPelaSigla.has(code)),
+    ids: ids.map(String),
+  };
 }

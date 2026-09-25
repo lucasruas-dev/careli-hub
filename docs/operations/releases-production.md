@@ -95,6 +95,43 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Apolo] Coordenador achado pelo empreendimento, habilitacoes sem fila no Board e travas contra o C2X (v1.375.0)`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-09-25 08:26:22 -03:00` (changelog); push na main as ~08:33; no ar as 08:41:45.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK explicito do Lucas ("tem o meu ok, pode subir e arquivar"). Decisoes dele em 24/09: "Tivemos que mudar de nome" (Portal do Ibituruna); "Isso ae" (habilitacao sem fila aparece no Board e o cadastro interno avisa o coordenador); "pode" (travar as portas do C2X e consultar o C2X pelo id).`
+- Escopo publicado:
+  - `coordenador do empreendimento achado pelo Panteon (coordenador_entity_id) e, na falta, pelo C2X POR ID; group:<Nome> pelas divisoes; coordenador nao achado ou sem telefone vira disparo 'falhou' com o motivo`;
+  - `Board: habilitacoes sem fila (pagina publica e cadastro interno) na coluna Habilitada por 30 dias, com selo, por produto`;
+  - `cadastro interno e modal da ficha: habilitar imobiliaria grava auditoria e avisa o coordenador, sem segurar o salvamento`;
+  - `travas: semeador de empreendimentos, code do settings e nome gravado pelo sync do Apolo deixam de vir do C2X`.
+- Commit publicado: `6df0ca6261077418e73b669986504b51b97421e1` (codigo em `0c330778`, merge da 1.374.0 em `113c01a5`).
+- Deployment anterior: `dpl_BJRdsJ3WMRfYY9uRE7RCK1GSakTA` (commit `3155cc9c`, v1.374.0).
+- Deployment novo: `dpl_FRWJCzwDcM3W6zqnDMsZpW1E66uG`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Arquivos/modulos incluidos: `lib/apolo/coordenador-do-empreendimento.ts`, `habilitada-sem-fila.ts`, `habilitacao-pelo-cadastro.ts`, `nome-de-mercado-por-id.ts`, `depois-da-resposta.ts` (novos); `empreendimentos.ts` (loadApoloEnterpriseCadastroPorId), `disparo-credenciamento.ts`, `esteira-avisos.ts`, `disparo-reprovacao.ts`, `board-do-servidor.ts`, `cadastro-persist.ts`, `enterprise-settings.ts`, `server.ts` (so o nome do sync), `hercules/avisos-da-venda.ts`, `temis/trabalho-servico.ts`, rotas de credenciamento publico, relationships/create, settings, politica e log-erros; `scripts/hercules/semear-empreendimentos.mjs`. Changelog 1.375.0, roadmap PAN-123 e PAN-124.
+- Arquivos/modulos excluidos: `NENHUMA MIGRATION, nenhuma env. O sync do Guardian (c2x_guardian_attendance_queue) e as ~29 consultas do financeiro por sigla ficam para o PAN-124.`
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `npx vitest run` (ja com o merge da 1.374.0): `603 arquivos, 9.158 testes passando`; o pre-push falhou uma vez por teste intermitente e passou limpo na segunda (9.158);
+  - `revisao`: `investigacao (3 frentes + 3 verificadores) e lote de implementacao com 3 frentes, 3 lentes de revisao (9 achados, 3 major), correcao e verificador final sem bloqueio`.
+- Correcoes de dado (com OK do Lucas):
+  - `24/09: empreendimento 43 no Panteon = Portal do Ibituruna / PDI (hercules_empreendimentos e apolo_enterprise_settings), coordenador_entity_id do 43 = LUNA NEGOCIOS IMOBILIARIOS, 36 vinculos relabelados de RECANTO DO VALE para PORTAL DO IBITURUNA`;
+  - `25/09: arquivados 3 vinculos: as duplicatas do 43 gravadas pelo cadastro interno em 24/09 para SANTA FE (8def1a8e) e VINICIUS JOHNNY (81b24945), e o vinculo de teste da RAIANE no 9001 (fe8bc369)`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version = 1.375.0 (buildTag 2026-09-25-coordenador-pelo-id-e-habilitacao-sem-fila) as 08:41:45`;
+  - `rotas`: `GET /api/apolo/board e /api/apolo/log-erros 401 sem token; POST /api/publico/imobiliaria/credenciar vazio 400 (validacao viva)`.
+- Logs recentes: `sem erro de runtime nos 15 min depois do deploy`.
+- Rollback definido: `Instant Rollback para dpl_BJRdsJ3WMRfYY9uRE7RCK1GSakTA (commit 3155cc9c, v1.374.0)`.
+- Riscos conhecidos: `avisos que antes sumiam agora aparecem como 'falhou' no historico: Garden, Cidade Jardim, 30 e SDT (coordenador no Panteon = CARELI ACESSORIA, so e-mail) e os produtos do GLENDER (LOU, LOS, MLN) e do LUCAS HENRIQUE (MDS, PDV, PVS), sem telefone. O CRM interno passa a mostrar o nome de mercado sem a divisao (ex.: Lagoa Bonita).`
+- Pendencias: `avisos que ficaram para tras e precisam ir a mao: LUNA sobre a CONECTTA e a VIDA IMOVEIS (43), coordenador do 29 sobre a BILL. Tentativa de reenvio local da CONECTTA falhou (gateway Evolution so existe em producao) e ficou registrada. Decisoes abertas: regua de divisao parcial (VOL x VLO) para 'ja habilitada'; imobiliaria com papel em review habilitada pelo modal; o 30 segue fora do cadastro.`
+- Status: `EM PRODUCAO`.
+- Proxima acao: `PAN-124: consultas do financeiro ao C2X pelo id, depois nome e sigla do Panteon, tela de editar e criar empreendimento e vigia de divergencia.`
+
+Registro de producao:
+
 - Assunto: `[Apolo] Mover CAD de empreendimento, travas da troca e o empreendimento de volta no PDF da CAD (v1.372.0)`.
 - Squad/agente responsavel: `Zeus`.
 - Data e hora local: `2026-09-24 16:42:50 -03:00` (push na main); no ar as 16:50:46.

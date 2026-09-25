@@ -21,7 +21,10 @@ openapi: 3.1.0
 
 info:
   title: Careli · Carteira Lavra do Ouro
-  version: "1.0.0-rascunho"
+  # 2.0.0 em 25/09/2026: o formato de `clientes.atualizado_em` mudou (agora leva o fuso), e quem
+  # acrescentava o fuso ao valor antigo passa a receber 400. Mudança de formato em campo existente
+  # é quebra de contrato, por isso a versão maior. Ver `x-historico`.
+  version: "2.0.0"
   summary: Leitura da carteira administrada pela Careli, para consumo pelo GLOTES.
   description: |
     API de LEITURA da carteira do loteamento Lavra do Ouro, administrada pela Careli.
@@ -50,15 +53,47 @@ info:
 
     ## Como consumir
 
-    1. Primeira carga: percorrer os cinco conjuntos até `proxima_pagina` vir nulo.
-    2. Depois: repetir só `vendas` e `recebimentos` com `alterado_desde`, que devolve apenas o
-       que mudou. Os outros três conjuntos mudam pouco e podem ser recarregados por inteiro.
+    1. **Primeira carga:** percorrer os cinco conjuntos até `proxima_pagina` vir nulo.
+    2. **Incremental:** repetir `clientes`, `vendas` e `recebimentos` com `alterado_desde`, que
+       devolve só o que mudou. Os três trazem `atualizado_em` em cada linha, já com o fuso
+       (`2026-09-25T12:20:00-03:00`). Guarde o **maior** `atualizado_em` recebido em cada conjunto
+       e, na chamada seguinte, repasse-o em `alterado_desde` **com margem de alguns minutos**
+       (sugestão: 5 minutos antes). A comparação é `>=` e a margem faz linhas voltarem repetidas:
+       trate toda linha como **upsert pela chave** (`codigo_cliente`, `codigo_venda`,
+       `codigo_recebimento`). `loteamentos` e `lotes` mudam pouco e podem ser recarregados por
+       inteiro.
+    3. **Exclusões NÃO aparecem no incremental.** Parcela apagada na origem (por exemplo, um
+       cronograma refeito) simplesmente deixa de existir, e `alterado_desde` só devolve o que
+       ainda existe. **A listagem completa é a verdade.** Faça uma carga completa periódica
+       (sugestão: semanal) e remova do seu lado o `codigo_recebimento` e o `codigo_venda` que
+       deixaram de vir.
+
+       ⚠️ **A carga completa de referência é feita com `incluir_canceladas=true` em `clientes`,
+       `vendas` e `recebimentos`**, e só depois dela se remove o que não veio. Sem o parâmetro, a
+       venda cancelada e TODAS as parcelas dela, inclusive as pagas, ficam fora da listagem, e a
+       remoção apagaria do seu lado um contrato e um histórico de pagamento que existem. Em
+       25/09/2026 são 100 vendas canceladas no recorte, e 7 delas guardam 116 parcelas mensais
+       pagas.
+    4. **Cancelamentos só aparecem na carga completa.** O cancelamento não move nenhum relógio na
+       origem, porque o C2X não carimba o cancelamento: cancelar não faz a venda voltar em
+       `alterado_desde`, com ou sem `incluir_canceladas`. Na carga completa de referência (item 3) a
+       venda passa a vir com `situacao: "Cancelado"`; na listagem padrão, sem o parâmetro, ela
+       some. As parcelas não pagas do contrato cancelado são apagadas na origem depois, numa
+       limpeza sem data certa. Guarde a venda como cancelada, mantenha as parcelas pagas e trate
+       como extinta toda parcela em aberto de contrato com `situacao: "Cancelado"`.
 
     ## Estado deste documento
 
     **API IMPLEMENTADA em 14/08/2026.** Os cinco endpoints existem, autenticam pelo header
     `X-Glotes-Token` e devolvem os volumes conferidos no levantamento (375 clientes, 493 lotes,
     475 vendas, 66.805 parcelas mensais). O token é entregue pela Careli por canal seguro.
+
+    **Carga incremental CORRIGIDA em 25/09/2026** (ver `x-historico` no fim do arquivo). Até
+    essa data o incremental de `vendas` e `recebimentos` deixava de entregar alterações: o corte
+    estava deslocado em 3 horas e o relógio de cada linha era estreito demais. **Depois da
+    correção, faça UMA carga completa** dos cinco conjuntos para reconciliar, com
+    `incluir_canceladas=true` onde ele existe (item 3 acima): ela traz o que o incremental perdeu
+    e deixa de trazer as parcelas apagadas na origem.
 
     O que continua em aberto está em `x-pendencias`, e nada disso impede começar a integração: os
     campos sem origem já vêm nulos e documentados.
@@ -75,7 +110,9 @@ security:
 
 tags:
   - name: Cadastros
-    description: Mudam pouco. Recarregar por inteiro quando quiser.
+    description: |
+      Mudam pouco. Recarregar por inteiro quando quiser. `clientes` também aceita carga
+      incremental por `alterado_desde`.
   - name: Movimento
     description: Mudam todo dia. Aceitam carga incremental por `alterado_desde`.
 
@@ -136,6 +173,16 @@ paths:
         - $ref: "#/components/parameters/Limite"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/AlteradoDesde"
+        - name: incluir_canceladas
+          in: query
+          description: |
+            Por padrão só os titulares de venda ativa (374 em 25/09/2026). Ligando, entram também
+            os titulares de vendas canceladas: 434 com o parâmetro.
+
+            **Use na carga completa de referência** (ver "Como consumir", item 3), junto com
+            `vendas` e `recebimentos`: é o que garante que todo `codigo_cliente` das vendas
+            canceladas exista do seu lado.
+          schema: { type: boolean, default: false }
       responses:
         "200":
           description: Página de clientes.
@@ -164,6 +211,9 @@ paths:
                     cep: "35670000"
                     conjuge_nome: JOAO CARLOS DE SOUZA
                     conjuge_cpf: "11122233396"
+                    email: maria.souza@exemplo.com.br
+                    telefone: "31999990000"
+                    atualizado_em: "2026-09-18T10:59:44-03:00"
                 total: 375
                 proxima_pagina: "Y2xpOjE0Ng"
         "400": { $ref: "#/components/responses/PedidoInvalido" }
@@ -240,9 +290,9 @@ paths:
           tabela é a base do contrato. Se o GLOTES espera um valor negociado diferente do de
           tabela, ele não existe do nosso lado.
         - `valor_parcela` é **nulo na maioria dos casos**, de propósito. Em 467 das 474 vendas com
-          parcelas o valor varia dentro do próprio contrato, porque o reajuste já vem embutido no
-          cronograma. Um número único ali seria mentira. O valor real de cada parcela está em
-          `/recebimentos`, que é a fonte correta para cobrança e conciliação.
+          parcelas o valor varia dentro do próprio contrato: parcelas já corrigidas convivem com
+          parcelas futuras ainda no valor do contrato. Um número único ali seria mentira. O valor
+          de cada parcela está em `/recebimentos` (leia a ressalva de `valor_parcela` lá).
         - `qtd_parcelas` e `qtd_sinal` são **contados** a partir das parcelas reais, não lidos de
           um campo declarado. Os dois divergem na origem em alguns contratos, e a contagem é a
           que corresponde ao que o cliente efetivamente deve.
@@ -255,7 +305,22 @@ paths:
           in: query
           description: |
             Por padrão só vendas ativas. Ligando, entram também as canceladas, com
-            `situacao: "Cancelado"`. São 98 no recorte atual.
+            `situacao: "Cancelado"`. São 100 no recorte em 25/09/2026 (574 vendas com o parâmetro,
+            contra 474 sem ele).
+
+            **Use na carga completa de referência** (ver "Como consumir", itens 3 e 4). Sem o
+            parâmetro a venda cancelada some da listagem, e remover do seu lado o que não veio
+            apagaria o contrato e as parcelas pagas dele.
+
+            ⚠️ **Não serve para receber cancelamentos pelo incremental.** O parâmetro é aceito junto
+            com `alterado_desde`, mas o cancelamento não move nenhum relógio na origem (o C2X não
+            carimba o cancelamento): a venda cancelada depois da marca NÃO volta. Ela só aparece
+            na carga completa.
+
+            As parcelas pagas do contrato cancelado continuam em `/recebimentos` com
+            `incluir_canceladas=true`. As não pagas são apagadas na origem depois, numa limpeza sem
+            data certa; enquanto não forem, trate como extinta toda parcela em aberto de contrato
+            com `situacao: "Cancelado"`.
           schema: { type: boolean, default: false }
       responses:
         "200":
@@ -285,8 +350,9 @@ paths:
                     data_sinal: "2024-04-10"
                     indice: IPCA ANUAL
                     situacao: Faturado
-                    percentual_reajuste: "8.0000"
+                    percentual_reajuste: null
                     observacao: null
+                    atualizado_em: "2026-09-18T03:15:55-03:00"
                 total: 475
                 proxima_pagina: "dmVuOjQ1"
         "400": { $ref: "#/components/responses/PedidoInvalido" }
@@ -309,15 +375,36 @@ paths:
         **A chave única de uma parcela é `codigo_recebimento`.** O `numero_parcela` **se repete**
         dentro do mesmo contrato e não serve como chave: use-o só para exibir.
 
-        **Encargos:** `valor_juros` vem preenchido em menos de 1% das linhas, `valor_multa` é
-        sempre nulo (a Careli não grava multa nessa base) e `valor_desconto` não existe. Quando um
-        pagamento inclui encargo, ele está embutido em `valor_pago` sem decomposição. Somar
-        `valor_juros` para chegar ao total de encargos vai dar errado.
+        **Encargos e correção:** `valor_juros` vem preenchido em menos de 1% das linhas (624 de
+        66.501 em 25/09/2026),
+        `valor_multa` é sempre nulo (a Careli não grava multa nessa base) e `valor_desconto` não
+        existe. Quando um pagamento inclui correção monetária, juros ou multa, a diferença está
+        embutida em `valor_pago` sem decomposição. Conferido em 25/09/2026: das 11.977 parcelas
+        pagas, 5.389 (45%) foram pagas acima de `valor_parcela`, somando R$ 151.872,85 de
+        diferença, e só R$ 8.452,53 dela (5,6%) aparece em `valor_juros`. Somar `valor_juros`
+        para chegar ao total de encargos vai dar errado.
       operationId: listarRecebimentos
       parameters:
         - $ref: "#/components/parameters/Limite"
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/AlteradoDesde"
+        - name: incluir_canceladas
+          in: query
+          description: |
+            Por padrão só as parcelas de vendas ativas. Ligando, entram também as parcelas dos
+            contratos cancelados (a venda vem com `situacao: "Cancelado"` em `/vendas` com o mesmo
+            parâmetro).
+
+            ⚠️ **Sem este parâmetro, nenhuma parcela de contrato cancelado volta, nem as pagas.**
+            Em 25/09/2026 são 116 parcelas mensais pagas em 7 vendas canceladas: o total vai de
+            66.501 para 66.617 com o parâmetro. Use-o na carga completa de referência (ver "Como
+            consumir", item 3); sem ele, remover do seu lado o que não veio apaga histórico de
+            pagamento que existe.
+
+            Parcela em aberto de contrato com `situacao: "Cancelado"` é tratada como extinta: as
+            não pagas são apagadas na origem depois, numa limpeza sem data certa (ver "Como
+            consumir", item 4).
+          schema: { type: boolean, default: false }
         - name: codigo_venda
           in: query
           description: Todas as parcelas de um contrato.
@@ -365,7 +452,8 @@ paths:
                     status_parcela: Pago
                     nosso_numero: null
                     observacao: null
-                total: 68356
+                    atualizado_em: "2025-04-09T10:12:45-03:00"
+                total: 66501
                 proxima_pagina: "cmVjOjg4MjMxMQ"
         "400": { $ref: "#/components/responses/PedidoInvalido" }
         "401": { $ref: "#/components/responses/NaoAutorizado" }
@@ -403,14 +491,42 @@ components:
       name: alterado_desde
       in: query
       description: |
-        Só o que mudou a partir deste instante (ISO 8601 com fuso). Sem o parâmetro, carga completa.
+        Só o que mudou a partir deste instante. ISO 8601 **com fuso** (sem fuso a chamada é
+        recusada com 400). Sem o parâmetro, carga completa. Aceito em `clientes`, `vendas` e
+        `recebimentos`; nos outros dois conjuntos é ignorado.
 
-        ⚠️ **Ainda não garantido.** Depende de a base de origem marcar toda alteração de forma
-        confiável, o que a Careli precisa validar antes de prometer (pendência P3). Até lá o
-        parâmetro é aceito mas pode devolver mais linhas do que o estritamente alterado, nunca
-        menos. Ou seja: seguro para sincronizar, ineficiente no volume.
+        **O corte é feito contra o `atualizado_em` de cada linha**, e o `atualizado_em` já sai no
+        formato que este parâmetro aceita: repasse o valor como veio, sem acrescentar fuso. Cada
+        conjunto tem o seu relógio, que é o mais recente entre as fontes da linha:
+
+        | Conjunto | `atualizado_em` é a alteração mais recente entre |
+        |---|---|
+        | `clientes` | o cadastro do cliente, os telefones, o endereço e o cônjuge na Careli, os contatos (e-mail, telefone) atualizados pelo atendimento e o contrato do Lavra de que ele é titular (uma venda nova ou uma troca de titular traz o cliente de volta) |
+        | `vendas` | o contrato, as parcelas de sinal e de mensalidade dele (inclusive as marcadas para exclusão) e a unidade |
+        | `recebimentos` | a parcela e o contrato dela (a troca de titular muda `codigo_cliente` de todas as parcelas do contrato) |
+
+        **A comparação é `>=`:** a linha que tem exatamente a marca volta de novo. Isso é
+        intencional e seguro, porque a chave de cada conjunto é estável: trate cada linha como
+        upsert pela chave.
+
+        **Repasse o maior `atualizado_em` com margem de alguns minutos** (sugestão: 5 minutos
+        antes). A origem carimba o instante da gravação, não o da conclusão: uma alteração em
+        lote (por exemplo, um cronograma de 144 parcelas refeito) que ainda estava em andamento
+        quando você leu pode aparecer depois com carimbo anterior ao maior valor que você viu. A
+        margem cobre isso ao custo de algumas linhas repetidas.
+
+        **Cada lote de emissão de boletos devolve quase tudo no incremental seguinte.** A emissão
+        de boletos em lote no Asaas toca as parcelas na origem (grava nelas a referência do
+        boleto), e isso move o relógio das parcelas tocadas e o de quase todas as vendas, mesmo
+        sem mudança em nenhum campo entregue por esta API. É esperado e seguro: trate como
+        upsert. Exemplo medido: em 10/09/2026, entre 01h e 02h, 566 parcelas de 242 vendas
+        abertas foram tocadas assim, e nenhuma foi criada.
+
+        ⚠️ **O que é APAGADO e o que é CANCELADO não voltam no incremental**: ver "Como
+        consumir", itens 3 e 4. A carga completa periódica é a garantia de que as duas bases
+        batem.
       schema: { type: string, format: date-time }
-      example: "2026-08-01T00:00:00-03:00"
+      example: "2026-09-25T12:15:00-03:00"
 
   responses:
     PedidoInvalido:
@@ -450,7 +566,12 @@ components:
           items: { type: object }
         total:
           type: integer
-          description: Total de linhas do conjunto inteiro, não da página.
+          description: |
+            Total de linhas do conjunto inteiro, não da página. Com `alterado_desde`, em `vendas`
+            e `recebimentos` é o total do que passou no corte. Em `clientes` o corte é feito
+            página a página, depois de juntar os contatos do atendimento, e `total` conta só a
+            página: com `alterado_desde` em `clientes`, use `limite=1000` (a base inteira cabe
+            numa página).
         proxima_pagina:
           type: [string, "null"]
           description: Cursor da próxima página. `null` quando acabou.
@@ -528,10 +649,21 @@ components:
             recente. Nulo quando a Careli não tem o dado.
         atualizado_em:
           type: [string, "null"]
+          format: date-time
           description: |
-            Última alteração do cadastro (dados do cliente OU telefone), `YYYY-MM-DD HH:MM:SS`,
-            no mesmo relógio aceito pelo filtro `alterado_desde` — use-o para sincronização
-            incremental: guarde o maior `atualizado_em` recebido e repasse-o na próxima chamada.
+            Última alteração do cliente: dados do cadastro, telefones, endereço, cônjuge,
+            contatos atualizados pelo atendimento e o contrato do Lavra de que ele é titular (uma
+            venda nova ou uma troca de titular traz o cliente de volta), o que for mais recente.
+            ISO 8601 com o fuso de Brasília daquele instante (`-03:00` hoje; `-02:00` em datas do
+            antigo horário de verão). É o relógio do filtro `alterado_desde`, e o valor é aceito
+            nele como veio.
+
+            ⚠️ **Formato mudou em 25/09/2026.** Antes saía `YYYY-MM-DD HH:MM:SS`, sem fuso, e
+            repassar esse valor em `alterado_desde` dava 400. Se a sua integração acrescentava
+            `-03:00` ao valor recebido, **pare de acrescentar**: no formato novo isso produz uma
+            data inválida e a chamada volta 400. Endereço, cônjuge e o contrato de que o cliente é
+            titular passaram a mover o relógio na mesma data.
+          examples: ["2026-09-18T10:59:44-03:00"]
 
     Lote:
       type: object
@@ -653,6 +785,23 @@ components:
         observacao:
           type: "null"
           description: ⚠️ SEMPRE NULO. O campo existe na origem e está vazio em todas as 475 vendas.
+        atualizado_em:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            **Novo em 25/09/2026.** Última alteração da venda: o contrato, as parcelas de sinal e
+            de mensalidade dele (inclusive as marcadas para exclusão) ou a unidade, o que for mais
+            recente. As parcelas entram porque `qtd_parcelas`, `qtd_sinal`, `valor_sinal`,
+            `valor_parcela` e `data_1o_vencimento` são calculados a partir delas; a unidade, porque
+            `valor_venda` e `codigo_lote` vêm dela.
+
+            ISO 8601 com o fuso de Brasília daquele instante. É o relógio do filtro
+            `alterado_desde`, e o valor é aceito nele como veio.
+
+            ⚠️ Parcela apagada na origem não move este relógio (a parcela deixa de existir). Se o
+            cronograma for refeito, as parcelas novas movem; se só for apagado, não. Ver "Como
+            consumir", item 3.
+          examples: ["2026-09-18T03:15:55-03:00"]
 
     Recebimento:
       type: object
@@ -683,32 +832,54 @@ components:
         valor_parcela:
           type: [string, "null"]
           pattern: '^-?\d+\.\d{2}$'
-          description: Valor devido da parcela, já com o reajuste embutido pelo cronograma.
+          description: |
+            Valor da parcela **no cronograma** da Careli.
+
+            ⚠️ **Não é, necessariamente, o valor atualizado.** A correção anual do contrato é
+            lançada na parcela quando o boleto dela é emitido; as parcelas futuras, ainda sem
+            boleto, ficam com o valor do contrato e podem estar defasadas em relação ao que será
+            cobrado. Por isso o `valor_pago` de uma parcela paga pode ser maior que este valor
+            (ver `valor_pago`). Não use a soma das parcelas futuras como saldo corrigido.
         valor_original:
           type: [string, "null"]
           pattern: '^-?\d+\.\d{2}$'
           description: |
-            Mesmo valor de `valor_parcela`. A origem não guarda um valor original separado: o
-            cronograma já nasce reajustado. Entregue para o GLOTES não precisar tratar ausência.
+            Mesmo valor de `valor_parcela`: a origem não guarda um valor original separado do
+            valor do cronograma. Entregue para o GLOTES não precisar tratar ausência.
         data_pagamento:
           type: [string, "null"]
           format: date
           description: |
-            Nula enquanto não paga. ⚠️ Existem 344 parcelas com valor pago e **sem** data, todas
-            em atraso com pagamento parcial. Não conclua "não pago" só pela data ausente: olhe
-            `valor_pago`.
+            Nula enquanto não paga. Desde 25/09/2026, parcela sem data de pagamento vem com
+            `valor_pago` nulo (a única exceção é parcela com `status_parcela` Pago, que mantém o
+            valor mesmo sem data; em 25/09/2026 era 1 parcela).
         valor_pago:
           type: [string, "null"]
           pattern: '^-?\d+\.\d{2}$'
           description: |
             Nulo quando não houve pagamento. ⚠️ Zero não é pagamento: há linhas com valor pago
             igual a zero que significam ausência de pagamento, e elas vêm como nulo aqui.
+
+            ⚠️ **Valor sem data de pagamento também não é pagamento** (corrigido em 25/09/2026).
+            A origem grava no campo de valor pago o valor do boleto emitido, antes de o cliente
+            pagar. Até 24/09 a API entregava esse valor, e este contrato o descrevia como
+            "pagamento parcial": em 25/09/2026 eram 761 parcelas em atraso com `valor_pago` igual
+            ao valor da parcela e sem `data_pagamento`, R$ 409.304,99, nenhuma parcial. Agora
+            `valor_pago` só vem preenchido quando há `data_pagamento` ou quando `status_parcela` é
+            Pago.
+
+            ⚠️ **Pode ser maior que `valor_parcela`**, e a diferença não vem decomposta: pode ser
+            correção monetária, juros ou multa. Conferido em 25/09/2026, nas 11.977 parcelas
+            pagas: 5.389 (45%) foram pagas acima de `valor_parcela`, R$ 151.872,85 no total, e
+            só R$ 8.452,53 disso (5,6%) aparece em `valor_juros`. 1.324 dessas parcelas foram
+            pagas em dia, com diferença média de 6,5%: ali a diferença não vem de atraso.
         valor_juros:
           type: [string, "null"]
           pattern: '^-?\d+\.\d{2}$'
           description: |
-            ⚠️ Preenchido em menos de 1% das linhas. Quando há encargo cobrado, ele normalmente
-            está embutido em `valor_pago` sem decomposição. Não serve para totalizar encargos.
+            ⚠️ Preenchido em menos de 1% das linhas (624 de 66.501 em 25/09/2026, todas pagas).
+            Explica só 5,6% do que foi pago acima de `valor_parcela`; o resto está embutido em
+            `valor_pago` sem decomposição. Não serve para totalizar encargos.
         valor_multa:
           type: "null"
           description: ⚠️ SEMPRE NULO. A Careli não registra multa nesta base.
@@ -729,6 +900,19 @@ components:
         observacao:
           type: "null"
           description: ⚠️ SEMPRE NULO. Preenchido em 1 linha de toda a carteira.
+        atualizado_em:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            **Novo em 25/09/2026** (pedido do GLOTES em 10/09). Última alteração do recebimento:
+            a parcela (baixa, mudança de status, de valor ou de vencimento) ou o contrato dela, o
+            que for mais recente. O contrato entra porque `codigo_cliente` vem do titular do
+            contrato: numa troca de titular a parcela em si não muda, mas o `codigo_cliente` de
+            todas as parcelas do contrato muda.
+
+            ISO 8601 com o fuso de Brasília daquele instante. É o relógio do filtro
+            `alterado_desde`, e o valor é aceito nele como veio.
+          examples: ["2025-04-09T10:12:45-03:00"]
 
 # =====================================================================================
 # PENDÊNCIAS: o que precisa de decisão antes de esta API existir.
@@ -763,8 +947,15 @@ x-pendencias:
       dias ficaram com `updated_at` anterior à data de pagamento — que seria a prova de que a
       coluna não acompanha.
     decisao: |
-      `alterado_desde` está liberado para `vendas` e `recebimentos`. Os outros três conjuntos
-      mudam pouco e devem ser recarregados por inteiro, como já diz a seção "Como consumir".
+      `alterado_desde` está liberado para `vendas` e `recebimentos` (e, desde 24/08/2026, para
+      `clientes`). `loteamentos` e `lotes` mudam pouco e devem ser recarregados por inteiro.
+    reaberta_em_25_09_2026: |
+      A coluna acompanhava, mas o incremental perdia linhas por dois motivos que o teste de
+      14/08 não cobria: o corte comparava a marca em UTC com uma coluna gravada no horário de
+      Brasília, e o relógio de `vendas` e de `recebimentos` não enxergava tudo o que muda a
+      linha. Corrigido na mesma data (ver `x-historico`). O que continua fora do incremental, por
+      natureza, é a EXCLUSÃO e o CANCELAMENTO (que não move relógio nenhum na origem): a carga
+      completa periódica, com `incluir_canceladas=true`, é a garantia.
     de_quem: Careli
   P4:
     assunto: Base legal e minimização de dado pessoal
@@ -775,3 +966,81 @@ x-pendencias:
       decisão sobre minimização. Campo recomendado não é campo necessário: se o GLOTES não usa o
       CPF do cônjuge, ele não deve ser enviado.
     de_quem: Careli (jurídico) e cliente
+
+# =====================================================================================
+# HISTÓRICO: o que mudou no contrato depois de a API entrar no ar, e o que o GLOTES precisa
+# fazer a cada mudança. A entrada mais recente fica em cima.
+# =====================================================================================
+x-historico:
+  - data: "2026-09-25"
+    versao: "2.0.0"
+    assunto: Carga incremental corrigida
+    mudancas:
+      - |
+        `alterado_desde` passou a cortar no fuso certo em `vendas` e `recebimentos`. A marca era
+        comparada em UTC com uma coluna gravada no horário de Brasília, e o corte andava 3 horas
+        para a frente: o que mudava nessas 3 horas não vinha nunca. Exemplo medido: desde
+        10/09/2026 00:00 (-03:00), o incremental de `recebimentos` devolvia 534 parcelas contra
+        1.564 alteradas de fato.
+      - |
+        `recebimentos` ganhou `atualizado_em`, e o relógio passou a ser a parcela OU o contrato
+        dela. Uma troca de titular (que muda `codigo_cliente` de todas as parcelas) agora
+        reaparece no incremental. Exemplo medido: a troca de titular da VEN-223 em 15/09 mudou o
+        titular de 144 parcelas e só 1 delas voltava no incremental.
+      - |
+        `vendas` ganhou `atualizado_em`, e o relógio passou a incluir as parcelas de sinal e de
+        mensalidade e a unidade (antes era só o contrato). Exemplo medido: desde 10/09 o
+        incremental devolvia 2 vendas; com o relógio novo, 459 das 474 (a emissão de boletos em
+        lote no Asaas toca as parcelas: em 10/09, entre 01h e 02h, 566 parcelas de 242 vendas).
+      - |
+        `clientes.atualizado_em` passou a sair com fuso (quebra de formato: ver a descrição do
+        campo) e a considerar também endereço, cônjuge e o contrato do Lavra de que o cliente é
+        titular. Uma venda nova ou uma troca de titular agora traz o cliente de volta no
+        incremental. Exemplo medido: um cliente com cadastro de 10/09 virou titular de uma venda
+        criada em 16/09, e o incremental de `clientes` a partir de 16/09 não o devolvia, enquanto
+        `vendas` e `recebimentos` chegavam com o `codigo_cliente` dele.
+      - |
+        `valor_pago` deixou de vir preenchido em parcela sem `data_pagamento` (exceto status
+        Pago). A origem grava ali o valor do boleto emitido antes do pagamento, e a API entregava
+        esse valor como se fosse recebido. Exemplo medido: 761 parcelas em atraso com
+        `valor_pago` igual ao valor da parcela e sem data, R$ 409.304,99, nenhuma parcial. A
+        versão anterior deste contrato chamava isso de "pagamento parcial", o que estava errado.
+      - |
+        Documentado o que o incremental não entrega (exclusões e cancelamentos), a margem
+        recomendada ao repassar a marca, a borda `>=` (linhas repetidas, tratar como upsert), o
+        volume que cada lote de boletos devolve, que o cancelamento só aparece na carga completa,
+        que a carga completa de referência usa `incluir_canceladas=true` (agora documentado
+        também em `clientes` e `recebimentos`) e o que `valor_parcela` significa de fato.
+    acao_do_glotes:
+      - |
+        Fazer UMA carga completa dos cinco conjuntos depois desta versão, com
+        `incluir_canceladas=true` em `clientes`, `vendas` e `recebimentos`, e só então remover do
+        seu lado o `codigo_recebimento` e o `codigo_venda` que não vierem nela. Sem o parâmetro,
+        a remoção apagaria as vendas canceladas e as parcelas pagas delas. Em 25/09/2026 a
+        Careli identificou 160 parcelas que foram apagadas na origem e que o incremental não
+        tinha como avisar: 144 da VEN-81 (cronograma refeito naquele dia) e 16 da VEN-524.
+      - |
+        A carga completa também corrige o `valor_pago` das parcelas que vinham com o valor do
+        boleto (762 em 25/09/2026: 761 em atraso e 1 aguardando, R$ 411.581,32): elas passam a
+        vir com `valor_pago` nulo. O incremental NÃO traz essa correção, porque o relógio dessas
+        parcelas não muda; só a carga completa. Se o GLOTES somou esses valores como recebidos,
+        refazer a soma depois da carga.
+      - |
+        Se a integração acrescentava `-03:00` ao `atualizado_em` de `clientes`, parar: o valor
+        agora já vem com fuso e deve ser repassado como veio.
+      - |
+        Passar a guardar `atualizado_em` de `vendas` e `recebimentos` e repassar o maior valor,
+        com margem de alguns minutos, em `alterado_desde`.
+  - data: "2026-08-24"
+    versao: "1.0.0-rascunho"
+    assunto: "`clientes` aceita `alterado_desde`"
+    mudancas:
+      - |
+        `clientes` passou a aceitar `alterado_desde` e ganhou `atualizado_em`, `email` e
+        `telefone` (contatos atualizados pelo atendimento da Careli, com o cadastro de origem
+        como alternativa).
+  - data: "2026-08-14"
+    versao: "1.0.0-rascunho"
+    assunto: API no ar
+    mudancas:
+      - Os cinco endpoints publicados, com token no header `X-Glotes-Token`.

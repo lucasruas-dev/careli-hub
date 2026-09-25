@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  CODES_PADRAO_DO_PAINEL,
   emailsPorNome,
   enriquecerAssinantes,
   enriquecerUnidades,
+  IDS_PADRAO_DO_PAINEL,
+  idsDoRecorte,
   montarQuadroDeAssinaturas,
   resolverCodes,
+  SQL_LINHAS_POR_ID,
   type ContratoVivo,
   type EmpreendimentoDoFiltro,
   type FichaDoContratoVivo,
@@ -63,17 +65,32 @@ function vivo(
   };
 }
 
+// Os ids são os do C2X em 25/09/2026 (lib/apolo/c2x-pelo-id.fixture.ts).
 const EMPREENDIMENTOS: EmpreendimentoDoFiltro[] = [
-  { code: "VLO", contratos: 15, nome: "VALE DO OURO" },
-  { code: "VOC", contratos: 93, nome: "VALE DO OURO" },
-  { code: "VOL", contratos: 93, nome: "VALE DO OURO" },
-  { code: "VOR", contratos: 2, nome: "VALE DO OURO" },
-  { code: "VAL", contratos: 39, nome: "VISTA ALEGRE" },
+  { code: "VLO", contratos: 15, id: 35, nome: "VALE DO OURO" },
+  { code: "VOC", contratos: 93, id: 37, nome: "VALE DO OURO" },
+  { code: "VOL", contratos: 93, id: 36, nome: "VALE DO OURO" },
+  { code: "VOR", contratos: 2, id: 41, nome: "VALE DO OURO" },
+  { code: "VAL", contratos: 39, id: 29, nome: "VISTA ALEGRE" },
 ];
+
+/** A mesma lista depois de um renome no C2X: o 37 deixou de ser VOC. O id não muda. */
+const RENOMEADO: EmpreendimentoDoFiltro[] = EMPREENDIMENTOS.map((item) =>
+  item.id === 37 ? { ...item, code: "VCX" } : item,
+);
 
 describe("resolverCodes", () => {
   it("sem pedido, cai no recorte padrão — o mesmo Vale do Ouro que a tela mostra hoje", () => {
-    expect(resolverCodes([], EMPREENDIMENTOS)).toEqual([...CODES_PADRAO_DO_PAINEL].sort());
+    // Era `["VOC", "VOL"]` escrito no código; o padrão pelo id dá a mesma coisa hoje.
+    expect(resolverCodes([], EMPREENDIMENTOS)).toEqual(["VOC", "VOL"]);
+    expect([...IDS_PADRAO_DO_PAINEL].sort((a, b) => a - b)).toEqual([36, 37]);
+  });
+
+  it("o padrão sobrevive a um renome no C2X: é pelo id, e a sigla sai a de hoje", () => {
+    // Pela sigla fixa, o padrão viraria só ["VOL"] e a carteira do VOC sumiria da tela aberta.
+    expect(resolverCodes([], RENOMEADO)).toEqual(["VCX", "VOL"]);
+    // O VOR (41) continua fora do padrão, como sempre esteve.
+    expect(resolverCodes([], RENOMEADO)).not.toContain("VOR");
   });
 
   it("aceita o que existe e IGNORA o que não existe (allowlist, não filtro cru)", () => {
@@ -96,10 +113,60 @@ describe("resolverCodes", () => {
   });
 
   it("banco sem o padrão devolve o que existe, em vez de consultar código ausente", () => {
-    expect(resolverCodes([], [{ code: "VAL", contratos: 39, nome: "VISTA ALEGRE" }])).toEqual([
+    expect(resolverCodes([], [{ code: "VAL", contratos: 39, id: 29, nome: "VISTA ALEGRE" }])).toEqual([
       "VAL",
     ]);
     expect(resolverCodes([], [])).toEqual([]);
+  });
+});
+
+describe("idsDoRecorte: a sigla da tela vira o id do C2X pela MESMA lista (PAN-124)", () => {
+  it("traduz cada sigla pelo id da linha dela, sem repetição e em ordem crescente", () => {
+    expect(idsDoRecorte(["VOL", "VOC"], EMPREENDIMENTOS)).toEqual([36, 37]);
+    expect(idsDoRecorte(resolverCodes([], EMPREENDIMENTOS), EMPREENDIMENTOS)).toEqual([36, 37]);
+    expect(idsDoRecorte([" voc ", "VOC"], EMPREENDIMENTOS)).toEqual([37]);
+  });
+
+  it("'*' consulta todos os ids da lista, e só eles", () => {
+    expect(idsDoRecorte(resolverCodes(["*"], EMPREENDIMENTOS), EMPREENDIMENTOS)).toEqual([
+      29, 35, 36, 37, 41,
+    ]);
+  });
+
+  it("sigla que a lista não tem não vira id (e o painel não vai ao C2X com `in ()`)", () => {
+    expect(idsDoRecorte(["XXX"], EMPREENDIMENTOS)).toEqual([]);
+    expect(idsDoRecorte([], EMPREENDIMENTOS)).toEqual([]);
+  });
+
+  it("renome no C2X não muda o recorte: o mesmo id, seja qual for a sigla de hoje", () => {
+    expect(idsDoRecorte(["VCX"], RENOMEADO)).toEqual(idsDoRecorte(["VOC"], EMPREENDIMENTOS));
+    expect(idsDoRecorte(resolverCodes([], RENOMEADO), RENOMEADO)).toEqual([36, 37]);
+  });
+
+  it("id inválido na lista (zero, id do Panteon) não vai ao C2X", () => {
+    expect(
+      idsDoRecorte(
+        ["AAA", "BBB"],
+        [
+          { code: "AAA", contratos: 1, id: 0, nome: "A" },
+          { code: "BBB", contratos: 1, id: 100_001, nome: "B" },
+        ],
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("SQL_LINHAS_POR_ID: a consulta das linhas filtra pelo id, nunca pela sigla", () => {
+  const sql = SQL_LINHAS_POR_ID("?, ?");
+
+  it("o WHERE é `e.id in (...)`, e não há `e.code in` em lugar nenhum", () => {
+    expect(sql).toContain("where e.id in (?, ?)");
+    expect(sql).not.toMatch(/e\.code\s+in\s*\(/i);
+  });
+
+  it("o resto não muda: a sigla continua sendo o rótulo `emp` e a ordem continua pela sigla", () => {
+    expect(sql).toContain("e.code as emp");
+    expect(sql).toMatch(/order by e\.code, u\.block, u\.lot/);
   });
 });
 
