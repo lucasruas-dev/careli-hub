@@ -22,10 +22,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
-  coordenadoresDosEmpreendimentos,
-  enviarPeloRelacionamento,
-} from "@/lib/apolo/disparo-credenciamento";
-import { loadApoloEnterpriseCadastro } from "@/lib/apolo/empreendimentos";
+  coordenadoresDosPedidos,
+  MOTIVO_FALHA_DE_LEITURA,
+  MOTIVO_SEM_COORDENADOR,
+} from "@/lib/apolo/coordenador-do-empreendimento";
+import { enviarPeloRelacionamento } from "@/lib/apolo/disparo-credenciamento";
 import { portalConfeccionaContrato } from "@/lib/apolo/incorporador/perfis-de-portal";
 
 import { coordenadoresDoPanteon } from "./quem-pode-vender";
@@ -55,7 +56,13 @@ export type PessoaDoAviso = { nome: string; telefone: null | string };
 
 export type DestinatariosDaVenda = {
   /**
-   * Pode ser mais de um: o empreendimento tem um coordenador no C2X e a casa pode ter mais de um
+   * Por que NINGUÉM foi achado como coordenador, quando `coordenadores` está vazio. Presente = o
+   * aviso ao coordenador é REGISTRADO como falho com este motivo, em vez de simplesmente não
+   * existir (Lucas, 24/09/2026). Opcional para as rotas e os testes que montam o objeto à mão.
+   */
+  coordenadorAusente?: string;
+  /**
+   * Pode ser mais de um: o consolidado tem um coordenador por divisão e a casa pode ter mais de um
    * vínculo no Panteon. Todos recebem — perder o aviso porque escolhemos "o principal" errado é
    * pior do que duas pessoas lerem a mesma novidade.
    */
@@ -67,10 +74,14 @@ export type DestinatariosDaVenda = {
 /**
  * Os três, com nome e telefone, prontos para a mensagem e para o papel.
  *
- * ⚠️ O COORDENADOR VEM DO C2X, E CAI NO PANTEON QUANDO NÃO EXISTE LÁ. Empreendimento que só existe
- * aqui — o de teste, e qualquer produto novo antes de ser cadastrado no legado — ficaria sem
- * ninguém para avisar. O fallback nunca esconde o coordenador de verdade: só entra quando a
- * consulta ao legado volta vazia.
+ * ⚠️ O COORDENADOR É ACHADO PELO ID DO EMPREENDIMENTO, NUNCA PELA SIGLA (Lucas, 24/09/2026). Vale o
+ * cadastrado no Panteon (`apolo_enterprise_settings.coordenador_entity_id`) e, sem ele, o do C2X
+ * pelo id (lib/apolo/coordenador-do-empreendimento.ts). Pela sigla, um renome no C2X (o 43, RDV ->
+ * PDI) deixava a venda sem coordenador avisado, sem aviso de que faltou.
+ *
+ * ⚠️ O VÍNCULO `coordenador` DO PANTEON CONTINUA COMO ÚLTIMA OPÇÃO, e só quando ninguém com
+ * telefone foi achado: é o que atende o empreendimento que só existe aqui (o de teste, e qualquer
+ * produto novo antes de ter coordenador cadastrado).
  *
  * ⚠️ NUNCA LANÇA: falha de leitura vira lista vazia e nome genérico. Ver o aviso do topo.
  */
@@ -113,20 +124,28 @@ export async function destinatariosDaVenda(
     // teste: é a regra que estava errada e mandou cinco avisos de reserva para lugar nenhum.
     const telefonePorId = telefonesPorEntidade((contatos ?? []) as ContatoDoAviso[]);
 
-    const doC2x = await coordenadoresDosEmpreendimentos(
-      admin,
-      [{ enterpriseId: dados.empreendimento.c2xId, label: dados.empreendimento.nome }],
-      loadApoloEnterpriseCadastro,
-    );
-    const coordenadores: PessoaDoAviso[] =
-      doC2x.length > 0
-        ? doC2x.map((c) => ({ nome: c.nome, telefone: c.telefone }))
-        : (await coordenadoresDoPanteon(admin, [dados.empreendimento.c2xId])).map((c) => ({
-            nome: c.nome,
-            telefone: c.telefone,
-          }));
+    const c2xId = String(dados.empreendimento.c2xId ?? "").trim();
+    const resposta = (await coordenadoresDosPedidos(admin, [c2xId])).get(c2xId);
+    const achados: PessoaDoAviso[] = (resposta?.coordenadores ?? []).map((c) => ({
+      nome: c.nome,
+      telefone: c.telefone,
+    }));
+
+    // ⚠️ O COORDENADOR SEM TELEFONE CONTINUA NA LISTA, e isso é novo: antes ele sumia calado. Com
+    // ele, o disparo registra "sem telefone" e a tela da venda diz a quem falta o número.
+    let coordenadores = achados;
+    if (!achados.some((c) => c.telefone)) {
+      const vinculados = (await coordenadoresDoPanteon(admin, [c2xId])).map((c) => ({
+        nome: c.nome,
+        telefone: c.telefone,
+      }));
+      if (vinculados.length > 0) coordenadores = vinculados;
+    }
 
     return {
+      ...(coordenadores.length === 0
+        ? { coordenadorAusente: resposta?.motivo ?? MOTIVO_SEM_COORDENADOR }
+        : {}),
       coordenadores,
       corretor: dados.corretorId
         ? {
@@ -142,6 +161,7 @@ export async function destinatariosDaVenda(
   } catch (erro) {
     console.error("[hercules][avisos] falha ao resolver destinatários", erro);
     return {
+      coordenadorAusente: MOTIVO_FALHA_DE_LEITURA,
       coordenadores: [],
       corretor: dados.corretorId ? { nome: "—", telefone: null } : null,
       imobiliaria: { nome: "Imobiliária", telefone: null },
@@ -149,7 +169,13 @@ export async function destinatariosDaVenda(
   }
 }
 
-type DestinoDoAviso = { entityId: string; papel: PapelDoAviso; telefone: null | string };
+type DestinoDoAviso = {
+  entityId: string;
+  /** Por que este destino já nasce falho (o coordenador que não foi achado). Vira o `erro` do disparo. */
+  impedimento?: string;
+  papel: PapelDoAviso;
+  telefone: null | string;
+};
 
 /**
  * Quem recebe, um por linha: corretor (se houver), imobiliária e cada coordenador.
@@ -182,6 +208,17 @@ function destinosDoAviso(dados: {
       entityId: dados.imobiliariaId,
       papel: "coordenador",
       telefone: coordenador.telefone,
+    });
+  }
+  // ⚠️ NINGUÉM ACHADO AINDA É UM DESTINO, com o motivo (Lucas, 24/09/2026). Sem esta linha, a venda
+  // de um empreendimento sem coordenador saía com dois avisos e nenhum registro do terceiro, e a
+  // tela dizia "aviso enviado" como se o coordenador estivesse sabendo.
+  if (dados.destinatarios.coordenadores.length === 0 && dados.destinatarios.coordenadorAusente) {
+    destinos.push({
+      entityId: dados.imobiliariaId,
+      impedimento: dados.destinatarios.coordenadorAusente,
+      papel: "coordenador",
+      telefone: null,
     });
   }
   return destinos;
@@ -300,6 +337,7 @@ export async function avisarSobreAVenda(
           anexo: dados.anexo ?? null,
           destinatario: destino.papel,
           entityId: destino.entityId,
+          impedimento: destino.impedimento,
           origem: dados.origem,
           telefone: destino.telefone,
           texto,

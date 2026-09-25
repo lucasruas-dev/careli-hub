@@ -161,7 +161,12 @@ describe("salvarCadastroDoApolo", () => {
       origem: "cadastro-formulario",
       ownerUserId: "operador-1",
     });
-    expect(estado.criar.mock.calls[0]?.[2]).toEqual({ autor: null, fichaExistente: "anexar" });
+    // (24/09/2026) A porta do hub liga a habilitação interna: é o operador da Careli que salva.
+    expect(estado.criar.mock.calls[0]?.[2]).toEqual({
+      autor: null,
+      fichaExistente: "anexar",
+      habilitacaoInterna: true,
+    });
   });
 
   it("a porta do portal pede para ACRESCENTAR na ficha existente, e manda a autoria à parte", async () => {
@@ -175,7 +180,12 @@ describe("salvarCadastroDoApolo", () => {
       origemPadrao: "portal-incorporador",
       payload: payload(),
     });
-    expect(estado.criar.mock.calls[0]?.[2]).toEqual({ autor: registro, fichaExistente: "acrescentar" });
+    // O portal NUNCA liga a habilitação interna: autor de fora do hub não habilita imobiliária.
+    expect(estado.criar.mock.calls[0]?.[2]).toEqual({
+      autor: registro,
+      fichaExistente: "acrescentar",
+      habilitacaoInterna: false,
+    });
   });
 
   it("cliente que já é da Careli, cadastrado no Garden pelo portal: esteira NOVA no 39, na ficha dele", async () => {

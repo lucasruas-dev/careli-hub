@@ -36,6 +36,82 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-25-coordenador-pelo-id-e-habilitacao-sem-fila",
+    deployedAt: "2026-09-25T08:26:22-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**As imobiliárias habilitadas sem fila agora aparecem no Board.** A que já era credenciada e pediu um empreendimento novo pela página pública, e a habilitada pelo cadastro interno, ficam 30 dias na coluna Habilitada, com um selo. Antes elas não apareciam em lugar nenhum.",
+            ],
+            screen: "Board de cadastro",
+          },
+          {
+            items: [
+              "**Habilitar uma imobiliária pelo cadastro interno ou pela ficha avisa o coordenador** do empreendimento e deixa registro, como já acontecia pela página pública.",
+            ],
+            screen: "Cadastro e ficha da imobiliária",
+          },
+          {
+            items: [
+              "**O aviso ao coordenador não depende mais da sigla do C2X.** Renomear um empreendimento no C2X não cala mais os avisos, e o coordenador cadastrado no Panteon vale primeiro. Os avisos do Lagoa Bonita voltam a encontrar o coordenador.",
+              "**Quando o coordenador não tem telefone, a falha fica registrada** no histórico de envios, em vez de sumir.",
+            ],
+            screen: "Avisos por WhatsApp",
+          },
+          {
+            items: [
+              "**O C2X não muda mais o cadastro do empreendimento no Panteon.** A sincronização usa o nome do Panteon, e o botão de credenciamento não troca mais a sigla.",
+            ],
+            screen: "Empreendimentos",
+          },
+        ],
+      },
+    ],
+    rollback: "3155cc9c",
+    technical: {
+      done:
+        "ORIGEM (24/09/2026): a Nívea renomeou no C2X o empreendimento 43 (RECANTO DO VALE / RDV para PORTAL DO IBITURUNA / PDI, mesmo id; auditoria 34214). O Panteon achava o coordenador NO C2X PELA SIGLA (settings.code, e.code in): com o renome a busca voltou vazia e a LUNA não foi avisada da auto-aprovação pública da CONECTTA IMÓVEIS, que é justamente a contenção dessa auto-aprovação. O mesmo já tinha quebrado no 30 (LAG, ADT, ACT) e no group:Lagoa Bonita (code LBF + LBR + LBP, 6 de 6 avisos falhando). O dado do 43 foi acertado no banco com OK do Lucas (cadastro Portal do Ibituruna / PDI, settings code PDI e coordenador_entity_id = LUNA, 36 vínculos relabelados). CÓDIGO: (1) lib/apolo/coordenador-do-empreendimento.ts: o coordenador_entity_id do Panteon prevalece (telefone por apolo_contacts, régua da casa); na falta, o C2X POR ID (loadApoloEnterpriseCadastroPorId, e.id in); group:<Nome> resolve pelas divisões em hercules_empreendimentos. Coordenador não achado ou sem telefone vira disparo falhou com o motivo (enviarPeloRelacionamento ganhou impedimento). Trocados: credenciamento público, aviso de etapa da CAD, reprovação, aviso da venda (Hércules), log de erros, lista de empreendimentos da Têmis. (2) Board: nova perna com as habilitações sem fila dos últimos 30 dias (vínculo de empreendimento verified, por produto, com a data e o selo do produto certo no portal), incluindo a promoção de pedido pendente pela página pública. (3) Cadastro interno (cadastro-persist) e modal da ficha (relationships/create): habilitar imobiliária grava auditoria credenciamento_habilitado e avisa o coordenador depois da resposta (depois-da-resposta.ts), sem segurar o salvamento; não duplica vínculo já coberto por equivalência. (4) Travas: semear-empreendimentos recusa gravar sem a autorização da carga e nunca reescreve linha existente; os setters de apolo_enterprise_settings não regravam nem zeram o code com o que a tela manda; o sync do Apolo grava em apolo_commercial_links o nome de mercado do Panteon pelo id (lido uma vez por rodada). REVISÃO: três lentes (regra e dados, regressão e custo, tela e texto), 9 achados (3 major) corrigidos e reconferidos. Pastas afetadas: 7.106 testes verdes. Suíte inteira depois do merge com a 1.374.0: 603 arquivos, 9.158 testes passando; typecheck limpo.",
+      motivation:
+        "Lucas, 24/09/2026: investiga por que a conecta não está aparecendo no board do apolo; a nivea alterou o nome do empreendimento no c2x e ele alterou o nome no panteon, isso está errado, temos que ter capacidade de editar cadastros dos empreendimentos bem como criá-los dentro do panteon. Decisões: tivemos que mudar de nome (Portal do Ibituruna); habilitação sem fila aparece no Board e o cadastro interno avisa o coordenador (isso aí); pode começar travando as portas do C2X e consultando o C2X pelo id.",
+    },
+    title: "Coordenador achado pelo empreendimento, habilitações sem fila no Board e o C2X sem mexer no cadastro",
+    type: "melhoria",
+    version: "1.375.0",
+  },
+  {
+    buildTag: "2026-09-24-lsoft-todos-os-empreendimentos-e-patrimonio",
+    deployedAt: "2026-09-24T18:40:33-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "**O filtro de empreendimento oferece todos os empreendimentos do LSoft**, e não só Garden e Vale do Sol. O Vale do Ouro, que já tinha carteira no sistema e não aparecia, entra também.",
+              "**Nova marca de Patrimônio.** O cliente e a parcela que vêm da carteira de patrimônio ganham um selo, e um filtro mostra só eles.",
+              "**Um bloco mostra quanto do patrimônio falta receber** e quantos clientes têm patrimônio em aberto. Esse valor já está dentro da carteira de cima, e o bloco diz isso para ninguém somar duas vezes.",
+              "**O subtítulo diz o empreendimento que está na tela**, em vez de sempre Garden e Vale do Sol.",
+            ],
+            screen: "LSoft Integração",
+          },
+        ],
+      },
+    ],
+    rollback: "85b8d613",
+    technical: {
+      done:
+        "BANCO (com OK do Lucas): 0188 `a_trilha_sobrevive_a_recarga` (FK de lsoft_clientes_edicoes.parcela_id de CASCADE para SET NULL, impressao_digital + ordinal + retrato no momento, backfill das 948 linhas); 0189 `a_parcela_sabe_de_qual_categoria_veio` (lsoft_parcelas.categoria_lsoft, backfill 124/102/69, CHECK de empreendimento de 3 para 13 nomes, aceita 'Guaimbé' e recusa 'Guaimbê'); 0190 `devolve_mae_e_nascimento_do_most` (200 mães e 218 nascimentos que as cargas de 08/09 e 16/09 tinham trocado por nulo, só onde o CPF do MOST é o do cliente: 222 de 222). CARGA (lib/lsoft/carga.ts): grava antes de apagar com uma marca em sincronizado_em, apaga só as CATEGORIAS da carga (a 17 mistura produtos; por empreendimento, carregar a 17 apagaria o Vale do Sol da 102), desfaz o que gravou se falhar, e depois de erro no DELETE conta o que sobrou antes de desfazer (DELETE que efetivou com a resposta perdida esvaziaria o empreendimento). Cadastro MESCLADO (lib/lsoft/mesclar-cliente.ts): LSoft em branco não apaga, edição da tela vence, lista de empreendimentos soma. Conferência antes de gravar (lib/lsoft/divergencia-da-carga.ts): recusa a carga que desfaria baixa ou correção do time, salvo --aceitar-perda-de-edicao. Religadores da trilha (lib/lsoft/religar-trilha.ts) e da classificação rodam no fim; leitura paginada com order(id) e conferência de ids distintos (sem ordem, uma página pulava uma parcela e o total batia). Regra da categoria 17 por texto (lib/lsoft/categorias.ts), presa por teste ao catálogo de boletos e ao CHECK da 0189. Extrator novo scripts/lsoft/extrair-por-categoria.ps1. TELA: seletor com os 13, filtro e bloco de patrimônio, selo no cliente e na parcela. REVISÃO ADVERSARIAL: 35 agentes, 31 achados, 16 confirmados. Suíte: 586 arquivos, 8.942 testes; typecheck limpo. ⚠️ A CARGA DOS EMPREENDIMENTOS NOVOS roda logo depois deste deploy; a do Garden e do Vale do Sol continua travada pela divergência do cliente 00000587.",
+      motivation:
+        "Lucas, 24/09/2026: trazer os demais empreendimentos para o LSoft Integração, para o time analisar e corrigir, e a categoria 17 com uma tag de patrimônio: \"ele deve estar vinculado ao empreendimento, mas ter uma tag de patrimonio e que eu pudesse ver esse valor, ter filtros\".",
+    },
+    title: "Todos os empreendimentos e a marca de patrimônio no LSoft Integração",
+    type: "novidade",
+    version: "1.374.0",
+  },
+  {
     buildTag: "2026-09-24-promessa-vencida-volta-a-acionar",
     deployedAt: "2026-09-24T17:56:11-03:00",
     modules: [

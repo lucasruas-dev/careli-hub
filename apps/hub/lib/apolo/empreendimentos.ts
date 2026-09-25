@@ -472,6 +472,8 @@ type CadastroQueryRow = RowDataPacket &
     code: string | null;
     created_at: Date | string | null;
     divulgation_name: string | null;
+    /** `enterprises.id`: a chave que não muda quando alguém renomeia o empreendimento no C2X. */
+    enterprise_id: number | string;
     expected_delivery_date: Date | string | null;
     focal_email: string | null;
     focal_name: string | null;
@@ -519,7 +521,34 @@ function playerSelect(column: string, alias: string): string {
             limit 1) as ${alias}_address`;
 }
 
+// O SELECT do cadastro, com o filtro de quem chama. Um texto só para as duas buscas (por sigla e
+// por id): duas cópias do mesmo SELECT divergiriam no dia em que um player novo entrasse numa delas.
+function sqlDoCadastro(filtro: string): string {
+  return `select e.id as enterprise_id, e.code, e.name, e.divulgation_name,
+            et.name as kind,
+            etab.name as table_kind,
+            ci.name as city, st.acronym as state,
+            e.expected_delivery_date, e.act_value, e.created_at,
+            e.focal_name, e.focal_phone, e.focal_email,
+            ${playerSelect("incorporador_id", "incorporador")},
+            ${playerSelect("manager_id", "gerente")},
+            ${playerSelect("captivator_id", "captador")},
+            ${playerSelect("coordenador_id", "coordenador")}
+     from enterprises e
+     left join enterprise_types et on et.id = e.enterprise_type_id
+     left join enterprise_tables etab on etab.id = e.enterprise_table_id
+     left join cities ci on ci.id = e.city_id
+     left join states st on st.id = ci.state_id
+     where ${filtro}
+     order by e.code`;
+}
+
 // Cadastro do empreendimento (uma ficha por CÓDIGO — o produto consolidado tem N).
+//
+// ⚠️ É A BUSCA POR SIGLA, E ELA QUEBRA QUANDO ALGUÉM RENOMEIA NO C2X. Serve às telas que já têm na
+// mão a sigla VIVA do C2X (a aba Cadastro do Apolo, a do portal), que leem a sigla e o cadastro no
+// mesmo instante. Para ACHAR O COORDENADOR a partir do que o Panteon guarda, use
+// `loadApoloEnterpriseCadastroPorId` (Lucas, 24/09/2026; ver lib/apolo/coordenador-do-empreendimento.ts).
 export async function loadApoloEnterpriseCadastro(
   codes: string[],
 ): Promise<
@@ -545,27 +574,69 @@ export async function loadApoloEnterpriseCadastro(
 
   const placeholders = validCodes.map(() => "?").join(", ");
   const [rows] = await poolResult.pool.query<CadastroQueryRow[]>(
-    `select e.code, e.name, e.divulgation_name,
-            et.name as kind,
-            etab.name as table_kind,
-            ci.name as city, st.acronym as state,
-            e.expected_delivery_date, e.act_value, e.created_at,
-            e.focal_name, e.focal_phone, e.focal_email,
-            ${playerSelect("incorporador_id", "incorporador")},
-            ${playerSelect("manager_id", "gerente")},
-            ${playerSelect("captivator_id", "captador")},
-            ${playerSelect("coordenador_id", "coordenador")}
-     from enterprises e
-     left join enterprise_types et on et.id = e.enterprise_type_id
-     left join enterprise_tables etab on etab.id = e.enterprise_table_id
-     left join cities ci on ci.id = e.city_id
-     left join states st on st.id = ci.state_id
-     where e.code in (${placeholders})
-     order by e.code`,
+    sqlDoCadastro(`e.code in (${placeholders})`),
     validCodes,
   );
 
   return { cadastros: rows.map(mapCadastroRow), ok: true };
+}
+
+/** A ficha do C2X com o id de onde ela saiu: quem pediu por id precisa casar a resposta pelo id. */
+export type ApoloEnterpriseCadastroPorId = ApoloEnterpriseCadastro & { enterpriseId: string };
+
+/**
+ * O cadastro do empreendimento no C2X pelo ID (`enterprises.id`), e não pela sigla.
+ *
+ * ⚠️ POR QUE EXISTE (Lucas, 24/09/2026: *"Tivemos que mudar de nome"*). A Nivea renomeou o 43 no C2X
+ * de RECANTO DO VALE/RDV para PORTAL DO IBITURUNA/PDI. O id ficou; a sigla mudou. A busca por sigla
+ * com o RDV que o Panteon guardava voltou VAZIA (medido: 0 cadastros com RDV, a LUNA com PDI), e a
+ * coordenação não soube da CONECTTA IMOVEIS habilitada 7 minutos depois. O mesmo já tinha acontecido
+ * com o 30 (LAG, ADT, ACT). O id do C2X é a chave que o Panteon inteiro já guarda
+ * (`hercules_empreendimentos.c2x_enterprise_id`, `apolo_enterprise_settings.enterprise_id`).
+ *
+ * ⚠️ NÃO FILTRA `EXCLUDED_ENTERPRISE_CODES`, e é de propósito: aquela lista é de SIGLAS (voltaria a
+ * depender do nome do legado), e quem pede um id pediu aquele empreendimento. Id que não é número
+ * (`group:...`, uuid) não é id do C2X e fica de fora; o grupo se resolve ANTES, pelas divisões do
+ * cadastro do Panteon (lib/apolo/coordenador-do-empreendimento.ts).
+ */
+export async function loadApoloEnterpriseCadastroPorId(
+  enterpriseIds: readonly string[],
+): Promise<
+  | { cadastros: ApoloEnterpriseCadastroPorId[]; ok: true }
+  | { error: string; ok: false }
+> {
+  const ids = [
+    ...new Set(
+      enterpriseIds.map((id) => String(id ?? "").trim()).filter((id) => /^\d+$/.test(id)),
+    ),
+  ];
+
+  if (!ids.length) {
+    return { cadastros: [], ok: true };
+  }
+
+  const poolResult = getHadesDbPool();
+
+  if (!poolResult.ok) {
+    return {
+      error: `Configuracao C2X ausente: ${poolResult.missing.join(", ")}.`,
+      ok: false,
+    };
+  }
+
+  const placeholders = ids.map(() => "?").join(", ");
+  const [rows] = await poolResult.pool.query<CadastroQueryRow[]>(
+    sqlDoCadastro(`e.id in (${placeholders})`),
+    ids.map(Number),
+  );
+
+  return {
+    cadastros: rows.map((row) => ({
+      ...mapCadastroRow(row),
+      enterpriseId: String(row.enterprise_id),
+    })),
+    ok: true,
+  };
 }
 
 function mapCadastroRow(row: CadastroQueryRow): ApoloEnterpriseCadastro {

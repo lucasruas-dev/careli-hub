@@ -757,12 +757,21 @@ export async function listarEmpreendimentosDaTemis(ator: AtorDaTemis): Promise<N
     );
   }
 
-  // O NOME BONITO vem do cadastro do Panteon, casando pelo CÓDIGO. O portão guarda o código
-  // (inclusive "LBF + LBR + LBP" no consolidado), e código sozinho não é o que se lê numa lista.
+  // O NOME BONITO vem do cadastro do Panteon. O portão guarda o código (inclusive "LBF + LBR + LBP"
+  // no consolidado), e código sozinho não é o que se lê numa lista.
+  //
+  // ⚠️ CASA PELO ID ANTES DO CÓDIGO (Lucas, 24/09/2026). O código do portão é uma cópia que a tela do
+  // empreendimento regrava com a sigla que o C2X mostra na hora, e envelhece quando alguém renomeia
+  // no legado (o 43 ficou RDV depois de virar PDI; o 30, ADT depois de virar ACT). Casando só pelo
+  // código, o empreendimento renomeado perdia o nome e a lista mostrava a sigla velha. O id do C2X
+  // (`c2x_enterprise_id`) não muda; o código fica de segunda chave, para linha sem id no cadastro.
   const nomePorCodigo = new Map<string, string>();
+  const doCadastroPorId = new Map<string, { codigo: string; nome: string }>();
   try {
     for (const e of await carregarCadastroDeEmpreendimentos()) {
       if (e.codigo && e.nome) nomePorCodigo.set(e.codigo.toUpperCase(), e.nome);
+      const id = e.c2xEnterpriseId?.trim();
+      if (id && e.nome) doCadastroPorId.set(id, { codigo: e.codigo, nome: e.nome });
     }
   } catch (erro) {
     // Best-effort: sem o cadastro, a lista sai com o código no lugar do nome — feia, mas viva.
@@ -774,7 +783,8 @@ export async function listarEmpreendimentosDaTemis(ator: AtorDaTemis): Promise<N
     // A rede em memória, igual à do board: o `in` recorta, esta linha garante.
     .filter((l) => enterpriseNoAlcance(ator, l.enterprise_id))
     .map((l) => {
-      const codigo = (l.code ?? "").trim();
+      const doCadastro = doCadastroPorId.get(l.enterprise_id.trim());
+      const codigo = doCadastro?.codigo || (l.code ?? "").trim();
       // O consolidado guarda "LBF + LBR + LBP" no código: o nome dele está no id (`group:Nome`).
       const doGrupo = l.enterprise_id.startsWith("group:")
         ? l.enterprise_id.slice("group:".length)
@@ -782,7 +792,11 @@ export async function listarEmpreendimentosDaTemis(ator: AtorDaTemis): Promise<N
       return {
         code: codigo,
         id: l.enterprise_id,
-        name: doGrupo ?? nomePorCodigo.get(codigo.toUpperCase()) ?? (codigo || l.enterprise_id),
+        name:
+          doGrupo ??
+          doCadastro?.nome ??
+          nomePorCodigo.get(codigo.toUpperCase()) ??
+          (codigo || l.enterprise_id),
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));

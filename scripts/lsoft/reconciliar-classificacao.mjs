@@ -28,9 +28,16 @@ const { createClient } = req("@supabase/supabase-js");
 
 const ensaio = process.argv.includes("--ensaio");
 
+// O worktree não tem .env.local (não é versionado): cai no do checkout principal.
+const ENV_LOCAL = [
+  path.resolve(process.cwd(), "apps/hub/.env.local"),
+  path.resolve(process.cwd(), "../../careli-hub/apps/hub/.env.local"),
+].find((p) => fs.existsSync(p));
+if (!ENV_LOCAL) throw new Error("não achei apps/hub/.env.local");
+
 const env = Object.fromEntries(
   fs
-    .readFileSync(path.resolve(process.cwd(), "apps/hub/.env.local"), "utf8")
+    .readFileSync(ENV_LOCAL, "utf8")
     .split("\n")
     .filter((l) => l.includes("=") && !l.trim().startsWith("#"))
     .map((l) => {
@@ -69,16 +76,25 @@ const digitalDaParcela = (p) =>
     texto(p.origem),
   ]);
 
+// ⚠️ A PAGINAÇÃO PRECISA DE ORDEM FIXA. Sem `order`, o Postgres não garante que duas páginas
+// seguidas não se sobreponham: uma linha pode vir repetida e outra pode não vir, e o TOTAL CONTINUA
+// BATENDO. Achado em 24/09/2026 no irmão deste script (reconciliar-trilha.mjs): rodando a simulação
+// três vezes, uma parcela viva sumiu da leitura na primeira e voltou nas outras duas. Aqui, uma
+// marca da Caixa ficaria órfã por azar da página, e o valor voltaria a contar como dívida do cliente.
 async function lerTudo(tabela, colunas, filtro) {
   const linhas = [];
   const passo = 1000;
   for (let de = 0; ; de += passo) {
-    let consulta = supabase.from(tabela).select(colunas).range(de, de + passo - 1);
+    let consulta = supabase.from(tabela).select(colunas).order("id").range(de, de + passo - 1);
     if (filtro) consulta = filtro(consulta);
     const { data, error } = await consulta;
     if (error) throw new Error(`${tabela}: ${error.message}`);
     linhas.push(...(data ?? []));
     if (!data || data.length < passo) break;
+  }
+  const distintos = new Set(linhas.map((l) => l.id)).size;
+  if (distintos !== linhas.length) {
+    throw new Error(`${tabela}: ${linhas.length} linhas lidas mas ${distintos} ids distintos. Leitura instável, abortado.`);
   }
   return linhas;
 }

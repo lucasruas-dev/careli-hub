@@ -292,7 +292,14 @@ export async function salvarCadastroDoApolo(
     },
     // A autoria e a regra da ficha existente vêm da PORTA, num argumento à parte: o `payload` é o
     // corpo espalhado, e nada que o JSON mande chega a este terceiro argumento.
-    { autor: autor.registro ?? null, fichaExistente: input.fichaExistente ?? "anexar" },
+    {
+      autor: autor.registro ?? null,
+      fichaExistente: input.fichaExistente ?? "anexar",
+      // (24/09/2026) Quem salva pelo HUB é o operador da Careli: a imobiliária que ele habilita no
+      // cadastro grava auditoria e avisa o coordenador (Lucas, "3 - Isso ae"). O portal (autor de fora
+      // do hub) não liga: ele só cadastra prospect, e habilitação não é dele.
+      habilitacaoInterna: !autor.registro,
+    },
   );
 
   if (!result.ok) {

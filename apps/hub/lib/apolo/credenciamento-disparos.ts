@@ -162,6 +162,24 @@ export function rotuloDoDestinatario(destinatario: null | string): string {
 const MOTIVOS: ReadonlyArray<{ para: string; quando: RegExp }> = [
   // O caso mais comum dos avisos de credenciamento: o Evolution responde `"exists": false`.
   { para: "O número não tem WhatsApp", quando: /"exists"\s*:\s*false|message undeliverable|131026|133010/i },
+  // ⚠️ O COORDENADOR SEM TELEFONE NÃO É A FICHA SEM TELEFONE (revisão de 24/09/2026). Desde a busca
+  // pelo id (lib/apolo/coordenador-do-empreendimento.ts), o coordenador sem número vira disparo falho
+  // com "Coordenador CARELI ACESSORIA sem telefone no cadastro do Panteon." ou "Coordenador GLENDER sem
+  // telefone no C2X.". A regra genérica logo abaixo casava antes e o painel da IMOBILIÁRIA dizia "A
+  // ficha não tem telefone": o operador ia procurar o número na ficha dela, que está certa. Estas três
+  // vêm ANTES e dizem onde corrigir. (O "Para" da linha já mostra o nome do coordenador.)
+  {
+    para: "Coordenador sem telefone: corrija na ficha dele, no Panteon",
+    quando: /\bcoordenador\b.*\bsem telefone no cadastro do panteon/i,
+  },
+  {
+    para: "Coordenador sem telefone no C2X: cadastre o coordenador do empreendimento no Panteon",
+    quando: /\bcoordenador\b.*\bsem telefone no c2x/i,
+  },
+  {
+    para: "Coordenador sem telefone: confira o cadastro do empreendimento",
+    quando: /\bcoordenador\b.*\bsem telefone/i,
+  },
   { para: "A ficha não tem telefone para receber a mensagem", quando: /sem telefone/i },
   { para: "A ficha não tem e-mail cadastrado", quando: /sem e-mail/i },
   { para: "Telefone sem DDI: o gateway não envia", quando: /sem ddi/i },

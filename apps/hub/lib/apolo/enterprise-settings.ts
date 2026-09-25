@@ -146,6 +146,71 @@ function tabelaAusente(error: { code?: string; message?: string } | null): boole
   return error.code === "42P01" || /does not exist/i.test(error.message ?? "");
 }
 
+// ─── A SIGLA (`code`) QUE ESTA TABELA GUARDA ─────────────────────────────────────────────────────
+//
+// Lucas (24/09/2026), depois de a Nívea renomear no C2X o 43 de RECANTO DO VALE/RDV para PORTAL DO
+// IBITURUNA/PDI: *"Tivemos que mudar de nome"*, e *"pode"* para travar as portas por onde o C2X ainda
+// mexe no Panteon. Esta tabela era uma delas: TODO setter daqui gravava o `code` que a TELA mandava,
+// e a tela manda a sigla que o C2X mostra NA HORA (a lista do Apolo lê o legado ao vivo).
+//
+// ⚠️ O EFEITO FOI O AVISO AO COORDENADOR CALAR. A sigla daqui virava a chave da busca do coordenador
+// no C2X (`e.code in (...)`): com o 43 ainda RDV aqui e PDI lá, a busca voltou vazia e a LUNA não foi
+// avisada da CONECTTA em 24/09. É a contenção de segurança da auto-aprovação pública. O mesmo já
+// tinha acontecido com o 30 (LAG, ADT, ACT) e acontece sempre com o grupo da Lagoa Bonita.
+//
+// ⚠️ E O `setEnterpriseCredenciamento` ZERAVA. O upsert gravava `code: input.code ?? null`: uma
+// chamada sem sigla (outra tela, um script) apagava a do empreendimento, e não só "desalinhava".
+//
+// A REGRA AGORA: a sigla que vale é a de `hercules_empreendimentos.codigo`, o cadastro do Panteon,
+// achada pelo ID do C2X (a chave que não muda no renome). O que a tela manda é IGNORADO, e por isso o
+// parâmetro `code` saiu dos setters. Sem sigla do cadastro (grupo `group:*`, id fora do cadastro como
+// o 30, leitura que falhou), a linha existente FICA COMO ESTÁ; a linha nova nasce sem sigla, e quem
+// lê vai pelo id.
+const CADASTRO_DO_PANTEON = "hercules_empreendimentos";
+const WORKSPACE_DO_CADASTRO = "careli";
+const PREFIXO_DE_GRUPO = "group:";
+
+/**
+ * A sigla do empreendimento no cadastro do Panteon, pelo id do C2X. `null` quando não há o que gravar.
+ *
+ * ⚠️ `group:*` DEVOLVE NULL DE PROPÓSITO, e isso preserva a sigla que a linha já tem. O grupo não tem
+ * linha própria no cadastro ("group:Lagoa Bonita" é o nome do pai, não um id), e inventar uma sigla
+ * juntando as dos filhos trocaria "LBF + LBR + LBP" por outra ordem a cada clique.
+ *
+ * ⚠️ NUNCA LANÇA: leitura que falha vira `null`, que também preserva. Salvar um toggle não pode cair
+ * porque o cadastro oscilou, e o pior que acontece é a sigla não ser realinhada neste clique.
+ */
+export async function siglaDoCadastro(
+  adminClient: AdminClient,
+  enterpriseId: string,
+): Promise<null | string> {
+  const id = (enterpriseId ?? "").trim();
+  if (!id || id.startsWith(PREFIXO_DE_GRUPO)) return null;
+
+  try {
+    const { data, error } = await adminClient
+      .from(CADASTRO_DO_PANTEON)
+      .select("codigo")
+      .eq("workspace_id", WORKSPACE_DO_CADASTRO)
+      .eq("c2x_enterprise_id", id)
+      .limit(1);
+    if (error) return null;
+
+    const codigo = String((data as { codigo: null | string }[] | null)?.[0]?.codigo ?? "")
+      .trim()
+      .toUpperCase();
+    return codigo || null;
+  } catch {
+    return null;
+  }
+}
+
+// Para UPDATE e upsert: só manda a coluna quando há sigla do cadastro. Coluna ausente do payload é
+// coluna que o Postgres não toca, e é isso que impede o `null` de apagar a sigla que já existe.
+function realinharSigla(sigla: null | string): { code?: string } {
+  return sigla ? { code: sigla } : {};
+}
+
 // { enterpriseId -> { credenciamentoAtivo } } de todos os empreendimentos já marcados.
 export async function listEnterpriseSettings(
   adminClient: AdminClient,
@@ -243,7 +308,6 @@ export async function getValorPix(
 // explícito, e cada escrita CHECA o error.
 export async function setEnterpriseValorPix(input: {
   adminClient: AdminClient;
-  code?: string | null;
   enterpriseId: string;
   updatedBy?: string | null;
   valor: number | null;
@@ -252,6 +316,7 @@ export async function setEnterpriseValorPix(input: {
   if (!enterpriseId) return { error: "Empreendimento invalido.", ok: false };
 
   const valor = normalizarLimite(input.valor);
+  const sigla = await siglaDoCadastro(input.adminClient, enterpriseId);
 
   const { data: existente, error: erroLeitura } = await input.adminClient
     .from(TABLE)
@@ -273,6 +338,7 @@ export async function setEnterpriseValorPix(input: {
     const { error } = await input.adminClient
       .from(TABLE)
       .update({
+        ...realinharSigla(sigla),
         updated_at: new Date().toISOString(),
         updated_by: input.updatedBy ?? null,
         valor_pix: valor,
@@ -289,7 +355,7 @@ export async function setEnterpriseValorPix(input: {
   }
 
   const { error } = await input.adminClient.from(TABLE).insert({
-    code: input.code ?? null,
+    code: sigla,
     credenciamento_ativo: false,
     enterprise_id: enterpriseId,
     updated_at: new Date().toISOString(),
@@ -316,7 +382,6 @@ export async function setEnterpriseValorPix(input: {
 // (que dependeria do default do banco no INSERT e sobrescreveria flags no UPDATE).
 async function setEnterpriseFlag(input: {
   adminClient: AdminClient;
-  code?: string | null;
   coluna:
     | "analise_credito_habilitada"
     | "comprovante_renda_habilitado"
@@ -329,6 +394,8 @@ async function setEnterpriseFlag(input: {
 }): Promise<{ error?: string; ok: boolean }> {
   const enterpriseId = (input.enterpriseId ?? "").trim();
   if (!enterpriseId) return { error: "Empreendimento invalido.", ok: false };
+
+  const sigla = await siglaDoCadastro(input.adminClient, enterpriseId);
 
   const { data: existente, error: erroLeitura } = await input.adminClient
     .from(TABLE)
@@ -366,6 +433,7 @@ async function setEnterpriseFlag(input: {
       .from(TABLE)
       .update({
         [input.coluna]: input.habilitada,
+        ...realinharSigla(sigla),
         updated_at: new Date().toISOString(),
         updated_by: input.updatedBy ?? null,
       })
@@ -380,7 +448,7 @@ async function setEnterpriseFlag(input: {
 
   const { error } = await input.adminClient.from(TABLE).insert({
     [input.coluna]: input.habilitada,
-    code: input.code ?? null,
+    code: sigla,
     // Default explícito: mexer numa habilitação de um empreendimento ainda sem settings não pode
     // ligar o credenciamento por acidente.
     credenciamento_ativo: false,
@@ -403,7 +471,6 @@ async function setEnterpriseFlag(input: {
 // Liga/desliga a Análise de Crédito do empreendimento (não toca `credenciamento_ativo`).
 export function setEnterpriseAnaliseCredito(input: {
   adminClient: AdminClient;
-  code?: string | null;
   enterpriseId: string;
   habilitada: boolean;
   updatedBy?: string | null;
@@ -415,7 +482,6 @@ export function setEnterpriseAnaliseCredito(input: {
 // `credenciamento_ativo`).
 export function setEnterpriseComprovanteRenda(input: {
   adminClient: AdminClient;
-  code?: string | null;
   enterpriseId: string;
   habilitada: boolean;
   updatedBy?: string | null;
@@ -426,7 +492,6 @@ export function setEnterpriseComprovanteRenda(input: {
 // Liga/desliga a Pré-venda do empreendimento (não toca `credenciamento_ativo`).
 export function setEnterprisePrevenda(input: {
   adminClient: AdminClient;
-  code?: string | null;
   enterpriseId: string;
   habilitada: boolean;
   updatedBy?: string | null;
@@ -438,7 +503,6 @@ export function setEnterprisePrevenda(input: {
 // o formulário PÚBLICO de CAD deixa de oferecer o empreendimento — o interno segue normal.
 export function setEnterpriseRecepcaoCad(input: {
   adminClient: AdminClient;
-  code?: string | null;
   enterpriseId: string;
   habilitada: boolean;
   updatedBy?: string | null;
@@ -451,7 +515,6 @@ export function setEnterpriseRecepcaoCad(input: {
 // aceitar) o empreendimento — o interno segue normal.
 export function setEnterpriseRecepcaoImobiliaria(input: {
   adminClient: AdminClient;
-  code?: string | null;
   enterpriseId: string;
   habilitada: boolean;
   updatedBy?: string | null;
@@ -491,7 +554,6 @@ export function setEnterpriseRecepcaoImobiliaria(input: {
  */
 export async function setEnterpriseOrdemDeAssinatura(input: {
   adminClient: AdminClient;
-  code?: null | string;
   enterpriseId: string;
   ordem: null | Record<string, number> | string[];
   ordenada: boolean;
@@ -527,6 +589,8 @@ export async function setEnterpriseOrdemDeAssinatura(input: {
     ok: false as const,
   });
 
+  const sigla = await siglaDoCadastro(input.adminClient, enterpriseId);
+
   const { data: existente, error: erroLeitura } = await input.adminClient
     .from(TABLE)
     .select("enterprise_id")
@@ -540,7 +604,7 @@ export async function setEnterpriseOrdemDeAssinatura(input: {
   if (existente) {
     const { error } = await input.adminClient
       .from(TABLE)
-      .update(campos)
+      .update({ ...campos, ...realinharSigla(sigla) })
       .eq("enterprise_id", enterpriseId);
 
     if (error) {
@@ -552,7 +616,7 @@ export async function setEnterpriseOrdemDeAssinatura(input: {
 
   const { error } = await input.adminClient.from(TABLE).insert({
     ...campos,
-    code: input.code ?? null,
+    code: sigla,
     // Mesmo cuidado das irmãs: cadastrar a ordem de um empreendimento sem settings NÃO pode ligar o
     // credenciamento por acidente.
     credenciamento_ativo: false,
@@ -674,19 +738,28 @@ export async function listEnterprisesRecebendo(
     .map((row) => row.enterprise_id);
 }
 
+/**
+ * Liga/desliga o master "Recebendo CAD".
+ *
+ * ⚠️ A SIGLA SÓ ENTRA NO UPSERT QUANDO O CADASTRO DO PANTEON A DÁ (`realinharSigla`). Até 24/09/2026
+ * ia `code: input.code ?? null`: o toggle regravava a sigla com a que o C2X mostrava na hora, e uma
+ * chamada sem sigla a apagava. Coluna fora do payload é coluna que o ON CONFLICT não toca; linha nova
+ * sem sigla do cadastro nasce com o default (nulo).
+ */
 export async function setEnterpriseCredenciamento(input: {
   adminClient: AdminClient;
   ativo: boolean;
-  code?: string | null;
   enterpriseId: string;
   updatedBy?: string | null;
 }): Promise<{ error?: string; ok: boolean }> {
   const enterpriseId = (input.enterpriseId ?? "").trim();
   if (!enterpriseId) return { error: "Empreendimento invalido.", ok: false };
 
+  const sigla = await siglaDoCadastro(input.adminClient, enterpriseId);
+
   const { error } = await input.adminClient.from(TABLE).upsert(
     {
-      code: input.code ?? null,
+      ...realinharSigla(sigla),
       credenciamento_ativo: input.ativo,
       enterprise_id: enterpriseId,
       updated_at: new Date().toISOString(),
@@ -727,7 +800,6 @@ export async function setEnterpriseCredenciamento(input: {
  */
 export function setEnterpriseGestaoCarteira(input: {
   adminClient: AdminClient;
-  code?: null | string;
   enterpriseId: string;
   percentual: null | number;
   updatedBy?: null | string;
@@ -769,7 +841,6 @@ type ColunaPercentual =
  */
 async function gravarPercentual(input: {
   adminClient: AdminClient;
-  code?: null | string;
   coluna: ColunaPercentual;
   enterpriseId: string;
   percentual: null | number;
@@ -788,6 +859,8 @@ async function gravarPercentual(input: {
     return { error: `A ${input.rotulo} precisa estar entre 0 e 100%.`, ok: false };
   }
 
+  const sigla = await siglaDoCadastro(input.adminClient, enterpriseId);
+
   const { data: existente, error: erroLeitura } = await input.adminClient
     .from(TABLE)
     .select("enterprise_id")
@@ -803,6 +876,7 @@ async function gravarPercentual(input: {
       .from(TABLE)
       .update({
         [input.coluna]: percentual,
+        ...realinharSigla(sigla),
         updated_at: new Date().toISOString(),
         updated_by: input.updatedBy ?? null,
       })
@@ -813,7 +887,7 @@ async function gravarPercentual(input: {
   }
 
   const { error } = await input.adminClient.from(TABLE).insert({
-    code: input.code ?? null,
+    code: sigla,
     // Mesmo cuidado do limite de crédito: cadastrar um percentual de um empreendimento sem settings
     // NÃO pode ligar o credenciamento por acidente.
     credenciamento_ativo: false,
@@ -840,7 +914,6 @@ async function gravarPercentual(input: {
  */
 export function setEnterpriseEntradaMinima(input: {
   adminClient: AdminClient;
-  code?: null | string;
   enterpriseId: string;
   percentual: null | number;
   updatedBy?: null | string;
@@ -868,7 +941,6 @@ export function setEnterpriseEntradaMinima(input: {
  */
 export function setEnterpriseComissaoCoordenadora(input: {
   adminClient: AdminClient;
-  code?: null | string;
   enterpriseId: string;
   percentual: null | number;
   updatedBy?: null | string;
@@ -889,7 +961,6 @@ export function setEnterpriseComissaoCoordenadora(input: {
  */
 export function setEnterpriseComissaoImobiliaria(input: {
   adminClient: AdminClient;
-  code?: null | string;
   enterpriseId: string;
   percentual: null | number;
   updatedBy?: null | string;
@@ -918,7 +989,6 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  */
 export async function setEnterpriseCoordenadora(input: {
   adminClient: AdminClient;
-  code?: null | string;
   enterpriseId: string;
   entityId: null | string;
   updatedBy?: null | string;
@@ -931,6 +1001,8 @@ export async function setEnterpriseCoordenadora(input: {
   if (entityId !== null && !UUID.test(entityId)) {
     return { error: "Coordenadora invalida: selecione uma entidade da busca.", ok: false };
   }
+
+  const sigla = await siglaDoCadastro(input.adminClient, enterpriseId);
 
   const { data: existente, error: erroLeitura } = await input.adminClient
     .from(TABLE)
@@ -947,6 +1019,7 @@ export async function setEnterpriseCoordenadora(input: {
       .from(TABLE)
       .update({
         coordenadora_entity_id: entityId,
+        ...realinharSigla(sigla),
         updated_at: new Date().toISOString(),
         updated_by: input.updatedBy ?? null,
       })
@@ -957,7 +1030,7 @@ export async function setEnterpriseCoordenadora(input: {
   }
 
   const { error } = await input.adminClient.from(TABLE).insert({
-    code: input.code ?? null,
+    code: sigla,
     // Mesmo cuidado das irmãs: apontar a coordenadora de um empreendimento sem settings NÃO pode
     // ligar o credenciamento por acidente.
     credenciamento_ativo: false,
@@ -973,7 +1046,6 @@ export async function setEnterpriseCoordenadora(input: {
 
 export async function setEnterpriseLimiteCredito(input: {
   adminClient: AdminClient;
-  code?: string | null;
   enterpriseId: string;
   limite: number | null;
   updatedBy?: string | null;
@@ -982,6 +1054,7 @@ export async function setEnterpriseLimiteCredito(input: {
   if (!enterpriseId) return { error: "Empreendimento invalido.", ok: false };
 
   const limite = normalizarLimite(input.limite);
+  const sigla = await siglaDoCadastro(input.adminClient, enterpriseId);
 
   const { data: existente, error: erroLeitura } = await input.adminClient
     .from(TABLE)
@@ -1005,6 +1078,7 @@ export async function setEnterpriseLimiteCredito(input: {
       .from(TABLE)
       .update({
         limite_credito: limite,
+        ...realinharSigla(sigla),
         updated_at: new Date().toISOString(),
         updated_by: input.updatedBy ?? null,
       })
@@ -1015,7 +1089,7 @@ export async function setEnterpriseLimiteCredito(input: {
   }
 
   const { error } = await input.adminClient.from(TABLE).insert({
-    code: input.code ?? null,
+    code: sigla,
     // Default explícito: salvar o limite de um empreendimento ainda sem settings não pode
     // ligar o credenciamento por acidente.
     credenciamento_ativo: false,

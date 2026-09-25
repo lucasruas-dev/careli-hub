@@ -164,6 +164,10 @@ export async function PATCH(request: Request) {
   }
 
   let corpo: {
+    // ⚠️ IGNORADO desde 24/09/2026 (Lucas: "pode" para travar as portas por onde o C2X mexe no
+    // Panteon). Era a sigla que o C2X mostrava na hora, e a tela manda a da PRIMEIRA divisão para
+    // todas as da chamada: a linha nova de uma gleba nascia com a sigla da outra. A sigla gravada sai
+    // do cadastro do Panteon pelo id de cada divisão.
     code?: null | string;
     // Rateio da corretagem (migration 0145). Mesma regra dos dois de baixo: ausente = não mexeu;
     // null = limpou ("não cadastrado", que é diferente de zero).
@@ -266,7 +270,6 @@ export async function PATCH(request: Request) {
     for (const enterpriseId of enterpriseIds) {
       const gravado = await setEnterpriseCoordenadora({
         adminClient,
-        code: corpo.code ?? null,
         enterpriseId,
         entityId,
         updatedBy: auth.userId,
@@ -311,7 +314,6 @@ export async function PATCH(request: Request) {
   for (const enterpriseId of enterpriseIds) {
     const gravado = await SETTER_DO_CAMPO[campo]({
       adminClient,
-      code: corpo.code ?? null,
       enterpriseId,
       percentual,
       updatedBy: auth.userId,

@@ -23,8 +23,10 @@ import {
   ShieldAlert,
   ShieldCheck,
   Upload,
+  UserCheck,
   UserRound,
   X,
+  Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { documentoCasaComBusca } from "@/lib/iris/apolo/busca-por-numero";
@@ -61,6 +63,7 @@ import {
   posicaoDaImobiliaria,
   tudoLiberado,
 } from "@/lib/apolo/credenciamento-etapa";
+import { type HabilitadaSemFila, tituloDoSeloSemFila } from "@/lib/apolo/habilitada-sem-fila";
 import { toTitleCase } from "@/lib/format/name-case";
 
 import { expandirCamposComCaminho } from "@/lib/apolo/campos-aninhados";
@@ -253,6 +256,9 @@ type ItemFila = {
   // Algum envio da pré-venda falhou. Só quem falhou é marcado: se todo card ganhasse um ícone de
   // status, o problema deixaria de saltar aos olhos.
   erroEnvio?: boolean;
+  // (24/09/2026) Imobiliária habilitada SEM passar pela fila (automática, pela página pública, ou pelo
+  // cadastro interno). Decidido no servidor; null = não se aplica. Vira o selo "sem fila" do card.
+  habilitadaSemFila?: HabilitadaSemFila | null;
   id: string;
   nome: string;
   // PIX da pré-venda confirmado (hora do nosso carimbo). Null = enviamos a cobrança mas ainda
@@ -1790,6 +1796,7 @@ export function BoardView({
                           <div className="min-w-0">
                             <p className="m-0 flex items-center gap-1.5 truncate text-sm font-semibold text-ink">
                               <span className="truncate">{toTitleCase(item.nome)}</span>
+                              <SeloSemFila selo={item.habilitadaSemFila} />
                               {item.erroEnvio ? (
                                 <span
                                   className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-rose-300 bg-rose-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
@@ -2669,6 +2676,23 @@ function motivoLegivel(bruto: string): string {
     .trim();
 }
 
+// (24/09/2026) HABILITADA SEM FILA. Decisão do Lucas: a imobiliária habilitada sem decisão no Board
+// (automática, pela página pública, ou pelo cadastro interno) aparece em Habilitada por 30 dias, com um
+// selo curto. Grafite, sem cor de alerta: não é problema, é a origem. O porquê fica no hover.
+function SeloSemFila({ selo }: { selo?: HabilitadaSemFila | null }) {
+  if (!selo) return null;
+  const Icone = selo.origem === "automatica" ? Zap : UserCheck;
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-ink/20 bg-black/[0.045] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-ink-soft dark:bg-white/[0.07]"
+      data-testid="selo-sem-fila"
+      title={tituloDoSeloSemFila(selo)}
+    >
+      <Icone aria-hidden="true" className="size-2.5" /> sem fila
+    </span>
+  );
+}
+
 function SeloC2x({ erro, falha }: { erro?: string | null; falha?: string | null }) {
   // Mesmo critério do botão de subir (`foraDoC2x`, em lib/apolo/c2x-envio-card.ts): selo e botão
   // aparecem e somem JUNTOS. Selo sem botão é beco sem saída; botão sem selo é ruído.
@@ -2944,6 +2968,7 @@ function CardBoard({
         >
           {imob ? "Imobiliária" : "CAD"}
         </span>
+        <SeloSemFila selo={item.habilitadaSemFila} />
         {/* Falha de envio: o único estado que ganha destaque no card. Aparece SÓ quando existe. */}
         {item.erroEnvio ? (
           <span
