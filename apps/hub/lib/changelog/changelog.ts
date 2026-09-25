@@ -36,6 +36,60 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-25-faixa-manda-e-coordenador-vence",
+    deployedAt: "2026-09-25T13:22:55-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**A proposta sai com o cenário que o coordenador escolheu.** Se ele zera os juros ou troca a correção, é isso que vale no cálculo, no PDF e no que fica gravado. Antes a escolha ficava só na tela e o documento saía com o plano antigo.",
+              "**A faixa de prazo passa a valer também no papel.** Ela já mandava na tela, e agora manda na conta e no documento, que é como o cadastro foi desenhado: o plano não precisa informar juros e correção, busca da faixa que cobre o prazo dele.",
+              "**A tabela Reajuste da parcela passa a mostrar o cenário escolhido**, e não mais o do plano cadastrado.",
+              "**Alterar juros ou correção não pede mais justificativa.** A autonomia é do coordenador. Quem alterou e o que foi alterado continua registrado na proposta. O motivo do desconto e o do bem ou permuta seguem obrigatórios.",
+            ],
+            screen: "Venda · Proposta",
+          },
+        ],
+      },
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Os dados preenchidos no contrato saem em maiúsculo**, na qualificação e no quadro de pagamentos. O texto da minuta não muda. Ficam de fora e-mail, valores, datas e CPF, que em caixa alta atrapalham a leitura.",
+              "**O contrato pode ser aberto depois do envio para assinatura**, para conferir informação sem sair do card. Vale também para o card indeferido.",
+            ],
+            screen: "Quadro de trabalho",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**A ordem de assinatura do contrato fica salva.** O interruptor gravava e a lista não, então a ordem arrastada na tela se perdia.",
+              "**E a ordem salva passa a ser respeitada no envio.** Mesmo quando gravada, a tela de envio a sobrescrevia na hora de mandar para assinatura.",
+            ],
+            screen: "Empreendimento · Setup · Assinatura",
+          },
+        ],
+      },
+    ],
+    rollback: "6df0ca62",
+    technical: {
+      done:
+        "⚠️ O DEFEITO NÃO ERA DO PAPEL, ERA DA CONTA. Nívea (24/09/2026): *\"Na proposta não está saindo o novo cenário de juros e correção\"*. Medido na proposta 000038 (Taisa, VOC1222): `condicoes.totais.mensais` gravou R$ 138.130,32 onde juros zero daria 48 × R$ 2.595,00 = R$ 124.560,00, ou seja R$ 13.570,32 numa venda de R$ 138.401,00. ⚠️ E O R$ 2.595,00 DA TELA ENGANAVA: no SACOC o primeiro ciclo é amortização pura (`planos-comerciais.ts`), então 124.560 ÷ 48 dá 2.595,00 COM ou SEM juros, e os cenários só se separam do 13º mês. CAUSA: a composição CADASTRO → FAIXA DE PRAZO → CORRETOR vivia num `useMemo` dentro de `SimuladorDeProposta.tsx`; o objeto que subia levava só o booleano `premissaAlterada`, o corpo do POST não tinha campo para a condição, e a rota escolhia o plano do cadastro e o entregava cru ao cronograma, ao `condicoes`, ao PDF e à modal. PEÇA NOVA: `lib/hercules/premissa-efetiva.ts` (`planoEfetivo`), pura, chamada pelos TRÊS lados com os mesmos argumentos, para nenhum deles compor sozinho de novo. `condicoes.premissa` passa a gravar `jurosDe`/`indiceDe` (`cadastro` | `faixa` | `corretor`), a faixa aplicada e o plano do cadastro ao lado do efetivo, sem coluna nova. ⚠️ A ENTRADA DA FAIXA NÃO ENTRA NO MOLDE CONGELADO, que continua sendo a do cadastro (a régua de 22/09/2026). Lucas (25/09/2026) fechou a regra de negócio que faltava: *\"a faixa é a referência, por isso eu pedi que quando for montar um plano, não precisa informar o juros e a correção, isso tem que buscar das faixas\"* e *\"se o coordenador colocar taxa zero em um plano que tem juros, prevalece o que ele colocou\"*; e sobre a trava de nota que este lote tinha posto: *\"acho que não tem necessidade de pedir justificativa\"*, removida da tela e da rota, com o teste virado para ninguém repor. Continua valendo o teto de sanidade da taxa (recusa 7207 no lugar de 0,7207). MEDIDO ANTES DE SUBIR: das 22 propostas nativas de setembro, NENHUMA seria afetada pela faixa (a única do LBF usa plano cujo juros já bate com a faixa), então não há proposta emitida para refazer. MAIÚSCULO: ponto único pelo `tipo` do catálogo de variáveis, com exceções nominais (e-mail, descrição de bem e permuta, nome de anexo, sistema de amortização e taxa), e a caixa sobe ANTES do escape de HTML. ORDEM DE ASSINATURA: `assinaturaOrdem` passou a aceitar mapa OU lista na leitura (a armadilha registrada da casa: ler errado volta o padrão calado), e `organizacao-da-assinatura.tsx` parou de mandar a própria ordem por cima da salva. REVISÃO ADVERSARIAL (3 revisores, 3 lentes): 12 achados, 11 corrigidos no lote e 1 devolvido ao Lucas como decisão de produto, que virou a regra acima. Suíte: 591 arquivos, 8.991 testes. Typecheck limpo.",
+      motivation:
+        "Nívea, 24/09/2026, com print: Na proposta não está saindo o novo cenário de juros e correção. Precisamos ter padrão nas letras, escreve tudo em maiúsculo, por favor. Não consigo visualizar o contrato depois que enviamos para assinatura, se precisamos validar alguma informação não conseguimos ver. A ordem de assinatura não está ficando salva. Lucas repassou: vamos corrigir isso ae, sobre o contrato deixa as variaveis em maiusculo.",
+    },
+    title: "A proposta passa a valer o que o coordenador escolheu, e o contrato sai padronizado",
+    type: "correcao",
+    version: "1.376.0",
+  },
+  {
     buildTag: "2026-09-25-coordenador-pelo-id-e-habilitacao-sem-fila",
     deployedAt: "2026-09-25T08:26:22-03:00",
     modules: [

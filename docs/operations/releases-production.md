@@ -7067,3 +7067,28 @@ sem aviso novo. ⚠️ Nao verificado em tela — o hub exige login.
   recusado não devolve a venda sozinho; faturar não grava `data_faturamento` nem `vendida`; nenhuma
   tela leva o card de contrato a Faturado (a regra dos 7 dias mais entrada paga está em
   `temis-redesenho-decisoes.md` e ainda não tem porta).
+
+## v1.373.0 · 24/09/2026 · Promessa vencida volta para A acionar, e o convite de assinatura volta a ser reenviado
+
+- **Commit:** 85b8d613 · **Rollback:** 012eace1 (a 1.372.0 da outra sessão)
+- **Autorização:** Lucas, 24/09/2026, *"pode"*, sobre os quatro apontamentos da Nívea
+- **Origem:** Nívea, 24/09/2026, com print: *"Erro no processo. O comprador fez promessa e não
+  pagou. Deve voltar para o status de acionar"* e *"Deu erro no envio dos acordos. Não recebi e não
+  consigo reenviar"*.
+- **O que vai:** `etapaDoCompromisso` (peça pura e única, que a fila e o detalhe passam a
+  compartilhar) deriva a etapa na leitura e devolve promessa vencida a `A acionar`, com frase que
+  manda conferir o pagamento; `hoje-na-casa.ts` resolve o dia no fuso de Brasília;
+  `mudanca-da-etapa.ts` leva a frase nova à fila e ao copiloto; a data de pagamento gravada passa a
+  ser a do C2X (ao meio-dia UTC, para o dia exibido não andar para trás); `congelar-signatarios.ts`
+  guarda o id que a Clicksign devolve e o reenvio passa a usá-lo, com `recusa-de-reenvio.ts` dando o
+  motivo quando não é possível.
+- **Causa medida:** nunca existiu peça que quebrasse promessa. 59 compromissos, `broken_at` nulo em
+  59, `status='quebrado'` em 0, zero lembretes entregues na história da tabela, e `promised_date`
+  fora do SELECT que calcula a etapa.
+- **Verificação:** 565 arquivos e 8.646 testes verdes, typecheck limpo, revisão adversarial com 3
+  revisores (1 bloqueante e 5 altas, todas corrigidas).
+- **Sem migration.**
+- **Fora deste lote, à espera do Lucas:** filtro de Promessa e Acordo na Central de Propostas;
+  barrar segundo acordo vivo na mesma unidade (o Iago tem dois envelopes abertos); a promessa de
+  mais de uma parcela amarrada às parcelas do C2X (394 de 397 parcelas em aberto sem
+  `payment_c2x_id`); e o acerto dos 3 `paid_at` gravados com a hora do robô.
