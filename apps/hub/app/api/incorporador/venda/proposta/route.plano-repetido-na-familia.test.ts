@@ -172,6 +172,7 @@ vi.mock("@/lib/hercules/quem-pode-vender", () => ({
 
 vi.mock("@/lib/apolo/planos-comerciais-c2x", () => ({
   lerPlanosDoC2x: async () => ({ ok: false }) as const,
+  lerPlanosDoC2xPorIds: async () => ({ ok: false }) as const,
 }));
 
 vi.mock("@/lib/hercules/planos-do-panteon", () => ({

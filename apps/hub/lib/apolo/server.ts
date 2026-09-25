@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import type { RowDataPacket } from "mysql2";
 
-import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
+import { filtroSemExcluidos } from "@/lib/apolo/c2x-pelo-id";
 import { getHadesDbPool, sanitizeHadesDbError } from "@/lib/guardian/db";
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 
@@ -1500,7 +1500,14 @@ export async function fetchC2xCadastroByEntity(
     // Quando a entidade visível é uma imobiliária, ela vira o `vinculed_by_id` de
     // outros users. Refletimos: (a) empreendimentos onde ela vendeu (faturado) e
     // (b) os clientes vinculados a ela (comprador se na carteira, senão prospect).
-    const excludedPlaceholders = EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ");
+    //
+    // ⚠️ PAN-124: a exclusão é pelo id (`e.id not in (2, 31, 34)`), e não mais pela sigla, que
+    // muda quando alguém renomeia no C2X (o "LAG" da lista antiga não casa com nada desde 16/07).
+    // Vem da régua PURA (c2x-pelo-id.ts), e não da casca do servidor: o cadastro do Panteon, que a
+    // casca lê, importa este arquivo, e o import fecharia um ciclo. Medido em 25/09/2026 com as 262
+    // imobiliárias do C2X: as mesmas 255 linhas. A ordem delas mudou, e nunca foi definida (a
+    // consulta não tem ORDER BY): é a ordem dos rótulos "Empreendimento" no grafo.
+    const semExcluidosDoC2x = filtroSemExcluidos();
 
     const [enterpriseRows] = await poolResult.pool.query<C2xImobEnterpriseRow[]>(
       `select distinct u.vinculed_by_id as imob_id, e.name as ent_name
@@ -1510,8 +1517,8 @@ export async function fetchC2xCadastroByEntity(
          join enterprises e on e.id = eu.enterprise_id
         where u.vinculed_by_id in (${placeholders})
           and ar.acquisition_request_stage_id in (4, 6)
-          and e.code not in (${excludedPlaceholders})`,
-      [...userIds, ...EXCLUDED_ENTERPRISE_CODES],
+          and ${semExcluidosDoC2x.sql}`,
+      [...userIds, ...semExcluidosDoC2x.params],
     );
     for (const row of enterpriseRows) {
       const entityId = userIdToEntity.get(String(row.imob_id));
@@ -2866,7 +2873,10 @@ async function loadC2xCarteiraData(): Promise<{
     return { buyerClientIds: new Set(), overdueClientIds: new Set(), units: 0 };
   }
 
-  const placeholders = EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ");
+  // ⚠️ PAN-124: a exclusão é pelo id (`e.id not in (2, 31, 34)`), e não mais pela sigla, que muda
+  // quando alguém renomeia no C2X (o "LAG" da lista antiga não casa com nada desde 16/07/2026).
+  // Medido em 25/09/2026: as mesmas 979 linhas (a ordem, que vira `Set` logo abaixo, não importa).
+  const semExcluidosDoC2x = filtroSemExcluidos();
 
   try {
     const [rows] = await poolResult.pool.query<
@@ -2886,7 +2896,7 @@ async function loadC2xCarteiraData(): Promise<{
               where a2.enterprise_unity_id = eu.id
               order by a2.created_at desc, a2.id desc
               limit 1)
-          where e.code not in (${placeholders}))
+          where ${semExcluidosDoC2x.sql})
        select l.unit_id, l.client_id,
               exists (
                 select 1 from payments p
@@ -2901,7 +2911,7 @@ async function loadC2xCarteiraData(): Promise<{
             select 1 from payments p
              where p.acquisition_request_id = l.ar_id
                and (p.payment_to_delete is null or p.payment_to_delete = 0))`,
-      [...EXCLUDED_ENTERPRISE_CODES],
+      [...semExcluidosDoC2x.params],
     );
 
     const buyerClientIds = new Set<number>();

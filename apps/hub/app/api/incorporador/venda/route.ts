@@ -148,10 +148,11 @@ export async function GET(request: Request) {
   // `com0170` vem junto porque a mesma leitura decide o que a tela pode escrever (ver
   // `escritaPorEmpreendimento`, mais abaixo): sem a coluna, ninguém fora do comercial escreve.
   const { com0170, linhas: cadastroDoPanteon } = await lerCadastroDeEmpreendimentos();
-  // ⚠️ A TRAVA DO LAB (onda 2, 16/09/2026). `soDoPanteon` sozinho não conhece
-  // `EXCLUDED_ENTERPRISE_CODES`: numa sessão com o 31, o LAB (fora do catálogo do C2X de propósito)
-  // entrava como produto "próprio" e voltava ao seletor e à contagem. `linhasSoDoPanteon` é a
-  // mesma tradução COM a trava, e é a que o painel de produtos já usa.
+  // ⚠️ A TRAVA DO LAB (onda 2, 16/09/2026). `soDoPanteon` sozinho não conhece a exclusão: numa
+  // sessão com o 31, o LAB (fora do catálogo do C2X de propósito) entrava como produto "próprio" e
+  // voltava ao seletor e à contagem. `linhasSoDoPanteon` é a mesma tradução COM a trava, e é a que o
+  // painel de produtos já usa. A trava é pelo ID (`EXCLUDED_ENTERPRISE_IDS`: 2, 31, 34) desde o
+  // PAN-124, e não pela sigla do cadastro, que um renome muda.
   const proprios = linhasSoDoPanteon({
     cadastro: cadastroDoPanteon,
     catalogo: catalogoDoC2x,

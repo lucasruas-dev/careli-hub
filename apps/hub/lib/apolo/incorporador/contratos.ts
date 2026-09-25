@@ -35,7 +35,8 @@
 import type { RowDataPacket } from "mysql2";
 import type { Pool } from "mysql2/promise";
 
-import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
+import { type CatalogoParaId, filtroPorIds } from "@/lib/apolo/c2x-pelo-id";
+import { idsDoC2xDasSiglasAoVivo } from "@/lib/apolo/c2x-pelo-id-servidor";
 import { getHadesDbPool } from "@/lib/guardian/db";
 import { STAGE_MAP, type ApoloVendaUnit } from "@/lib/apolo/vendas";
 
@@ -278,12 +279,22 @@ export type ResultadoContratos =
  * "Vivo" = a proposta MAIS RECENTE da unidade está num estágio com contrato (`ESTAGIOS_COM_CONTRATO`,
  * derivado do STAGE_MAP das vendas).
  *
- * ⚠️ Esta função NÃO autoriza nada: `codes` tem que vir de `codigosDaSessao` + `codesDoRecorte`.
+ * ⚠️ PELO ID DO C2X, NÃO PELA SIGLA (PAN-124). Recebe `enterprises.id`, já traduzido por quem chama
+ * (`idsDoC2xDasSiglasAoVivo`): a sigla muda quando alguém renomeia no legado (o 43 virou de RDV para
+ * PDI em 24/09/2026) e o `e.code in (...)` voltava vazio sem erro. O id não muda. O SELECT continua
+ * devolvendo `e.code` (é o rótulo da linha e a chave do empreendimento na tela): só o WHERE mudou.
+ *
+ * ⚠️ Esta função NÃO autoriza nada: os ids têm que sair dos códigos de `codigosDaSessao` +
+ * `codigosDoPedido`, traduzidos pelo catálogo.
  */
-export async function lerContratosVivos(pool: Pool, codes: string[]): Promise<ContratoBruto[]> {
-  if (codes.length === 0) return [];
+export async function lerContratosVivos(
+  pool: Pool,
+  ids: readonly number[],
+): Promise<ContratoBruto[]> {
+  // Lista vazia = nada a consultar (`filtroPorIds` devolve null, e nunca `in ()` nem o C2X inteiro).
+  const filtro = filtroPorIds("e.id", ids);
+  if (!filtro) return [];
 
-  const codePlaceholders = codes.map(() => "?").join(", ");
   const vivosPlaceholders = ESTAGIOS_COM_CONTRATO.map(() => "?").join(", ");
   const geracaoPlaceholders = ESTAGIOS_DE_GERACAO.map(() => "?").join(", ");
   const nameSql = (alias: string) =>
@@ -308,9 +319,9 @@ export async function lerContratosVivos(pool: Pool, codes: string[]): Promise<Co
                limit 1)
        left join users cli on cli.id = ar.client_id
        left join users imo on imo.id = cli.vinculed_by_id
-      where e.code in (${codePlaceholders})
+      where ${filtro.sql}
         and ar.acquisition_request_stage_id in (${vivosPlaceholders})`,
-    [...ESTAGIOS_DE_GERACAO, ...codes, ...ESTAGIOS_COM_CONTRATO],
+    [...ESTAGIOS_DE_GERACAO, ...filtro.params, ...ESTAGIOS_COM_CONTRATO],
   );
 
   return rows.map((row) => ({
@@ -336,13 +347,21 @@ export async function lerContratosVivos(pool: Pool, codes: string[]): Promise<Co
  *
  * ⚠️ Esta função NÃO autoriza nada: ela confia que `codes` veio de `codigosDaSessao` +
  * `codesDoRecorte`, como toda leitura do portal. É a rota que garante isso, antes de chamar.
+ *
+ * ⚠️ A SIGLA SÓ ENTRA; O C2X É CONSULTADO PELO ID (PAN-124). A tradução é pelo MESMO catálogo de onde
+ * o escopo tirou as siglas, então o conjunto é o de hoje. A exclusão (teste e masterplan da Lagoa
+ * Bonita) saiu do filtro por sigla e é aplicada pelo id na tradução (`EXCLUDED_ENTERPRISE_IDS`). Sigla
+ * sem id no C2X (produto nascido no Panteon) não vai ao legado, e dá a mesma lista vazia de antes.
+ *
+ * @param opcoes.catalogo O catálogo, quando a rota já o tem (evita reler o cache).
  */
-export async function lerContratosDoPortal(codes: string[]): Promise<ResultadoContratos> {
-  const validCodes = codes
-    .map((code) => code.trim().toUpperCase())
-    .filter((code) => code && !EXCLUDED_ENTERPRISE_CODES.includes(code));
+export async function lerContratosDoPortal(
+  codes: string[],
+  opcoes: { catalogo?: CatalogoParaId | null } = {},
+): Promise<ResultadoContratos> {
+  const pedidas = codes.map((code) => code.trim().toUpperCase()).filter(Boolean);
 
-  if (validCodes.length === 0) {
+  if (pedidas.length === 0) {
     return { data: montarContratos([], []), ok: true };
   }
 
@@ -351,8 +370,15 @@ export async function lerContratosDoPortal(codes: string[]): Promise<ResultadoCo
     return { error: `Configuracao C2X ausente: ${poolResult.missing.join(", ")}.`, ok: false };
   }
 
+  // Catálogo indisponível = C2X fora: o mesmo erro de quando a consulta cai, e nunca lista zerada.
+  const traduzido = await idsDoC2xDasSiglasAoVivo(pedidas, { catalogo: opcoes.catalogo });
+  if (!traduzido.ok) {
+    console.error("[incorporador][contratos] sem tradução de sigla para id", traduzido.erro);
+    return { error: "Não foi possível ler os contratos agora.", ok: false };
+  }
+
   try {
-    const brutos = await lerContratosVivos(poolResult.pool, validCodes);
+    const brutos = await lerContratosVivos(poolResult.pool, traduzido.ids);
 
     if (brutos.length === 0) {
       return { data: montarContratos([], []), ok: true };

@@ -70,6 +70,8 @@ import type { EnvioParaConciliar, FonteDaAssinatura } from "@/lib/apolo/d4sign-a
 // A alternativa seria mudar `montarQuadroDeAssinaturas` de arquivo — o que o cabeçalho de
 // lib/apolo/assinaturas/nucleo.ts já prevê para quando o portal parar de estar em obra.
 import { montarQuadroComD4Sign, type QuadroComFonte } from "@/lib/apolo/d4sign-quadro";
+import { type CatalogoParaId, filtroPorIds } from "@/lib/apolo/c2x-pelo-id";
+import { idsDoC2xDasSiglasAoVivo } from "@/lib/apolo/c2x-pelo-id-servidor";
 import {
   marcarSituacao,
   perfilDeTela,
@@ -78,7 +80,6 @@ import {
 } from "@/lib/apolo/painel-assinatura";
 import type { createApoloAdminClient } from "@/lib/apolo/server";
 import { PAPEIS, type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
-import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
 import { getHadesDbPool } from "@/lib/guardian/db";
 import { apurarFatosDoContrato } from "@/lib/hercules/fatos-do-contrato";
 
@@ -846,50 +847,71 @@ export type ResultadoAssinaturas =
   | { data: QuadroComFonte; ok: true; uuids: string[] }
   | { error: string; ok: false };
 
+/** Recorte vazio não tem documento para conferir: o quadro vazio, sem tocar no C2X nem na D4Sign. */
+function quadroVazio(): ResultadoAssinaturas {
+  return {
+    data: {
+      ...montarQuadroDeAssinaturas([], [], new Map()),
+      cancelados: [],
+      // Recorte vazio já está conciliado por definição: não há documento nenhum a conferir.
+      conciliando: false,
+      resumoDaFonte: {
+        assinaturasCorrigidas: 0,
+        cancelados: 0,
+        confirmados: 0,
+        emFallback: 0,
+        envios: 0,
+        semDocumento: 0,
+        somenteStatus: 0,
+      },
+    },
+    ok: true,
+    uuids: [],
+  };
+}
+
 /**
  * Lê o cenário de assinaturas do C2X (read-only) para os CÓDIGOS já autorizados pela sessão.
  *
  * ⚠️ Esta função NÃO autoriza nada: `codes` tem que vir de `codigosDaSessao` + `codesDoRecorte`,
  * e é a rota que garante isso antes de chamar.
+ *
+ * ⚠️ A SIGLA SÓ ENTRA; O C2X É CONSULTADO PELO ID (PAN-124). Em 24/09/2026 a Nívea renomeou o 43 de
+ * RDV para PDI, e toda consulta com `e.code in (...)` daquele empreendimento voltou vazia sem erro.
+ * As siglas viram `enterprises.id` pelo MESMO catálogo de onde o escopo as tirou, então o conjunto é
+ * o de hoje; a exclusão (teste e masterplan da Lagoa Bonita) saiu do filtro por sigla e é aplicada
+ * pelo id na tradução (`EXCLUDED_ENTERPRISE_IDS`, que já não depende do "LAG" que não casa com nada).
+ * Sigla sem id no C2X (produto nascido no Panteon) é o esperado, não falha: ela não vai ao legado.
+ *
+ * @param opcoes.catalogo O catálogo, quando a rota já o tem (evita reler o cache).
  */
-export async function lerAssinaturasDoPortal(codes: string[]): Promise<ResultadoAssinaturas> {
-  const validCodes = codes
-    .map((code) => code.trim().toUpperCase())
-    .filter((code) => code && !EXCLUDED_ENTERPRISE_CODES.includes(code));
-
-  if (validCodes.length === 0) {
-    // Recorte vazio não tem documento para conferir: monta o quadro vazio sem tocar na D4Sign.
-    return {
-      data: {
-        ...montarQuadroDeAssinaturas([], [], new Map()),
-        cancelados: [],
-        // Recorte vazio já está conciliado por definição: não há documento nenhum a conferir.
-        conciliando: false,
-        resumoDaFonte: {
-          assinaturasCorrigidas: 0,
-          cancelados: 0,
-          confirmados: 0,
-          emFallback: 0,
-          envios: 0,
-          semDocumento: 0,
-          somenteStatus: 0,
-        },
-      },
-      ok: true,
-      uuids: [],
-    };
-  }
+export async function lerAssinaturasDoPortal(
+  codes: string[],
+  opcoes: { catalogo?: CatalogoParaId | null } = {},
+): Promise<ResultadoAssinaturas> {
+  const pedidas = codes.map((code) => code.trim().toUpperCase()).filter(Boolean);
+  if (pedidas.length === 0) return quadroVazio();
 
   const poolResult = getHadesDbPool();
   if (!poolResult.ok) {
     return { error: `Configuracao C2X ausente: ${poolResult.missing.join(", ")}.`, ok: false };
   }
 
-  const placeholders = validCodes.map(() => "?").join(", ");
+  // ⚠️ Catálogo indisponível é C2X fora do ar: a mesma resposta de quando a consulta cai (a rota
+  // devolve 503), e nunca um quadro vazio que diria "nenhum contrato" para quem tem contratos.
+  const traduzido = await idsDoC2xDasSiglasAoVivo(pedidas, { catalogo: opcoes.catalogo });
+  if (!traduzido.ok) {
+    console.error("[incorporador][assinaturas] sem tradução de sigla para id", traduzido.erro);
+    return { error: "Não foi possível ler as assinaturas agora.", ok: false };
+  }
+
+  const filtro = filtroPorIds("e.id", traduzido.ids);
+  if (!filtro) return quadroVazio();
 
   try {
     // As LINHAS de assinatura do escopo — a MESMA consulta do painel interno (filtro de envio
-    // incluído), escopada por código e com o ar_id e o uuidDoc a mais, para escolher o envio.
+    // incluído), escopada pelo id do empreendimento e com o ar_id e o uuidDoc a mais, para escolher
+    // o envio. O ORDER BY continua pela sigla: é a ordem da lista na tela, e ela não pode mudar.
     //
     // ⚠️ `contract_signature_signers` entra por LEFT JOIN (diferença deliberada do painel
     // interno): envio válido sem nenhum assinante precisa aparecer — com join interno ele some,
@@ -936,17 +958,17 @@ export async function lerAssinaturasDoPortal(codes: string[]): Promise<Resultado
        left join signers sg on sg.id = csg.signer_id
        left join users usr on usr.id = sg.user_id
        left join profiles pf on pf.id = usr.profile_id
-       where e.code in (${placeholders})
+       where ${filtro.sql}
          and cs.send_document_signature = 1
          and cs.contract_signature_status_id <> 6
        order by e.code, u.block, u.lot, ss.after_position, ss.id`,
-      validCodes,
+      filtro.params,
     );
 
     // Os contratos VIVOS do escopo — a MESMA leitura que servia a visão Contratos, agora
     // compartilhada (`lerContratosVivos`, contratos.ts). Ela traz, além da data de geração, o que
     // a linha da lista pendura: valor, imobiliária, faturamento e o unitId do botão de PDF.
-    const brutos = await lerContratosVivos(poolResult.pool, validCodes);
+    const brutos = await lerContratosVivos(poolResult.pool, traduzido.ids);
 
     // Por contrato, UM envio: o com uuidDoc, senão o de maior id (regra do estudo, reusada).
     const enviosPorAr = new Map<number, EnvioDeAssinatura[]>();

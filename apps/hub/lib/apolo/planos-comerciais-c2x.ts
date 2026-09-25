@@ -8,6 +8,8 @@ export { periodicidadeDaTaxa };
 
 import type { RowDataPacket } from "mysql2";
 
+import { filtroPorIds, idDoC2x } from "@/lib/apolo/c2x-pelo-id";
+import { idsDoC2xDasSiglasAoVivo } from "@/lib/apolo/c2x-pelo-id-servidor";
 import { getHadesDbPool } from "@/lib/guardian/db";
 
 import type {
@@ -126,7 +128,11 @@ function montarPlano(linha: LinhaC2x, slot: SlotDaPa): null | PlanoComercial {
 
 // Um SELECT por slot, unidos: `enterprises` guarda cada plano numa COLUNA diferente, então não
 // há como pegar os três num join só sem repetir a tabela de planos três vezes de qualquer jeito.
-function sqlDosPlanos(marcadores: string): string {
+//
+// ⚠️ O FILTRO É PELO ID (`e.id in (...)`), NOS TRÊS BLOCOS (PAN-124). Pela sigla, um renome no C2X
+// fazia a PA do Prometeu (que guarda a sigla do evento) sair com os planos padrão da casa e o aviso
+// de "sem plano cadastrado", sobre um empreendimento que tem plano.
+function sqlDosPlanos(filtro: string): string {
   const bloco = (coluna: string, slot: string) => `
     select e.id as enterprise_id, e.code, et.name as tabela, '${slot}' as slot,
            cp.name as plano, cp.initial_input_value, cp.parcels,
@@ -135,7 +141,7 @@ function sqlDosPlanos(marcadores: string): string {
       join commercial_plans cp on cp.id = e.${coluna}
       left join enterprise_tables et on et.id = e.enterprise_table_id
       left join index_monetary_corrections imc on imc.id = cp.index_monetary_correction_id
-     where e.code in (${marcadores})`;
+     where ${filtro}`;
 
   return [
     bloco("investor_plan_id", "investidor"),
@@ -172,13 +178,54 @@ export async function lerPlanosDoC2x(
     };
   }
 
-  const marcadores = alvos.map(() => "?").join(", ");
+  // ⚠️ A SIGLA VIRA ID ANTES DE IR AO C2X (PAN-124), e SEM a exclusão padrão (`excluir: []`): esta
+  // leitura nunca excluiu ninguém, e quem pede o plano de um empreendimento pediu aquele.
+  // ⚠️ A ÚNICA DIFERENÇA POSSÍVEL: a sigla de TSC, SDT e LAB não se traduz (o catálogo não os lista) e
+  // sai sem plano. Nenhum chamador os pede: as siglas do portal saem do mesmo catálogo, e os eventos
+  // do Prometeu apontam para 35, 38 e 40 (medido em 25/09/2026). Quem precisar deles pede pelo id.
+  // Catálogo ilegível é o C2X fora: `ok: false`, que a PA e a proposta já tratam como "não consegui
+  // ler, confira antes de imprimir".
+  const traduzido = await idsDoC2xDasSiglasAoVivo(alvos, { excluir: [] });
+  if (!traduzido.ok) return { error: traduzido.erro, ok: false };
+
+  return lerPlanosDoC2xPorIds(traduzido.ids);
+}
+
+/**
+ * Os planos slotados pelos ids do C2X (`enterprises.id`), que não mudam num renome.
+ *
+ * É a porta de quem já tem o id na mão (o cupom da PA, pelo `enterprise_id` do evento). Só aceita id
+ * do C2X: o nascido no Panteon (>= 100000), `group:` e uuid ficam de fora (`idDoC2x`), e sem id
+ * nenhum não há consulta. Não exclui ninguém, como a busca pela sigla nunca excluiu.
+ *
+ * ⚠️ SÓ O WHERE MUDOU: o `porCode` continua pela sigla que o C2X devolve na linha, e a resposta sai
+ * idêntica à da busca pela sigla para quem não foi renomeado (medido em 25/09/2026).
+ */
+export async function lerPlanosDoC2xPorIds(
+  idsPedidos: ReadonlyArray<number | string>,
+): Promise<
+  | { error: string; ok: false }
+  | { empreendimentos: PlanosDoEmpreendimento[]; ok: true }
+> {
+  const filtro = filtroPorIds(
+    "e.id",
+    idsPedidos.map(idDoC2x).filter((id): id is number => id !== null),
+  );
+  if (!filtro) return { empreendimentos: [], ok: true };
+
+  const poolResult = getHadesDbPool();
+  if (!poolResult.ok) {
+    return {
+      error: `Configuracao C2X ausente: ${poolResult.missing.join(", ")}.`,
+      ok: false,
+    };
+  }
 
   try {
     const [rows] = await poolResult.pool.query<LinhaC2x[]>(
-      sqlDosPlanos(marcadores),
-      // Três blocos no union, cada um com sua cópia da lista de códigos.
-      [...alvos, ...alvos, ...alvos],
+      sqlDosPlanos(filtro.sql),
+      // Três blocos no union, cada um com sua cópia da lista de ids.
+      [...filtro.params, ...filtro.params, ...filtro.params],
     );
 
     const porCode = new Map<string, PlanosDoEmpreendimento>();

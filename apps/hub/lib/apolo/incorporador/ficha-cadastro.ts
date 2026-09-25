@@ -27,6 +27,8 @@ import {
   type C2xOption,
 } from "@/lib/apolo/c2x-fields";
 import { mapearC2xParaFicha } from "@/lib/apolo/cad-de-entidade";
+import { type CatalogoParaId, filtroPorIds } from "@/lib/apolo/c2x-pelo-id";
+import { idsDoC2xDasSiglasAoVivo } from "@/lib/apolo/c2x-pelo-id-servidor";
 import { lerCadsDaEsteira } from "@/lib/apolo/esteira-cad";
 import { casarProfissaoNaLista, profissaoExibida } from "@/lib/apolo/profissao";
 import { createApoloAdminClient, fetchC2xCadastroByEntity } from "@/lib/apolo/server";
@@ -483,10 +485,18 @@ export async function lerCadastroDaPessoa({
  * O corretor do contrato da pessoa DENTRO do escopo (C2X: acquisition_requests.corretor_id).
  * A lista/carteira não traz corretor (o C2X liga corretor à PROPOSTA, não à unidade), então é
  * uma consulta própria — sempre estreitada pelos codes da sessão.
+ *
+ * ⚠️ PELO ID DO C2X, NÃO PELA SIGLA (PAN-124). Os codes da sessão viram `enterprises.id` pelo
+ * catálogo e o WHERE é `e.id in (...)`: com `e.code in (...)`, um renome no legado (o 43, de RDV para
+ * PDI em 24/09/2026) apagava o corretor da ficha sem erro. Qualquer falha (C2X ou catálogo fora,
+ * sigla sem id no C2X) continua sendo `null`, a aba sem corretor de sempre.
+ *
+ * @param opcoes.catalogo O catálogo, quando quem chama já o tem (evita reler o cache).
  */
 export async function lerCorretorDoContrato(
   c2xUserId: null | number,
   codes: string[],
+  opcoes: { catalogo?: CatalogoParaId | null } = {},
 ): Promise<null | string> {
   if (!c2xUserId || codes.length === 0) return null;
 
@@ -494,7 +504,12 @@ export async function lerCorretorDoContrato(
   if (!pool.ok) return null;
 
   try {
-    const placeholders = codes.map(() => "?").join(",");
+    const traduzido = await idsDoC2xDasSiglasAoVivo(codes, { catalogo: opcoes.catalogo });
+    if (!traduzido.ok) return null;
+
+    const doEscopo = filtroPorIds("e.id", traduzido.ids);
+    if (!doEscopo) return null;
+
     const [linhas] = await pool.pool.query(
       `select coalesce(nullif(trim(cor.name), ''), nullif(trim(cor.fantasy_name), ''),
               nullif(trim(cor.social_name), '')) as corretor_name
@@ -502,10 +517,10 @@ export async function lerCorretorDoContrato(
          join enterprise_unities eu on eu.id = ar.enterprise_unity_id
          join enterprises e on e.id = eu.enterprise_id
          join users cor on cor.id = ar.corretor_id
-        where ar.client_id = ? and e.code in (${placeholders})
+        where ar.client_id = ? and ${doEscopo.sql}
         order by ar.created_at desc, ar.id desc
         limit 1`,
-      [c2xUserId, ...codes],
+      [c2xUserId, ...doEscopo.params],
     );
 
     const nome = (linhas as Array<{ corretor_name: null | string }>)[0]?.corretor_name;

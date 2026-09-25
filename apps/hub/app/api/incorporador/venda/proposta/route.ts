@@ -17,7 +17,7 @@ import {
 } from "@/lib/apolo/incorporador/familia-no-portal";
 import { ehPortalComercial } from "@/lib/apolo/incorporador/perfis-de-portal";
 import type { PlanoComercial } from "@/lib/apolo/planos-comerciais";
-import { lerPlanosDoC2x } from "@/lib/apolo/planos-comerciais-c2x";
+import { lerPlanosDoC2xPorIds } from "@/lib/apolo/planos-comerciais-c2x";
 import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
 import { descontoDoPlano, type ModoDoAjuste } from "@/lib/hercules/ajuste-de-preco";
 
@@ -324,18 +324,28 @@ function codigoDoEmpreendimento(
  */
 type PlanoDaMesa = PlanoComercial & { id?: null | string };
 
-/** Os planos que o simulador oferece para esta unidade: Panteon primeiro, C2X depois. */
+/**
+ * Os planos que o simulador oferece para esta unidade: Panteon primeiro, C2X depois.
+ *
+ * @param idNoC2x O id do empreendimento no C2X, ou `null` quando ele não tem código em lugar nenhum
+ *   (`codigoDoEmpreendimento` nulo): aí não se pergunta ao legado, como antes.
+ */
 async function planosDaUnidade(
   admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
   familia: string[],
-  codigo: null | string,
+  idNoC2x: null | string,
 ): Promise<PlanoDaMesa[]> {
   // ⚠️ FALHA NÃO DERRUBA A TELA, dos dois lados — a mesma escolha da rota `/venda`: sem plano o
   // simulador cai na conta simples, que é o que ele já fazia. Perder a proposta inteira porque o
   // legado não respondeu seria pior.
+  //
+  // ⚠️ O C2X PELO ID (PAN-124). A rota já tem o `c2xId` da unidade; ir pela sigla era traduzir id →
+  // sigla → id, e a sigla muda num renome no legado (o 43, de RDV para PDI, em 24/09/2026). Pelo id,
+  // o plano do empreendimento renomeado continua achado, e o do LAB (31, que o catálogo não lista)
+  // volta a ser lido como era antes da tradução pelo catálogo.
   const [doC2x, doPanteon] = await Promise.all([
-    codigo
-      ? lerPlanosDoC2x([codigo]).catch(() => ({ ok: false }) as const)
+    idNoC2x
+      ? lerPlanosDoC2xPorIds([idNoC2x]).catch(() => ({ ok: false }) as const)
       : Promise.resolve({ ok: false } as const),
     lerPlanosDoPanteon(admin, familia).catch((erro) => {
       console.error("[hercules][proposta] planos do panteon", erro);
@@ -562,7 +572,7 @@ export async function GET(request: Request) {
         planosDaUnidade(
           admin,
           familia,
-          codigoDoEmpreendimento(catalogo, empreendimento, c2xId),
+          codigoDoEmpreendimento(catalogo, empreendimento, c2xId) ? c2xId : null,
         ),
         pisoDaEntrada(admin, c2xId),
         // ⚠️ AS FAIXAS DESTE EMPREENDIMENTO, e falha não derruba a modal: sem elas o simulador cai
@@ -961,7 +971,7 @@ export async function POST(request: Request) {
     const planos = await planosDaUnidade(
       admin,
       familia,
-      codigoDoEmpreendimento(catalogo, empreendimento, c2xId),
+      codigoDoEmpreendimento(catalogo, empreendimento, c2xId) ? c2xId : null,
     );
     // ⚠️ PELO ID DA LINHA, COM O NOME COMO RESERVA — ver `escolherPlanoDaProposta`. O `find` por
     // nome que morava aqui é o que fazia uma proposta de verdade nascer com o plano errado assim

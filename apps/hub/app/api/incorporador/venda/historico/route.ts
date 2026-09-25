@@ -75,8 +75,8 @@ export async function GET(request: Request) {
     const codesAutorizados = await codigosDaSessao(auth.sessao);
     const catalogoDoC2x = await catalogoDeEmpreendimentos(Date.now());
     // ⚠️ A TRAVA DO LAB (onda 2, 16/09/2026): `linhasSoDoPanteon` é a tradução do escopo COM a
-    // trava de `EXCLUDED_ENTERPRISE_CODES`. Com `soDoPanteon` puro, uma sessão com o 31 lia o
-    // histórico do LAB como produto "próprio".
+    // trava de `EXCLUDED_ENTERPRISE_IDS` (pelo id desde o PAN-124; antes, pela sigla). Com
+    // `soDoPanteon` puro, uma sessão com o 31 lia o histórico do LAB como produto "próprio".
     const proprios = linhasSoDoPanteon({
       cadastro: await carregarCadastroDeEmpreendimentos(),
       catalogo: catalogoDoC2x,

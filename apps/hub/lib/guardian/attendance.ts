@@ -8,7 +8,7 @@ import type {
   HadesAttendanceSourceUnit,
 } from "@/modules/guardian/attendance/data";
 import type { AttendancePriority, QueueClient } from "@/modules/guardian/attendance/types";
-import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
+import { EXCLUDED_ENTERPRISE_IDS } from "@/lib/guardian/c2x-analytics";
 
 type AttendanceContractRow = RowDataPacket & {
   acquisition_request_code: string | null;
@@ -200,12 +200,18 @@ const enterpriseDisplayExpression = `
 // real para quem atende (medido: 9 parcelas vencidas, R$ 385,00).
 //
 // Decisão do Lucas (25/08): o dashboard passa a seguir o universo da fila, e os dois excluem
-// teste. A lista é a que o projeto já mantém (`EXCLUDED_ENTERPRISE_CODES`): não se cria uma
-// segunda, foi exatamente a divergência entre duas listas que causou o problema.
-const codigosExcluidos = EXCLUDED_ENTERPRISE_CODES.map((code) => `'${code}'`).join(", ");
+// teste. A lista é a que o projeto já mantém (hoje `EXCLUDED_ENTERPRISE_IDS`; até o PAN-124 era
+// `EXCLUDED_ENTERPRISE_CODES`, pela sigla): não se cria uma segunda, foi exatamente a divergência
+// entre duas listas que causou o problema.
+//
+// ⚠️ PAN-124 (25/09/2026): A EXCLUSÃO É PELO ID DO C2X, E NÃO MAIS PELA SIGLA. A sigla muda quando
+// alguém renomeia no legado, e a lista por sigla já tinha quebrado calada: o "LAG" não casa com nada
+// desde que o 30 foi renomeado em 16/07/2026. `EXCLUDED_ENTERPRISE_IDS` (2 = SDT, 31 = LAB, 34 = TSC)
+// é a mesma lista, pelo id; medido no C2X no mesmo dia, as duas devolvem as mesmas linhas.
+// São números da constante, sem entrada de fora: por isso vão escritos no SQL, como as siglas iam.
 const validEnterpriseWhere = `
   e.id is not null
-  and upper(trim(coalesce(e.code, ''))) not in (${codigosExcluidos})
+  and e.id not in (${EXCLUDED_ENTERPRISE_IDS.join(", ")})
 `;
 
 function guardianDbConfigError(missing: string[]) {

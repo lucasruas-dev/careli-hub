@@ -262,16 +262,32 @@ describe("lerEstoquePelaRegua", () => {
 });
 
 describe("idsDosCodigos", () => {
+  // Os ids do C2X de 25/09/2026 (lib/apolo/c2x-pelo-id.fixture.ts). ⚠️ O LBR era "34" aqui, id
+  // inventado: desde o PAN-124 a exclusão é PELO ID, e o 34 de verdade é o TSC.
   const CATALOGO = [
-    { codes: ["VOC"], stageIds: ["37"] },
-    { codes: ["LBF", "LBR", "LBP"], stageIds: ["33", "34", "38"] },
+    { codes: ["VOC"], id: "37", stageIds: ["37"] },
+    { codes: ["LBF", "LBR", "LBP"], id: "group:Lagoa Bonita", stageIds: ["33", "27", "32"] },
   ];
 
   it("traduz pelo catálogo, código a código, e diz o que não achou", () => {
-    expect(idsDosCodigos(CATALOGO, [" lbr ", "VOC", "ZZZ"])).toEqual({ faltando: ["ZZZ"], ids: ["37", "34"] });
+    // Os ids saem sem repetição e em ordem crescente (quem chama os usa num `in`).
+    expect(idsDosCodigos(CATALOGO, [" lbr ", "VOC", "ZZZ"])).toEqual({ faltando: ["ZZZ"], ids: ["27", "37"] });
   });
 
   it("os códigos que o funil nunca contou continuam fora, e não contam como faltando", () => {
-    expect(idsDosCodigos(CATALOGO, ["LAB", "TSC"])).toEqual({ faltando: [], ids: [] });
+    // Fora do catálogo (o catálogo os tira): nem id, nem 503.
+    expect(idsDosCodigos(CATALOGO, ["LAB", "TSC", "SDT"])).toEqual({ faltando: [], ids: [] });
+  });
+
+  it("o excluído sai PELO ID, mesmo que o catálogo o traga com outra sigla (PAN-124)", () => {
+    // O LAB (31) renomeado no C2X para "LBM": pela sigla ele passaria; pelo id, continua fora, e
+    // também não conta como faltando (foi achado, só não é contado).
+    const comOLab = [...CATALOGO, { codes: ["LBM"], id: "31", stageIds: ["31"] }];
+    expect(idsDosCodigos(comOLab, ["LBM", "VOC"])).toEqual({ faltando: [], ids: ["37"] });
+  });
+
+  it("renome no C2X não muda os ids: a sigla nova acha o mesmo id que a velha achava", () => {
+    const renomeado = CATALOGO.map((emp) => (emp.id === "37" ? { ...emp, codes: ["VCX"] } : emp));
+    expect(idsDosCodigos(renomeado, ["VCX"]).ids).toEqual(idsDosCodigos(CATALOGO, ["VOC"]).ids);
   });
 });

@@ -18,7 +18,7 @@ import {
   type ProdutoDoRecorte,
 } from "@/lib/apolo/incorporador/politicas-do-produto";
 import {
-  lerPlanosDoC2x,
+  lerPlanosDoC2xPorIds,
   type PlanosDoEmpreendimento,
 } from "@/lib/apolo/planos-comerciais-c2x";
 import { createApoloAdminClient } from "@/lib/apolo/server";
@@ -106,9 +106,10 @@ export async function GET(request: Request) {
 
   // Tradução, não permissão: `linhasSoDoPanteon` só devolve ids que a sessão JÁ traz.
   //
-  // ⚠️ E COM A TRAVA DO LAB (onda 2, 16/09/2026). `soDoPanteon` puro não conhece
-  // `EXCLUDED_ENTERPRISE_CODES`: numa sessão com o 31, o LAB (fora do catálogo do C2X de propósito)
-  // virava produto "próprio" e a aba mostrava as políticas dele.
+  // ⚠️ E COM A TRAVA DO LAB (onda 2, 16/09/2026). `soDoPanteon` puro não conhece a exclusão: numa
+  // sessão com o 31, o LAB (fora do catálogo do C2X de propósito) virava produto "próprio" e a aba
+  // mostrava as políticas dele. A trava de `linhasSoDoPanteon` é pelo ID (`EXCLUDED_ENTERPRISE_IDS`:
+  // 2, 31, 34) desde o PAN-124, e não pela sigla do cadastro, que um renome muda.
   const proprios = linhasSoDoPanteon({
     cadastro,
     catalogo,
@@ -201,17 +202,21 @@ export async function GET(request: Request) {
 
     // O C2X só é consultado para o produto SEM plano no Panteon: com plano lá, o legado não entraria
     // de qualquer forma (`planosPreferindoOPanteon`), e a consulta ao MySQL seria custo sem uso.
+    //
+    // ⚠️ PELO ID, E NÃO PELA SIGLA (PAN-124). O id já está na mão (`enterpriseId` do produto); ir ao C2X
+    // pela sigla do catálogo era traduzir id → sigla → id, e um renome no meio do caminho (o catálogo
+    // relido entre as duas traduções) fazia o plano sumir calado. Continua indo só quem o catálogo
+    // conhece (`codigoNoC2x`): produto nascido no Panteon não existe no legado, como antes.
     const comPlanoNoPanteon = new Set(planosDoPanteon.map((p) => p.enterpriseId));
-    const codesParaOC2x = produtos
-      .filter((p) => !comPlanoNoPanteon.has(p.enterpriseId))
-      .map((p) => codigoNoC2x.get(p.enterpriseId))
-      .filter((code): code is string => Boolean(code));
+    const idsParaOC2x = produtos
+      .filter((p) => !comPlanoNoPanteon.has(p.enterpriseId) && codigoNoC2x.has(p.enterpriseId))
+      .map((p) => p.enterpriseId);
 
     // ⚠️ NULO = O C2X NÃO RESPONDEU, e a montagem marca o bloco como incompleto. Lista vazia seria
     // "respondeu e não há plano", que é outra frase.
     let planosDoC2x: null | PlanosDoEmpreendimento[] = [];
-    if (codesParaOC2x.length > 0) {
-      const lido = await lerPlanosDoC2x(codesParaOC2x).catch(
+    if (idsParaOC2x.length > 0) {
+      const lido = await lerPlanosDoC2xPorIds(idsParaOC2x).catch(
         (erro: unknown) => ({ error: String(erro), ok: false }) as const,
       );
       if (lido.ok) {

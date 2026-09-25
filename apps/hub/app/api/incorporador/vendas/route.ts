@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
+import { idsDoC2xDasSiglasAoVivo } from "@/lib/apolo/c2x-pelo-id-servidor";
 import { codigosDoPedido } from "@/lib/apolo/incorporador/codigos-do-pedido";
 import { clientesUnicos } from "@/lib/apolo/incorporador/contratos";
 import { empreendimentosDoPortal } from "@/lib/apolo/incorporador/empreendimentos-do-portal";
@@ -20,7 +21,7 @@ import {
   ritmoDeVendas,
   unidadesParaOPortal,
 } from "@/lib/apolo/incorporador/vendas-resumo";
-import { loadApoloEnterpriseVendas } from "@/lib/apolo/vendas";
+import { loadApoloEnterpriseVendasPorIds } from "@/lib/apolo/vendas";
 
 // AS VENDAS DO EMPREENDIMENTO DO INCORPORADOR.
 //
@@ -94,13 +95,24 @@ export async function GET(request: Request) {
   // 16/09/2026). `loadApoloEnterpriseVendas` faz `pool.query` sem `try/catch`: com o MySQL recusando
   // conexão numa função fria, a exceção subia e a rota respondia 500 sem corpo JSON, o que quebra a
   // tela no `res.json()`. Aqui ela vira o mesmo 503 controlado de quando o C2X diz que está fora.
+  //
+  // ⚠️ PELO ID DO C2X (PAN-124). As siglas do recorte viram `enterprises.id` UMA vez, pelo catálogo
+  // desta rota (o mesmo de onde `codigosDaSessao` e `codigosDoPedido` as tiraram), e o funil vai pela
+  // versão por id; o histórico e o perfil recebem o mesmo catálogo. Traduzir de novo em cada loader,
+  // pelo catálogo do cache, deixava uma brecha: relido entre o escopo e o loader, logo depois de um
+  // renome, ele não conhecia mais a sigla do escopo e o funil saía zerado, sem erro. Catálogo
+  // ilegível é o C2X fora: o 503 de sempre.
+  const idsDoRecorte = await idsDoC2xDasSiglasAoVivo(codes, { catalogo });
   const [vendas, eventos, compradores] = await Promise.all([
-    loadApoloEnterpriseVendas(codes).catch((erro: unknown) => {
+    (idsDoRecorte.ok
+      ? loadApoloEnterpriseVendasPorIds(idsDoRecorte.ids)
+      : Promise.resolve({ error: "Não foi possível carregar as vendas agora.", ok: false as const })
+    ).catch((erro: unknown) => {
       console.error("[incorporador][vendas] falha ao ler as vendas do C2X", erro);
       return { error: "Não foi possível carregar as vendas agora.", ok: false as const };
     }),
-    lerEventosDeVendas(codes),
-    lerCompradoresDasVendas(codes),
+    lerEventosDeVendas(codes, { catalogo }),
+    lerCompradoresDasVendas(codes, { catalogo }),
   ]);
 
   if (!vendas.ok) {

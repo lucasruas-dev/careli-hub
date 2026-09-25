@@ -33,6 +33,28 @@ vi.mock("@/lib/guardian/db", () => ({
   sanitizeHadesDbError: (erro: unknown) => String(erro),
 }));
 
+// PAN-124: a leitura traduz a sigla no id do C2X antes de consultar. A tradução é a régua pura de
+// verdade, sobre o retrato do C2X de 25/09/2026 (LBP = 32, LBR = 27, RVP = 38); só a leitura do
+// catálogo é trocada. O filtro pelo id tem os testes dele à parte.
+vi.mock("@/lib/apolo/c2x-pelo-id-servidor", async () => {
+  const { idsDoC2xDasSiglas } =
+    await vi.importActual<typeof import("@/lib/apolo/c2x-pelo-id")>("@/lib/apolo/c2x-pelo-id");
+  const { ENTERPRISES_DO_C2X_EM_25_09_2026 } = await vi.importActual<
+    typeof import("@/lib/apolo/c2x-pelo-id.fixture")
+  >("@/lib/apolo/c2x-pelo-id.fixture");
+  const catalogo = ENTERPRISES_DO_C2X_EM_25_09_2026.map(({ code, id }) => ({
+    codes: [code],
+    id: String(id),
+    stageIds: [String(id)],
+  }));
+  return {
+    idsDoC2xDasSiglasAoVivo: vi.fn(async (siglas: Iterable<unknown>) => ({
+      ok: true,
+      ...idsDoC2xDasSiglas(siglas, { catalogo }),
+    })),
+  };
+});
+
 vi.mock("@/lib/apolo/server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/apolo/server")>()),
   createApoloAdminClient: vi.fn(() => (estado.semSupabase ? null : { cliente: "admin" })),

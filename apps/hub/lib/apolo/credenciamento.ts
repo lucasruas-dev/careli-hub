@@ -12,12 +12,12 @@
 // Ver [[project_apolo_cadastro_imobiliaria]].
 import type { RowDataPacket } from "mysql2";
 
+import { filtroSemExcluidos } from "@/lib/apolo/c2x-pelo-id";
 import { type ApoloEnterpriseRow, loadApoloEnterprises } from "@/lib/apolo/empreendimentos";
 import { chaveDaLogo, listEnterpriseLogos } from "@/lib/apolo/enterprise-logos";
 import { listEnterprisesAtivos, listEnterprisesRecebendo } from "@/lib/apolo/enterprise-settings";
 import { hashIdentifier } from "@/lib/apolo/server";
 import type { createApoloAdminClient } from "@/lib/apolo/server";
-import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
 import { getHadesDbPool } from "@/lib/guardian/db";
 import { carregarCadastroDeEmpreendimentos, type LinhaDoCadastro } from "@/lib/hercules/cadastro";
 import { ehIdDoPanteon } from "@/lib/hercules/produto-novo";
@@ -298,7 +298,10 @@ async function empreendimentosPorVendas(
   const poolResult = getHadesDbPool();
   if (!poolResult.ok) return [];
 
-  const placeholders = EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ");
+  // ⚠️ A EXCLUSÃO É PELO ID (`EXCLUDED_ENTERPRISE_IDS`: SDT, LAB, TSC), e não mais pela sigla
+  // (PAN-124): a lista por sigla deixou de excluir o 30 quando o LAG virou ADT no C2X, e um
+  // empreendimento de teste renomeado voltaria a entrar no `jaTrabalha` da imobiliária.
+  const semExcluidosDoC2x = filtroSemExcluidos();
   try {
     const [rows] = await poolResult.pool.query<(RowDataPacket & { id: number })[]>(
       `select distinct e.id
@@ -306,8 +309,8 @@ async function empreendimentosPorVendas(
          join enterprise_unities eu on eu.id = ar.enterprise_unity_id
          join enterprises e on e.id = eu.enterprise_id
         where ar.client_id in (select id from users where vinculed_by_id = ?)
-          and e.code not in (${placeholders})`,
-      [c2xId, ...EXCLUDED_ENTERPRISE_CODES],
+          and ${semExcluidosDoC2x.sql}`,
+      [c2xId, ...semExcluidosDoC2x.params],
     );
     return rows.map((row) => String(row.id));
   } catch {

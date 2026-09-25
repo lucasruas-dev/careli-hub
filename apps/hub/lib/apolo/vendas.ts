@@ -10,12 +10,13 @@ import {
   loadApoloUnitInstallments,
   type ApoloUnitInstallment,
 } from "@/lib/apolo/carteira";
+import { filtroPorIds, idDoC2x, semExcluidos } from "@/lib/apolo/c2x-pelo-id";
+import { idsDoC2xDasSiglasAoVivo, type OrigemDaSigla } from "@/lib/apolo/c2x-pelo-id-servidor";
 import {
   lerSituacaoNoPanteon,
   ROTULO_SEM_CADASTRO_NO_PANTEON,
   unidadeDaLinhaDoC2x,
 } from "@/lib/apolo/empreendimentos";
-import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
 import { getHadesDbPool } from "@/lib/guardian/db";
 import { deterministicUuid } from "@/lib/apolo/server";
 import {
@@ -252,29 +253,85 @@ export type ApoloVendaProposta = {
 type UnitRow = RowDataPacket & Record<string, number | string | null>;
 type TerminalRow = RowDataPacket & Record<string, number | string | null>;
 
+/** Configuração do C2X ausente: o mesmo `ok: false` de sempre, na mesma frase. */
+function erroDeConfiguracao(missing: string[]): { error: string; ok: false } {
+  return { error: `Configuracao C2X ausente: ${missing.join(", ")}.`, ok: false };
+}
+
+/**
+ * O cenário de vendas pelas SIGLAS (a tela do Apolo manda `?codes=`; o portal, as siglas do catálogo).
+ * Só traduz a sigla no id e chama `loadApoloEnterpriseVendasPorIds`.
+ *
+ * ⚠️ PAN-124: A SIGLA NÃO VAI MAIS AO C2X COMO FILTRO. Ela era o `e.code in (...)`, e a sigla muda
+ * quando alguém renomeia no legado (o 43 de RDV para PDI em 24/09/2026; o 30 de LAG para ADT e para
+ * ACT). Agora a sigla é traduzida num lugar só (`idsDoC2xDasSiglasAoVivo`) e as quatro consultas
+ * filtram pelo `enterprises.id`, que não muda. Quem já tem o id chama a versão por id e não depende de
+ * sigla nenhuma; quem manda a sigla de HOJE recebe o mesmo de antes.
+ *
+ * ⚠️ A SIGLA GUARDADA DE ANTES DE UM RENOME (a tela aberta antes dele) só é salva enquanto o catálogo
+ * em cache for de antes do renome (até 10 minutos); depois volta vazia, como `e.code in` voltava. A
+ * tela do Apolo passa `conferirNoC2x` (ver `OrigemDaSigla`).
+ *
+ * ⚠️ A EXCLUSÃO DE SEMPRE (TSC, SDT, LAB) CONTINUA, PELO ID: a tradução tira `EXCLUDED_ENTERPRISE_IDS`,
+ * no lugar do filtro por `EXCLUDED_ENTERPRISE_CODES` que morava aqui (e cujo "LAG" não casa com nada
+ * desde que o 30 foi renomeado, em 16/07/2026).
+ *
+ * ⚠️ CATÁLOGO ILEGÍVEL É O C2X FORA, e não "nenhuma venda": devolve `ok: false`, que a rota já responde
+ * com 503, em vez de um funil zerado com cara de verdade.
+ */
 export async function loadApoloEnterpriseVendas(
   codes: string[],
+  origem: OrigemDaSigla = {},
 ): Promise<
   { data: ApoloEnterpriseVendas; ok: true } | { error: string; ok: false }
 > {
-  const validCodes = codes
-    .map((code) => code.trim().toUpperCase())
-    .filter((code) => code && !EXCLUDED_ENTERPRISE_CODES.includes(code));
+  const siglas = codes.map((code) => code.trim().toUpperCase()).filter(Boolean);
 
-  if (!validCodes.length) {
+  if (!siglas.length) {
     return { data: emptyVendas(), ok: true };
   }
 
   const poolResult = getHadesDbPool();
+  if (!poolResult.ok) return erroDeConfiguracao(poolResult.missing);
 
-  if (!poolResult.ok) {
-    return {
-      error: `Configuracao C2X ausente: ${poolResult.missing.join(", ")}.`,
-      ok: false,
-    };
+  const traduzido = await idsDoC2xDasSiglasAoVivo(siglas, origem);
+  if (!traduzido.ok) {
+    return { error: traduzido.erro, ok: false };
   }
 
-  const placeholders = validCodes.map(() => "?").join(", ");
+  return loadApoloEnterpriseVendasPorIds(traduzido.ids);
+}
+
+/**
+ * O cenário de vendas pelos ids do C2X (`enterprises.id`), que não mudam num renome.
+ *
+ * ⚠️ OS EXCLUÍDOS NUNCA ENTRAM, como na busca pela sigla: quem pedir o 34 (TSC) recebe o funil vazio,
+ * e não o do teste. Id nascido no Panteon (>= 100000), `group:` e uuid não são id do C2X e ficam de
+ * fora (`idDoC2x`); o grupo se resolve ANTES, nas divisões (`idsDoC2xDosPedidos`).
+ *
+ * ⚠️ SÓ O WHERE MUDOU. O SELECT continua devolvendo `e.code` (é a chave da tela) e os ORDER BY são os
+ * mesmos: para quem não foi renomeado, as linhas saem idênticas às da busca pela sigla (medido linha
+ * a linha em 25/09/2026, scratchpad/pan124-lote2-identidade.ts).
+ */
+export async function loadApoloEnterpriseVendasPorIds(
+  idsPedidos: ReadonlyArray<number | string>,
+): Promise<
+  { data: ApoloEnterpriseVendas; ok: true } | { error: string; ok: false }
+> {
+  const filtro = filtroPorIds(
+    "e.id",
+    semExcluidos(idsPedidos.map(idDoC2x).filter((id): id is number => id !== null)),
+  );
+
+  // Sem id do C2X não há o que perguntar ao legado. É o mesmo que a busca pela sigla devolvia quando
+  // o C2X não achava linha nenhuma (produto nascido no Panteon, sigla que não existe lá).
+  if (!filtro) {
+    return { data: { ...emptyVendas(), semCadastroNoPanteon: { units: 0, vgv: 0 } }, ok: true };
+  }
+
+  const poolResult = getHadesDbPool();
+  if (!poolResult.ok) return erroDeConfiguracao(poolResult.missing);
+
   const nameSql = (alias: string) =>
     `coalesce(nullif(trim(${alias}.name), ''), nullif(trim(${alias}.fantasy_name), ''), nullif(trim(${alias}.social_name), ''))`;
 
@@ -303,9 +360,9 @@ export async function loadApoloEnterpriseVendas(
                limit 1)
        left join users cli on cli.id = ar.client_id
        left join users imo on imo.id = cli.vinculed_by_id
-      where e.code in (${placeholders})
+      where ${filtro.sql}
       order by e.code, u.block, u.lot`,
-    validCodes,
+    filtro.params,
   );
 
   // `enterprise_id` do C2X de cada linha: é a chave que `hercules_unidades` guarda. A situação
@@ -325,10 +382,10 @@ export async function loadApoloEnterpriseVendas(
          from acquisition_requests ar
          join enterprise_unities u on u.id = ar.enterprise_unity_id
          join enterprises e on e.id = u.enterprise_id
-        where e.code in (${placeholders})
+        where ${filtro.sql}
           and ar.acquisition_request_stage_id in (7, 8, 10, 11)
         group by ar.acquisition_request_stage_id`,
-      validCodes,
+      filtro.params,
     ),
     // Movimentação: as transições de estágio mais recentes (feed do "o que mudou").
     poolResult.pool.query<UnitRow[]>(
@@ -344,11 +401,11 @@ export async function loadApoloEnterpriseVendas(
          join enterprises e on e.id = u.enterprise_id
          left join users cli on cli.id = ar.client_id
          left join users imo on imo.id = cli.vinculed_by_id
-        where e.code in (${placeholders})
+        where ${filtro.sql}
           and h.new_acquisition_request_stage_id is not null
         order by h.created_at desc
         limit 40`,
-      validCodes,
+      filtro.params,
     ),
     // Detalhe das propostas canceladas/distratadas (para o "apontar" das perdas).
     poolResult.pool.query<UnitRow[]>(
@@ -365,11 +422,11 @@ export async function loadApoloEnterpriseVendas(
          join enterprises e on e.id = u.enterprise_id
          left join users cli on cli.id = ar.client_id
          left join users imo on imo.id = cli.vinculed_by_id
-        where e.code in (${placeholders})
+        where ${filtro.sql}
           and ar.acquisition_request_stage_id in (7, 8, 10, 11)
         order by terminal_at desc
         limit 300`,
-      validCodes,
+      filtro.params,
     ),
   ]);
 

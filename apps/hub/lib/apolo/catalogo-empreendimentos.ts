@@ -1,4 +1,5 @@
-import { EXCLUDED_ENTERPRISE_CODES, ENTERPRISE_GROUPS } from "@/lib/guardian/c2x-analytics";
+import { filtroSemExcluidos } from "@/lib/apolo/c2x-pelo-id";
+import { ENTERPRISE_GROUPS } from "@/lib/guardian/c2x-analytics";
 import { getHadesDbPool } from "@/lib/guardian/db";
 
 // CATÁLOGO ENXUTO: só id, código e nome do empreendimento, já AGRUPADO.
@@ -42,35 +43,71 @@ type LinhaCrua = { code: null | string; id: number; name: null | string };
 // é o tipo de coisa que ninguém liga o motivo.
 const TTL_MS = 10 * 60 * 1000;
 let cache: { emMs: number; valor: EmpreendimentoDoCatalogo[] } | null = null;
+// A leitura que está em andamento, para quem chegar durante ela esperar a MESMA consulta.
+let emVoo: null | Promise<EmpreendimentoDoCatalogo[]> = null;
 
+/**
+ * Esquece o catálogo guardado. SÓ PARA TESTE E SCRIPT DE MEDIÇÃO.
+ *
+ * ⚠️ NÃO CHAME EM PRODUÇÃO PARA "RELER" (PAN-124, revisão de 25/09/2026). Apagar o cache antes de
+ * reler tira a única proteção que o catálogo tem contra o C2X oscilando: se a releitura falhar, todo
+ * leitor daquela instância (nomes do Board, escopo do portal, tradução sigla → id) passa a receber `[]`
+ * até o C2X voltar, em vez do catálogo anterior. Para ignorar o prazo, use
+ * `catalogoDeEmpreendimentos(agora, { forcar: true })`, que mantém o anterior quando falha.
+ */
 export function limparCacheDoCatalogo(): void {
   cache = null;
+  emVoo = null;
 }
 
 /**
  * Lê o catálogo de empreendimentos do C2X (READ-ONLY), agrupado pela regra do negócio.
  *
- * Devolve lista VAZIA se o C2X estiver indisponível: quem chama trata a ausência de catálogo como
- * "sem tradução", nunca como "não existe empreendimento".
+ * Devolve lista VAZIA se o C2X estiver indisponível E não houver catálogo anterior: quem chama trata
+ * a ausência de catálogo como "sem tradução", nunca como "não existe empreendimento".
+ *
+ * @param opcoes.forcar Lê de novo mesmo com o cache no prazo (a sigla que o catálogo ainda não conhece,
+ *   ver lib/apolo/c2x-pelo-id-servidor.ts). ⚠️ Forçar NÃO apaga o anterior: se a leitura falhar, volta
+ *   o catálogo que já estava guardado, e ele continua guardado, como numa leitura comum.
  */
 export async function catalogoDeEmpreendimentos(
   agoraMs: number,
+  opcoes: { forcar?: boolean } = {},
 ): Promise<EmpreendimentoDoCatalogo[]> {
-  if (cache && agoraMs - cache.emMs < TTL_MS) return cache.valor;
+  if (!opcoes.forcar && cache && agoraMs - cache.emMs < TTL_MS) return cache.valor;
 
+  // ⚠️ UMA CONSULTA POR VEZ POR INSTÂNCIA. A tela do Apolo abre as abas em paralelo e o pool do C2X
+  // tem 5 conexões (lib/guardian/db.ts): com o cache vencido (ou uma releitura forçada), cada aba
+  // disparava o mesmo SELECT. Quem chega durante a leitura espera a dela.
+  if (emVoo) return emVoo;
+  const leitura = lerDoC2x(agoraMs);
+  emVoo = leitura;
+  try {
+    return await leitura;
+  } finally {
+    if (emVoo === leitura) emVoo = null;
+  }
+}
+
+async function lerDoC2x(agoraMs: number): Promise<EmpreendimentoDoCatalogo[]> {
   const poolResult = getHadesDbPool();
   if (!poolResult.ok) return cache?.valor ?? [];
 
-  const placeholders = EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ");
+  // ⚠️ A EXCLUSÃO É PELO ID (`EXCLUDED_ENTERPRISE_IDS`: SDT, LAB, TSC), e não mais pela sigla
+  // (PAN-124). É deste catálogo que a tradução sigla → id sai (lib/apolo/c2x-pelo-id.ts): um
+  // empreendimento excluído que continuasse aqui por ter sido renomeado voltaria a aparecer em toda
+  // leitura que traduz por ele. O `agrupar` continua juntando as divisões pela sigla, de propósito
+  // (a troca dele é outra etapa).
+  const semExcluidosDoC2x = filtroSemExcluidos();
 
   let linhas: LinhaCrua[];
   try {
     const [rows] = await poolResult.pool.query(
       `select e.id, e.code, e.name
          from enterprises e
-        where e.code not in (${placeholders})
+        where ${semExcluidosDoC2x.sql}
         order by e.code`,
-      EXCLUDED_ENTERPRISE_CODES,
+      semExcluidosDoC2x.params,
     );
     linhas = rows as LinhaCrua[];
   } catch {
