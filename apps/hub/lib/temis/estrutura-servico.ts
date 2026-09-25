@@ -1100,12 +1100,21 @@ export async function lerQuadroDeAssinatura(
   const barrado = respostaDoAlcance(await alcanceDoEmpreendimento(admin, ator, enterpriseId));
   if (barrado) return barrado;
 
-  const { data, error } = await admin
+  const consulta = admin
     .from("temis_assinantes")
     .select(COLUNAS_DO_ASSINANTE)
     .eq("workspace_id", WORKSPACE)
     .eq("enterprise_id", enterpriseId)
-    .eq("ativo", true)
+    .eq("ativo", true);
+  // ⚠️ O PAPEL DOS TERMOS NÃO SAI PARA O PORTAL (revisão de 25/09/2026). O PATCH e o DELETE tratam
+  // essa linha como inexistente para o portal (`PAPEL_SO_DA_CARELI`: "para o portal este papel não
+  // existe"), e o GET entregava id, nome e e-mail dela: a resposta contradizia a recusa e mostrava
+  // quem a Careli apontou. O filtro vai na CONSULTA, e não depois dela, para a linha nem sair do
+  // banco. Medido no dia: nenhum empreendimento de portal tinha linha dos termos (as 3 ativas estão
+  // no 1, no 4 e no grupo da Lavra do Ouro), e o cartão do portal não mostra a caixa. O hub lê tudo.
+  const { data, error } = await (
+    ator.tipo === "hub" ? consulta : consulta.neq("papel", PAPEL_SO_DA_CARELI)
+  )
     .order("papel", { ascending: true })
     .order("posicao", { ascending: true });
 
@@ -1133,8 +1142,9 @@ export async function lerQuadroDeAssinatura(
  * quem monta o envelope é o servidor, que lê a linha inteira. O hub continua vendo tudo.
  *
  * ⚠️ E O CPF MASCARADO VOLTA NO EDITAR. A tela do portal reenvia `***.***.***-NN` quando o operador
- * não mexe no campo; `editarAssinante` lê o `*` como "manter o gravado". Pelo incluir, um CPF
- * mascarado continua não sendo gravado: `conferirAssinante` recusa CPF que não fecha os dígitos.
+ * não mexe no campo; `editarAssinante` lê a máscara INTEIRA, igual à que esta função devolve, como
+ * "manter o gravado", e recusa máscara mexida pela metade. Pelo incluir, um CPF mascarado continua
+ * não sendo gravado: `conferirAssinante` recusa CPF que não fecha os dígitos.
  */
 function cpfParaOAtor(ator: AtorDaTemis, cpf: null | string): null | string {
   if (ator.tipo === "hub" || !cpf) return cpf;
@@ -1247,8 +1257,9 @@ function assinanteForaDoQuadro(ator: AtorDaTemis): NextResponse {
  *
  * ⚠️ O CPF MASCARADO NÃO APAGA O GRAVADO. O portal recebe `***.***.***-NN` (`cpfParaOAtor`), e a tela
  * devolve o que mostrou. Lido como CPF, os dois dígitos virariam "O CPF nao confere" e o portal nunca
- * conseguiria salvar sem redigitar o documento. CPF ausente ou com `*` mantém o que está na linha;
- * CPF em branco limpa, que é o que o operador quis dizer ao apagar o campo.
+ * conseguiria salvar sem redigitar o documento. CPF ausente, ou EXATAMENTE a máscara que este ator
+ * recebeu, mantém o que está na linha; máscara mexida pela metade é 400 (ver o corpo da função); CPF
+ * em branco limpa, que é o que o operador quis dizer ao apagar o campo.
  *
  * ⚠️ CAMPO QUE NÃO VEM, FICA. A caixa dos termos não tem Linha nem Assina em, e uma edição só do
  * e-mail não pode zerar a ordem de ninguém. Linha em branco também fica: no incluir ela quer dizer "a
@@ -1308,8 +1319,23 @@ export async function editarAssinante(ator: AtorDaTemis, request: Request): Prom
 
   const veio = (campo: string) => Object.prototype.hasOwnProperty.call(corpo, campo);
   const comoTexto = (v: unknown) => (v == null ? "" : String(v));
-  const cpfDoCorpo = veio("cpf") ? comoTexto(corpo.cpf) : null;
-  const manterCpf = cpfDoCorpo === null || cpfDoCorpo.includes("*");
+  const cpfDoCorpo = veio("cpf") ? comoTexto(corpo.cpf).trim() : null;
+  // ⚠️ O `*` SÓ QUER DIZER "MANTER" QUANDO É A MÁSCARA INTEIRA QUE ESTE ATOR RECEBEU (revisão de
+  // 25/09/2026). Antes qualquer texto com `*` mantinha o gravado: no portal, quem corrigia só os dois
+  // últimos dígitos de `***.***.***-25` para `-26` recebia 200, a linha seguia com o CPF antigo e a
+  // tela relia o mesmo número, sem erro nenhum. Máscara mexida pela metade é recusada com a frase que
+  // diz o que fazer.
+  const cpfMascarado = cpfDoCorpo !== null && cpfDoCorpo.includes("*");
+  if (cpfMascarado && cpfDoCorpo !== cpfParaOAtor(ator, linha.cpf)) {
+    return NextResponse.json(
+      {
+        error:
+          "O CPF aparece mascarado e nao se corrige por partes: apague o campo e digite o CPF inteiro, ou deixe como estava para manter o gravado.",
+      },
+      { status: 400 },
+    );
+  }
+  const manterCpf = cpfDoCorpo === null || cpfMascarado;
   const posicaoDoCorpo = veio("posicao") ? comoTexto(corpo.posicao).trim() : "";
 
   const { erro, valores } = conferirAssinante({
@@ -1327,6 +1353,11 @@ export async function editarAssinante(ator: AtorDaTemis, request: Request): Prom
 
   // ⚠️ A LINHA OCUPADA É CONFERIDA ANTES DE GRAVAR, e o 23505 continua tratado abaixo para a corrida.
   // Custa um SELECT só quando a Linha mudou, e é o que dá a frase com o nome de quem está lá.
+  //
+  // ⚠️ A PRÓPRIA LINHA NUNCA É OCUPANTE (`neq id`, revisão de 25/09/2026). Dois Enter seguidos
+  // mandavam dois PATCH: o primeiro punha o Fabricio na linha 1, o segundo tinha lido a linha ainda
+  // na 4, achava na 1 o próprio Fabricio e respondia 409 "ja e de FABRICIO", contradizendo a edição
+  // que tinha dado certo.
   if (valores.posicao !== linha.posicao) {
     const { data: ocupantes } = await admin
       .from("temis_assinantes")
@@ -1336,6 +1367,7 @@ export async function editarAssinante(ator: AtorDaTemis, request: Request): Prom
       .eq("papel", linha.papel)
       .eq("posicao", valores.posicao)
       .eq("ativo", true)
+      .neq("id", id)
       .limit(1);
     if ((ocupantes ?? []).length > 0) {
       return NextResponse.json(

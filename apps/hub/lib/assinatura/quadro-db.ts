@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { COLUNAS_DA_0191, ehColunaDeAutoriaAusente } from "@/lib/temis/autoria-dos-modelos";
+
 import type { Pessoa } from "./signatarios";
 import type { PapelNoContrato } from "./tipos";
 
@@ -123,6 +125,56 @@ export async function assinantesDoQuadro(
     console.warn("[assinatura/quadro] falhou:", e instanceof Error ? e.message : e);
     return [];
   }
+}
+
+/**
+ * A TRAVA DA VIRADA: o envio para quando o código sem herança está no ar e a migration 0191 não.
+ *
+ * ⚠️ A ORDEM DO DEPLOY ESTAVA SÓ ESCRITA, E PUSH NA MAIN É PRODUÇÃO (revisão de 25/09/2026). A 0191
+ * grava como linha quem o quadro herdava da ficha (13 empreendimentos medidos no dia, todos com o
+ * Fabricio como coordenador). Se o código subir antes dela, o papel coordenador aparece vazio
+ * naqueles 13 e o envelope sai sem a coordenação: o defeito do VOR repetido 13 vezes, com envelope
+ * pago e irreversível. O aviso de `signatariosDoContrato` aparece, mas deixa enviar.
+ *
+ * ⚠️ TRAVA SÓ O QUE A VIRADA QUEBRARIA. Só roda quando o contrato QUALIFICA uma coordenadora e
+ * ninguém assina por ela (`coordenadoraSemQuemAssine`), que é exatamente o caso dos 13; os outros
+ * envios não pagam nem a consulta. Depois da 0191 a coluna existe e isto nunca mais trava: faltar a
+ * coordenadora volta a ser só aviso, porque o Lucas quer poder excluir qualquer linha do quadro.
+ *
+ * ⚠️ A PROVA DE QUE A 0191 RODOU É A COLUNA `atualizado_por_nome`. A migration cria a coluna e grava
+ * o backfill na MESMA transação (`begin` ... `commit`): coluna presente quer dizer backfill feito.
+ * Contar linhas de `origem = 'backfill_heranca_0191'` não serviria, porque excluí-las pela lixeira é
+ * permitido e as faria sumir.
+ *
+ * ⚠️ QUALQUER OUTRA FALHA DA CONSULTA NÃO TRAVA, a mesma disciplina de `assinantesDoQuadro`: só o
+ * "coluna não existe", pelo nome da coluna (`ehColunaDeAutoriaAusente`), é prova de migration
+ * pendente. Um timeout não é.
+ *
+ * O operador sai da trava de dois jeitos, e a frase diz os dois: a 0191 aplicada, ou alguém
+ * cadastrado no bloco Coordenador de Vendas daquele empreendimento.
+ */
+export async function impedimentoDaVirada0191(
+  sb: SupabaseClient,
+  coordenadoraSemAssinante: null | string,
+): Promise<null | string> {
+  if (!coordenadoraSemAssinante) return null;
+
+  try {
+    const { error } = await sb
+      .from("temis_assinantes")
+      .select(COLUNAS_DA_0191.temis_assinantes.join(","))
+      .limit(1);
+    if (!ehColunaDeAutoriaAusente(error, COLUNAS_DA_0191.temis_assinantes)) return null;
+  } catch {
+    return null;
+  }
+
+  return (
+    `Ninguém assina pela COORDENADORA DE VENDAS (${coordenadoraSemAssinante}), e o banco ainda não ` +
+    "recebeu a migration 0191, que grava quem assinava por ela até 25/09/2026. Avise quem cuida do " +
+    "banco, ou cadastre quem assina no bloco Coordenador de Vendas do Quadro de assinatura do " +
+    "empreendimento."
+  );
 }
 
 /**

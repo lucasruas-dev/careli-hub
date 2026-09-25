@@ -7,7 +7,10 @@ import {
   novoEstado,
 } from "@/lib/temis/fixtures/supabase-em-memoria";
 
-import { assinantesDoQuadro } from "./quadro-db";
+import type { DadosDoContrato } from "@/lib/temis/preencher-contrato";
+
+import { assinantesDoQuadro, impedimentoDaVirada0191 } from "./quadro-db";
+import { coordenadoraSemQuemAssine, signatariosDoContrato } from "./signatarios";
 
 // QUEM O ENVELOPE CONVIDA PARA O PAPEL DA COORDENADORA: SÓ O QUE ESTÁ NO QUADRO.
 //
@@ -24,7 +27,9 @@ import { assinantesDoQuadro } from "./quadro-db";
 //     representante legal com e-mail;
 //   • a leitura não toca a ficha (settings, vínculos, pessoas, contatos) nenhuma vez;
 //   • a linha que a migration 0191 grava é a que vai, com o e-mail que o Lucas escolheu;
-//   • o VOR sai como está gravado: linhas 2, 3 e 4, nessa ordem.
+//   • o VOR sai como está gravado: linhas 2, 3 e 4, nessa ordem;
+//   • enquanto a 0191 não está no banco, o envio com a coordenadora qualificada e ninguém por ela
+//     TRAVA (`impedimentoDaVirada0191`); depois dela, volta a ser só aviso.
 
 const EMPRESA_GURGEL = "9e860967-9ac3-59d3-b9a0-a6713f0c8b53";
 const PESSOA_FABRICIO = "00000000-0000-4000-8000-00000000fab1";
@@ -135,5 +140,92 @@ describe("o papel da coordenadora vem só do quadro", () => {
     expect(coordenadoras.map((p) => p.email).sort()).toEqual(
       ["contrato@fgurgel.com.br", "huber@gurgel.test", "nivea@careli.test"].sort(),
     );
+  });
+});
+
+// ── A TRAVA DA VIRADA (revisão de 25/09/2026) ────────────────────────────────────────────────────
+//
+// ⚠️ NADA OBRIGAVA A 0191 A ENTRAR ANTES DO DEPLOY, e push na main é produção. Com o código sem
+// herança no ar e a migration pendente, os 13 empreendimentos que herdavam o Fabricio mandariam
+// contrato sem a coordenadora que o papel qualifica. `impedimentoDaVirada0191` trava só esse envio, e
+// só enquanto a coluna da 0191 não existe. A mesma sequência de `prepararEnvio`: quadro, montagem,
+// `coordenadoraSemQuemAssine`, a trava.
+
+const COLUNA_DA_0191_AUSENTE = {
+  code: "42703",
+  message: "column temis_assinantes.atualizado_por_nome does not exist",
+};
+
+const CONTRATO_COM_A_GURGEL: DadosDoContrato = {
+  compradores: [
+    {
+      ehPessoaFisica: true,
+      temConjuge: false,
+      valores: { email_cliente: "comprador@exemplo.test", nome_cliente: "COMPRADOR EXEMPLO SILVA" },
+    },
+  ],
+  gerais: { razao_social_coordenadora_vendas: "GURGEL EXEMPLO NEGOCIOS IMOBILIARIOS LTDA" },
+};
+
+/** A sequência de `prepararEnvio`, com a sonda da coluna respondendo como o banco mandar. */
+async function impedimentoDoEnvio(banco: EstadoDoBanco, enterpriseId: string, sonda?: typeof COLUNA_DA_0191_AUSENTE) {
+  const sb = clienteEmMemoria(banco) as unknown as SupabaseClient;
+  const doQuadro = await assinantesDoQuadro(sb, { enterpriseId });
+  const { pessoas } = signatariosDoContrato(CONTRATO_COM_A_GURGEL, doQuadro);
+  // A leitura do quadro já foi feita; daqui em diante a tabela responde como a sonda mandar.
+  if (sonda) banco.erros.temis_assinantes = sonda;
+  const consultasAntes = banco.consultas.length;
+  const impedimento = await impedimentoDaVirada0191(sb, coordenadoraSemQuemAssine(CONTRATO_COM_A_GURGEL, pessoas));
+  return { consultasDaTrava: banco.consultas.length - consultasAntes, impedimento };
+}
+
+describe("a trava da virada da 0191", () => {
+  it("⚠️ código novo, 0191 pendente, papel vazio: o envio TRAVA, e a frase diz as duas saídas", async () => {
+    const { impedimento } = await impedimentoDoEnvio(comAFichaDaGurgel(), "35", COLUNA_DA_0191_AUSENTE);
+
+    expect(impedimento).toContain("COORDENADORA DE VENDAS (GURGEL EXEMPLO NEGOCIOS IMOBILIARIOS LTDA)");
+    expect(impedimento).toContain("migration 0191");
+    expect(impedimento).toContain("bloco Coordenador de Vendas");
+    expect(impedimento).not.toContain("—");
+  });
+
+  it("com a 0191 aplicada, papel vazio volta a ser só aviso: o Lucas pode excluir qualquer linha", async () => {
+    const { impedimento } = await impedimentoDoEnvio(comAFichaDaGurgel(), "35");
+
+    expect(impedimento).toBeNull();
+  });
+
+  it("0191 pendente, mas alguém cadastrado no bloco: não trava, e nem consulta a coluna", async () => {
+    const banco = comAFichaDaGurgel([
+      coordenador("35", 1, "FABRICIO EXEMPLO GURGEL", "contrato@fgurgel.com.br"),
+    ]);
+
+    const { consultasDaTrava, impedimento } = await impedimentoDoEnvio(banco, "35", COLUNA_DA_0191_AUSENTE);
+
+    expect(impedimento).toBeNull();
+    expect(consultasDaTrava).toBe(0);
+  });
+
+  it("contrato sem coordenadora qualificada: não trava e não consulta", async () => {
+    const banco = comAFichaDaGurgel();
+    banco.erros.temis_assinantes = COLUNA_DA_0191_AUSENTE;
+
+    const impedimento = await impedimentoDaVirada0191(
+      clienteEmMemoria(banco) as unknown as SupabaseClient,
+      coordenadoraSemQuemAssine({ ...CONTRATO_COM_A_GURGEL, gerais: {} }, []),
+    );
+
+    expect(impedimento).toBeNull();
+    expect(banco.consultas).toHaveLength(0);
+  });
+
+  // ⚠️ SÓ O "COLUNA NÃO EXISTE", PELO NOME DA COLUNA, É PROVA DE MIGRATION PENDENTE. Um timeout
+  // travaria uma venda por um blip de rede, sobre um banco que pode estar certo.
+  it("outra falha da consulta não trava", async () => {
+    const timeout = { code: "57014", message: "canceling statement due to statement timeout" };
+    const outraColuna = { code: "42703", message: "column temis_assinantes.outra_coluna does not exist" };
+
+    expect((await impedimentoDoEnvio(comAFichaDaGurgel(), "35", timeout)).impedimento).toBeNull();
+    expect((await impedimentoDoEnvio(comAFichaDaGurgel(), "35", outraColuna)).impedimento).toBeNull();
   });
 });

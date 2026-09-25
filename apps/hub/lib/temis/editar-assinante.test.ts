@@ -19,19 +19,43 @@ import {
 //     0191) e sem trocar o papel;
 //   • as mesmas checagens do incluir: nome completo, e-mail, CPF válido, linha de 1 a 9, e a linha
 //     ocupada responde 409 dizendo de quem ela é, sem gravar;
-//   • o que não vem no corpo fica, e o CPF mascarado não apaga o gravado;
+//   • o que não vem no corpo fica; CPF com asterisco no hub (que recebe o CPF inteiro) é 400;
+//   • a própria linha não conta como ocupante da Linha para onde vai (o duplo Enter);
 //   • sem a 0191 no banco, a edição grava assim mesmo, só sem o nome de quem editou;
 //   • excluir só desativa linha ATIVA, e id que não está no quadro é 404.
 //
 // ⚠️ SEM `vi.mock` DO QUADRO: o único duplo é o Supabase em memória.
 
-const estado = vi.hoisted(() => ({ banco: null as unknown }));
+const estado = vi.hoisted(() => ({
+  banco: null as unknown,
+  /**
+   * Um RETRATO VELHO da linha para a próxima leitura por id: o que o pedido leu antes de outro
+   * pedido gravar. Simula a corrida do duplo Enter sem depender de quantos `await` cada caminho tem.
+   */
+  leituraVelha: null as null | Record<string, unknown>,
+}));
 
 vi.mock("@/lib/apolo/server", async () => {
   const { clienteEmMemoria } = await import("./fixtures/supabase-em-memoria");
   return {
-    createApoloAdminClient: () =>
-      clienteEmMemoria(estado.banco as Parameters<typeof clienteEmMemoria>[0]),
+    createApoloAdminClient: () => {
+      const cliente = clienteEmMemoria(estado.banco as Parameters<typeof clienteEmMemoria>[0]);
+      return {
+        ...cliente,
+        from: (tabela: string) => {
+          const consulta = cliente.from(tabela);
+          const ler = consulta.maybeSingle;
+          consulta.maybeSingle = async () => {
+            const lida = await ler();
+            const velha = estado.leituraVelha;
+            if (!velha || tabela !== "temis_assinantes" || !lida.data) return lida;
+            estado.leituraVelha = null;
+            return { ...lida, data: { ...(lida.data as Record<string, unknown>), ...velha } };
+          };
+          return consulta;
+        },
+      };
+    },
   };
 });
 
@@ -107,6 +131,7 @@ const excluir = (id: string) =>
 
 beforeEach(() => {
   estado.banco = quadroDoVor();
+  estado.leituraVelha = null;
   vi.spyOn(console, "info").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
@@ -168,10 +193,20 @@ describe("editar pelo lápis", () => {
 });
 
 describe("o CPF na edição", () => {
-  // ⚠️ O PORTAL RECEBE O CPF MASCARADO e a tela devolve o que mostrou. Lido como CPF, os dois
-  // dígitos recusariam a edição inteira por "O CPF nao confere".
-  it("CPF mascarado mantém o gravado", async () => {
+  // ⚠️ A MÁSCARA SÓ QUER DIZER "MANTER" QUANDO É A QUE ESTE ATOR RECEBEU (revisão de 25/09/2026). O
+  // hub recebe o CPF inteiro, então máscara vinda do hub é texto mexido: 400, e nada muda. O caso do
+  // portal (máscara inteira mantém, máscara mexida é 400) está em `estrutura-do-portal.test.ts`.
+  it("CPF com asterisco no hub: 400 dizendo o que fazer, e o gravado fica", async () => {
     const r = await editar(FABRICIO, { cpf: "***.***.***-25", nome: "FABRICIO EXEMPLO GURGEL" });
+
+    expect(r.status).toBe(400);
+    expect(((await r.json()) as { error: string }).error).toContain("digite o CPF inteiro");
+    expect(noQuadro(FABRICIO)?.cpf).toBe("529.982.247-25");
+    expect(gravacoesEm(estado.banco as EstadoDoBanco, "temis_assinantes")).toHaveLength(0);
+  });
+
+  it("sem o campo CPF no corpo, o gravado fica", async () => {
+    const r = await editar(FABRICIO, { nome: "FABRICIO EXEMPLO GURGEL" });
 
     expect(r.status).toBe(200);
     expect(noQuadro(FABRICIO)?.cpf).toBe("529.982.247-25");
@@ -206,6 +241,20 @@ describe("as mesmas checagens do incluir", () => {
     expect(error).toContain("use outra linha");
     expect(noQuadro(FABRICIO)?.posicao).toBe(4);
     expect(gravacoesEm(estado.banco as EstadoDoBanco, "temis_assinantes")).toHaveLength(0);
+  });
+
+  // ⚠️ O DUPLO ENTER (revisão de 25/09/2026). O pedido A já pôs o Fabricio na linha 1; o pedido B
+  // tinha lido a linha ainda na 4 e, sem excluir a própria linha da conferência, achava o próprio
+  // Fabricio na 1 e respondia 409 "ja e de FABRICIO" sobre uma edição que deu certo.
+  it("a própria linha nunca ocupa a linha para onde ela vai: o segundo pedido não dá 409", async () => {
+    const fabricio = noQuadro(FABRICIO);
+    if (fabricio) fabricio.posicao = 1; // o pedido A já gravou
+    estado.leituraVelha = { posicao: 4 }; // o pedido B leu antes disso
+
+    const r = await editar(FABRICIO, { posicao: "1" });
+
+    expect(r.status).toBe(200);
+    expect(noQuadro(FABRICIO)?.posicao).toBe(1);
   });
 
   it("a linha de uma pessoa EXCLUÍDA está livre", async () => {

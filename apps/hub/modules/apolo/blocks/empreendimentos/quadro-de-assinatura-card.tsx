@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, FileSignature, Loader2, Pencil, Plus, Trash2, Users, X } from "lucide-react";
-import { type KeyboardEvent, useCallback, useEffect, useState } from "react";
+import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import type {
   AssinanteDoQuadro,
@@ -149,6 +149,11 @@ export function QuadroDeAssinaturaCard({
    */
   const [edicao, setEdicao] = useState<Edicao | null>(null);
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+  // ⚠️ A TRAVA DO PATCH EM VOO É UMA REF, E NÃO SÓ O ESTADO (revisão de 25/09/2026). Enter chama
+  // `salvarEdicao` direto, sem passar pelo botão desligado, e dois Enter seguidos chegam antes de o
+  // `salvandoEdicao` novo render: o segundo PATCH saía, e a tela mostrava a recusa dele por cima de
+  // uma edição que tinha dado certo.
+  const edicaoEmVoo = useRef(false);
   const [recarregar, setRecarregar] = useState(0);
   const { temisFetch } = useApiDaTemis();
 
@@ -262,7 +267,8 @@ export function QuadroDeAssinaturaCard({
     setPapelDoErro(null);
     setEdicao({
       // ⚠️ O CPF VAI COMO A TELA O RECEBEU. No portal ele chega mascarado (`***.***.***-NN`), e o
-      // servidor lê o `*` como "manter o gravado": quem não mexe no campo não apaga o documento.
+      // servidor lê a máscara INTEIRA como "manter o gravado": quem não mexe no campo não apaga o
+      // documento. Máscara mexida pela metade volta 400, e a frase aparece no bloco.
       cpf: a.cpf ?? "",
       email: a.email ?? "",
       id: a.id,
@@ -285,7 +291,8 @@ export function QuadroDeAssinaturaCard({
    * edição de e-mail.
    */
   async function salvarEdicao() {
-    if (!edicao) return;
+    if (!edicao || edicaoEmVoo.current) return;
+    edicaoEmVoo.current = true;
     const doContrato = edicao.papel !== "termos_vendedora";
     setSalvandoEdicao(true);
     setErro(null);
@@ -311,6 +318,7 @@ export function QuadroDeAssinaturaCard({
       setErro(e instanceof Error ? e.message : "Falha ao gravar a edição.");
       setPapelDoErro(edicao.papel);
     } finally {
+      edicaoEmVoo.current = false;
       setSalvandoEdicao(false);
     }
   }
@@ -370,11 +378,18 @@ export function QuadroDeAssinaturaCard({
           placeholder="Nome completo"
           value={e.nome}
         />
+        {/* ⚠️ A MÁSCARA DO PORTAL NÃO SE CORRIGE POR PARTES: o servidor mantém o gravado só com a
+            máscara inteira, e recusa a mexida pela metade. O title diz isso antes do clique. */}
         <input
           aria-label="CPF"
           className={`${entrada} w-32`}
           onChange={(ev) => mexerNaEdicao("cpf", ev.target.value)}
           placeholder="CPF"
+          title={
+            e.cpf.includes("*")
+              ? "CPF gravado, mostrado mascarado. Deixe como está para manter, ou apague e digite o CPF inteiro."
+              : undefined
+          }
           value={e.cpf}
         />
         <input

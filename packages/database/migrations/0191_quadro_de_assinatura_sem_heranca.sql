@@ -26,12 +26,22 @@
 -- migration grava, como linha normal, exatamente a pessoa que HOJE a tela e o envio herdam, para
 -- ninguém perder assinante na virada.
 --
--- ATENCAO 1: APLICAR ANTES DO DEPLOY DO CÓDIGO. Se o código subir primeiro, os empreendimentos que
--- hoje dependem da herança (13 medidos em 25/09/2026, todos com o Fabricio como coordenador, entre
--- eles VLO, JDG, GDN, ACP e as Lagoas Bonitas) mandam contrato sem ninguém no papel coordenadora, e
--- o envio só AVISA, não trava. O contrário é seguro: com a migration aplicada e o código velho no
--- ar, a linha gravada ocupa a posição 1, a tela para de herdar (a linha 1 não está mais vazia) e o
--- envio também (o papel não está mais vazio). O e-mail já passa a ser o contrato@.
+-- ATENCAO 1: APLICAR ANTES DO DEPLOY DO CÓDIGO, e antes de QUALQUER merge ou push na main (push na
+-- main é deploy de produção automático). Se o código subir primeiro, os empreendimentos que hoje
+-- dependem da herança (13 medidos em 25/09/2026, todos com o Fabricio como coordenador, entre eles
+-- VLO, JDG, GDN, ACP e as Lagoas Bonitas) aparecem com o bloco Coordenador de Vendas vazio. O código
+-- tem uma rede para essa janela (`impedimentoDaVirada0191`, em lib/assinatura/quadro-db.ts): sem a
+-- coluna `atualizado_por_nome` desta migration, o envio TRAVA quando o contrato qualifica uma
+-- coordenadora e ninguém assina por ela. A rede segura o envelope errado, mas trava a venda até esta
+-- migration entrar: a ordem certa continua sendo esta primeiro. O contrário é seguro: com a
+-- migration aplicada e o código velho no ar, a linha gravada ocupa a posição 1, a tela para de herdar
+-- (a linha 1 não está mais vazia) e o envio também (o papel não está mais vazio). O e-mail já passa
+-- a ser o contrato@. Duas ressalvas, só até o deploy: a tela do VOR continua mostrando o Fabricio
+-- herdado na linha 1, além do gravado na 4 (ATENCAO 2); e no cartão antigo a linha gravada aqui tem
+-- lixeira, e excluí-la faz a tela e o envio antigos voltarem a herdar, com o e-mail diretoria@.
+--
+-- DEPOIS DE APLICAR, CONFERIR (tem de dar 13 se nada mudou desde 25/09/2026):
+--   select count(*) from public.temis_assinantes where origem = 'backfill_heranca_0191' and ativo;
 --
 -- ATENCAO 2: A MESMA REGRA DO ENVIO, E NÃO A DA TELA. Grava só onde o papel está VAZIO (nenhuma
 -- linha ativa naquele papel), que é quando o envio herda hoje. Onde o papel tem gente mas a linha 1
@@ -72,11 +82,15 @@
 -- aqui. Sem ela o código grava assim mesmo (`gravarComAutoria` refaz sem a coluna e loga), então a
 -- ordem da ATENCAO 1 é a única que importa.
 --
--- ATENCAO 10: IDEMPOTENTE. `add column if not exists`; o insert só grava onde o papel continua vazio
--- (`not exists`) e ainda se protege do índice único parcial da posição (`on conflict ... do
--- nothing`). Rodar de novo não grava nada.
+-- ATENCAO 10: IDEMPOTENTE, TAMBÉM DEPOIS DE ALGUÉM EXCLUIR. `add column if not exists`; o insert só
+-- grava onde o papel continua vazio (`not exists` sobre as linhas ativas) E onde este backfill nunca
+-- gravou naquele papel (`not exists` sobre `origem`, ativa ou excluída), e ainda se protege do índice
+-- único parcial da posição (`on conflict ... do nothing`). O segundo `not exists` é o que importa
+-- depois do deploy: se a Nívea excluir pela lixeira o Fabricio gravado aqui (ativo = false), o papel
+-- volta a ficar vazio e, sem ele, rodar o arquivo de novo gravaria o Fabricio outra vez por cima da
+-- decisão dela. Com ele, rodar de novo não grava nada, e o que foi desfeito fica desfeito.
 --
--- Para desfazer só o backfill:
+-- Para desfazer só o backfill (e ele não volta se o arquivo rodar de novo, pela ATENCAO 10):
 --   update public.temis_assinantes set ativo = false, desativado_por_nome = 'Zeus (desfaz 0191)'
 --    where origem = 'backfill_heranca_0191' and ativo;
 
@@ -160,6 +174,15 @@ select 'careli',
       and t.papel = h.papel
       and t.ativo
  )
+   -- ATENCAO 10: o que este backfill já gravou uma vez, ativo ou excluído, não volta.
+   and not exists (
+     select 1
+       from public.temis_assinantes t2
+      where t2.workspace_id = 'careli'
+        and t2.enterprise_id = h.enterprise_id
+        and t2.papel = h.papel
+        and t2.origem = 'backfill_heranca_0191'
+   )
 on conflict (workspace_id, enterprise_id, papel, posicao) where ativo do nothing;
 
 commit;

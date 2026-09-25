@@ -19,7 +19,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 //     (ou Esc) fecha sem gravar, Enter salva;
 //   • a recusa do servidor (a linha ocupada) aparece no bloco, com a linha ainda aberta;
 //   • nos termos o lápis não oferece Linha nem Assina em, e o PATCH não os manda;
-//   • o CPF mascarado do portal volta como veio, para o servidor manter o gravado;
+//   • o CPF mascarado do portal volta como veio, para o servidor manter o gravado, e a máscara
+//     mexida pela metade mostra a recusa do servidor no bloco;
+//   • dois Enter seguidos com o PATCH em voo mandam UM PATCH só;
 //   • o texto visível não promete herança e não tem travessão.
 //
 // Mesma montagem manual dos testes vizinhos (`quadro-de-assinatura.*.comportamento.test.tsx`): o
@@ -91,6 +93,8 @@ const APONTADO = linhaDaTela("dddddddd-0000-4000-8000-000000000001", "termos_ven
 let assinantes: LinhaDaTela[] = [];
 /** A recusa do servidor para a próxima escrita, ou `null` para gravar. */
 let recusa: null | { error: string; status: number } = null;
+/** Enquanto não for `null`, as escritas ficam EM VOO até esta promessa resolver. */
+let emVoo: null | Promise<void> = null;
 let chamadas: Chamada[];
 let raiz: Root;
 let hospedeiro: HTMLDivElement;
@@ -115,12 +119,13 @@ function instalarFetch() {
           }),
         );
       }
-      return Promise.resolve(
+      const resposta = () =>
         new Response(JSON.stringify(method === "GET" ? { assinantes } : { ok: true }), {
           headers: { "content-type": "application/json" },
           status: 200,
-        }),
-      );
+        });
+      if (method !== "GET" && emVoo) return emVoo.then(resposta);
+      return Promise.resolve(resposta());
     }),
   );
 }
@@ -189,6 +194,7 @@ const escritas = () => chamadas.filter((c) => c.method !== "GET");
 beforeEach(() => {
   assinantes = [VENDEDORA, NIVEA, HUBER, FABRICIO, TESTEMUNHA];
   recusa = null;
+  emVoo = null;
   hospedeiro = document.createElement("div");
   document.body.appendChild(hospedeiro);
   raiz = createRoot(hospedeiro);
@@ -308,6 +314,36 @@ describe("o lápis", () => {
     });
   });
 
+  // ⚠️ O DUPLO ENTER (revisão de 25/09/2026). Enter chama o salvar direto, sem passar pelo botão
+  // desligado: o segundo Enter mandava um segundo PATCH com a Linha já gravada pelo primeiro, e a
+  // recusa dele ("a linha 1 ja e de FABRICIO") aparecia por cima de uma edição que tinha dado certo.
+  it("dois Enter seguidos com o PATCH em voo: sai UM PATCH só, e a edição fecha sem erro", async () => {
+    await montar();
+    const coordenador = secao("Coordenador de Vendas");
+
+    await clicar(botao(coordenador, `Editar ${FABRICIO.nome}`));
+    await digitar(campoDaEdicao(coordenador, "Linha"), "1");
+
+    let pousar: () => void = () => {};
+    emVoo = new Promise<void>((resolve) => {
+      pousar = resolve;
+    });
+    await tecla(campoDaEdicao(coordenador, "Linha"), "Enter");
+    await tecla(campoDaEdicao(coordenador, "Linha"), "Enter");
+
+    expect(escritas()).toHaveLength(1);
+
+    assinantes = [VENDEDORA, { ...FABRICIO, posicao: 1 }, NIVEA, HUBER, TESTEMUNHA];
+    await act(async () => {
+      pousar();
+    });
+    await esperarPromessas();
+
+    expect(escritas()).toHaveLength(1);
+    expect(campoDaEdicao(secao("Coordenador de Vendas"), "Linha")).toBeNull();
+    expect(secao("Coordenador de Vendas").textContent).not.toContain("ja e de");
+  });
+
   it("a linha ocupada: a recusa aparece no bloco e a linha continua aberta", async () => {
     recusa = {
       error:
@@ -352,8 +388,9 @@ describe("o lápis na caixa dos termos", () => {
 });
 
 describe("o portal", () => {
-  // ⚠️ O GET DO PORTAL ENTREGA O CPF MASCARADO. A tela devolve o que mostrou, e o servidor lê o `*`
-  // como "manter o gravado" (`editarAssinante`). Se a tela limpasse o campo, o CPF seria apagado.
+  // ⚠️ O GET DO PORTAL ENTREGA O CPF MASCARADO. A tela devolve o que mostrou, e o servidor lê a
+  // máscara INTEIRA como "manter o gravado" (`editarAssinante`). Se a tela limpasse o campo, o CPF
+  // seria apagado.
   it("o CPF mascarado volta como veio quando o operador não mexe nele", async () => {
     assinantes = [{ ...FABRICIO, cpf: "***.***.***-25" }];
     await montar();
@@ -367,6 +404,30 @@ describe("o portal", () => {
       cpf: "***.***.***-25",
       nome: "FABRICIO EXEMPLO GURGEL NETO",
     });
+  });
+
+  // ⚠️ A MÁSCARA NÃO SE CORRIGE POR PARTES (revisão de 25/09/2026). Antes o servidor respondia 200 e
+  // mantinha o CPF antigo, calado. Agora ele recusa com 400 (`estrutura-do-portal.test.ts`), e a tela
+  // tem de mostrar a frase no bloco, com a linha ainda aberta para o operador digitar o CPF inteiro.
+  it("a máscara mexida pela metade: o campo avisa, e a recusa do servidor aparece no bloco", async () => {
+    assinantes = [{ ...FABRICIO, cpf: "***.***.***-25" }];
+    recusa = {
+      error:
+        "O CPF aparece mascarado e nao se corrige por partes: apague o campo e digite o CPF inteiro, ou deixe como estava para manter o gravado.",
+      status: 400,
+    };
+    await montar();
+    const coordenador = secao("Coordenador de Vendas");
+
+    await clicar(botao(coordenador, `Editar ${FABRICIO.nome}`));
+    expect(campoDaEdicao(coordenador, "CPF")?.title).toContain("apague e digite o CPF inteiro");
+
+    await digitar(campoDaEdicao(coordenador, "CPF"), "***.***.***-26");
+    await clicar(botao(coordenador, `Salvar ${FABRICIO.nome}`));
+
+    expect(escritas()[0]?.corpo).toMatchObject({ cpf: "***.***.***-26" });
+    expect(secao("Coordenador de Vendas").textContent).toContain("digite o CPF inteiro");
+    expect(campoDaEdicao(secao("Coordenador de Vendas"), "CPF")?.value).toBe("***.***.***-26");
   });
 });
 

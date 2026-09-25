@@ -444,10 +444,40 @@ describe("QUADRO DE ASSINATURA pelo portal", () => {
     expect(corpo.assinante.cpf).toBe("***.***.***-25");
   });
 
-  // ⚠️ O PAPEL DOS TERMOS É DA CARELI TAMBÉM NO EDITAR. A linha está num empreendimento que É do
-  // incorporador, então o alcance diria sim: a recusa é pelo papel DA LINHA, como no remover.
-  it("PATCH na linha dos termos (apontada pela Careli): 404 e nada gravado", async () => {
-    const TERMOS_VOC = "97979797-9797-4797-8797-979797979797";
+  // ⚠️ A MÁSCARA SÓ QUER DIZER "MANTER" QUANDO É A MÁSCARA INTEIRA (revisão de 25/09/2026). Quem
+  // corrigia só os dois últimos dígitos recebia 200, a linha seguia com o CPF antigo e a tela relia o
+  // mesmo número: uma edição oferecida e ignorada calada.
+  it("PATCH do VOC com a máscara mexida pela metade: 400 dizendo o que fazer, e nada gravado", async () => {
+    const r = await portalAssinantes.PATCH(
+      pedir("assinantes", `?id=${ASSINANTE_VOC}`, "PATCH", {
+        cpf: "***.***.***-26",
+        nome: "Ana Testemunha Silva",
+      }),
+    );
+
+    expect(r.status).toBe(400);
+    expect(((await r.json()) as { error: string }).error).toContain("digite o CPF inteiro");
+    expect(linha("temis_assinantes", ASSINANTE_VOC)).toMatchObject({
+      cpf: "529.982.247-25",
+      nome: "Ana Testemunha",
+    });
+    expect(gravacoesEm(banco(), "temis_assinantes")).toHaveLength(0);
+  });
+
+  it("PATCH do VOC com o CPF inteiro digitado de novo: grava o novo, e a resposta volta mascarada", async () => {
+    const r = await portalAssinantes.PATCH(
+      pedir("assinantes", `?id=${ASSINANTE_VOC}`, "PATCH", { cpf: "111.444.777-35" }),
+    );
+
+    expect(r.status).toBe(200);
+    expect(linha("temis_assinantes", ASSINANTE_VOC)?.cpf).toBe("111.444.777-35");
+    const corpo = (await r.json()) as { assinante: { cpf: null | string } };
+    expect(corpo.assinante.cpf).toBe("***.***.***-35");
+  });
+
+  /** A linha dos TERMOS que a Careli apontou no VOC: um empreendimento que É do incorporador. */
+  const TERMOS_VOC = "97979797-9797-4797-8797-979797979797";
+  function comLinhaDosTermosNoVoc() {
     banco().tabelas.temis_assinantes?.push({
       ativo: true,
       email: "juridico@careli.adm.br",
@@ -458,6 +488,29 @@ describe("QUADRO DE ASSINATURA pelo portal", () => {
       posicao: 1,
       workspace_id: "careli",
     });
+  }
+
+  // ⚠️ O GET NÃO ENTREGA AO PORTAL O QUE O PATCH E O DELETE DIZEM NÃO EXISTIR (revisão de
+  // 25/09/2026). Antes a resposta trazia id, nome e e-mail do apontado pela Careli, e um PATCH com
+  // aquele id recebia 404: a leitura contradizia a recusa.
+  it("GET do VOC com uma linha dos termos: o portal não a recebe, o hub recebe", async () => {
+    comLinhaDosTermosNoVoc();
+
+    const r = await portalAssinantes.GET(pedir("assinantes", "?enterpriseId=37"));
+    expect(r.status).toBe(200);
+    const corpo = (await r.json()) as { assinantes: Array<{ id: string; papel: string }> };
+    expect(corpo.assinantes.map((a) => a.id)).toEqual([ASSINANTE_VOC]);
+    expect(JSON.stringify(corpo)).not.toContain("juridico@careli.adm.br");
+
+    const doHub = await hubAssinantes.GET(hub("assinantes", "?enterpriseId=37"));
+    const corpoDoHub = (await doHub.json()) as { assinantes: Array<{ id: string }> };
+    expect(corpoDoHub.assinantes.map((a) => a.id).sort()).toEqual([TERMOS_VOC, ASSINANTE_VOC].sort());
+  });
+
+  // ⚠️ O PAPEL DOS TERMOS É DA CARELI TAMBÉM NO EDITAR. A linha está num empreendimento que É do
+  // incorporador, então o alcance diria sim: a recusa é pelo papel DA LINHA, como no remover.
+  it("PATCH na linha dos termos (apontada pela Careli): 404 e nada gravado", async () => {
+    comLinhaDosTermosNoVoc();
 
     const r = await portalAssinantes.PATCH(
       pedir("assinantes", `?id=${TERMOS_VOC}`, "PATCH", { email: "outra@cecilio.test" }),

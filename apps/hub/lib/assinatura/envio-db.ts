@@ -16,9 +16,14 @@ import { type PortaDaClicksign } from "./clicksign/cliente";
 import { congelarSignatarios } from "./congelar-signatarios";
 import { moverCardDaTemis } from "./estado-db";
 import { ordenarSignatarios, type RegraDeOrdem } from "./ordem";
-import { assinantesDoQuadro } from "./quadro-db";
+import { assinantesDoQuadro, impedimentoDaVirada0191 } from "./quadro-db";
 import { descreverOrigem, type OrigemDaRegra, regraDeOrdemDaVenda } from "./ordem-db";
-import { conferirSignatarios, type Pessoa, signatariosDoContrato } from "./signatarios";
+import {
+  conferirSignatarios,
+  coordenadoraSemQuemAssine,
+  type Pessoa,
+  signatariosDoContrato,
+} from "./signatarios";
 import { chaveDoSignatario, type EstadoDaAssinatura, type Signatario } from "./tipos";
 import { rotuloDoEstado } from "./traduzir";
 
@@ -136,11 +141,20 @@ export async function prepararEnvio(
 
   const veredito = conferirSignatarios(pessoas);
 
+  // ⚠️ A VIRADA DA 0191 VEM ANTES DA CONFERÊNCIA DAS PESSOAS. Ver `impedimentoDaVirada0191`: com o
+  // código sem herança no ar e a migration pendente, o envelope sairia sem a coordenadora que o
+  // contrato qualifica, e isso não se desfaz depois de ativado. Só consulta o banco quando falta a
+  // coordenadora; nos outros envios é `null` sem ir a lugar nenhum.
+  const daVirada = await impedimentoDaVirada0191(
+    sb,
+    coordenadoraSemQuemAssine(resolvido.dados, pessoas),
+  );
+
   return {
     avisos: montagem.avisos,
     contrato: contrato.contrato,
     identidade,
-    impedimento: veredito.ok ? null : veredito.erro,
+    impedimento: daVirada ?? (veredito.ok ? null : veredito.erro),
     ok: true,
     origemDaRegra,
     origemDescrita: ordemEscolhida

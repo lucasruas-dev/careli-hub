@@ -164,10 +164,8 @@ export function signatariosDoContrato(
   // único jeito de o operador saber antes de clicar é esta frase. Só avisa quando o contrato
   // QUALIFICA uma coordenadora (o texto imprime a razão social dela): empreendimento sem coordenação
   // de vendas não tem de quem sentir falta.
-  const coordenadoraNoContrato =
-    texto(dados.gerais.razao_social_coordenadora_vendas) ||
-    texto(dados.gerais.nome_fantasia_coordenadora_vendas);
-  if (coordenadoraNoContrato && !pessoas.some((p) => p.papel === "coordenadora")) {
+  const coordenadoraNoContrato = coordenadoraSemQuemAssine(dados, pessoas);
+  if (coordenadoraNoContrato) {
     avisos.push(
       `O contrato qualifica a COORDENADORA DE VENDAS (${coordenadoraNoContrato}), mas ninguém assina por ela. ` +
         "Cadastre quem assina no bloco Coordenador de Vendas do Quadro de assinatura do empreendimento.",
@@ -183,6 +181,26 @@ export function signatariosDoContrato(
   }
 
   return { avisos, pessoas };
+}
+
+/**
+ * A coordenadora que o contrato QUALIFICA e por quem ninguém assina: a razão social dela, ou `null`.
+ *
+ * ⚠️ UMA FUNÇÃO, E NÃO A CONTA DENTRO DO AVISO, porque são dois leitores com a mesma pergunta: o
+ * aviso de `signatariosDoContrato` e a trava da virada da 0191 (`impedimentoDaVirada0191`, em
+ * `quadro-db.ts`), que só vale enquanto a migration não foi aplicada. Duas contas iguais escritas
+ * em dois lugares divergem no primeiro ajuste, e foi uma divergência dessas (tela e envio com regras
+ * diferentes) que deixou o Fabricio fora do contrato no VOR.
+ */
+export function coordenadoraSemQuemAssine(
+  dados: DadosDoContrato,
+  pessoas: readonly Pessoa[],
+): null | string {
+  const coordenadora =
+    texto(dados.gerais.razao_social_coordenadora_vendas) ||
+    texto(dados.gerais.nome_fantasia_coordenadora_vendas);
+  if (!coordenadora) return null;
+  return pessoas.some((p) => p.papel === "coordenadora") ? null : coordenadora;
 }
 
 // ── A CONFERÊNCIA, ANTES DE EXISTIR ENVELOPE ────────────────────────────────
