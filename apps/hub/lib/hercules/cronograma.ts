@@ -25,6 +25,7 @@
 // reaberta em dezembro, tem que devolver exatamente as mesmas datas que devolveu em outubro.
 
 import {
+  type IndiceCorrecao,
   type PlanoComercial,
   parcelaDoCicloSacoc,
   parcelaPrice,
@@ -58,11 +59,22 @@ export type FaixaDoCronograma = {
   parcelaFinal: number;
   parcelaInicial: number;
   /**
-   * ⚠️ A MARCA DO ÍNDICE, e não o índice aplicado. É `true` a partir do primeiro reajuste, e é o
-   * que faz o documento imprimir "+ IPCA" ao lado do valor — ver `FaixaDeReajuste` em
-   * `proposta-pdf.ts`. O valor da faixa NÃO contém correção monetária nenhuma.
+   * QUAL índice corrige esta faixa, ou nulo quando nenhum corrige.
+   *
+   * ⚠️ AFIRMAÇÃO EM CAIXA ALTA: ATÉ 24/09/2026 ISTO ERA UM BOOLEANO CHAMADO `temIpca`, E O PAPEL
+   * ESCREVIA "IPCA" QUALQUER QUE FOSSE O ÍNDICE DO PLANO. Medido no cadastro no mesmo dia (`select
+   * indice_correcao, count(*) from temis_planos group by 1`): 26 IPCA_ANUAL, 11 SEM_CORRECAO, 6
+   * IPCA_MENSAL e 1 POUPANCA — e esse único POUPANCA é o plano NORMAL do Jardim das Gerais
+   * (enterprise 40, id 58992051-dcb6-408b-9c1d-f126300fb9a4). Toda proposta do JDG nesse plano
+   * imprimia "+ IPCA" na tabela de reajuste de um contrato que corrige pela poupança.
+   *
+   * ⚠️ É O CÓDIGO, E NÃO O RÓTULO. Quem escreve "IPCA anual" é `INDICES`, em
+   * `lib/apolo/planos-comerciais.ts` — um rótulo gravado aqui envelheceria no dia em que a casa
+   * mudasse a palavra, e o cronograma congelado na proposta guardaria a palavra velha para sempre.
+   *
+   * O valor da faixa NÃO contém correção monetária nenhuma: ele é só o degrau do juro contratual.
    */
-  temIpca: boolean;
+  indiceCorrecao: null | IndiceCorrecao;
   valor: number;
 };
 
@@ -593,15 +605,42 @@ export function montarCronograma(condicoes: CondicoesDoCronograma): Cronograma {
 }
 
 /**
+ * ESTA FAIXA CORRIGE? — a pergunta feita a uma faixa que pode ter sido gravada ANTES de 24/09/2026.
+ *
+ * ⚠️ AFIRMAÇÃO EM CAIXA ALTA: A FORMA VELHA É A DE 22 PROPOSTAS JÁ GRAVADAS, E A REGRA NOVA NÃO
+ * ALCANÇA O PASSADO. Até 24/09/2026 a faixa carregava o booleano `temIpca`; hoje ela carrega
+ * `indiceCorrecao`. Medido em 25/09/2026 (`select count(*) filter (where
+ * jsonb_path_exists(condicoes, '$.reajustes[*].temIpca')), count(*) filter (where
+ * jsonb_path_exists(condicoes, '$.reajustes[*].indiceCorrecao')), count(*) filter (where
+ * condicoes->'reajustes' @> '[{"temIpca": true}]') from hercules_propostas where origem =
+ * 'panteon'`): 22 propostas guardam a grafia velha, ZERO guardam a nova, e 20 têm ao menos uma
+ * faixa que corrige. O cronograma congelado é A FOTO DO QUE O CLIENTE LEU e não se reescreve —
+ * quem tem de aceitar as duas grafias é o LEITOR, num ponto único.
+ *
+ * ⚠️ E A PERGUNTA É SÓ "CORRIGE?", NUNCA "POR QUAL ÍNDICE?". A grafia velha não guardava o código,
+ * então inventar um aqui devolveria "IPCA" para a proposta do Jardim das Gerais que corrige pela
+ * poupança — o defeito que a troca de grafia existe para consertar. Quem escreve o rótulo é
+ * `plano_correcao`, que veio da própria proposta.
+ *
+ * `unknown` de propósito: o argumento sai de uma coluna `jsonb` livre, e lixo ali não pode lançar.
+ */
+export function faixaCorrige(faixa: unknown): boolean {
+  if (!faixa || typeof faixa !== "object" || Array.isArray(faixa)) return false;
+  const f = faixa as { indiceCorrecao?: unknown; temIpca?: unknown };
+  return f.indiceCorrecao != null || f.temIpca === true;
+}
+
+/**
  * As faixas de reajuste — uma por ano de contrato, com a parcela daquele ciclo.
  *
  * ⚠️ SÓ OS JUROS ENTRAM NA PROJEÇÃO. O degrau do SACOC é contratual: está na taxa assinada e pode
  * ser calculado hoje para o contrato inteiro. O IPCA é FUTURO — projetá-lo seria escrever num
  * documento que o comprador assina um número que a casa não tem como sustentar, e que estaria
- * errado no primeiro aniversário. Por isso a faixa carrega `temIpca` e o documento imprime
- * "+ IPCA" ao lado do valor: o comprador vê a parcela do ciclo e vê que ela ainda vai corrigir.
+ * errado no primeiro aniversário. Por isso a faixa carrega `indiceCorrecao` e o documento imprime
+ * "+ IPCA anual" (ou o índice que for) ao lado do valor: o comprador vê a parcela do ciclo e vê que
+ * ela ainda vai corrigir, e por qual índice.
  *
- * ⚠️ PRICE (OU QUALQUER PLANO SEM JUROS) DEVOLVE UMA FAIXA SÓ, SEM A MARCA. A parcela não muda por
+ * ⚠️ PRICE (OU QUALQUER PLANO SEM JUROS) DEVOLVE UMA FAIXA SÓ, SEM ÍNDICE. A parcela não muda por
  * degrau nenhum, e cinco linhas repetindo o mesmo valor fariam o comprador procurar a diferença
  * entre elas. Uma linha dizendo "1 a 120, R$ X" é a informação inteira.
  *
@@ -628,8 +667,8 @@ function faixasDeReajuste(
         ciclo: 1,
         de: primeira.vencimento,
         parcelaFinal: ultima.numero,
+        indiceCorrecao: null,
         parcelaInicial: primeira.numero,
-        temIpca: false,
         valor: primeira.valor,
       },
     ];
@@ -647,12 +686,15 @@ function faixasDeReajuste(
       ate: daUltima.vencimento,
       ciclo,
       de: daPrimeira.vencimento,
+      // ⚠️ O PRIMEIRO CICLO NÃO TEM CORREÇÃO: ele começa hoje, com o valor negociado hoje. E plano
+      // sem índice nunca carrega índice nenhum — imprimir correção num contrato SEM_CORRECAO
+      // prometeria um reajuste que o contrato não tem.
+      indiceCorrecao:
+        ciclo > 1 && plano.indiceCorrecao !== "SEM_CORRECAO"
+          ? plano.indiceCorrecao
+          : null,
       parcelaFinal: daUltima.numero,
       parcelaInicial: daPrimeira.numero,
-      // ⚠️ O PRIMEIRO CICLO NÃO TEM CORREÇÃO: ele começa hoje, com o valor negociado hoje. E plano
-      // sem índice nunca ganha a marca — imprimir "+ IPCA" num contrato SEM_CORRECAO prometeria um
-      // reajuste que o contrato não tem.
-      temIpca: ciclo > 1 && plano.indiceCorrecao !== "SEM_CORRECAO",
       valor: emReais(valorDoCiclo(ciclo)),
     };
   });

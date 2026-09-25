@@ -60,7 +60,43 @@ type LinhaDoQuadro = {
   vencimento: string;
 };
 
-const CABECALHO = ["Parcela", "Correção", "Juros", "1º vencimento", "Qtde.", "Valor", "Total"];
+/**
+ * A PALAVRA DO QUADRO EM CAIXA ALTA — o ponto único da caixa deste arquivo.
+ *
+ * Nívea (24/09/2026), com o print do contrato da TAISA FERNANDA BATISTA: *"Precisamos ter padrão nas
+ * letras. Escreve tudo em maiúsculo, por favor."* Lucas, no mesmo dia: *"sobre o contrato, deixa as
+ * variáveis em maiúsculo"*.
+ *
+ * ⚠️ A CAIXA SE DECIDE PELA LEITURA, E NÃO PELO ENCANAMENTO. A régua de `preencher-contrato.ts`
+ * (`deveSubirACaixa`) é o `tipo` do catálogo, e o tipo "gerado" ficou de fora porque a tabela entra
+ * como NÓS e não passa por `textoDaVariavel`. Só que a página não sabe disso: a qualificação passou a
+ * dizer "CONSULTOR(A) DE VENDAS ... UNIAO, PARA DE MINAS/MG" e páginas depois o MESMO contrato trazia
+ * "Parcela | Correção | Juros", "Entrada 1", "Mensal" e "IPCA anual".
+ *
+ * ⚠️ E O JURÍDICO JÁ ESCREVE ASSIM. O contrato do Villa Paris lido no C2X em 22/09/2026 (venda 4834,
+ * RVPA01), que é o desenho que o jurídico usa, DECLARA "IPCA ANUAL" nesta coluna — ver a nota das
+ * séries nominais mais abaixo.
+ *
+ * ⚠️ NÚMERO, DATA E DINHEIRO NÃO PASSAM POR AQUI. "R$ 13.355,10" e "18/09/2026" não têm letra que
+ * mude, e a unidade que mudaria ("300,00 m²") é justamente o que ficou fora da régua da qualificação.
+ * Aqui sobe só a palavra que o quadro escreve por conta própria.
+ *
+ * ⚠️ `toLocaleUpperCase("pt-BR")`, e não `toUpperCase`: é a mesma escolha de `lib/temis` para texto de
+ * documento, e o que mantém "correção" virando "CORREÇÃO" com a cedilha e o acento certos.
+ */
+function palavraDoQuadro(texto: string): string {
+  return texto.toLocaleUpperCase("pt-BR");
+}
+
+const CABECALHO = [
+  "Parcela",
+  "Correção",
+  "Juros",
+  "1º vencimento",
+  "Qtde.",
+  "Valor",
+  "Total",
+].map(palavraDoQuadro);
 
 /**
  * O quadro geral de pagamentos, pronto para entrar no documento.
@@ -146,7 +182,7 @@ export function tabelaGeralDePagamentos(
       correcao: "—",
       juros: "—",
       quantidade: 1,
-      tipo: entrada.length > 1 ? `Entrada ${i + 1}` : "Entrada",
+      tipo: palavraDoQuadro(entrada.length > 1 ? `Entrada ${i + 1}` : "Entrada"),
       total: valor,
       valor: valor === null ? "—" : dinheiro(valor),
       vencimento: dataBr(parcela.vencimento),
@@ -174,7 +210,7 @@ export function tabelaGeralDePagamentos(
       correcao: "—",
       juros: "—",
       quantidade: 1,
-      tipo: rotuloDoBem(bem),
+      tipo: palavraDoQuadro(rotuloDoBem(bem)),
       total: bem.valor,
       valor: dinheiro(bem.valor),
       vencimento: "—",
@@ -189,7 +225,7 @@ export function tabelaGeralDePagamentos(
       correcao,
       juros,
       quantidade: quantidadeDaSerie(mensais),
-      tipo: "Mensal",
+      tipo: palavraDoQuadro("Mensal"),
       total: nominais[0] ?? null,
       valor: valorDaSerie(mensais),
       vencimento: dataBr(mensais[0]?.vencimento),
@@ -201,7 +237,7 @@ export function tabelaGeralDePagamentos(
       correcao,
       juros,
       quantidade: quantidadeDaSerie(anuais),
-      tipo: "Anual",
+      tipo: palavraDoQuadro("Anual"),
       total: nominais[1] ?? null,
       valor: valorDaSerie(anuais),
       vencimento: dataBr(anuais[0]?.vencimento),
@@ -256,7 +292,7 @@ export function tabelaGeralDePagamentos(
       correcao: "—",
       juros: "—",
       quantidade: 1,
-      tipo: "(-) Comissão de corretagem",
+      tipo: palavraDoQuadro("(-) Comissão de corretagem"),
       total: -corretagemSolta,
       valor: dinheiro(-corretagemSolta),
       vencimento: "—",
@@ -282,7 +318,7 @@ export function tabelaGeralDePagamentos(
       // A última linha fecha a conta: é o número que o comprador procura primeiro.
       {
         children: [
-          celula("Total", { colSpan: CABECALHO.length - 1, negrito: true }),
+          celula(palavraDoQuadro("Total"), { colSpan: CABECALHO.length - 1, negrito: true }),
           celula(dinheiro(totalGeral), { negrito: true }),
         ],
         type: "tr",
@@ -551,14 +587,17 @@ function somaDe(serie: readonly ParcelaGravada[]): null | number {
 
 function rotuloDoIndice(indice: unknown): string {
   const chave = String(indice ?? "").trim();
-  if (!chave || chave === "SEM_CORRECAO") return "sem correção";
-  return INDICES[chave as IndiceCorrecao] ?? chave;
+  if (!chave || chave === "SEM_CORRECAO") return palavraDoQuadro("sem correção");
+  return palavraDoQuadro(INDICES[chave as IndiceCorrecao] ?? chave);
 }
 
 /** Mesma escrita de `textoDaTaxa` (planos-comerciais): "0,7207% a.m.", sem zero à direita. */
 function rotuloDosJuros(taxa: unknown, periodicidade: unknown): string {
   const valor = numero(taxa);
-  if (valor === null || valor <= 0) return "sem juros";
+  if (valor === null || valor <= 0) return palavraDoQuadro("sem juros");
+  // ⚠️ A TAXA NÃO SOBE, e a unidade vai com ela: o número não tem letra que mude e "0,64% A.M." é a
+  // unidade gritando no meio de um dado — o mesmo motivo que deixou "300,00 m²" fora da régua da
+  // qualificação. O Villa Paris declara "0,64%" nesta coluna, e é isto que sai.
   const escrito = String(Number(valor.toFixed(4))).replace(".", ",");
   return `${escrito}% ${String(periodicidade ?? "mensal") === "anual" ? "a.a." : "a.m."}`;
 }

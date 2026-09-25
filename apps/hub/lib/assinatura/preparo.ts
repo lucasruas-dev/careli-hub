@@ -88,6 +88,22 @@ export type RespostaDoPreparo = AmbienteDoEnvio & {
     ordenada: boolean;
     /** Categoria, empreendimento ou o padrão da casa — o recorte que mandou. */
     origem: OrigemDaRegra;
+    /**
+     * O MAPA `{papel: número}` que vale — o mesmo que está gravado, com os EMPATES intactos.
+     *
+     * ⚠️ AFIRMAÇÃO EM CAIXA ALTA: ELE EXISTE PORQUE `papeis` ACHATA O EMPATE, E O ACHATAMENTO IA ATÉ
+     * O ENVELOPE. Até 25/09/2026 a resposta carregava só a lista (`gruposDaRegra(regra).flat()`) e a
+     * tela devolvia essa lista em TODO envio; o servidor a lia pelo ramo antigo de `lerRegraDeOrdem`
+     * e numerava 1..N. A configuração que o cartão do Setup existe para permitir — Lucas,
+     * 13/09/2026: *"comprador 1 e o resto como 2"* — era salva, exibida e desmanchada em seis degraus
+     * no envelope, que é a fila de vários dias que o empate evita. Nívea (24/09/2026): *"A ordem de
+     * assinatura não está ficando salva."*
+     *
+     * ⚠️ `papeis` CONTINUA NA RESPOSTA, e não é redundância: é a lista que a tela DESENHA com as
+     * setas, e uma aba velha (ou a tela de categoria) ainda a manda de volta. O servidor aceita as
+     * duas formas.
+     */
+    ordens: Record<PapelNoContrato, number>;
     /** A mesma coisa em uma frase, para a tela não ter de traduzir o union. */
     origemDescrita: string;
     papeis: PapelNoContrato[];
@@ -112,7 +128,18 @@ export type RespostaDoPreparo = AmbienteDoEnvio & {
 export type CorpoDoEnvio = {
   emails?: Record<string, string>;
   mensagem?: string;
-  ordem?: { ordenada: boolean; papeis: PapelNoContrato[] };
+  /**
+   * A ordem deste envio.
+   *
+   * ⚠️ O MAPA É O QUE A TELA MANDA DESDE 25/09/2026, e `papeis` continua ACEITO para a aba velha: o
+   * servidor lê as duas formas pelo mesmo saneador (`lerRegraDeOrdem`, que prefere `ordens`). Mandar
+   * só a lista era o que transformava "comprador 1, o resto 2" em seis degraus no envelope.
+   */
+  ordem?: {
+    ordenada: boolean;
+    ordens?: Partial<Record<PapelNoContrato, number>>;
+    papeis?: PapelNoContrato[];
+  };
   prazoEmDias?: number;
   /** ⚠️ A PROPOSTA, NUNCA O CARD DA TÊMIS. Ver a nota de `OrganizacaoDaAssinatura`. */
   propostaId: string;

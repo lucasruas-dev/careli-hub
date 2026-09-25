@@ -521,7 +521,11 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
         cronograma.reajustes.length === 1
           ? "Todo o contrato"
           : periodoDoCiclo(faixa.ciclo),
-      temIpca: faixa.temIpca,
+      // ⚠️ O RÓTULO SAI DAQUI, E O CÓDIGO FICA NO CRONOGRAMA. `INDICES` é quem sabe escrever
+      // "IPCA anual" e "poupança anual"; até 24/09/2026 o PDF escrevia a palavra "IPCA" cravada,
+      // e a proposta do Jardim das Gerais no plano POUPANCA prometia um índice que o contrato dela
+      // não tem.
+      correcao: faixa.indiceCorrecao ? INDICES[faixa.indiceCorrecao] : null,
       valor: reais(faixa.valor),
     })),
     // A bandeira segue para o desenhista: é ele que decide título, topo, compradores e tarja.

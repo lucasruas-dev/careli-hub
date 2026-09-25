@@ -167,6 +167,14 @@ type AssinaturaDoCard = {
   assinaram: number;
   diario: LinhaDoDiario[];
   envelope: {
+    /**
+     * A NOSSA linha de `hercules_documentos` que ESTE envelope levou para a Clicksign.
+     *
+     * ⚠️ É ELE, E NÃO `contratoVigente`, QUE DIZ QUAL FOLHA ESTÁ NA MÃO DE QUEM ASSINA. Gerar uma
+     * versão nova depois do envio separa as duas respostas em silêncio, e conferir a folha errada
+     * é pior do que não conferir. `null` = envelope anterior à coluna.
+     */
+    documentoId: null | string;
     /** O id na Clicksign — é ele que se procura na conta de lá, e não o uuid da nossa linha. */
     envelopeId: null | string;
     estado: string;
@@ -1088,6 +1096,22 @@ export function TelaDeTrabalho({
               {ehContrato && !assinatura ? (
                 <LinhaDoEnvelope desde={card.estagio_desde} envelopeVivo={envelopeVivo} />
               ) : null}
+
+              {/* ⚠️ O CONTRATO NÃO SOME AO SAIR DA ETAPA "CONTRATO" — Nívea (24/09/2026): *"Não
+                  consigo visualizar o contrato depois que enviamos para assinatura. Se precisamos
+                  validar alguma informação, não conseguimos ver."* A lista de versões e o visor
+                  moravam DENTRO de `EtapaDoContrato`, que só desenha em `estagio === "contrato"`;
+                  o envio move o card para cá e leva o papel junto. O dado nunca faltou: `contratos`
+                  chega na carga do card em TODA etapa (`lib/temis/trabalho-servico.ts`, o
+                  `Promise.all` sem condicional de estágio) — faltava a tela oferecer. */}
+              {ehContrato ? (
+                <ContratoParaConferir
+                  contratos={card.contratos}
+                  documentoDoEnvelope={assinatura?.envelope.documentoId ?? null}
+                  onAbrir={abrirContrato}
+                />
+              ) : null}
+
               {assinatura ? (
                 // ⚠️ `carregar`, E NÃO `aoMudar`: os dois botões da linha do signatário mexem no
                 // envelope e NÃO mexem na etapa do card. Quem precisa reler é ESTA tela — é ela que
@@ -1123,8 +1147,20 @@ export function TelaDeTrabalho({
               ⚠️ E O BOTÃO ENTRA ABAIXO DO PRAZO, sem substituir nada: quem abre o card continua
               vendo em que dia dos sete ele está, que é o motivo de a etapa existir. */}
           {card.estagio === "prazo_legal" ? (
-            <div className="grid gap-3">
+            <div className="grid max-w-3xl gap-3">
               <EtapaDoPrazoLegal inicio={card.arrependimento_inicio} />
+              {/* ⚠️ PELA MESMA RAZÃO DA ETAPA DE CIMA: o prazo de arrependimento é contado em cima
+                  de um contrato que alguém pode precisar reler, e daqui em diante a tela também
+                  ficava sem caminho para o PDF. Hoje não há card de contrato nesta etapa (medido em
+                  24/09/2026), e é por isso mesmo que ela entra junto: o defeito só apareceria no
+                  primeiro que chegasse. */}
+              {ehContrato ? (
+                <ContratoParaConferir
+                  contratos={card.contratos}
+                  documentoDoEnvelope={assinatura?.envelope.documentoId ?? null}
+                  onAbrir={abrirContrato}
+                />
+              ) : null}
               <VoltarParaAnalise aoVoltar={voltarParaAnalise} envelopeVivo={envelopeVivo} />
             </div>
           ) : null}
@@ -1148,16 +1184,58 @@ export function TelaDeTrabalho({
           ) : null}
 
           {card.estagio === "faturado" && !ehTipoQueConclui(card.tipo) ? (
-            <>
+            <div className="grid max-w-3xl gap-3">
               <EmConstrucao
                 oQueVem="O resumo do que ficou: contrato no cofre, assinaturas, prazo cumprido e entrada paga."
                 titulo={nomeDoEstagio("faturado", card.tipo)}
               />
+              {/* ⚠️ A ÚLTIMA ETAPA É A QUE MAIS PRECISA DO PAPEL, E ERA A QUE MENOS O OFERECIA. O
+                  texto acima já prometia "contrato no cofre" desde que a etapa existe, e o cofre
+                  não tinha porta: o caminho do card de contrato é analise → contrato → assinatura →
+                  prazo_legal → faturado, e o PDF sumia a partir da terceira. Quem procura um
+                  contrato para conferir um dado procura JUSTAMENTE os que já acabaram. Nívea
+                  (24/09/2026): *"Não consigo visualizar o contrato depois que enviamos para
+                  assinatura. Se precisamos validar alguma informação, não conseguimos ver."*
+
+                  ⚠️ MEDIDO EM 24/09/2026: nenhum card de contrato está em "Concluído" hoje (dos 16
+                  de `temis_trabalhos` com `tipo='contrato'`: 7 em análise, 1 em contrato, 5 em
+                  assinatura, 3 indeferidos). Entra junto pela mesma razão do prazo legal: o buraco
+                  só apareceria no primeiro card que chegasse, e aí seria um contrato fechado. */}
+              {ehContrato ? (
+                <ContratoParaConferir
+                  contratos={card.contratos}
+                  documentoDoEnvelope={assinatura?.envelope.documentoId ?? null}
+                  onAbrir={abrirContrato}
+                />
+              ) : null}
               <DaquiNaoSeVolta estagio="faturado" />
-            </>
+            </div>
           ) : null}
 
-          {card.estagio === "indeferido" ? <DaquiNaoSeVolta estagio="indeferido" /> : null}
+          {card.estagio === "indeferido" ? (
+            <div className="grid max-w-3xl gap-3">
+              {/* ⚠️ INDEFERIDO TAMBÉM PRECISA DO PAPEL, E É A ETAPA ONDE ELE MAIS SE ABRE: quem
+                  indeferiu um contrato vai justamente ler o documento para entender o motivo, e o
+                  motivo já está no `BlocoIndeferido` do topo. Nívea (24/09/2026): *"Não consigo
+                  visualizar o contrato depois que enviamos para assinatura. Se precisamos validar
+                  alguma informação, não conseguimos ver."*
+
+                  ⚠️ MEDIDO EM 25/09/2026: dos 16 cards de contrato, 3 estão em `indeferido` e
+                  NENHUM tem contrato guardado (`select t.estagio, count(*), count(*) filter (where
+                  exists (select 1 from hercules_documentos d where d.proposta_id = t.proposta_id
+                  and d.tipo = 'contrato')) from temis_trabalhos t where t.tipo = 'contrato' group
+                  by 1`). Entra junto pela mesma razão do prazo legal e do concluído: o buraco só
+                  apareceria no primeiro card indeferido COM papel — e aí seria tarde. */}
+              {ehContrato ? (
+                <ContratoParaConferir
+                  contratos={card.contratos}
+                  documentoDoEnvelope={assinatura?.envelope.documentoId ?? null}
+                  onAbrir={abrirContrato}
+                />
+              ) : null}
+              <DaquiNaoSeVolta estagio="indeferido" />
+            </div>
+          ) : null}
 
           {card.proposta_id && card.estagio === "analise" && !analise ? (
             <Aviso texto="Não consegui montar os dados desta proposta. Isso costuma ser cadastro incompleto no Apolo; o log do servidor tem o motivo." />
@@ -2521,6 +2599,123 @@ function EtapaDoPrazoLegal({ inicio }: { inicio: null | string }) {
 }
 
 // ── Peças ──────────────────────────────────────────────────────────────────
+
+/**
+ * O CONTRATO GUARDADO, PARA CONFERIR DEPOIS DO ENVIO — a peça das etapas que vêm DEPOIS de
+ * "Contrato".
+ *
+ * ⚠️ AFIRMAÇÃO EM CAIXA ALTA: O DOCUMENTO SEMPRE ESTEVE LÁ; QUEM SUMIU FOI O BOTÃO. Medido em
+ * 24/09/2026 no card da MAURA MARIA PASSOS (Vale do Ouro VOC, Quadra 03 · Lote 06, trabalho
+ * `23dfb1e0-ef0f-4667-913a-50f7c3c27756`): `hercules_documentos` tem a linha
+ * `cd4325c1-bda5-4aa6-83a7-f6886feed5e7`, tipo `contrato`, 6.751.759 bytes, e o objeto existe no
+ * bucket `apolo-documents`. Nos 5 cards em "Em assinatura" hoje, 5 têm contrato guardado e envelope.
+ * Nívea: *"Não consigo visualizar o contrato depois que enviamos para assinatura. Se precisamos
+ * validar alguma informação, não conseguimos ver."*
+ *
+ * ⚠️ O QUE ESTA PEÇA ABRE É O CONTRATO QUE O PANTEON GEROU, e é o mesmo arquivo que subiu para a
+ * Clicksign: o envio BAIXA este objeto do Storage e o manda em base64
+ * (`lib/assinatura/envio-db.ts`). O que NÃO existe é o ASSINADO — o Panteon registra que assinaram
+ * e não guarda o PDF de volta ([[reference_temis_assinado_nao_volta_para_o_banco]]). Por isso a
+ * frase diz "o que foi para a Clicksign", e não "o contrato assinado": prometer o segundo faria
+ * quem abre procurar rubrica que não está na folha.
+ *
+ * ⚠️ A VERSÃO É A DO ENVELOPE, E NÃO A MAIS RECENTE. `contratoVigente` responde "qual foi a última
+ * geração"; quem assina tem na mão a que FOI ENVIADA, e gerar uma v2 depois do envio separa as
+ * duas em silêncio. Nos 5 cards em assinatura de hoje as duas coincidem, mas três deles já têm 2, 3
+ * e 6 versões guardadas — a coincidência é do calendário, não da regra. Quando elas se separam, o
+ * aviso âmbar aparece.
+ */
+function ContratoParaConferir({
+  contratos,
+  documentoDoEnvelope,
+  onAbrir,
+}: {
+  contratos: ContratoNoCard[];
+  /** `assinatura.envelope.documentoId`. `null` = envelope antigo, ou card sem envelope. */
+  documentoDoEnvelope: null | string;
+  onAbrir: (documentoId: string) => void;
+}) {
+  const vigente = contratoVigente(contratos);
+  const enviado = documentoDoEnvelope
+    ? (contratos.find((c) => c.id === documentoDoEnvelope) ?? null)
+    : null;
+  // Sem envelope que diga qual foi, a melhor resposta honesta é a geração mais recente.
+  const paraAbrir = enviado ?? vigente;
+  const outras = contratos.filter((c) => c.id !== paraAbrir?.id);
+  // ⚠️ SÓ EXISTE DESENCONTRO QUANDO O ENVELOPE DIZ QUAL VERSÃO LEVOU. Sem `enviado`, a tela não
+  // sabe o que foi enviado e não tem o que comparar — dizer "a mais recente não foi" ali seria
+  // afirmar o que ninguém mediu.
+  const desencontro = enviado && vigente && enviado.id !== vigente.id ? { enviado, vigente } : null;
+
+  const comoSeChama = (c: ContratoNoCard) =>
+    c.versao === null ? c.nome : `versão ${c.versao}`;
+
+  return (
+    <section className="rounded-xl border border-line bg-surface p-4">
+      <h3 className="m-0 text-sm font-semibold text-ink">O contrato</h3>
+
+      {!paraAbrir ? (
+        <p className="m-0 mt-2 text-xs text-ink-muted">
+          Não há versão guardada nesta venda. O card chegou a esta etapa sem contrato gerado.
+        </p>
+      ) : (
+        <>
+          <button
+            className="mt-2 w-full rounded-lg bg-emerald-500/10 px-2.5 py-1.5 text-left text-xs text-emerald-700 transition-colors hover:bg-emerald-500/20 dark:text-emerald-300"
+            onClick={() => onAbrir(paraAbrir.id)}
+            type="button"
+          >
+            {comoSeChama(paraAbrir)}
+            {enviado ? " · foi para a Clicksign" : ""}
+            <span className="block text-[10px] text-ink-muted">
+              {new Date(paraAbrir.criadoEm).toLocaleString("pt-BR")}
+            </span>
+          </button>
+
+          {/* ⚠️ A FRASE DIZ O QUE ESTE PDF É E O QUE ELE NÃO É. Quem abre o contrato nesta etapa está
+              conferindo um dado (nome, CPF, valor), e não procurando assinatura: o documento
+              assinado não volta para o Panteon, e quem quiser a via com as rubricas continua indo à
+              Clicksign. */}
+          <p className="m-0 mt-2 text-[11px] text-ink-muted">
+            {enviado
+              ? "Este é o arquivo que subiu para a Clicksign. O contrato com as assinaturas não volta para o Panteon: ele fica na conta da Clicksign."
+              : "Esta é a geração mais recente guardada nesta venda. O envelope não diz qual versão levou, então confira a data antes de usar o que está escrito aqui."}
+          </p>
+
+          {desencontro ? (
+            <p className="m-0 mt-2 rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+              {`Existe uma geração mais recente (${comoSeChama(desencontro.vigente)}) que NÃO foi para a assinatura. Quem assina está com ${comoSeChama(desencontro.enviado)} na mão.`}
+            </p>
+          ) : null}
+
+          {outras.length > 0 ? (
+            <>
+              <h4 className="m-0 mt-3 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+                Outras versões
+              </h4>
+              <ul className="m-0 mt-1 list-none space-y-1 p-0">
+                {outras.map((c) => (
+                  <li key={c.id}>
+                    <button
+                      className="w-full rounded-lg bg-subtle px-2.5 py-1.5 text-left text-xs text-ink-soft transition-colors hover:text-ink"
+                      onClick={() => onAbrir(c.id)}
+                      type="button"
+                    >
+                      {comoSeChama(c)}
+                      <span className="block text-[10px] text-ink-muted">
+                        {new Date(c.criadoEm).toLocaleString("pt-BR")}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+        </>
+      )}
+    </section>
+  );
+}
 
 /**
  * O ENVELOPE DESTA VENDA, EM UMA LINHA — o que a etapa "Em assinatura" já pode dizer hoje.

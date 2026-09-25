@@ -97,7 +97,7 @@ vi.mock("@/lib/hercules/cronograma", async (importOriginal) => ({
         de: fixo.daqui30Dias,
         parcelaFinal: 120,
         parcelaInicial: 1,
-        temIpca: false,
+        indiceCorrecao: null,
         valor: 1_000,
       },
     ],

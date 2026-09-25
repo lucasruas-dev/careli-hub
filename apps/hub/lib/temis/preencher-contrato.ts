@@ -1,4 +1,5 @@
 import type { NoDeTexto, NoDoDocumento } from "./documento-html";
+import { acharVariavel, PREFIXO_ANEXO, SUFIXO_NOME_DO_ANEXO } from "./variaveis";
 
 // O MOTOR DO CONTRATO — a minuta vira documento preenchido.
 //
@@ -1073,9 +1074,95 @@ function textoDaVariavel(
   if (valor === null) {
     coleta.semValor.add(nome);
     // Ver a nota de `preencherContrato`: o que falta VOLTA a aparecer, para saltar aos olhos.
+    // ⚠️ E O COLCHETE NÃO SOBE PARA MAIÚSCULA: `[CPF_CLIENTE]` no papel não é mais o nome que o
+    // editor mostra na paleta, e quem for procurá-lo na minuta não acha.
     return { ...marcas, text: `[${nome}]` };
   }
-  return { ...marcas, text: valor };
+  return { ...marcas, text: emCaixaAlta(nome, valor) };
+}
+
+/**
+ * O VALOR INJETADO SAI EM CAIXA ALTA — e só o valor.
+ *
+ * ⚠️ AFIRMAÇÃO EM CAIXA ALTA: ATÉ 24/09/2026 NÃO HAVIA MAIÚSCULA NENHUMA NESTE MOTOR. A caixa era a
+ * que cada fonte tinha guardado, e por isso a mesma qualificação saía metade de um jeito e metade de
+ * outro. Nívea (24/09/2026), sobre o contrato de TAISA FERNANDA BATISTA: *"Precisamos ter padrão nas
+ * letras. Escreve tudo em maiúsculo, por favor."*. Lucas, no mesmo dia: *"sobre o contrato, deixa as
+ * variáveis em maiúsculo"*.
+ *
+ * O que estava MEDIDO naquele contrato (SELECT em 24/09/2026), campo a campo:
+ *
+ *     CONSULTOR(A) DE VENDAS   profissao_cliente    ficha.profissaoId = 66 → rótulo do catálogo do
+ *                                                   C2X, que é maiúsculo (`c2x-professions.ts`)
+ *     AUTÔNOMO(A)              profissao_conjuge    idem, id 35
+ *     UNIAO / PARA DE MINAS    bairro_/cidade_      apolo_addresses.district/city, gravados assim
+ *     Taisa Fernanda Batista   nome_cliente         apolo_entities.display_name (caixa mista)
+ *     Brasileira               nacionalidade        metadata.cadastro.nacionalidade
+ *     Casado (a)               estado_civil         rótulo de `c2x-fields.ts`, que é caixa mista
+ *     Comunhão parcial de bens regime_casamento     idem
+ *     Rua Paraíso              rua_cliente          apolo_addresses.street
+ *
+ * ⚠️ A MAIÚSCULA ENTRA AQUI, E NÃO NO DADO. `dados.compradores[].valores` e `dados.gerais` são
+ * lidos por mais gente do que o papel: `lib/assinatura/signatarios.ts:73-92` tira dali o NOME, o CPF
+ * e o E-MAIL de quem vai assinar, e `gerais.__empreendimento_id`/`__unidade_id` são UUIDs que
+ * `contrato-da-proposta.ts` e `lib/assinatura/envio-db.ts` usam para achar o empreendimento. Subir
+ * o mapa inteiro para maiúscula mandaria e-mail em caixa alta para a assinatura e compararia UUID
+ * com UUID de outra caixa. Aqui o alcance é só o texto que vai ao papel.
+ *
+ * ⚠️ O TEXTO FIXO DA MINUTA NÃO MUDA — ele é redação do jurídico e continua exatamente como foi
+ * publicado. Quem muda é o VALOR que entra no lugar do colchete.
+ *
+ * A régua é o `tipo` do catálogo (`variaveis.ts`), e não uma lista de nomes: quem criar a próxima
+ * variável de pessoa ganha a maiúscula sem tocar aqui.
+ */
+function emCaixaAlta(nome: string, valor: string): string {
+  return deveSubirACaixa(nome) ? valor.toUpperCase() : valor;
+}
+
+/**
+ * ⚠️ SÓ O QUE É DADO, NUNCA O QUE É FRASE. `tipo: "texto"` é o nome, o endereço, a profissão, o
+ * estado civil, o regime de bens, a nacionalidade, o documento e o CRECI — o que a qualificação
+ * lista. Fora da régua ficam, de propósito:
+ *
+ *   - `data` e `extenso`: são ORAÇÃO escrita pelo sistema no meio da redação do jurídico ("pelo
+ *     preço de R$ 100.000,00 (cem mil reais)", "aos 24 de setembro de 2026"). Subir só esse pedaço
+ *     deixaria um grito no meio de uma frase minúscula, que é o contrário do padrão que foi pedido;
+ *   - `dinheiro` e `numero`: já saem formatados e não têm letra que mude, tirando a unidade — e
+ *     "300,00 M²" não é como se escreve metro quadrado;
+ *   - `gerado`, `anexo` e os `bloco_*`: não são texto. Tabela de pagamento e peça anexada entram
+ *     como NÓS (ver `inserirGerados`) e nem passam por aqui; o marcador vira string vazia.
+ *
+ * E três exceções nominais, todas `tipo: "texto"`:
+ *
+ *   - O E-MAIL. Endereço em caixa alta é feio no papel e, pior, ensina errado: o contrato é o
+ *     documento que a pessoa confere. Nas 4 minutas publicadas (SELECT de 24/09/2026) há e-mail em
+ *     todas: `email_vinculado` e `email_coordenadora_vendas` nas 4, `email_cliente` e
+ *     `email_conjuge` em 2.
+ *   - `bens_e_permutas_descricao`, que é FRASE montada pelo motor ("Ford Ka 2019 placa ABC1D23
+ *     (permuta), no valor de R$ 80.000,00"), e cai na mesma razão do extenso.
+ *   - `anexo_N_nome`, que é NOME DE ARQUIVO ("Memorial descritivo.pdf"): o contrato promete em
+ *     cláusula um documento que existe com aquele nome.
+ *   - `plano_sistema_amortizacao` e `plano_juros` (24/09/2026), da MESMA família: os dois estão
+ *     marcados `tipo: "texto"` no catálogo, mas nenhum dos dois é dado da pessoa. O exemplo do
+ *     primeiro é "Tabela SACOC — amortização pura" (`variaveis.ts:610`), uma frase escrita pelo
+ *     sistema, com travessão no meio; o do segundo é "12% ao ano" (`variaveis.ts:606`), onde o
+ *     número não muda e quem subiria é a UNIDADE — "12% AO ANO", pelo mesmo motivo que deixou
+ *     "300,00 m²" de fora.
+ *
+ * ⚠️ `plano_indice_correcao` CONTINUA SUBINDO, DE PROPÓSITO ("IPCA anual" → "IPCA ANUAL"). Ali a
+ * palavra é RÓTULO de índice, quase todo sigla, e a caixa alta é o que o Quadro-Resumo já usa nas
+ * linhas vizinhas. O mesmo vale para `percentual_cliente`, `plano_entrada_percentual` e os
+ * `percentual_comissao_*`: são "50%", "20%", "3%", e a régua passa por eles sem mudar nada.
+ */
+function deveSubirACaixa(nome: string): boolean {
+  if (nome.includes("email")) return false;
+  if (nome === "bens_e_permutas_descricao") return false;
+  if (nome === "plano_sistema_amortizacao") return false;
+  if (nome === "plano_juros") return false;
+  if (nome.startsWith(PREFIXO_ANEXO) && nome.endsWith(SUFIXO_NOME_DO_ANEXO)) return false;
+  // ⚠️ O QUE O CATÁLOGO NÃO CONHECE FICA COMO ESTÁ. Um nome fora do catálogo não tem `tipo` que
+  // diga se é dado ou frase, e mexer na caixa de um valor que ninguém descreveu é adivinhação.
+  return acharVariavel(nome)?.tipo === "texto";
 }
 
 function valorDaVariavel(

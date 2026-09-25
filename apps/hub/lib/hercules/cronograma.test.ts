@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { type PlanoComercial, taxaMensal } from "@/lib/apolo/planos-comerciais";
 import { montarProposta, valorPresenteDosBaloes } from "@/lib/hercules/simulacao";
 
-import { montarCronograma, repartirEmPartesIguais } from "./cronograma";
+import { faixaCorrige, montarCronograma, repartirEmPartesIguais } from "./cronograma";
 
 /** O plano mais comum da casa: SACOC, sem juros — 21 dos 24 empreendimentos são SACOC. */
 const SACOC_SEM_JUROS: PlanoComercial = {
@@ -460,7 +460,7 @@ describe("as faixas de reajuste", () => {
         de: "2026-12-10",
         parcelaFinal: 120,
         parcelaInicial: 1,
-        temIpca: false,
+        indiceCorrecao: null,
         valor: 750,
       },
     ]);
@@ -470,7 +470,7 @@ describe("as faixas de reajuste", () => {
     const c = montarCronograma({ ...EXEMPLO_DO_LUCAS, plano: PRICE });
     expect(c.reajustes).toHaveLength(1);
     expect(c.reajustes[0]?.valor).toBe(1_078.72);
-    expect(c.reajustes[0]?.temIpca).toBe(false);
+    expect(c.reajustes[0]?.indiceCorrecao).toBe(null);
   });
 
   it("⚠️ o primeiro ano do SACOC é a AMORTIZAÇÃO PURA, e a nivelada só entra no segundo", () => {
@@ -488,7 +488,7 @@ describe("as faixas de reajuste", () => {
       de: "2026-11-10",
       parcelaFinal: 12,
       parcelaInicial: 1,
-      temIpca: false,
+      indiceCorrecao: null,
       // 90.000 ÷ 24, sem um centavo de juros: é o que o boleto do primeiro ano cobra. A tabela
       // deslocada imprimia aqui a nivelada (3.910,59) — uma parcela maior do que o primeiro
       // boleto, num papel que promete o que o C2X vai emitir.
@@ -500,8 +500,10 @@ describe("as faixas de reajuste", () => {
       de: "2027-11-10",
       parcelaFinal: 24,
       parcelaInicial: 13,
-      // ⚠️ O segundo ciclo carrega a marca: o valor é só juros, e o IPCA ainda soma em cima.
-      temIpca: true,
+      // ⚠️ O segundo ciclo carrega O ÍNDICE DO PLANO: o valor é só juros, e a correção ainda soma
+      // em cima. Era um booleano `temIpca` até 24/09/2026, e o papel escrevia "+ IPCA" mesmo num
+      // plano de poupança.
+      indiceCorrecao: "IPCA_ANUAL",
       // A nivelada da janela do ciclo 1 — os juros teóricos do primeiro ano, diluídos, é o que o
       // cliente passa a pagar do 13º mês em diante. A tabela deslocada dava 4.223,44 aqui.
       valor: 3_910.59,
@@ -530,7 +532,22 @@ describe("as faixas de reajuste", () => {
       parcelasMensais: 24,
       plano: { ...SACOC_COM_JUROS, indiceCorrecao: "SEM_CORRECAO" },
     });
-    expect(c.reajustes.map((r) => r.temIpca)).toEqual([false, false]);
+    expect(c.reajustes.map((r) => r.indiceCorrecao)).toEqual([null, null]);
+  });
+
+  // ⚠️ AFIRMAÇÃO EM CAIXA ALTA: A FAIXA DIZIA "TEM CORREÇÃO?" E O PAPEL RESPONDIA SEMPRE "IPCA".
+  // Medido em 24/09/2026: `select indice_correcao, count(*) from temis_planos group by 1` devolve
+  // 26 IPCA_ANUAL, 11 SEM_CORRECAO, 6 IPCA_MENSAL e 1 POUPANCA — e o POUPANCA é o plano NORMAL do
+  // Jardim das Gerais (enterprise 40, id 58992051-dcb6-408b-9c1d-f126300fb9a4). Toda proposta do
+  // JDG nesse plano imprimia "+ IPCA" num contrato que corrige pela poupança.
+  it("a faixa de reajuste diz QUAL índice corrige, e não um sim/não", () => {
+    const c = montarCronograma({
+      ...EXEMPLO_DO_LUCAS,
+      entradaVezes: 1,
+      parcelasMensais: 24,
+      plano: { ...SACOC_COM_JUROS, indiceCorrecao: "POUPANCA" },
+    });
+    expect(c.reajustes.map((r) => r.indiceCorrecao)).toEqual([null, "POUPANCA"]);
   });
 
   it("a mensal do fluxo e a faixa do reajuste contam a MESMA história", () => {
@@ -878,5 +895,41 @@ describe("⚠️ a data escolhida de cada parcela da entrada", () => {
     const c = montarCronograma(BASE);
     expect(c.entrada.at(-1)?.vencimento).toBe("2027-01-10");
     expect(c.mensais[0]?.vencimento).toBe("2027-02-10");
+  });
+});
+
+// ── A FAIXA CONGELADA, NAS DUAS GRAFIAS ─────────────────────────────────────
+//
+// ⚠️ AFIRMAÇÃO EM CAIXA ALTA: A REGRA NOVA NÃO ALCANÇA O PASSADO. A troca de `temIpca` por
+// `indiceCorrecao` (24/09/2026) é certa para o futuro, mas há cronograma CONGELADO em
+// `hercules_propostas.condicoes` na forma velha. Medido em 25/09/2026: 22 propostas guardam
+// `temIpca`, ZERO guardam `indiceCorrecao`, e 20 têm ao menos uma faixa com `temIpca` true (`select
+// count(*) filter (where jsonb_path_exists(condicoes, '$.reajustes[*].temIpca')),
+// count(*) filter (where jsonb_path_exists(condicoes, '$.reajustes[*].indiceCorrecao')),
+// count(*) filter (where condicoes->'reajustes' @> '[{"temIpca": true}]') from hercules_propostas
+// where origem = 'panteon'` devolve 22, 0 e 20).
+// Sem ler as duas grafias, essas 20 passariam a dizer "sem correção" na análise comercial da Têmis,
+// caladas, na exata tela cujo comentário diz existir para impedir esse erro.
+describe("faixaCorrige lê as duas grafias da faixa", () => {
+  it("a forma NOVA: o código do índice", () => {
+    expect(faixaCorrige({ indiceCorrecao: "POUPANCA" })).toBe(true);
+    expect(faixaCorrige({ indiceCorrecao: "IPCA_ANUAL" })).toBe(true);
+  });
+
+  it("a forma VELHA: o booleano das 22 propostas já gravadas", () => {
+    expect(faixaCorrige({ temIpca: true })).toBe(true);
+  });
+
+  it("faixa que não corrige, nas duas grafias, continua não corrigindo", () => {
+    expect(faixaCorrige({})).toBe(false);
+    expect(faixaCorrige({ temIpca: false })).toBe(false);
+    expect(faixaCorrige({ indiceCorrecao: null })).toBe(false);
+    expect(faixaCorrige({ indiceCorrecao: null, temIpca: false })).toBe(false);
+  });
+
+  it("lixo no jsonb não lança — a faixa vem de uma coluna livre", () => {
+    expect(faixaCorrige(null)).toBe(false);
+    expect(faixaCorrige("IPCA")).toBe(false);
+    expect(faixaCorrige(7)).toBe(false);
   });
 });

@@ -89,8 +89,14 @@ export type FaixaDeReajuste = {
   parcelas: string;
   /** "1º ano" */
   periodo: string;
-  /** ⚠️ `true` a partir do primeiro reajuste: é o que imprime "+ IPCA" ao lado do valor. */
-  temIpca: boolean;
+  /**
+   * O RÓTULO do índice que corrige esta faixa ("IPCA anual", "poupança anual"), ou nulo.
+   *
+   * ⚠️ ERA UM BOOLEANO `temIpca` ATÉ 24/09/2026, e o sufixo impresso era a palavra "IPCA" cravada
+   * no código — em qualquer plano, inclusive nos 11 SEM_CORRECAO e no POUPANCA do Jardim das
+   * Gerais. Quem traduz o código em rótulo é `proposta-para-pdf.ts`, com `INDICES`.
+   */
+  correcao: null | string;
   valor: string;
 };
 
@@ -441,7 +447,7 @@ function cabecalhoDaTabela(ctx: Ctx, colunas: Coluna[], xs: number[]): void {
 /**
  * Uma tabela do documento: cabeçalho espaçado, régua, linhas com fio fino embaixo.
  *
- * `sufixos` existe para o "+ IPCA" que o Lucas pediu ao lado do valor reajustado — ele vai em
+ * `sufixos` existe para o "+ IPCA anual" que o Lucas pediu ao lado do valor reajustado — ele vai em
  * corpo menor e cinza, colado no número, e não numa coluna própria: numa coluna, a tabela ganharia
  * uma divisão a mais para dizer uma palavra que só aparece em algumas linhas.
  *
@@ -859,7 +865,7 @@ export async function montarPropostaPdf(
         continuacao: dados.temReajuste
           ? "os reajustes seguintes seguem a mesma regra, sempre no aniversário"
           : undefined,
-        sufixos: dados.reajustes.map((r) => (r.temIpca ? "+ IPCA" : null)),
+        sufixos: dados.reajustes.map((r) => (r.correcao ? `+ ${r.correcao}` : null)),
       },
     );
   }
