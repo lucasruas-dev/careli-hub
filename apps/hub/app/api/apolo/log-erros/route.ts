@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { authorizeApoloRead } from "@/lib/apolo/auth";
 import { createApoloAdminClient } from "@/lib/apolo/server";
+import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 
 // LOG DE ERROS do cadastro público: o que barrou quem tentou enviar CAD ou se credenciar.
 //
@@ -83,14 +84,31 @@ export async function GET(request: Request) {
   const codigoPorId = new Map<string, string>();
 
   if (ids.length > 0) {
-    const { data: settings } = await adminClient
-      .from("apolo_enterprise_settings")
-      .select("enterprise_id, code")
-      // Lotes de 100: `.in()` com muitos ids estoura o tamanho da URL do PostgREST (400).
-      .in("enterprise_id", ids.slice(0, 100));
+    const [{ data: settings }, cadastro] = await Promise.all([
+      adminClient
+        .from("apolo_enterprise_settings")
+        .select("enterprise_id, code")
+        // Lotes de 100: `.in()` com muitos ids estoura o tamanho da URL do PostgREST (400).
+        .in("enterprise_id", ids.slice(0, 100)),
+      // Best-effort: sem o cadastro, a coluna volta a mostrar a sigla do settings, como antes.
+      carregarCadastroDeEmpreendimentos().catch((erro: unknown) => {
+        console.error("[apolo][log-erros] cadastro do Panteon indisponível", erro);
+        return [];
+      }),
+    ]);
 
     for (const linha of (settings ?? []) as { code: null | string; enterprise_id: string }[]) {
       if (linha.code) codigoPorId.set(String(linha.enterprise_id), linha.code);
+    }
+
+    // ⚠️ O CÓDIGO DO CADASTRO DO PANTEON GANHA, casado pelo ID (Lucas, 24/09/2026). A sigla do
+    // settings é uma cópia que a tela do empreendimento regrava com o código que o C2X mostra na
+    // hora (`setEnterpriseCredenciamento`), e por isso envelhece ou muda sozinha quando alguém
+    // renomeia no legado: o 43 ficou RDV depois de virar PDI, o 30 ficou ADT depois de virar ACT.
+    // `hercules_empreendimentos` é o cadastro, e o id do C2X é a chave que não muda.
+    for (const linha of cadastro) {
+      const id = linha.c2xEnterpriseId?.trim();
+      if (id && linha.codigo && ids.includes(id)) codigoPorId.set(id, linha.codigo);
     }
   }
 

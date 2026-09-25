@@ -8,12 +8,12 @@ import {
 } from "@/lib/apolo/credenciamento-trava-corretor";
 import {
   avisarCredenciamentoAprovado,
-  coordenadoresDosEmpreendimentos,
+  coordenadoresDosEmpreendimentosPorId,
   representanteDaImobiliaria,
   telefoneDaImobiliaria,
 } from "@/lib/apolo/disparo-credenciamento";
-import { loadApoloEnterpriseCadastro } from "@/lib/apolo/empreendimentos";
 import { contatoDaEntidadeImobiliaria } from "@/lib/apolo/disparo-imobiliaria";
+import { PORTA_DA_PROMOCAO_PUBLICA } from "@/lib/apolo/habilitada-sem-fila";
 import { consultarImobiliariaCredenciada } from "@/lib/publico/cad/dados";
 import {
   cnpjValido,
@@ -282,7 +282,7 @@ const soDigitosCpf = (v: unknown): string => (typeof v === "string" ? v.replace(
 
   const linhas = (existentes ?? []) as Array<{
     id: string;
-    metadata: { enterpriseId?: string } | null;
+    metadata: ({ enterpriseId?: string } & Record<string, unknown>) | null;
     status: null | string;
   }>;
 
@@ -388,12 +388,32 @@ const soDigitosCpf = (v: unknown): string => (typeof v === "string" ? v.replace(
 
   // Pedido antigo que ficou pendente é PROMOVIDO em vez de duplicado — senão a imobiliária
   // acumularia duas linhas do mesmo empreendimento, uma valendo e outra não.
+  //
+  // ⚠️ A PROMOÇÃO GRAVA A PORTA E A HORA NO VÍNCULO (revisão de 24/09/2026). A linha promovida guarda
+  // o `created_at` do pedido original e o `source: "apolo"` sem autor do cadastro público, que o Board
+  // lê como "passou pela fila". Sem a marca, esta auto-aprovação sumia da coluna Habilitada (pedido de
+  // mais de 30 dias) ou aparecia sem o selo "automática". O metadata é MESCLADO, linha a linha, porque
+  // o UPDATE de jsonb troca o objeto inteiro e apagaria o `enterpriseId`. Ver
+  // lib/apolo/habilitada-sem-fila.ts.
   if (promover.length > 0) {
-    const { error: promoverError } = await adminClient
-      .from("apolo_relationships")
-      .update({ status: "verified" })
-      .in("id", promover);
-    if (promoverError) return erro(undefined, 500);
+    const habilitadoEm = new Date().toISOString();
+    const metadataPorId = new Map(linhas.map((linha) => [linha.id, linha.metadata ?? {}]));
+    const promovidas = await Promise.all(
+      promover.map((id) =>
+        adminClient
+          .from("apolo_relationships")
+          .update({
+            metadata: {
+              ...metadataPorId.get(id),
+              habilitadoEm,
+              habilitadoPela: PORTA_DA_PROMOCAO_PUBLICA,
+            },
+            status: "verified",
+          })
+          .eq("id", id),
+      ),
+    );
+    if (promovidas.some((resposta) => resposta.error)) return erro(undefined, 500);
   }
 
   const { error: vinculoError } = novos.length === 0
@@ -442,10 +462,14 @@ const soDigitosCpf = (v: unknown): string => (typeof v === "string" ? v.replace(
   // trabalha com a gente, e dizer "cadastro aprovado" soaria como se tivéssemos perdido o dela.
   const rep = await representanteDaImobiliaria(adminClient, input.entityId);
   const contatoDaEmpresa = await contatoDaEntidadeImobiliaria(adminClient, input.entityId);
-  const coordenadores = await coordenadoresDosEmpreendimentos(
+  // ⚠️ PELO ID DO EMPREENDIMENTO, NÃO PELA SIGLA (Lucas, 24/09/2026). Esta é a contenção da
+  // auto-aprovação: a imobiliária já credenciada entra sem fila, e o coordenador é quem fica sabendo.
+  // Pela sigla, a CONECTTA IMOVEIS entrou no 43 minutos depois de a Nivea renomeá-lo no C2X (RDV ->
+  // PDI) e a LUNA não recebeu nada; e o `group:Lagoa Bonita` que esta página oferece nunca achou
+  // coordenador nenhum. Quem não for achado agora fica REGISTRADO como disparo falho, com o motivo.
+  const coordenadores = await coordenadoresDosEmpreendimentosPorId(
     adminClient,
     pedidos.map((n) => ({ enterpriseId: n.id, label: n.label })),
-    loadApoloEnterpriseCadastro,
   );
 
   await avisarCredenciamentoAprovado(adminClient, {

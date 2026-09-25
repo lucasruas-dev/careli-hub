@@ -25,6 +25,11 @@ import { C2X_PROFISSOES } from "./c2x-professions";
 import { normalizarProfissaoLivre } from "./profissao";
 import { documentoParaBusca } from "@/lib/iris/apolo/busca-por-numero";
 import { importarCreciDoC2x, type CreciDoC2x } from "@/lib/apolo/importar-creci";
+import {
+  lerNomesDeMercado,
+  nomeDoEmpreendimentoPorId,
+  type NomesDeMercado,
+} from "@/lib/apolo/nome-de-mercado-por-id";
 import type {
   ApoloAddress,
   ApoloAuditSignal,
@@ -215,12 +220,17 @@ type C2xUserRow = RowDataPacket & {
   email: string | null;
   fantasy_name: string | null;
   id: number;
+  // O ID do empreendimento (`enterprises.id`) ao lado do nome, pela MESMA ordenação do group_concat:
+  // é por ele que o nome gravado vira o de mercado do Panteon (`comNomeDeMercado`). Opcional no tipo
+  // porque a consulta ao vivo de desenvolvimento e os fixtures de teste podem não trazê-lo.
+  latest_enterprise_id?: string | null;
   latest_enterprise_name: string | null;
   latest_paid_area: number | string | null;
   latest_paid_contract_document_id: string | null;
   latest_paid_contract_status: string | null;
   latest_paid_contract_url: string | null;
   latest_paid_enterprise_code: string | null;
+  latest_paid_enterprise_id?: string | null;
   latest_paid_enterprise_name: string | null;
   latest_paid_request_id: number | string | null;
   latest_paid_request_code: string | null;
@@ -268,6 +278,7 @@ type C2xPortfolioRow = RowDataPacket & {
   block: string | null;
   broker_agency: string | null;
   enterprise_code: string | null;
+  enterprise_id?: number | string | null;
   enterprise_name: string | null;
   lot: string | null;
   max_overdue_days: number | string | null;
@@ -341,6 +352,12 @@ const C2X_OUTSTANDING_PAYMENT_EXPRESSION = `
     0
   )
 `;
+// ⚠️ ISTO VIROU A RESERVA, NÃO A FONTE (Lucas, 24/09/2026). O nome por SIGLA, escrito à mão aqui,
+// é o defeito que o renome do 43 no C2X expôs: sigla muda no legado sem ninguém avisar, e o
+// "Lagoa Bonita - LBF" daqui ainda mostrava a divisão interna para quem lê a carteira. Quem manda é
+// o nome de mercado do Panteon PELO ID (`nome-de-mercado-por-id.ts`), aplicado em
+// `fetchC2xPortfolioByEntity`; esta expressão só responde pelo id que o cadastro do Panteon ainda não
+// conhece.
 const C2X_ENTERPRISE_DISPLAY_EXPRESSION = `
   case
     when upper(trim(e.code)) = 'REP' then 'Recanto do Para'
@@ -451,10 +468,19 @@ export async function syncApoloFromC2x(): Promise<SyncResult> {
     const [users] = await poolResult.pool.query<C2xUserRow[]>(c2xUsersQuery());
     const now = new Date().toISOString();
     let rowsWritten = 0;
+    // O nome de mercado do Panteon, lido UMA vez para a rodada inteira (e não por lote nem por
+    // linha): ver `comNomeDeMercado`.
+    const nomesDeMercado = await lerNomesDeMercado(adminClient);
 
     for (let index = 0; index < users.length; index += SYNC_BATCH_SIZE) {
       const batch = users.slice(index, index + SYNC_BATCH_SIZE);
-      rowsWritten += await persistApoloEntityBatch(adminClient, batch, syncRun.syncRunId, now);
+      rowsWritten += await persistApoloEntityBatch(
+        adminClient,
+        batch,
+        syncRun.syncRunId,
+        now,
+        nomesDeMercado,
+      );
     }
 
     const { error: finishError } = await adminClient
@@ -671,6 +697,9 @@ export async function syncApoloIncrementalFromC2x(): Promise<SyncResult> {
       const now = new Date().toISOString();
       const syncRun = await startApoloSyncRun(adminClient);
       const syncRunId = syncRun.ok ? syncRun.syncRunId : "incremental";
+      // ⚠️ UMA LEITURA DO CADASTRO POR RODADA, e só quando há cliente a regravar. Este cron roda a
+      // cada 5 minutos: a rodada vazia (a maioria) não toca o Supabase por causa do nome.
+      const nomesDeMercado = await lerNomesDeMercado(adminClient);
 
       for (let index = 0; index < ids.length; index += SYNC_BATCH_SIZE) {
         const batchIds = ids.slice(index, index + SYNC_BATCH_SIZE);
@@ -682,6 +711,7 @@ export async function syncApoloIncrementalFromC2x(): Promise<SyncResult> {
           userRows,
           syncRunId,
           now,
+          nomesDeMercado,
         );
       }
     }
@@ -996,7 +1026,7 @@ async function loadApoloTablesDashboard(
   const documentLabelsByEntity =
     await fetchC2xDocumentLabelsByEntity(sourceLinks);
   const c2xPortfolioByEntity =
-    await fetchC2xPortfolioByEntity(sourceLinks);
+    await fetchC2xPortfolioByEntity(sourceLinks, adminClient);
   const { cadastro: c2xCadastroByEntity, relationships: c2xRelationshipsByEntity } =
     await fetchC2xCadastroByEntity(
       adminClient,
@@ -1925,6 +1955,7 @@ async function fetchC2xDocumentLabelsByEntity(
 
 async function fetchC2xPortfolioByEntity(
   sourceLinks: ApoloSourceLinkRow[],
+  adminClient?: ApoloSupabaseClient,
 ) {
   const c2xUserLinks = sourceLinks.filter(
     (link) =>
@@ -1964,6 +1995,7 @@ async function fetchC2xPortfolioByEntity(
           eu.area,
           eu.price as unit_price,
           e.code as enterprise_code,
+          e.id as enterprise_id,
           ${C2X_ENTERPRISE_DISPLAY_EXPRESSION} as enterprise_name,
           coalesce(
             nullif(trim(linked.fantasy_name), ''),
@@ -2109,12 +2141,20 @@ async function fetchC2xPortfolioByEntity(
 
     const portfolioByEntity = new Map<string, C2xPortfolioHydration>();
 
+    // ⚠️ A CARTEIRA AO VIVO GANHA DA GRAVADA NA TELA (`commercialLinks` do `mapApoloEntity`), então o
+    // nome de mercado tem de valer aqui também, senão a ficha continuaria mostrando o nome do C2X por
+    // cima do que o sync passou a gravar. Uma leitura do cadastro para a página toda, e só quando há
+    // carteira a nomear.
+    const nomesDeMercado =
+      adminClient && rowsByEntity.size > 0 ? await lerNomesDeMercado(adminClient) : undefined;
+
     for (const [entityId, rows] of rowsByEntity) {
       portfolioByEntity.set(entityId, {
         commercialLinks: rows.map((row) =>
           mapC2xPortfolioRowToCommercialLink(
             row,
             installmentsByRequestId.get(String(row.acquisition_request_id)) ?? [],
+            nomesDeMercado,
           ),
         ),
         financial: mapC2xPortfolioFinancialSnapshot(rows),
@@ -2127,14 +2167,19 @@ async function fetchC2xPortfolioByEntity(
   }
 }
 
-function mapC2xPortfolioRowToCommercialLink(
+// Exportada para o teste (`sync-c2x-nome-de-mercado.test.ts`): é aqui que a carteira AO VIVO ganha o
+// nome de mercado, e ela aparece na ficha por cima da gravada.
+export function mapC2xPortfolioRowToCommercialLink(
   row: C2xPortfolioRow,
   installments: ApoloInstallment[],
+  nomesDeMercado?: NomesDeMercado,
 ): ApoloCommercialLink {
   const block = normalizeC2xBlock(row.block);
   const lot = normalizeC2xLot(row.lot);
   const unitCode = firstFilled(row.unity_name) ?? undefined;
-  const enterprise = firstFilled(row.enterprise_name) ?? "Carteira comercial";
+  const enterprise =
+    firstFilled(nomeDoEmpreendimentoPorId(nomesDeMercado, row.enterprise_id, row.enterprise_name)) ??
+    "Carteira comercial";
   const brokerAgency = firstFilled(row.broker_agency) ?? undefined;
 
   return {
@@ -2147,6 +2192,7 @@ function mapC2xPortfolioRowToCommercialLink(
     contractUrl: firstFilled(row.signed_contract_url) ?? undefined,
     enterprise,
     enterpriseCode: firstFilled(row.enterprise_code) ?? undefined,
+    enterpriseId: optionalString(row.enterprise_id),
     installments,
     lot,
     referenceLabel:
@@ -3084,6 +3130,7 @@ function c2xUsersQuery(options: C2xUsersQueryOptions = {}) {
       coalesce(portfolio.payment_count, 0) as payment_count,
       coalesce(portfolio.unit_count, 0) as unit_count,
       portfolio.latest_stage_name,
+      portfolio.latest_enterprise_id,
       portfolio.latest_enterprise_name,
       portfolio.latest_unit_label,
       portfolio.latest_request_code,
@@ -3093,6 +3140,7 @@ function c2xUsersQuery(options: C2xUsersQueryOptions = {}) {
       portfolio.latest_paid_contract_url,
       portfolio.latest_paid_enterprise_code,
       portfolio.latest_paid_stage_name,
+      portfolio.latest_paid_enterprise_id,
       portfolio.latest_paid_enterprise_name,
       portfolio.latest_paid_request_id,
       portfolio.latest_paid_unit_label,
@@ -3147,10 +3195,15 @@ function c2xUsersQuery(options: C2xUsersQueryOptions = {}) {
         count(distinct case when pmt.payment_status_id in (5, 6, 7) and (pmt.payment_to_delete is null or pmt.payment_to_delete = 0) then pmt.id else null end) as payment_count,
         count(distinct case when pmt.payment_status_id in (5, 6, 7) and (pmt.payment_to_delete is null or pmt.payment_to_delete = 0) then eu.id else null end) as unit_count,
         substring_index(group_concat(coalesce(ars.name, '') order by ar.updated_at desc, ar.id desc separator '||'), '||', 1) as latest_stage_name,
+        -- O ID ANDA COLADO NO NOME, com a mesma ordenacao e o mesmo coalesce para vazio: o
+        -- group_concat pula NULL, e um id nulo na primeira posicao faria o primeiro id ser o de OUTRA
+        -- solicitacao. E por ele que o nome gravado vira o de mercado do Panteon (24/09/2026).
+        substring_index(group_concat(coalesce(cast(e.id as char), '') order by ar.updated_at desc, ar.id desc separator '||'), '||', 1) as latest_enterprise_id,
         substring_index(group_concat(coalesce(nullif(trim(e.divulgation_name), ''), nullif(trim(e.name), ''), '') order by ar.updated_at desc, ar.id desc separator '||'), '||', 1) as latest_enterprise_name,
         substring_index(group_concat(coalesce(nullif(trim(eu.name), ''), concat_ws(' ', nullif(trim(eu.block), ''), nullif(trim(eu.lot), '')), '') order by ar.updated_at desc, ar.id desc separator '||'), '||', 1) as latest_unit_label,
         substring_index(group_concat(coalesce(nullif(trim(ar.code), ''), cast(ar.id as char)) order by ar.updated_at desc, ar.id desc separator '||'), '||', 1) as latest_request_code,
         substring_index(group_concat(case when pmt.payment_status_id in (5, 6, 7) and (pmt.payment_to_delete is null or pmt.payment_to_delete = 0) then coalesce(ars.name, '') else null end order by ar.updated_at desc, ar.id desc separator '||'), '||', 1) as latest_paid_stage_name,
+        substring_index(group_concat(case when pmt.payment_status_id in (5, 6, 7) and (pmt.payment_to_delete is null or pmt.payment_to_delete = 0) then coalesce(cast(e.id as char), '') else null end order by ar.updated_at desc, ar.id desc separator '||'), '||', 1) as latest_paid_enterprise_id,
         substring_index(group_concat(case when pmt.payment_status_id in (5, 6, 7) and (pmt.payment_to_delete is null or pmt.payment_to_delete = 0) then coalesce(nullif(trim(e.divulgation_name), ''), nullif(trim(e.name), ''), '') else null end order by ar.updated_at desc, ar.id desc separator '||'), '||', 1) as latest_paid_enterprise_name,
         substring_index(group_concat(case when pmt.payment_status_id in (5, 6, 7) and (pmt.payment_to_delete is null or pmt.payment_to_delete = 0) then nullif(trim(e.code), '') else null end order by ar.updated_at desc, ar.id desc separator '||'), '||', 1) as latest_paid_enterprise_code,
         substring_index(group_concat(case when pmt.payment_status_id in (5, 6, 7) and (pmt.payment_to_delete is null or pmt.payment_to_delete = 0) then cast(ar.id as char) else null end order by ar.updated_at desc, ar.id desc separator '||'), '||', 1) as latest_paid_request_id,
@@ -3649,11 +3702,20 @@ export async function persistApoloEntityBatch(
   rawUsers: C2xUserRow[],
   syncRunId: string,
   syncedAt: string,
+  // O mapa id do C2X → nome de mercado do Panteon, lido UMA vez por rodada por quem chama
+  // (`lerNomesDeMercado`). Ausente, grava o nome do C2X, como antes de 24/09/2026.
+  nomesDeMercado?: NomesDeMercado,
 ) {
   // A query do C2X pode retornar o mesmo user.id mais de uma vez (fan-out de
   // joins). Sem dedupe, o upsert estoura com "ON CONFLICT DO UPDATE command
   // cannot affect row a second time". Deduplicamos por id antes de montar.
-  const users = dedupeBy(rawUsers, (user) => String(user.id));
+  //
+  // ⚠️ O NOME DO EMPREENDIMENTO É TROCADO AQUI, NA ENTRADA, e não em cada tabela. Ele entra em
+  // `apolo_commercial_links.enterprise_name`, na descrição da linha do tempo e no texto do índice de
+  // busca; trocar em um só lugar garante que os três digam o mesmo nome.
+  const users = dedupeBy(rawUsers, (user) => String(user.id)).map((user) =>
+    comNomeDeMercado(user, nomesDeMercado),
+  );
   const entityRows = users.map((user) => {
     const document = user.cpf ?? user.cnpj ?? null;
     const documentDisplay = formatDocumentForDisplay(document);
@@ -4100,6 +4162,40 @@ function buildRelationshipRows(user: C2xUserRow, syncedAt: string) {
   }));
 }
 
+/**
+ * O NOME DO EMPREENDIMENTO QUE O SYNC GRAVA: o de mercado do Panteon, pelo id do C2X.
+ *
+ * Lucas (24/09/2026): *"pode"* para travar as portas por onde o C2X ainda mexe no Panteon. Até aqui o
+ * sync gravava o nome que o legado tivesse na hora; um renome feito lá (o 43 virou PORTAL DO
+ * IBITURUNA em 24/09, a Aldeia mudou de grafia em 12/09) entrava aqui sozinho, e só nos
+ * clientes que a rodada tocou: o mesmo empreendimento ficava com dois nomes no banco.
+ *
+ * ⚠️ PELO ID, NUNCA PELA SIGLA. A sigla também muda no legado (RDV virou PDI, LAG virou ADT e depois
+ * ACT), e foi ela que calou o aviso ao coordenador do 43.
+ *
+ * ⚠️ ID QUE O PANTEON NÃO CONHECE FICA COM O NOME DO C2X (`nomeDoEmpreendimentoPorId`): é o
+ * empreendimento criado no legado depois da semeadura de 02/09, e apagar o nome tiraria da ficha e da
+ * busca a única pista de onde o cliente comprou. Quando ele for cadastrado aqui, a rodada seguinte
+ * troca sozinha.
+ */
+function comNomeDeMercado(user: C2xUserRow, nomes: NomesDeMercado | undefined): C2xUserRow {
+  if (!nomes || nomes.size === 0) return user;
+
+  return {
+    ...user,
+    latest_enterprise_name: nomeDoEmpreendimentoPorId(
+      nomes,
+      user.latest_enterprise_id,
+      user.latest_enterprise_name,
+    ),
+    latest_paid_enterprise_name: nomeDoEmpreendimentoPorId(
+      nomes,
+      user.latest_paid_enterprise_id,
+      user.latest_paid_enterprise_name,
+    ),
+  } as C2xUserRow;
+}
+
 function buildCommercialRows(user: C2xUserRow, syncedAt: string) {
   return buildC2xCommercialLinks(user).map((link) => ({
     entity_id: deterministicUuid(`apolo:c2x:users:${user.id}`),
@@ -4116,6 +4212,8 @@ function buildCommercialRows(user: C2xUserRow, syncedAt: string) {
       contractStatus: link.contractStatus ?? null,
       contractUrl: link.contractUrl ?? null,
       enterpriseCode: link.enterpriseCode ?? null,
+      // A chave que não muda no renome: quem ler esta linha depois traduz o nome por ela.
+      enterpriseId: link.enterpriseId ?? null,
       lot: link.lot ?? null,
       sourceSystem: "c2x",
       tableValue: link.tableValue ?? null,
@@ -4538,6 +4636,8 @@ function buildC2xCommercialLinks(row: C2xUserRow): ApoloCommercialLink[] {
           contractUrl: firstFilled(row.latest_paid_contract_url) ?? undefined,
           enterprise,
           enterpriseCode: firstFilled(row.latest_paid_enterprise_code) ?? undefined,
+          enterpriseId:
+            optionalString(row.latest_paid_enterprise_id) ?? optionalString(row.latest_enterprise_id),
           lot: paidLot,
           referenceLabel:
             brokerAgency ??
@@ -4558,6 +4658,7 @@ function buildC2xCommercialLinks(row: C2xUserRow): ApoloCommercialLink[] {
       return [
         {
           enterprise: firstFilled(row.latest_enterprise_name) ?? "Jornada comercial",
+          enterpriseId: optionalString(row.latest_enterprise_id),
           referenceLabel:
             firstFilled(row.linked_party_name) ??
             firstFilled(row.latest_request_code) ??

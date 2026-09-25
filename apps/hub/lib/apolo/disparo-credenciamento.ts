@@ -1,4 +1,9 @@
 import { cadastroEfetivo } from "@/lib/apolo/cadastro-efetivo";
+import {
+  coordenadoresDosPedidos,
+  type FontesDoCoordenador,
+  MOTIVO_SEM_COORDENADOR,
+} from "@/lib/apolo/coordenador-do-empreendimento";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { sendEvolutionDirectMedia, sendEvolutionDirectText } from "@/lib/iris/evolution-api";
@@ -68,23 +73,106 @@ type ResultadoEnvio = { erro?: string; ok: boolean; para?: string };
 
 // O COORDENADOR DE VENDAS DE CADA EMPREENDIMENTO.
 //
-// Ele mora no cadastro do empreendimento no C2X (`players`, relação `coordenador_vendas`) — é o
-// mesmo caminho que o aviso de crédito reprovado já usa (`disparo-reprovacao.ts:227`), e por
-// isso o disparo `coordenador` funciona bem hoje: 175 lidos de 186.
+// Desde 24/09/2026 ele sai do cadastro do Panteon (`apolo_enterprise_settings.coordenador_entity_id`)
+// e, só quando ali está vazio, do cadastro do empreendimento no C2X (`players`, relação
+// `coordenador_vendas`), sempre pelo ID do empreendimento.
 //
 // ⚠️ AGRUPA POR COORDENADOR, e não manda uma mensagem por empreendimento. Cada empreendimento
 // tem o SEU coordenador, e a imobiliária pode ser habilitada em vários de uma vez: sem agrupar,
 // quem cuida de três produtos receberia três mensagens quase iguais no mesmo segundo. Com o
 // agrupamento, cada um recebe uma mensagem com os empreendimentos que são dele.
 //
-// A ponte `enterpriseId -> code` sai de `apolo_enterprise_settings`, que é onde o Apolo guarda a
-// sigla (VOR, GDN…) que o C2X usa como chave do cadastro.
+// ⚠️ PELO ID, NÃO PELA SIGLA (Lucas, 24/09/2026). A ponte antiga, `enterpriseId -> settings.code ->
+// C2X por sigla`, voltou vazia quando a Nivea renomeou o 43 no C2X (RDV -> PDI) e a LUNA não soube da
+// CONECTTA. A busca nova (`coordenadoresDosEmpreendimentosPorId`) usa o coordenador cadastrado no
+// Panteon e, sem ele, o C2X pelo id. Ver lib/apolo/coordenador-do-empreendimento.ts.
 export type CoordenadorComEmpreendimentos = {
   empreendimentos: EmpreendimentoHabilitado[];
+  /**
+   * Por que este aviso não pode sair (empreendimento sem coordenador, coordenador sem telefone).
+   * Presente = o disparo é REGISTRADO como `falhou` com este texto, sem ir ao gateway. Antes, o
+   * coordenador que não era achado simplesmente sumia da lista, e ninguém ficava sabendo.
+   */
+  motivo?: string;
   nome: string;
   telefone: null | string;
 };
 
+/**
+ * Os coordenadores dos empreendimentos, agrupados, achados PELO ID (e o `group:<Nome>` pelas
+ * divisões do cadastro do Panteon).
+ *
+ * ⚠️ MESMO FORMATO de `coordenadoresDosEmpreendimentos`, de propósito: quem chamava a busca por
+ * sigla troca a chamada e mais nada. A diferença está no que volta quando não dá para avisar: uma
+ * entrada com `motivo`, que `avisarCredenciamentoAprovado` grava como disparo falho.
+ */
+export async function coordenadoresDosEmpreendimentosPorId(
+  client: SupabaseClient,
+  // O NOME vem junto pelo mesmo motivo da busca antiga: o rótulo que a imobiliária vê já está no
+  // vínculo, e ir buscá-lo de novo seria uma leitura a mais.
+  empreendimentos: { enterpriseId: string; label: string }[],
+  fontes?: FontesDoCoordenador,
+): Promise<CoordenadorComEmpreendimentos[]> {
+  const validos = empreendimentos
+    .map((e) => ({ enterpriseId: String(e.enterpriseId ?? "").trim(), label: e.label }))
+    .filter((e) => e.enterpriseId);
+  if (validos.length === 0) return [];
+
+  const porPedido = await coordenadoresDosPedidos(
+    client,
+    validos.map((e) => e.enterpriseId),
+    fontes,
+  );
+
+  // Chave do agrupamento: o telefone (é por ele que a mensagem sai). Sem telefone, a entidade: dois
+  // empreendimentos do mesmo coordenador sem número viram UMA falha registrada, não duas.
+  const porCoordenador = new Map<string, CoordenadorComEmpreendimentos>();
+  const semCoordenador: CoordenadorComEmpreendimentos[] = [];
+
+  for (const emp of validos) {
+    const resposta = porPedido.get(emp.enterpriseId);
+    const achados = resposta?.coordenadores ?? [];
+
+    if (achados.length === 0) {
+      semCoordenador.push({
+        empreendimentos: [{ label: emp.label }],
+        motivo: `${emp.label}: ${resposta?.motivo ?? MOTIVO_SEM_COORDENADOR}`,
+        nome: "não encontrado",
+        telefone: null,
+      });
+      continue;
+    }
+
+    for (const coordenador of achados) {
+      const digitos = (coordenador.telefone ?? "").replace(/\D/g, "");
+      const chave = digitos ? `telefone:${digitos}` : `entidade:${coordenador.entityId}`;
+      const atual = porCoordenador.get(chave);
+
+      if (atual) {
+        if (!atual.empreendimentos.some((e) => e.label === emp.label)) {
+          atual.empreendimentos.push({ label: emp.label });
+        }
+      } else {
+        porCoordenador.set(chave, {
+          empreendimentos: [{ label: emp.label }],
+          nome: coordenador.nome,
+          telefone: coordenador.telefone,
+          ...(coordenador.telefone ? {} : { motivo: coordenador.motivoSemTelefone }),
+        });
+      }
+    }
+  }
+
+  return [...porCoordenador.values(), ...semCoordenador];
+}
+
+/**
+ * @deprecated BUSCA POR SIGLA: quebra quando alguém renomeia o empreendimento no C2X (o 43, RDV ->
+ * PDI, em 24/09/2026) e nunca achou o `group:Lagoa Bonita`. Use `coordenadoresDosEmpreendimentosPorId`.
+ *
+ * ⚠️ FICA SÓ ENQUANTO HOUVER CHAMADOR: em 24/09/2026 o único é `lib/apolo/board-do-servidor.ts` (a
+ * habilitação pelo Board), que é de outra frente. Quando ele trocar, esta função sai.
+ */
 export async function coordenadoresDosEmpreendimentos(
   client: SupabaseClient,
   // O NOME vem junto: `apolo_enterprise_settings` só guarda `enterprise_id` e `code`, e o rótulo
@@ -309,6 +397,15 @@ export async function enviarPeloRelacionamento(
     anexo?: null | { fileName: string; url: string };
     destinatario: string;
     entityId: string;
+    /**
+     * Por que este aviso já nasce falho (coordenador não achado, sem telefone). Presente = nada vai
+     * ao gateway e o disparo é REGISTRADO como `falhou` com este texto.
+     *
+     * ⚠️ REGISTRAR, E NÃO PULAR (Lucas, 24/09/2026). O coordenador que não era achado sumia da lista
+     * sem deixar linha em `apolo_disparos`, e foi assim que ninguém viu a LUNA ficar sem o aviso da
+     * CONECTTA. Falha registrada é falha que a tela de status mostra.
+     */
+    impedimento?: string;
     // De ONDE partiu o envio. Default `relacionamento:whatsapp` (o disparo automático da
     // decisão); o botão de reenviar do Board manda `reenvio:whatsapp`, e é só por essa coluna
     // que dá para separar, na tela de status, o que o sistema mandou do que alguém remandou.
@@ -318,6 +415,11 @@ export async function enviarPeloRelacionamento(
     tipo: string;
   },
 ): Promise<ResultadoEnvio> {
+  if (input.impedimento) {
+    await registrar(client, { ...input, erro: input.impedimento, status: "falhou", telefone: null });
+    return { erro: input.impedimento, ok: false };
+  }
+
   const numero = telefoneParaEnvio(input.telefone);
 
   if (!numero) {
@@ -431,6 +533,8 @@ export async function avisarCredenciamentoAprovado(
         enviarPeloRelacionamento(client, {
           destinatario: `coordenador:${coord.nome}`,
           entityId: input.entityId,
+          // Coordenador não achado ou sem telefone: vira disparo falho COM o motivo, e não silêncio.
+          impedimento: coord.motivo,
           origem: input.origem,
           telefone: coord.telefone,
           texto: mensagemCoordenadorHabilitacao({

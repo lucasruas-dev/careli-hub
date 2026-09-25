@@ -63,6 +63,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Supabase indisponivel." }, { status: 503 });
   }
 
+  // ⚠️ `code` AINDA CHEGA DA TELA E É IGNORADO (Lucas, 24/09/2026: "pode" para travar as portas por
+  // onde o C2X mexe no Panteon). A tela manda a sigla que o C2X mostra na hora; repassá-la regravava
+  // `apolo_enterprise_settings.code` com ela, e sem ela o upsert a zerava. A sigla gravada agora sai
+  // do cadastro do Panteon pelo id (`siglaDoCadastro`, em lib/apolo/enterprise-settings.ts).
   let body: { ativo?: boolean; code?: string; enterpriseId?: string };
   try {
     body = (await request.json()) as typeof body;
@@ -80,7 +84,6 @@ export async function POST(request: Request) {
   const result = await setEnterpriseCredenciamento({
     adminClient,
     ativo: body.ativo,
-    code: body.code,
     enterpriseId: body.enterpriseId,
     updatedBy: auth.userId,
   });
@@ -110,6 +113,7 @@ export async function PATCH(request: Request) {
     // ("assinam em ordem, e nesta ordem"). `assinaturaOrdem` nula = ordem padrão da casa.
     assinaturaOrdem?: null | Record<string, number> | string[];
     assinaturaOrdenada?: boolean;
+    // Ignorado, como no POST: a sigla sai do cadastro do Panteon pelo id.
     code?: string;
     comprovanteRendaHabilitado?: boolean;
     enterpriseId?: string;
@@ -209,7 +213,6 @@ export async function PATCH(request: Request) {
 
     const r = await setEnterpriseOrdemDeAssinatura({
       adminClient,
-      code: body.code,
       enterpriseId: body.enterpriseId,
       // ⚠️ O MAPA PASSA INTEIRO. Até 23/09/2026 esta linha era `Array.isArray(bruta) ? bruta : null`:
       // a validação logo acima aceitava o mapa `{papel: número}` — a forma que a tela manda desde a
@@ -231,7 +234,6 @@ export async function PATCH(request: Request) {
   if (mexeuAnalise) {
     const r = await setEnterpriseAnaliseCredito({
       adminClient,
-      code: body.code,
       enterpriseId: body.enterpriseId,
       habilitada: Boolean(body.analiseCreditoHabilitada),
       updatedBy: auth.userId,
@@ -244,7 +246,6 @@ export async function PATCH(request: Request) {
   if (mexeuRenda) {
     const r = await setEnterpriseComprovanteRenda({
       adminClient,
-      code: body.code,
       enterpriseId: body.enterpriseId,
       habilitada: Boolean(body.comprovanteRendaHabilitado),
       updatedBy: auth.userId,
@@ -256,7 +257,6 @@ export async function PATCH(request: Request) {
   if (mexeuRecepcaoCad) {
     const r = await setEnterpriseRecepcaoCad({
       adminClient,
-      code: body.code,
       enterpriseId: body.enterpriseId,
       habilitada: Boolean(body.recepcaoCad),
       updatedBy: auth.userId,
@@ -267,7 +267,6 @@ export async function PATCH(request: Request) {
   if (mexeuRecepcaoImob) {
     const r = await setEnterpriseRecepcaoImobiliaria({
       adminClient,
-      code: body.code,
       enterpriseId: body.enterpriseId,
       habilitada: Boolean(body.recepcaoImobiliaria),
       updatedBy: auth.userId,
@@ -278,7 +277,6 @@ export async function PATCH(request: Request) {
   if (mexeuLimite) {
     const r = await setEnterpriseLimiteCredito({
       adminClient,
-      code: body.code,
       enterpriseId: body.enterpriseId,
       limite,
       updatedBy: auth.userId,
@@ -293,7 +291,6 @@ export async function PATCH(request: Request) {
   if (mexeuPrevenda) {
     const r = await setEnterprisePrevenda({
       adminClient,
-      code: body.code,
       enterpriseId: body.enterpriseId,
       habilitada: Boolean(body.prevendaHabilitada),
       updatedBy: auth.userId,
@@ -311,7 +308,6 @@ export async function PATCH(request: Request) {
   if (mexeuValorPix) {
     const r = await setEnterpriseValorPix({
       adminClient,
-      code: body.code,
       enterpriseId: body.enterpriseId,
       updatedBy: auth.userId,
       valor: valorPix,

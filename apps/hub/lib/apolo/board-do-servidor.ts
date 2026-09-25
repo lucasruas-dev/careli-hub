@@ -28,14 +28,13 @@ import {
   avisarCredenciamentoAprovado,
   avisarCredenciamentoCorrecao,
   avisarCredenciamentoIndeferido,
-  coordenadoresDosEmpreendimentos,
+  coordenadoresDosEmpreendimentosPorId,
   corretoresDaImobiliaria,
   representanteDaImobiliaria,
   telefoneDaImobiliaria,
 } from "@/lib/apolo/disparo-credenciamento";
 import { contatoDaEntidadeImobiliaria } from "@/lib/apolo/disparo-imobiliaria";
 import { canonizador } from "@/lib/apolo/empreendimento-equivalencia";
-import { loadApoloEnterpriseCadastro } from "@/lib/apolo/empreendimentos";
 import { listEnterprisesRecebendo } from "@/lib/apolo/enterprise-settings";
 import { atualizarEtapa, ehEtapaValida } from "@/lib/apolo/esteira";
 import {
@@ -46,6 +45,12 @@ import {
   maisRecentePorEntidade,
   normalizarEnterpriseId,
 } from "@/lib/apolo/esteira-cad";
+import {
+  enterpriseIdDoVinculo,
+  type HabilitadaSemFila,
+  ultimaHabilitacaoPorEntidade,
+  type VinculoDeHabilitacao,
+} from "@/lib/apolo/habilitada-sem-fila";
 import { grafiaCanonicaPorCliente as grafiaCanonicaDaImobiliaria } from "@/lib/apolo/imobiliaria-grafia";
 import { prevendaLigadaNaSetting, type SettingPrevenda } from "@/lib/apolo/limite-credito";
 import { comLimiteDeTempo, gerarESalvarCad } from "@/lib/apolo/salvar-cad";
@@ -142,6 +147,12 @@ export type ItemDaFila = {
   entidadeStatus: null | string;
   erroEnvio: boolean;
   etapa: null | string;
+  /**
+   * (24/09/2026) A imobiliária foi habilitada SEM passar pela fila: automática, pela página pública,
+   * ou pelo cadastro interno. Null quando não se aplica. Ver lib/apolo/habilitada-sem-fila.ts.
+   * Opcional no tipo só para os itens montados à mão nos testes do portal; a fila sempre manda o campo.
+   */
+  habilitadaSemFila?: HabilitadaSemFila | null;
   id: string;
   imobiliaria: null | string;
   motivo: null | string;
@@ -296,12 +307,13 @@ export async function montarFilaDoBoard(
   // O lote de 100 é o teto que a memória do projeto já registra para o `.in()` do PostgREST. Os
   // lotes vão em paralelo; um lote que falhe derruba só o próprio pedaço, e o `erroLotes` avisa.
   const LOTE_IDS = 100;
-  const lotes: string[][] = [];
-  for (let i = 0; i < idsNaEsteira.length; i += LOTE_IDS) {
-    lotes.push(idsNaEsteira.slice(i, i + LOTE_IDS));
-  }
-
-  const lerEntidadesEmLotes = async () => {
+  // (24/09/2026) Recebe os ids: a perna das habilitações sem fila (lá embaixo) lê as entidades dela
+  // pelo mesmo caminho, com o mesmo lote.
+  const lerEntidadesEmLotes = async (ids: string[]) => {
+    const lotes: string[][] = [];
+    for (let i = 0; i < ids.length; i += LOTE_IDS) {
+      lotes.push(ids.slice(i, i + LOTE_IDS));
+    }
     const respostas = await Promise.all(
       lotes.map((lote) =>
         adminClient
@@ -327,7 +339,8 @@ export async function montarFilaDoBoard(
   // INDEFERIDO continua com a entidade em `review` e já entra pela perna de cima.
   const DESDE = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  const [daFila, decididas, naEsteira] = await Promise.all([
+  // A leitura dos vínculos da perna (d) vai junto, em paralelo: ela não depende das outras três.
+  const [daFila, decididas, naEsteira, vinculosRecentes] = await Promise.all([
     adminClient
       .from("apolo_entities")
       .select(CAMPOS)
@@ -361,12 +374,52 @@ export async function montarFilaDoBoard(
       .gte("updated_at", DESDE)
       .order("updated_at", { ascending: false })
       .limit(500),
-    lotes.length > 0 ? lerEntidadesEmLotes() : Promise.resolve({ data: [], error: null }),
+    idsNaEsteira.length > 0
+      ? lerEntidadesEmLotes(idsNaEsteira)
+      : Promise.resolve({ data: [], error: null }),
+    habilitacoesRecentes(adminClient, DESDE),
   ]);
 
   if (daFila.error && naEsteira.error) {
     return { error: "Nao foi possivel carregar a fila.", ok: false, status: 500 };
   }
+
+  // (d) ⚠️ AS HABILITAÇÕES SEM FILA (Lucas, 24/09/2026: "3 - Isso ae"). A imobiliária que passou a
+  // valer num empreendimento SEM decisão no Board não entrava em nenhuma das três pernas de cima: a
+  // automática da página pública (a CONECTTA IMOVEIS no 43, e 37 outras nos últimos 30 dias) e a do
+  // cadastro interno (VIDA IMOVEIS, SANTA FE, VINICIUS JOHNNY, BILL) são fichas que vieram do C2X,
+  // com a entidade em `review` e sem `source`, e nenhuma tem esteira. As três pernas exigem
+  // `source='apolo'` ou esteira; esta sai do VÍNCULO, que é onde a habilitação mora. Mesma janela de
+  // 30 dias da perna (b). Quem já está na tela por outra perna não é lido de novo.
+  //
+  // ⚠️ NO PORTAL, SÓ AS HABILITAÇÕES DO PRODUTO DO RECORTE (revisão de 24/09/2026). A ficha é uma
+  // para todos os produtos: lida inteira, a habilitação automática da CONECTTA IMOVEIS no 43 punha o
+  // card dela no portal do Vale do Ouro (onde ela tem vínculo antigo, de 02/08), com o selo "sem fila
+  // em 24/09" e o rótulo "Vale do Ouro". O coordenador lia uma habilitação que não aconteceu no produto
+  // dele, e ficava sabendo que a imobiliária mexeu em outro, que é o que o `soDoRecorte` de 16/09
+  // existe para esconder. Medido em produção: 11 imobiliárias nesse caso (CENTIARE, LET'S GO e ZEN no
+  // portal do JDG com a data da Aldeia, TS 360 e DELTON no da Lagoa Bonita, entre outras). Filtrando
+  // AQUI, a perna (d), o selo e a data do card só enxergam o que aconteceu dentro do produto.
+  const habilitacoes = ultimaHabilitacaoPorEntidade(
+    recorteDaFila
+      ? vinculosRecentes.filter((vinculo) =>
+          recorteDaFila.ids.has(enterpriseIdDoVinculo(vinculo.metadata)),
+        )
+      : vinculosRecentes,
+  );
+  const jaNaFila = new Set(
+    [...(daFila.data ?? []), ...(decididas.data ?? []), ...(naEsteira.data ?? [])].map(
+      (row) => (row as { id: string }).id,
+    ),
+  );
+  const soPelaHabilitacao = await imobiliariasAtivas(
+    adminClient,
+    [...habilitacoes.keys()].filter((id) => !jaNaFila.has(id)),
+  );
+  const semFila =
+    soPelaHabilitacao.size > 0
+      ? await lerEntidadesEmLotes([...soPelaHabilitacao])
+      : { data: [], error: null };
 
   // MOTIVO DA CORREÇÃO DA IMOBILIÁRIA. Ela não tem esteira: o motivo mora no evento de
   // auditoria `credenciamento_correcao` (metadata.motivos + observacao), gravado quando o
@@ -475,6 +528,7 @@ export async function montarFilaDoBoard(
     ...(daFila.data ?? []),
     ...(decididas.data ?? []),
     ...(naEsteira.data ?? []),
+    ...(semFila.data ?? []),
   ] as EntidadeDaFilaRow[]) {
     if (!porId.has(row.id)) porId.set(row.id, row);
   }
@@ -661,6 +715,33 @@ export async function montarFilaDoBoard(
       nomeDoGrupo,
     });
 
+    // (24/09/2026) A FICHA QUE SÓ ESTÁ AQUI PELA HABILITAÇÃO (perna d) é imobiliária por construção:
+    // ela tem o papel `imobiliaria` ativo e um vínculo de habilitação recente. Veio do C2X sem
+    // `bornRole`, e o "prospect" de reserva a mandaria para o funil de CAD, sem a coluna Habilitada.
+    const entrouPelaHabilitacao = soPelaHabilitacao.has(row.id);
+    const papel = entrouPelaHabilitacao ? "imobiliaria" : (row.metadata?.bornRole ?? "prospect");
+    const papelStatus = papelStatusPorEntidade.get(row.id) ?? null;
+    const habilitacao = habilitacoes.get(row.id);
+    // O selo só existe para a imobiliária habilitada (papel `active`) e sem CAD na esteira: num card de
+    // CAD ele falaria de outra coisa. `origem` nula = a última habilitação passou pela fila (sem selo).
+    // `empreendimentos` = ONDE foi a habilitação sem fila, para o hover (revisão de 24/09/2026): no hub,
+    // o card da CONECTTA aparece no filtro do Vale do Ouro e o selo fala do 43. No portal os ids já
+    // vêm só do recorte (ver `habilitacoes`).
+    const habilitadaSemFila: HabilitadaSemFila | null =
+      !esteira && papel === "imobiliaria" && papelStatus === "active" && habilitacao?.origem
+        ? {
+            em: habilitacao.em,
+            empreendimentos: [
+              ...new Set(
+                habilitacao.enterpriseIds
+                  .map((id) => nomeDoGrupo.get(id))
+                  .filter((nome): nome is string => Boolean(nome)),
+              ),
+            ],
+            origem: habilitacao.origem,
+          }
+        : null;
+
     return {
       // Responsável salvo. Sem isto o Board volta a mostrar "Sem analista" a cada carga.
       analistaId: esteira?.analista_id ?? null,
@@ -677,7 +758,13 @@ export async function montarFilaDoBoard(
       // Quando a CAD chegou. Para o que veio do Asana é a data da própria CAD; o created_at
       // da entidade seria a data do SYNC do C2X (100 das 122 no mesmo segundo), que não diz
       // nada sobre a chegada e ainda ordenaria a fila errado.
-      criadoEm: esteira?.chegou_em ?? row.created_at,
+      // (24/09/2026) Na habilitação sem fila, a chegada é a HABILITAÇÃO: a ficha da CONECTTA é de maio
+      // (carga do C2X), e o card diria "há 4 meses" sobre o que aconteceu hoje.
+      criadoEm:
+        habilitadaSemFila?.em ??
+        (entrouPelaHabilitacao ? habilitacao?.em : undefined) ??
+        esteira?.chegou_em ??
+        row.created_at,
       documento: row.document_masked ?? "",
       empreendimentos,
       // De QUAL CAD é este card (metade da chave da esteira). A tela devolve isto nas ações, para
@@ -697,6 +784,9 @@ export async function montarFilaDoBoard(
       motivo: esteira?.motivo ?? motivoCorrecaoImob.get(row.id) ?? null,
       // Só é true quando algum envio da pré-venda falhou — o card marca em vermelho.
       erroEnvio: comErroEnvio.has(row.id),
+      // (24/09/2026) Habilitada sem passar pela fila: automática (página pública) ou pelo cadastro
+      // interno. A tela mostra um selo; null = não se aplica.
+      habilitadaSemFila,
       id: row.id,
       nome: row.legal_name || row.display_name,
       // PIX da pré-venda: alimenta o selo "PAGO" no card e o filtro de pagos.
@@ -716,12 +806,13 @@ export async function montarFilaDoBoard(
       // regra antiga, FM SOLUCOES INDUSTRIAIS (credenciada, veio do sync do C2X e por isso não
       // tem bornRole) aparecia na trilha de imobiliária, com as etapas erradas. Toda ficha
       // nascida no Apolo tem bornRole, então o fallback só alcança o que veio do sync.
-      papel: row.metadata?.bornRole ?? "prospect",
+      // (24/09/2026) A exceção é a ficha da perna (d), ver `entrouPelaHabilitacao` acima.
+      papel,
       // `attention` = a imobiliária foi para correção. Fica na ENTIDADE porque o CHECK do papel
       // não tem esse valor (só active|review|blocked|archived).
       entidadeStatus: row.status ?? null,
       // Só faz sentido para imobiliária; para o resto fica null e a tela ignora.
-      papelStatus: papelStatusPorEntidade.get(row.id) ?? null,
+      papelStatus,
       socios: conta(cadastro?.socios),
     };
   });
@@ -818,6 +909,82 @@ export async function montarFilaDoBoard(
     data: { analistas, empreendimentos: empreendimentosDoCatalogo, itens: itensDoHub, moverCad: destinosDoMover, usuarioAtual },
     ok: true,
   };
+}
+
+/**
+ * As habilitações de empreendimento dos últimos 30 dias, por entidade: a mais recente e por qual porta
+ * ela veio (ver `ultimaHabilitacaoPorEntidade`). Perna (d) da fila, 24/09/2026.
+ *
+ * ⚠️ PAGINADO, NUNCA UM `select` SÓ: o PostgREST corta em 1.000 linhas sem avisar, e a lista sairia
+ * incompleta em silêncio. Medido em 24/09/2026: 170 vínculos `verified` nos últimos 30 dias (98
+ * entidades, CADs de cliente incluídas), então hoje é uma página. O teto de páginas existe para uma
+ * leitura que enlouqueça não prender a fila inteira.
+ *
+ * Falha na leitura NÃO derruba o Board: a perna só acrescenta cards, e sem ela a tela volta a ser o
+ * que era antes de 24/09. O erro vai para o log.
+ *
+ * Devolve os VÍNCULOS, e não a conta pronta: o portal filtra pelo recorte antes de contar (ver
+ * `habilitacoes` em `montarFilaDoBoard`).
+ *
+ * ⚠️ A JANELA OLHA TAMBÉM A HORA DA PROMOÇÃO (revisão de 24/09/2026). O pedido `pending` que a página
+ * pública aprova sozinha é PROMOVIDO por UPDATE e guarda o `created_at` do pedido original: só pela
+ * criação, um pedido de julho aprovado hoje ficava fora dos 30 dias. A promoção grava
+ * `metadata.habilitadoEm`, e a leitura aceita as duas datas.
+ */
+async function habilitacoesRecentes(
+  adminClient: AdminClient,
+  desde: string,
+): Promise<VinculoDeHabilitacao[]> {
+  const PAGINA = 1000;
+  const TETO_DE_PAGINAS = 5;
+  const linhas: VinculoDeHabilitacao[] = [];
+
+  for (let pagina = 0; pagina < TETO_DE_PAGINAS; pagina += 1) {
+    const { data, error } = await adminClient
+      .from("apolo_relationships")
+      .select("entity_id, created_at, metadata")
+      .eq("relationship_type", "empreendimento")
+      .eq("status", "verified")
+      .or(`created_at.gte.${desde},metadata->>habilitadoEm.gte.${desde}`)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(pagina * PAGINA, pagina * PAGINA + PAGINA - 1);
+
+    if (error) {
+      console.error("[apolo][board] falha ao ler as habilitacoes recentes", error);
+      break;
+    }
+    const lidas = (data ?? []) as typeof linhas;
+    linhas.push(...lidas);
+    if (lidas.length < PAGINA) break;
+  }
+
+  return linhas;
+}
+
+/**
+ * Das entidades pedidas, as que têm o papel `imobiliaria` ATIVO. É o recorte da perna (d): vínculo
+ * de empreendimento `verified` também existe em CAD de cliente, e a coluna Habilitada é só de quem
+ * está credenciado de fato (papel `review` = ainda na Validação; `blocked` = recusada).
+ *
+ * Em lotes de 100 pelo limite de URL do `.in()`, como as outras leituras desta fila.
+ */
+async function imobiliariasAtivas(adminClient: AdminClient, ids: string[]): Promise<Set<string>> {
+  const ativas = new Set<string>();
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error } = await adminClient
+      .from("apolo_entity_profiles")
+      .select("entity_id")
+      .eq("profile", "imobiliaria")
+      .eq("status", "active")
+      .in("entity_id", ids.slice(i, i + 100));
+    if (error) {
+      console.error("[apolo][board] falha ao ler o papel das habilitacoes recentes", error);
+      continue;
+    }
+    for (const linha of (data ?? []) as Array<{ entity_id: string }>) ativas.add(linha.entity_id);
+  }
+  return ativas;
 }
 
 /**
@@ -2341,21 +2508,23 @@ export async function decidirCredenciamento(
     .eq("entity_id", id)
     .eq("relationship_type", "corretor");
 
-  // Cada empreendimento tem o SEU coordenador de vendas (cadastro do C2X). Agrupado: quem cuida
-  // de três produtos recebe UMA mensagem com os três, não três mensagens iguais.
-  const coordenadores = await coordenadoresDosEmpreendimentos(
-    adminClient,
-    [
-      ...pedidos
-        .filter((p) => plano.habilitar.includes(p.id))
-        .map((p) => ({ enterpriseId: p.enterpriseId, label: p.label })),
-      ...plano.novos.map((enterpriseId) => ({
-        enterpriseId,
-        label: labelPorId.get(enterpriseId) ?? "Empreendimento",
-      })),
-    ],
-    loadApoloEnterpriseCadastro,
-  );
+  // Cada empreendimento tem o SEU coordenador de vendas. Agrupado: quem cuida de três produtos
+  // recebe UMA mensagem com os três, não três mensagens iguais.
+  //
+  // ⚠️ PELO ID DO EMPREENDIMENTO, NÃO PELA SIGLA (Lucas, 24/09/2026). A busca antiga ia do id para a
+  // sigla do settings e da sigla para o C2X: quando a Nivea renomeou o 43 no C2X (RDV -> PDI), toda
+  // habilitação no 43 passou a sair sem aviso à LUNA, e o `group:Lagoa Bonita` nunca achou ninguém.
+  // Agora vale o coordenador cadastrado no Panteon e, sem ele, o C2X pelo id; quem não é achado vira
+  // disparo falho com o motivo (dentro de `avisarCredenciamentoAprovado`), não silêncio.
+  const coordenadores = await coordenadoresDosEmpreendimentosPorId(adminClient, [
+    ...pedidos
+      .filter((p) => plano.habilitar.includes(p.id))
+      .map((p) => ({ enterpriseId: p.enterpriseId, label: p.label })),
+    ...plano.novos.map((enterpriseId) => ({
+      enterpriseId,
+      label: labelPorId.get(enterpriseId) ?? "Empreendimento",
+    })),
+  ]);
 
   // ⚠️ SÓ AVISA SE ALGO MUDOU DE VERDADE, e esta é a trava que vale — a da tela é conveniência.
   //

@@ -50,6 +50,9 @@ export type ApoloCommercialLink = {
   contractUrl?: string;
   enterprise: string;
   enterpriseCode?: string;
+  // O id do empreendimento no C2X (`enterprises.id`), a chave que não muda quando alguém renomeia no
+  // legado. `enterprise` é o NOME DE MERCADO do Panteon resolvido por ele (24/09/2026).
+  enterpriseId?: string;
   installments?: ApoloInstallment[];
   lot?: string;
   referenceLabel: string;

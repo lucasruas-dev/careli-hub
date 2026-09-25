@@ -3,8 +3,14 @@
 // corretor, fornecedor...) reusam esta camada depois. Escreve coordenadamente nas tabelas
 // apolo_* (via service role; RLS so libera SELECT), espelhando o que o sync do C2X ja faz.
 // Ver [[project_apolo_cadastro_prospect]], [[project_apolo_crm_grafo]].
+import { depoisDaResposta } from "@/lib/apolo/depois-da-resposta";
 import { conflitoDeEmailRepetido } from "@/lib/apolo/email-unico";
 import { lerCadsDaEsteira, normalizarEnterpriseId } from "@/lib/apolo/esteira-cad";
+import {
+  expansorDeEmpreendimentos,
+  registrarHabilitacaoPeloCadastro,
+  separarVinculosNovos,
+} from "@/lib/apolo/habilitacao-pelo-cadastro";
 import { conflitoDeNucleoFamiliar, mensagemDeConflito } from "@/lib/apolo/nucleo-familiar";
 import { normalizarProfissaoLivre } from "@/lib/apolo/profissao";
 import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
@@ -191,6 +197,18 @@ export type AutorDeForaDoHub = {
 export type OpcoesDoCadastro = {
   autor?: AutorDeForaDoHub | null;
   fichaExistente?: "acrescentar" | "anexar";
+  /**
+   * (24/09/2026) O cadastro é do OPERADOR DA CARELI (o wizard do hub), e a imobiliária que ele grava
+   * nasce habilitada (regra de 17/08). Ligado: o vínculo de empreendimento `verified` NOVO grava a
+   * auditoria `credenciamento_habilitado` e avisa o coordenador do empreendimento; o que a ficha já
+   * tinha habilitado não é gravado nem avisado de novo. Ver lib/apolo/habilitacao-pelo-cadastro.ts.
+   *
+   * ⚠️ AS PORTAS PÚBLICAS NÃO LIGAM, e não podem ligar: elas também passam por aqui com o papel
+   * `imobiliaria`, mas REBAIXAM o papel para `review` e o vínculo para `pending` logo depois
+   * (/api/publico/imobiliaria/cadastro e /credenciar). Avisar ali diria ao coordenador que uma
+   * imobiliária que ninguém validou está habilitada. Ausente = desligado.
+   */
+  habilitacaoInterna?: boolean;
 };
 
 /**
@@ -1145,6 +1163,66 @@ export async function createApoloEntity(
     });
   }
 
+  // (24/09/2026) A HABILITAÇÃO PELO CADASTRO INTERNO. Só com a porta do hub ligando e só para a
+  // imobiliária (ver `OpcoesDoCadastro.habilitacaoInterna`). Aqui se decide, ANTES de gravar, o que é
+  // habilitação nova: na ficha que já existia, o vínculo que ela já tem `verified` sai das linhas
+  // (nem é gravado de novo nem avisado) e o papel dela diz se é a primeira vez.
+  let habilitacaoNova: null | {
+    empreendimentos: Array<{ enterpriseId: string; label: string }>;
+    primeiraVez: boolean;
+  } = null;
+  const vinculosDeEmpreendimento = linhas.relacionamentos.filter(
+    (linha) => linha.relationship_type === "empreendimento",
+  );
+  if (
+    opcoes.habilitacaoInterna === true &&
+    input.role === "imobiliaria" &&
+    vinculosDeEmpreendimento.length > 0
+  ) {
+    let jaHabilitados: string[] = [];
+    // Ficha nova não tinha papel nenhum: é a primeira vez dela com a Careli.
+    let primeiraVez = !anexarEm;
+    if (anexarEm) {
+      const [vinculosDaFicha, papelDaFicha] = await Promise.all([
+        adminClient
+          .from("apolo_relationships")
+          .select("metadata")
+          .eq("entity_id", entityId)
+          .eq("relationship_type", "empreendimento")
+          .eq("status", "verified")
+          .limit(1000),
+        adminClient
+          .from("apolo_entity_profiles")
+          .select("status")
+          .eq("entity_id", entityId)
+          .eq("profile", "imobiliaria")
+          .maybeSingle<{ status: null | string }>(),
+      ]);
+      // ⚠️ LEITURA QUE FALHA NÃO CALA O AVISO. Sem saber o que a ficha tinha, tudo é tratado como novo
+      // (gravado como sempre foi, e avisado): o pior caso é um aviso repetido ao coordenador, que se
+      // vê, contra uma habilitação que ninguém fica sabendo, que não se vê.
+      warn("vinculos da ficha", vinculosDaFicha.error);
+      jaHabilitados = vinculosDaFicha.error
+        ? []
+        : ((vinculosDaFicha.data ?? []) as Array<{ metadata: { enterpriseId?: unknown } | null }>)
+            .map((linha) => String(linha.metadata?.enterpriseId ?? "").trim())
+            .filter(Boolean);
+      // Papel ilegível numa ficha que já existia: "já trabalha com a gente" é o palpite menos errado
+      // (as fichas que o wizard reaproveita vêm quase todas do C2X, com o papel ativo).
+      primeiraVez = !papelDaFicha.error && papelDaFicha.data?.status !== "active";
+    }
+
+    const expandir = await expansorDeEmpreendimentos([
+      ...jaHabilitados,
+      ...vinculosDeEmpreendimento.map((linha) =>
+        String((linha.metadata as { enterpriseId?: unknown } | undefined)?.enterpriseId ?? ""),
+      ),
+    ]);
+    const separados = separarVinculosNovos(linhas.relacionamentos, jaHabilitados, expandir);
+    linhas = { ...linhas, relacionamentos: separados.relacionamentos };
+    habilitacaoNova = { empreendimentos: separados.novos, primeiraVez };
+  }
+
   // Secundarios: best-effort (a entidade ja existe em status 'review'; falhas viram warning pra
   // o operador revisar, sem perder o cadastro). Espelha o estilo best-effort do sync.
   //
@@ -1180,6 +1258,30 @@ export async function createApoloEntity(
   warn("endereco", addressRes.error);
   warn("relacionamentos", relationshipRes.error);
   warn("indice de busca", searchRes.error);
+
+  // AUDITA E AVISA O COORDENADOR da habilitação nova, DEPOIS de gravar e só se os vínculos entraram:
+  // vínculo recusado pelo banco não habilitou nada. Best-effort: `registrarHabilitacaoPeloCadastro`
+  // não lança, e `depoisDaResposta` é a segunda trava, porque o cadastro já está gravado e não pode
+  // virar erro.
+  //
+  // ⚠️ DEPOIS DA RESPOSTA, NÃO ANTES (revisão de 24/09/2026). O aviso lê o coordenador (às vezes no
+  // C2X) e manda pelo Evolution, que tem teto de 30 s: dentro do salvamento, o gateway lento segurava o
+  // operador na tela sem nada para mostrar, porque o resultado do aviso não volta para ela. O disparo
+  // fica registrado em `apolo_disparos`, que é onde a tela de status lê.
+  if (habilitacaoNova && habilitacaoNova.empreendimentos.length > 0 && !relationshipRes.error) {
+    const avisoDaHabilitacao = {
+      autorUserId: ownerUserId,
+      cnpj: docKind === "cnpj" ? formatDocument(digits) : null,
+      empreendimentos: habilitacaoNova.empreendimentos,
+      entityId,
+      imobiliaria: displayName,
+      primeiraVez: habilitacaoNova.primeiraVez,
+    };
+    await depoisDaResposta(
+      () => registrarHabilitacaoPeloCadastro(adminClient, avisoDaHabilitacao),
+      "[cadastro] falha no aviso da habilitacao",
+    );
+  }
 
   // Registra o codigo na entidade: e o que permite conferir a CAD depois.
   //

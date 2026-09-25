@@ -10,30 +10,45 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // chama o envio, e que ele deixa uma linha por destinatário em `apolo_disparos`.
 
 const estado = vi.hoisted(() => ({
+  // O que a busca do coordenador (pelo id) devolve para o empreendimento da venda.
+  coordenadores: { coordenadores: [], motivo: "Empreendimento sem coordenador de vendas no Panteon nem no C2X." } as {
+    coordenadores: Array<{ entityId: string; fonte: string; nome: string; telefone: null | string }>;
+    motivo?: string;
+  },
   enviados: 0,
+  entradas: [] as Array<Record<string, unknown>>,
   inserido: [] as Array<{ linhas: unknown; tabela: string }>,
+  pedidosDoCoordenador: [] as unknown[],
+  vinculados: [] as Array<{ nome: string; telefone: null | string }>,
 }));
 
 vi.mock("@/lib/apolo/disparo-credenciamento", () => ({
-  coordenadoresDosEmpreendimentos: async () => [],
-  enviarPeloRelacionamento: async () => {
+  enviarPeloRelacionamento: async (_client: unknown, entrada: Record<string, unknown>) => {
+    estado.entradas.push(entrada);
+    if (entrada.impedimento) return { erro: entrada.impedimento, ok: false };
     estado.enviados += 1;
     return { ok: true, para: "5562999990000" };
   },
 }));
 
-vi.mock("@/lib/apolo/empreendimentos", () => ({
-  loadApoloEnterpriseCadastro: async () => [],
+vi.mock("@/lib/apolo/coordenador-do-empreendimento", () => ({
+  MOTIVO_FALHA_DE_LEITURA: "Não foi possível ler o coordenador do empreendimento agora.",
+  MOTIVO_SEM_COORDENADOR: "Empreendimento sem coordenador de vendas no Panteon nem no C2X.",
+  coordenadoresDosPedidos: async (_client: unknown, ids: string[]) => {
+    estado.pedidosDoCoordenador.push(ids);
+    return new Map(ids.map((id) => [id, estado.coordenadores]));
+  },
 }));
 
 vi.mock("./quem-pode-vender", () => ({
-  coordenadoresDoPanteon: async () => [],
+  coordenadoresDoPanteon: async () => estado.vinculados,
 }));
 
 import {
   AVISO_NAO_ENVIADO_POR_DECISAO,
   avisarSobreAVenda,
   type DestinatariosDaVenda,
+  destinatariosDaVenda,
   registrarAvisoNaoEnviado,
   vendaAvisaPeloWhatsapp,
 } from "./avisos-da-venda";
@@ -57,8 +72,106 @@ function clienteFalso() {
 }
 
 beforeEach(() => {
+  estado.coordenadores = {
+    coordenadores: [],
+    motivo: "Empreendimento sem coordenador de vendas no Panteon nem no C2X.",
+  };
   estado.enviados = 0;
+  estado.entradas = [];
   estado.inserido = [];
+  estado.pedidosDoCoordenador = [];
+  estado.vinculados = [];
+});
+
+/** Supabase de mentira para `destinatariosDaVenda`: a imobiliária e o telefone dela. */
+function clienteDosDestinatarios() {
+  const consulta = (linhas: unknown[]) => {
+    const q: Record<string, unknown> = {};
+    q.select = () => q;
+    q.in = () => q;
+    q.then = (ok: (v: unknown) => unknown) => Promise.resolve({ data: linhas, error: null }).then(ok);
+    return q;
+  };
+  return {
+    from: (tabela: string) =>
+      tabela === "apolo_entities"
+        ? consulta([{ display_name: "GURGEL", id: "imo-1", legal_name: null, trade_name: null }])
+        : consulta([{ contact_type: "whatsapp", entity_id: "imo-1", is_primary: true, value: "62991234567" }]),
+  } as unknown as Parameters<typeof destinatariosDaVenda>[0];
+}
+
+describe("⚠️ o coordenador da venda é achado pelo id (Lucas, 24/09/2026)", () => {
+  it("pergunta pelo id do empreendimento da venda e usa quem voltou", async () => {
+    estado.coordenadores = {
+      coordenadores: [{ entityId: "luna", fonte: "panteon", nome: "LUNA NEGOCIOS IMOBILIARIOS", telefone: "31995968349" }],
+    };
+
+    const d = await destinatariosDaVenda(clienteDosDestinatarios(), {
+      corretorId: null,
+      empreendimento: { c2xId: "43", nome: "Portal do Ibituruna" },
+      imobiliariaId: "imo-1",
+    });
+
+    expect(estado.pedidosDoCoordenador).toEqual([["43"]]);
+    expect(d.coordenadores).toEqual([{ nome: "LUNA NEGOCIOS IMOBILIARIOS", telefone: "31995968349" }]);
+    expect(d.coordenadorAusente).toBeUndefined();
+  });
+
+  it("⚠️ ninguém achado vira destino falho COM o motivo, e não um aviso a menos calado", async () => {
+    const d = await destinatariosDaVenda(clienteDosDestinatarios(), {
+      corretorId: null,
+      empreendimento: { c2xId: "9001", nome: "ZZ TESTE" },
+      imobiliariaId: "imo-1",
+    });
+    expect(d.coordenadores).toEqual([]);
+    expect(d.coordenadorAusente).toBe("Empreendimento sem coordenador de vendas no Panteon nem no C2X.");
+
+    const resultados = await avisarSobreAVenda(clienteFalso(), {
+      corretorId: null,
+      destinatarios: d,
+      imobiliariaId: "imo-1",
+      origem: "reserva:whatsapp",
+      textos: [
+        { papel: "imobiliaria", texto: "b" },
+        { papel: "coordenador", texto: "c" },
+      ],
+      tipo: "hercules_reserva",
+    });
+
+    expect(resultados).toEqual([
+      { motivo: undefined, ok: true, para: "imobiliaria" },
+      {
+        motivo: "Empreendimento sem coordenador de vendas no Panteon nem no C2X.",
+        ok: false,
+        para: "coordenador",
+      },
+    ]);
+    // O registro do coordenador passa pelo mesmo `enviarPeloRelacionamento`, com o impedimento.
+    expect(estado.entradas.find((e) => e.destinatario === "coordenador")).toMatchObject({
+      impedimento: "Empreendimento sem coordenador de vendas no Panteon nem no C2X.",
+      telefone: null,
+    });
+  });
+
+  it("coordenador sem telefone continua na lista, a menos que o vínculo do Panteon tenha um", async () => {
+    estado.coordenadores = {
+      coordenadores: [{ entityId: "glender", fonte: "c2x", nome: "GLENDER", telefone: null }],
+    };
+    const semVinculo = await destinatariosDaVenda(clienteDosDestinatarios(), {
+      corretorId: null,
+      empreendimento: { c2xId: "1", nome: "Lavra do Ouro" },
+      imobiliariaId: "imo-1",
+    });
+    expect(semVinculo.coordenadores).toEqual([{ nome: "GLENDER", telefone: null }]);
+
+    estado.vinculados = [{ nome: "Nivea", telefone: "62999990000" }];
+    const comVinculo = await destinatariosDaVenda(clienteDosDestinatarios(), {
+      corretorId: null,
+      empreendimento: { c2xId: "1", nome: "Lavra do Ouro" },
+      imobiliariaId: "imo-1",
+    });
+    expect(comVinculo.coordenadores).toEqual([{ nome: "Nivea", telefone: "62999990000" }]);
+  });
 });
 
 describe("vendaAvisaPeloWhatsapp", () => {

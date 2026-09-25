@@ -1,33 +1,67 @@
-// SEMEIA O CADASTRO DE EMPREENDIMENTOS DO PANTEON — PAI E FILHOS (migration 0123).
+// SEMEIA O CADASTRO DE EMPREENDIMENTOS DO PANTEON: PAI E FILHOS (migration 0123).
 //
 // Lucas (02/09/2026): *"a partir de hoje vamos cadastrar os empreendimentos dentro do panteon (...)
 // ter o empreendimento pai, e os filhos (...) hoje eu não tenho esse agrupamento para o Vale do
 // Ouro, está todo solto, tem que unificar"*.
 //
-// É uma IMPORTAÇÃO ÚNICA: lê o C2X uma vez (read-only, como sempre) para não digitar 36 nomes e
-// cidades à mão, e grava no Panteon. Depois disso o cadastro vive aqui e o C2X não é mais
+// Foi uma IMPORTAÇÃO ÚNICA: leu o C2X uma vez (read-only, como sempre) para não digitar 36 nomes e
+// cidades à mão, e gravou no Panteon. Depois disso o cadastro vive aqui e o C2X não é mais
 // consultado para isso (*"não quero consultar c2x, quero importar"*).
 //
-// A REGRA DO AGRUPAMENTO: filhos do mesmo pai têm o MESMO `name` no C2X ("VALE DO OURO" ×4,
-// "LAGOA BONITA" ×3, "LAVRA DO OURO" ×2...). O ESPELHO É O PAI (Lucas: *"o espelho sempre será o
-// pai, porque lá que vai morar todos os registros, vendas"*): "LAGOA BONITA - MASTERPLAN" (31) e
-// o VLO (35) viram o próprio pai, com o id do C2X neles; VOC/VOL/VOR e LBF/LBR/LBP viram FILHOS =
-// visões segmentadas. Empreendimento único (Garden) é pai sem filho. Grupo sem espelho no C2X
-// (Lavra do Ouro) é pai sem id, só com os filhos.
+// ⚠️ DESDE 24/09/2026 ELE SÓ INSERE O QUE FALTA. Lucas, depois de a Nívea renomear no C2X o 43 de
+// RECANTO DO VALE/RDV para PORTAL DO IBITURUNA/PDI: *"Tivemos que mudar de nome"*; e *"pode"* para
+// travar as portas por onde o C2X ainda mexe no Panteon. Até então este script fazia UPSERT por código
+// e regravava `nome`, `c2x_enterprise_id`, `pai_id` e `vendendo` de toda linha herdada. Rodado depois
+// de um renome no legado, ele traria o nome do C2X por cima do que o Panteon decidiu (a Aldeia, o 42,
+// já diverge desde 12/09), e no 43 bateria no índice único do id e pararia no meio. A regra de quem
+// insere e quem é deixado em paz mora em `semear-empreendimentos-plano.mjs`, testada sem banco.
 //
-// ⚠️ SÓ GRAVA COM `--gravar`. Sem a flag mostra o que faria.
-// ⚠️ EXIGE A MIGRATION 0123 APLICADA.
-// ⚠️ Rodar de novo NÃO duplica: casa pelo `codigo` (único por workspace) e atualiza.
-// ⚠️ NÃO SOBRESCREVE PRODUTO QUE NÃO É DA CARGA: com dono marcado (`operado_por`, D2 de 16/09/2026),
-// nascido no Panteon (id >= 100000) ou criado pelo hub ou pelo portal. Esse é pulado com aviso.
+// ⚠️ E EXIGE A MESMA TRAVA DAS OUTRAS CARGAS DO LEGADO, ENCERRADAS EM 21/09/2026. Era o único script
+// de carga sem ela (os outros três: importar-fluxo-de-venda, carregar-unidades-do-c2x e
+// importar-eventos-da-proposta). O ensaio continua livre.
+//
+// ⚠️ NÃO SOBRESCREVE NADA, e ainda assim não pendura filho em produto que não é da carga: com dono
+// marcado (`operado_por`, D2 de 16/09/2026), nascido no Panteon (id >= 100000) ou criado pelo hub ou
+// pelo portal.
 //
 // Uso (da RAIZ do monorepo):
-//   node scripts/hercules/semear-empreendimentos.mjs            # ensaio
-//   node scripts/hercules/semear-empreendimentos.mjs --gravar   # grava
+//   node scripts/hercules/semear-empreendimentos.mjs            # ensaio: lê e mostra o que faltaria
+//   node scripts/hercules/semear-empreendimentos.mjs --gravar --carga-do-legado-autorizada
 
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
+
+import { agruparPaisEFilhos, planejarSemeadura } from "./semear-empreendimentos-plano.mjs";
+
+// ── 0. A TRAVA, ANTES DE QUALQUER CONEXÃO ──────────────────────────────────────────────────────
+//
+// CARGA DO LEGADO ENCERRADA EM 21/09/2026. Lucas: *"nao vou mais fazer isso"*. É o fim do caminho
+// aberto em 11/09 (*"depois disso fazemos todo operacional comercial dentro do panteon"*).
+//
+// POR QUE UMA TRAVA, E NÃO SÓ UM COMENTÁRIO. Comentário no topo não para quem copiou o comando de um
+// chat antigo. Esta trava para, e para ANTES de ler o .env, abrir o C2X ou o Supabase: quem esqueceu
+// a flag não chega nem perto do banco.
+const GRAVAR = process.argv.includes("--gravar");
+const CARGA_AUTORIZADA = process.argv.includes("--carga-do-legado-autorizada");
+if (GRAVAR && !CARGA_AUTORIZADA) {
+  for (const linha of [
+    "",
+    'CARGA DO LEGADO ENCERRADA (decisao do Lucas, 21/09/2026: "nao vou mais fazer isso").',
+    "",
+    "  O cadastro do empreendimento vive no Panteon. Semear de novo pode trazer o nome e a sigla",
+    "  que o C2X tem hoje para dentro do cadastro (o 43 foi renomeado la em 24/09).",
+    "",
+    "  O ensaio continua liberado: rode sem --gravar, que ele so le e mostra o que faltaria.",
+    "  Se a carga for mesmo necessaria, peca o ok ao Lucas e rode com:",
+    "    --gravar --carga-do-legado-autorizada",
+    "  Mesmo assim ela so INSERE o que falta: nada que ja existe no Panteon e reescrito.",
+    "",
+  ]) {
+    console.error(linha);
+  }
+  process.exit(1);
+}
 
 const requireDoRepo = createRequire(path.resolve(process.cwd(), "apps/hub/package.json"));
 const mysql = requireDoRepo("mysql2/promise");
@@ -44,45 +78,7 @@ const env = Object.fromEntries(
     }),
 );
 
-const GRAVAR = process.argv.includes("--gravar");
 const WORKSPACE = "careli";
-
-// OS 11 QUE ESTÃO VENDENDO (Lucas: *"vamos pegar somente as que estamos tendo venda"* → *"os 11"*):
-// os empreendimentos com recepção de CAD ligada em 02/09/2026. Por CÓDIGO DO PAI.
-const VENDENDO = new Set([
-  "VDO", "REP", "VAL", "VLO", "RVP", "GDN", "JDG", "ACP", "LAB", // + Lagoa Bonita (LAB é o pai)
-]);
-
-// Nome de mercado do PAI, quando o do C2X não serve como está.
-const NOME_DE_MERCADO = {
-  "ALDEIA DAS CACHOEIRAS DAS PEDRAS": "Aldeia das Cachoeiras das Pedras",
-  "CONDOMINIO RECANTO DO PARA": "Recanto do Pará",
-  "RESIDENCIAL VILLA PARIS": "Villa Paris",
-  "VISTAS DA PRAIA RESIDENCIAL": "Vistas da Praia",
-};
-
-// Empreendimentos do C2X que NÃO são produto (testes e aditivos): ficam de fora do cadastro.
-const IGNORAR = new Set(["SDT", "TSC", "ADT"]);
-
-// Espelhos = o PAI. O C2X guarda o masterplan e o conjunto inteiro de unidades nestes.
-const ESPELHOS = new Set(["LAB", "VLO"]);
-
-const UF = {
-  "Minas Gerais": "MG", "São Paulo": "SP", "Espírito Santo": "ES", "Rio de Janeiro": "RJ",
-  "Bahia": "BA", "Goiás": "GO", "Distrito Federal": "DF",
-};
-
-function titulo(nome) {
-  const pequenas = new Set(["da", "de", "do", "das", "dos", "e"]);
-  return String(nome ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .split(" ")
-    .map((p, i) => (i > 0 && pequenas.has(p) ? p : p.charAt(0).toUpperCase() + p.slice(1)))
-    .join(" ")
-    .replace(/\bPara\b/, "Pará");
-}
 
 // ── 1. LER O C2X (uma vez) ─────────────────────────────────────────────────────
 const c2x = await mysql.createConnection({
@@ -101,68 +97,10 @@ const [linhas] = await c2x.query(`
 await c2x.end();
 
 // ── 2. AGRUPAR ─────────────────────────────────────────────────────────────────
-const grupos = new Map(); // chave = nome normalizado do pai
-for (const l of linhas) {
-  const code = String(l.code ?? "").trim().toUpperCase();
-  if (!code || IGNORAR.has(code)) continue;
-  const nomeCru = String(l.name ?? "").trim().toUpperCase().replace(/\s+/g, " ");
-  const ehEspelho = /- MASTERPLAN$/.test(nomeCru) || ESPELHOS.has(code);
-  const chave = nomeCru.replace(/\s*-\s*MASTERPLAN$/, "");
-  const g = grupos.get(chave) ?? { chave, filhos: [], espelho: null, cidade: null, uf: null };
-  g.cidade = g.cidade ?? (l.cidade ? String(l.cidade).trim() : null);
-  g.uf = g.uf ?? (l.estado ? (UF[String(l.estado).trim()] ?? String(l.estado).trim()) : null);
-  if (ehEspelho) g.espelho = { c2xId: String(l.id), codigo: code };
-  else g.filhos.push({ c2xId: String(l.id), codigo: code, nome: titulo(nomeCru) });
-  grupos.set(chave, g);
-}
+const pais = agruparPaisEFilhos(linhas);
+console.log(`C2X: ${pais.length} pais, ${pais.reduce((n, p) => n + p.filhos.length, 0)} filhos\n`);
 
-// ── 3. MONTAR PAIS E FILHOS ────────────────────────────────────────────────────
-const pais = [];
-for (const g of grupos.values()) {
-  let filhos = [...g.filhos].sort((a, b) => a.codigo.localeCompare(b.codigo));
-  // O pai: o espelho quando existe (LAB, VLO). Empreendimento único vira pai sem filho (o id do
-  // C2X sobe para o pai). Grupo sem espelho (Lavra, Rio de Pedras, Portal dos Vales) ganha um pai
-  // só do Panteon, sem id do C2X, e os filhos ficam.
-  let codigoDoPai;
-  let c2xDoPai = null;
-  if (g.espelho) {
-    codigoDoPai = g.espelho.codigo;
-    c2xDoPai = g.espelho.c2xId;
-  } else if (filhos.length === 1) {
-    codigoDoPai = filhos[0].codigo;
-    c2xDoPai = filhos[0].c2xId;
-    filhos = [];
-  } else {
-    codigoDoPai = filhos[0].codigo.slice(0, 2) + "X"; // LOS/LOU→LOX, RDP/RPS/RPC→RDX, PDV/PVS→PDX
-  }
-  const nome = NOME_DE_MERCADO[g.chave] ?? titulo(g.chave);
-  pais.push({
-    c2x_enterprise_id: c2xDoPai,
-    cidade: g.cidade,
-    codigo: codigoDoPai,
-    filhos,
-    nome,
-    uf: g.uf,
-    vendendo: VENDENDO.has(codigoDoPai) || filhos.some((f) => VENDENDO.has(f.codigo)),
-  });
-}
-pais.sort((a, b) => Number(b.vendendo) - Number(a.vendendo) || a.nome.localeCompare(b.nome));
-
-console.log(`${pais.length} pais, ${pais.reduce((n, p) => n + p.filhos.length, 0)} filhos\n`);
-for (const p of pais) {
-  console.log(
-    `${p.vendendo ? "●" : "○"} ${p.codigo.padEnd(4)} ${p.nome}  (${p.cidade ?? "?"}/${p.uf ?? "?"})` +
-      (p.c2x_enterprise_id ? `  c2x ${p.c2x_enterprise_id}` : "  (só no Panteon)"),
-  );
-  for (const f of p.filhos) console.log(`     └ visão ${f.codigo.padEnd(4)} c2x ${f.c2xId}`);
-}
-
-if (!GRAVAR) {
-  console.log("\nEnsaio. Rode com --gravar para valer.");
-  process.exit(0);
-}
-
-// ── 4. GRAVAR NO PANTEON ───────────────────────────────────────────────────────
+// ── 3. LER O QUE O PANTEON JÁ TEM ──────────────────────────────────────────────
 const url = env.NEXT_PUBLIC_SUPABASE_URL;
 const chave = env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SECRET_KEY;
 if (!url || !chave) {
@@ -171,111 +109,105 @@ if (!url || !chave) {
 }
 const supabase = createClient(url, chave, { auth: { persistSession: false } });
 
-// ── O QUE O SEMEADOR NÃO PODE REESCREVER ────────────────────────────────────────
-//
-// ⚠️ O UPSERT É POR CÓDIGO E REESCREVE `c2x_enterprise_id`, `pai_id`, `nome` e `vendendo`. Desde
-// 16/09/2026 o mesmo espaço de códigos tem produto que NÃO veio do C2X (achado 10 da onda 2): um
-// código novo no legado, ou um pai sintético (`slice(0,2)+"X"`), que coincidisse com um prédio da
-// Cecílio trocaria o id >= 100000 dele pelo do C2X (ou por nulo), e o produto sumiria do escopo com
-// as unidades e as vendas órfãs. E a D2 do Lucas acrescentou o produto com DONO marcado
-// (`operado_por`, hoje o Garden 39): o cadastro dele passou a ser mantido pelo portal que o opera.
-//
-// ⚠️ PULA COM AVISO, E PULA OS FILHOS JUNTO. Abortar deixaria a semeadura pela metade; pendurar os
-// filhos do C2X num pai que não é da carga poria a visão de outro dono dentro do produto dele.
-//
-// ⚠️ FALHA FECHADA NA LEITURA. Sem ler a linha atual não há como provar que ela é da carga: para. Só
-// as colunas da 0170 ausentes (`operado_por`, `criado_origem`) são toleradas, e aí sobra a régua
-// do id do Panteon.
-const PRIMEIRO_ID_DO_PANTEON = 100000;
-let colunasDaLinhaAtual = "c2x_enterprise_id,operado_por,criado_origem";
-const pulados = [];
+// ⚠️ FALHA FECHADA NA LEITURA. Sem ler o cadastro inteiro não há como provar o que falta: para, sem
+// gravar nada. Só as colunas da 0170 ausentes (`operado_por`, `criado_origem`) são toleradas, e aí
+// sobra a régua do id do Panteon.
+const COLUNAS_BASE = "id,codigo,nome,c2x_enterprise_id,pai_id,vendendo,ordem";
+const COLUNAS_COM_0170 = `${COLUNAS_BASE},operado_por,criado_origem`;
 
-async function motivoParaNaoSobrescrever(codigo) {
-  for (;;) {
+// Paginado: o PostgREST corta em 1.000 linhas SEM ERRO, e o que some é o fim da lista.
+async function lerCadastro(selecao) {
+  const lidas = [];
+  for (let de = 0; ; de += 1000) {
     const { data, error } = await supabase
       .from("hercules_empreendimentos")
-      .select(colunasDaLinhaAtual)
+      .select(selecao)
       .eq("workspace_id", WORKSPACE)
-      .eq("codigo", codigo)
-      .maybeSingle();
-    if (error) {
-      const semA0170 = ["42703", "PGRST204"].includes(error.code) || /operado_por|criado_origem/.test(error.message ?? "");
-      if (semA0170 && colunasDaLinhaAtual !== "c2x_enterprise_id") {
-        console.log("  (a migration 0170 não está aplicada aqui: confiro só o id do Panteon)");
-        colunasDaLinhaAtual = "c2x_enterprise_id";
-        continue;
-      }
-      throw new Error(`${codigo}: não deu para ler o cadastro atual (${error.message}); nada foi sobrescrito.`);
-    }
-    if (!data) return null;
-    if (String(data.operado_por ?? "").trim()) return `operado por ${String(data.operado_por).trim()}`;
-    if (Number(String(data.c2x_enterprise_id ?? "").trim()) >= PRIMEIRO_ID_DO_PANTEON) {
-      return `nascido no Panteon (id ${String(data.c2x_enterprise_id).trim()})`;
-    }
-    if (["hub", "portal"].includes(String(data.criado_origem ?? "").trim())) {
-      return `criado pelo ${String(data.criado_origem).trim()}`;
-    }
-    return null;
+      .order("id", { ascending: true })
+      .range(de, de + 999);
+    if (error) return { error, linhas: [] };
+    lidas.push(...(data ?? []));
+    if ((data ?? []).length < 1000) return { error: null, linhas: lidas };
   }
 }
 
-async function upsert(linha) {
-  const motivo = await motivoParaNaoSobrescrever(linha.codigo);
-  if (motivo) {
-    pulados.push(`${linha.codigo} (${motivo})`);
-    console.warn(`  PULADO: ${linha.codigo} não é da carga do C2X (${motivo}); o semeador não o sobrescreve.`);
-    return null;
-  }
+let com0170 = true;
+let leitura = await lerCadastro(COLUNAS_COM_0170);
+const sem0170 = (e) => ["42703", "PGRST204"].includes(e?.code) || /operado_por|criado_origem/.test(e?.message ?? "");
+if (leitura.error && sem0170(leitura.error)) {
+  console.log("  (a migration 0170 não está aplicada aqui: confiro só o id do Panteon)");
+  com0170 = false;
+  leitura = await lerCadastro(COLUNAS_BASE);
+}
+if (leitura.error) {
+  console.error(`Não deu para ler o cadastro do Panteon (${leitura.error.message}); nada foi gravado.`);
+  process.exit(1);
+}
+const existentes = leitura.linhas;
 
-  // Casa pelo código: rodar de novo atualiza em vez de duplicar.
+// ── 4. O PLANO: SÓ O QUE FALTA ─────────────────────────────────────────────────
+const plano = planejarSemeadura(pais, existentes);
+
+const SIMBOLO = { conflito: "!", existe: "=", inserir: "+", pulado: "-" };
+for (const p of plano) {
+  console.log(`${SIMBOLO[p.acao]} ${p.codigo.padEnd(4)} ${p.nome}${p.motivo ? `  (${p.motivo})` : ""}`);
+  for (const d of p.divergencias ?? []) console.log(`       difere do C2X, vale o Panteon: ${d}`);
+  if (p.motivoDosFilhos) console.log(`       filhos não pendurados: ${p.motivoDosFilhos}`);
+  for (const f of p.filhos) {
+    console.log(`     └ ${SIMBOLO[f.acao]} ${f.codigo.padEnd(4)}${f.motivo ? `  (${f.motivo})` : ""}`);
+    for (const d of f.divergencias ?? []) console.log(`         difere do C2X, vale o Panteon: ${d}`);
+  }
+}
+
+const aInserir = plano.reduce(
+  (n, p) => n + (p.acao === "inserir" ? 1 : 0) + p.filhos.filter((f) => f.acao === "inserir").length,
+  0,
+);
+console.log(`\n${aInserir} linha(s) a inserir. Nenhuma linha existente é alterada.`);
+
+// ── 5. GRAVAR: SÓ INSERT ───────────────────────────────────────────────────────
+//
+// ⚠️ INSERT, NUNCA UPSERT. Se alguém criou a mesma linha entre a leitura e a escrita, o índice único
+// recusa e o script para: é o comportamento certo, porque a alternativa (upsert) reescreveria a
+// linha de quem chegou primeiro. E `c2x_enterprise_id: null` do pai só do Panteon vai EXPLÍCITO: a
+// coluna tem default da sequence (0170), e omitir daria ao LOX um id de produto nascido aqui.
+async function inserir(linha) {
   const { data, error } = await supabase
     .from("hercules_empreendimentos")
-    .upsert(linha, { onConflict: "workspace_id,codigo" })
+    .insert({
+      ...linha,
+      atualizado_em: new Date().toISOString(),
+      ...(com0170 ? { criado_origem: "semeador" } : {}),
+      workspace_id: WORKSPACE,
+    })
     .select("id")
-    .maybeSingle();
+    .single();
   // ⚠️ CHECAR `error` SEMPRE: o PostgREST falha calado em NOT NULL / índice único.
   if (error || !data?.id) throw new Error(`${linha.codigo}: ${error?.message ?? "sem id de volta"}`);
   return data.id;
 }
 
-let ordem = 0;
-for (const p of pais) {
-  const paiId = await upsert({
-    atualizado_em: new Date().toISOString(),
-    c2x_enterprise_id: p.c2x_enterprise_id,
-    cidade: p.cidade,
-    codigo: p.codigo,
-    nome: p.nome,
-    ordem: ordem++,
-    pai_id: null,
-    uf: p.uf,
-    vendendo: p.vendendo,
-    workspace_id: WORKSPACE,
-  });
-  if (!paiId) {
-    if (p.filhos.length > 0) {
-      console.warn(`  PULADOS também os ${p.filhos.length} filho(s) de ${p.codigo}: o pai não é da carga.`);
+// ⚠️ SEM `process.exit` NO ENSAIO: com o cliente do Supabase ainda com conexão aberta, o exit forçado
+// derruba o Node no Windows ("Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)"). O script só
+// termina, e o processo sai quando as conexões fecham.
+if (!GRAVAR) {
+  console.log("Ensaio. Para gravar: --gravar --carga-do-legado-autorizada (com o ok do Lucas).");
+} else {
+  let inseridas = 0;
+  for (const p of plano) {
+    let paiId = p.acao === "existe" && !p.motivoDosFilhos ? p.existenteId : null;
+    if (p.acao === "inserir") {
+      paiId = await inserir(p.linha);
+      inseridas += 1;
+      console.log(`inserido ${p.codigo} ${p.nome}`);
     }
-    continue;
+    if (!paiId) continue;
+    for (const f of p.filhos) {
+      if (f.acao !== "inserir") continue;
+      await inserir({ ...f.linha, pai_id: paiId });
+      inseridas += 1;
+      console.log(`inserido ${f.codigo} (filho de ${p.codigo})`);
+    }
   }
-  let ordemFilho = 0;
-  for (const f of p.filhos) {
-    await upsert({
-      atualizado_em: new Date().toISOString(),
-      c2x_enterprise_id: f.c2xId,
-      cidade: p.cidade,
-      codigo: f.codigo,
-      nome: `${p.nome} · ${f.codigo}`,
-      ordem: ordemFilho++,
-      pai_id: paiId,
-      uf: p.uf,
-      vendendo: p.vendendo,
-      workspace_id: WORKSPACE,
-    });
-  }
-  console.log(`gravado ${p.codigo} ${p.nome} + ${p.filhos.length} filho(s)`);
+  console.log(`\n${inseridas} linha(s) inserida(s). Nada existente foi alterado.`);
 }
-if (pulados.length > 0) {
-  console.warn(`\n${pulados.length} produto(s) pulado(s), sem sobrescrever: ${pulados.join(", ")}.`);
-}
-console.log("\nCadastro semeado.");
