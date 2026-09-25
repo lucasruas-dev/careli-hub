@@ -95,6 +95,41 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Integracao GLotes] valor_pago so com data de pagamento e incremental no fuso de Brasilia; contrato 2.0.0 (v1.378.0, interna)`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-09-25 18:20:11 -03:00` (push na main); no ar as 18:26:10.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK explicito do Lucas ("tem o meu ok, pode subir"), apos "2 pode fazer" em 25/09 (correcao da API do GLotes).`
+- Escopo publicado:
+  - `alterado_desde convertido para o relogio de Brasilia em clientes, vendas e recebimentos (o C2X grava datetime local e a sessao do MySQL e UTC; o corte andava 3h)`;
+  - `relogio de vendas = contrato, parcelas de sinal e mensais (inclusive marcadas para apagar) e unidade; recebimentos = parcela ou contrato; clientes = cadastro, telefones, endereco, conjuge e contrato de que e titular`;
+  - `atualizado_em em ISO com o fuso real do instante em clientes (quebra de formato), vendas e recebimentos (novos)`;
+  - `valor_pago so com payment_date ou status Pago: 762 parcelas (761 atrasadas + 1 aguardando, R$ 411.581,32) iam com o valor do boleto emitido`;
+  - `contrato docs/integrations/glotes-openapi.yaml 2.0.0 com x-historico; levantamento secao 14`.
+- Commit publicado: `09727ecfe33f7a097693f9d2fe71bf5552330320` (codigo em `6fba02d9`, `224d5183`, `75b8c49b`, `41ce20e1`).
+- Deployment anterior: `dpl_CRfnK1m1eACmKCjyJp3M8nxaZKko` (commit `acf7e3e1`, v1.377.0).
+- Deployment novo: `dpl_5c6r7pSFUvyczXidCJD6hx93nRLc`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Arquivos/modulos incluidos: `apps/hub/lib/integrations/glotes/consultas.ts, consultas.test.ts (novo, 24 testes), handler.ts (comentario), docs/integrations/glotes-openapi.yaml, docs/integrations/glotes-lavra-do-ouro.md, changelog`.
+- Arquivos/modulos excluidos: `NENHUMA MIGRATION, nenhuma env, nenhuma tela.`
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `vitest`: `24/24 na pasta glotes; suite completa no pre-push da branch e da main ok`;
+  - `C2X real, so SELECT`: `listagem completa igual a producao fora de atualizado_em e das 762 linhas de valor_pago; incremental desde 10/09 bate com SQL independente (vendas 459, recebimentos 1.705; producao dava 2 e 534); VEN-223 (144 parcelas com o titular novo), VEN-81, ida e volta da marca e horario de verao conferidos`;
+  - `revisao`: `workflow implementar, validar, 3 lentes, juiz, corrigir (6 achados), verificador final; verificador independente do valor_pago (0 defeitos, 4 imprecisoes de texto corrigidas)`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `/api/version = 1.378.0 as 18:26:10`;
+  - `rotas`: `/api/integrations/glotes/recebimentos responde 401 sem token`.
+- Rollback definido: `Instant Rollback para dpl_CRfnK1m1eACmKCjyJp3M8nxaZKko (commit acf7e3e1, v1.377.0)`.
+- Riscos conhecidos: `clientes.atualizado_em mudou de formato (agora com fuso): se a integracao do GLotes acrescenta -03:00 na mao, o incremental de clientes volta 400 ate ajustarem. Carga completa de recebimentos cerca de 13% mais lenta (~30 s em 67 paginas, cada uma abaixo de 1 s).`
+- Pendencias: `Lucas envia ao dev do GLotes o relatorio de 3 clientes (xlsx com senha, mascarado), a senha por outro canal, o contrato 2.0.0 e o pedido de UMA carga completa com incluir_canceladas=true. VEN-81 (cronograma recriado em 25/09 com R$ 631,89 pagos em parcelas apagadas) com o Lucas.`
+- Status: `EM PRODUCAO`.
+- Proxima acao: `acompanhar a carga completa do GLotes nos logs; seguir o PAN-124.`
+
+Registro de producao:
+
 - Assunto: `[Apolo] Coordenador achado pelo empreendimento, habilitacoes sem fila no Board e travas contra o C2X (v1.375.0)`.
 - Squad/agente responsavel: `Zeus`.
 - Data e hora local: `2026-09-25 08:26:22 -03:00` (changelog); push na main as ~08:33; no ar as 08:41:45.
