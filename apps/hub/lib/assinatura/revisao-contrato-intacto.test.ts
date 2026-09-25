@@ -12,7 +12,6 @@ import { regraDeOrdemDaVenda } from "./ordem-db";
 import {
   assinanteDeTermosDaVendedora,
   assinantesDoQuadro,
-  empresasDoEmpreendimento,
   PAPEL_DE_TERMOS_DA_VENDEDORA,
 } from "./quadro-db";
 import { signatariosDoContrato } from "./signatarios";
@@ -23,10 +22,11 @@ import { signatariosDoContrato } from "./signatarios";
 // (`temis_assinantes`), é gravado pela MESMA rota e aparece no MESMO cartão dos três papéis que
 // assinam a compra e venda. Essa economia é boa e tem um preço exato: a única coisa que separa os
 // dois mundos é um mapa em `quadro-db.ts`. Estes testes não confiam no mapa — eles montam o
-// envelope do contrato com as funções REAIS do envio (`empresasDoEmpreendimento`,
-// `assinantesDoQuadro`, `signatariosDoContrato`, `regraDeOrdemDaVenda`, `ordenarSignatarios`, a
-// mesma sequência de `prepararEnvio`) e comparam a lista inteira, pessoa por pessoa e número por
-// número, ANTES e DEPOIS de o papel novo existir no banco.
+// envelope do contrato com as funções REAIS do envio (`assinantesDoQuadro`,
+// `signatariosDoContrato`, `regraDeOrdemDaVenda`, `ordenarSignatarios`, a mesma sequência de
+// `prepararEnvio`) e comparam a lista inteira, pessoa por pessoa e número por número, ANTES e
+// DEPOIS de o papel novo existir no banco. (Até 25/09/2026 a sequência começava por
+// `empresasDoEmpreendimento`, que alimentava a herança do representante legal; as duas saíram.)
 //
 // ⚠️ O QUE ESTÁ SENDO PROTEGIDO, EM UMA FRASE: que um analista apontado para despachar termos não
 // apareça, no dia seguinte, na qualificação e no envelope de uma COMPRA E VENDA.
@@ -175,8 +175,8 @@ const CONTRATO: DadosDoContrato = {
  * O ENVELOPE DO CONTRATO, montado com as funções reais e na ordem real.
  *
  * É a mesma sequência de `prepararEnvio` (`lib/assinatura/envio-db.ts`), sem a leitura do PDF
- * guardado: empresas do empreendimento → quadro → signatários do contrato → regra de ordem →
- * numeração. Se o papel novo tivesse como entrar no contrato, entraria por aqui.
+ * guardado: quadro → signatários do contrato → regra de ordem → numeração. Se o papel novo tivesse
+ * como entrar no contrato, entraria por aqui.
  */
 async function envelopeDoContrato(
   estado: Estado,
@@ -184,12 +184,7 @@ async function envelopeDoContrato(
   unidadeId: null | string = null,
 ) {
   const sb = cliente(estado);
-  const empresas = await empresasDoEmpreendimento(sb, enterpriseId);
-  const doQuadro = await assinantesDoQuadro(sb, {
-    coordenadorEntityId: empresas.coordenador,
-    enterpriseId,
-    vendedoraEntityId: empresas.vendedora,
-  });
+  const doQuadro = await assinantesDoQuadro(sb, { enterpriseId });
   const montagem = signatariosDoContrato(CONTRATO, doQuadro);
   const { origem, regra } = await regraDeOrdemDaVenda(sb, { enterpriseId, unidadeId });
   return {
@@ -232,9 +227,12 @@ describe("o envelope do contrato, nos 40 empreendimentos de produção", () => {
     expect(avisos).toHaveLength(2);
   });
 
-  // A única herança viva hoje (1 empresa coordenadora com representante legal) continua entrando,
-  // no papel `coordenadora`, com o papel novo gravado do lado.
-  it("a única herança viva de produção continua entrando, com o papel novo ao lado", async () => {
+  // ⚠️ A HERANÇA DA FICHA ACABOU (25/09/2026). Até esta data a coordenadora com representante legal
+  // punha a pessoa dela no envelope sem linha nenhuma no quadro; era a regra que, no VOR, deixou a
+  // tela e o envio discordando. Lucas: *"todas assinaturas eu tenho que conseguir excluir e editar,
+  // esse cadeado esta errado"*. Quem herdava virou linha gravada (migration 0191); sem a linha, o
+  // envelope não tem ninguém no papel, e o papel novo ao lado continua fora do contrato.
+  it("o representante legal da ficha não entra mais sozinho, nem com o papel novo ao lado", async () => {
     const estado = cadastroDeProducao();
     estado.tabelas.temis_assinantes = [
       linhaDoQuadro(
@@ -247,8 +245,27 @@ describe("o envelope do contrato, nos 40 empreendimentos de produção", () => {
 
     const { signatarios } = await envelopeDoContrato(estado, COORDENADOR_COM_REPRESENTANTE);
 
-    expect(signatarios.map((s) => s.papel)).toEqual(["comprador", "conjuge", "coordenadora"]);
+    expect(signatarios.map((s) => s.papel)).toEqual(["comprador", "conjuge"]);
     expect(signatarios.map((s) => s.nome)).not.toContain("Analista Do Juridico Exemplo");
+    expect(signatarios.map((s) => s.email)).not.toContain("representante@exemplo.test");
+  });
+
+  // E a mesma pessoa, gravada no quadro como a 0191 grava, é quem vai.
+  it("gravado no quadro como a 0191 grava, o representante volta ao envelope", async () => {
+    const estado = cadastroDeProducao();
+    estado.tabelas.temis_assinantes = [
+      linhaDoQuadro(
+        COORDENADOR_COM_REPRESENTANTE,
+        "coordenador",
+        1,
+        "Pessoa Representante Da Coordenadora",
+        { origem: "backfill_heranca_0191" },
+      ),
+    ];
+
+    const { signatarios } = await envelopeDoContrato(estado, COORDENADOR_COM_REPRESENTANTE);
+
+    expect(signatarios.map((s) => s.papel)).toEqual(["comprador", "conjuge", "coordenadora"]);
   });
 });
 

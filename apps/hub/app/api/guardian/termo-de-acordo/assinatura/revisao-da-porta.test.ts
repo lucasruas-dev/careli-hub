@@ -122,7 +122,6 @@ vi.mock("@/lib/assinatura/quadro-db", () => ({
       telefone: null,
     },
   ],
-  empresasDoEmpreendimento: async () => ({ coordenador: null, vendedora: "ent-vendedora" }),
 }));
 
 vi.mock("@/lib/assinatura/diario-do-envelope-db", () => ({

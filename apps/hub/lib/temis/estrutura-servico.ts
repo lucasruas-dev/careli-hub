@@ -53,6 +53,7 @@ import { type AtorDaTemis, enterpriseNoAlcance, idDoAutor } from "./ator";
 import { PREFIXO_DO_CONSOLIDADO } from "./cadeia-do-contrato";
 import {
   COLUNAS_DA_0173,
+  COLUNAS_DA_0191,
   gravarComAutoria,
   nomeComOrigem,
   registrarAtoDoPortal,
@@ -69,7 +70,7 @@ import {
 // O QUE O PORTAL FAZ EM CADA PEÇA:
 //   • ANEXOS e QUADRO DE ASSINATURA: CRUD completo, só no alcance. São a capa, as páginas anexas e
 //     as pessoas que assinam o contrato que ela mesma confecciona. ⚠️ ESCREVER (subir, registrar,
-//     trocar a capa, desativar, incluir e remover assinante) é só no produto que o portal OPERA
+//     trocar a capa, desativar, incluir, editar e remover assinante) é só no produto que o portal OPERA
 //     (decisão do Lucas, 16/09/2026): no VOC, que a Cecílio enxerga e a Careli opera, é 403 só
 //     consulta (`alcanceParaEscrever`).
 //   • FAIXAS DE PRAZO e CATEGORIAS (e o vínculo de unidades a categoria): SOMENTE LEITURA. Plano,
@@ -908,10 +909,15 @@ export async function desativarAnexo(ator: AtorDaTemis, request: Request): Promi
 // o comprador abriria a porta para o contrato dizer uma pessoa e o envelope ir para outra, e o
 // defeito só apareceria meses depois. O captador não entra — decisão do Lucas no mesmo dia.
 //
-// ⚠️ A VENDEDORA VEM COM UMA LINHA QUE NÃO ESTÁ NA TABELA. O representante legal cadastrado na PJ
-// (`apolo_relationships`) é devolvido junto, marcado `origem: "representante"` e SEM id: ele é
-// derivado do cadastro da empresa, não uma linha daqui. Guardá-lo aqui criaria uma segunda verdade
-// sobre quem representa a empresa.
+// ⚠️ O QUADRO É SÓ O QUE ESTÁ NA TABELA, E TODA LINHA SE EDITA E SE EXCLUI (25/09/2026). Até esta
+// data a leitura devolvia também uma linha que NÃO estava aqui: o representante legal da vendedora
+// e o da coordenadora de vendas, lidos da ficha da empresa (`apolo_relationships`), sem id, com
+// cadeado na tela. Ele aparecia quando a LINHA 1 do papel estava livre, e o envio só o levava
+// quando o papel inteiro estava vazio: no VOR a tela mostrava o Fabricio e o contrato saía sem ele.
+// Lucas, no mesmo dia: *"todas assinaturas eu tenho que conseguir excluir e editar, esse cadeado
+// esta errado"* e *"nao tem que ter mais sync com c2x referente a contrato"*. A migration 0191
+// gravou como linha normal quem herdava; a tela e o envio (`lib/assinatura/quadro-db.ts`) leem a
+// mesma tabela, pela mesma regra, e não há mais o que divergir.
 //
 // ⚠️ E EXISTE UM QUARTO PAPEL, QUE NÃO É DO CONTRATO: `termos_vendedora`. Lucas (20/09/2026):
 // *"essa tela determina os assinantes (...) nessa tela vc pode abrir mais um campo para assinatura
@@ -949,7 +955,8 @@ export type PapelDoQuadro = (typeof PAPEIS_DO_QUADRO)[number];
  * portas — `/api/temis/assinantes` (hub) e `/api/incorporador/temis/assinantes` (portal) — chamam as
  * MESMAS `incluirAssinante` e `removerAssinante`, e a única lista conferida era `PAPEIS_DO_QUADRO`.
  * Um POST direto do portal com este papel passava dentro do alcance daquele incorporador, e um
- * DELETE apagava o apontado pela Careli, sem nada na tela dizendo que aconteceu.
+ * DELETE apagava o apontado pela Careli, sem nada na tela dizendo que aconteceu. O PATCH
+ * (`editarAssinante`, 25/09/2026) nasceu com a mesma recusa, no papel do corpo e no da linha.
  *
  * ⚠️ E O TERMO É INSTRUMENTO DA COBRANÇA DA CARELI, não do produto do incorporador: é a Careli que
  * emite, paga o envelope e responde pelo que ele diz. Quem assina por ela do lado da vendedora é
@@ -985,8 +992,11 @@ type LinhaDoAssinante = {
 export type AssinanteDoQuadro = {
   cpf: null | string;
   email: null | string;
-  /** `null` na linha herdada do cadastro da PJ — ela não se edita nem se apaga aqui. */
-  id: null | string;
+  /**
+   * Sempre presente: toda linha do quadro está gravada em `temis_assinantes` e se edita e se exclui
+   * por este id. Até 25/09/2026 era `null` na linha herdada do cadastro da PJ (ver o topo do bloco).
+   */
+  id: string;
   nome: string;
   ordemAssinatura: null | number;
   origem: null | string;
@@ -1029,8 +1039,10 @@ function conferirAssinante(corpo: Record<string, unknown>) {
   const email = texto(corpo.email).toLowerCase();
   const cpfCru = soDigitos(texto(corpo.cpf));
   const posicao = inteiro(corpo.posicao);
+  // ⚠️ `String(...)`, E NÃO `texto(...)`: `texto` devolve "" para NÚMERO, e um "Assina em" que chegasse
+  // como 2 (um PATCH direto, ou a ordem gravada que o editar reaproveita) virava "em branco" calado.
   const ordem =
-    corpo.ordemAssinatura == null || texto(corpo.ordemAssinatura) === ""
+    corpo.ordemAssinatura == null || String(corpo.ordemAssinatura).trim() === ""
       ? null
       : inteiro(corpo.ordemAssinatura);
 
@@ -1070,90 +1082,6 @@ function conferirAssinante(corpo: Record<string, unknown>) {
   };
 }
 
-/**
- * O representante legal da vendedora do empreendimento — a linha que o quadro já mostra preenchida.
- *
- * ⚠️ FALHA AQUI NÃO DERRUBA O QUADRO. Se a leitura do representante falhar, o resto da tela ainda
- * vale: as pessoas digitadas continuam aparecendo.
- */
-async function representanteDoCadastro(
-  admin: Admin,
-  enterpriseId: string,
-  papel: PapelDoQuadro,
-): Promise<AssinanteDoQuadro | null> {
-  try {
-    // ⚠️ TRÊS COLUNAS, TRÊS PAPÉIS. `vendedor_entity_id` é a incorporadora;
-    // `coordenadora_entity_id` é a Coordenação de Vendas da casa (a Gurgel, a mesma em todos os
-    // produtos); `coordenador_entity_id` (0159) é quem o C2X registrou como coordenador daquele
-    // empreendimento. Trocar essas três já pôs o captador no lugar do coordenador uma vez.
-    //
-    // ⚠️ O PAPEL `coordenador` HERDA DA COORDENADORA — Lucas, 22/09/2026: *"a gurgel assina sim"*.
-    // Até esta data a TELA herdava de `coordenador_entity_id` e o CONTRATO imprimia
-    // `coordenadora_entity_id`: no Vale do Ouro o papel dizia HUBER (que não tem representante legal
-    // cadastrado, então o quadro mostrava "Ninguém aqui") enquanto o contrato imprimia a Gurgel. As
-    // duas leituras passam a ser a mesma, e `coordenador_entity_id` fica como QUEDA para o produto
-    // que ainda não teve a coordenação apontada (o ACP e o LOS, medidos no dia).
-    //
-    // ⚠️ `termos_vendedora` HERDA DA MESMA EMPRESA QUE `vendedora`, e por isso está do lado de cá do
-    // ternário. É a mesma incorporadora: o que muda é o DOCUMENTO que aquela pessoa assina. Deixá-lo
-    // cair no `else` (como um terceiro papel faria por descuido) mostraria no campo dos termos o
-    // representante da COORDENADORA de vendas — outra empresa, outra pessoa, e ninguém olhando a
-    // tela teria como desconfiar.
-    const daVendedora = papel === "vendedora" || papel === "termos_vendedora";
-
-    const { data: settings } = await admin
-      .from("apolo_enterprise_settings")
-      .select("vendedor_entity_id, coordenadora_entity_id, coordenador_entity_id")
-      .eq("enterprise_id", enterpriseId)
-      .maybeSingle<Record<string, null | string>>();
-
-    const empresa = daVendedora
-      ? settings?.vendedor_entity_id
-      : (settings?.coordenadora_entity_id ?? settings?.coordenador_entity_id);
-    if (!empresa) return null;
-
-    const { data: vinculo } = await admin
-      .from("apolo_relationships")
-      .select("related_entity_id")
-      .eq("entity_id", empresa)
-      .eq("relationship_type", "representante_legal")
-      .limit(1)
-      .maybeSingle<{ related_entity_id: null | string }>();
-
-    const pessoaId = vinculo?.related_entity_id;
-    if (!pessoaId) return null;
-
-    const [{ data: pessoa }, { data: contatos }] = await Promise.all([
-      admin
-        .from("apolo_entities")
-        .select("display_name, document_masked")
-        .eq("id", pessoaId)
-        .maybeSingle<{ display_name: string; document_masked: null | string }>(),
-      admin
-        .from("apolo_contacts")
-        .select("contact_type, value")
-        .eq("entity_id", pessoaId)
-        .eq("contact_type", "email")
-        .limit(1),
-    ]);
-
-    if (!pessoa?.display_name) return null;
-
-    return {
-      cpf: pessoa.document_masked,
-      email: ((contatos ?? []) as Array<{ value: null | string }>)[0]?.value ?? null,
-      id: null,
-      nome: pessoa.display_name,
-      ordemAssinatura: null,
-      origem: "representante",
-      papel,
-      posicao: 1,
-    };
-  } catch {
-    return null;
-  }
-}
-
 export async function lerQuadroDeAssinatura(
   ator: AtorDaTemis,
   request: Request,
@@ -1168,48 +1096,29 @@ export async function lerQuadroDeAssinatura(
     return NextResponse.json({ error: "Informe o empreendimento." }, { status: 400 });
   }
 
-  // ⚠️ ANTES DO REPRESENTANTE TAMBÉM: ele traz nome, CPF mascarado e e-mail de uma pessoa.
+  // ⚠️ ANTES DA LEITURA: o quadro traz nome, CPF e e-mail de quem assina.
   const barrado = respostaDoAlcance(await alcanceDoEmpreendimento(admin, ator, enterpriseId));
   if (barrado) return barrado;
 
-  const [{ data, error }, ...herdados] = await Promise.all([
-    admin
-      .from("temis_assinantes")
-      .select(COLUNAS_DO_ASSINANTE)
-      .eq("workspace_id", WORKSPACE)
-      .eq("enterprise_id", enterpriseId)
-      .eq("ativo", true)
-      .order("papel", { ascending: true })
-      .order("posicao", { ascending: true }),
-    representanteDoCadastro(admin, enterpriseId, "vendedora"),
-    representanteDoCadastro(admin, enterpriseId, "coordenador"),
-    // ⚠️ O REPRESENTANTE VAI TAMBÉM NO PAPEL DOS TERMOS, PORQUE ELE É O ÚLTIMO DEGRAU. O envio do
-    // termo cai nele quando ninguém foi apontado E ninguém ocupou o papel `vendedora` (ver
-    // `assinanteDeTermosDaVendedora` e `incorporadorDoAcordo`). Ele sai daqui como CANDIDATO, e não
-    // como veredito: quem decide qual das linhas a caixa dos termos mostra como "assina os termos"
-    // é `filaDosTermos`, no cartão, que tem a lista inteira na mão e espelha a cadeia do envio.
-    // Decidir aqui obrigaria esta leitura a conhecer o papel `vendedora` para responder sobre o
-    // papel dos termos, e são duas perguntas que o cartão já faz juntas.
-    representanteDoCadastro(admin, enterpriseId, "termos_vendedora"),
-  ]);
+  const { data, error } = await admin
+    .from("temis_assinantes")
+    .select(COLUNAS_DO_ASSINANTE)
+    .eq("workspace_id", WORKSPACE)
+    .eq("enterprise_id", enterpriseId)
+    .eq("ativo", true)
+    .order("papel", { ascending: true })
+    .order("posicao", { ascending: true });
 
   if (error) {
     console.warn("[temis/assinantes] leitura falhou:", error.message);
     return NextResponse.json({ error: "Nao foi possivel ler o quadro." }, { status: 500 });
   }
 
-  const gravados = ((data ?? []) as LinhaDoAssinante[]).map(assinanteParaATela);
-
-  // ⚠️ O HERDADO SÓ ENTRA SE NINGUÉM OCUPOU A POSIÇÃO 1 DAQUELE PAPEL. Quem digitou uma linha ali
-  // decidiu que é aquela pessoa que assina primeiro; empurrar a herdada por cima faria o quadro
-  // mostrar duas pessoas na mesma linha do contrato.
-  const cabe = (h: AssinanteDoQuadro) =>
-    !gravados.some((a) => a.papel === h.papel && a.posicao === 1);
-
-  const assinantes = [
-    ...herdados.filter((h): h is AssinanteDoQuadro => Boolean(h)).filter(cabe),
-    ...gravados,
-  ].map((assinante) => ({ ...assinante, cpf: cpfParaOAtor(ator, assinante.cpf) }));
+  // ⚠️ SÓ O QUE ESTÁ GRAVADO, E NADA DA FICHA DA EMPRESA (25/09/2026, ver o topo do bloco). É a
+  // mesma leitura que `assinantesDoQuadro` faz para o envelope: o que a tela mostra é o que assina.
+  const assinantes = ((data ?? []) as LinhaDoAssinante[])
+    .map(assinanteParaATela)
+    .map((assinante) => ({ ...assinante, cpf: cpfParaOAtor(ator, assinante.cpf) }));
 
   return NextResponse.json({ assinantes }, { headers: SEM_CACHE });
 }
@@ -1217,14 +1126,15 @@ export async function lerQuadroDeAssinatura(
 /**
  * O CPF de um assinante como este ator pode ver.
  *
- * ⚠️ O PORTAL VÊ SÓ OS DOIS ÚLTIMOS DÍGITOS (revisão da onda 3, 16/09/2026). `document_masked` do
- * representante guarda hoje o CPF INTEIRO (ver `formatDocument` em cadastro-persist.ts), e as
+ * ⚠️ O PORTAL VÊ SÓ OS DOIS ÚLTIMOS DÍGITOS (revisão da onda 3, 16/09/2026). O quadro guarda o CPF
+ * INTEIRO (o do representante herdado até 25/09/2026 vinha de `document_masked`, que também é), e as
  * testemunhas e o coordenador do quadro costumam ser gente da Careli: o GET do portal entregava o
  * documento completo dessas pessoas a quem é de fora. O quadro precisa só saber que o CPF está lá;
  * quem monta o envelope é o servidor, que lê a linha inteira. O hub continua vendo tudo.
  *
- * Um CPF mascarado reenviado pela tela não é gravado: `conferirAssinante` recusa CPF que não fecha
- * os dígitos.
+ * ⚠️ E O CPF MASCARADO VOLTA NO EDITAR. A tela do portal reenvia `***.***.***-NN` quando o operador
+ * não mexe no campo; `editarAssinante` lê o `*` como "manter o gravado". Pelo incluir, um CPF
+ * mascarado continua não sendo gravado: `conferirAssinante` recusa CPF que não fecha os dígitos.
  */
 function cpfParaOAtor(ator: AtorDaTemis, cpf: null | string): null | string {
   if (ator.tipo === "hub" || !cpf) return cpf;
@@ -1301,6 +1211,183 @@ export async function incluirAssinante(ator: AtorDaTemis, request: Request): Pro
     papel: valores.papel,
   });
   return NextResponse.json({ assinante: assinanteParaATela(data) }, { headers: SEM_CACHE });
+}
+
+/**
+ * A resposta de uma linha que não está (mais) no quadro: id que não existe, ou já excluída.
+ *
+ * ⚠️ NO PORTAL É A FRASE DE `foraDoEscopo`, a mesma de um id de outro dono: as duas respostas têm de
+ * ser indistinguíveis (`respostaDoAlcance`). No hub, que enxerga tudo, a frase diz o que fazer.
+ */
+function assinanteForaDoQuadro(ator: AtorDaTemis): NextResponse {
+  if (ator.tipo !== "hub") return foraDoEscopo();
+  return NextResponse.json(
+    { error: "Esta pessoa nao esta mais no quadro. Recarregue a tela." },
+    { status: 404 },
+  );
+}
+
+/**
+ * EDITA UMA LINHA DO QUADRO: nome, CPF, e-mail, Linha e Assina em. O papel não muda.
+ *
+ * Lucas (25/09/2026): *"todas assinaturas eu tenho que conseguir excluir e editar, esse cadeado esta
+ * errado"*. Até esta data corrigir um e-mail era excluir e incluir de novo, e escolher a linha de
+ * alguém era impossível depois de gravado: no VOR a Nívea chegou a gravar "1 FABRICIO LUZIANO
+ * GURGEL", o número dentro do nome, tentando pôr o Fabricio na linha 1.
+ *
+ * ⚠️ AS MESMAS CHECAGENS DE `incluirAssinante`, NA MESMA ORDEM. O papel dos termos é recusado ao
+ * portal antes de ir ao banco (o do corpo) e logo depois de ler a linha (o DELA, que é o que vale); o
+ * alcance é o de ESCRITA do empreendimento DA LINHA, e não de um id que venha no corpo;
+ * `conferirAssinante` roda inteira sobre o resultado da edição; a linha ocupada responde com a frase
+ * que diz de quem ela é.
+ *
+ * ⚠️ O PAPEL NÃO SE TROCA. Mudar de papel é pôr a pessoa em outra linha do contrato, e pelo portal
+ * seria o jeito de mover alguém para `termos_vendedora`. Quem quer trocar exclui aqui e inclui no
+ * outro bloco.
+ *
+ * ⚠️ O CPF MASCARADO NÃO APAGA O GRAVADO. O portal recebe `***.***.***-NN` (`cpfParaOAtor`), e a tela
+ * devolve o que mostrou. Lido como CPF, os dois dígitos virariam "O CPF nao confere" e o portal nunca
+ * conseguiria salvar sem redigitar o documento. CPF ausente ou com `*` mantém o que está na linha;
+ * CPF em branco limpa, que é o que o operador quis dizer ao apagar o campo.
+ *
+ * ⚠️ CAMPO QUE NÃO VEM, FICA. A caixa dos termos não tem Linha nem Assina em, e uma edição só do
+ * e-mail não pode zerar a ordem de ninguém. Linha em branco também fica: no incluir ela quer dizer "a
+ * próxima livre", e aqui a pessoa já tem uma.
+ *
+ * ⚠️ TROCAR DUAS PESSOAS DE LINHA SÃO TRÊS PASSOS. O índice único da 0158 vale a cada gravação: pôr
+ * A na 2 com B ainda na 2 é recusado. A frase diz de quem é a linha e manda usar uma livre.
+ */
+export async function editarAssinante(ator: AtorDaTemis, request: Request): Promise<NextResponse> {
+  const admin = createApoloAdminClient();
+  if (!admin) {
+    return NextResponse.json({ error: "Supabase indisponivel." }, { status: 503 });
+  }
+
+  const id = (new URL(request.url).searchParams.get("id") ?? "").trim();
+  if (!id) return NextResponse.json({ error: "Informe o assinante." }, { status: 400 });
+
+  const corpo = (await request.json().catch(() => null)) as null | Record<string, unknown>;
+  if (!corpo) return NextResponse.json({ error: "Corpo invalido." }, { status: 400 });
+
+  // ⚠️ ANTES DE TUDO, E SEM IR AO BANCO: o papel que o corpo diz. Ver `PAPEL_SO_DA_CARELI`.
+  const soDaCareliNoCorpo = fechadoParaOPortal(ator, texto(corpo.papel));
+  if (soDaCareliNoCorpo) return soDaCareliNoCorpo;
+
+  const { data: linha, error: erroDaLeitura } = await admin
+    .from("temis_assinantes")
+    .select(`${COLUNAS_DO_ASSINANTE},ativo`)
+    .eq("workspace_id", WORKSPACE)
+    .eq("id", id)
+    .maybeSingle<LinhaDoAssinante & { ativo: boolean }>();
+
+  // `22P02` é o id que não é uuid: "não existe", como o alcance trata (`lerParaConferir`).
+  if (erroDaLeitura && erroDaLeitura.code !== "22P02") {
+    console.warn("[temis/assinantes] leitura para editar falhou:", erroDaLeitura.message);
+    return respostaDoAlcance("falha") as NextResponse;
+  }
+  if (!linha || !linha.ativo) return assinanteForaDoQuadro(ator);
+
+  // ⚠️ E O PAPEL DA LINHA, que é o que vale: o do corpo pode nem vir.
+  const soDaCareli = fechadoParaOPortal(ator, linha.papel);
+  if (soDaCareli) return soDaCareli;
+
+  // Editar é escrita: no portal, só no quadro do produto que ele opera.
+  const barrado = respostaDoAlcance(await alcanceParaEscrever(admin, ator, linha.enterprise_id));
+  if (barrado) return barrado;
+
+  const papelDoCorpo = texto(corpo.papel);
+  if (papelDoCorpo && papelDoCorpo !== linha.papel) {
+    return NextResponse.json(
+      {
+        error:
+          "O papel nao se troca na edicao: exclua a pessoa deste bloco e inclua de novo no outro.",
+      },
+      { status: 400 },
+    );
+  }
+
+  const veio = (campo: string) => Object.prototype.hasOwnProperty.call(corpo, campo);
+  const comoTexto = (v: unknown) => (v == null ? "" : String(v));
+  const cpfDoCorpo = veio("cpf") ? comoTexto(corpo.cpf) : null;
+  const manterCpf = cpfDoCorpo === null || cpfDoCorpo.includes("*");
+  const posicaoDoCorpo = veio("posicao") ? comoTexto(corpo.posicao).trim() : "";
+
+  const { erro, valores } = conferirAssinante({
+    cpf: manterCpf ? comoTexto(linha.cpf) : cpfDoCorpo,
+    email: veio("email") ? comoTexto(corpo.email) : comoTexto(linha.email),
+    nome: veio("nome") ? comoTexto(corpo.nome) : comoTexto(linha.nome),
+    observacao: veio("observacao") ? comoTexto(corpo.observacao) : comoTexto(linha.observacao),
+    ordemAssinatura: veio("ordemAssinatura")
+      ? comoTexto(corpo.ordemAssinatura)
+      : comoTexto(linha.ordem_assinatura),
+    papel: linha.papel,
+    posicao: posicaoDoCorpo || String(linha.posicao),
+  });
+  if (erro || !valores) return NextResponse.json({ error: erro }, { status: 400 });
+
+  // ⚠️ A LINHA OCUPADA É CONFERIDA ANTES DE GRAVAR, e o 23505 continua tratado abaixo para a corrida.
+  // Custa um SELECT só quando a Linha mudou, e é o que dá a frase com o nome de quem está lá.
+  if (valores.posicao !== linha.posicao) {
+    const { data: ocupantes } = await admin
+      .from("temis_assinantes")
+      .select("id")
+      .eq("workspace_id", WORKSPACE)
+      .eq("enterprise_id", linha.enterprise_id)
+      .eq("papel", linha.papel)
+      .eq("posicao", valores.posicao)
+      .eq("ativo", true)
+      .limit(1);
+    if ((ocupantes ?? []).length > 0) {
+      return NextResponse.json(
+        { error: await fraseDaLinhaOcupada(admin, linha.enterprise_id, valores) },
+        { status: 409 },
+      );
+    }
+  }
+
+  const { papel: _oPapelNaoMuda, ...campos } = valores;
+  const { data: gravadas, error } = await gravarComAutoria(
+    COLUNAS_DA_0191.temis_assinantes,
+    (comAutoria) =>
+      admin
+        .from("temis_assinantes")
+        .update({
+          ...campos,
+          atualizado_em: new Date().toISOString(),
+          ...(comAutoria ? { atualizado_por_nome: nomeComOrigem(ator) } : {}),
+        })
+        .eq("id", id)
+        .eq("ativo", true)
+        .select(COLUNAS_DO_ASSINANTE),
+  );
+
+  if (error) {
+    const ocupada = (error as { code?: unknown }).code === "23505";
+    console.warn("[temis/assinantes] editar falhou:", (error as { message?: unknown }).message);
+    return NextResponse.json(
+      {
+        error: ocupada
+          ? await fraseDaLinhaOcupada(admin, linha.enterprise_id, valores)
+          : "Nao foi possivel gravar a edicao.",
+      },
+      { status: ocupada ? 409 : 500 },
+    );
+  }
+
+  // Excluída entre a leitura e a gravação: nada foi gravado.
+  const nova = ((gravadas ?? []) as LinhaDoAssinante[])[0];
+  if (!nova) return assinanteForaDoQuadro(ator);
+
+  registrarAtoDoPortal(ator, "assinante editado", {
+    assinanteId: id,
+    enterpriseId: linha.enterprise_id,
+    papel: linha.papel,
+  });
+  // O CPF volta como o GET o entrega: o portal não recebe de volta um documento que ele não digitou.
+  return NextResponse.json(
+    { assinante: { ...assinanteParaATela(nova), cpf: cpfParaOAtor(ator, nova.cpf) } },
+    { headers: SEM_CACHE },
+  );
 }
 
 /**
@@ -1383,21 +1470,31 @@ export async function removerAssinante(ator: AtorDaTemis, request: Request): Pro
   const barrado = respostaDoAlcance(await alcanceDoAssinante(admin, ator, id));
   if (barrado) return barrado;
 
-  const { error } = await gravarComAutoria(COLUNAS_DA_0173.temis_assinantes, (comAutoria) =>
-    admin
-      .from("temis_assinantes")
-      .update({
-        ativo: false,
-        atualizado_em: new Date().toISOString(),
-        ...(comAutoria ? { desativado_por_nome: nomeComOrigem(ator) } : {}),
-      })
-      .eq("id", id),
+  // ⚠️ SÓ A LINHA ATIVA, E A MESMA CONSULTA DIZ SE ELA EXISTIA (25/09/2026). Antes, um DELETE de id
+  // inexistente ou já excluído respondia ok e reescrevia `desativado_por_nome` de quem excluiu de
+  // verdade. O `select` devolve as linhas desativadas agora: nenhuma é 404, sem consulta a mais.
+  const { data: desativadas, error } = await gravarComAutoria(
+    COLUNAS_DA_0173.temis_assinantes,
+    (comAutoria) =>
+      admin
+        .from("temis_assinantes")
+        .update({
+          ativo: false,
+          atualizado_em: new Date().toISOString(),
+          ...(comAutoria ? { desativado_por_nome: nomeComOrigem(ator) } : {}),
+        })
+        .eq("id", id)
+        .eq("ativo", true)
+        .select("id"),
   );
 
   if (error) {
+    // `22P02` é o id que não é uuid: "não existe", como o alcance trata.
+    if ((error as { code?: unknown }).code === "22P02") return assinanteForaDoQuadro(ator);
     console.warn("[temis/assinantes] desativar falhou:", error.message);
     return NextResponse.json({ error: "Nao foi possivel remover o assinante." }, { status: 500 });
   }
+  if (((desativadas ?? []) as unknown[]).length === 0) return assinanteForaDoQuadro(ator);
 
   registrarAtoDoPortal(ator, "assinante removido", { assinanteId: id });
   return NextResponse.json({ ok: true }, { headers: SEM_CACHE });

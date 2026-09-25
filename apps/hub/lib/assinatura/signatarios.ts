@@ -20,18 +20,19 @@ import { nomeDeSignatario } from "./ordem";
 //
 //     comprador   compradores[i].valores.nome_cliente / email_cliente / cpf_cliente
 //     cônjuge     compradores[i].valores.nome_conjuge / email_conjuge / cpf_conjuge
-//     vendedora   gerais.vendedora_representante_nome / _email / _cpf
+//     imobiliária gerais.nome_vinculado / email_vinculado (a da venda)
+//     vendedora, coordenadora e testemunha: SÓ o quadro do empreendimento (`doQuadro`)
 //
-// ⚠️ A VENDEDORA NÃO EXISTE NO BANCO HOJE, e é um fato MEDIDO (08/09/2026): dos 18 empreendimentos
-// com linha em `apolo_enterprise_settings`, ZERO têm `vendedor_entity_id`; das 2 categorias
-// cadastradas, zero também. E `dados-do-contrato.ts` não escreve nenhuma chave `vendedora_*` — o
-// grupo inteiro está marcado PENDENTE no catálogo de variáveis. Então hoje o envelope sai com
-// comprador e cônjuge, e mais ninguém.
+// ⚠️ A VENDEDORA SAI SÓ DO QUADRO (25/09/2026). Havia uma segunda via, as variáveis
+// `gerais.vendedora_representante_*` ("representante legal da ficha"), que nunca foi escrita por
+// ninguém (medido por busca no código em 13/09 e de novo em 25/09/2026: zero produtores). Ela saiu
+// quando o Lucas decidiu que o quadro é a única fonte de quem assina (*"todas assinaturas eu tenho
+// que conseguir excluir e editar"*, *"nao tem que ter mais sync com c2x referente a contrato"*):
+// uma segunda via, mesmo morta, é um lugar onde alguém um dia pluga a ficha de novo.
 //
-// Isso NÃO recusa o envio: recusar travaria o primeiro teste do ZZ TESTE por um cadastro que
-// ninguém preencheu ainda. Sai como AVISO, que a tela mostra ao lado do botão — quem confirma vê
-// que a vendedora não vai no envelope. No dia em que a 0141 for preenchida, o signatário aparece
-// sozinho, sem mudar uma linha daqui.
+// Faltar vendedora NÃO recusa o envio: recusar travaria o primeiro teste do ZZ TESTE por um
+// cadastro que ninguém preencheu ainda. Sai como AVISO, que a tela mostra ao lado do botão, e quem
+// confirma vê que a vendedora não vai no envelope.
 
 /** Uma pessoa pronta para virar signatário: o `Signatario` sem o número da ordem. */
 export type Pessoa = Omit<Signatario, "ordem">;
@@ -98,25 +99,6 @@ export function signatariosDoContrato(
     }
   }
 
-  // ⚠️ O QUADRO VENCE A VARIÁVEL DO CONTRATO. `vendedora_representante_nome` é a via antiga, e ela
-  // nunca chegou a ser escrita por ninguém (medido em 13/09/2026: zero ocorrências de `vendedora_`
-  // em `dados-do-contrato.ts`). O quadro do empreendimento é a via nova e a que o operador enxerga;
-  // quando as duas existirem, mandar na que ele vê é o único comportamento explicável.
-  const vendedoraDoQuadro = doQuadro.some((p) => p.papel === "vendedora");
-
-  if (!vendedoraDoQuadro) {
-    const vendedora = texto(dados.gerais.vendedora_representante_nome);
-    if (vendedora) {
-      pessoas.push({
-        cpf: texto(dados.gerais.vendedora_representante_cpf) || null,
-        email: texto(dados.gerais.vendedora_representante_email),
-        nome: vendedora,
-        papel: "vendedora",
-        telefone: texto(dados.gerais.vendedora_representante_telefone) || null,
-      });
-    }
-  }
-
   // ⚠️ A IMOBILIÁRIA VINCULADA VEM DA VENDA, E NÃO DO QUADRO — é a diferença que decide o desenho.
   //
   // O quadro (`temis_assinantes`) guarda quem assina SEMPRE por aquele empreendimento: a vendedora,
@@ -129,7 +111,7 @@ export function signatariosDoContrato(
   // duas: a imobiliária, no e-mail cadastrado dela. É também a via que TEM dado — medido no mesmo
   // dia, 4.929 das 4.947 propostas com imobiliária têm a ponte que preenche `email_vinculado`,
   // contra 18 que têm `imobiliaria_entity_id` (o caminho do representante legal, que a vendedora e
-  // o coordenador usam e que aqui seria um beco).
+  // o coordenador usavam até 25/09/2026 e que aqui seria um beco).
   //
   // ⚠️ ATÉ 23/09/2026 ELA NUNCA ERA CONVIDADA. O papel `corretor` existia no vocabulário e na tela
   // do Setup — dava para numerá-lo na ordem, e o Villa Paris tem isso gravado —, mas nenhuma função
@@ -166,13 +148,29 @@ export function signatariosDoContrato(
   // diferentes (o cadastro guarda em caixa alta, o usuário do hub não) e o documento é um só.
   for (const p of pessoas) p.nome = nomeDeSignatario(p.nome);
 
-  // ⚠️ O AVISO SÓ SAI QUANDO NÃO HÁ NENHUMA DAS DUAS VIAS. Ele é sobre o ENVELOPE sair sem a parte
-  // vendedora — e isso já aconteceu: dos três envelopes de produção medidos em 13/09/2026, nenhum
-  // tinha vendedora, e um deles fechou como assinado com um único signatário.
+  // ⚠️ O AVISO É SOBRE O ENVELOPE SAIR SEM A PARTE VENDEDORA, e isso já aconteceu: dos três
+  // envelopes de produção medidos em 13/09/2026, nenhum tinha vendedora, e um deles fechou como
+  // assinado com um único signatário.
   if (!pessoas.some((p) => p.papel === "vendedora")) {
     avisos.push(
       "Ninguém assina pela VENDEDORA, então o envelope sai só com o comprador. " +
-        "Cadastre no Quadro de assinatura do empreendimento, ou aponte o representante legal no cadastro da empresa.",
+        "Cadastre quem assina por ela no Quadro de assinatura do empreendimento.",
+    );
+  }
+
+  // ⚠️ A COORDENADORA IMPRESSA NO CONTRATO SEM NINGUÉM PARA ASSINAR POR ELA (25/09/2026). É o
+  // defeito do VOR: *"o fabricio não aparece para assinar"*. Enquanto o quadro herdava da ficha, um
+  // papel vazio ainda levava alguém; sem a herança, papel vazio é envelope sem a coordenação, e o
+  // único jeito de o operador saber antes de clicar é esta frase. Só avisa quando o contrato
+  // QUALIFICA uma coordenadora (o texto imprime a razão social dela): empreendimento sem coordenação
+  // de vendas não tem de quem sentir falta.
+  const coordenadoraNoContrato =
+    texto(dados.gerais.razao_social_coordenadora_vendas) ||
+    texto(dados.gerais.nome_fantasia_coordenadora_vendas);
+  if (coordenadoraNoContrato && !pessoas.some((p) => p.papel === "coordenadora")) {
+    avisos.push(
+      `O contrato qualifica a COORDENADORA DE VENDAS (${coordenadoraNoContrato}), mas ninguém assina por ela. ` +
+        "Cadastre quem assina no bloco Coordenador de Vendas do Quadro de assinatura do empreendimento.",
     );
   }
 

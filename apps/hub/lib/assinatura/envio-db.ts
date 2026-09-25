@@ -16,7 +16,7 @@ import { type PortaDaClicksign } from "./clicksign/cliente";
 import { congelarSignatarios } from "./congelar-signatarios";
 import { moverCardDaTemis } from "./estado-db";
 import { ordenarSignatarios, type RegraDeOrdem } from "./ordem";
-import { assinantesDoQuadro, empresasDoEmpreendimento } from "./quadro-db";
+import { assinantesDoQuadro } from "./quadro-db";
 import { descreverOrigem, type OrigemDaRegra, regraDeOrdemDaVenda } from "./ordem-db";
 import { conferirSignatarios, type Pessoa, signatariosDoContrato } from "./signatarios";
 import { chaveDoSignatario, type EstadoDaAssinatura, type Signatario } from "./tipos";
@@ -101,12 +101,10 @@ export async function prepararEnvio(
     resolvido.dados.gerais.__empreendimento_id ??
     resolvido.dados.gerais.__unidade_enterprise_id ??
     null;
-  const empresas = await empresasDoEmpreendimento(sb, enterpriseId);
-  const doQuadro = await assinantesDoQuadro(sb, {
-    coordenadorEntityId: empresas.coordenador,
-    enterpriseId,
-    vendedoraEntityId: empresas.vendedora,
-  });
+  // ⚠️ SÓ O QUE ESTÁ GRAVADO NO QUADRO (25/09/2026). Até esta data a vendedora e a coordenadora
+  // vazias herdavam o representante legal da ficha da empresa; ver o topo de `quadro-db.ts` e a
+  // migration 0191, que gravou como linha quem herdava.
+  const doQuadro = await assinantesDoQuadro(sb, { enterpriseId });
 
   const montagem = signatariosDoContrato(resolvido.dados, doQuadro);
 
