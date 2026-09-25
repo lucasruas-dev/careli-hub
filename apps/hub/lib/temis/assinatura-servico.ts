@@ -360,6 +360,11 @@ function corpoDaResposta(
     ordem: {
       descricao: descreverRegra(preparo.regra, rotuloDoPapel),
       ordenada: preparo.regra.ordenada,
+      // ⚠️ O MAPA VAI INTEIRO, COM OS EMPATES (25/09/2026). Só a lista achatada abaixo chegava à
+      // tela, e a tela a devolvia em todo envio: o servidor a lia pelo ramo antigo de
+      // `lerRegraDeOrdem` e numerava 1..N, desmanchando "comprador 1, o resto 2" no envelope. Nívea
+      // (24/09/2026): *"A ordem de assinatura não está ficando salva."*
+      ordens: preparo.regra.ordens,
       origem: preparo.origemDaRegra,
       origemDescrita: preparo.origemDescrita,
       // A fila que a regra descreve, achatada: o corpo da resposta continua sendo uma LISTA de

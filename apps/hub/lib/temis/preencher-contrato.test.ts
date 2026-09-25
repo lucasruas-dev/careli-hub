@@ -47,7 +47,7 @@ describe("as variáveis viram valor", () => {
       compradores: [comprador("X")],
       gerais: { empreendimento_nome: "Jardim das Gerais", numero_lote: "07" },
     });
-    expect(texto(r.nos)).toBe("Lote 07 do Jardim das Gerais");
+    expect(texto(r.nos)).toBe("Lote 07 do JARDIM DAS GERAIS");
   });
 
   // ⚠️ A DECISÃO MAIS IMPORTANTE DESTE MÓDULO. Um contrato que imprime `[cpf_cliente]` no papel é
@@ -520,7 +520,7 @@ describe("a oração do regime de bens", () => {
     const t = texto(r.nos);
 
     expect(t).toBe(
-      "RODRIGO TAVARES LIMA, Brasileiro, Solteiro (a), Corretor, portador do CPF 111.222.333-44",
+      "RODRIGO TAVARES LIMA, BRASILEIRO, SOLTEIRO (A), CORRETOR, portador do CPF 111.222.333-44",
     );
     expect(t).not.toContain("regime");
     expect(t).not.toContain("casado sob");
@@ -533,7 +533,7 @@ describe("a oração do regime de bens", () => {
     });
 
     expect(texto(r.nos)).toBe(
-      "HENRIQUE SALES DO VALE, Brasileiro, Casado (a), casado sob o regime de Comunhão parcial de bens, Corretor, portador do CPF 111.222.333-44",
+      "HENRIQUE SALES DO VALE, BRASILEIRO, CASADO (A), casado sob o regime de COMUNHÃO PARCIAL DE BENS, CORRETOR, portador do CPF 111.222.333-44",
     );
   });
 
@@ -571,7 +571,7 @@ describe("a oração do regime de bens", () => {
       },
     );
 
-    expect(texto(r.nos)).toBe("Brasileiro, natural de Belo Horizonte");
+    expect(texto(r.nos)).toBe("BRASILEIRO, natural de Belo Horizonte");
   });
 
   // A forma CERTA de escrever isto numa minuta nova. Aqui o motor nem precisa do corte: o par
@@ -593,14 +593,14 @@ describe("a oração do regime de bens", () => {
       compradores: [pessoa("RODRIGO", false)],
       gerais: {},
     });
-    expect(texto(solteiro.nos)).toBe("Solteiro (a), e residente nesta capital");
+    expect(texto(solteiro.nos)).toBe("SOLTEIRO (A), e residente nesta capital");
 
     const casado = preencherContrato(comPar, {
       compradores: [pessoa("HENRIQUE", true)],
       gerais: {},
     });
     expect(texto(casado.nos)).toBe(
-      "Casado (a), casado sob o regime de Comunhão parcial de bens e residente nesta capital",
+      "CASADO (A), casado sob o regime de COMUNHÃO PARCIAL DE BENS e residente nesta capital",
     );
   });
 
@@ -616,9 +616,9 @@ describe("a oração do regime de bens", () => {
     );
     const t = texto(r.nos);
 
-    expect(t).toContain("CASADO, Casado (a) , casado sob o regime de Comunhão parcial de bens");
-    expect(t).toContain("SOLTEIRO, Solteiro (a)");
-    expect(t).not.toContain("SOLTEIRO, Solteiro (a) , casado");
+    expect(t).toContain("CASADO, CASADO (A) , casado sob o regime de COMUNHÃO PARCIAL DE BENS");
+    expect(t).toContain("SOLTEIRO, SOLTEIRO (A)");
+    expect(t).not.toContain("SOLTEIRO, SOLTEIRO (A) , casado");
   });
 });
 
@@ -767,7 +767,7 @@ describe("a oração do RG", () => {
     const r = preencherContrato(qualificacao, { compradores: [pessoa("SEM RG")], gerais: {} });
 
     expect(texto(r.nos)).toBe(
-      "SEM RG, Corretor, inscrito no CPF sob o nº 111.222.333-44, residente",
+      "SEM RG, CORRETOR, inscrito no CPF sob o nº 111.222.333-44, residente",
     );
     expect(r.semValor).not.toContain("rg_cliente");
   });
@@ -779,7 +779,7 @@ describe("a oração do RG", () => {
     });
 
     expect(texto(r.nos)).toBe(
-      "COM RG, Corretor, portador da cédula de identidade nº MG-12.345.678 SSP/MG e inscrito no CPF sob o nº 111.222.333-44, residente",
+      "COM RG, CORRETOR, portador da cédula de identidade nº MG-12.345.678 SSP/MG e inscrito no CPF sob o nº 111.222.333-44, residente",
     );
   });
 
@@ -1521,5 +1521,188 @@ describe("a unidade de área não sai duas vezes", () => {
       gerais: { preco_do_metro: "366,00" },
     });
     expect(texto(r.nos)).toBe("R$ 366,00 m² de terreno.");
+  });
+});
+
+// ── A CAIXA ALTA DO VALOR ───────────────────────────────────────────────────
+//
+// Nívea (24/09/2026), sobre o contrato de TAISA FERNANDA BATISTA, em que a profissão saía
+// "CONSULTOR(A) DE VENDAS" e o estado civil "Casado (a)": *"Precisamos ter padrão nas letras.
+// Escreve tudo em maiúsculo, por favor."*. Lucas, no mesmo dia: *"sobre o contrato, deixa as
+// variáveis em maiúsculo"*.
+
+describe("o valor injetado sai em caixa alta", () => {
+  it("sobe a caixa do dado da pessoa, sem tocar no texto da minuta", () => {
+    const r = preencherContrato(
+      [
+        p(
+          "COMPRADOR(ES): ",
+          v("nome_cliente"),
+          ", de nacionalidade ",
+          v("nacionalidade_cliente"),
+          ", ",
+          v("estado_civil_cliente"),
+          ", casado sob o regime de ",
+          v("regime_casamento_cliente"),
+          ", ",
+          v("profissao_cliente"),
+          ", residente na ",
+          v("rua_cliente"),
+          ", ",
+          v("bairro_cliente"),
+          ", ",
+          v("cidade_cliente"),
+          ".",
+        ),
+      ],
+      {
+        compradores: [
+          comprador("Taisa Fernanda Batista", {
+            valores: {
+              bairro_cliente: "UNIAO",
+              cidade_cliente: "PARA DE MINAS/MG",
+              estado_civil_cliente: "Casado (a)",
+              nacionalidade_cliente: "Brasileira",
+              nome_cliente: "Taisa Fernanda Batista",
+              profissao_cliente: "CONSULTOR(A) DE VENDAS",
+              regime_casamento_cliente: "Comunhão parcial de bens",
+              rua_cliente: "Rua Paraíso",
+            },
+          }),
+        ],
+        gerais: {},
+      },
+    );
+
+    expect(texto(r.nos)).toBe(
+      "COMPRADOR(ES): TAISA FERNANDA BATISTA, de nacionalidade BRASILEIRA, CASADO (A), casado sob o regime de COMUNHÃO PARCIAL DE BENS, CONSULTOR(A) DE VENDAS, residente na RUA PARAÍSO, UNIAO, PARA DE MINAS/MG.",
+    );
+  });
+
+  it("o e-mail NÃO sobe — é endereço, e o contrato é onde a pessoa confere", () => {
+    const r = preencherContrato([p("e do e-mail: ", v("email_cliente"))], {
+      compradores: [
+        comprador("TAISA FERNANDA BATISTA", {
+          valores: { email_cliente: "Taisafernanda100@hotmail.com" },
+        }),
+      ],
+      gerais: {},
+    });
+    expect(texto(r.nos)).toBe("e do e-mail: Taisafernanda100@hotmail.com");
+  });
+
+  it("o extenso, a data e o dinheiro ficam como estão — são oração no meio da redação", () => {
+    const r = preencherContrato(
+      [
+        p(
+          "pelo preço de ",
+          v("preco_venda"),
+          " (",
+          v("preco_venda_extenso"),
+          "), em ",
+          v("data_emissao_contrato"),
+          ", com área de ",
+          v("area_lote"),
+          ".",
+        ),
+      ],
+      {
+        compradores: [],
+        gerais: {
+          area_lote: "365,09 m²",
+          data_emissao_contrato: "24 de setembro de 2026",
+          preco_venda: "R$ 148.401,00",
+          preco_venda_extenso: "cento e quarenta e oito mil quatrocentos e um reais",
+        },
+      },
+    );
+    expect(texto(r.nos)).toBe(
+      "pelo preço de R$ 148.401,00 (cento e quarenta e oito mil quatrocentos e um reais), em 24 de setembro de 2026, com área de 365,09 m².",
+    );
+  });
+
+  it("o nome do arquivo do anexo e a frase dos bens continuam como foram escritos", () => {
+    const r = preencherContrato(
+      [p("fica anexo o ", v("anexo_1_nome"), ", e recebe em permuta ", v("bens_e_permutas_descricao"))],
+      {
+        anexos: { 1: "Memorial descritivo.pdf" },
+        compradores: [],
+        gerais: {
+          bens_e_permutas_descricao: "Ford Ka 2019 placa ABC1D23 (permuta), no valor de R$ 80.000,00",
+        },
+      },
+    );
+    expect(texto(r.nos)).toBe(
+      "fica anexo o Memorial descritivo.pdf, e recebe em permuta Ford Ka 2019 placa ABC1D23 (permuta), no valor de R$ 80.000,00",
+    );
+  });
+
+  it("o colchete do que falta continua minúsculo, para achar o nome na minuta", () => {
+    const r = preencherContrato([p("CPF ", v("cpf_cliente"))], {
+      compradores: [{ ehPessoaFisica: true, temConjuge: false, valores: {} }],
+      gerais: {},
+    });
+    expect(texto(r.nos)).toBe("CPF [cpf_cliente]");
+    expect(r.semValor).toEqual(["cpf_cliente"]);
+  });
+
+  it("o que o catálogo não conhece fica como veio", () => {
+    const r = preencherContrato([p("Obs: ", v("preco_do_metro"))], {
+      compradores: [],
+      gerais: { preco_do_metro: "R$ 366,00 por metro" },
+    });
+    expect(texto(r.nos)).toBe("Obs: R$ 366,00 por metro");
+  });
+
+  // ⚠️ AS DUAS EXCEÇÕES QUE FALTAVAM, DA MESMA FAMÍLIA DO `bens_e_permutas_descricao`: estão
+  // marcadas `tipo: "texto"` no catálogo, mas não são DADO da pessoa — são FRASE escrita pelo
+  // sistema, com unidade e pontuação no meio.
+  it("plano_sistema_amortizacao não sobe: é frase escrita pelo sistema", () => {
+    const r = preencherContrato([p("Sistema: ", v("plano_sistema_amortizacao"))], {
+      compradores: [],
+      gerais: { plano_sistema_amortizacao: "Tabela SACOC — amortização pura" },
+    });
+    expect(texto(r.nos)).toBe("Sistema: Tabela SACOC — amortização pura");
+  });
+
+  it("plano_juros não sobe: a unidade viraria 12% AO ANO", () => {
+    const r = preencherContrato([p("Juros de ", v("plano_juros"))], {
+      compradores: [],
+      gerais: { plano_juros: "12% ao ano" },
+    });
+    expect(texto(r.nos)).toBe("Juros de 12% ao ano");
+  });
+
+  // ⚠️ O ÍNDICE CONTINUA SUBINDO, DE PROPÓSITO: "IPCA anual" é RÓTULO de índice, quase todo sigla,
+  // e o Quadro-Resumo já escreve as linhas vizinhas em caixa alta.
+  it("plano_indice_correcao continua subindo", () => {
+    const r = preencherContrato([p("Correção: ", v("plano_indice_correcao"))], {
+      compradores: [],
+      gerais: { plano_indice_correcao: "IPCA anual" },
+    });
+    expect(texto(r.nos)).toBe("Correção: IPCA ANUAL");
+  });
+
+  // ⚠️ A CAIXA SOBE ANTES DO ESCAPE, E ISSO TEM DE FICAR PROVADO. `documento-html.ts:126`
+  // (`escaparHtml`) roda DEPOIS de `toUpperCase`, na hora de montar o HTML — se a ordem se
+  // invertesse algum dia, "&amp;" viraria "&AMP;" e a entidade quebrada apareceria como texto no
+  // contrato do cliente. Endereço e razão social com "&" existem no cadastro, e "<" chega por
+  // colagem de quem digitou a ficha.
+  it("valor com & e < sobe a caixa e sai escapado, sem entidade quebrada", () => {
+    const r = preencherContrato([p("Profissão: ", v("profissao_cliente"))], {
+      compradores: [
+        comprador("TAISA FERNANDA BATISTA", {
+          valores: { profissao_cliente: "Sócia da Tecidos & Cia <matriz>" },
+        }),
+      ],
+      gerais: {},
+    });
+
+    const html = documentoParaHtml(r.nos);
+    expect(html).toContain("SÓCIA DA TECIDOS &amp; CIA &lt;MATRIZ&gt;");
+    expect(html).not.toContain("&AMP;");
+    expect(html).not.toContain("&LT;");
+    // E o texto legível continua sendo o valor em caixa alta, com os caracteres de volta.
+    expect(texto(r.nos)).toBe("Profissão: SÓCIA DA TECIDOS &amp; CIA &lt;MATRIZ&gt;");
   });
 });

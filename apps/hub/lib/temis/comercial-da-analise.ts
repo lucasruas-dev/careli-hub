@@ -17,6 +17,7 @@ import type { ModoDoAjuste } from "@/lib/hercules/ajuste-de-preco";
 import type { Cronograma, ParcelaDoCronograma } from "@/lib/hercules/cronograma";
 
 import { periodicidadeDaTaxa } from "@/lib/apolo/periodicidade-da-taxa";
+import { faixaCorrige } from "@/lib/hercules/cronograma";
 
 /** Um dos números grandes do topo: rótulo pequeno, valor forte, e uma linha de contexto. */
 export type DestaqueComercial = {
@@ -127,6 +128,44 @@ function comoSeAnunciaAEntrada(entrada: ParcelaDoCronograma[]): string {
 function ultimoVencimento(c: Cronograma): string {
   const todas = [...c.entrada, ...c.mensais, ...c.anuais].map((p) => p.vencimento).filter(Boolean);
   return todas.length > 0 ? todas.sort().at(-1) ?? "" : "";
+}
+
+/**
+ * Quem decidiu os juros desta proposta, se a proposta souber responder.
+ *
+ * ⚠️ AUSENTE É "NÃO SEI", E NUNCA "CADASTRO". `condicoes.premissa` nasceu em 25/09/2026 e não alcança
+ * o passado: medido no mesmo dia, as 22 propostas nativas com cronograma não têm a chave, e as 4.857
+ * importadas do C2X nunca terão. Ler ausência como "pelo cadastro" faria esta tela AFIRMAR a origem
+ * de um zero que ninguém registrou — a mesma classe de erro que fez `plano_correcao` nula ser lida
+ * como "sem correção" num contrato que quase dobra a parcela.
+ */
+function origemDosJuros(condicoes: unknown): null | string {
+  const premissa = (condicoes as null | { premissa?: unknown })?.premissa;
+  if (!premissa || typeof premissa !== "object") return null;
+  const de = (premissa as { jurosDe?: unknown }).jurosDe;
+  return typeof de === "string" && de.trim() ? de.trim() : null;
+}
+
+/**
+ * A linha "Juros" da análise comercial.
+ *
+ * ⚠️ TRÊS ESTADOS, E NÃO DOIS: taxa gravada, zero COM origem registrada e silêncio. O terceiro é o
+ * único que vira pendência — ver a nota no ponto em que esta função é chamada.
+ */
+function textoDosJuros(juros: number, origemDeQuem: null | string): string {
+  if (juros > 0) {
+    return `${porcentagem(juros)} ${periodicidadeDaTaxa(juros) === "anual" ? "a.a." : "a.m."}`;
+  }
+  const frase: Record<string, string> = {
+    cadastro: "sem juros, pelo cadastro do plano",
+    corretor: "sem juros, por decisão do corretor",
+    faixa: "sem juros, pela faixa de prazo",
+  };
+  // ⚠️ ORIGEM QUE O CÓDIGO NÃO CONHECE NÃO INVENTA FRASE: ela diz o fato e cala sobre o autor. Um
+  // valor novo no jsonb (ou um typo numa gravação futura) não pode produzir "sem juros, por decisão
+  // de undefined" numa tela de dinheiro.
+  if (origemDeQuem) return frase[origemDeQuem] ?? "sem juros";
+  return "";
 }
 
 function condicao(rotulo: string, valor: string): CondicaoComercial {
@@ -306,11 +345,16 @@ export async function comercialDaProposta(
 
   // ⚠️ A CORREÇÃO SAI DO CRONOGRAMA, NÃO DA COLUNA `plano_correcao` — e isto foi medido, não
   // suposto. A proposta do Otavio (TST Q01 L03) tem `plano_correcao` NULO e mesmo assim 10 faixas
-  // de reajuste com `temIpca`, levando a parcela de R$ 1.012,50 a R$ 1.954,32 em dez anos. Ler a
+  // de reajuste COM ÍNDICE, levando a parcela de R$ 1.012,50 a R$ 1.954,32 em dez anos. Ler a
   // coluna faria a tela de análise escrever "sem correção" num contrato que quase dobra a parcela
   // — exatamente o erro que esta tela existe para impedir. O cronograma é a foto do que o cliente
   // leu; a coluna é preenchimento de cadastro, e nas propostas nativas ela vem vazia.
-  const temReajuste = cronograma.reajustes.some((f) => f.temIpca);
+  //
+  // ⚠️ E A PERGUNTA VAI POR `faixaCorrige`, QUE LÊ AS DUAS GRAFIAS. A faixa trocou o booleano
+  // `temIpca` pelo código `indiceCorrecao` em 24/09/2026, e o cronograma que chega aqui é o
+  // CONGELADO: medido em 25/09/2026, 22 propostas guardam a grafia velha, ZERO a nova, e 20
+  // corrigem. Perguntar só pelo código faria essas 20 dizerem "sem correção" nesta tela, caladas.
+  const temReajuste = cronograma.reajustes.some((f) => faixaCorrige(f));
   const nomeDoIndice = correcao
     ? (() => {
         // A sigla mantém a caixa alta (IPCA, INCC); o resto não grita.
@@ -334,12 +378,17 @@ export async function comercialDaProposta(
     // ⚠️ E A TAXA DO LEGADO NÃO DIZ A UNIDADE: chutar "a.a." erra num terço dos contratos — o mesmo
     // banco guarda 8,0 (ao ano) e 0,7207 (ao mês). A régua é `periodicidadeDaTaxa`, importada da
     // mesa de venda e não copiada.
-    condicao(
-      "Juros",
-      juros > 0
-        ? `${porcentagem(juros)} ${periodicidadeDaTaxa(juros) === "anual" ? "a.a." : "a.m."}`
-        : "",
-    ),
+    // ⚠️ E "SEM JUROS POR DECISÃO" NÃO É "JUROS NÃO GRAVADOS" (25/09/2026). Desde este lote juros
+    // zero é um estado LEGÍTIMO e gravável: Nívea (24/09/2026), sobre a proposta 000038, escolheu
+    // "Juros % a.m. = 0" e "Correção = poupança anual", e a rota passou a gravar isso com a ORIGEM
+    // (`condicoes.premissa.jurosDe`). Sem ler essa chave, esta tela mostraria a linha vazia numa
+    // proposta correta e completa, e a Nívea iria conferir no C2X um dado que está no banco — a tela
+    // que existe para impedir erro de dinheiro virando a que gera desconfiança.
+    //
+    // ⚠️ O BRANCO CONTINUA PARA QUEM NÃO TEM A CHAVE, que é toda proposta antiga e toda importada:
+    // medido em 25/09/2026, as 22 propostas nativas com cronograma não têm `condicoes.premissa`. Ali
+    // a pendência é honesta, e é a mesma razão do parágrafo acima.
+    condicao("Juros", textoDosJuros(juros, origemDosJuros(proposta.condicoes))),
     condicao(
       "Correção",
       temReajuste

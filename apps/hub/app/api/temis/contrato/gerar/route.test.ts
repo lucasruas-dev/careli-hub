@@ -278,7 +278,11 @@ describe("o PDF sai do mesmo HTML que a prévia mostrou", () => {
 
     expect(estado.htmlImpresso).toHaveLength(1);
     expect(estado.htmlImpresso[0]).toBe(daPrevia.html);
-    expect(daPrevia.html).toContain("Henrique Sales do Vale");
+    // ⚠️ EM CAIXA ALTA PORQUE O VALOR INJETADO SOBE A CAIXA desde 24/09/2026 (ver `emCaixaAlta`
+    // em `lib/temis/preencher-contrato.ts`). O cadastro continua guardando "Henrique Sales do
+    // Vale"; quem muda é o que vai ao papel. O NOME DO ARQUIVO não muda — ele não sai do
+    // documento preenchido, e o teste do protocolo, logo abaixo, continua cobrando a caixa mista.
+    expect(daPrevia.html).toContain("HENRIQUE SALES DO VALE");
   });
 });
 

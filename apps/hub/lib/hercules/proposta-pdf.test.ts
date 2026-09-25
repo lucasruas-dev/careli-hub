@@ -74,9 +74,9 @@ const EXEMPLO: PropostaParaPdf = {
     },
   ],
   reajustes: [
-    { ate: "10/11/2027", de: "10/12/2026", parcelas: "1 a 12", periodo: "1º ano", temIpca: false, valor: "R$ 583,33" },
-    { ate: "10/11/2028", de: "10/12/2027", parcelas: "13 a 24", periodo: "2º ano", temIpca: true, valor: "R$ 612,66" },
-    { ate: "10/11/2029", de: "10/12/2028", parcelas: "25 a 36", periodo: "3º ano", temIpca: true, valor: "R$ 668,20" },
+    { ate: "10/11/2027", de: "10/12/2026", parcelas: "1 a 12", periodo: "1º ano", correcao: null, valor: "R$ 583,33" },
+    { ate: "10/11/2028", de: "10/12/2027", parcelas: "13 a 24", periodo: "2º ano", correcao: "IPCA anual", valor: "R$ 612,66" },
+    { ate: "10/11/2029", de: "10/12/2028", parcelas: "25 a 36", periodo: "3º ano", correcao: "IPCA anual", valor: "R$ 668,20" },
   ],
   subtitulo: "Garden · 250,00 m² · Goiânia, GO",
   temReajuste: true,
@@ -207,6 +207,43 @@ function linhasDoPdf(bytes: Uint8Array): string[] {
 
   return linhas;
 }
+
+describe("o sufixo da tabela de reajuste", () => {
+  // ⚠️ AFIRMAÇÃO EM CAIXA ALTA: ATÉ 24/09/2026 O SUFIXO ERA A PALAVRA "IPCA", CRAVADA NO CÓDIGO.
+  // A linha era `dados.reajustes.map((r) => (r.temIpca ? "+ IPCA" : null))` — um booleano decidia
+  // SE havia correção e o papel escrevia SEMPRE "IPCA", qualquer que fosse o índice do plano.
+  it("sai do índice do plano, e não da palavra IPCA", async () => {
+    const texto = textoDoPdf(
+      linhasDoPdf(
+        await montarPropostaPdf({
+          ...EXEMPLO,
+          // ⚠️ A TABELA DO REAJUSTE SÓ É DESENHADA A PEDIDO (`proposta-pdf.ts:834`), e o EXEMPLO
+          // do arquivo não a pede — por isso a impressão digital das 85 linhas não a inclui.
+          incluirReajuste: true,
+          reajustes: EXEMPLO.reajustes.map((r) =>
+            r.correcao ? { ...r, correcao: "poupança anual" } : r,
+          ),
+        }),
+      ),
+    );
+    expect(texto).toContain("+ poupança anual");
+    expect(texto).not.toContain("+ IPCA");
+  });
+
+  it("faixa sem correção não ganha sufixo nenhum", async () => {
+    const texto = textoDoPdf(
+      linhasDoPdf(
+        await montarPropostaPdf({
+          ...EXEMPLO,
+          incluirReajuste: true,
+          reajustes: EXEMPLO.reajustes.map((r) => ({ ...r, correcao: null })),
+        }),
+      ),
+    );
+    expect(texto).not.toContain("+ IPCA");
+    expect(texto).not.toContain("+ poupança");
+  });
+});
 
 describe("⚠️ a proposta SEM bens nem permutas sai exatamente como saía", () => {
   it("o desenho inteiro bate com a impressão digital tirada antes da permuta existir", async () => {

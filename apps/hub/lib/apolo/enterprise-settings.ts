@@ -15,14 +15,22 @@ export type EnterpriseSetting = {
   // Toggle da Análise de Crédito (default true na migration). Ligado ⇒ o limite de crédito é
   // exigido; desligado ⇒ a etapa de crédito é ignorada na esteira.
   analiseCreditoHabilitada: boolean;
-  // ORDEM DE ASSINATURA (migration 0142). `assinaturaOrdenada` ligado ⇒ os signatários assinam em
-  // fila, na ordem de `assinaturaOrdem` (lista de PAPÉIS, do primeiro ao último); desligado ⇒ todos
-  // ao mesmo tempo, que é o comportamento de hoje em 18 de 18 empreendimentos (medido 08/09/2026).
+  // ORDEM DE ASSINATURA (migration 0142). `assinaturaOrdenada` ligado ⇒ os signatários assinam na
+  // ordem de `assinaturaOrdem`; desligado ⇒ todos ao mesmo tempo, que é o comportamento de hoje em
+  // 18 de 18 empreendimentos (medido 08/09/2026).
+  //
+  // ⚠️ DUAS GRAFIAS, E AS DUAS ESTÃO VIVAS: o MAPA `{papel: número}` que a tela manda desde
+  // 13/09/2026 (mesmo número = assinam juntos) e a LISTA de papéis da grafia antiga. Medido em
+  // 25/09/2026 (`select count(*), count(*) filter (where jsonb_typeof(assinatura_ordem) =
+  // 'object'), count(*) filter (where jsonb_typeof(assinatura_ordem) = 'array') from
+  // apolo_enterprise_settings`): 40 linhas, 0 mapas e 1 lista — o RVP (38), na grafia antiga.
+  // Quem converte as duas em números é `lerRegraDeOrdem` (lib/assinatura/ordem.ts); aqui a leitura
+  // só PRESERVA a forma.
   //
   // ⚠️ `assinaturaOrdem` NULA É O ESTADO NORMAL, e não "lista vazia": nula significa "usa a ordem
   // padrão da casa" (comprador → cônjuge → vendedora → …). Uma lista vazia gravada diria que NENHUM
   // papel tem posição, e todo mundo assinaria por último — que não é o que ninguém quis dizer.
-  assinaturaOrdem: null | string[];
+  assinaturaOrdem: null | Record<string, number> | string[];
   assinaturaOrdenada: boolean;
   // Toggle do Comprovante de renda (default FALSE na migration 0095). Ligado ⇒ o envio da CAD
   // exige o comprovante de renda do cliente (um entre extrato bancário dos últimos 3 meses,
@@ -97,19 +105,39 @@ function normalizarPercentual(v: null | number | string | undefined): null | num
 }
 
 /**
- * O jsonb da ordem de assinatura, lido como lista de papéis.
+ * O jsonb da ordem de assinatura, com a FORMA preservada.
  *
- * ⚠️ SÓ STRINGS, E SÓ SE FOR UM ARRAY. A coluna é `jsonb` livre: um dia alguém grava um objeto ali
- * por engano, e um `as string[]` faria a tela renderizar `[object Object]` como se fosse um papel.
- * Quem valida QUAIS papéis existem é `lerRegraDeOrdem` (lib/assinatura/ordem.ts) — aqui a pergunta
- * é só de forma.
+ * ⚠️ AFIRMAÇÃO EM CAIXA ALTA: ATÉ 25/09/2026 ESTA FUNÇÃO COMEÇAVA COM `if (!Array.isArray(bruto))
+ * return null`, E ERA ELA QUE APAGAVA O MAPA. Nívea (24/09/2026): *"A ordem de assinatura não está
+ * ficando salva."* A gravação já tinha sido consertada e estava no ar (commit b108e654, 23/09/2026
+ * 07:52, release 1.363.0, `app/api/apolo/empreendimentos/settings/route.ts`), mas a tela manda um
+ * MAPA `{papel: número}` — então o GET devolvia nulo, o Setup reabria mostrando o padrão canônico
+ * sobre uma coluna gravada certa, e o aviso âmbar do cartão acusava defeito em todo salvamento que
+ * deu certo.
+ *
+ * ⚠️ AQUI A CONFERÊNCIA É SÓ DE FORMA. Array de strings segue array; objeto cujos valores são
+ * números finitos segue objeto; qualquer outra coisa vira nulo. Quem valida QUAIS papéis existem, e
+ * quem converte as duas grafias em números, é `lerRegraDeOrdem` (lib/assinatura/ordem.ts) — e é ela
+ * que o ENVIO usa, lendo a coluna CRUA por `regraDaColuna` (lib/assinatura/ordem-db.ts). Repetir o
+ * saneamento aqui faria a tela mostrar uma ordem e o contrato sair em outra no primeiro ajuste.
  *
  * ⚠️ NULO ≠ VAZIO. Nulo é "usa a ordem padrão da casa"; uma lista vazia gravada é uma decisão
  * (nenhum papel tem posição). Converter um no outro apagaria a diferença.
  */
-function listaDePapeis(bruto: unknown): null | string[] {
-  if (!Array.isArray(bruto)) return null;
-  return bruto.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+function ordemGravada(bruto: unknown): null | Record<string, number> | string[] {
+  if (Array.isArray(bruto)) {
+    return bruto.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+  }
+  if (!bruto || typeof bruto !== "object") return null;
+  // ⚠️ O MAPA INTEIRO CAI SE UM VALOR NÃO FOR NÚMERO, e não só a chave torta. Um mapa com metade
+  // das posições ilegíveis é uma ordem que ninguém cadastrou: entregá-lo pela metade poria o papel
+  // sem número no fim da fila de um contrato, calado. Nulo manda a tela dizer "padrão da casa".
+  const entradas = Object.entries(bruto as Record<string, unknown>);
+  if (entradas.length === 0) return null;
+  for (const [, valor] of entradas) {
+    if (typeof valor !== "number" || !Number.isFinite(valor)) return null;
+  }
+  return Object.fromEntries(entradas) as Record<string, number>;
 }
 
 // A tabela pode não existir ainda (migration pendente): trata como "sem settings".
@@ -177,7 +205,7 @@ export async function listEnterpriseSettings(
       analiseCreditoHabilitada: flagPadraoLigado(row.analise_credito_habilitada),
       // A ordem NASCE DESLIGADA (default da coluna 0142): ligá-la na carteira inteira mudaria o
       // comportamento de contratos que hoje saem em paralelo, sem ninguém ter pedido.
-      assinaturaOrdem: listaDePapeis(row.assinatura_ordem),
+      assinaturaOrdem: ordemGravada(row.assinatura_ordem),
       assinaturaOrdenada: flagPadraoDesligado(row.assinatura_ordenada),
       comprovanteRendaHabilitado: flagPadraoDesligado(row.comprovante_renda_habilitado),
       credenciamentoAtivo: Boolean(row.credenciamento_ativo),

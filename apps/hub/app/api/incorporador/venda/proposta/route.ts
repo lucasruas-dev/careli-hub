@@ -16,7 +16,7 @@ import {
   escopoDoTitular,
 } from "@/lib/apolo/incorporador/familia-no-portal";
 import { ehPortalComercial } from "@/lib/apolo/incorporador/perfis-de-portal";
-import type { PlanoComercial } from "@/lib/apolo/planos-comerciais";
+import { INDICES, type PlanoComercial } from "@/lib/apolo/planos-comerciais";
 import { lerPlanosDoC2x } from "@/lib/apolo/planos-comerciais-c2x";
 import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
 import { descontoDoPlano, type ModoDoAjuste } from "@/lib/hercules/ajuste-de-preco";
@@ -49,6 +49,10 @@ import {
 } from "@/lib/hercules/cliente-credenciado";
 import { montarCronograma } from "@/lib/hercules/cronograma";
 import {
+  escolherPlanoDaProposta,
+  type PlanoDaMesa,
+} from "@/lib/hercules/escolher-plano";
+import {
   lerComColunasDoApartamento,
   nomeDaUnidade,
   tipoDaUnidade,
@@ -56,6 +60,7 @@ import {
 import type { TipoProduto } from "@/lib/hercules/produto-novo";
 import { lerFaixasDoPanteon } from "@/lib/hercules/planos-do-panteon";
 import type { FaixaDePrazo } from "@/lib/hercules/premissa-do-prazo";
+import { planoEfetivo } from "@/lib/hercules/premissa-efetiva";
 import { descontoDoPlanoNoPrazo } from "@/lib/hercules/tabela-do-lote";
 import { rotuloDoIndice } from "@/lib/temis/planos";
 import {
@@ -322,7 +327,6 @@ function codigoDoEmpreendimento(
  * slot) não têm id nenhum para carregar. `PlanosDoEmpreendimento.planos` é tipado como
  * `PlanoComercial` porque as duas fontes se misturam ali, e o id se perde no TIPO — não no objeto.
  */
-type PlanoDaMesa = PlanoComercial & { id?: null | string };
 
 /** Os planos que o simulador oferece para esta unidade: Panteon primeiro, C2X depois. */
 async function planosDaUnidade(
@@ -355,76 +359,6 @@ async function planosDaUnidade(
   ).flatMap((e) => e.planos as PlanoDaMesa[]);
 }
 
-/**
- * O plano desta proposta: pelo ID da linha de `temis_planos`, com o nome como reserva.
- *
- * ⚠️ O NOME NÃO É CHAVE, E ISSO CUSTA DINHEIRO DE VERDADE. Até 22/09/2026 a rota casava o plano por
- * `p.nome.trim() === planoNome`, e os nomes dos planos são texto que o cadastro edita. No dia em que
- * o Garden trocou NORMAL por INVESTIDOR, INVESTIDOR PARCELADO por PROMOÇÃO PARCELADO e INVESTIDOR
- * por PROMOÇÃO À VISTA, um simulador que já estava aberto continuou mandando `planoNome:
- * "INVESTIDOR"` querendo o plano de 36 parcelas — e o nome passou a casar com a linha de 60. O
- * objeto ia inteiro para `montarCronograma` e congelava na gravação: medido no banco, o de 36x tem
- * `juros_taxa` 0,000000 e o de 60x tem 6,000000 ao ano. São 6% ao ano gravados numa proposta de
- * verdade, num cronograma que alimenta o contrato. Não é tela errada, é dinheiro errado que fica.
- *
- * ⚠️ OS DOIS SÃO ACEITOS DE PROPÓSITO. O id é a chave; o nome é a reserva para quem não o manda —
- * qualquer aba aberta antes desta subida, e o C2X, que não tem o que mandar (`commercial_plans` é
- * lido por slot e não tem id que sobreviva à leitura, então lá o nome é a única chave que existe).
- * Recusar tudo o que chega sem id pararia a venda de todo mundo no minuto do deploy.
- *
- * ⚠️ ID QUE NÃO CASA NÃO CAI NO NOME. Seria reabrir exatamente o buraco: a tela velha manda o id
- * certo E o nome velho, e um fallback silencioso a levaria de volta para a linha renomeada. Id que
- * não existe mais é uma frase para o coordenador, não um palpite.
- *
- * ⚠️ E O CAMINHO SEM ID É O `find` DE SEMPRE, DESFEITO E DEVOLVIDO NO MESMO DIA EM QUE SAIU
- * (22/09/2026). Duas regras nasceram aqui junto com o casamento por id, e as duas saíram por
- * medição, porque mudavam regra de venda de quem não pediu nada:
- *
- *   • A TRAVA DO NOME AMBÍGUO (recusar com 422 quando dois planos de mesmo nome discordavam no
- *     dinheiro) PARAVA A VENDA DO LAGOA BONITA INTEIRA, hoje e sem rename nenhum. `planosDaUnidade`
- *     achata a família (pai e irmãos), e medido em 22/09/2026 no banco: o "NORMAL 01" do LBR
- *     (enterprise 27) pede 12% de entrada e o do LBF (enterprise 33) pede 20%, os dois cadastrados
- *     de propósito; o "INVESTIDOR 02" tem a mesma diferença. São cadastros CERTOS, de produtos
- *     diferentes, que a trava comparava como se fossem candidatos ao mesmo lote.
- *
- *   • O RECORTE POR EMPREENDIMENTO DA UNIDADE, criado para consertar a trava, GRAVAVA PROPOSTA QUE
- *     SE CONTRADIZIA: ele escolhia o plano numa lista recortada enquanto a tela e
- *     `pedido.planosDaTabela` continuavam olhando a família inteira. Medido: uma proposta do LBF
- *     congelava `plano.entradaPercentual = 20` ao lado de uma entrada de 12%, no mesmo objeto.
- *
- * O nome repetido escolhe o PRIMEIRO da lista, como sempre escolheu. Quem fecha esse buraco é o id,
- * que a tela passou a mandar — e não uma recusa que para venda legítima para todo mundo.
- */
-function escolherPlanoDaProposta(
-  planos: PlanoDaMesa[],
-  escolhido: { id: string; nome: string },
-): { motivo: string; plano: null } | { motivo: null; plano: PlanoDaMesa } {
-  if (escolhido.id) {
-    const porId = planos.find(
-      (p) => String(p.id ?? "").trim() === escolhido.id,
-    );
-    return porId
-      ? { motivo: null, plano: porId }
-      : {
-          motivo:
-            "O plano escolhido não está mais disponível neste empreendimento. Abra a proposta de novo e escolha o plano na lista.",
-          plano: null,
-        };
-  }
-
-  if (!escolhido.nome) return { motivo: "Escolha o plano da proposta.", plano: null };
-
-  // ⚠️ ESTE `find` É O DE SEMPRE, LETRA POR LETRA — ver o cabeçalho. Mexer nele é mexer na regra de
-  // venda de todo empreendimento servido pelo C2X e de toda aba que ainda não manda o id.
-  const porNome = planos.find((p) => p.nome.trim() === escolhido.nome);
-  return porNome
-    ? { motivo: null, plano: porNome }
-    : {
-        motivo: `O plano "${escolhido.nome}" não está disponível neste empreendimento.`,
-        plano: null,
-      };
-}
-
 /** A % mínima de entrada DESTE empreendimento. Nulo = a tela cai no padrão da casa. */
 async function pisoDaEntrada(
   admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
@@ -446,6 +380,86 @@ async function pisoDaEntrada(
     (data as null | { entrada_minima_percentual: null | number | string })
       ?.entrada_minima_percentual,
   );
+}
+
+/**
+ * A PREMISSA QUE O CORRETOR ESCREVEU POR CIMA — a taxa e o índice que ele escolheu na tela.
+ *
+ * ⚠️ AFIRMAÇÃO EM CAIXA ALTA: ATÉ 25/09/2026 ESTES DOIS VALORES MORRIAM NO NAVEGADOR. O que subia
+ * era só o booleano `premissaAlterada`, que abre a caixa de nota — o servidor sabia que ALGUÉM
+ * mexeu e não sabia no quê, e seguia calculando pelo cadastro. Nívea (24/09/2026), sobre a proposta
+ * 000038: *"Na proposta não está saindo o novo cenário de juros e correção."* Lucas, no mesmo dia:
+ * *"vamos corrigir isso ae"*.
+ *
+ * ⚠️ AUSENTE É "NÃO MEXEU", E NUNCA ZERO. `Number("")` é 0: ler o campo vazio como número faria a
+ * aba que não manda nada (qualquer uma aberta antes desta subida, e toda proposta sem alteração)
+ * zerar os juros de um contrato em silêncio. Por isso ausência e string vazia saem daqui como nulo,
+ * e o nulo significa "use a premissa do cadastro e da faixa".
+ *
+ * ⚠️ E LIXO RECUSA COM FRASE, em vez de virar palpite. `Number("abc")` é NaN e NaN entra em conta
+ * sem reclamar; um índice que o catálogo não conhece, ignorado em silêncio, gravaria a correção do
+ * cadastro num contrato que a tela mostrava com outra. Aqui é 422 com o que fazer.
+ *
+ * ⚠️ E A VÍRGULA PERDIDA TAMBÉM RECUSA (25/09/2026). `0,7207` digitado como `7207` era um número
+ * finito e positivo, então passava sem uma palavra enquanto "abc" era recusado com frase — e virava
+ * cronograma, PDF e quadro NOMINAL do contrato (`lib/temis/tabela-de-pagamentos.ts`). A maior taxa
+ * cadastrada da casa é 8 ao ANO (medido em 25/09/2026, `select max(juros_taxa) from temis_planos
+ * where ativo` por periodicidade: 0,8000 no mensal), então `TAXA_MAXIMA` de 100% é folga de duas
+ * ordens de grandeza — ela não recusa negócio nenhum, só recusa dígito perdido.
+ */
+/** O teto de sanidade da taxa escrita à mão, em % na periodicidade do plano. Ver `lerPremissaEscolhida`. */
+const TAXA_MAXIMA = 100;
+
+function lerPremissaEscolhida(corpo: {
+  indiceEscolhido?: unknown;
+  jurosEscolhido?: unknown;
+}): {
+  erros: Array<{ campo: string; mensagem: string }>;
+  indice: null | string;
+  juros: null | number;
+} {
+  const erros: Array<{ campo: string; mensagem: string }> = [];
+
+  let juros: null | number = null;
+  const taxa = corpo.jurosEscolhido;
+  if (taxa != null && taxa !== "") {
+    const n =
+      typeof taxa === "number"
+        ? taxa
+        : typeof taxa === "string"
+          ? Number(taxa.replace(",", "."))
+          : Number.NaN;
+    if (!Number.isFinite(n) || n < 0) {
+      erros.push({
+        campo: "juros",
+        mensagem:
+          "A taxa de juros escolhida não é um número válido. Escreva a taxa em % (0 para sem juros) ou deixe o campo em branco para usar a do cadastro.",
+      });
+    } else if (n > TAXA_MAXIMA) {
+      erros.push({
+        campo: "juros",
+        mensagem: `A taxa de juros escolhida (${n}%) não é possível. Escreva a taxa em % na periodicidade do plano — 0,7207 e não 7207 — ou deixe o campo em branco para usar a do cadastro.`,
+      });
+    } else {
+      juros = n;
+    }
+  }
+
+  let indice: null | string = null;
+  const correcao = corpo.indiceEscolhido;
+  if (correcao != null && correcao !== "") {
+    if (typeof correcao !== "string" || !Object.hasOwn(INDICES, correcao)) {
+      erros.push({
+        campo: "correcao",
+        mensagem:
+          "A Correção escolhida não é um índice que o sistema conhece. Escolha um da lista ou deixe em branco para usar a do cadastro.",
+      });
+    } else {
+      indice = correcao;
+    }
+  }
+
+  return { erros, indice, juros };
 }
 
 /** Nome de imobiliária e corretor, para a tela e para o papel. */
@@ -675,6 +689,21 @@ export async function POST(request: Request) {
     entradaVezes?: unknown;
     /** A tabela de reajuste entra na PA? Ausente = não entra (é o padrão novo). */
     incluirReajuste?: unknown;
+    /**
+     * O ÍNDICE que o corretor escolheu por cima da premissa. Ausente = não mexeu.
+     *
+     * ⚠️ O CÓDIGO, e não o rótulo: `POUPANCA`, e nunca "poupança anual". O rótulo é texto de tela e
+     * muda por decisão de produto (o POUPANCA virou "poupança anual" em 16/09/2026 sem migration);
+     * gravar a palavra faria a proposta guardar o nome velho para sempre.
+     */
+    indiceEscolhido?: unknown;
+    /**
+     * A TAXA que o corretor escreveu por cima, em % na periodicidade do plano. Ausente = não mexeu.
+     *
+     * ⚠️ ZERO É UM VALOR, e é justamente o cenário da 000038: "sem juros" escrito à mão. Ausência é
+     * outra coisa — ver `lerPremissaEscolhida`.
+     */
+    jurosEscolhido?: unknown;
     observacao?: unknown;
     parcelasMensais?: unknown;
     /**
@@ -703,6 +732,9 @@ export async function POST(request: Request) {
   const unidadeId = String(corpo.unidadeId ?? "").trim();
   const planoId = String(corpo.planoId ?? "").trim();
   const planoNome = String(corpo.planoNome ?? "").trim();
+  // A taxa e o índice que o corretor escolheu, já conferidos. Os erros entram na MESMA lista da
+  // régua, lá embaixo: a tela mostra tudo o que falta de uma vez, e não um problema por clique.
+  const escolhida = lerPremissaEscolhida(corpo);
 
   // ⚠️ O AJUSTE É LIDO AQUI E NÃO INFLUENCIA O PREÇO — `valorNegociado` já chega com ele
   // embutido, calculado por `aplicarAjuste` na mesma tela que o digitou. Recalcular aqui abriria
@@ -970,7 +1002,96 @@ export async function POST(request: Request) {
       id: planoId,
       nome: planoNome,
     });
-    const plano = escolha.plano;
+
+    // ── 5½. A PREMISSA EFETIVA: CADASTRO → FAIXA DE PRAZO → CORRETOR ───────
+    //
+    // ⚠️ AFIRMAÇÃO EM CAIXA ALTA: ATÉ 25/09/2026 ESTA ROTA ENTREGAVA O PLANO DO CADASTRO CRU AOS
+    // QUATRO CONSUMIDORES, e por isso papel e conta não divergiam: os dois estavam errados juntos.
+    // Nívea (24/09/2026), sobre a proposta 000038 (VOC, Quadra 12 · Lote 22, TAISA FERNANDA
+    // BATISTA): *"Na proposta não está saindo o novo cenário de juros e correção."* Lucas, no mesmo
+    // dia: *"vamos corrigir isso ae"*.
+    //
+    // ⚠️ E O DINHEIRO ESTÁ GRAVADO, NÃO SÓ IMPRESSO. Medido em 25/09/2026 (`select plano_juros,
+    // plano_correcao, condicoes->'totais' from hercules_propostas where protocolo_numero = 38`):
+    // `plano_juros` 0,7207, `plano_correcao` "IPCA anual" e `totais.mensais` 138.130,32, onde o
+    // cenário que ela escolheu (juros 0) daria 48 × R$ 2.595,00 = R$ 124.560,00. São R$ 13.570,32
+    // numa venda de R$ 138.401,00.
+    //
+    // ⚠️ UMA COMPOSIÇÃO SÓ, E ELA VIVE AQUI. `planoEfetivo` é a MESMA função pura que o simulador
+    // chama na tela (`SimuladorDeProposta`) e que a modal usa para a tabela de reajuste. Trocar o
+    // OBJETO num ponto único conserta o cálculo, o congelamento, as colunas planas e o papel de uma
+    // vez, porque todos leem o mesmo `plano`. Recalcular conta aqui seria a segunda versão da mesma
+    // conta — o defeito de 04/09/2026, R$ 2.157,44 no cartão e R$ 1.500,00 no papel.
+    //
+    // ⚠️ E ELA PASSA A HONRAR A FAIXA DE PRAZO, que esta rota nunca leu no POST. A leitura é a MESMA
+    // do GET, e não uma segunda — e a TELA já honrava a faixa antes deste lote (o `useMemo` de `cru`
+    // em `SimuladorDeProposta`), então quem divergia era o papel.
+    //
+    // ⚠️ AFIRMAÇÃO EM CAIXA ALTA: ISTO MUDA PREÇO EM CINCO EMPREENDIMENTOS QUE ESTÃO VENDENDO, NO
+    // PRAZO PADRÃO DO PLANO, SEM NINGUÉM DIGITAR PRAZO NENHUM — e a primeira versão deste comentário
+    // dizia que só o VOC em prazo curto era atingido, o que está MEDIDO COMO FALSO. Medido em
+    // 25/09/2026 (`select p.enterprise_id, p.nome, p.parcelas, p.juros_taxa, p.indice_correcao,
+    // p.entrada_percentual, f.parcela_minima, f.parcela_maxima, f.define_juros, f.juros_taxa,
+    // f.indice_correcao, f.entrada_percentual from temis_planos p join temis_faixas_de_prazo f on
+    // f.enterprise_id = p.enterprise_id and f.ativo and p.parcelas between f.parcela_minima and
+    // f.parcela_maxima where p.ativo`), o de/para plano por plano:
+    //
+    //   LBF (33) INVESTIDOR 02, 48 parcelas: `juros_taxa` NULO no cadastro (SEM JUROS) contra
+    //     `define_juros = true` e 0,8000 na faixa de 37 a 60. É O CASO QUE DÓI: um plano cadastrado
+    //     sem juros passa a cobrar 0,8% ao mês. Num financiado de R$ 120.000 em 48 parcelas é da
+    //     ordem de R$ 23 mil que ninguém cobrava, gravados em `condicoes.totais.mensais`, impressos
+    //     na folha que circula por WhatsApp e reproduzidos no quadro NOMINAL do contrato.
+    //   VDO (19): IPCA_MENSAL do cadastro vira IPCA_ANUAL no CURTO 36 e nos dois NORMAL 168
+    //     (SACOC e PRICE).
+    //   VOC (37) CURTO 36: IPCA_ANUAL do cadastro (que vive no pai, 35, porque o 37 não tem plano
+    //     ativo próprio) vira SEM_CORRECAO pela faixa de 25 a 36 do 37.
+    //   LBR (27) INVESTIDOR 02 48: entrada 12% do cadastro contra 20% da faixa.
+    //   LBF (33) INVESTIDOR 02 48 e NORMAL 01 72: entrada 20% do cadastro contra 12% da faixa.
+    //
+    // ⚠️ E O JDG (40) NÃO ENTRA, ao contrário do que a revisão supôs: o NORMAL 120 do cadastro já
+    // está em POUPANCA, igual à faixa de 37 a 120 — não há de/para. O 9001 é o Villa Paris de teste.
+    //
+    // ⚠️ A ENTRADA DA FAIXA NÃO ENTRA NO MOLDE CONGELADO. Ver a nota de `condicoes.plano`: a régua
+    // que aprova a proposta mede pela entrada do CADASTRO, e gravar a da faixa ao lado de uma
+    // entrada aprovada com outra % é a contradição que a casa desfez em 22/09/2026.
+    let faixasDoPrazo: Record<string, FaixaDePrazo[]>;
+    try {
+      faixasDoPrazo = await lerFaixasDoPanteon(admin, [String(c2xId)]);
+    } catch (erro) {
+      // ⚠️ NA DÚVIDA SOBRE DINHEIRO, NÃO GRAVA — o mesmo princípio do 409 da trava do lote e da
+      // recusa da proposta com bem quando a coluna não existe. No GET a falha cai para "sem faixa"
+      // porque lá o custo é a tela abrir sem premissa preenchida; aqui o custo é gravar a venda com
+      // a premissa ERRADA, cobrando juros que a diretoria isentou, num cronograma que vira contrato.
+      //
+      // ⚠️ E A TABELA AUSENTE NÃO CHEGA AQUI: `lerFaixasDoPanteon` trata estrutura que não existe
+      // (migration pendente, coluna nova, cache do PostgREST) como "sem faixa", a mesma régua de
+      // `apolo_enterprise_settings`. O que sobra para este 503 é falha TRANSITÓRIA — timeout, RLS,
+      // conexão —, onde ninguém sabe se havia faixa.
+      //
+      // ⚠️ O `enterprise_id` VAI NO REGISTRO, e é o que permite dizer DEPOIS quantas vendas foram
+      // barradas e em qual produto. Sem ele o log responde "a Mesa parou" e nada mais.
+      console.error(
+        `[hercules][proposta] faixas de prazo enterprise=${c2xId}`,
+        erro,
+      );
+      return NextResponse.json(
+        {
+          error:
+            "Não foi possível conferir as premissas de prazo deste empreendimento agora. Tente de novo em instantes.",
+        },
+        { status: 503 },
+      );
+    }
+
+    const efetivo = planoEfetivo({
+      faixasDePrazo: faixasDoPrazo[String(c2xId)] ?? [],
+      indiceSobrescrito: escolhida.indice,
+      jurosSobrescrito: escolhida.juros,
+      // O prazo CONTRATADO, que é o mesmo que decide a faixa na tela (`prazoDaFaixa`).
+      parcelas: pedido.parcelas ?? 0,
+      plano: escolha.plano,
+    });
+    const plano = efetivo.plano;
 
     // ⚠️ A TABELA VAI JUNTO PARA A RÉGUA, e é o que faz a faixa do prazo VALER. Sem estes planos,
     // `conferirProposta` só conhece o piso da casa (10%) e uma proposta de 30 parcelas com entrada
@@ -991,6 +1112,27 @@ export async function POST(request: Request) {
       // reclicando no mesmo botão sem saber que o problema é o CADASTRO.
       erros.push({ campo: "plano", mensagem: escolha.motivo });
     }
+    // A taxa e o índice conferidos no topo: recusa com frase, e nunca palpite silencioso.
+    erros.push(...escolhida.erros);
+
+    // ⚠️ ALTERAR A PREMISSA **NÃO** EXIGE MOTIVO, E É DECISÃO DO LUCAS (25/09/2026).
+    //
+    // Lucas: *"acho que não tem necessidade de pedir justificativa"*, logo depois de explicar de
+    // quem é a autonomia: *"a ideia de ter planos prontos é para facilitar o trabalho do
+    // coordenador, corretor, mas o que vale é a configuração que ele fez no atendimento. O
+    // Coordenador tem autonomia de mudar o plano, ou seja, se o coordenador colocar taxa zero em um
+    // plano que tem juros, prevalece o que ele colocou."*
+    //
+    // ⚠️ EU TINHA POSTO A TRAVA AQUI E ELE MANDOU TIRAR. O argumento era a rescisão futura ("quem
+    // autorizou tirar os juros desta venda?"), e ele decidiu que o custo de travar a venda é maior
+    // que o de não ter a nota. O QUE FICA no lugar dela: `condicoes.premissa` grava
+    // `jurosDe`/`indiceDe` = `corretor`, `criado_por_nome` diz quem gerou e `hercules_proposta_etapas`
+    // guarda quando. Quem alterou e o quê ficam registrados; só o porquê é opcional.
+    //
+    // ⚠️ O QUE CONTINUA VALENDO: a taxa ainda precisa ser um número possível (`lerPremissaEscolhida`
+    // recusa negativo, lixo e a taxa acima do teto, que é o erro de digitar 7207 no lugar de
+    // 0,7207), e o DESCONTO no preço segue exigindo o motivo, que é outra régua e não foi tocada.
+
     if (erros.length > 0 || !plano) {
       return NextResponse.json({ erros }, { status: 422 });
     }
@@ -1219,7 +1361,23 @@ export async function POST(request: Request) {
             parcelasDoPlano: plano.parcelas,
             parcelasEfetivas: pedido.parcelas,
           }),
-          entradaPercentual: plano.entradaPercentual,
+          // ⚠️ A ENTRADA É A DO CADASTRO, E NÃO A DA FAIXA — e isto é a contradição que a casa
+          // desfez em 22/09/2026, escrita no cabeçalho de `lib/hercules/escolher-plano.ts`:
+          // *"gravava plano.entradaPercentual = 20 ao lado de uma entrada de 12%, no mesmo objeto"*.
+          // `aplicarPremissa` troca também `entradaPercentual`, então o plano EFETIVO carrega a
+          // entrada da faixa; só que a régua que ACEITOU esta proposta (`conferirProposta`, com
+          // `pedido.planosDaTabela`) mede pela do cadastro. Congelar a da faixa aqui faria o jsonb
+          // afirmar uma exigência que ninguém conferiu.
+          //
+          // ⚠️ E A DIVERGÊNCIA EXISTE NO BANCO HOJE. Medido em 25/09/2026 (join de `temis_planos`
+          // ativo com `temis_faixas_de_prazo` ativa pelo prazo do próprio plano): LBR (27)
+          // INVESTIDOR 02 de 48 parcelas tem cadastro 12% e faixa 20%; LBF (33) INVESTIDOR 02 e
+          // NORMAL 01 têm cadastro 20% e faixa 12%.
+          //
+          // ⚠️ A DA FAIXA NÃO SE PERDE: ela vai para `condicoes.premissa.daFaixa.entradaPercentual`,
+          // logo abaixo, que é o lugar de "o que a faixa mandava" ao lado de "o que o molde previa".
+          // Trocar a régua em vez disto mudaria a % de entrada exigida do LBR sem ninguém ter pedido.
+          entradaPercentual: efetivo.doCadastro?.entradaPercentual ?? plano.entradaPercentual,
           indiceCorrecao: plano.indiceCorrecao,
           jurosConvencao: plano.jurosConvencao,
           jurosPeriodicidade: plano.jurosPeriodicidade,
@@ -1228,6 +1386,51 @@ export async function POST(request: Request) {
           /** O prazo do MOLDE. O prazo contratado está em `contrato_parcelas`. */
           parcelas: plano.parcelas,
           sistemaAmortizacao: plano.sistemaAmortizacao,
+        },
+        // ⚠️ A ORIGEM DE CADA NÚMERO, CONGELADA JUNTO COM ELE (25/09/2026). O `plano` acima é o
+        // EFETIVO: ele diz quanto, e não de quem veio. Quando a Nívea apontou a 000038, a pergunta
+        // seguinte foi "e quantas outras propostas saíram assim?" — e ela NÃO TEVE RESPOSTA EM SQL,
+        // porque nada do cenário escolhido era persistido: não havia coluna nem chave no jsonb. Das
+        // 22 propostas nativas com cronograma (medido em 25/09/2026), só a 000038 está confirmada, e
+        // pelo print, não pelo banco.
+        //
+        // ⚠️ E ISTO NÃO ALCANÇA O PASSADO. As propostas já congeladas não serão reescritas: o
+        // cronograma gravado é a foto do que o cliente leu. A chave responde pelas NOVAS.
+        //
+        // ⚠️ DENTRO DO JSONB, sem coluna nova e sem migration — o mesmo motivo de `plano` estar
+        // aqui, e quem lê o jsonb já trata chave ausente (ver `comercial-da-analise.ts`, "ausente
+        // vale zero").
+        premissa: {
+          alteradaPeloCorretor: efetivo.alteradaPeloCorretor,
+          /**
+           * A faixa que governou este prazo, quando havia uma. Nulo = nenhuma continha o prazo.
+           *
+           * ⚠️ A ENTRADA DELA MORA AQUI, E NÃO EM `plano` (25/09/2026). `condicoes.plano` é o MOLDE
+           * que a régua mediu, e ele guarda a entrada do CADASTRO; a exigência da faixa é outro
+           * fato, e o lugar dela é este. Nulo quando a faixa não opina sobre entrada
+           * (`define_entrada = false`).
+           */
+          daFaixa: efetivo.premissaDaFaixa
+            ? {
+                entradaPercentual: efetivo.premissaDaFaixa.entradaPercentual,
+                parcelaMaxima: efetivo.premissaDaFaixa.faixa.parcelaMaxima,
+                parcelaMinima: efetivo.premissaDaFaixa.faixa.parcelaMinima,
+              }
+            : null,
+          /** O plano do CADASTRO, intacto — o molde, ao lado do efetivo, para a diferença ficar legível. */
+          doCadastro: efetivo.doCadastro
+            ? {
+                entradaPercentual: efetivo.doCadastro.entradaPercentual,
+                indiceCorrecao: efetivo.doCadastro.indiceCorrecao,
+                jurosConvencao: efetivo.doCadastro.jurosConvencao,
+                jurosPeriodicidade: efetivo.doCadastro.jurosPeriodicidade,
+                jurosTaxa: efetivo.doCadastro.jurosTaxa,
+                sistemaAmortizacao: efetivo.doCadastro.sistemaAmortizacao ?? null,
+              }
+            : null,
+          /** "cadastro", "faixa" ou "corretor" — quem decidiu ESTE campo. */
+          indiceDe: efetivo.indiceDe,
+          jurosDe: efetivo.jurosDe,
         },
       },
       // ⚠️ O PRAZO CONTRATADO É ESTE, e é ele que a tela mostra. `fluxoDoPlano`

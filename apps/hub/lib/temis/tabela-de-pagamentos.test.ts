@@ -96,7 +96,7 @@ describe("tabelaGeralDePagamentos", () => {
   it("⚠️ a série mensal sai em UMA linha, com a primeira parcela e o total NOMINAL", () => {
     const saida = texto(tabelaGeralDePagamentos({ ...CONDICOES, mensais: MENSAIS_COMPLETAS }));
 
-    expect(saida).toContain("Mensal");
+    expect(saida).toContain("MENSAL");
     expect(saida).not.toContain("Mensais 1 a 12");
     expect(saida).not.toContain("Mensais 145 a 156");
 
@@ -126,22 +126,22 @@ describe("tabelaGeralDePagamentos", () => {
       }),
     );
 
-    expect(saida).toContain("Entrada 1");
-    expect(saida).toContain("Entrada 2");
-    expect(saida).toContain("Entrada 3");
+    expect(saida).toContain("ENTRADA 1");
+    expect(saida).toContain("ENTRADA 2");
+    expect(saida).toContain("ENTRADA 3");
     expect(saida).toContain("04/09/2026");
     expect(saida).toContain("20/10/2026");
     expect(saida).toContain("20/11/2026");
     expect(saida).toContain("R$ 2.400,00");
     expect(saida).toContain("R$ 2.385,00");
     // Entrada nao leva correcao nem juros: ela e paga antes de existir saldo devedor.
-    expect(saida).not.toContain("Entrada (parcelada)");
+    expect(saida).not.toContain("ENTRADA (PARCELADA)");
   });
 
   it("entrada de uma parcela só não ganha número", () => {
     const saida = texto(tabelaGeralDePagamentos(CONDICOES));
-    expect(saida).toContain("Entrada");
-    expect(saida).not.toContain("Entrada 1");
+    expect(saida).toContain("ENTRADA");
+    expect(saida).not.toContain("ENTRADA 1");
   });
 
   it("traz uma linha por tipo de parcela, com o que o contrato precisa dizer", () => {
@@ -149,25 +149,25 @@ describe("tabelaGeralDePagamentos", () => {
 
     // O cabeçalho que o Lucas pediu no bloco pronto: tipo, correção, juros, vencimento, quantidade,
     // valor e total.
-    expect(saida).toContain("Parcela");
-    expect(saida).toContain("Correção");
-    expect(saida).toContain("Juros");
-    expect(saida).toContain("1º vencimento");
-    expect(saida).toContain("Qtde.");
-    expect(saida).toContain("Valor");
-    expect(saida).toContain("Total");
+    expect(saida).toContain("PARCELA");
+    expect(saida).toContain("CORREÇÃO");
+    expect(saida).toContain("JUROS");
+    expect(saida).toContain("1º VENCIMENTO");
+    expect(saida).toContain("QTDE.");
+    expect(saida).toContain("VALOR");
+    expect(saida).toContain("TOTAL");
 
     // A entrada: uma parcela, na data dela, sem correção nem juros (é à vista).
-    expect(saida).toContain("Entrada");
+    expect(saida).toContain("ENTRADA");
     expect(saida).toContain("18/09/2026");
     expect(saida).toContain("R$ 13.355,10");
 
     // As mensais: a quantidade do plano, a primeira parcela e o primeiro vencimento.
-    expect(saida).toContain("Mensal");
+    expect(saida).toContain("MENSAL");
     expect(saida).toContain("156");
     expect(saida).toContain("10/10/2026");
     expect(saida).toContain("R$ 770,49");
-    expect(saida).toContain("IPCA anual");
+    expect(saida).toContain("IPCA ANUAL");
     expect(saida).toContain("0,7207% a.m.");
     expect(saida).toContain("R$ 120.195,90");
 
@@ -186,7 +186,14 @@ describe("tabelaGeralDePagamentos", () => {
   });
 
   it("sem parcela anual, a linha das anuais não existe", () => {
-    expect(texto(tabelaGeralDePagamentos(CONDICOES))).not.toContain("Anual");
+    // ⚠️ A BUSCA É PELO RÓTULO DA LINHA, e não pela palavra solta: desde 25/09/2026 a coluna de
+    // correção escreve "IPCA ANUAL" em caixa alta, e um `not.toContain("ANUAL")` passaria a acusar a
+    // própria correção. A linha da série anual tem o rótulo na PRIMEIRA célula.
+    const quadro = tabelaGeralDePagamentos(CONDICOES);
+    const rotulos = (quadro?.children ?? []).map((no) =>
+      JSON.stringify((no as { children?: unknown[] }).children?.[0] ?? ""),
+    );
+    expect(rotulos.some((r) => r.includes("ANUAL"))).toBe(false);
   });
 
   it("com parcelas anuais, elas entram no quadro", () => {
@@ -199,7 +206,7 @@ describe("tabelaGeralDePagamentos", () => {
       totais: { ...CONDICOES.totais, anuais: 10000 },
     };
     const saida = texto(tabelaGeralDePagamentos(comAnuais));
-    expect(saida).toContain("Anual");
+    expect(saida).toContain("ANUAL");
     expect(saida).toContain("R$ 5.000,00");
     expect(saida).toContain("R$ 10.000,00");
     expect(saida).toContain("10/09/2027");
@@ -207,7 +214,7 @@ describe("tabelaGeralDePagamentos", () => {
 
   it("sem plano sem juros, a coluna diz 'sem juros' em vez de inventar taxa", () => {
     const semJuros = { ...CONDICOES, plano: { ...CONDICOES.plano, jurosTaxa: null } };
-    expect(texto(tabelaGeralDePagamentos(semJuros))).toContain("sem juros");
+    expect(texto(tabelaGeralDePagamentos(semJuros))).toContain("SEM JUROS");
   });
 
   // ⚠️ PROPOSTA IMPORTADA DO C2X NÃO TEM CRONOGRAMA. Nesse caso o quadro não existe, e quem chama
@@ -328,10 +335,10 @@ describe("o bem e a permuta no quadro de pagamento", () => {
   it("⚠️ vira linha própria, dizendo O QUE É e QUANTO VALE", () => {
     const saida = texto(tabelaGeralDePagamentos(CONDICOES_COM_PERMUTA, null, [CARRO]));
 
-    expect(saida).toContain("Permuta");
+    expect(saida).toContain("PERMUTA");
     // A descrição é o que liga a linha ao bem de verdade: sem ela o quadro anuncia R$ 80.000 de
     // coisa nenhuma, e quem confere não tem como saber que carro é esse.
-    expect(saida).toContain("Ford Ka 2019 placa ABC1D23");
+    expect(saida).toContain("FORD KA 2019 PLACA ABC1D23");
     expect(saida).toContain("R$ 80.000,00");
   });
 
@@ -362,8 +369,8 @@ describe("o bem e a permuta no quadro de pagamento", () => {
       ),
     );
 
-    expect(saida).toContain("Ford Ka 2019 placa ABC1D23");
-    expect(saida).toContain("lote 12 da quadra 4 em Anápolis");
+    expect(saida).toContain("FORD KA 2019 PLACA ABC1D23");
+    expect(saida).toContain("LOTE 12 DA QUADRA 4 EM ANÁPOLIS");
     expect(saida).toContain("R$ 15.000,00");
     // 20.000 + 80.000 + 15.000 + 85.000 = R$ 200.000,00.
     expect(saida).toContain("R$ 200.000,00");
@@ -402,7 +409,7 @@ describe("o bem e a permuta no quadro de pagamento", () => {
       tabelaGeralDePagamentos(CONDICOES_COM_PERMUTA, null, [{ ...CARRO, descricao: "   " }]),
     );
 
-    expect(saida).toContain("Permuta");
+    expect(saida).toContain("PERMUTA");
     expect(saida).toContain("R$ 80.000,00");
   });
 
@@ -426,8 +433,8 @@ describe("o bem e a permuta no quadro de pagamento", () => {
   it("⚠️ a linha do bem fica entre a entrada e as parcelas", () => {
     const saida = texto(tabelaGeralDePagamentos(CONDICOES_COM_PERMUTA, null, [CARRO]));
 
-    expect(saida.indexOf("Entrada")).toBeLessThan(saida.indexOf("Permuta"));
-    expect(saida.indexOf("Permuta")).toBeLessThan(saida.indexOf("Mensal"));
+    expect(saida.indexOf("ENTRADA")).toBeLessThan(saida.indexOf("PERMUTA"));
+    expect(saida.indexOf("PERMUTA")).toBeLessThan(saida.indexOf("MENSAL"));
   });
 
   // ⚠️ O BEM NÃO TEM VENCIMENTO, E O QUADRO NÃO INVENTA UM. Ele é entregue no ato; escrever ali a
@@ -436,7 +443,7 @@ describe("o bem e a permuta no quadro de pagamento", () => {
   it("a linha do bem não anuncia vencimento nenhum", () => {
     const quadro = tabelaGeralDePagamentos(CONDICOES_COM_PERMUTA, null, [CARRO]);
     const linha = (quadro?.children ?? []).find((no) =>
-      JSON.stringify(no).includes("Ford Ka"),
+      JSON.stringify(no).includes("FORD KA"),
     );
 
     expect(JSON.stringify(linha)).not.toContain("10/10/2026");
@@ -515,9 +522,9 @@ describe("sem parcela de entrada, a comissão ainda sai do quadro", () => {
       ]),
     );
 
-    expect(saida).toContain("Ford Ka 2019 placa ABC1D23");
+    expect(saida).toContain("FORD KA 2019 PLACA ABC1D23");
     expect(saida).toContain("R$ 20.000,00");
-    expect(saida).toContain("Comissão de corretagem");
+    expect(saida).toContain("COMISSÃO DE CORRETAGEM");
     expect(saida).toContain("-R$ 12.000,00");
     // E as mensais seguem intocadas: elas amortizam o preço do lote inteiras.
     expect(saida).toContain("R$ 180.000,00");
@@ -533,8 +540,8 @@ describe("sem parcela de entrada, a comissão ainda sai do quadro", () => {
       ]),
     );
 
-    expect(saida.indexOf("Permuta")).toBeLessThan(saida.indexOf("Comissão de corretagem"));
-    expect(saida.indexOf("Comissão de corretagem")).toBeLessThan(saida.indexOf("Mensal"));
+    expect(saida.indexOf("PERMUTA")).toBeLessThan(saida.indexOf("COMISSÃO DE CORRETAGEM"));
+    expect(saida.indexOf("COMISSÃO DE CORRETAGEM")).toBeLessThan(saida.indexOf("MENSAL"));
   });
 
   // ⚠️ COM ENTRADA EM DINHEIRO NADA MUDA: a comissão continua saindo por dentro das parcelas do ato,
@@ -542,7 +549,7 @@ describe("sem parcela de entrada, a comissão ainda sai do quadro", () => {
   it("⚠️ com entrada em dinheiro, o quadro é o MESMO de antes — nó a nó", () => {
     const comoHoje = tabelaGeralDePagamentos(CONDICOES, COMISSAO);
 
-    expect(texto(comoHoje)).not.toContain("Comissão de corretagem");
+    expect(texto(comoHoje)).not.toContain("COMISSÃO DE CORRETAGEM");
     expect(texto(comoHoje)).toContain("R$ 125.537,94");
     expect(tabelaGeralDePagamentos(CONDICOES, COMISSAO, [])).toEqual(comoHoje);
   });
@@ -552,7 +559,7 @@ describe("sem parcela de entrada, a comissão ainda sai do quadro", () => {
       tabelaGeralDePagamentos(CONDICOES_SEM_DINHEIRO_NO_ATO, null, [CARRO_NA_ENTRADA]),
     );
 
-    expect(saida).not.toContain("Comissão de corretagem");
+    expect(saida).not.toContain("COMISSÃO DE CORRETAGEM");
     expect(saida).toContain("R$ 200.000,00");
   });
 
@@ -563,7 +570,7 @@ describe("sem parcela de entrada, a comissão ainda sai do quadro", () => {
       tabelaGeralDePagamentos(CONDICOES_SEM_DINHEIRO_NO_ATO, 30_000_000, [CARRO_NA_ENTRADA]),
     );
 
-    expect(saida).not.toContain("Comissão de corretagem");
+    expect(saida).not.toContain("COMISSÃO DE CORRETAGEM");
     expect(saida).toContain("R$ 200.000,00");
   });
 });
@@ -585,7 +592,7 @@ describe("o quadro e a régua do dinheiro contam a MESMA lista", () => {
 
     expect(somarBensEPermutas(comTexto)).toBe(0);
     expect(saida).not.toContain("2.000.080.000.100.000");
-    expect(saida).not.toContain("Ford Ka 2019 placa ABC1D23");
+    expect(saida).not.toContain("FORD KA 2019 PLACA ABC1D23");
     // 20.000 de entrada + 100.000 de saldo: o que a régua soma é o que o quadro soma.
     expect(saida).toContain("R$ 120.000,00");
   });
@@ -596,5 +603,96 @@ describe("o quadro e a régua do dinheiro contam a MESMA lista", () => {
     const semBem = tabelaGeralDePagamentos(CONDICOES_COM_PERMUTA, null, []);
 
     expect(quadro).toEqual(semBem);
+  });
+});
+
+// ── A CAIXA DO QUADRO ────────────────────────────────────────────────────────
+//
+// Nívea (24/09/2026), com o print do contrato da TAISA FERNANDA BATISTA: *"Precisamos ter padrão nas
+// letras. Escreve tudo em maiúsculo, por favor."* Lucas, no mesmo dia: *"sobre o contrato, deixa as
+// variáveis em maiúsculo"*.
+//
+// ⚠️ AFIRMAÇÃO EM CAIXA ALTA: O MAIÚSCULO PEGOU A QUALIFICAÇÃO E NÃO PEGOU O QUADRO, NO MESMO
+// CONTRATO. A régua de `preencher-contrato.ts` (`deveSubirACaixa`) é o `tipo` do catálogo, e o tipo
+// "gerado" ficou fora porque a tabela entra como NÓS e não passa por `textoDaVariavel`. O encanamento
+// explica; a PÁGINA não: a qualificação passou a dizer "CONSULTOR(A) DE VENDAS ... UNIAO, PARA DE
+// MINAS/MG" e páginas depois o quadro continuava em "Parcela | Correção | Juros", "Entrada 1",
+// "Mensal" e "IPCA anual".
+//
+// ⚠️ E O JURÍDICO JÁ ESCREVE EM CAIXA ALTA. A nota deste arquivo registra o contrato do Villa Paris
+// lido no C2X em 22/09/2026 (venda 4834, RVPA01), que é o desenho que o jurídico usa: ele DECLARA
+// "IPCA ANUAL" nessa coluna. O quadro que o Panteon gerava, não.
+//
+// ⚠️ MEDIDO: das 4 minutas publicadas (SELECT de 24/09/2026), 3 imprimem este quadro — VOC-MINUTA v8
+// e VOL-MINUTA v15 por `tabela_geral_pagamentos`, RVP-MINUTA v3 por `tabela_pagamentos` —, e as duas
+// variáveis saem desta mesma função.
+//
+// ⚠️ NÚMERO, DATA E DINHEIRO FICAM COMO ESTÃO: não têm letra que mude, e "R$ 13.355,10" em caixa alta
+// é o mesmo texto. Sobe a PALAVRA.
+describe("o quadro escreve as palavras dele em caixa alta", () => {
+  const quadro = texto(
+    tabelaGeralDePagamentos({
+      ...CONDICOES,
+      entrada: [
+        { numero: 1, total: 2, valor: 6677.55, vencimento: "2026-09-18" },
+        { numero: 2, total: 2, valor: 6677.55, vencimento: "2026-10-18" },
+      ],
+      anuais: [{ numero: 1, total: 1, valor: 5000, vencimento: "2027-12-10" }],
+    }),
+  );
+
+  it("⚠️ o cabeçalho sai em caixa alta", () => {
+    expect(quadro).toContain("PARCELA");
+    expect(quadro).toContain("CORREÇÃO");
+    expect(quadro).toContain("JUROS");
+    expect(quadro).toContain("1º VENCIMENTO");
+    expect(quadro).toContain("QTDE.");
+    expect(quadro).toContain("VALOR");
+    expect(quadro).not.toContain("Parcela");
+    expect(quadro).not.toContain("Correção");
+  });
+
+  it("⚠️ os rótulos de linha saem em caixa alta", () => {
+    expect(quadro).toContain("ENTRADA 1");
+    expect(quadro).toContain("ENTRADA 2");
+    expect(quadro).toContain("MENSAL");
+    expect(quadro).toContain("ANUAL");
+    expect(quadro).not.toContain("Entrada 1");
+    expect(quadro).not.toContain("Mensal");
+  });
+
+  it("⚠️ a coluna de correção diz IPCA ANUAL, como o Villa Paris declara", () => {
+    expect(quadro).toContain("IPCA ANUAL");
+    expect(quadro).not.toContain("IPCA anual");
+  });
+
+  it("⚠️ o rodapé diz TOTAL", () => {
+    expect(quadro).toContain("TOTAL");
+  });
+
+  it("⚠️ 'sem correção' e 'sem juros' também sobem", () => {
+    const semNada = texto(
+      tabelaGeralDePagamentos({
+        ...CONDICOES,
+        plano: { ...CONDICOES.plano, indiceCorrecao: "SEM_CORRECAO", jurosTaxa: 0 },
+      }),
+    );
+    expect(semNada).toContain("SEM CORREÇÃO");
+    expect(semNada).toContain("SEM JUROS");
+  });
+
+  it("⚠️ o bem e a permuta se anunciam em caixa alta, com a descrição", () => {
+    const comBem = texto(
+      tabelaGeralDePagamentos(CONDICOES, null, [
+        { descricao: "Ford Ka 2019 placa ABC1D23", tipo: "permuta", valor: 80_000 },
+      ] as never),
+    );
+    expect(comBem).toContain("PERMUTA: FORD KA 2019 PLACA ABC1D23");
+  });
+
+  // ⚠️ O DINHEIRO E A DATA NÃO MUDAM — a prova de que a régua é da palavra, e não do quadro inteiro.
+  it("dinheiro e data continuam como estavam", () => {
+    expect(quadro).toContain("6.677,55");
+    expect(quadro).toContain("18/09/2026");
   });
 });

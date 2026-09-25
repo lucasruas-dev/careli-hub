@@ -38,8 +38,19 @@ type LinhaComOrdem = {
   assinatura_ordenada: boolean | null;
 };
 
-/** A regra tem alguma coisa gravada, ou é só o default do banco? Ver a nota do topo. */
-function foiCadastrada(linha: LinhaComOrdem | null): boolean {
+/**
+ * A regra tem alguma coisa gravada, ou é só o default do banco? Ver a nota do topo.
+ *
+ * ⚠️ EXPORTADA PARA A TELA DO SETUP USAR A MESMA RÉGUA (25/09/2026). O cartão de
+ * `modules/apolo/blocks/empreendimentos/ordem-de-assinatura-card.tsx` derivava a origem por
+ * `guardado != null`, que é OUTRO predicado: para o VOL (36) e o VOC (37), que têm
+ * `assinatura_ordenada = true` com `assinatura_ordem` NULA (medido em 24/09/2026), o envio imprimia
+ * "Veio do Setup do empreendimento" e o Setup imprimia "do padrão da casa (nada cadastrado)". Duas
+ * telas, a mesma linha do banco, duas respostas — e o operador lê a errada primeiro. Pior: o "padrão
+ * da casa" é `ORDEM_PADRAO`, que tem `ordenada: false` ("todos ao mesmo tempo"), e esses dois
+ * assinam EM FILA.
+ */
+export function foiCadastrada(linha: LinhaComOrdem | null): boolean {
   if (!linha) return false;
   return linha.assinatura_ordenada === true || linha.assinatura_ordem != null;
 }

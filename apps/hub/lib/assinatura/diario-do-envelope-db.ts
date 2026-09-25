@@ -48,6 +48,23 @@ export type SignatarioDaProposta = SignatarioDoEnvelope & {
 export type EnvelopeDoDiario = {
   atualizadoEm: null | string;
   /**
+   * O NOSSO documento que ESTE envelope levou — a linha de `hercules_documentos` cujo arquivo foi
+   * baixado do Storage e mandado para a Clicksign (`lib/assinatura/envio-db.ts`).
+   *
+   * ⚠️ ELE NÃO É "O CONTRATO VIGENTE", e a diferença é o motivo de o campo existir. `contratoVigente`
+   * responde "qual a geração mais recente"; este campo responde "qual folha está na mão de quem
+   * assina". Gerar uma v2 depois do envio separa as duas respostas sem avisar ninguém, e conferir a
+   * folha errada é pior do que não conferir. Nívea (24/09/2026): *"Não consigo visualizar o contrato
+   * depois que enviamos para assinatura. Se precisamos validar alguma informação, não conseguimos
+   * ver."*
+   *
+   * ⚠️ MEDIDO EM 24/09/2026: nos 5 cards em "Em assinatura" os dois coincidem hoje — mas três deles
+   * têm 2, 3 e 6 versões guardadas, então a coincidência é sorte de calendário, não regra.
+   *
+   * `null` = envelope antigo, gravado antes de a coluna ser preenchida.
+   */
+  documentoId: null | string;
+  /**
    * O id do envelope NA CLICKSIGN — o número que se procura na conta deles.
    *
    * ⚠️ NÃO CONFUNDIR COM `id`, QUE É A NOSSA LINHA. É este que a tela escreve ao lado do log: quem
@@ -90,6 +107,7 @@ export type DiarioDaProposta = DiarioDaAssinatura;
 
 type LinhaDoEnvelope = {
   atualizado_em: null | string;
+  documento_id: null | string;
   envelope_id: null | string;
   estado: null | string;
   estado_cru: null | string;
@@ -165,6 +183,7 @@ async function diarioDaLinha(
     diario: payload === null ? [] : diarioDoEnvelope(payload),
     envelope: {
       atualizadoEm: envelope.atualizado_em,
+      documentoId: envelope.documento_id,
       envelopeId: envelope.envelope_id,
       estado: envelope.estado ?? "desconhecido",
       estadoCru: envelope.estado_cru,
@@ -191,7 +210,7 @@ async function envelopeMaisRecente(
   const { data, error } = await sb
     .from("temis_envelopes")
     .select(
-      "id, provedor, envelope_id, provedor_documento_id, estado, estado_cru, atualizado_em, signatarios",
+      "id, provedor, envelope_id, provedor_documento_id, documento_id, estado, estado_cru, atualizado_em, signatarios",
     )
     .eq("proposta_id", propostaId)
     .order("criado_em", { ascending: false })
@@ -220,7 +239,7 @@ async function envelopeMaisRecenteDoCompromisso(
   const { data, error } = await sb
     .from("temis_envelopes")
     .select(
-      "id, provedor, envelope_id, provedor_documento_id, estado, estado_cru, atualizado_em, signatarios",
+      "id, provedor, envelope_id, provedor_documento_id, documento_id, estado, estado_cru, atualizado_em, signatarios",
     )
     .eq("compromisso_id", compromissoId)
     .order("criado_em", { ascending: false })

@@ -153,6 +153,11 @@ vi.mock("@/lib/apolo/planos-comerciais-c2x", () => ({
 }));
 
 vi.mock("@/lib/hercules/planos-do-panteon", () => ({
+  // ⚠️ A ROTA PASSOU A LER AS FAIXAS DE PRAZO NO POST (25/09/2026), e o dublê precisa exportar tudo o
+  // que ela importa: sem esta linha a função chega `undefined`, a chamada quebra e a rota devolve
+  // 503 — um erro que parece da proposta e é do mock. Vazio = empreendimento sem faixa cadastrada,
+  // que é o caso destes testes.
+  lerFaixasDoPanteon: async () => ({}),
   lerPlanosDoPanteon: async () => [],
   planosPreferindoOPanteon: () => [{ planos: estado.planos }],
 }));

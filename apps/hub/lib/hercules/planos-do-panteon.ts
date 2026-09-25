@@ -330,6 +330,25 @@ export function planosPreferindoOPanteon(
  * empreendimento tiver faixa, `premissaDoPrazo` devolve `null` e a tela se comporta exatamente como
  * se comportava. É o que torna esta entrega segura de subir antes de a tela de cadastro existir.
  */
+/**
+ * O erro diz que a ESTRUTURA não está lá (tabela ou coluna), e não que a leitura falhou?
+ *
+ * ⚠️ OS CÓDIGOS VÊM PRIMEIRO, E A FRASE É A REDE. `42P01` é relação inexistente, `42703` é coluna
+ * inexistente e `PGRST205`/`PGRST204` são o cache de schema do PostgREST ainda sem a tabela ou a
+ * coluna — os quatro significam "a migration não rodou aqui". A regex de "does not exist" pega o
+ * caso em que o cliente entrega só a mensagem. Timeout (`57014`), RLS (`42501`) e queda de conexão
+ * NÃO entram: naquele caso ninguém sabe se havia faixa, e é aí que a recusa é honesta.
+ */
+function ehAusenciaDeEstrutura(
+  error: null | { code?: string; message?: string },
+): boolean {
+  if (!error) return false;
+  if (["42703", "42P01", "PGRST204", "PGRST205"].includes(error.code ?? "")) {
+    return true;
+  }
+  return /does not exist|schema cache/i.test(error.message ?? "");
+}
+
 export async function lerFaixasDoPanteon(
   cliente: Cliente,
   enterpriseIds: string[],
@@ -365,7 +384,24 @@ export async function lerFaixasDoPanteon(
       .in("enterprise_id", ids.slice(de, de + 100))
       .order("parcela_minima", { ascending: true });
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      // ⚠️ "NÃO EXISTE O QUE LER" NÃO É "NÃO CONSEGUI LER", e confundir os dois PARA A MESA DE VENDA
+      // INTEIRA. Desde 25/09/2026 o POST da proposta devolve 503 quando esta leitura lança, para
+      // todo empreendimento — inclusive os que não têm faixa nenhuma, onde ela não pode mudar um
+      // número. Medido em 25/09/2026 (`select coalesce(p.enterprise_id, f.enterprise_id), p.planos,
+      // f.faixas` do full join entre planos ativos e faixas ativas): o empreendimento 39 tem 3
+      // planos e ZERO faixa, e o 42 tem faixa só até 36 parcelas. Uma migration em andamento nesta
+      // tabela recusaria proposta em todos eles por uma premissa que não existe para o produto.
+      //
+      // ⚠️ A RÉGUA É A DA CASA (`lib/apolo/enterprise-settings.ts`, `tabelaAusente`): tabela ou
+      // coluna ausente vale "sem faixa", e o lanço fica para a falha TRANSITÓRIA — timeout, RLS,
+      // conexão —, que é onde o 503 é honesto, porque aí ninguém sabe se havia faixa.
+      if (ehAusenciaDeEstrutura(error)) {
+        console.error("[hercules][faixas] estrutura ausente, seguindo sem faixa", error);
+        return {};
+      }
+      throw new Error(error.message);
+    }
     linhas.push(...((data ?? []) as LinhaDaFaixa[]));
   }
 

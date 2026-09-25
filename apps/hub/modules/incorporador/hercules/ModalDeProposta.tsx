@@ -7,12 +7,13 @@ import {
   VisualizadorDeDocumento,
 } from "@/components/documento/VisualizadorDeDocumento";
 import { cpfValido, formatarDocumento, soDigitos } from "@/lib/apolo/documento";
-import type { PlanoComercial } from "@/lib/apolo/planos-comerciais";
+import { INDICES, type PlanoComercial } from "@/lib/apolo/planos-comerciais";
 import { precoNoPlano } from "@/lib/hercules/ajuste-de-preco";
 // ⚠️ A MESMA RÉGUA DE "É DINHEIRO?" QUE A CONTA E O CONTRATO USAM. Escrever `bem.valor > 0` aqui
 // seria a quarta cópia da regra, e a primeira a aceitar `NaN` como bem de verdade.
 import { valeDinheiro } from "@/lib/hercules/bens-e-permutas";
 import { montarCronograma } from "@/lib/hercules/cronograma";
+import { escolherPlanoDaProposta } from "@/lib/hercules/escolher-plano";
 import type { PlanoDaVenda } from "@/lib/hercules/fluxo-de-venda";
 import {
   conferirProposta,
@@ -33,6 +34,7 @@ import {
   termoDaBusca,
 } from "@/lib/hercules/busca-de-proponente";
 import type { FaixaDePrazo } from "@/lib/hercules/premissa-do-prazo";
+import { planoEfetivo } from "@/lib/hercules/premissa-efetiva";
 import { comoFoiOAviso, vencimentoEmDias } from "@/lib/hercules/reserva";
 import { ajusteFrenteAoPlano } from "@/lib/hercules/tabela-do-lote";
 
@@ -425,19 +427,71 @@ export function ModalDeProposta({
    * em 13/09/2026: das 431 propostas com plano personalizado, 31 (7,2%) têm observação — quem não
    * é obrigado, não escreve.
    *
-   * ⚠️ O QUE ELA NÃO FAZ É BLOQUEAR NO SERVIDOR. Como as outras duas, é trava de TELA: a rota
-   * aceita proposta sem observação porque as 4.857 linhas importadas do C2X vieram sem ela.
+   * ⚠️ A PREMISSA ALTERADA SAIU DOS GATILHOS (Lucas, 25/09/2026: *"acho que não tem necessidade de
+   * pedir justificativa"*). Mudar juros ou correção é a autonomia do coordenador, declarada por ele
+   * no mesmo dia: *"o que vale é a configuração que ele fez no atendimento (...) se o coordenador
+   * colocar taxa zero em um plano que tem juros, prevalece o que ele colocou"*. Eu tinha acabado de
+   * pôr a trava aqui e na rota, e ele mandou tirar dos dois. O que alterou e por quem continua
+   * gravado em `condicoes.premissa` e em `criado_por_nome`; só o porquê deixou de ser obrigatório.
+   *
+   * ⚠️ O DESCONTO E O BEM CONTINUAM EXIGINDO, e são outra régua: ali a nota responde "o que foi
+   * combinado, com quem", que é o que falta quando o carro precisar ser revendido.
    */
-  const precisaDeNota = ehDesconto || premissaAlterada || temBemOuPermuta;
+  const precisaDeNota = ehDesconto || temBemOuPermuta;
   const precisaDaNota = precisaDeNota && nota.trim().length === 0;
   const credenciado = portao?.credenciamento.credenciado === true;
   const podeMontar =
     Boolean(portao) && credenciado && errosDoPortao.length === 0;
 
-  const planoDaProposta = useMemo(
-    () => portao?.planos.find((p) => p.nome === condicoes?.planoNome) ?? null,
-    [condicoes?.planoNome, portao],
-  );
+  /**
+   * O plano desta proposta — PELO ID DA LINHA, com o nome como reserva.
+   *
+   * ⚠️ AFIRMAÇÃO EM CAIXA ALTA: ATÉ 24/09/2026 ESTA LINHA CASAVA POR NOME, E O NOME NÃO É CHAVE.
+   * Era `portao?.planos.find((p) => p.nome === condicoes?.planoNome)`, e é deste objeto que sai o
+   * cronograma que a tela desenha (a tabela "Reajuste da parcela"). A ROTA parou de fazer isso em
+   * 22/09/2026 e casa por `planoId` (`escolherPlanoDaProposta`); a modal ficou para trás, e as duas
+   * podiam escolher planos diferentes na mesma venda.
+   *
+   * ⚠️ E OS NOMES SE REPETEM EM PRODUÇÃO, medido em 24/09/2026: `select enterprise_id,
+   * upper(btrim(nome)), count(*) from temis_planos group by 1,2 having count(*) > 1` devolve três
+   * pares, e um deles é o Jardim das Gerais (enterprise 40) com DOIS planos chamados NORMAL, um
+   * IPCA_ANUAL e outro POUPANCA.
+   *
+   * É a MESMA função da rota, de propósito: duas cópias divergiriam no primeiro ajuste.
+   */
+  const planoDaProposta = useMemo(() => {
+    if (!portao) return null;
+    const doCadastro = escolherPlanoDaProposta(portao.planos, {
+      id: condicoes?.planoId ?? "",
+      nome: condicoes?.planoNome ?? "",
+    }).plano;
+    // ⚠️ E DEPOIS A PREMISSA: CADASTRO → FAIXA DE PRAZO → O QUE O CORRETOR ESCREVEU POR CIMA.
+    //
+    // ⚠️ AFIRMAÇÃO EM CAIXA ALTA: ATÉ 25/09/2026 ESTA TELA DESMENTIA A ESCOLHA DO OPERADOR. O
+    // cronograma daqui saía do plano do CADASTRO, e por isso a tabela "Reajuste da parcela" mostrava
+    // "13 a 24 R$ 2.719,84 + IPCA" embaixo de um resumo que dizia "sem juros, com poupança anual" —
+    // o print da Nívea em 24/09/2026, sobre a proposta 000038: *"Na proposta não está saindo o novo
+    // cenário de juros e correção."*
+    //
+    // ⚠️ OS MESMOS ARGUMENTOS DA ROTA, e é essa a regra: a rota chama `planoEfetivo` com as faixas do
+    // empreendimento, o prazo contratado e os dois valores escolhidos (ver
+    // `app/api/incorporador/venda/proposta/route.ts`, o passo 5½). Compor diferente aqui faria
+    // nascerem duas verdades para a mesma venda — que é exatamente como este defeito começou.
+    return planoEfetivo({
+      faixasDePrazo: portao.faixasDePrazo ?? [],
+      indiceSobrescrito: condicoes?.indiceEscolhido ?? null,
+      jurosSobrescrito: condicoes?.jurosEscolhido ?? null,
+      parcelas: condicoes?.parcelasMensais ?? 0,
+      plano: doCadastro,
+    }).plano;
+  }, [
+    condicoes?.indiceEscolhido,
+    condicoes?.jurosEscolhido,
+    condicoes?.parcelasMensais,
+    condicoes?.planoId,
+    condicoes?.planoNome,
+    portao,
+  ]);
 
   /**
    * O fluxo de pagamento que vai sair — datado.
@@ -725,6 +779,23 @@ export function ModalDeProposta({
       // usa o nome, como sempre usou.
       ...(condicoesAgora.planoId ? { planoId: condicoesAgora.planoId } : {}),
       planoNome: condicoesAgora.planoNome,
+      // ⚠️ A PREMISSA ESCOLHIDA VIAJA, E NÃO SÓ O AVISO DE QUE ALGUÉM MEXEU (25/09/2026). Até aqui o
+      // corpo levava apenas `observacao` e a bandeira de nota: o servidor sabia que houve alteração e
+      // não sabia QUAL, então calculava, gravava e imprimia pelo cadastro. Foi assim que a 000038
+      // (TAISA FERNANDA BATISTA, VOC Quadra 12 · Lote 22) gravou 0,7207% a.m. + IPCA anual e
+      // R$ 138.130,32 de mensais onde o cenário escolhido daria 48 × R$ 2.595,00 = R$ 124.560,00.
+      // Nívea: *"Na proposta não está saindo o novo cenário de juros e correção."*
+      //
+      // ⚠️ E CADA UM SÓ SAI QUANDO EXISTE, como o `planoId` acima: ausente quer dizer "não mexi
+      // nisso", e é o que o servidor lê como "use o cadastro e a faixa". Mandar `jurosEscolhido:
+      // null` em toda proposta obrigaria o servidor a distinguir nulo de ausente em cada leitura
+      // futura — e zero é um valor de verdade aqui, o "sem juros" escrito à mão.
+      ...(condicoesAgora.indiceEscolhido
+        ? { indiceEscolhido: condicoesAgora.indiceEscolhido }
+        : {}),
+      ...(condicoesAgora.jurosEscolhido != null
+        ? { jurosEscolhido: condicoesAgora.jurosEscolhido }
+        : {}),
       primeiraParcelaEm: condicoesAgora.primeiraParcelaEm,
       // ⚠️ VAI O NÚMERO DE DIAS, E NÃO A DATA. Quem transforma prazo em vencimento é o servidor,
       // com o relógio dele: a data pronta punha o relógio do navegador para decidir quando a
@@ -797,9 +868,14 @@ export function ModalDeProposta({
     if (!condicoes || !propostaInteira) return;
     // A trava do desconto sem motivo. `setTentou(true)` acima ja acendeu o recado na caixa.
     //
-    // ATENCAO: esta e uma trava de TELA. O servidor aceita a proposta sem observacao (a coluna e
-    // nula nas 4.857 linhas importadas do C2X e precisa continuar aceitando nulo). Fechar a porta
-    // no servidor exige distinguir proposta nativa de importada na rota, e isso e passo proprio.
+    // ATENCAO: para DESCONTO e para BEM esta e uma trava de TELA — o servidor aceita a proposta sem
+    // observacao (a coluna e nula nas 4.857 linhas importadas do C2X e precisa continuar aceitando
+    // nulo). Fechar aquelas duas no servidor exige distinguir proposta nativa de importada, e isso e
+    // passo proprio.
+    //
+    // ⚠️ PARA A PREMISSA ALTERADA O SERVIDOR TAMBEM COBRA, desde 25/09/2026: a rota devolve 422 no
+    // campo `observacao` quando `alteradaPeloCorretor` e verdadeiro e a nota vem vazia. Esta guarda
+    // continua existindo para o recado nascer na tela, e nao depois do POST.
     if (precisaDaNota) return;
 
     setEnviando(true);
@@ -1913,8 +1989,10 @@ function PreviaDaProposta({
                     style={{ ...celula, fontWeight: 650, textAlign: "right" }}
                   >
                     {dinheiro(f.valor)}
-                    {f.temIpca ? (
-                      <span style={{ color: T.muted }}> + IPCA</span>
+                    {/* ⚠️ O ÍNDICE DO PLANO, E NÃO A PALAVRA "IPCA": esta linha escrevia IPCA
+                        cravado, e no Jardim das Gerais o plano NORMAL corrige pela poupança. */}
+                    {f.indiceCorrecao ? (
+                      <span style={{ color: T.muted }}> + {INDICES[f.indiceCorrecao]}</span>
                     ) : null}
                   </td>
                 </tr>

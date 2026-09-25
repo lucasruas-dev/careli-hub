@@ -3,9 +3,9 @@
 import { AlertTriangle, ArrowDown, ArrowUp, FileSignature, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ordenarSignatarios, regraDeLista } from "@/lib/assinatura/ordem";
+import { gruposDaRegra, ordenarSignatarios, ORDEM_PADRAO } from "@/lib/assinatura/ordem";
 import type { CorpoDoEnvio, RespostaDoEnvio, RespostaDoPreparo } from "@/lib/assinatura/preparo";
-import { chaveDoSignatario, type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
+import { chaveDoSignatario, PAPEIS, type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
 import { useApiDaTemis } from "@/modules/temis/api-da-temis";
 
 // A ORGANIZAÇÃO DA ASSINATURA — o trabalho da etapa "contrato", dentro da própria etapa.
@@ -37,6 +37,22 @@ import { useApiDaTemis } from "@/modules/temis/api-da-temis";
 // ⚠️ A CONTA DA CLICKSIGN É DE PRODUÇÃO (Lucas, 08/09/2026 — o sandbox deles está com problema).
 // Cada envelope tem CUSTO e, depois de ativado, não se apaga: só se cancela, e o cancelado continua
 // na lista. Tudo que dá para descobrir antes é mostrado antes.
+
+/**
+ * O mapa a partir de uma fila: o primeiro é 1, o segundo 2, e assim por diante.
+ *
+ * ⚠️ FILA ESTRITA DE PROPÓSITO. Ela existe para dois casos, os dois sem empate: o operador que
+ * ARRASTOU um papel nesta tela (e aí a fila é a decisão dele) e o servidor antigo que ainda responde
+ * só `papeis` no dia do deploy. Nada além destes dois deve passar por aqui — a fonte do empate é o
+ * MAPA do cadastro.
+ */
+function deLista(fila: PapelNoContrato[]): Record<PapelNoContrato, number> {
+  const ordens = { ...ORDEM_PADRAO.ordens };
+  const vistos = new Set(fila);
+  const completa = [...new Set(fila), ...PAPEIS.filter((p) => !vistos.has(p))];
+  for (const [i, papel] of completa.entries()) ordens[papel] = i + 1;
+  return ordens;
+}
 
 /** Quem assina, com a ordem já resolvida e o rótulo do papel pronto para a tela. */
 type NaTela = {
@@ -106,7 +122,23 @@ export function OrganizacaoDaAssinatura({
 
   // A ordem editada NESTE envio. Nasce igual à do cadastro e nunca volta para lá.
   const [ordenada, setOrdenada] = useState(false);
-  const [papeis, setPapeis] = useState<PapelNoContrato[]>([]);
+  /**
+   * O MAPA `{papel: número}` deste envio — os EMPATES inteiros.
+   *
+   * ⚠️ AFIRMAÇÃO EM CAIXA ALTA: ATÉ 25/09/2026 ESTA TELA GUARDAVA UMA LISTA E MANDAVA A LISTA EM TODO
+   * ENVIO, mesmo sem o operador tocar em nada. O servidor lia a lista pelo ramo antigo de
+   * `lerRegraDeOrdem` e numerava 1..N: a configuração que o cartão do Setup existe para permitir —
+   * Lucas, 13/09/2026, *"comprador 1 e o resto como 2"*, *"essa personalização é bem comum para
+   * gente"* — era salva, exibida e DESMANCHADA em seis degraus no envelope, que é a fila de vários
+   * dias que o empate evita. Nívea (24/09/2026): *"A ordem de assinatura não está ficando salva."*
+   *
+   * ⚠️ E A EXCEÇÃO DO OPERADOR CONTINUA VALENDO: mexer nas setas vira uma fila ESTRITA, que é o que
+   * ele desenhou, e vale só para este envio (Lucas, 08/09/2026: *"claro que temos que ter a opção de
+   * alterar antes de enviar o contrato, mas vem preenchido por padrão"*).
+   */
+  const [ordens, setOrdens] = useState<Record<PapelNoContrato, number>>(
+    () => ({ ...ORDEM_PADRAO.ordens }),
+  );
   /** E-mails trocados na tela, por `chaveDoSignatario`. Vazio = vale o que veio da ficha. */
   const [emails, setEmails] = useState<Record<string, string>>({});
   /** Pedir CPF na assinatura. Ligado por padrão; desligar vale só para este envio. */
@@ -141,7 +173,13 @@ export function OrganizacaoDaAssinatura({
         }
         setPreparo(payload.data);
         setOrdenada(payload.data.ordem.ordenada);
-        setPapeis(payload.data.ordem.papeis);
+        // ⚠️ O MAPA DA RESPOSTA, com a lista achatada só como rede para o servidor antigo que ainda
+        // não manda `ordens` (o dia do deploy). Ver a nota de `ordens`.
+        setOrdens(
+          payload.data.ordem.ordens
+            ? { ...ORDEM_PADRAO.ordens, ...payload.data.ordem.ordens }
+            : deLista(payload.data.ordem.papeis),
+        );
       } catch (e) {
         if (vivo) setErro(e instanceof Error ? e.message : "Não consegui montar o envio.");
       } finally {
@@ -169,21 +207,21 @@ export function OrganizacaoDaAssinatura({
       nome: s.nome,
       papel: s.papel,
     }));
-    return ordenarSignatarios(pessoas, regraDeLista(ordenada, papeis))
+    return ordenarSignatarios(pessoas, { ordenada, ordens })
       .map((s) => ({ ...s, papelRotulo: rotuloDoPapel(s.papel) }))
       .sort((a, b) => a.ordem - b.ordem);
-  }, [ordenada, papeis, preparo]);
+  }, [ordenada, ordens, preparo]);
 
-  const mover = useCallback((indice: number, direcao: -1 | 1) => {
-    setPapeis((atual) => {
-      const destino = indice + direcao;
-      if (destino < 0 || destino >= atual.length) return atual;
-      const copia = [...atual];
-      const [movido] = copia.splice(indice, 1);
-      if (movido) copia.splice(destino, 0, movido);
-      return copia;
-    });
-  }, []);
+  /**
+   * A FILA VISÍVEL: os papéis na ordem do mapa, achatada.
+   *
+   * ⚠️ É ELA QUE AS SETAS MOVEM, e o empate vira vizinhança na lista — dois papéis com o mesmo número
+   * aparecem lado a lado. Mover é o gesto que DESEMPATA de propósito.
+   */
+  const papeis = useMemo(
+    () => gruposDaRegra({ ordenada, ordens }).flat(),
+    [ordenada, ordens],
+  );
 
   // Só os papéis que EXISTEM neste contrato aparecem para reordenar: mostrar "testemunha" num
   // contrato que não tem nenhuma é pedir para a pessoa arrumar uma fila que não vai acontecer.
@@ -191,6 +229,26 @@ export function OrganizacaoDaAssinatura({
     const presentes = new Set((preparo?.signatarios ?? []).map((s) => s.papel));
     return papeis.filter((p) => presentes.has(p));
   }, [papeis, preparo]);
+
+  /**
+   * Mover um papel na fila.
+   *
+   * ⚠️ MOVER É DECISÃO DO OPERADOR, E VIRA FILA ESTRITA. O empate do cadastro existe para o caso de
+   * todo dia; no dia em que ele arrasta um papel, ele está dizendo "este espera aquele", e é isso que
+   * vai para o envelope. O que ele NÃO pode é ver a fila mudar sozinha — por isso a numeração nova
+   * sai da lista que está na tela, e não de uma segunda conta.
+   */
+  const mover = useCallback(
+    (indice: number, direcao: -1 | 1) => {
+      const destino = indice + direcao;
+      if (destino < 0 || destino >= papeis.length) return;
+      const copia = [...papeis];
+      const [movido] = copia.splice(indice, 1);
+      if (movido) copia.splice(destino, 0, movido);
+      setOrdens(deLista(copia));
+    },
+    [papeis],
+  );
 
   /** Quem recebe o convite AGORA, se a ordem estiver ligada. É o que a confirmação promete. */
   const primeiros = useMemo(
@@ -226,7 +284,9 @@ export function OrganizacaoDaAssinatura({
       // `false` funciona hoje e depende de uma comparação que ninguém garante amanhã.
       const corpo: CorpoDoEnvio = {
         emails,
-        ordem: { ordenada, papeis },
+        // ⚠️ O MAPA, e não a lista achatada (25/09/2026). A lista fazia o servidor numerar 1..N pelo
+        // ramo antigo de `lerRegraDeOrdem` e desmanchava o empate cadastrado no Setup.
+        ordem: { ordenada, ordens },
         propostaId,
         ...(pedirCpf ? {} : { semCpf: true }),
       };
