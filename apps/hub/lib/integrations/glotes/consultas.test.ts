@@ -288,6 +288,43 @@ describe("recebimentos: marca em Brasília e relógio da parcela OU da venda", (
   });
 });
 
+// O valor do boleto emitido NÃO é recebimento. A origem grava `paid_value` antes do pagamento: em
+// 25/09/2026 eram 761 parcelas atrasadas com o valor exato da parcela e sem data, R$ 409.304,99,
+// que a API entregava como `valor_pago` e o contrato chamava de "pagamento parcial".
+describe("recebimentos: valor_pago só com data de pagamento ou status Pago", () => {
+  const base = { atualizado_em: "2026-09-25 12:00:00", initial_value: "537.80", venda_id: 199 };
+
+  it("atrasada com o valor do boleto e sem data sai com valor_pago nulo", async () => {
+    c2xRespondendo([
+      { ...base, data_pagamento: null, id: 1, paid_value: "537.80", status_id: 7, status_parcela: "Atrasado" },
+      { ...base, data_pagamento: null, id: 2, paid_value: "537.80", status_id: 6, status_parcela: "Aguardando pagamento" },
+    ]);
+
+    const pagina = await listarRecebimentos({});
+
+    expect(pagina.dados).toEqual([
+      expect.objectContaining({ codigo_recebimento: "REC-1", data_pagamento: null, valor_pago: null }),
+      expect.objectContaining({ codigo_recebimento: "REC-2", data_pagamento: null, valor_pago: null }),
+    ]);
+  });
+
+  it("paga com data mantém o valor, e Paga sem data também (a origem marcou como paga)", async () => {
+    c2xRespondendo([
+      { ...base, data_pagamento: "2026-09-10", id: 3, paid_value: "571.12", status_id: 5, status_parcela: "Pago" },
+      { ...base, data_pagamento: null, id: 4, paid_value: "412.20", status_id: 5, status_parcela: "Pago" },
+      { ...base, data_pagamento: "2026-09-10", id: 5, paid_value: "0", status_id: 5, status_parcela: "Pago" },
+    ]);
+
+    const pagina = await listarRecebimentos({});
+
+    expect(pagina.dados).toEqual([
+      expect.objectContaining({ codigo_recebimento: "REC-3", valor_pago: "571.12" }),
+      expect.objectContaining({ codigo_recebimento: "REC-4", valor_pago: "412.20" }),
+      expect.objectContaining({ codigo_recebimento: "REC-5", valor_pago: null }),
+    ]);
+  });
+});
+
 describe("clientes: relógio com endereço e cônjuge, corte no relógio local, saída com fuso", () => {
   it("o relógio do lado C2X inclui phones, addresses e spouses do usuário", async () => {
     const chamadas = c2xRespondendo([]);

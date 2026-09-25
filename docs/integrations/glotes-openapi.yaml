@@ -850,15 +850,23 @@ components:
           type: [string, "null"]
           format: date
           description: |
-            Nula enquanto não paga. ⚠️ Existem 344 parcelas com valor pago e **sem** data, todas
-            em atraso com pagamento parcial. Não conclua "não pago" só pela data ausente: olhe
-            `valor_pago`.
+            Nula enquanto não paga. Desde 25/09/2026, parcela sem data de pagamento vem com
+            `valor_pago` nulo (a única exceção é parcela com `status_parcela` Pago, que mantém o
+            valor mesmo sem data; em 25/09/2026 era 1 parcela).
         valor_pago:
           type: [string, "null"]
           pattern: '^-?\d+\.\d{2}$'
           description: |
             Nulo quando não houve pagamento. ⚠️ Zero não é pagamento: há linhas com valor pago
             igual a zero que significam ausência de pagamento, e elas vêm como nulo aqui.
+
+            ⚠️ **Valor sem data de pagamento também não é pagamento** (corrigido em 25/09/2026).
+            A origem grava no campo de valor pago o valor do boleto emitido, antes de o cliente
+            pagar. Até 24/09 a API entregava esse valor, e este contrato o descrevia como
+            "pagamento parcial": em 25/09/2026 eram 761 parcelas em atraso com `valor_pago` igual
+            ao valor da parcela e sem `data_pagamento`, R$ 409.304,99, nenhuma parcial. Agora
+            `valor_pago` só vem preenchido quando há `data_pagamento` ou quando `status_parcela` é
+            Pago.
 
             ⚠️ **Pode ser maior que `valor_parcela`**, e a diferença não vem decomposta: pode ser
             correção monetária, juros ou multa. Conferido em 25/09/2026, nas 11.977 parcelas
@@ -992,6 +1000,12 @@ x-historico:
         criada em 16/09, e o incremental de `clientes` a partir de 16/09 não o devolvia, enquanto
         `vendas` e `recebimentos` chegavam com o `codigo_cliente` dele.
       - |
+        `valor_pago` deixou de vir preenchido em parcela sem `data_pagamento` (exceto status
+        Pago). A origem grava ali o valor do boleto emitido antes do pagamento, e a API entregava
+        esse valor como se fosse recebido. Exemplo medido: 761 parcelas em atraso com
+        `valor_pago` igual ao valor da parcela e sem data, R$ 409.304,99, nenhuma parcial. A
+        versão anterior deste contrato chamava isso de "pagamento parcial", o que estava errado.
+      - |
         Documentado o que o incremental não entrega (exclusões e cancelamentos), a margem
         recomendada ao repassar a marca, a borda `>=` (linhas repetidas, tratar como upsert), o
         volume que cada lote de boletos devolve, que o cancelamento só aparece na carga completa,
@@ -1005,6 +1019,10 @@ x-historico:
         a remoção apagaria as vendas canceladas e as parcelas pagas delas. Em 25/09/2026 a
         Careli identificou 160 parcelas que foram apagadas na origem e que o incremental não
         tinha como avisar: 144 da VEN-81 (cronograma refeito naquele dia) e 16 da VEN-524.
+      - |
+        A carga completa também corrige o `valor_pago` das parcelas em atraso que vinham com o
+        valor do boleto: elas passam a vir com `valor_pago` nulo. Se o GLOTES somou esses
+        valores como recebidos, refazer a soma depois da carga.
       - |
         Se a integração acrescentava `-03:00` ao `atualizado_em` de `clientes`, parar: o valor
         agora já vem com fuso e deve ser repassado como veio.

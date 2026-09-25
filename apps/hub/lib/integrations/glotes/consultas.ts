@@ -889,6 +889,7 @@ type RecebimentoRow = RowDataPacket & {
   interest_value: null | number | string;
   numero_parcela: null | number;
   paid_value: null | number | string;
+  status_id: null | number;
   status_parcela: null | string;
   tipo_parcela: null | string;
   venda_id: number;
@@ -967,6 +968,7 @@ export async function listarRecebimentos(filtros: Filtros): Promise<Pagina<unkno
        ar.id as venda_id,
        cli.user_code as codigo_cliente,
        pt.name as tipo_parcela,
+       p.payment_status_id as status_id,
        ps.name as status_parcela,
        pay.name as forma_pagamento,
        p.initial_value,
@@ -1002,6 +1004,13 @@ export async function listarRecebimentos(filtros: Filtros): Promise<Pagina<unkno
     // Zero NÃO é pagamento: há 940 linhas com `paid_value = 0` que significam ausência. Elas saem
     // como null, senão o GLOTES contabiliza pagamento onde não houve.
     const pago = Number(linha.paid_value ?? 0);
+    // E valor SEM data também não é pagamento. Medido em 25/09/2026: 761 parcelas ATRASADAS (e 1
+    // aguardando) tinham `paid_value` IGUAL ao valor da parcela e nenhuma `payment_date`,
+    // R$ 409.304,99, vencimentos de 20/04 a 21/09/2026, zero parciais. É o valor do boleto emitido,
+    // não dinheiro recebido; o contrato chamava isso de "pagamento parcial" e o GLOTES somava como
+    // recebido. Pago é quem tem data (a mesma regra do extrato do Apolo) ou quem a origem marca como
+    // Pago (5): há 1 parcela Paga sem data, e ela continua com o valor.
+    const recebido = pago > 0 && (Boolean(linha.data_pagamento) || Number(linha.status_id) === 5);
 
     return {
       // Relógio do recebimento (parcela ou venda), ISO com o fuso de Brasília. Novo em 25/09/2026,
@@ -1031,7 +1040,7 @@ export async function listarRecebimentos(filtros: Filtros): Promise<Pagina<unkno
       // têm `valor_pago` maior que ela, R$ 151.872,85 de diferença, e só R$ 8.452,53 (5,6%) disso
       // está em `interest_value`. O contrato (OpenAPI) avisa o GLOTES.
       valor_original: dinheiro(linha.initial_value),
-      valor_pago: pago > 0 ? dinheiro(linha.paid_value) : null,
+      valor_pago: recebido ? dinheiro(linha.paid_value) : null,
       valor_parcela: dinheiro(linha.initial_value),
     };
   });

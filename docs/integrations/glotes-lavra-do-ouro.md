@@ -911,6 +911,24 @@ parcelas pagas do recorte: 5.389 (45%) pagas acima do `valor_parcela`, somando R
 1.324 em dia (R$ 37.844,98, média de 6,50%): nessas últimas a diferença não é mora. O contrato
 anterior dizia "já com o reajuste embutido pelo cronograma", o que não é verdade.
 
+**8. `valor_pago` fantasma: valor do boleto entregue como recebido.** A API mandava `valor_pago`
+sempre que `paid_value > 0`, e o contrato descrevia as parcelas com valor e sem data como
+"pagamento parcial" (a correção C2 deste levantamento, de 07/08, contou 344). Medido em
+25/09/2026, no recorte da API (glebas 1 e 4, mensais, status 5/6/7, vendas abertas):
+
+| Status | `paid_value` contra o valor da parcela | Parcelas | Soma de `paid_value` |
+|---|---|---|---|
+| Atrasado | igual | 761 | R$ 409.304,99 |
+| Aguardando pagamento | igual | 1 | R$ 2.276,33 |
+| Pago (sem data) | menor | 1 | R$ 412,20 |
+
+Nenhuma parcial entre as atrasadas: todas com o valor exato da parcela e vencimento entre 20/04 e
+21/09/2026. É o valor do boleto emitido, gravado antes do pagamento, a mesma conclusão do extrato
+do Apolo ("pago é quem tem data"). O GLOTES somando `valor_pago` via R$ 409 mil que não entraram.
+Correção: `valor_pago` só sai com `data_pagamento` ou com status Pago (5); a única Paga sem data
+mantém o valor. As linhas 169, 170 e a correção C2 acima ficam como retrato de 07/08: a leitura
+"pagamento parcial" estava errada.
+
 ### 14.3 O que mudou no código (`apps/hub/lib/integrations/glotes/consultas.ts`)
 
 - `marcaNoRelogioDoC2x`: leva a marca UTC da porta para o relógio de Brasília. Usada em
@@ -934,7 +952,9 @@ anterior dizia "já com o reajuste embutido pelo cronograma", o que não é verd
   parcelas mudam a cada lote de boletos e trariam todos os clientes de volta todo mês.
 - `GREATEST` do MySQL devolve NULL se qualquer argumento for NULL: todo argumento leva
   `coalesce(..., '1970-01-01 00:00:00')`, e esse piso sai como `null`, nunca como data.
-- Testes em `apps/hub/lib/integrations/glotes/consultas.test.ts` (22 casos).
+- `valor_pago`: só com `data_pagamento` ou status Pago (5); valor sem data é boleto emitido, não
+  recebimento (ver 14.2, item 8).
+- Testes em `apps/hub/lib/integrations/glotes/consultas.test.ts`.
 
 ### 14.4 Custo medido (C2X real, pool de 5 conexões, páginas de 1.000)
 
@@ -972,6 +992,8 @@ de 1 em cada um dos três conjuntos), o que confirma o `>=` e o formato.
    alguns minutos (sugestão: 5), tratando as linhas repetidas como upsert pela chave.
 4. Carga completa periódica (sugestão: semanal), também com `incluir_canceladas=true`, para as
    exclusões e os cancelamentos.
+5. Depois da carga completa, refazer qualquer soma de `valor_pago` feita antes dela: as 761
+   parcelas em atraso que vinham com o valor do boleto passam a vir com `valor_pago` nulo.
 
 ### 14.6 O que continua em aberto
 
