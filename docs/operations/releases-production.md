@@ -95,6 +95,41 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Apolo/Hades/portal] Consultas ao C2X pelo id do empreendimento, e nao pela sigla (v1.377.0, interna)`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-09-25 14:24:10 -03:00` (push na main); no ar as 14:29:58.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK explicito do Lucas ("tem o meu ok, pode subir"), apos "pode seguir com o PAN-124" em 25/09.`
+- Escopo publicado:
+  - `toda consulta de dados ao C2X que filtrava empreendimento por e.code passou a filtrar por e.id (regua lib/apolo/c2x-pelo-id.ts e c2x-pelo-id-servidor.ts)`;
+  - `exclusao por id (EXCLUDED_ENTERPRISE_IDS = 2, 31, 34), no lugar da lista por sigla quebrada desde 16/07`;
+  - `nenhuma tela mudou; entrada de changelog marcada interna`.
+- Commit publicado: `acf7e3e116472f241ec4aaac0625f86abb27c4cc` (codigo em `56beabb8`, merge da 1.376.0 em `1b0a7f1d`).
+- Deployment anterior: `dpl_Fm7fxhepAkjCYBck5DVKWVRZe7uA` (commit `607d4086`, v1.376.0).
+- Deployment novo: `dpl_CRfnK1m1eACmKCjyJp3M8nxaZKko`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Arquivos/modulos incluidos: `carteira, cobranca, extrato, extrato-cliente-c2x, reajuste/defasagem-c2x, guardian/attendance e overview, server.ts (exclusoes), vendas, empreendimentos, catalogo, credenciamento, planos-comerciais-c2x, politica-comercial, prometeu/cupom, portal do incorporador (escopo, assinaturas, contratos, carteira liquida, Ato e Sinal, masterplan, perfil, BI, ficha, historico), assinaturas/painel-contratos, analytics/c2x-builder, guardian/c2x-analytics, esteira-cad e hercules/estoque-da-situacao; rotas do Apolo e do portal que ja tem o id passaram a chamar as versoes PorIds`.
+- Arquivos/modulos excluidos: `NENHUMA MIGRATION, nenhuma env, nenhuma tela.`
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `npx vitest run` (ja com o merge da 1.376.0): `638 arquivos, 9.520 testes passando`; pre-push ok de primeira;
+  - `paridade no C2X real, so SELECT`: `32 funcoes x 37 empreendimentos, ~6.900 consultas, resultado identico ao antigo onde nao houve renome`;
+  - `revisao`: `inventario + 4 frentes de conversao + paridade + 3 lentes (7 achados, 2 major) + correcao + verificador final sem bloqueio`;
+  - `merge`: `conflito de import na rota da proposta (INDICES da 1.376.0 + lerPlanosDoC2xPorIds) e simulacao do teste novo da premissa ajustada`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version = 1.377.0 as 14:29:58`;
+  - `rotas`: `carteira do Apolo, carteira do portal e /api/integrations/glotes/recebimentos respondem 401 sem token`.
+- Logs recentes: `sem erro de runtime novo (so o DeprecationWarning antigo do Hermes, do deployment anterior)`.
+- Rollback definido: `Instant Rollback para dpl_Fm7fxhepAkjCYBck5DVKWVRZe7uA (commit 607d4086, v1.376.0)`.
+- Riscos conhecidos: `cada aba de Empreendimentos do Apolo faz 1 SELECT a mais que so traduz a sigla (tabela de 37 linhas, por clique, sem polling). A sigla guardada de antes de um renome so e salva dentro da janela de 10 min do cache do catalogo; o definitivo e a tela mandar o id (proxima etapa do PAN-124).`
+- Pendencias: `PAN-124 segue: nome e sigla vindos do Panteon, tela de editar e criar empreendimento, vigia de divergencia. O 30 (ACT) continua fora da exclusao.`
+- Status: `EM PRODUCAO`.
+- Proxima acao: `proxima etapa do PAN-124; integracao GLotes aguarda decisoes do Lucas (token/LGPD, relatorio, correcao do incremental).`
+
+Registro de producao:
+
 - Assunto: `[Apolo] Coordenador achado pelo empreendimento, habilitacoes sem fila no Board e travas contra o C2X (v1.375.0)`.
 - Squad/agente responsavel: `Zeus`.
 - Data e hora local: `2026-09-25 08:26:22 -03:00` (changelog); push na main as ~08:33; no ar as 08:41:45.
