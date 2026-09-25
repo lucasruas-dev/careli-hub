@@ -36,6 +36,52 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-25-coordenador-pelo-id-e-habilitacao-sem-fila",
+    deployedAt: "2026-09-25T08:26:22-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**As imobiliárias habilitadas sem fila agora aparecem no Board.** A que já era credenciada e pediu um empreendimento novo pela página pública, e a habilitada pelo cadastro interno, ficam 30 dias na coluna Habilitada, com um selo. Antes elas não apareciam em lugar nenhum.",
+            ],
+            screen: "Board de cadastro",
+          },
+          {
+            items: [
+              "**Habilitar uma imobiliária pelo cadastro interno ou pela ficha avisa o coordenador** do empreendimento e deixa registro, como já acontecia pela página pública.",
+            ],
+            screen: "Cadastro e ficha da imobiliária",
+          },
+          {
+            items: [
+              "**O aviso ao coordenador não depende mais da sigla do C2X.** Renomear um empreendimento no C2X não cala mais os avisos, e o coordenador cadastrado no Panteon vale primeiro. Os avisos do Lagoa Bonita voltam a encontrar o coordenador.",
+              "**Quando o coordenador não tem telefone, a falha fica registrada** no histórico de envios, em vez de sumir.",
+            ],
+            screen: "Avisos por WhatsApp",
+          },
+          {
+            items: [
+              "**O C2X não muda mais o cadastro do empreendimento no Panteon.** A sincronização usa o nome do Panteon, e o botão de credenciamento não troca mais a sigla.",
+            ],
+            screen: "Empreendimentos",
+          },
+        ],
+      },
+    ],
+    rollback: "3155cc9c",
+    technical: {
+      done:
+        "ORIGEM (24/09/2026): a Nívea renomeou no C2X o empreendimento 43 (RECANTO DO VALE / RDV para PORTAL DO IBITURUNA / PDI, mesmo id; auditoria 34214). O Panteon achava o coordenador NO C2X PELA SIGLA (settings.code, e.code in): com o renome a busca voltou vazia e a LUNA não foi avisada da auto-aprovação pública da CONECTTA IMÓVEIS, que é justamente a contenção dessa auto-aprovação. O mesmo já tinha quebrado no 30 (LAG, ADT, ACT) e no group:Lagoa Bonita (code LBF + LBR + LBP, 6 de 6 avisos falhando). O dado do 43 foi acertado no banco com OK do Lucas (cadastro Portal do Ibituruna / PDI, settings code PDI e coordenador_entity_id = LUNA, 36 vínculos relabelados). CÓDIGO: (1) lib/apolo/coordenador-do-empreendimento.ts: o coordenador_entity_id do Panteon prevalece (telefone por apolo_contacts, régua da casa); na falta, o C2X POR ID (loadApoloEnterpriseCadastroPorId, e.id in); group:<Nome> resolve pelas divisões em hercules_empreendimentos. Coordenador não achado ou sem telefone vira disparo falhou com o motivo (enviarPeloRelacionamento ganhou impedimento). Trocados: credenciamento público, aviso de etapa da CAD, reprovação, aviso da venda (Hércules), log de erros, lista de empreendimentos da Têmis. (2) Board: nova perna com as habilitações sem fila dos últimos 30 dias (vínculo de empreendimento verified, por produto, com a data e o selo do produto certo no portal), incluindo a promoção de pedido pendente pela página pública. (3) Cadastro interno (cadastro-persist) e modal da ficha (relationships/create): habilitar imobiliária grava auditoria credenciamento_habilitado e avisa o coordenador depois da resposta (depois-da-resposta.ts), sem segurar o salvamento; não duplica vínculo já coberto por equivalência. (4) Travas: semear-empreendimentos recusa gravar sem a autorização da carga e nunca reescreve linha existente; os setters de apolo_enterprise_settings não regravam nem zeram o code com o que a tela manda; o sync do Apolo grava em apolo_commercial_links o nome de mercado do Panteon pelo id (lido uma vez por rodada). REVISÃO: três lentes (regra e dados, regressão e custo, tela e texto), 9 achados (3 major) corrigidos e reconferidos. Pastas afetadas: 7.106 testes verdes. Suíte inteira depois do merge com a 1.374.0: 603 arquivos, 9.158 testes passando; typecheck limpo.",
+      motivation:
+        "Lucas, 24/09/2026: investiga por que a conecta não está aparecendo no board do apolo; a nivea alterou o nome do empreendimento no c2x e ele alterou o nome no panteon, isso está errado, temos que ter capacidade de editar cadastros dos empreendimentos bem como criá-los dentro do panteon. Decisões: tivemos que mudar de nome (Portal do Ibituruna); habilitação sem fila aparece no Board e o cadastro interno avisa o coordenador (isso aí); pode começar travando as portas do C2X e consultando o C2X pelo id.",
+    },
+    title: "Coordenador achado pelo empreendimento, habilitações sem fila no Board e o C2X sem mexer no cadastro",
+    type: "melhoria",
+    version: "1.375.0",
+  },
+  {
     buildTag: "2026-09-24-lsoft-todos-os-empreendimentos-e-patrimonio",
     deployedAt: "2026-09-24T18:40:33-03:00",
     modules: [

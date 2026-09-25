@@ -98,6 +98,23 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
     titulo: "A \"correção\" fantasma no extrato: mora entrando como reajuste",
   },
   {
+    id: "PAN-124",
+    evidencia: "Plano revisado em 24/09/2026 (investigação do renome do 43): ~29 consultas do financeiro e de vendas ainda filtram o C2X por `e.code in (...)` (carteira, cobrança, extrato, vendas, planos, política, portal do incorporador, assinaturas, reajuste, analytics); `EXCLUDED_ENTERPRISE_CODES` quebrou em 16/07 quando o 30 virou ADT; o Panteon não tem tela para editar empreendimento (só o INSERT de produto novo). A v1.375.0 fez a primeira parte: coordenador pelo id e as travas.",
+    modulo: "Apolo",
+    porque: "Lucas (24/09/2026): *\"temos que ter capacidade de editar cadastros dos empreendimentos bem como criá-los dentro do panteon\"*. Enquanto o financeiro buscar o C2X pela sigla, qualquer renome no legado faz a carteira e as vendas daquele empreendimento sumirem sem aviso. Ordem: primeiro as consultas pelo id (sem mudar tela), depois nome e sigla vindos do Panteon, depois a tela de editar e criar, e um vigia que avisa quando o C2X divergir.",
+    situacao: "proximo",
+    titulo: "Panteon dono do cadastro de empreendimentos: consultas do C2X pelo id, tela de editar e criar",
+  },
+  {
+    id: "PAN-123",
+    entregueEm: "2026-09-25",
+    evidencia: "v1.375.0. `lib/apolo/coordenador-do-empreendimento.ts` (Panteon primeiro, C2X por id, grupo pelas divisões, falha registrada), a perna de habilitações sem fila em `lib/apolo/board-do-servidor.ts` e `lib/apolo/habilitada-sem-fila.ts`, o aviso do cadastro interno em `lib/apolo/habilitacao-pelo-cadastro.ts`, e as travas no semeador, no settings e no sync. O 43 (Portal do Ibituruna / PDI) foi acertado no banco com OK do Lucas.",
+    modulo: "Apolo",
+    porque: "Lucas (24/09/2026): a CONECTTA não aparecia no Board e o renome no C2X mudou o nome no Panteon. A causa do aviso perdido era buscar o coordenador pela sigla do C2X; a do Board, não listar habilitação sem fila. Decisões: *\"Tivemos que mudar de nome\"*, *\"Isso ae\"* (aparece no Board e o cadastro interno avisa), *\"pode\"* (travar as portas do C2X e consultar pelo id).",
+    situacao: "entregue",
+    titulo: "Coordenador achado pelo empreendimento, habilitações sem fila no Board e o C2X sem mexer no cadastro",
+  },
+  {
     id: "PAN-122",
     entregueEm: "2026-09-24",
     evidencia: "v1.374.0. Migrations 0188 (a trilha de edição sobrevive à carga), 0189 (`lsoft_parcelas.categoria_lsoft` e o CHECK com 13 empreendimentos) e 0190 (200 mães e 218 nascimentos devolvidos do MOST), aplicadas com OK do Lucas. A carga (`lib/lsoft/carga.ts`) grava antes de apagar, substitui por categoria de origem, desfaz o que gravou se falhar, e recusa quando desfaria edição do time (`lib/lsoft/divergencia-da-carga.ts`). Revisão adversarial: 35 agentes, 16 achados confirmados. A tela oferece os 13 empreendimentos e mostra o patrimônio. ⚠️ A carga do Garden e do Vale do Sol continua travada pelo cliente 00000587 (R$ 2.207,18 na tela contra R$ 4.414,36 no LSoft).",
