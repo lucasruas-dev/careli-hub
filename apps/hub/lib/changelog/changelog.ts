@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-25-c2x-pelo-id-do-empreendimento",
+    deployedAt: "2026-09-25T14:24:10-03:00",
+    // Sem mudança de tela: as mesmas telas mostram os mesmos números. Por isso interno.
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Carteira, cobrança, vendas e portal buscam o empreendimento no C2X pelo número, e não pela sigla.** Renomear um empreendimento no C2X não faz mais a carteira dele sumir das telas.",
+            ],
+            screen: "Empreendimentos e portal do incorporador",
+          },
+        ],
+      },
+    ],
+    rollback: "607d4086",
+    technical: {
+      done:
+        "PAN-124, primeira etapa. O id do empreendimento no C2X nunca muda; a sigla muda (43 RDV para PDI em 24/09; 30 LAG para ADT em 16/07 e ADT para ACT em 21/09). Toda consulta de dados ao C2X que filtrava empreendimento por e.code in / not in / = passou a filtrar por e.id. Régua comum: lib/apolo/c2x-pelo-id.ts (pura: idDoC2x, filtroPorIds, filtroSemExcluidos, divisoesDoGrupo, idsDoC2xDosPedidos, idsDoC2xDasSiglas) e lib/apolo/c2x-pelo-id-servidor.ts (tradução ao vivo; catálogo fora do ar devolve erro e não carteira zerada; releitura forçada não apaga o cache e tem teto por sigla; a tela do Apolo confere a sigla no C2X no mesmo instante). Exclusão por id: EXCLUDED_ENTERPRISE_IDS = [2, 31, 34] (SDT, LAB, TSC), a lista por sigla estava quebrada desde 16/07 (LAG não existe mais); o 30 fica dentro, como hoje. Convertidos: carteira, cobrança, extrato, extrato do cliente, defasagem, Hades (fila e painel), grafo do CRM, vendas, unidades, cadastro, planos, política, catálogo, credenciamento, cupom do Prometeu, portal do incorporador (assinaturas, contratos, carteira líquida, Ato e Sinal, lotes, perfil, BI, ficha, histórico), painel de contratos, analytics da CACÁ e réguas da esteira e do Hércules. Rotas que já têm o id passaram a chamar as versões PorIds (proposta, políticas do produto, carteira e vendas do portal). Sobra por sigla, de propósito: a tradução da sigla lida ao vivo e o termo livre digitado na CACÁ. PARIDADE no C2X real, só SELECT (~6.900 consultas): 32 funções x 37 empreendimentos, resultado idêntico ao antigo onde não houve renome. REVISÃO: três lentes, 7 achados (2 major) corrigidos e reconferidos. Merge com a 1.376.0 resolveu o conflito de import na rota da proposta e a simulação do teste novo da premissa. Suíte inteira depois do merge com a 1.376.0: 638 arquivos, 9.520 testes passando; typecheck limpo.",
+      motivation:
+        "Lucas, 24/09/2026: temos que ter capacidade de editar cadastros dos empreendimentos bem como criá-los dentro do Panteon. E, em 25/09: pode seguir com o PAN-124. Esta etapa vem antes de o nome e a sigla passarem a sair do Panteon, senão a carteira de qualquer empreendimento com sigla divergente some em silêncio.",
+    },
+    title: "Consultas ao C2X pelo número do empreendimento, e não pela sigla",
+    type: "correcao",
+    version: "1.377.0",
+  },
+  {
     buildTag: "2026-09-25-faixa-manda-e-coordenador-vence",
     deployedAt: "2026-09-25T13:22:55-03:00",
     modules: [
