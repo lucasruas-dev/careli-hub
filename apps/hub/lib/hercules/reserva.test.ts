@@ -42,7 +42,12 @@ describe("conferirReserva", () => {
       },
       AGORA,
     );
-    expect(erros.map((e) => e.campo).sort()).toEqual(["cpf", "imobiliaria", "nome", "telefone"]);
+    expect(erros.map((e) => e.campo).sort()).toEqual([
+      "documento",
+      "imobiliaria",
+      "nome",
+      "telefone",
+    ]);
   });
 
   it("a reserva pode sair só no nome da imobiliária", () => {
@@ -63,7 +68,65 @@ describe("conferirReserva", () => {
       { ...PEDIDO, proponente: { ...PEDIDO.proponente, cpf: "529.982.247-26" } },
       AGORA,
     );
-    expect(erros.map((e) => e.campo)).toEqual(["cpf"]);
+    expect(erros.map((e) => e.campo)).toEqual(["documento"]);
+  });
+
+  // ── PESSOA JURÍDICA ───────────────────────────────────────────────────────
+  //
+  // Lucas (26/09/2026): *"na hora da reserva, dentro do hercules, temos que habilitar pessoa fisica
+  // e pessoa juridica, hoje só atende pessoa fisica"*.
+  it("aceita comprador PESSOA JURÍDICA, com CNPJ", () => {
+    expect(
+      conferirReserva(
+        {
+          ...PEDIDO,
+          proponente: { ...PEDIDO.proponente, cpf: "12.345.678/0001-95", nome: "ACME Construtora" },
+        },
+        AGORA,
+      ),
+    ).toEqual([]);
+  });
+
+  it("⚠️ recusa CNPJ que não fecha o dígito verificador", () => {
+    const erros = conferirReserva(
+      { ...PEDIDO, proponente: { ...PEDIDO.proponente, cpf: "12.345.678/0001-96" } },
+      AGORA,
+    );
+    expect(erros.map((e) => e.campo)).toEqual(["documento"]);
+  });
+
+  it("⚠️ razão social de UMA palavra passa com CNPJ, e continua sendo recusada com CPF", () => {
+    // Existe empresa chamada "Construtora". A régua do espaço é da PESSOA, não da razão social.
+    expect(
+      conferirReserva(
+        {
+          ...PEDIDO,
+          proponente: { ...PEDIDO.proponente, cpf: "12.345.678/0001-95", nome: "Construtora" },
+        },
+        AGORA,
+      ),
+    ).toEqual([]);
+    expect(
+      conferirReserva({ ...PEDIDO, proponente: { ...PEDIDO.proponente, nome: "Construtora" } }, AGORA).map(
+        (e) => e.campo,
+      ),
+    ).toEqual(["nome"]);
+  });
+
+  it("o documento pode chegar na chave nova `documento`", () => {
+    expect(
+      conferirReserva(
+        {
+          ...PEDIDO,
+          proponente: {
+            documento: "12.345.678/0001-95",
+            nome: "ACME Construtora",
+            telefone: PEDIDO.proponente.telefone,
+          },
+        },
+        AGORA,
+      ),
+    ).toEqual([]);
   });
 
   it("recusa vencimento no passado e no presente", () => {
@@ -161,6 +224,28 @@ describe("avisosDaReserva", () => {
     }
   });
 
+  it("⚠️ comprador PJ sai como CNPJ nos três, e a palavra CPF não aparece", () => {
+    // Lucas (26/09/2026): *"temos que habilitar pessoa fisica e pessoa juridica"*. Estas são as
+    // três mensagens que saem do número do Relacionamento para corretor, imobiliária e
+    // coordenador: chamar CNPJ de CPF é erro que não volta.
+    for (const aviso of avisosDaReserva({
+      ...DADOS,
+      cliente: "ACME Construtora",
+      cpf: "12.345.678/0001-95",
+    })) {
+      expect(aviso.texto).toContain("CNPJ");
+      expect(aviso.texto).not.toContain("CPF");
+    }
+  });
+
+  it("⚠️ o CNPJ também vai MASCARADO nos três", () => {
+    for (const aviso of avisosDaReserva({ ...DADOS, cpf: "12.345.678/0001-95" })) {
+      expect(aviso.texto).toContain("**.345.678/0001-**");
+      expect(aviso.texto).not.toContain("12.345.678/0001-95");
+      expect(aviso.texto).not.toContain("12345678000195");
+    }
+  });
+
   it("a data sai no fuso de Brasília", () => {
     // 07/09 02:59 UTC é 06/09 23:59 em Brasília: escrever "07/09" daria um dia a mais de reserva.
     for (const aviso of avisosDaReserva(DADOS)) expect(aviso.texto).toContain("06/09/2026");
@@ -219,6 +304,21 @@ describe("reservaComoLinhaDoFluxo", () => {
     // reserva do Panteon tem dono, prazo e quem criou — é passo do caminho, e conta no funil.
     const linha = reservaComoLinhaDoFluxo(RESERVA, UNIDADE, "VOC");
     expect(linha.etapa).toBe("reservado");
+  });
+
+  it("⚠️ a reserva de PJ entra no fluxo com o CNPJ, pela chave nova", () => {
+    const linha = reservaComoLinhaDoFluxo(
+      {
+        ...RESERVA,
+        proponentes: [
+          { documento: "12.345.678/0001-95", nome: "ACME Construtora", telefone: "62991234567" },
+        ],
+      },
+      UNIDADE,
+      "VOC",
+    );
+    expect(linha.cliente_documento).toBe("12.345.678/0001-95");
+    expect(linha.cliente_nome).toBe("ACME Construtora");
   });
 
   it("⚠️ o id ganha prefixo para não colidir com o da proposta", () => {

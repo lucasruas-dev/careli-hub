@@ -1080,3 +1080,87 @@ describe("⚠️ a proposta antes da migration 0187", () => {
     expect(bensGravados()).toHaveLength(1);
   });
 });
+
+// ── A PROPOSTA NASCIDA DE UMA RESERVA DE PESSOA JURÍDICA ──────────────────────
+//
+// Lucas (26/09/2026): *"na hora da reserva, dentro do hercules, temos que habilitar pessoa fisica e
+// pessoa juridica, hoje só atende pessoa fisica"*.
+//
+// ⚠️ ESTA É A PONTA A PONTA QUE FALTAVA. As três mudanças de PJ desta rota não tinham teste nenhum:
+// a leitura do documento do comprador na chave nova (`c.documento ?? c.cpf`), a chave `documento`
+// dentro de `compradores`, e — a principal, porque é o que GRAVA — o namespace do
+// `cliente_documento_hash`. Um `hashIdentifier("cpf", ...)` com um CNPJ dentro gera uma chave que
+// JAMAIS casa com a CAD da empresa (o hash é `apolo-identifier:TIPO:valor`), e o contrato social
+// anexado desaparece da ficha do cliente no CRM e na esteira, sem erro nenhum no log.
+//
+// MEDIDO em 26/09/2026 (produção, só SELECT): as 11 CADs de entidade `pj` da esteira têm
+// identificador `cnpj` cujo `value_hash` é igual ao `document_hash` da entidade em 11 de 11 casos, e
+// ZERO delas casa com um hash de namespace `cpf`.
+//
+// ⚠️ O QUE ESTE TESTE NÃO COBRE: o portão do credenciamento. `credenciadoParaVender` é DUBLÊ nos
+// cinco arquivos de teste desta rota (aqui em :155), então nada do que se afirme sobre PJ aqui prova
+// o portão real — ele é coberto em `lib/hercules/cliente-credenciado.test.ts`, com CNPJ e com
+// documento sem dígito verificador.
+describe("POST — titular pessoa jurídica", () => {
+  const CNPJ = "12.345.678/0001-95";
+  const CNPJ_DIGITOS = "12345678000195";
+
+  beforeEach(() => {
+    // A forma CANÔNICA que a rota da reserva grava para PJ: a chave `documento`, e NENHUMA `cpf`
+    // (ver `proponenteParaGravar` em `venda/reserva/route.ts`).
+    estado.reserva = {
+      ...estado.reserva,
+      proponentes: [
+        {
+          documento: CNPJ_DIGITOS,
+          nome: "ACME CONSTRUTORA LTDA",
+          telefone: "62991234567",
+          tipoPessoa: "pj",
+        },
+      ],
+    };
+  });
+
+  const pedirPj = () =>
+    pedir({
+      compradores: [
+        {
+          documento: CNPJ,
+          nome: "ACME Construtora Ltda",
+          participacao: 100,
+          telefone: "62991234567",
+        },
+      ],
+    });
+
+  it("⚠️ grava cliente_documento com os 14 dígitos", async () => {
+    const r = await pedirPj();
+    expect(r.status).toBe(200);
+    expect(gravada().cliente_documento).toBe(CNPJ_DIGITOS);
+    expect(gravada().cliente_nome).toBe("ACME CONSTRUTORA LTDA");
+  });
+
+  it("⚠️ o item de compradores leva a chave `documento`, que é a forma da carga", async () => {
+    // MEDIDO em 26/09/2026 (produção `bxgukywoxgivlrhjkwjx`, só SELECT): `hercules_propostas`
+    // tem 5.027 itens de `compradores` com a chave `documento` contra 23 com SÓ a chave `cpf` (a
+    // forma nativa antiga), e 136 linhas com `cliente_documento` de 14 dígitos contra 4.809 de 11.
+    // Ou seja: `documento` é o vocabulário que a casa já usa justamente onde PJ existe.
+    await pedirPj();
+    const compradores = gravada().compradores as Array<Record<string, unknown>>;
+    expect(compradores).toHaveLength(1);
+    expect(compradores[0]).toMatchObject({
+      documento: CNPJ_DIGITOS,
+      participacao: 100,
+      titular: true,
+    });
+  });
+
+  it("⚠️ o hash do PDF sai no namespace CNPJ, e NÃO no de CPF", async () => {
+    // É esta linha que grava `cliente_documento_hash` em `hercules_documentos`; errado, o papel da
+    // venda não aparece na ficha da empresa, e nada no log diz por quê.
+    await pedirPj();
+    const doc = estado.inserido.find((i) => i.tabela === "hercules_documentos")?.linha ?? {};
+    expect(doc.cliente_documento_hash).toBe(`hash:cnpj:${CNPJ_DIGITOS}`);
+    expect(doc.cliente_documento_hash).not.toBe(`hash:cpf:${CNPJ_DIGITOS}`);
+  });
+});

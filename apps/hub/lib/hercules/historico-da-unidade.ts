@@ -20,6 +20,8 @@
 // auditoria procura.
 
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
+import { mascararDocumento } from "@/lib/hercules/documento-do-comprador";
+import { titularDosProponentes } from "@/lib/hercules/proponente";
 
 /** Os onze estágios do C2X pelo nome real. */
 const ESTAGIO: Record<number, string> = {
@@ -195,18 +197,20 @@ export type EventoDaUnidade = {
 };
 
 /**
- * `077.655.646-09` → `***.655.646-**`; CNPJ → `**.***.899/0001-**`.
+ * `077.655.646-09` → `***.655.646-**`; CNPJ → `**.345.678/0001-**`.
  *
  * ⚠️ A PRIMEIRA VERSÃO CORTAVA O CNPJ EM "doc. 1-87", que não identifica nada e ainda parecia
  * defeito. Documento de empresa tem 14 dígitos e merece a própria máscara: some com a raiz e com o
  * verificador, mostra o miolo, que é o que se confere de olho.
+ *
+ * ⚠️ E A MÁSCARA É UMA SÓ (26/09/2026). Até hoje este arquivo tinha uma CÓPIA BYTE POR BYTE de
+ * `mascararDocumento` (a mesma conta, os mesmos dois ifs de 11 e 14, o mesmo ramo de sobra). Duas
+ * cópias envelhecem separadas: mudar a máscara do CNPJ na peça única deixaria o histórico da
+ * unidade mascarando do jeito antigo, e o mesmo CNPJ sairia de dois jeitos em duas telas da MESMA
+ * venda. A varredura de `documento-do-comprador.varredura.test.ts` só passava com esta cópia aqui
+ * porque a expressão dela exigia o nome da variável antes do `.length`, e aqui ela se chama `so`.
  */
-function mascarar(documento: string): string {
-  const so = documento.replace(/\D/g, "");
-  if (so.length === 11) return `***.${so.slice(3, 6)}.${so.slice(6, 9)}-**`;
-  if (so.length === 14) return `**.${so.slice(2, 5)}.${so.slice(5, 8)}/${so.slice(8, 12)}-**`;
-  return so.length > 4 ? `***${so.slice(-4)}` : "documento";
-}
+const mascarar = mascararDocumento;
 
 /**
  * O que aconteceu, com o VERBO — e não o nome da coisa.
@@ -570,11 +574,18 @@ export type ReservaDoHistorico = {
   validade_em: null | string;
 };
 
-/** O nome do titular, para a linha dizer de quem é a reserva. */
+/**
+ * O nome do titular, para a linha dizer de quem é a reserva.
+ *
+ * ⚠️ QUEM ABRE O JSONB É O LEITOR ÚNICO (`lib/hercules/proponente.ts`, 26/09/2026). Aqui só se usa o
+ * `nome`, e foi por isso que esta leitura ad-hoc sobreviveu à troca dos leitores; mas foi de
+ * aberturas soltas assim — `Array.isArray(...)` mais `lista[0] as { chave?: unknown }` — que
+ * nasceram as SEIS leituras do mesmo jsonb, cada uma com um nome diferente, e uma delas hasheando
+ * o documento errado. A varredura de `documento-do-comprador.varredura.test.ts` é quem impede a
+ * sétima.
+ */
 function titularDaReserva(proponentes: unknown): null | string {
-  const lista = Array.isArray(proponentes) ? proponentes : [];
-  const primeiro = lista[0] as null | undefined | { nome?: unknown };
-  return typeof primeiro?.nome === "string" && primeiro.nome.trim() ? primeiro.nome.trim() : null;
+  return titularDosProponentes(proponentes)?.nome || null;
 }
 
 export function eventosDaReserva(reservas: ReservaDoHistorico[]): EventoDaUnidade[] {

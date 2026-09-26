@@ -135,7 +135,7 @@ describe("credenciadoParaVender", () => {
     });
 
     const resposta = await credenciadoParaVender(client, {
-      cpf: CPF,
+      documento: CPF,
       enterpriseIds: [VALE_DO_OURO],
     });
 
@@ -154,7 +154,7 @@ describe("credenciadoParaVender", () => {
     });
 
     const resposta = await credenciadoParaVender(client, {
-      cpf: CPF,
+      documento: CPF,
       enterpriseIds: [VALE_DO_OURO],
     });
 
@@ -171,7 +171,7 @@ describe("credenciadoParaVender", () => {
       identificadores: [vindaDoC2x(ENTIDADE)],
     });
 
-    const resposta = await credenciadoParaVender(client, { cpf: CPF, enterpriseIds: ["39"] });
+    const resposta = await credenciadoParaVender(client, { documento: CPF, enterpriseIds: ["39"] });
 
     expect(resposta.credenciado).toBe(false);
     expect(resposta.etapa).toBeNull();
@@ -182,7 +182,7 @@ describe("credenciadoParaVender", () => {
     const { client } = clienteFake({});
 
     const resposta = await credenciadoParaVender(client, {
-      cpf: CPF,
+      documento: CPF,
       enterpriseIds: [VALE_DO_OURO],
     });
 
@@ -203,7 +203,7 @@ describe("credenciadoParaVender", () => {
     });
 
     const resposta = await credenciadoParaVender(client, {
-      cpf: CPF,
+      documento: CPF,
       enterpriseIds: [VALE_DO_OURO, "group:Vale do Ouro"],
     });
 
@@ -217,7 +217,7 @@ describe("credenciadoParaVender", () => {
     });
 
     const resposta = await credenciadoParaVender(client, {
-      cpf: CPF,
+      documento: CPF,
       enterpriseIds: [VALE_DO_OURO],
     });
 
@@ -240,7 +240,7 @@ describe("credenciadoParaVender", () => {
     });
 
     const resposta = await credenciadoParaVender(client, {
-      cpf: CPF,
+      documento: CPF,
       enterpriseIds: [VALE_DO_OURO],
     });
 
@@ -261,7 +261,7 @@ describe("credenciadoParaVender", () => {
     });
 
     const resposta = await credenciadoParaVender(client, {
-      cpf: CPF,
+      documento: CPF,
       enterpriseIds: [VALE_DO_OURO],
     });
 
@@ -289,7 +289,7 @@ describe("credenciadoParaVender", () => {
     });
 
     const resposta = await credenciadoParaVender(client, {
-      cpf: CPF,
+      documento: CPF,
       enterpriseIds: ["35", "36", "37"],
     });
 
@@ -315,7 +315,7 @@ describe("credenciadoParaVender", () => {
     });
 
     const resposta = await credenciadoParaVender(client, {
-      cpf: CPF,
+      documento: CPF,
       enterpriseIds: [VALE_DO_OURO],
     });
 
@@ -333,7 +333,7 @@ describe("credenciadoParaVender", () => {
     });
 
     const resposta = await credenciadoParaVender(client, {
-      cpf: CPF,
+      documento: CPF,
       enterpriseIds: [VALE_DO_OURO],
     });
 
@@ -349,7 +349,7 @@ describe("credenciadoParaVender", () => {
     });
 
     const resposta = await credenciadoParaVender(client, {
-      cpf: CPF,
+      documento: CPF,
       enterpriseIds: [VALE_DO_OURO],
     });
 
@@ -371,7 +371,7 @@ describe("credenciadoParaVender", () => {
         identificadores: [vindaDoC2x(identificador)],
       });
 
-      return credenciadoParaVender(client, { cpf: CPF, enterpriseIds: ["39"] });
+      return credenciadoParaVender(client, { documento: CPF, enterpriseIds: ["39"] });
     };
 
     const doApoloPrimeiro = await responder(PRIMEIRO, SEGUNDO);
@@ -390,7 +390,7 @@ describe("credenciadoParaVender", () => {
     });
 
     await expect(
-      credenciadoParaVender(client, { cpf: CPF, enterpriseIds: [VALE_DO_OURO] }),
+      credenciadoParaVender(client, { documento: CPF, enterpriseIds: [VALE_DO_OURO] }),
     ).rejects.toBeInstanceOf(FalhaAoLerCredenciamento);
   });
 
@@ -398,7 +398,7 @@ describe("credenciadoParaVender", () => {
     const { client } = clienteFake({ erroEm: "apolo_entity_identifiers" });
 
     await expect(
-      credenciadoParaVender(client, { cpf: CPF, enterpriseIds: [VALE_DO_OURO] }),
+      credenciadoParaVender(client, { documento: CPF, enterpriseIds: [VALE_DO_OURO] }),
     ).rejects.toBeInstanceOf(FalhaAoLerCredenciamento);
   });
 
@@ -409,14 +409,14 @@ describe("credenciadoParaVender", () => {
     });
 
     await expect(
-      credenciadoParaVender(client, { cpf: CPF, enterpriseIds: ["", "  "] }),
+      credenciadoParaVender(client, { documento: CPF, enterpriseIds: ["", "  "] }),
     ).rejects.toBeInstanceOf(FalhaAoLerCredenciamento);
   });
 
   it("CPF com máscara e CPF só de dígitos procuram exatamente o MESMO hash", async () => {
-    const hashDe = async (cpf: string) => {
+    const hashDe = async (documento: string) => {
       const { client, consultas } = clienteFake({});
-      await credenciadoParaVender(client, { cpf, enterpriseIds: [VALE_DO_OURO] });
+      await credenciadoParaVender(client, { documento, enterpriseIds: [VALE_DO_OURO] });
       const busca = consultas.find((c) => c.tabela === "apolo_entity_identifiers");
       return busca?.filtros.find((f) => f.coluna === "value_hash")?.valores[0];
     };
@@ -430,12 +430,135 @@ describe("credenciadoParaVender", () => {
     const { client, consultas } = clienteFake({});
 
     const resposta = await credenciadoParaVender(client, {
-      cpf: "529.982",
+      documento: "529.982",
       enterpriseIds: [VALE_DO_OURO],
     });
 
     expect(resposta.credenciado).toBe(false);
-    expect(resposta.motivo).toBe("Informe o CPF do titular para conferir o credenciamento.");
+    expect(resposta.motivo).toBe(
+      "Informe o CPF ou o CNPJ do titular para conferir o credenciamento.",
+    );
     expect(consultas).toHaveLength(0);
+  });
+});
+
+// ── A CAD DE PESSOA JURÍDICA ───────────────────────────────────────────────────
+//
+// Lucas (26/09/2026): *"temos que habilitar pessoa fisica e pessoa juridica, hoje só atende pessoa
+// fisica"*.
+//
+// MEDIDO em 26/09/2026 (produção, só SELECT): existem 11 CADs de entidade pj na esteira (9 na etapa
+// credenciado, 1 em revisão, 1 em validação), e as 11 têm identificador cnpj cujo value_hash é
+// igual ao document_hash da entidade em 11 de 11 casos — e ZERO delas casa com um hash de namespace
+// cpf. O caminho da empresa EXISTE no dado; era o código que não enxergava.
+describe("credenciadoParaVender com CNPJ", () => {
+  const CNPJ = "12.345.678/0001-95";
+  const HASH_DO_CNPJ = hashIdentifier("cnpj", "12345678000195");
+  const EMPRESA = "ent-acme";
+
+  it("⚠️ procura pelo hash do namespace CNPJ, e libera a empresa credenciada", async () => {
+    const { client, consultas } = clienteFake({
+      esteira: [cad({ entity_id: EMPRESA })],
+      identificadores: [{ entity_id: EMPRESA, value_hash: HASH_DO_CNPJ }],
+    });
+
+    const resposta = await credenciadoParaVender(client, {
+      documento: CNPJ,
+      enterpriseIds: [VALE_DO_OURO],
+    });
+
+    expect(resposta.credenciado).toBe(true);
+    expect(resposta.entityId).toBe(EMPRESA);
+
+    // hashIdentifier concatena "apolo-identifier:TIPO:valor": hasheado como "cpf", um CNPJ nunca
+    // casaria com a CAD da empresa, e a recusa sairia sem erro nenhum no log.
+    const busca = consultas.find((c) => c.tabela === "apolo_entity_identifiers");
+    expect(busca?.filtros.find((f) => f.coluna === "value_hash")?.valores[0]).toBe(HASH_DO_CNPJ);
+  });
+
+  it("⚠️ sem cadastro, a frase diz CNPJ e não CPF", async () => {
+    const { client } = clienteFake({});
+
+    const resposta = await credenciadoParaVender(client, {
+      documento: CNPJ,
+      enterpriseIds: [VALE_DO_OURO],
+    });
+
+    expect(resposta.credenciado).toBe(false);
+    expect(resposta.motivo).toContain("CNPJ");
+    expect(resposta.motivo).not.toContain("CPF");
+  });
+
+  it("documento que não tem 11 nem 14 dígitos nem chega a consultar o banco", async () => {
+    // ⚠️ TREZE DÍGITOS, E NÃO DOZE MASCARADOS. "12.345.678/000" tem ONZE dígitos depois do
+    // `soDigitos`, e onze dígitos SÃO suficientes para procurar (o portão não cobra DV, ver o
+    // describe abaixo): usar aquela string aqui afirmaria o contrário do que a função faz.
+    const { client, consultas } = clienteFake({});
+    const resposta = await credenciadoParaVender(client, {
+      documento: "12.345.678/0001",
+      enterpriseIds: [VALE_DO_OURO],
+    });
+    expect(resposta.credenciado).toBe(false);
+    expect(resposta.motivo).toBe(
+      "Informe o CPF ou o CNPJ do titular para conferir o credenciamento.",
+    );
+    expect(consultas).toHaveLength(0);
+  });
+});
+
+// ── O PORTÃO NÃO COBRA DÍGITO VERIFICADOR ──────────────────────────────────────
+//
+// ⚠️ ESTA É A DECISÃO DE 04/09/2026, E ELA VOLTOU (26/09/2026). A primeira versão do lote de PJ
+// trocou o portão de tamanho por `documentoDeCompradorValido`, que exige DV: isso APERTA um portão
+// que decide se a proposta pode nascer, e nada disso era necessário para habilitar CNPJ. A pergunta
+// deste portão é "tenho documento suficiente para procurar?" — a mesma, e pelo mesmo motivo, que a
+// busca de proponentes faz em `app/api/incorporador/venda/proponentes/route.ts`: a base tem
+// documento torto vindo da carga do C2X, e existe porta de reserva que não valida DV nenhum
+// (`lib/prometeu/reservas-evento.ts`, o tótem do salão).
+//
+// O DV continua onde ele é porta de ENTRADA: `conferirReserva` e `conferirProposta`.
+describe("credenciadoParaVender e o dígito verificador", () => {
+  // Onze dígitos, DV que NÃO fecha. É o mesmo formato que `proponentes/route.test.ts` usa como
+  // documento torto da carga do C2X.
+  const CPF_TORTO = "333.333.333-33";
+  const HASH_DO_TORTO = hashIdentifier("cpf", "33333333333");
+  const TORTA = "ent-torta";
+
+  it("⚠️ CPF de 11 dígitos com DV errado PROCURA no banco, e a CAD credenciada libera", async () => {
+    // Antes de 26/09/2026 o portão era `digitos.length !== 11` e deixava passar: a entidade era
+    // achada pelo hash (a mesma digitação torta está no Apolo, porque veio da mesma carga) e o
+    // botão Gerar proposta acendia. Exigir DV aqui prende o lote numa reserva que não vira
+    // proposta, com uma frase que manda informar o documento que já está preenchido na tela.
+    const { client, consultas } = clienteFake({
+      esteira: [cad({ entity_id: TORTA })],
+      identificadores: [{ entity_id: TORTA, value_hash: HASH_DO_TORTO }],
+    });
+
+    const resposta = await credenciadoParaVender(client, {
+      documento: CPF_TORTO,
+      enterpriseIds: [VALE_DO_OURO],
+    });
+
+    expect(consultas.length).toBeGreaterThan(0);
+    expect(resposta.credenciado).toBe(true);
+    expect(resposta.entityId).toBe(TORTA);
+  });
+
+  it("⚠️ CNPJ de 14 dígitos com DV errado também procura, no namespace CNPJ", async () => {
+    const CNPJ_TORTO = "12.345.678/0001-00";
+    const HASH = hashIdentifier("cnpj", "12345678000100");
+    const { client, consultas } = clienteFake({
+      esteira: [cad({ entity_id: "ent-torta-pj" })],
+      identificadores: [{ entity_id: "ent-torta-pj", value_hash: HASH }],
+    });
+
+    const resposta = await credenciadoParaVender(client, {
+      documento: CNPJ_TORTO,
+      enterpriseIds: [VALE_DO_OURO],
+    });
+
+    expect(resposta.credenciado).toBe(true);
+    const busca = consultas.find((c) => c.tabela === "apolo_entity_identifiers");
+    expect(busca?.filtros.find((f) => f.coluna === "value_hash")?.valores[0]).toBe(HASH);
   });
 });

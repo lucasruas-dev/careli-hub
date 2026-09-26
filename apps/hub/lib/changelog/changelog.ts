@@ -36,6 +36,55 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-26-reserva-aceita-pessoa-juridica",
+    deployedAt: "2026-09-26T14:24:21-03:00",
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**A reserva passa a aceitar empresa.** O campo do titular aceita CPF ou CNPJ, sem seletor de tipo: o proprio documento diz se e pessoa ou empresa.",
+              "**Quando o documento e um CNPJ, o campo do nome pede razao social** e um icone explica que a reserva sai no nome da empresa.",
+              "**Antes, colar um CNPJ nao funcionava**: o campo cortava no 11 digito e o numero aparecia formatado como CPF.",
+              "**A proposta da reserva de empresa agora nasce.** Ela travava em tres lugares ao mesmo tempo, e o botao Gerar proposta nem acendia.",
+              "**A CAD que vale para a empresa e a da EMPRESA.** A do socio nao substitui: quem compra o lote e o CNPJ, e e ele que assina o contrato.",
+            ],
+            screen: "Venda - reserva e proposta",
+          },
+          {
+            items: [
+              "**Os avisos de reserva e de proposta no WhatsApp param de chamar CNPJ de CPF**, e o PDF da proposta tambem.",
+              "**O card Cliente da ficha mostra o rotulo certo** para empresa.",
+            ],
+            screen: "Venda - avisos e PDF",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O documento anexado numa venda de empresa deixa de sumir da ficha do cliente.** Ele era guardado com uma chave de pessoa fisica e nunca reencontrava a ficha da empresa, sem erro nenhum na tela.",
+            ],
+            screen: "CRM - documentos do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "398c2dc0",
+    technical: {
+      done:
+        "UMA PECA DECIDE PF OU PJ, E E O DOCUMENTO. Nasceram `lib/hercules/documento-do-comprador.ts` (tipo, validade, rotulo, mascara e o NOME do namespace do hash; sem banco, a tela importa daqui), `lib/hercules/hash-do-documento.ts` (a conta, separada porque `hashIdentifier` arrasta o mysql2 do legado para o bundle) e `lib/hercules/proponente.ts` (leitor unico do jsonb `hercules_reservas.proponentes`, conciliando a forma antiga `cpf` com a nova `documento`). O tipo sai do DOCUMENTO, nunca de um campo declarado, pelo mesmo motivo ja medido pelo contrato em 08/09/2026: SEIS entidades `entity_kind = pj` carregavam CPF. MEDIDO em 26/09/2026 (producao, so SELECT): a chave `documento` ja e usada em 4.889 itens de titular de `hercules_propostas.compradores` vindos da carga, e e ela que as 137 linhas de 14 digitos usam; as 30 reservas atuais tem so `cpf`, `nome` e `telefone`, todas com 11 digitos, e NENHUMA linha de dado antigo foi atualizada: quem concilia e o leitor. Existem 11 CADs de entidade `pj` na esteira, 9 credenciadas, e nas 11 o `value_hash` do identificador `cnpj` bate com o `document_hash` da entidade: o caminho da empresa ja existia no dado e so a regua recusava. TRES PAREDES INDEPENDENTES caiam na conversao em proposta e foram derrubadas juntas (o portao de 11 digitos de `cliente-credenciado.ts`, o hash no namespace `cpf` que nunca casaria com a CAD da empresa, e o `cpfValido` de todo comprador em `proposta.ts`); derrubar uma so nao resolveria. O `>= 11` de `hashDoCpf` estava repetido em `app/api/incorporador/venda/documentos/route.ts` e `lib/temis/contrato-guardado-db.ts`: deixava o CNPJ passar e gravava a chave no namespace errado, e o anexo sumia da ficha sem erro (latente, zero documentos hoje). A varredura `documento-do-comprador.varredura.test.ts` impede a nona casa do if de tamanho voltar. NA TELA: um campo so, sem seletor de tipo, corte em 14 digitos, placeholder Razao social e icone com tooltip quando o documento digitado e CNPJ. NADA FOI AFROUXADO NA PF: a reserva continua exigindo digito verificador na entrada, e a trava de venda dupla nao foi tocada (ela compara o TERRENO, nunca o documento). A revisao adversarial restaurou uma decisao de 04/09/2026 que a primeira versao tinha apagado por engano: o portao do credenciamento nao confere DV de proposito, porque `lib/prometeu/reservas-evento.ts` grava documento do salao sem validador e exigir DV ali barraria calado um lote que hoje anda. Suite: 650 arquivos, 9.733 testes. Typecheck limpo.",
+      motivation:
+        "Lucas, 26/09/2026: um outro problema que quero que vc resolva que na hora da reserva, dentro do hercules, temos que habilitar pessoa fisica e pessoa juridica, hoje so atende pessoa fisica, olha isso por favor tbm.",
+    },
+    title: "A reserva do Hercules passa a aceitar pessoa juridica, do campo ao contrato",
+    type: "melhoria",
+    version: "1.383.0",
+  },
+  {
     buildTag: "2026-09-26-o-email-da-imobiliaria-nao-barra-o-dono",
     deployedAt: "2026-09-26T14:01:04-03:00",
     internal: true,

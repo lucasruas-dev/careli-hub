@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { formatarDocumento, soDigitos } from "@/lib/apolo/documento";
+import { tipoDePessoa } from "@/lib/hercules/documento-do-comprador";
 import {
   BRASIL,
   buscarPaises,
@@ -44,10 +45,15 @@ import { T } from "../tema";
 // corretor com o empreendimento e deixava 42 dos 65 corretores do Vale do Ouro cinza — o Lucas
 // desfez isso na hora: *"não entendi o motivo de não trazer todos os corretores"*.
 
+// ⚠️ UM CAMPO SÓ PARA CPF E CNPJ, SEM SELETOR DE TIPO (Lucas, 26/09/2026: *"na hora da reserva,
+// dentro do hercules, temos que habilitar pessoa fisica e pessoa juridica, hoje só atende pessoa
+// fisica"*). É o que o CONTRATO já faz (`lib/temis/dados-do-contrato.ts:1739-1744` decide pelo
+// documento, porque seis entidades `pj` carregavam CPF), e é a língua do corretor: um seletor cobra
+// um clique e uma decisão a mais em toda reserva para dizer o que o próprio documento já diz.
 export type DadosDaReserva = {
   corretorEntityId: null | string;
   imobiliariaEntityId: string;
-  proponente: { cpf: string; nome: string; telefone: string };
+  proponente: { documento: string; nome: string; telefone: string };
   validadeEm: string;
 };
 
@@ -75,7 +81,7 @@ export function ModalDeReserva({
   const [escolhido, setEscolhido] = useState<Escolhido>(null);
   const [corretorId, setCorretorId] = useState<null | string>(null);
   const [nome, setNome] = useState("");
-  const [cpf, setCpf] = useState("");
+  const [documento, setDocumento] = useState("");
   const [telefone, setTelefone] = useState("");
   const [pais, setPais] = useState<Pais>(BRASIL);
   const [dias, setDias] = useState<number>(PRAZO_PADRAO_EM_DIAS);
@@ -166,10 +172,13 @@ export function ModalDeReserva({
     imobiliariaEntityId: imobiliariaEscolhida?.id ?? "",
     // ⚠️ O TELEFONE VAI COM O PAÍS NA FRENTE, sempre: é assim que o gateway entrega, e guardar sem
     // o código deixaria um número estrangeiro indistinguível de um nacional depois.
-    proponente: { cpf, nome, telefone: telefoneComPais(telefone, pais.ddi) },
+    proponente: { documento, nome, telefone: telefoneComPais(telefone, pais.ddi) },
     unidadeId: unidade.id,
     validadeEm,
   };
+
+  // O documento decide se o cliente é empresa. Não um seletor: o documento.
+  const ehEmpresa = tipoDePessoa(documento) === "pj";
 
   const erros = conferirReserva(pedido, new Date().toISOString());
   const erroDe = (campo: ErroDaReserva["campo"]) =>
@@ -416,16 +425,27 @@ export function ModalDeReserva({
             <div style={{ display: "grid", gap: 8 }}>
               <Campo
                 aoMudar={setNome}
+                // ⚠️ ÍCONE COM TOOLTIP, NÃO PARÁGRAFO: quando o documento digitado já é um CNPJ, o
+                // campo do nome passa a pedir razão social e o ícone explica no hover que a reserva
+                // sai no nome da empresa. Pouco texto, um só campo, nenhum clique a mais.
+                dica={
+                  ehEmpresa
+                    ? "A reserva sai no nome da empresa. A qualificação completa (razão social, nome fantasia e representante) vem da CAD no Apolo."
+                    : null
+                }
                 erro={erroDe("nome")}
-                placeholder="Nome completo"
+                placeholder={ehEmpresa ? "Razão social" : "Nome completo"}
                 valor={nome}
               />
               <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr" }}>
                 <Campo
-                  aoMudar={(v) => setCpf(formatarDocumento(soDigitos(v).slice(0, 11)) || v)}
-                  erro={erroDe("cpf")}
-                  placeholder="CPF"
-                  valor={cpf}
+                  // ⚠️ CATORZE DÍGITOS, E NÃO ONZE. Até 26/09/2026 a digitação era cortada em
+                  // `slice(0, 11)`: quem colava um CNPJ via "123.456.780-00" aparecer no campo, e o
+                  // 12º dígito nem entrava. `formatarDocumento` já formata os dois.
+                  aoMudar={(v) => setDocumento(formatarDocumento(soDigitos(v).slice(0, 14)) || v)}
+                  erro={erroDe("documento")}
+                  placeholder="CPF ou CNPJ"
+                  valor={documento}
                 />
                 <CampoDeTelefone
                   aoMudarNumero={setTelefone}
@@ -589,23 +609,47 @@ const botaoDiscreto = {
 
 function Campo({
   aoMudar,
+  dica,
   erro,
   placeholder,
   valor,
 }: {
   aoMudar: (v: string) => void;
+  /** O texto do ícone de ajuda, quando o campo precisa explicar alguma coisa. */
+  dica?: null | string;
   erro: null | string;
   placeholder: string;
   valor: string;
 }) {
   return (
     <div>
-      <input
-        onChange={(e) => aoMudar(e.target.value)}
-        placeholder={placeholder}
-        style={{ ...campo, border: `1px solid ${erro ? T.danger : T.border}` }}
-        value={valor}
-      />
+      <div style={{ alignItems: "center", display: "flex", gap: 6 }}>
+        <input
+          onChange={(e) => aoMudar(e.target.value)}
+          placeholder={placeholder}
+          style={{ ...campo, border: `1px solid ${erro ? T.danger : T.border}` }}
+          value={valor}
+        />
+        {dica ? (
+          <span
+            aria-label={dica}
+            style={{
+              border: `1px solid ${T.border}`,
+              borderRadius: 999,
+              color: T.muted,
+              cursor: "help",
+              flex: "0 0 auto",
+              fontSize: 10.5,
+              lineHeight: "15px",
+              textAlign: "center",
+              width: 17,
+            }}
+            title={dica}
+          >
+            i
+          </span>
+        ) : null}
+      </div>
       {erro ? <Erro texto={erro} /> : null}
     </div>
   );

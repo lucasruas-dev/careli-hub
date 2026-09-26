@@ -293,7 +293,7 @@ describe("adicionar proponente", () => {
   /** O campo que virou busca. O CPF ao lado é só leitura: ele vem da CAD escolhida. */
   function campoDaBusca(): HTMLInputElement {
     const campo = alvo.querySelector<HTMLInputElement>(
-      'input[placeholder="Buscar por nome ou CPF na base"]',
+      'input[placeholder="Buscar por nome, CPF ou CNPJ na base"]',
     );
     if (!campo) throw new Error("O campo de busca do proponente não está na tela.");
     return campo;
@@ -350,7 +350,7 @@ describe("adicionar proponente", () => {
     // próprio João — formatado, porque o campo formata enquanto ele digita.
     await escolherProponente("Maria da Silva", "529.982.247-25");
 
-    expect(alvo.textContent).toContain("Este CPF já está entre os compradores.");
+    expect(alvo.textContent).toContain("Este documento já está entre os compradores.");
     // Sem a régua, a lista ficaria "João 50% / João 50%", somando 100% redondos, e o PDF sairia
     // com o mesmo comprador duas vezes.
     expect(alvo.textContent).not.toContain("Maria da Silva");
@@ -377,7 +377,34 @@ describe("adicionar proponente", () => {
     await esperarABusca();
 
     expect(candidato("Maria da Silva").disabled).toBe(true);
-    expect(alvo.textContent).toContain("sem CPF no cadastro");
+    expect(alvo.textContent).toContain("sem documento no cadastro");
+  });
+
+  it("⚠️ candidato PJ credenciado fica CLICÁVEL, com o CNPJ", async () => {
+    // Lucas (26/09/2026): *"temos que habilitar pessoa fisica e pessoa juridica, hoje só atende
+    // pessoa fisica"*.
+    //
+    // ⚠️ ERA ESTA A QUEIXA. A régua do `disabled` era `cpfValido`, então a empresa credenciada
+    // aparecia CINZA com a frase "sem CPF no cadastro" — que MENTIA: ela tem CNPJ, e o coordenador
+    // concluía que a CAD não existe. É o caso simétrico do teste acima, com o documento trocado.
+    await abrir();
+
+    daBusca = [
+      {
+        credenciado: true,
+        cpf: "12.345.678/0001-95",
+        etapa: "credenciado",
+        id: "cad-pj",
+        motivo: null,
+        nome: "ACME Construtora",
+      },
+    ];
+    digitar(campoDaBusca(), "ACME");
+    await esperarABusca();
+
+    expect(candidato("ACME Construtora").disabled).toBe(false);
+    expect(alvo.textContent).not.toContain("sem documento no cadastro");
+    expect(alvo.textContent).not.toContain("sem CPF no cadastro");
   });
 
   it("aceita o proponente novo com CPF válido, e o titular fica com o que sobra", async () => {
@@ -429,7 +456,7 @@ describe("adicionar proponente", () => {
     // dígitos para pôr no contrato alguém que o Apolo nunca viu.
     await abrir();
 
-    const cpf = alvo.querySelector<HTMLInputElement>('input[placeholder="CPF (vem da CAD)"]');
+    const cpf = alvo.querySelector<HTMLInputElement>('input[placeholder="CPF ou CNPJ (vem da CAD)"]');
     expect(cpf?.disabled).toBe(true);
   });
 

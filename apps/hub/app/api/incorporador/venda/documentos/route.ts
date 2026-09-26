@@ -4,8 +4,10 @@ import { APOLO_DOCS_BUCKET } from "@/lib/apolo/documentos";
 import { autorizarOperacaoDeVenda } from "@/lib/apolo/incorporador/board-do-portal";
 import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { autorizarEscritaNoProduto } from "@/lib/apolo/incorporador/operacao-do-produto-servidor";
-import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
+import { createApoloAdminClient } from "@/lib/apolo/server";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
+import { hashDoDocumentoDoComprador } from "@/lib/hercules/hash-do-documento";
+import { titularDosProponentes } from "@/lib/hercules/proponente";
 import {
   agruparPorProtocolo,
   caminhoDaUnidadeValido,
@@ -119,7 +121,7 @@ async function vendaDoLote(
       // DECIDIU o credenciamento; um CPF pode resolver para várias entidades (fichas duplicadas
       // existem, e há migration escrita para mesclá-las), e "a primeira" poria o documento na ficha
       // errada.
-      clienteDocumentoHash: hashDoCpf(proposta.cliente_documento),
+      clienteDocumentoHash: hashDoDocumento(proposta.cliente_documento),
       clienteEntityId: proposta.cliente_entity_id,
       empreendimentoCodigo: proposta.empreendimento_codigo,
       propostaId: proposta.id,
@@ -143,15 +145,21 @@ async function vendaDoLote(
     proponentes: unknown;
     protocolo_numero: null | number;
   };
-  // ⚠️ NA RESERVA SÓ HÁ O CPF, e é o suficiente: o leitor do Apolo casa pela entidade OU pelo
-  // documento. Sem isto, o RG que se pede para abrir a CAD ficaria invisível na ficha do cliente
-  // até a proposta nascer — e ninguém entenderia por quê.
-  const lista = Array.isArray(reserva?.proponentes) ? reserva.proponentes : [];
-  const primeiro = lista[0] as null | undefined | { cpf?: unknown };
-  const cpf = typeof primeiro?.cpf === "string" ? primeiro.cpf.replace(/\D/g, "") : "";
+  // ⚠️ NA RESERVA SÓ HÁ O DOCUMENTO DO TITULAR, e é o suficiente: o leitor do Apolo casa pela
+  // entidade OU pelo documento. Sem isto, o RG que se pede para abrir a CAD ficaria invisível na
+  // ficha do cliente até a proposta nascer — e ninguém entenderia por quê.
+  //
+  // ⚠️ QUEM LÊ O JSONB É `titularDosProponentes`, E NÃO A CHAVE `cpf` (26/09/2026). Até hoje esta
+  // linha era `typeof primeiro?.cpf === "string" ? ... : ""`, e a rota da reserva passou a espelhar
+  // a chave `cpf` SÓ QUANDO O DOCUMENTO É UM CPF (`venda/reserva/route.ts`, `proponenteParaGravar`):
+  // numa reserva de PJ a leitura antiga devolvia string vazia, o hash saía `null` e a linha nascia
+  // com `cliente_documento_hash` E `cliente_entity_id` nulos (o ramo da reserva nunca tem
+  // entidade). Os DOIS elos com a ficha ficavam nulos de uma vez, e o contrato social anexado
+  // desaparecia da ficha da empresa no CRM e na esteira, sem erro nenhum no log.
+  const titular = titularDosProponentes(reserva?.proponentes);
 
   return {
-    clienteDocumentoHash: hashDoCpf(cpf),
+    clienteDocumentoHash: hashDoDocumento(titular?.documento ?? null),
     clienteEntityId: null as null | string,
     empreendimentoCodigo: null,
     propostaId: null as null | string,
@@ -388,14 +396,15 @@ export async function POST(request: Request) {
 }
 
 /**
- * O CPF do cliente como o Apolo o guarda: HASH, nunca texto.
+ * O documento do cliente como o Apolo o guarda: HASH, nunca texto.
  *
- * ⚠️ O APOLO NÃO TEM CPF EM TEXTO PARA CASAR. `apolo_entities` guarda `document_hash` e
- * `document_masked` — não existe coluna com os dígitos. Guardar o CPF puro aqui daria um campo que
- * nunca casaria com nada do outro lado (e ainda seria dado sensível a mais numa tabela nova). O
- * hash é o mesmo de `hashIdentifier("cpf", ...)`, que é a chave que o dedup da casa já usa.
+ * ⚠️ O APOLO NÃO TEM DOCUMENTO EM TEXTO PARA CASAR. `apolo_entities` guarda `document_hash` e
+ * `document_masked` — não existe coluna com os dígitos.
+ *
+ * ⚠️ E O NAMESPACE SAI DO DOCUMENTO (26/09/2026). Até hoje esta função era
+ * `digitos.length >= 11 ? hashIdentifier("cpf", digitos) : null`, e o `>= 11` DEIXAVA O CNPJ
+ * PASSAR pelo namespace errado: o hash sai `apolo-identifier:cpf:...` e a CAD da empresa guarda
+ * `apolo-identifier:cnpj:...` (medido em 11 de 11 CADs de PJ, 26/09/2026). O documento anexado
+ * numa venda de PJ simplesmente desaparecia da ficha do cliente, sem erro nenhum no log.
  */
-function hashDoCpf(bruto: null | string): null | string {
-  const digitos = String(bruto ?? "").replace(/\D/g, "");
-  return digitos.length >= 11 ? hashIdentifier("cpf", digitos) : null;
-}
+const hashDoDocumento = hashDoDocumentoDoComprador;

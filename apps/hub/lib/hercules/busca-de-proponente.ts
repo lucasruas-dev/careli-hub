@@ -59,8 +59,10 @@ export const MAXIMO_DE_CANDIDATOS = 8;
  */
 export const MINIMO_DE_LETRAS = 3;
 
+// (26/09/2026) O termo de DOCUMENTO cobre CPF e CNPJ: Lucas, *"temos que habilitar pessoa fisica e
+// pessoa juridica"*. Chamava-se "cpf" e levava onze dígitos.
 export type TermoDaBusca =
-  | { digitos: string; tipo: "cpf" }
+  | { digitos: string; tipo: "documento" }
   | { texto: string; tipo: "nome" }
   | { tipo: "curto" };
 
@@ -86,7 +88,12 @@ export function termoDaBusca(cru: string): TermoDaBusca {
     // ⚠️ DÍGITO DE MENOS NÃO VIRA BUSCA POR NOME. "058" tem três caracteres e passaria na régua de
     // letras, indo procurar "058" dentro dos nomes — nenhum resultado, e o corretor concluindo que
     // o cliente não tem cadastro quando ele só não terminou de digitar o CPF.
-    return digitos.length >= 4 ? { digitos: digitos.slice(0, 11), tipo: "cpf" } : { tipo: "curto" };
+    // ⚠️ CATORZE, E NÃO ONZE. Cortado em onze, um CNPJ colado casava por ACIDENTE pelos onze
+    // primeiros dígitos (`startsWith` em `casa`), e as filiais 0001 e 0002 do mesmo CNPJ raiz
+    // viravam o mesmo resultado — comprador trocado no PDF e no contrato.
+    return digitos.length >= 4
+      ? { digitos: digitos.slice(0, 14), tipo: "documento" }
+      : { tipo: "curto" };
   }
 
   if (texto.length < MINIMO_DE_LETRAS) return { tipo: "curto" };
@@ -121,7 +128,7 @@ export function comparavel(valor: null | string): string {
 export function casa(candidato: CandidatoDaBase, termo: TermoDaBusca): boolean {
   if (termo.tipo === "curto") return false;
 
-  if (termo.tipo === "cpf") {
+  if (termo.tipo === "documento") {
     return soDigitos(candidato.documento ?? "").startsWith(termo.digitos);
   }
 

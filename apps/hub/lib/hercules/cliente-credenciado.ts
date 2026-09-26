@@ -4,6 +4,10 @@
 // Lucas (04/09/2026): *"para virar proposta, a CAD do titular tem que estar credenciada naquele
 // empreendimento"*.
 //
+// (26/09/2026) ⚠️ COM PJ, O TITULAR É A EMPRESA, e é a CAD DELA que vale — a mesma frase do Lucas,
+// aplicada a quem consta na reserva. A CAD do sócio não substitui a da empresa: quem compra o lote
+// é o CNPJ, e é ele que assina o contrato e responde pela dívida.
+//
 // ⚠️ SÓ LÊ, E RESPONDE UMA PERGUNTA SÓ. Duas telas fazem a mesma: a Venda, ao habilitar o botão
 // "Gerar proposta", e a rota que grava a proposta depois. Se cada uma montasse a própria consulta,
 // a segunda acabaria mais frouxa que a primeira — e é a segunda que grava.
@@ -28,6 +32,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { soDigitos } from "@/lib/apolo/documento";
 import type { EtapaEsteira } from "@/lib/apolo/esteira";
 import { hashIdentifier } from "@/lib/apolo/server";
+
+import { namespaceDoHash, rotuloDoDocumento, tipoDePessoa } from "./documento-do-comprador";
 
 // Só o `from` é usado. Aceita tanto o admin client do Apolo quanto um SupabaseClient cru — os dois
 // convivem nas libs do Hércules — e é o que permite testar com um cliente falso.
@@ -123,23 +129,47 @@ export type LinhaDaEsteira = {
  */
 export async function credenciadoParaVender(
   admin: ClienteDeLeitura,
-  alvo: { cpf: string; enterpriseIds: string[] },
+  alvo: { documento: string; enterpriseIds: string[] },
 ): Promise<CredenciamentoDoTitular> {
   // ⚠️ NORMALIZAR ANTES DE HASHEAR. O CPF chega como o corretor digitou ("529.982.247-25") e como a
   // reserva gravou ("52998224725"); `hashIdentifier` não normaliza nada, então os dois formatos
   // gerariam hashes diferentes e o mesmo cliente ora seria achado, ora não.
-  const digitos = soDigitos(alvo.cpf);
+  const digitos = soDigitos(alvo.documento);
 
-  // Não vale o dígito verificador aqui: o CPF do titular já passou pelo `cpfValido` da reserva, e
-  // repetir a régua só criaria um segundo lugar para ela divergir. O que interessa é ter documento
-  // suficiente para procurar.
-  if (digitos.length !== 11) {
+  // ⚠️ CPF **OU** CNPJ (Lucas, 26/09/2026: *"temos que habilitar pessoa fisica e pessoa juridica,
+  // hoje só atende pessoa fisica"*). Até 26/09/2026 o portão era `digitos.length !== 11`: uma
+  // reserva de PJ nascia e travava aqui, com uma frase sobre CPF em cima de uma empresa.
+  //
+  // MEDIDO em 26/09/2026 (produção, só SELECT): existem 11 CADs de entidade `pj` na esteira, 9 na
+  // etapa `credenciado`, e as 11 têm identificador `cnpj` cujo `value_hash` é igual ao
+  // `document_hash` da entidade em 11 de 11 casos. O caminho da empresa EXISTE no dado.
+  //
+  // ⚠️ NÃO VALE O DÍGITO VERIFICADOR AQUI, e isso é a decisão de 04/09/2026 mantida de propósito
+  // (ela foi apagada por engano na primeira versão deste lote): o documento do titular já passou
+  // pela régua de ENTRADA (`conferirReserva` e `conferirProposta`, que usam
+  // `documentoDeCompradorValido`), e repetir a régua aqui só criaria um segundo lugar para ela
+  // divergir. O que interessa neste portão é ter documento SUFICIENTE PARA PROCURAR — a mesma
+  // pergunta, e a mesma régua, que a busca de proponentes faz em
+  // `app/api/incorporador/venda/proponentes/route.ts` pelo mesmo motivo escrito lá: a base tem
+  // documento torto vindo da carga do C2X.
+  //
+  // E a premissa contrária é falsa numa das portas: `lib/prometeu/reservas-evento.ts` grava o
+  // documento do credenciado do salão SEM validador nenhum (`validarProponentes` em
+  // `lib/prometeu/cupom.ts` só confere quantidade, repetição e percentual). Exigir DV aqui
+  // barraria um lote que a régua antiga deixava andar: a reserva nasce (criarReservaNoHercules não
+  // valida documento), trava o lote pelos dois índices, e o botão Gerar proposta nunca acenderia.
+  //
+  // MEDIDO em 26/09/2026 (produção `bxgukywoxgivlrhjkwjx`, só SELECT, DV calculado no SQL): as 32
+  // reservas de `hercules_reservas` têm titular de 11 dígitos, e 0 de 32 falham no dígito
+  // verificador; em `prometeu_credenciados`, 0 de 668 documentos de 11 dígitos falham. Ou seja, hoje
+  // não há vítima — a trava seria do próximo evento, e ela seria calada.
+  if (tipoDePessoa(digitos) === null) {
     return {
       credenciado: false,
       desde: null,
       entityId: null,
       etapa: null,
-      motivo: "Informe o CPF do titular para conferir o credenciamento.",
+      motivo: "Informe o CPF ou o CNPJ do titular para conferir o credenciamento.",
     };
   }
 
@@ -164,7 +194,7 @@ export async function credenciadoParaVender(
       desde: null,
       entityId: null,
       etapa: null,
-      motivo: "Este CPF não tem cadastro no Apolo. Abra a CAD antes de gerar a proposta.",
+      motivo: `Este ${rotuloDoDocumento(digitos)} não tem cadastro no Apolo. Abra a CAD antes de gerar a proposta.`,
     };
   }
 
@@ -268,9 +298,12 @@ async function entidadesDoDocumento(
   admin: ClienteDeLeitura,
   digitos: string,
 ): Promise<string[]> {
-  // O tipo do documento já está DENTRO do hash (`apolo-identifier:cpf:...`), então não há filtro
-  // de `identifier_type` a fazer: um hash de CPF nunca casa com uma linha de CNPJ.
-  const hash = hashIdentifier("cpf", digitos);
+  // ⚠️ O TIPO DO DOCUMENTO ESTÁ DENTRO DO HASH (`apolo-identifier:cpf:...`), e é exatamente por
+  // isso que o namespace TEM DE VIR DO DOCUMENTO: um hash de CPF nunca casa com uma linha de CNPJ.
+  // Até 26/09/2026 esta linha era `hashIdentifier("cpf", digitos)` fixo, e por isso nenhuma CAD de
+  // empresa podia ser achada — a consulta ia ao banco, voltava vazia e a recusa saía sem erro
+  // nenhum no log. Quem decide é `namespaceDoHash`.
+  const hash = hashIdentifier(namespaceDoHash(digitos), digitos);
 
   const [porColuna, porIdentificador] = await Promise.all([
     admin.from("apolo_entities").select("id").eq("document_hash", hash),

@@ -33,7 +33,7 @@
 // chegam prontos de quem chamou.
 
 import { APOLO_DOCS_BUCKET } from "@/lib/apolo/documentos";
-import { hashIdentifier } from "@/lib/apolo/server";
+import { hashDoDocumentoDoComprador } from "@/lib/hercules/hash-do-documento";
 import {
   nomeSeguroDeArquivo,
   prefixoDaUnidade,
@@ -241,7 +241,7 @@ export async function guardarContrato(
 
   const linha: Record<string, unknown> = {
     caminho,
-    cliente_documento_hash: hashDoCpf(proposta.cliente_documento),
+    cliente_documento_hash: hashDoDocumento(proposta.cliente_documento),
     cliente_entity_id: proposta.cliente_entity_id,
     empreendimento_codigo: proposta.empreendimento_codigo,
     enviado_por: pedido.geradoPor ?? null,
@@ -413,17 +413,19 @@ async function lerProposta(
 }
 
 /**
- * O CPF do cliente como o Apolo o guarda: HASH, nunca texto.
+ * O documento do cliente como o Apolo o guarda: HASH, nunca texto.
  *
  * ⚠️ É A MESMA CHAVE DE `/api/incorporador/venda/documentos`, e ela não é decoração: é por ela que
- * a ficha do cliente no Apolo acha o contrato quando a proposta ainda não tem `cliente_entity_id`.
- * O Apolo não guarda CPF em texto em coluna nenhuma — guardar os dígitos aqui daria um campo que
- * nunca casaria com nada do outro lado.
+ * a ficha do cliente no Apolo acha o CONTRATO ASSINADO quando a proposta ainda não tem
+ * `cliente_entity_id`. O Apolo não guarda documento em texto em coluna nenhuma.
+ *
+ * ⚠️ E O NAMESPACE SAI DO DOCUMENTO (26/09/2026). Até hoje esta função era
+ * `digitos.length >= 11 ? hashIdentifier("cpf", digitos) : null`, e o `>= 11` DEIXAVA O CNPJ
+ * PASSAR pelo namespace errado: o hash sai `apolo-identifier:cpf:...` e a CAD da empresa guarda
+ * `apolo-identifier:cnpj:...` (medido em 11 de 11 CADs de PJ, 26/09/2026). O documento anexado
+ * numa venda de PJ simplesmente desaparecia da ficha do cliente, sem erro nenhum no log.
  */
-function hashDoCpf(bruto: null | string): null | string {
-  const digitos = String(bruto ?? "").replace(/\D/g, "");
-  return digitos.length >= 11 ? hashIdentifier("cpf", digitos) : null;
-}
+const hashDoDocumento = hashDoDocumentoDoComprador;
 
 /**
  * A frase que fica na gaveta dizendo de onde este papel saiu.

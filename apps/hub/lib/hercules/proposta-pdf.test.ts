@@ -208,6 +208,29 @@ function linhasDoPdf(bytes: Uint8Array): string[] {
   return linhas;
 }
 
+describe("a coluna do documento do comprador", () => {
+  // Lucas (26/09/2026): *"temos que habilitar pessoa fisica e pessoa juridica"*. O título é UM para
+  // uma tabela que pode ter comprador PF e PJ na mesma folha: é por isso que ele não pode ser
+  // "CPF". Até 26/09/2026 era, cravado em `proposta-pdf.ts`.
+  it("⚠️ o título é 'Documento', e imprime CPF e CNPJ na mesma folha", async () => {
+    const pdf = await montarPropostaPdf({
+      ...EXEMPLO,
+      compradores: [
+        { documento: "12.345.678/0001-95", nome: "ACME Construtora", participacao: "70%" },
+        { documento: "529.982.247-25", nome: "Maria Aparecida da Silva", participacao: "30%" },
+      ],
+    });
+    // O cabecalho da tabela sai ESPACADO e em caixa alta (`espacado` em proposta-pdf.ts:321):
+    // "Documento" chega ao papel como "D O C U M E N T O".
+    const espacado = (valor: string) => valor.toUpperCase().split("").join(" ");
+    const escrito = linhasDoPdf(pdf).map((l) => l.split(" ").slice(3).join(" "));
+    expect(escrito).toContain(espacado("Documento"));
+    expect(escrito).not.toContain(espacado("CPF"));
+    expect(escrito).toContain("12.345.678/0001-95");
+    expect(escrito).toContain("529.982.247-25");
+  });
+});
+
 describe("o sufixo da tabela de reajuste", () => {
   // ⚠️ AFIRMAÇÃO EM CAIXA ALTA: ATÉ 24/09/2026 O SUFIXO ERA A PALAVRA "IPCA", CRAVADA NO CÓDIGO.
   // A linha era `dados.reajustes.map((r) => (r.temIpca ? "+ IPCA" : null))` — um booleano decidia
@@ -257,7 +280,10 @@ describe("⚠️ a proposta SEM bens nem permutas sai exatamente como saía", ()
     // Mudou de propósito (um texto novo, um espaçamento aprovado)? Rode, leia o valor recebido e
     // troque o de baixo — mas só depois de olhar o PDF em `.tmpr/proposta-exemplo.pdf`.
     expect({ digital, linhas: linhas.length }).toEqual({
-      digital: "e3426d98f06caaea91abe6752d0c8a984ed03ffa62ade6d8d9755e43fd8e9bce",
+      // (26/09/2026) A digital mudou de PROPÓSITO: o título da coluna do documento deixou de ser
+      // "CPF" e passou a "Documento", porque a tabela pode ter comprador PF e PJ na mesma folha. O
+      // resto da folha não mudou (as mesmas 85 linhas, nos mesmos x e y).
+      digital: "4221cc3b543d92c7ad1887db14e624cf39b67dbd67b222154d6f91bcedd818ad",
       linhas: 85,
     });
   });

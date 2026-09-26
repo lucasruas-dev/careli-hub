@@ -32,12 +32,16 @@ import {
   avisosDeCancelamento,
   conferirCancelamento,
   conferirReserva,
+  documentoDoProponente,
   motivoEscrito,
   type PedidoDeCancelamento,
   type PedidoDeReserva,
+  type ProponenteDaReserva,
   SEM_PRECO_PARA_RESERVA,
   semPrecoDeTabela,
 } from "@/lib/hercules/reserva";
+import { tipoDePessoa } from "@/lib/hercules/documento-do-comprador";
+import { titularDosProponentes } from "@/lib/hercules/proponente";
 
 // A RESERVA DA UNIDADE — o primeiro passo da venda, gravado no Panteon.
 //
@@ -160,11 +164,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Pedido inválido." }, { status: 400 });
   }
 
+  // ⚠️ O DOCUMENTO PODE SER CPF OU CNPJ (Lucas, 26/09/2026: *"na hora da reserva, dentro do
+  // hercules, temos que habilitar pessoa fisica e pessoa juridica, hoje só atende pessoa fisica"*).
+  // Aceita as duas chaves de entrada porque a tela em cache de um coordenador continua mandando
+  // `cpf` no dia do deploy, e ela não pode deixar de reservar por isso.
+  const documentoDoCorpo = String(
+    corpo.proponente?.documento ?? corpo.proponente?.cpf ?? "",
+  );
+
   const pedido: PedidoDeReserva = {
     corretorEntityId: corpo.corretorEntityId ?? null,
     imobiliariaEntityId: String(corpo.imobiliariaEntityId ?? "").trim(),
     proponente: {
-      cpf: String(corpo.proponente?.cpf ?? ""),
+      documento: documentoDoCorpo,
       nome: String(corpo.proponente?.nome ?? "").trim(),
       telefone: String(corpo.proponente?.telefone ?? ""),
     },
@@ -249,7 +261,20 @@ export async function POST(request: Request) {
         imobiliariaEntityId: pedido.imobiliariaEntityId,
         observacao: corpo.observacao ?? null,
         origem,
-        proponentes: [pedido.proponente],
+        // ⚠️ A CHAVE NOVA É `documento`, E A `cpf` SÓ É ESPELHADA QUANDO O DOCUMENTO É UM CPF.
+        // Essa é a invariante que protege os leitores antigos do jsonb: nenhum código consegue ler
+        // um CNPJ de uma chave chamada `cpf`. MEDIDO em 26/09/2026 (produção, só SELECT):
+        // `hercules_propostas.compradores` da carga JÁ usa `documento` em 4.889 itens, e é ela que
+        // as 137 linhas de 14 dígitos usam; e `hercules_reservas.proponentes` é jsonb NOT NULL
+        // default '[]'::jsonb SEM CHECK de forma, ou seja, a coluna aceita sem uma linha de DDL.
+        //
+        // ⚠️ E A INVARIANTE VALE NAS DUAS PORTAS, não só nesta. A SEGUNDA porta de escrita desta
+        // coluna é o tótem do salão (`proponentesParaOHercules`, em `lib/prometeu/reservas-evento.ts`),
+        // que até 26/09/2026 gravava `cpf: p.documento` sem olhar o tipo — e MEDIDO no mesmo dia
+        // existem 7 credenciados de `prometeu_credenciados` com documento de 14 dígitos, ou seja ele
+        // conseguia pôr um CNPJ na chave chamada `cpf`. Hoje as duas portas montam o mesmo objeto
+        // canônico, e a única leitura confiável é `lib/hercules/proponente.ts`.
+        proponentes: [proponenteParaGravar(pedido.proponente)],
         unidadeId: unidade.id,
         validadeEm: pedido.validadeEm,
       },
@@ -297,7 +322,8 @@ export async function POST(request: Request) {
             cliente: pedido.proponente.nome,
             codigo,
             corretor: destinatarios.corretor?.nome ?? null,
-            cpf: pedido.proponente.cpf,
+            // O rótulo da frase sai do próprio documento: CPF ou CNPJ.
+            cpf: documentoDoProponente(pedido.proponente),
             empreendimento: empreendimento.nome,
             imobiliaria: destinatarios.imobiliaria.nome,
             unidade: nomeDaUnidade(unidade),
@@ -466,9 +492,11 @@ export async function PATCH(request: Request) {
     const nomeDoEmpreendimento =
       cadastro.find((l) => l.id === reserva.empreendimento_id)?.nome ?? "empreendimento";
 
-    const titular = Array.isArray(reserva.proponentes)
-      ? (reserva.proponentes[0] as null | { nome?: unknown })
-      : null;
+    // ⚠️ O LEITOR É O ÚNICO, MESMO SÓ PARA O NOME (26/09/2026). Aqui só se usa o `nome`, e por isso
+    // esta abertura solta do jsonb passou incólume pela troca dos leitores; mas foi de aberturas
+    // soltas assim que nasceram as quatro leituras ad-hoc, cada uma com nome diferente e nenhuma
+    // enxergando a chave `documento`.
+    const titular = titularDosProponentes(reserva.proponentes);
     const codigo = codigoDaVenda(reserva.protocolo_numero);
 
     // Reserva sem imobiliaria nao tem para quem avisar: o registro do disparo pendura na ficha
@@ -489,7 +517,7 @@ export async function PATCH(request: Request) {
             imobiliariaId,
             origem: "reserva:whatsapp",
             textos: avisosDeCancelamento({
-              cliente: typeof titular?.nome === "string" ? titular.nome : "cliente",
+              cliente: titular?.nome || "cliente",
               codigo,
               corretor: destinatarios.corretor?.nome ?? null,
               empreendimento: nomeDoEmpreendimento,
@@ -513,4 +541,23 @@ export async function PATCH(request: Request) {
     console.error("[hercules][reserva] falha ao cancelar", erro);
     return NextResponse.json({ error: "Não foi possível cancelar agora." }, { status: 503 });
   }
+}
+
+/**
+ * O proponente como o jsonb o guarda.
+ *
+ * ⚠️ O `tipoPessoa` SAI DO DOCUMENTO, NUNCA DO CORPO. Aceitar um tipo declarado por HTTP deixaria
+ * uma tela (ou um cliente qualquer) dizer que um CPF é empresa — e o contrato, que decide pelo
+ * documento (`lib/temis/dados-do-contrato.ts:1739-1744`), discordaria da reserva.
+ */
+function proponenteParaGravar(proponente: ProponenteDaReserva) {
+  const documento = documentoDoProponente(proponente);
+  const tipoPessoa = tipoDePessoa(documento) ?? "pf";
+  return {
+    documento,
+    nome: proponente.nome,
+    telefone: proponente.telefone,
+    tipoPessoa,
+    ...(tipoPessoa === "pf" ? { cpf: documento } : {}),
+  };
 }

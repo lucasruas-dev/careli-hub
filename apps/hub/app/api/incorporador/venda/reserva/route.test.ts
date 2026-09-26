@@ -283,12 +283,16 @@ import { PATCH, POST } from "./route";
 
 const DAQUI_A_TRES_DIAS = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
 
-const reservar = () =>
+const reservar = (proponente: Record<string, unknown> = {
+  cpf: "529.982.247-25",
+  nome: "Maria da Silva",
+  telefone: "62991234567",
+}) =>
   POST(
     new Request("https://c2x.app.br/api/incorporador/venda/reserva", {
       body: JSON.stringify({
         imobiliariaEntityId: "imo-1",
-        proponente: { cpf: "529.982.247-25", nome: "Maria da Silva", telefone: "62991234567" },
+        proponente,
         unidadeId: "u-1",
         validadeEm: DAQUI_A_TRES_DIAS,
       }),
@@ -372,6 +376,76 @@ describe("POST: a régua de quem opera o produto (D1)", () => {
     estado.unidade = unidadeEm("39");
     const resposta = await reservar();
     expect(resposta.status).toBe(503);
+    expect(reservasGravadas()).toHaveLength(0);
+  });
+});
+
+// ── PESSOA FÍSICA E PESSOA JURÍDICA ─────────────────────────────────────
+//
+// Lucas (26/09/2026): *"na hora da reserva, dentro do hercules, temos que habilitar pessoa fisica e
+// pessoa juridica, hoje só atende pessoa fisica"*.
+//
+// MEDIDO em 26/09/2026 (produção, só SELECT): `hercules_reservas.proponentes` é jsonb NOT NULL
+// default '[]'::jsonb e as três únicas CHECK da tabela são de origem, situacao e salao_tem_evento —
+// nenhuma sobre a forma do jsonb. A coluna aceita PJ sem uma linha de DDL.
+describe("POST: o proponente pessoa jurídica", () => {
+  const proponenteGravado = () =>
+    (reservasGravadas()[0]?.linha as { proponentes: Array<Record<string, unknown>> } | undefined)
+      ?.proponentes[0];
+
+  it("⚠️ grava documento e tipoPessoa 'pj', e NÃO grava a chave cpf", async () => {
+    // A invariante que protege os leitores antigos: nenhum código consegue ler um CNPJ de uma
+    // chave chamada cpf.
+    estado.sessao = GURGEL;
+    const resposta = await reservar({
+      documento: "12.345.678/0001-95",
+      nome: "ACME Construtora",
+      telefone: "62991234567",
+    });
+    expect(resposta.status).toBe(200);
+    expect(proponenteGravado()).toEqual({
+      documento: "12.345.678/0001-95",
+      nome: "ACME Construtora",
+      telefone: "62991234567",
+      tipoPessoa: "pj",
+    });
+    expect(proponenteGravado()).not.toHaveProperty("cpf");
+  });
+
+  it("com CPF, grava documento, tipoPessoa 'pf' E a chave cpf espelhada", async () => {
+    estado.sessao = GURGEL;
+    const resposta = await reservar();
+    expect(resposta.status).toBe(200);
+    expect(proponenteGravado()).toEqual({
+      cpf: "529.982.247-25",
+      documento: "529.982.247-25",
+      nome: "Maria da Silva",
+      telefone: "62991234567",
+      tipoPessoa: "pf",
+    });
+  });
+
+  it("⚠️ a tela em cache que manda só `cpf` continua reservando", async () => {
+    // No dia do deploy, o coordenador com a modal antiga aberta no navegador não pode deixar de
+    // reservar.
+    estado.sessao = GURGEL;
+    const resposta = await reservar({
+      cpf: "529.982.247-25",
+      nome: "Maria da Silva",
+      telefone: "62991234567",
+    });
+    expect(resposta.status).toBe(200);
+    expect(proponenteGravado()).toMatchObject({ documento: "529.982.247-25", tipoPessoa: "pf" });
+  });
+
+  it("documento que não fecha o dígito verificador continua sendo 422, e nada é gravado", async () => {
+    estado.sessao = GURGEL;
+    const resposta = await reservar({
+      documento: "12.345.678/0001-96",
+      nome: "ACME Construtora",
+      telefone: "62991234567",
+    });
+    expect(resposta.status).toBe(422);
     expect(reservasGravadas()).toHaveLength(0);
   });
 });

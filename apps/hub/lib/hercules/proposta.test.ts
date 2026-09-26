@@ -84,6 +84,67 @@ describe("conferirProposta", () => {
     expect(erros.find((e) => e.campo === "cpf")?.mensagem).toContain("Ana Souza");
   });
 
+  // Lucas (26/09/2026): *"temos que habilitar pessoa fisica e pessoa juridica, hoje só atende
+  // pessoa fisica"*. A proposta é o passo seguinte da reserva: recusar CNPJ aqui faria a reserva de
+  // PJ nascer e travar.
+  it("aceita titular PESSOA JURÍDICA, com CNPJ", () => {
+    expect(
+      conferirProposta(
+        {
+          ...PEDIDO,
+          compradores: [
+            {
+              cpf: "12.345.678/0001-95",
+              nome: "ACME Construtora",
+              participacao: 100,
+              titular: true,
+            },
+          ],
+        },
+        AGORA,
+      ),
+    ).toEqual([]);
+  });
+
+  it("⚠️ empresa e sócio na mesma proposta: cada um com o seu documento", () => {
+    expect(
+      conferirProposta(
+        {
+          ...PEDIDO,
+          compradores: [
+            {
+              cpf: "12.345.678/0001-95",
+              nome: "ACME Construtora",
+              participacao: 70,
+              titular: true,
+            },
+            { cpf: "168.995.350-09", nome: "João Souza", participacao: 30, titular: false },
+          ],
+        },
+        AGORA,
+      ),
+    ).toEqual([]);
+  });
+
+  it("⚠️ a porta não virou peneira: CNPJ com dígito verificador errado é recusado", () => {
+    const erros = conferirProposta(
+      {
+        ...PEDIDO,
+        compradores: [
+          {
+            cpf: "12.345.678/0001-96",
+            nome: "ACME Construtora",
+            participacao: 100,
+            titular: true,
+          },
+        ],
+      },
+      AGORA,
+    );
+    expect(erros.map((e) => e.campo)).toContain("cpf");
+    expect(erros.find((e) => e.campo === "cpf")?.mensagem).toContain("CNPJ");
+  });
+
   it("⚠️ a soma das participações fecha 100% mesmo com decimais que não somam redondo", () => {
     // 33,33 + 33,33 + 33,34 dá 100.00000000000001 em ponto flutuante: comparar a soma crua com 100
     // recusaria a divisão mais comum que existe entre três compradores.
@@ -349,6 +410,21 @@ describe("avisosDaProposta", () => {
       expect(aviso.texto).toContain("***.982.247-**");
       expect(aviso.texto).not.toContain("529.982.247-25");
       expect(aviso.texto).not.toContain("52998224725");
+    }
+  });
+
+  it("⚠️ titular PJ sai como CNPJ nas três, e a palavra CPF não aparece", () => {
+    // Mensagem enviada não volta, e sai do número do Relacionamento para corretor, imobiliária e
+    // coordenador: chamar CNPJ de CPF é erro público.
+    for (const aviso of avisosDaProposta({
+      ...DADOS,
+      cliente: "ACME Construtora",
+      cpf: "12.345.678/0001-95",
+    })) {
+      expect(aviso.texto).toContain("CNPJ");
+      expect(aviso.texto).not.toContain("CPF");
+      expect(aviso.texto).toContain("**.345.678/0001-**");
+      expect(aviso.texto).not.toContain("12.345.678/0001-95");
     }
   });
 

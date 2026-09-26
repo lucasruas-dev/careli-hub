@@ -16,13 +16,13 @@ describe("termoDaBusca", () => {
     // Do WhatsApp, do teclado numérico e da planilha — a mesma pergunta.
     for (const cru of ["058.183.866-19", "05818386619", "058 183 866 19"]) {
       const t = termoDaBusca(cru);
-      expect(t.tipo, cru).toBe("cpf");
-      if (t.tipo === "cpf") expect(t.digitos).toBe("05818386619");
+      expect(t.tipo, cru).toBe("documento");
+      if (t.tipo === "documento") expect(t.digitos).toBe("05818386619");
     }
   });
 
   it("CPF parcial já busca, a partir de 4 dígitos", () => {
-    expect(termoDaBusca("0581").tipo).toBe("cpf");
+    expect(termoDaBusca("0581").tipo).toBe("documento");
     // Três dígitos ainda é gente demais.
     expect(termoDaBusca("058").tipo).toBe("curto");
   });
@@ -37,6 +37,25 @@ describe("termoDaBusca", () => {
     expect(termoDaBusca("ma").tipo).toBe("curto");
     expect(termoDaBusca("  ").tipo).toBe("curto");
     expect(termoDaBusca("").tipo).toBe("curto");
+  });
+});
+
+describe("termoDaBusca com CNPJ", () => {
+  // Lucas (26/09/2026): *"temos que habilitar pessoa fisica e pessoa juridica"*.
+  it("⚠️ o CNPJ colado inteiro leva os 14 dígitos, e não os 11 primeiros", () => {
+    const t = termoDaBusca("12.345.678/0001-95");
+    expect(t.tipo).toBe("documento");
+    if (t.tipo === "documento") expect(t.digitos).toBe("12345678000195");
+  });
+
+  it("⚠️ duas filiais do mesmo CNPJ raiz NÃO são a mesma empresa", () => {
+    // Cortado em 11 dígitos, "12345678000195" e "12345678000276" viravam o mesmo prefixo
+    // "12345678000" e a matriz casava com a filial: um comprador trocado no contrato.
+    const matriz = pessoa("ACME MATRIZ", "12.345.678/0001-95");
+    const filial = pessoa("ACME FILIAL", "12.345.678/0002-76");
+    const termo = termoDaBusca("12.345.678/0001-95");
+    expect(casa(matriz, termo)).toBe(true);
+    expect(casa(filial, termo)).toBe(false);
   });
 });
 

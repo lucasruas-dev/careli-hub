@@ -17,16 +17,41 @@
 // reserva" perderia a corrida entre dois coordenadores clicando no mesmo lote; o índice não perde.
 // O papel deste arquivo é traduzir o 23505 do Postgres numa frase que a tela mostra.
 
-import { cpfValido, soDigitos } from "@/lib/apolo/documento";
+import { soDigitos } from "@/lib/apolo/documento";
+
+import {
+  documentoDeCompradorValido,
+  mascararDocumento,
+  rotuloDoDocumento,
+  tipoDePessoa,
+} from "./documento-do-comprador";
 
 import { ehUnidadeVertical, nomeDaUnidade as nomeDaUnidadeEscrita } from "./nome-da-unidade";
+import { titularDosProponentes } from "./proponente";
 
-/** Quem vai comprar. Só três campos: foi o que ele pediu, e é o que a reserva precisa. */
+/**
+ * Quem vai comprar. Só três campos: foi o que ele pediu, e é o que a reserva precisa.
+ *
+ * ⚠️ O DOCUMENTO É CPF **OU** CNPJ (Lucas, 26/09/2026: *"temos que habilitar pessoa fisica e
+ * pessoa juridica, hoje só atende pessoa fisica"*). Quem decide qual dos dois é o próprio
+ * documento, em `documento-do-comprador.ts` — não um seletor na tela.
+ *
+ * ⚠️ `cpf` FICA COMO ENTRADA, E SÓ COMO ENTRADA. A tela em cache de um coordenador continua
+ * mandando `cpf` no dia do deploy, e ela não pode deixar de reservar por isso. Quem GRAVA é a rota,
+ * e ela só espelha a chave `cpf` no jsonb quando o documento é mesmo um CPF.
+ */
 export type ProponenteDaReserva = {
-  cpf: string;
+  /** A forma antiga de entrada. Preferir `documento`. */
+  cpf?: string;
+  documento?: string;
   nome: string;
   telefone: string;
 };
+
+/** O documento do proponente, venha ele na chave nova ou na antiga. */
+export function documentoDoProponente(proponente: ProponenteDaReserva): string {
+  return proponente.documento || proponente.cpf || "";
+}
 
 export type PedidoDeReserva = {
   /** O corretor. Opcional: a reserva pode sair no nome só da imobiliária. */
@@ -56,7 +81,14 @@ export const PRAZO_PADRAO_EM_DIAS = 3;
 export const PRAZO_MAXIMO_EM_DIAS = 30;
 
 export type ErroDaReserva = {
-  campo: "corretor" | "cpf" | "imobiliaria" | "nome" | "telefone" | "unidade" | "validade";
+  campo:
+    | "corretor"
+    | "documento"
+    | "imobiliaria"
+    | "nome"
+    | "telefone"
+    | "unidade"
+    | "validade";
   mensagem: string;
 };
 
@@ -112,13 +144,26 @@ export function conferirReserva(
     });
   }
 
+  const documento = documentoDoProponente(pedido.proponente);
+  const empresa = tipoDePessoa(documento) === "pj";
+
+  // ⚠️ RAZÃO SOCIAL DE UMA PALAVRA EXISTE ("Construtora", "Agropecuária"), e até 26/09/2026 a
+  // régua exigia espaço de todo mundo: uma empresa era recusada com "Informe o nome completo do
+  // cliente", frase que não ensina nada a quem digitou o nome certo. O espaço continua obrigatório
+  // para PESSOA, onde ele significa sobrenome — e sobrenome é o que o contrato precisa.
   const nome = pedido.proponente.nome.trim();
-  if (nome.length < 3 || !nome.includes(" ")) {
-    erros.push({ campo: "nome", mensagem: "Informe o nome completo do cliente." });
+  if (nome.length < 3 || (!empresa && !nome.includes(" "))) {
+    erros.push({
+      campo: "nome",
+      mensagem: empresa ? "Informe a razão social." : "Informe o nome completo do cliente.",
+    });
   }
 
-  if (!cpfValido(pedido.proponente.cpf)) {
-    erros.push({ campo: "cpf", mensagem: "CPF inválido." });
+  // Lucas (26/09/2026): *"temos que habilitar pessoa fisica e pessoa juridica, hoje só atende
+  // pessoa fisica"*. Habilitar PJ é aceitar CNPJ, e não aceitar qualquer número: o dígito
+  // verificador continua sendo a porta, agora dos dois lados.
+  if (!documentoDeCompradorValido(documento)) {
+    erros.push({ campo: "documento", mensagem: "Documento inválido: confira o CPF ou o CNPJ." });
   }
 
   if (!telefoneParecePossivel(pedido.proponente.telefone, pedido.ddi ?? "55")) {
@@ -162,11 +207,15 @@ export function vencimentoEmDias(agoraIso: string, dias: number): string {
   return new Date(fim + 3 * 3_600_000).toISOString();
 }
 
-/** ***.456.789-** — o suficiente para conferir, insuficiente para vazar. */
+/**
+ * ***.456.789-** — o suficiente para conferir, insuficiente para vazar.
+ *
+ * ⚠️ REEXPORT FINO DA PEÇA ÚNICA (26/09/2026). A máscara mora em `documento-do-comprador.ts`,
+ * que sabe mascarar CNPJ também; este nome continua aqui porque `lib/hercules/proposta.ts` e os
+ * testes dos dois arquivos o importam.
+ */
 export function mascararCpf(documento: string): string {
-  const so = soDigitos(documento);
-  if (so.length !== 11) return so.length > 4 ? `***${so.slice(-4)}` : "documento";
-  return `***.${so.slice(3, 6)}.${so.slice(6, 9)}-**`;
+  return mascararDocumento(documento);
 }
 
 const DIA = new Intl.DateTimeFormat("pt-BR", {
@@ -185,6 +234,7 @@ export type AvisoDaReserva = {
 export type DadosDoAviso = {
   cliente: string;
   corretor: null | string;
+  /** CPF ou CNPJ: o rótulo da frase sai do próprio documento. */
   cpf: string;
   empreendimento: string;
   imobiliaria: string;
@@ -205,13 +255,16 @@ export type DadosDoAviso = {
  *
  * ⚠️ NEGRITO DE WHATSAPP É *UM ASTERISCO*. Dois é Markdown, e chega literal na conversa.
  *
- * ⚠️ CPF VAI MASCARADO. Ele existe na mensagem para o corretor reconhecer o cliente dele, não para
- * circular por grupo de WhatsApp — e mensagem enviada não volta.
+ * ⚠️ O DOCUMENTO VAI MASCARADO, CPF OU CNPJ. Ele existe na mensagem para o corretor reconhecer o
+ * cliente dele, não para circular por grupo de WhatsApp — e mensagem enviada não volta.
  */
 export function avisosDaReserva(dados: DadosDoAviso): AvisoDaReserva[] {
   const ate = DIA.format(new Date(dados.validadeEm));
   const lote = `*${dados.unidade}* (${dados.empreendimento})`;
-  const cliente = `*${dados.cliente}* (CPF ${mascararCpf(dados.cpf)})`;
+  // ⚠️ O RÓTULO SAI DO DOCUMENTO (Lucas, 26/09/2026). Estas três mensagens saem do número do
+  // Relacionamento para corretor, imobiliária e coordenador, e mensagem enviada não volta:
+  // escrever "CPF 12.345.678/0001-95" sobre uma empresa é erro público.
+  const cliente = `*${dados.cliente}* (${rotuloDoDocumento(dados.cpf)} ${mascararCpf(dados.cpf)})`;
   // ⚠️ O COD ENTRA NA MENSAGEM porque é ali que ele serve (Lucas, 04/09/2026: *"isso tem que ir na
   // mensagem também"*): o corretor anota o número que chegou no WhatsApp e é com ele que liga
   // perguntando da venda. Código que só existe na tela obriga a abrir a tela para descobrir o
@@ -441,16 +494,6 @@ export type UnidadeDaLinha = {
   torre?: null | string;
 };
 
-/** O primeiro proponente é o titular — o nome que a lista mostra. */
-function titular(proponentes: unknown): { cpf: string; nome: string } {
-  const lista = Array.isArray(proponentes) ? proponentes : [];
-  const primeiro = lista[0] as null | undefined | { cpf?: unknown; nome?: unknown };
-  return {
-    cpf: typeof primeiro?.cpf === "string" ? primeiro.cpf : "",
-    nome: typeof primeiro?.nome === "string" ? primeiro.nome : "",
-  };
-}
-
 /**
  * A reserva como o fluxo de venda a enxerga.
  *
@@ -490,7 +533,9 @@ export function reservaComoLinhaDoFluxo(
   unidade_nome: null | string;
   valor: null | number;
 } {
-  const dono = titular(reserva.proponentes);
+  // ⚠️ O LEITOR É ÚNICO (`lib/hercules/proponente.ts`), e é ele que enxerga a chave `documento`
+  // além da `cpf`. Sem isto, uma reserva de PJ entraria no fluxo de venda como "sem documento".
+  const dono = titularDosProponentes(reserva.proponentes);
   // ⚠️ O PRÉDIO SE ESCREVE COMO PRÉDIO (Lucas, 16/09/2026): apartamento nunca vira "quadra lote".
   // Sem este ramo, a reserva de um apto saía na lista com o código cru ("JAD-A-304"), enquanto a
   // proposta do mesmo apto, logo depois, dizia "Torre A · Apto 304". A escrita é a de
@@ -504,8 +549,8 @@ export function reservaComoLinhaDoFluxo(
         : (unidade?.codigo ?? null);
 
   return {
-    cliente_documento: dono.cpf || null,
-    cliente_nome: dono.nome || null,
+    cliente_documento: dono?.documento || null,
+    cliente_nome: dono?.nome || null,
     codigo: null,
     contrato_parcelas: null,
     corretor_nome: reserva.corretor_nome ?? null,

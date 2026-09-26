@@ -48,6 +48,7 @@ import {
   contadoresDoEvento,
   criarReservaDoEvento,
   empreendimentoDaReserva,
+  proponentesParaOHercules,
   quadrasDoEvento,
   reservasDoEvento,
   reservasDoGrupo,
@@ -835,5 +836,51 @@ describe("o cupom que a PA imprime segue a reserva do Hércules", () => {
     const depois = await reservasDoEvento(banco.cliente as never, "ev-1");
     expect(depois.reservas?.find((r) => r.grupoId === grupoId)?.situacao).toBe("cancelada");
     expect((await contadoresDoEvento(banco.cliente as never, "ev-1")).reservas).toBe(0);
+  });
+});
+
+// ── A SEGUNDA PORTA DE ESCRITA DE `hercules_reservas.proponentes` ──────────────────────
+//
+// Lucas (26/09/2026): *"na hora da reserva, dentro do hercules, temos que habilitar pessoa fisica e
+// pessoa juridica, hoje só atende pessoa fisica"*.
+//
+// ⚠️ A ROTA DA VENDA DECLARA UMA INVARIANTE ("nenhum código consegue ler um CNPJ de uma chave
+// chamada `cpf`") e ESTA é a outra porta que grava a mesma coluna. MEDIDO em 26/09/2026 (produção,
+// só SELECT): existem 7 linhas de `prometeu_credenciados` com documento de 14 dígitos, ou seja, o
+// tótem consegue bipar um credenciado de CNPJ como titular. Sem estes testes a invariante fica
+// escrita no código sem quem a cobre.
+describe("proponentesParaOHercules", () => {
+  const base = { credenciadoId: "cred-1", nome: "Maria da Silva", percentual: 100 };
+
+  it("titular de CPF grava a chave nova E espelha a antiga, com os mesmos dígitos", () => {
+    const [p] = proponentesParaOHercules([{ ...base, documento: "529.982.247-25" }]) as Array<
+      Record<string, unknown>
+    >;
+    expect(p).toMatchObject({
+      cpf: "52998224725",
+      documento: "52998224725",
+      tipoPessoa: "pf",
+    });
+  });
+
+  it("⚠️ titular de CNPJ NÃO grava a chave `cpf`", () => {
+    const [p] = proponentesParaOHercules([
+      { ...base, documento: "12.345.678/0001-95", nome: "ACME Construtora" },
+    ]) as Array<Record<string, unknown>>;
+    expect(p).toMatchObject({ documento: "12345678000195", tipoPessoa: "pj" });
+    expect(p).not.toHaveProperty("cpf");
+  });
+
+  it("credenciado, entidade, origem e percentual continuam viajando no jsonb", () => {
+    const [p] = proponentesParaOHercules([
+      { ...base, documento: "529.982.247-25", entityId: "ent-1", origem: "GURGEL · João" },
+    ]) as Array<Record<string, unknown>>;
+    expect(p).toMatchObject({
+      credenciadoId: "cred-1",
+      entity_id: "ent-1",
+      origem: "GURGEL · João",
+      percentual: 100,
+      telefone: "",
+    });
   });
 });

@@ -14,6 +14,7 @@ import {
   type ProponenteEncontrado,
   termoDaBusca,
 } from "@/lib/hercules/busca-de-proponente";
+import { namespaceDoHash, tipoDePessoa } from "@/lib/hercules/documento-do-comprador";
 import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 import { decidirPelasLinhas, type LinhaDaEsteira } from "@/lib/hercules/cliente-credenciado";
 
@@ -103,9 +104,15 @@ export async function GET(request: Request) {
       comercial: ehPortalComercial(auth.sessao.tipo),
       permitidos,
     });
-    const cpfInteiro = termo.tipo === "cpf" && termo.digitos.length === 11;
+    // O documento INTEIRO é o que autoriza a busca no espelho do pai: onze dígitos de CPF ou
+    // catorze de CNPJ. É confirmação de quem se conhece, não listagem.
+    //
+    // ⚠️ AQUI NÃO SE EXIGE DÍGITO VERIFICADOR, e isso é de propósito: a base tem documento torto
+    // vindo da carga do C2X, e quem digitou o documento inteiro de um cliente que existe tem de
+    // achá-lo. A régua do DV é da porta de entrada (a reserva e a proposta), não da busca.
+    const documentoInteiro = termo.tipo === "documento" && tipoDePessoa(termo.digitos) !== null;
 
-    if (escopo.abertos.length === 0 && !(cpfInteiro && escopo.soComCpfInteiro.length > 0)) {
+    if (escopo.abertos.length === 0 && !(documentoInteiro && escopo.soComCpfInteiro.length > 0)) {
       return NextResponse.json({ data: { encontrados: [] } });
     }
 
@@ -115,8 +122,8 @@ export async function GET(request: Request) {
     // Quem o CPF inteiro alcança no espelho do pai. Só existe fora do comercial (para ele
     // `soComCpfInteiro` é sempre vazio) e só com os onze dígitos: é confirmação, não lista.
     const doCpf =
-      termo.tipo === "cpf" && cpfInteiro && escopo.soComCpfInteiro.length > 0
-        ? new Set(await entidadesDoCpf(admin, termo.digitos))
+      termo.tipo === "documento" && documentoInteiro && escopo.soComCpfInteiro.length > 0
+        ? new Set(await entidadesDoDocumento(admin, termo.digitos))
         : new Set<string>();
 
     const entityIds = [...new Set([...linhasAbertas.map((l) => l.entity_id), ...doCpf])];
@@ -242,12 +249,16 @@ async function lerEsteira(
 }
 
 /**
- * As entidades que carregam este CPF, pelas DUAS fontes do documento (a coluna de quem nasceu no
- * Apolo e os identificadores de quem veio do sync do C2X), a mesma leitura de
- * `credenciadoParaVender`. O tipo do documento já está dentro do hash.
+ * As entidades que carregam este documento, pelas DUAS fontes (a coluna de quem nasceu no Apolo e
+ * os identificadores de quem veio do sync do C2X), a mesma leitura de `credenciadoParaVender`.
+ *
+ * ⚠️ O NAMESPACE DO HASH SAI DO DOCUMENTO (26/09/2026). O tipo está DENTRO do hash
+ * (`apolo-identifier:cpf:...`): até hoje esta linha era `hashIdentifier("cpf", digitos)` fixa, e
+ * por isso um CNPJ colado no campo nunca achava a empresa. E o comentário acima precisa continuar
+ * sendo verdade: esta é a MESMA leitura de `credenciadoParaVender`, que usa a mesma peça.
  */
-async function entidadesDoCpf(admin: AdminClient, digitos: string): Promise<string[]> {
-  const hash = hashIdentifier("cpf", digitos);
+async function entidadesDoDocumento(admin: AdminClient, digitos: string): Promise<string[]> {
+  const hash = hashIdentifier(namespaceDoHash(digitos), digitos);
   const [porColuna, porIdentificador] = await Promise.all([
     admin.from("apolo_entities").select("id").eq("document_hash", hash).limit(20),
     admin.from("apolo_entity_identifiers").select("entity_id").eq("value_hash", hash).limit(20),
