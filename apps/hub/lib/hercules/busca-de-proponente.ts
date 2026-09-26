@@ -21,6 +21,8 @@
 
 import { soDigitos } from "@/lib/apolo/documento";
 
+import { tipoDePessoa } from "./documento-do-comprador";
+
 /** Como cada candidato volta para a tela. */
 export type ProponenteEncontrado = {
   /** `true` quando a CAD dele está credenciada — só então a tela deixa adicionar. */
@@ -64,8 +66,10 @@ export const MAXIMO_DE_CANDIDATOS = 8;
  */
 export const MINIMO_DE_LETRAS = 3;
 
+// (26/09/2026) O termo de DOCUMENTO cobre CPF e CNPJ: Lucas, *"temos que habilitar pessoa fisica e
+// pessoa juridica"*. Chamava-se "cpf" e levava onze dígitos.
 export type TermoDaBusca =
-  | { digitos: string; tipo: "cpf" }
+  | { digitos: string; tipo: "documento" }
   | { texto: string; tipo: "nome" }
   | { tipo: "curto" };
 
@@ -91,7 +95,12 @@ export function termoDaBusca(cru: string): TermoDaBusca {
     // ⚠️ DÍGITO DE MENOS NÃO VIRA BUSCA POR NOME. "058" tem três caracteres e passaria na régua de
     // letras, indo procurar "058" dentro dos nomes — nenhum resultado, e o corretor concluindo que
     // o cliente não tem cadastro quando ele só não terminou de digitar o CPF.
-    return digitos.length >= 4 ? { digitos: digitos.slice(0, 11), tipo: "cpf" } : { tipo: "curto" };
+    // ⚠️ CATORZE, E NÃO ONZE. Cortado em onze, um CNPJ colado casava por ACIDENTE pelos onze
+    // primeiros dígitos (`startsWith` em `casa`), e as filiais 0001 e 0002 do mesmo CNPJ raiz
+    // viravam o mesmo resultado — comprador trocado no PDF e no contrato.
+    return digitos.length >= 4
+      ? { digitos: digitos.slice(0, 14), tipo: "documento" }
+      : { tipo: "curto" };
   }
 
   if (texto.length < MINIMO_DE_LETRAS) return { tipo: "curto" };
@@ -99,12 +108,19 @@ export function termoDaBusca(cru: string): TermoDaBusca {
 }
 
 /**
- * O termo é o CPF inteiro (onze dígitos)? É a chave que abre o espelho do pai e o comprador da
- * carteira na busca (26/09/2026): confirmação do que o corretor já tem na mão, e não lista. A tela
- * usa a mesma função para dizer quando vale digitar o CPF inteiro.
+ * O termo é o documento INTEIRO (onze dígitos de CPF ou catorze de CNPJ)? É a chave que abre o
+ * espelho do pai e o comprador da carteira na busca (26/09/2026): confirmação do que o corretor já
+ * tem na mão, e não lista. A tela usa a mesma função para dizer quando vale digitar o documento
+ * inteiro, e a rota a usa para as duas portas: uma pergunta, uma resposta.
+ *
+ * ⚠️ SEM DÍGITO VERIFICADOR, de propósito: a base tem documento torto vindo da carga do C2X, e quem
+ * digitou o documento inteiro de um cliente que existe tem de achá-lo. O tamanho é de
+ * `tipoDePessoa`, a peça única (a varredura de `documento-do-comprador.varredura.test.ts` cobra).
  */
-export function ehCpfInteiro(termo: TermoDaBusca): termo is { digitos: string; tipo: "cpf" } {
-  return termo.tipo === "cpf" && termo.digitos.length === 11;
+export function ehDocumentoInteiro(
+  termo: TermoDaBusca,
+): termo is { digitos: string; tipo: "documento" } {
+  return termo.tipo === "documento" && tipoDePessoa(termo.digitos) !== null;
 }
 
 /**
@@ -135,7 +151,7 @@ export function comparavel(valor: null | string): string {
 export function casa(candidato: CandidatoDaBase, termo: TermoDaBusca): boolean {
   if (termo.tipo === "curto") return false;
 
-  if (termo.tipo === "cpf") {
+  if (termo.tipo === "documento") {
     return soDigitos(candidato.documento ?? "").startsWith(termo.digitos);
   }
 

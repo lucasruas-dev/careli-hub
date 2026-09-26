@@ -2931,6 +2931,8 @@ function ClienteDaVenda({
   const [aberto, setAberto] = useState(false);
   const [dados, setDados] = useState<null | {
     documento: null | string;
+    /** O rotulo vem da rota, porque so ela sabe se o documento e CPF ou CNPJ. */
+    documentoRotulo?: string;
     nome: null | string;
     telefone: null | string;
   }>(null);
@@ -3018,7 +3020,13 @@ function ClienteDaVenda({
           ) : dados ? (
             <>
               <Miudo rotulo="Nome" valor={dados.nome ?? "—"} />
-              <Miudo rotulo="CPF" valor={dados.documento ?? "não cadastrado"} />
+              {/* ⚠️ O RÓTULO VEM DO DOCUMENTO (26/09/2026), e não cravado. Esta é a tela em que o
+                  coordenador confere se é a pessoa certa: um CNPJ aparecia aqui como
+                  "CPF 12.345.678/0001-95". */}
+              <Miudo
+                rotulo={dados.documentoRotulo ?? "Documento"}
+                valor={dados.documento ?? "não cadastrado"}
+              />
               <Miudo
                 rotulo="Telefone"
                 valor={

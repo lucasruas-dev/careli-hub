@@ -111,10 +111,12 @@ vi.mock("@/lib/hercules/planos-do-panteon", () => ({
 }));
 
 // A régua é dublê: devolve a porta que o teste escolheu. O titular é o CPF da reserva; qualquer
-// outro CPF é o co-comprador, e responde pela porta de `estado.coPorta`.
+// outro documento é o co-comprador, e responde pela porta de `estado.coPorta`. O parâmetro é
+// `documento` (CPF ou CNPJ) desde a v1.384.0: um dublê que lesse `cpf` receberia `undefined` e
+// trataria o titular como co.
 vi.mock("@/lib/hercules/cliente-credenciado", () => ({
-  credenciadoParaVender: async (_admin: unknown, alvo: { cpf: string }) => {
-    if (String(alvo.cpf).replace(/\D/g, "") !== "52998224725") {
+  credenciadoParaVender: async (_admin: unknown, alvo: { documento: string }) => {
+    if (String(alvo.documento).replace(/\D/g, "") !== "52998224725") {
       if (estado.coPorta === "falha") throw new Error("apolo_esteira: leitura falhou (conexão caiu)");
       if (estado.coPorta === "carteira") {
         return {
@@ -522,6 +524,25 @@ describe("POST: a CAD do co-comprador da carteira", () => {
     expect(cadsGravadas().map((c) => c.linha.entity_id).sort()).toEqual(
       [ENTIDADE_DO_CONTRATO, ENTIDADE_DO_CO].sort(),
     );
+  });
+
+  it("⚠️ o co PESSOA JURÍDICA (CNPJ) entra pela mesma porta, e a CAD dele nasce igual", async () => {
+    // (26/09/2026, junção com a v1.384.0) A lista dos co que vão à régua era `cpf.length === 11`:
+    // uma empresa co-compradora que passou pela busca ficava sem CAD, fora do Board. Hoje não há
+    // co de 14 dígitos nos faturados (medido), então nada muda para quem já vendia.
+    estado.origem = "cad";
+    estado.coPorta = "carteira";
+    const r = await pedir({
+      compradores: [
+        { cpf: CPF_DO_TITULAR, nome: "Pedro", participacao: 50, telefone: "62991234567" },
+        { cpf: "12.345.678/0001-95", nome: "ACME LTDA", participacao: 50, telefone: "62991230000" },
+      ],
+    });
+
+    expect(r.status).toBe(200);
+    const corpo = (await r.json()) as { data: Record<string, unknown> };
+    expect(corpo.data.cadsDosCoCompradores).toEqual([{ estado: "criada" }]);
+    expect(cadsGravadas().map((c) => c.linha.entity_id)).toEqual([ENTIDADE_DO_CO]);
   });
 
   it("o co com CAD de sempre não ganha escrita nenhuma", async () => {

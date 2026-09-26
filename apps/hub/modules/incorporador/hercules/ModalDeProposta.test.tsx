@@ -293,7 +293,7 @@ describe("adicionar proponente", () => {
   /** O campo que virou busca. O CPF ao lado é só leitura: ele vem da CAD escolhida. */
   function campoDaBusca(): HTMLInputElement {
     const campo = alvo.querySelector<HTMLInputElement>(
-      'input[placeholder="Buscar por nome ou CPF na base"]',
+      'input[placeholder="Buscar por nome, CPF ou CNPJ na base"]',
     );
     if (!campo) throw new Error("O campo de busca do proponente não está na tela.");
     return campo;
@@ -350,7 +350,7 @@ describe("adicionar proponente", () => {
     // próprio João — formatado, porque o campo formata enquanto ele digita.
     await escolherProponente("Maria da Silva", "529.982.247-25");
 
-    expect(alvo.textContent).toContain("Este CPF já está entre os compradores.");
+    expect(alvo.textContent).toContain("Este documento já está entre os compradores.");
     // Sem a régua, a lista ficaria "João 50% / João 50%", somando 100% redondos, e o PDF sairia
     // com o mesmo comprador duas vezes.
     expect(alvo.textContent).not.toContain("Maria da Silva");
@@ -377,7 +377,34 @@ describe("adicionar proponente", () => {
     await esperarABusca();
 
     expect(candidato("Maria da Silva").disabled).toBe(true);
-    expect(alvo.textContent).toContain("sem CPF no cadastro");
+    expect(alvo.textContent).toContain("sem documento no cadastro");
+  });
+
+  it("⚠️ candidato PJ credenciado fica CLICÁVEL, com o CNPJ", async () => {
+    // Lucas (26/09/2026): *"temos que habilitar pessoa fisica e pessoa juridica, hoje só atende
+    // pessoa fisica"*.
+    //
+    // ⚠️ ERA ESTA A QUEIXA. A régua do `disabled` era `cpfValido`, então a empresa credenciada
+    // aparecia CINZA com a frase "sem CPF no cadastro" — que MENTIA: ela tem CNPJ, e o coordenador
+    // concluía que a CAD não existe. É o caso simétrico do teste acima, com o documento trocado.
+    await abrir();
+
+    daBusca = [
+      {
+        credenciado: true,
+        cpf: "12.345.678/0001-95",
+        etapa: "credenciado",
+        id: "cad-pj",
+        motivo: null,
+        nome: "ACME Construtora",
+      },
+    ];
+    digitar(campoDaBusca(), "ACME");
+    await esperarABusca();
+
+    expect(candidato("ACME Construtora").disabled).toBe(false);
+    expect(alvo.textContent).not.toContain("sem documento no cadastro");
+    expect(alvo.textContent).not.toContain("sem CPF no cadastro");
   });
 
   it("aceita o proponente novo com CPF válido, e o titular fica com o que sobra", async () => {
@@ -429,7 +456,7 @@ describe("adicionar proponente", () => {
     // dígitos para pôr no contrato alguém que o Apolo nunca viu.
     await abrir();
 
-    const cpf = alvo.querySelector<HTMLInputElement>('input[placeholder="CPF (vem da CAD)"]');
+    const cpf = alvo.querySelector<HTMLInputElement>('input[placeholder="CPF ou CNPJ (vem da CAD)"]');
     expect(cpf?.disabled).toBe(true);
   });
 
@@ -595,22 +622,32 @@ describe("o comprador da carteira", () => {
     expect(alvo.textContent).not.toContain("Comprador da carteira");
   });
 
-  it("a busca vazia por nome ensina que o comprador da carteira se acha pelo CPF inteiro", async () => {
+  it("a busca vazia por nome ensina que o comprador da carteira se acha pelo documento inteiro", async () => {
+    // (26/09/2026, junção com a v1.384.0) A porta da carteira vale para CPF e CNPJ, e a dica diz os
+    // dois: dizer só "CPF" mandaria o coordenador procurar a empresa pelo CPF do sócio.
     await abrir();
     daBusca = [];
-    const campo = alvo.querySelector<HTMLInputElement>('input[placeholder="Buscar por nome ou CPF na base"]');
+    const campo = alvo.querySelector<HTMLInputElement>('input[placeholder="Buscar por nome, CPF ou CNPJ na base"]');
     digitar(campo as HTMLInputElement, "Bia");
     await act(async () => {
       await new Promise((pronto) => setTimeout(pronto, 320));
     });
-    expect(alvo.textContent).toContain("digite o CPF inteiro");
+    expect(alvo.textContent).toContain("digite o CPF ou o CNPJ inteiro");
 
     digitar(campo as HTMLInputElement, "529.982.247-25");
     await act(async () => {
       await new Promise((pronto) => setTimeout(pronto, 320));
     });
     expect(alvo.textContent).toContain("CAD não encontrada neste empreendimento");
-    expect(alvo.textContent).not.toContain("digite o CPF inteiro");
+    expect(alvo.textContent).not.toContain("digite o CPF ou o CNPJ inteiro");
+
+    // O CNPJ inteiro também é o termo que a rota responde com a carteira: a dica some igual.
+    digitar(campo as HTMLInputElement, "12.345.678/0001-95");
+    await act(async () => {
+      await new Promise((pronto) => setTimeout(pronto, 320));
+    });
+    expect(alvo.textContent).toContain("CAD não encontrada neste empreendimento");
+    expect(alvo.textContent).not.toContain("digite o CPF ou o CNPJ inteiro");
   });
 
   it("⚠️ a CAD do CO-comprador da carteira que não nasceu também vira recado", async () => {
@@ -652,7 +689,7 @@ describe("o comprador da carteira", () => {
         origem: "comprador_da_carteira",
       } as EncontradoNaBusca,
     ];
-    const campo = alvo.querySelector<HTMLInputElement>('input[placeholder="Buscar por nome ou CPF na base"]');
+    const campo = alvo.querySelector<HTMLInputElement>('input[placeholder="Buscar por nome, CPF ou CNPJ na base"]');
     // Pelo CPF inteiro: é o único termo que a rota responde com o comprador da carteira.
     digitar(campo as HTMLInputElement, CPF_DA_ESPOSA);
     await act(async () => {

@@ -25,19 +25,33 @@
 // prova para comprar outro lote sem CAD (medido em 26/09/2026: 0 faturados com pedido). Marca que
 // sobrou de pedido indeferido também barra, e o lado é o seguro: a pessoa abre CAD como antes.
 //
-// ⚠️ PENDENTE DO LUCAS: 'assinatura' (26/09/2026, só SELECT). São 412 contratos em 'assinatura' com
-// estágio 5 do C2X ("Em assinatura"), data de assinatura, unidade vendida e sem pedido; 400 deles
-// estão na etapa há 91 a 365 dias. Contá-los poria 332 pessoas a mais na porta (307 titulares e 25
-// co-compradores), 322 delas sem CAD na família. Ficaram de fora porque "faturado" é a regra escrita
-// da Têmis (7 dias da última assinatura E entrada paga), e "passa mesmo em atraso" falou de parcela,
-// não de entrada. Ligar é somar a etapa aqui, na leitura e no teste de fixture.
+// ⚠️ 'assinatura' NÃO CONTA, e é decisão do Lucas (26/09/2026): *"em assinatura não entra"*. São 412
+// contratos em 'assinatura' com estágio 5 do C2X ("Em assinatura"), data de assinatura, unidade
+// vendida e sem pedido; 400 deles estão na etapa há 91 a 365 dias. Contá-los poria 332 pessoas a mais
+// na porta (307 titulares e 25 co-compradores), 322 delas sem CAD na família. "Faturado" é a regra
+// escrita da Têmis (7 dias da última assinatura E entrada paga), e "passa mesmo em atraso" falou de
+// parcela, não de entrada. Os testes de fixture cobram que 'assinatura' continue de fora.
 //
 // ⚠️ O CO-COMPRADOR CONTA (`CO_COMPRADOR_CONTA`). Ele é parte do contrato: está em client_2..5 no
 // C2X, com percentual, assina e responde pela dívida. A regra "co-comprador não conta" (04/07) é da
 // CACÁ, para CONTAR UNIDADES, e não para dizer quem comprou. São 43 pessoas a mais das 4.241 medidas.
 // Ponto para o Lucas confirmar: desligar é trocar a constante, e só o titular passa a contar.
 //
-// ⚠️ PJ FICA DE FORA, como hoje: a régua do credenciamento exige CPF de 11 dígitos.
+// ⚠️ CPF E CNPJ, PELA MESMA PEÇA (26/09/2026, na junção com a v1.384.0, "a reserva aceita pessoa
+// jurídica"). A primeira versão deixava a PJ de fora porque a régua do titular exigia CPF de 11
+// dígitos; essa premissa caiu com a v1.384.0, e manter a carteira só de CPF seria uma segunda régua
+// de tipo que ninguém decidiu. Quem responde "é documento de comprador?" é `tipoDePessoa`, e o
+// namespace do hash é `namespaceDoHash` (um CNPJ hasheado como "cpf" não casa com nada).
+// MEDIDO em 26/09/2026 (produção, só SELECT), e é por isso que a extensão é sem risco hoje:
+//   • 68 faturados ativos têm `cliente_documento` de CNPJ (40 CNPJs), todos titulares; nenhum
+//     co-comprador tem 14 dígitos (os 53 co têm CPF). Os 68 têm o usuário do C2X ligado a entidade.
+//   • 63 deles (36 CNPJs) têm essa entidade SEM o CNPJ (nem identificador `cnpj`, nem
+//     `document_hash`): a régua do titular para antes, em "Este CNPJ não tem cadastro no Apolo",
+//     com ou sem esta porta.
+//   • os outros 5 (4 CNPJs, todos da família Vale do Ouro) têm o CNPJ na entidade ligada ao usuário
+//     do C2X, e os 4 JÁ TÊM CAD credenciada no 35: a CAD decide, e a porta nem é lida.
+// Ou seja: ZERO empresas passam a entrar hoje. A porta fica pronta para quando a ficha da empresa
+// existir sem CAD na família, pela mesma régua da pessoa física (e com a mesma trava de revisão).
 //
 // ⚠️ ESTE MÓDULO NÃO CONHECE `FalhaAoLerCredenciamento`, de propósito: quem o chama (a régua do
 // titular) embrulha qualquer erro nela. Assim não há import circular entre os dois arquivos.
@@ -46,6 +60,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { soDigitos } from "@/lib/apolo/documento";
 import { hashIdentifier } from "@/lib/apolo/server";
+
+import { namespaceDoHash, tipoDePessoa } from "./documento-do-comprador";
 
 type ClienteDeLeitura = Pick<SupabaseClient, "from">;
 
@@ -122,10 +138,13 @@ export type CompraAtiva = {
   unidade: null | string;
 };
 
-/** Uma pessoa que compra num contrato ativo: o CPF, o nome gravado no contrato e a compra. */
+/**
+ * Uma pessoa que compra num contrato ativo: o documento (CPF ou CNPJ, só dígitos), o nome gravado no
+ * contrato e a compra.
+ */
 export type CompradorDoContrato = {
   compra: CompraAtiva;
-  cpf: string;
+  documento: string;
   nome: null | string;
 };
 
@@ -154,6 +173,11 @@ export function contratoAtivoNoEscopo(linha: LinhaDoContrato, escopo: ReadonlySe
   return Boolean(enterpriseId) && escopo.has(enterpriseId);
 }
 
+/** Estes dígitos são de um CPF ou de um CNPJ? A pergunta é da peça única, não de um `length`. */
+function ehDocumentoDeComprador(digitos: string): boolean {
+  return tipoDePessoa(digitos) !== null;
+}
+
 /**
  * Quem compra neste contrato: o titular e, se `CO_COMPRADOR_CONTA`, os co-compradores.
  *
@@ -162,8 +186,8 @@ export function contratoAtivoNoEscopo(linha: LinhaDoContrato, escopo: ReadonlySe
  * `{ cpf, nome, participacao, telefone, titular }`. O documento vem com e sem máscara
  * (###.###.###-## e 11 dígitos); a comparação é sempre por dígitos.
  *
- * ⚠️ SÓ CPF. Documento que não tem 11 dígitos (CNPJ, vazio) não vira comprador: a régua do
- * credenciamento exige CPF, e a PJ continua abrindo CAD como hoje.
+ * ⚠️ CPF OU CNPJ (26/09/2026), decidido por `tipoDePessoa`, a peça única. Documento que não é
+ * nenhum dos dois (vazio, os 12 dígitos que a carga deixou) não vira comprador. Ver o topo do arquivo.
  */
 export function compradoresDoContrato(
   linha: LinhaDoContrato,
@@ -189,10 +213,10 @@ export function compradoresDoContrato(
   const titularNaLista = lista.find((c) => c?.titular === true) ?? null;
 
   const saida: CompradorDoContrato[] = [];
-  const cpfDoTitular = soDigitos(texto(linha.cliente_documento)) || docDe(titularNaLista);
+  const docDoTitular = soDigitos(texto(linha.cliente_documento)) || docDe(titularNaLista);
   // O titular da venda nativa também é achado pela entidade que o contrato aponta; nesse caso ele
-  // entra mesmo sem CPF legível (e `cpf` fica vazio, que nunca casa com um CPF de 11 dígitos).
-  if (cpfDoTitular.length === 11 || (cpfDoTitular.length === 0 && texto(linha.cliente_entity_id))) {
+  // entra mesmo sem documento legível (e `documento` fica vazio, que nunca casa com CPF nem CNPJ).
+  if (ehDocumentoDeComprador(docDoTitular) || (!docDoTitular && texto(linha.cliente_entity_id))) {
     saida.push({
       compra: {
         ...base,
@@ -200,7 +224,7 @@ export function compradoresDoContrato(
         entityIdApontada: texto(linha.cliente_entity_id) || null,
         papel: "titular",
       },
-      cpf: cpfDoTitular,
+      documento: docDoTitular,
       nome: texto(linha.cliente_nome) || texto(titularNaLista?.nome) || null,
     });
   }
@@ -208,8 +232,8 @@ export function compradoresDoContrato(
   if (opcoes.coComprador ?? CO_COMPRADOR_CONTA) {
     for (const c of lista) {
       if (!c || c.titular === true) continue;
-      const cpf = docDe(c);
-      if (cpf.length !== 11 || cpf === cpfDoTitular) continue;
+      const documento = docDe(c);
+      if (!ehDocumentoDeComprador(documento) || documento === docDoTitular) continue;
       saida.push({
         compra: {
           ...base,
@@ -217,7 +241,7 @@ export function compradoresDoContrato(
           entityIdApontada: texto(c.entity_id) || null,
           papel: "co",
         },
-        cpf,
+        documento,
         nome: texto(c.nome) || null,
       });
     }
@@ -243,15 +267,20 @@ function daMelhorCompra(a: CompraAtiva, b: CompraAtiva): number {
 /**
  * O contrato ativo desta pessoa DENTRO do escopo, ou `null`. Pura.
  *
- * A pessoa é achada pelo CPF (nos dois formatos) ou, para o titular da venda nativa, pela entidade
- * que o contrato aponta (`cliente_entity_id` em `entityIds`).
+ * A pessoa é achada pelo documento (CPF ou CNPJ, com ou sem máscara) ou, para o titular da venda
+ * nativa, pela entidade que o contrato aponta (`cliente_entity_id` em `entityIds`).
  */
 export function compraDaPessoa(
   linhas: readonly LinhaDoContrato[],
-  alvo: { coComprador?: boolean; cpf: string; entityIds: readonly string[]; escopo: readonly string[] },
+  alvo: {
+    coComprador?: boolean;
+    documento: string;
+    entityIds: readonly string[];
+    escopo: readonly string[];
+  },
 ): CompraAtiva | null {
-  const cpf = soDigitos(alvo.cpf);
-  if (cpf.length !== 11) return null;
+  const documento = soDigitos(alvo.documento);
+  if (!ehDocumentoDeComprador(documento)) return null;
   const escopo = new Set(alvo.escopo.map((id) => texto(id)).filter(Boolean));
   const ids = new Set(alvo.entityIds);
 
@@ -259,12 +288,12 @@ export function compraDaPessoa(
   for (const linha of linhas) {
     if (!contratoAtivoNoEscopo(linha, escopo)) continue;
     for (const comprador of compradoresDoContrato(linha, { coComprador: alvo.coComprador })) {
-      const peloCpf = comprador.cpf === cpf;
+      const peloDocumento = comprador.documento === documento;
       const pelaEntidade =
         comprador.compra.papel === "titular" &&
         Boolean(comprador.compra.entityIdApontada) &&
         ids.has(comprador.compra.entityIdApontada as string);
-      if (peloCpf || pelaEntidade) achadas.push(comprador.compra);
+      if (peloDocumento || pelaEntidade) achadas.push(comprador.compra);
     }
   }
 
@@ -376,24 +405,26 @@ export async function resolverEntidadeDoContrato(
 }
 
 /**
- * As entidades de cada CPF, pelas DUAS fontes do documento (a coluna de quem nasceu no Apolo e os
- * identificadores de quem veio do sync do C2X), em lote. É a mesma leitura de
- * `entidadesDoDocumento` (cliente-credenciado.ts), para várias pessoas de uma vez.
+ * As entidades de cada documento (CPF ou CNPJ), pelas DUAS fontes (a coluna de quem nasceu no Apolo
+ * e os identificadores de quem veio do sync do C2X), em lote. É a mesma leitura de
+ * `entidadesDoDocumento` (cliente-credenciado.ts), para vários documentos de uma vez, e com o mesmo
+ * namespace do hash (`namespaceDoHash`): um CNPJ hasheado como "cpf" não casa com nada. A chave do
+ * mapa é o documento só com dígitos.
  */
-export async function entidadesDosCpfs(
+export async function entidadesDosDocumentos(
   admin: ClienteDeLeitura,
-  cpfs: readonly string[],
+  documentos: readonly string[],
 ): Promise<Map<string, string[]>> {
   const porHash = new Map<string, string>();
-  for (const cpf of new Set(cpfs.map((c) => soDigitos(c)).filter((c) => c.length === 11))) {
-    porHash.set(hashIdentifier("cpf", cpf), cpf);
+  for (const documento of new Set(documentos.map((d) => soDigitos(d)).filter(ehDocumentoDeComprador))) {
+    porHash.set(hashIdentifier(namespaceDoHash(documento), documento), documento);
   }
   const hashes = [...porHash.keys()];
   const saida = new Map<string, Set<string>>();
   const juntar = (hash: null | string, entityId: null | string) => {
-    const cpf = hash ? porHash.get(hash) : undefined;
-    if (!cpf || !entityId) return;
-    saida.set(cpf, (saida.get(cpf) ?? new Set()).add(entityId));
+    const documento = hash ? porHash.get(hash) : undefined;
+    if (!documento || !entityId) return;
+    saida.set(documento, (saida.get(documento) ?? new Set()).add(entityId));
   };
 
   for (let i = 0; i < hashes.length; i += LOTE_DE_HASH) {
@@ -417,5 +448,5 @@ export async function entidadesDosCpfs(
     }
   }
 
-  return new Map([...saida].map(([cpf, ids]) => [cpf, [...ids].sort()]));
+  return new Map([...saida].map(([documento, ids]) => [documento, [...ids].sort()]));
 }

@@ -104,9 +104,19 @@ export function limparMemoriaDaMigration0170(): void {
  * linha simples); a rota de Vendas responde 503, porque com "pai:<uuid>" sem cadastro ela não tem
  * como provar o escopo — e responder 404 diria "não é seu" para um empreendimento que é.
  */
-export async function carregarCadastroDeEmpreendimentos(): Promise<LinhaDoCadastro[]> {
-  return (await lerCadastroDeEmpreendimentos()).linhas;
+export async function carregarCadastroDeEmpreendimentos(
+  opcoes: OpcoesDaLeituraDoCadastro = {},
+): Promise<LinhaDoCadastro[]> {
+  return (await lerCadastroDeEmpreendimentos(opcoes)).linhas;
 }
+
+export type OpcoesDaLeituraDoCadastro = {
+  /**
+   * Aborta a leitura (todas as páginas). É por ele que o cache do cadastro põe prazo na ida ao banco
+   * (./cadastro-em-cache). Abortada, a leitura lança, como em qualquer outra falha.
+   */
+  sinal?: AbortSignal;
+};
 
 /**
  * A mesma leitura, dizendo se as colunas da 0170 (`operado_por`, `tipo_produto`) vieram.
@@ -115,7 +125,9 @@ export async function carregarCadastroDeEmpreendimentos(): Promise<LinhaDoCadast
  * certo para quem só LÊ o painel, e o errado para quem grava: o cadastro de unidades gravaria lote
  * num prédio, e a guarda do portal não teria como saber quem opera o produto.
  */
-export async function lerCadastroDeEmpreendimentos(): Promise<{ com0170: boolean; linhas: LinhaDoCadastro[] }> {
+export async function lerCadastroDeEmpreendimentos(
+  opcoes: OpcoesDaLeituraDoCadastro = {},
+): Promise<{ com0170: boolean; linhas: LinhaDoCadastro[] }> {
   const admin = createApoloAdminClient();
 
   if (!admin) {
@@ -126,8 +138,8 @@ export async function lerCadastroDeEmpreendimentos(): Promise<{ com0170: boolean
   let colunas = Date.now() < sem0170Ate ? COLUNAS_SEM_0170 : COLUNAS_COM_0170;
 
   for (let de = 0; ; de += PAGINA) {
-    const ler = (selecao: string) =>
-      admin
+    const ler = (selecao: string) => {
+      const consulta = admin
         .from("hercules_empreendimentos")
         .select(selecao)
         .eq("workspace_id", WORKSPACE)
@@ -135,6 +147,8 @@ export async function lerCadastroDeEmpreendimentos(): Promise<{ com0170: boolean
         .order("codigo", { ascending: true })
         .range(de, de + PAGINA - 1)
         .returns<LinhaCrua[]>();
+      return opcoes.sinal ? consulta.abortSignal(opcoes.sinal) : consulta;
+    };
 
     let { data, error } = await ler(colunas);
 

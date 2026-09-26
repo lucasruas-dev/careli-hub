@@ -27,7 +27,8 @@
 // 500 clientes: quem chama lê o mapa uma vez e o reaproveita em todos os lotes da rodada.
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { nomeDeMercado, type LinhaDoCadastro } from "@/lib/apolo/empreendimento-de-mercado";
+import type { LinhaDoCadastro } from "@/lib/apolo/empreendimento-de-mercado";
+import { idDoCadastro, nomesDeMercadoPorId } from "@/lib/hercules/regua-do-cadastro";
 
 /** Id do C2X (texto, aparado) → nome de mercado do Panteon. */
 export type NomesDeMercado = ReadonlyMap<string, string>;
@@ -43,19 +44,12 @@ const PAGINA = 1000;
 /**
  * O mapa, PURO: recebe o cadastro inteiro já lido e devolve, para cada linha com id do C2X, o nome de
  * mercado dela. Linha sem nome confiável (nem dela, nem do pai) fica de fora, e aí vale o do C2X.
+ *
+ * ⚠️ DELEGA À RÉGUA DO CADASTRO (PAN-124, F1: lib/hercules/regua-do-cadastro.ts). A regra mora num
+ * lugar só: o nome que o sync grava e o que a régua responde pelo id não podem discordar.
  */
 export function mapaDeNomesDeMercado(cadastro: readonly LinhaDoCadastro[]): Map<string, string> {
-  const mapa = new Map<string, string>();
-
-  for (const linha of cadastro) {
-    const id = (linha.c2x_enterprise_id ?? "").trim();
-    if (!id) continue;
-
-    const nome = nomeDeMercado(id, cadastro);
-    if (nome) mapa.set(id, nome);
-  }
-
-  return mapa;
+  return nomesDeMercadoPorId(cadastro);
 }
 
 /**
@@ -70,8 +64,9 @@ export function nomeDoEmpreendimentoPorId(
   if (!nomes || nomes.size === 0) return nomeDoC2x;
 
   // O id chega como número (`e.id` direto) ou como texto (`cast(e.id as char)` dentro de um
-  // group_concat), e o driver pode entregar texto longo como Buffer: `String()` cobre os três.
-  const id = enterpriseId === null || enterpriseId === undefined ? "" : String(enterpriseId).trim();
+  // group_concat), e o driver pode entregar texto longo como Buffer: `idDoCadastro` (a mesma
+  // normalização da régua) cobre os três.
+  const id = idDoCadastro(enterpriseId);
 
   return (id && nomes.get(id)) || nomeDoC2x;
 }

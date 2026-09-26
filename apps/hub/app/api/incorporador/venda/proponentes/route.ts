@@ -12,18 +12,19 @@ import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
 import {
   type CandidatoDaBase,
   casa,
-  ehCpfInteiro,
+  ehDocumentoInteiro,
   MAXIMO_DE_CANDIDATOS,
   ordenar,
   type ProponenteEncontrado,
   termoDaBusca,
 } from "@/lib/hercules/busca-de-proponente";
+import { namespaceDoHash } from "@/lib/hercules/documento-do-comprador";
 import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 import { decidirPelasLinhas, type LinhaDaEsteira } from "@/lib/hercules/cliente-credenciado";
 import {
   type CompraAtiva,
   compraDaPessoa,
-  entidadesDosCpfs,
+  entidadesDosDocumentos,
   lerContratosAtivos,
   resolverEntidadeDoContrato,
 } from "@/lib/hercules/compra-ativa";
@@ -50,9 +51,10 @@ import {
 // que a tela Venda já lê para contar o funil.
 //
 // (26/09/2026) ⚠️ O COMPRADOR DA CARTEIRA TAMBÉM APARECE, pela MESMA régua do titular, MAS SÓ COM O
-// CPF INTEIRO. Quem não tem CAD no escopo, mas é comprador (titular ou co) de contrato ativo numa
-// unidade da família, entra como credenciado, com `origem: "comprador_da_carteira"`, quando o termo
-// é o CPF dele com os onze dígitos: é confirmação do que o corretor já tem na mão, e não lista. Por
+// DOCUMENTO INTEIRO. Quem não tem CAD no escopo, mas é comprador (titular ou co) de contrato ativo
+// numa unidade da família, entra como credenciado, com `origem: "comprador_da_carteira"`, quando o
+// termo é o documento dele inteiro (onze dígitos de CPF ou catorze de CNPJ, `ehDocumentoInteiro`):
+// é confirmação do que o corretor já tem na mão, e não lista. Por
 // nome ou pedaço de CPF, só a esteira, como antes. Sem isso, a busca por nome ou por prefixo de CPF
 // enumerava a carteira ativa inteira da família, com o CPF cheio (`document_masked` guarda o CPF
 // inteiro em 4.970 das 5.584 entidades, medido em 26/09/2026), para qualquer corretor do portal. E
@@ -125,28 +127,34 @@ export async function GET(request: Request) {
       comercial: ehPortalComercial(auth.sessao.tipo),
       permitidos,
     });
-    const cpfDoTermo = ehCpfInteiro(termo) ? termo.digitos : null;
-    const cpfInteiro = cpfDoTermo !== null;
+    // O documento INTEIRO é o que autoriza a busca no espelho do pai E no comprador da carteira:
+    // onze dígitos de CPF ou catorze de CNPJ. É confirmação de quem se conhece, não listagem.
+    //
+    // ⚠️ AQUI NÃO SE EXIGE DÍGITO VERIFICADOR, e isso é de propósito: a base tem documento torto
+    // vindo da carga do C2X, e quem digitou o documento inteiro de um cliente que existe tem de
+    // achá-lo. A régua do DV é da porta de entrada (a reserva e a proposta), não da busca.
+    const documentoDoTermo = ehDocumentoInteiro(termo) ? termo.digitos : null;
+    const documentoInteiro = documentoDoTermo !== null;
 
-    if (escopo.abertos.length === 0 && !(cpfInteiro && escopo.soComCpfInteiro.length > 0)) {
+    if (escopo.abertos.length === 0 && !(documentoInteiro && escopo.soComCpfInteiro.length > 0)) {
       return NextResponse.json({ data: { encontrados: [] } });
     }
 
-    const [linhasAbertas, doCpf, carteira] = await Promise.all([
+    const [linhasAbertas, doDocumento, carteira] = await Promise.all([
       escopo.abertos.length > 0 ? lerEsteira(admin, { enterpriseIds: escopo.abertos }) : [],
-      // Quem o CPF inteiro alcança no espelho do pai. Só existe fora do comercial (para ele
-      // `soComCpfInteiro` é sempre vazio) e só com os onze dígitos: é confirmação, não lista.
-      cpfDoTermo && escopo.soComCpfInteiro.length > 0
-        ? entidadesDoCpf(admin, cpfDoTermo).then((ids) => new Set(ids))
+      // Quem o documento inteiro alcança no espelho do pai. Só existe fora do comercial (para ele
+      // `soComCpfInteiro` é sempre vazio) e só com o documento inteiro: é confirmação, não lista.
+      documentoDoTermo && escopo.soComCpfInteiro.length > 0
+        ? entidadesDoDocumento(admin, documentoDoTermo).then((ids) => new Set(ids))
         : new Set<string>(),
-      // O comprador da carteira, pela mesma porta: só o CPF inteiro o alcança.
-      cpfDoTermo
-        ? compradorDaCarteiraPeloCpf(admin, { cpf: cpfDoTermo, escopo })
+      // O comprador da carteira, pela mesma porta: só o documento inteiro o alcança.
+      documentoDoTermo
+        ? compradorDaCarteiraPeloDocumento(admin, { documento: documentoDoTermo, escopo })
         : new Map<string, CompradorDaCarteira>(),
     ]);
 
     const entityIds = [
-      ...new Set([...linhasAbertas.map((l) => l.entity_id), ...doCpf, ...carteira.keys()]),
+      ...new Set([...linhasAbertas.map((l) => l.entity_id), ...doDocumento, ...carteira.keys()]),
     ];
     if (entityIds.length === 0) {
       return NextResponse.json({ data: { encontrados: [] } });
@@ -178,19 +186,22 @@ export async function GET(request: Request) {
       nome: (e.display_name || e.legal_name || e.trade_name || "").trim() || null,
     }));
 
-    // Para quem veio do espelho, o hash do CPF já é a prova do casamento: o `document_masked` de
-    // quem nasceu no Apolo pode estar mascarado, e o prefixo não casaria. O comprador da carteira
-    // já casou pelo CPF inteiro gravado no CONTRATO, e é a entidade do contrato que aparece.
-    const casados = candidatos.filter((c) => casa(c, termo) || doCpf.has(c.id) || carteira.has(c.id));
+    // Para quem veio do espelho, o hash do documento já é a prova do casamento: o `document_masked`
+    // de quem nasceu no Apolo pode estar mascarado, e o prefixo não casaria. O comprador da carteira
+    // já casou pelo documento inteiro gravado no CONTRATO, e é a entidade do contrato que aparece.
+    const casados = candidatos.filter(
+      (c) => casa(c, termo) || doDocumento.has(c.id) || carteira.has(c.id),
+    );
 
     // A DECISÃO olha as mesmas CADs que o titular olha (abertos + espelho), mas só de quem já casou.
     // Sem isto, quem tem CAD nova no 37 e a credenciada no 35 sairia "não credenciado" pelo nome e
     // "credenciado" pelo CPF, e a proposta do titular diria uma terceira coisa. Para o comprador da
-    // carteira entram TODAS as entidades do CPF dele, porque a régua do titular decide por pessoa.
+    // carteira entram TODAS as entidades do documento dele, porque a régua do titular decide por
+    // pessoa.
     const idsDaDecisao = [
       ...new Set([
         ...casados.map((c) => c.id),
-        ...[...carteira.values()].flatMap((v) => v.entityIdsDoCpf),
+        ...[...carteira.values()].flatMap((v) => v.entityIdsDoDocumento),
       ]),
     ];
     const linhasDoEspelho =
@@ -219,7 +230,7 @@ export async function GET(request: Request) {
         // PESSOA não tem CAD nenhuma no escopo. CAD em revisão numa entidade qualquer dela barra.
         const decisao = daCarteira
           ? decidirPelasLinhas(
-              todasAsLinhas.filter((l) => daCarteira.entityIdsDoCpf.includes(l.entity_id)),
+              todasAsLinhas.filter((l) => daCarteira.entityIdsDoDocumento.includes(l.entity_id)),
               [c.id],
               daCarteira.compra,
             )
@@ -290,12 +301,16 @@ async function lerEsteira(
 }
 
 /**
- * As entidades que carregam este CPF, pelas DUAS fontes do documento (a coluna de quem nasceu no
- * Apolo e os identificadores de quem veio do sync do C2X), a mesma leitura de
- * `credenciadoParaVender`. O tipo do documento já está dentro do hash.
+ * As entidades que carregam este documento, pelas DUAS fontes (a coluna de quem nasceu no Apolo e
+ * os identificadores de quem veio do sync do C2X), a mesma leitura de `credenciadoParaVender`.
+ *
+ * ⚠️ O NAMESPACE DO HASH SAI DO DOCUMENTO (26/09/2026). O tipo está DENTRO do hash
+ * (`apolo-identifier:cpf:...`): até hoje esta linha era `hashIdentifier("cpf", digitos)` fixa, e
+ * por isso um CNPJ colado no campo nunca achava a empresa. E o comentário acima precisa continuar
+ * sendo verdade: esta é a MESMA leitura de `credenciadoParaVender`, que usa a mesma peça.
  */
-async function entidadesDoCpf(admin: AdminClient, digitos: string): Promise<string[]> {
-  const hash = hashIdentifier("cpf", digitos);
+async function entidadesDoDocumento(admin: AdminClient, digitos: string): Promise<string[]> {
+  const hash = hashIdentifier(namespaceDoHash(digitos), digitos);
   const [porColuna, porIdentificador] = await Promise.all([
     admin.from("apolo_entities").select("id").eq("document_hash", hash).limit(20),
     admin.from("apolo_entity_identifiers").select("entity_id").eq("value_hash", hash).limit(20),
@@ -313,22 +328,24 @@ async function entidadesDoCpf(admin: AdminClient, digitos: string): Promise<stri
   return [...ids];
 }
 
-type CompradorDaCarteira = { compra: CompraAtiva; entityIdsDoCpf: string[] };
+type CompradorDaCarteira = { compra: CompraAtiva; entityIdsDoDocumento: string[] };
 
 /**
- * O comprador da carteira dono DESTE CPF inteiro, por entidade do contrato (zero ou uma entrada).
+ * O comprador da carteira dono DESTE documento inteiro (CPF ou CNPJ), por entidade do contrato
+ * (zero ou uma entrada).
  *
- * ⚠️ SÓ COM O CPF INTEIRO, E NUNCA POR NOME OU PREFIXO (revisão de 26/09/2026). A primeira versão
- * casava nome de 3 letras e prefixo de 4 dígitos contra todos os contratos ativos da família, e com
- * o teto de 8 por resposta bastava variar o termo para levar a carteira inteira com CPF. Com os
- * onze dígitos a resposta confirma o que o corretor já sabe, que é a mesma régua do espelho do pai.
+ * ⚠️ SÓ COM O DOCUMENTO INTEIRO, E NUNCA POR NOME OU PREFIXO (revisão de 26/09/2026). A primeira
+ * versão casava nome de 3 letras e prefixo de 4 dígitos contra todos os contratos ativos da família,
+ * e com o teto de 8 por resposta bastava variar o termo para levar a carteira inteira com CPF. Com o
+ * documento inteiro a resposta confirma o que o corretor já sabe, que é a mesma régua do espelho do
+ * pai. O CNPJ entra pela mesma porta desde a junção com a v1.384.0 (ver `compra-ativa.ts`).
  *
  * ⚠️ O MESMO RECORTE DO TITULAR: os contratos lidos são os dos ids ABERTOS e os do espelho do pai
  * (que o CPF inteiro abre). O irmão de outro dono (o 36 do Lino) nunca é lido.
  */
-async function compradorDaCarteiraPeloCpf(
+async function compradorDaCarteiraPeloDocumento(
   admin: AdminClient,
-  entrada: { cpf: string; escopo: EscopoDaEsteiraDoPortal },
+  entrada: { documento: string; escopo: EscopoDaEsteiraDoPortal },
 ): Promise<Map<string, CompradorDaCarteira>> {
   const saida = new Map<string, CompradorDaCarteira>();
   const ids = [...new Set([...entrada.escopo.abertos, ...entrada.escopo.soComCpfInteiro])];
@@ -336,17 +353,21 @@ async function compradorDaCarteiraPeloCpf(
 
   const [contratos, entidades] = await Promise.all([
     lerContratosAtivos(admin, ids),
-    entidadesDosCpfs(admin, [entrada.cpf]),
+    entidadesDosDocumentos(admin, [entrada.documento]),
   ]);
-  // Sem entidade no Apolo não há quem adicionar: a tela escolhe uma entidade, não um CPF solto.
-  const doCpf = entidades.get(entrada.cpf) ?? [];
-  if (doCpf.length === 0) return saida;
+  // Sem entidade no Apolo não há quem adicionar: a tela escolhe uma entidade, não um documento solto.
+  const doDocumento = entidades.get(entrada.documento) ?? [];
+  if (doDocumento.length === 0) return saida;
 
-  const compra = compraDaPessoa(contratos, { cpf: entrada.cpf, entityIds: doCpf, escopo: ids });
+  const compra = compraDaPessoa(contratos, {
+    documento: entrada.documento,
+    entityIds: doDocumento,
+    escopo: ids,
+  });
   if (!compra) return saida;
 
-  const resolvida = await resolverEntidadeDoContrato(admin, compra, doCpf);
+  const resolvida = await resolverEntidadeDoContrato(admin, compra, doDocumento);
   if (!resolvida.entityIdDoContrato) return saida;
-  saida.set(resolvida.entityIdDoContrato, { compra: resolvida, entityIdsDoCpf: doCpf });
+  saida.set(resolvida.entityIdDoContrato, { compra: resolvida, entityIdsDoDocumento: doDocumento });
   return saida;
 }

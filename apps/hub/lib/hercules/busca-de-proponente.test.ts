@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   casa,
   comparavel,
+  ehDocumentoInteiro,
   jaEstaNaLista,
   ordenar,
   type ProponenteEncontrado,
@@ -16,13 +17,13 @@ describe("termoDaBusca", () => {
     // Do WhatsApp, do teclado numérico e da planilha — a mesma pergunta.
     for (const cru of ["058.183.866-19", "05818386619", "058 183 866 19"]) {
       const t = termoDaBusca(cru);
-      expect(t.tipo, cru).toBe("cpf");
-      if (t.tipo === "cpf") expect(t.digitos).toBe("05818386619");
+      expect(t.tipo, cru).toBe("documento");
+      if (t.tipo === "documento") expect(t.digitos).toBe("05818386619");
     }
   });
 
   it("CPF parcial já busca, a partir de 4 dígitos", () => {
-    expect(termoDaBusca("0581").tipo).toBe("cpf");
+    expect(termoDaBusca("0581").tipo).toBe("documento");
     // Três dígitos ainda é gente demais.
     expect(termoDaBusca("058").tipo).toBe("curto");
   });
@@ -37,6 +38,25 @@ describe("termoDaBusca", () => {
     expect(termoDaBusca("ma").tipo).toBe("curto");
     expect(termoDaBusca("  ").tipo).toBe("curto");
     expect(termoDaBusca("").tipo).toBe("curto");
+  });
+});
+
+describe("termoDaBusca com CNPJ", () => {
+  // Lucas (26/09/2026): *"temos que habilitar pessoa fisica e pessoa juridica"*.
+  it("⚠️ o CNPJ colado inteiro leva os 14 dígitos, e não os 11 primeiros", () => {
+    const t = termoDaBusca("12.345.678/0001-95");
+    expect(t.tipo).toBe("documento");
+    if (t.tipo === "documento") expect(t.digitos).toBe("12345678000195");
+  });
+
+  it("⚠️ duas filiais do mesmo CNPJ raiz NÃO são a mesma empresa", () => {
+    // Cortado em 11 dígitos, "12345678000195" e "12345678000276" viravam o mesmo prefixo
+    // "12345678000" e a matriz casava com a filial: um comprador trocado no contrato.
+    const matriz = pessoa("ACME MATRIZ", "12.345.678/0001-95");
+    const filial = pessoa("ACME FILIAL", "12.345.678/0002-76");
+    const termo = termoDaBusca("12.345.678/0001-95");
+    expect(casa(matriz, termo)).toBe(true);
+    expect(casa(filial, termo)).toBe(false);
   });
 });
 
@@ -117,5 +137,26 @@ describe("comparavel", () => {
 
   it("nulo vira string vazia, sem quebrar", () => {
     expect(comparavel(null)).toBe("");
+  });
+});
+
+describe("ehDocumentoInteiro", () => {
+  // (26/09/2026, junção da carteira com a v1.384.0) A chave do espelho do pai E do comprador da
+  // carteira na busca: o documento INTEIRO, CPF ou CNPJ. Antes era `ehCpfInteiro`, só onze dígitos.
+  it("CPF inteiro e CNPJ inteiro abrem, em qualquer formato", () => {
+    for (const cru of ["529.982.247-25", "52998224725", "12.345.678/0001-95", "12345678000195"]) {
+      expect(ehDocumentoInteiro(termoDaBusca(cru)), cru).toBe(true);
+    }
+  });
+
+  it("⚠️ prefixo, documento de tamanho estranho e nome NÃO abrem: não se enumera a carteira", () => {
+    for (const cru of ["5299", "5299822472", "123456789012", "1234567800019", "Maria", "ab"]) {
+      expect(ehDocumentoInteiro(termoDaBusca(cru)), cru).toBe(false);
+    }
+  });
+
+  it("sem dígito verificador, de propósito: o documento torto da carga também é inteiro", () => {
+    expect(ehDocumentoInteiro(termoDaBusca("333.333.333-33"))).toBe(true);
+    expect(ehDocumentoInteiro(termoDaBusca("12.345.678/0001-00"))).toBe(true);
   });
 });

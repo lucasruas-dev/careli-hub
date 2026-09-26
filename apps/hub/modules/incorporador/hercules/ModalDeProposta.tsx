@@ -7,7 +7,11 @@ import {
   type DocumentoParaVer,
   VisualizadorDeDocumento,
 } from "@/components/documento/VisualizadorDeDocumento";
-import { cpfValido, formatarDocumento, soDigitos } from "@/lib/apolo/documento";
+import { formatarDocumento, soDigitos } from "@/lib/apolo/documento";
+import {
+  documentoDeCompradorValido,
+  rotuloDoDocumento,
+} from "@/lib/hercules/documento-do-comprador";
 import { INDICES, type PlanoComercial } from "@/lib/apolo/planos-comerciais";
 import { precoNoPlano } from "@/lib/hercules/ajuste-de-preco";
 // ⚠️ A MESMA RÉGUA DE "É DINHEIRO?" QUE A CONTA E O CONTRATO USAM. Escrever `bem.valor > 0` aqui
@@ -31,7 +35,7 @@ import {
   somaDasParticipacoes,
 } from "@/lib/hercules/proposta-na-tela";
 import {
-  ehCpfInteiro,
+  ehDocumentoInteiro,
   type ProponenteEncontrado,
   termoDaBusca,
 } from "@/lib/hercules/busca-de-proponente";
@@ -588,15 +592,19 @@ export function ModalDeProposta({
     const cpf = novo.cpf.trim();
     const digitos = soDigitos(cpf);
     if (!nome || !cpf) {
-      setErroDoNovo("Informe o nome e o CPF do proponente.");
+      setErroDoNovo("Informe o nome e o documento do proponente.");
       return;
     }
-    if (!cpfValido(digitos)) {
-      setErroDoNovo("CPF inválido. Confira os números antes de adicionar.");
+    // ⚠️ CPF **OU** CNPJ (Lucas, 26/09/2026: *"temos que habilitar pessoa fisica e pessoa
+    // juridica"*): a empresa e o sócio podem estar na mesma proposta, cada um com o seu documento.
+    if (!documentoDeCompradorValido(digitos)) {
+      setErroDoNovo(
+        `${rotuloDoDocumento(digitos)} inválido. Confira os números antes de adicionar.`,
+      );
       return;
     }
     if (compradores.some((c) => soDigitos(c.cpf) === digitos)) {
-      setErroDoNovo("Este CPF já está entre os compradores.");
+      setErroDoNovo("Este documento já está entre os compradores.");
       return;
     }
     // ⚠️ A % NÃO É OPCIONAL (Lucas, 05/09/2026: *"% não é opcional, ela é uma informação que vai
@@ -1602,7 +1610,7 @@ export function ModalDeProposta({
                             setListaFechada(false);
                           }}
                           onFocus={() => setListaFechada(false)}
-                          placeholder="Buscar por nome ou CPF na base"
+                          placeholder="Buscar por nome, CPF ou CNPJ na base"
                           style={campo}
                           value={novo.nome}
                         />
@@ -1664,20 +1672,26 @@ export function ModalDeProposta({
                                 CAD não encontrada neste empreendimento. Abra a
                                 CAD do proponente antes de incluí-lo na
                                 proposta.
-                                {/* (26/09/2026) O comprador da carteira só aparece pelo CPF inteiro
-                                    (a busca por nome não lista a carteira): a dica diz como achá-lo. */}
-                                {ehCpfInteiro(termoDaBusca(novo.nome))
+                                {/* (26/09/2026) O comprador da carteira só aparece pelo documento
+                                    inteiro, CPF ou CNPJ (a busca por nome não lista a carteira): a
+                                    dica diz como achá-lo. */}
+                                {ehDocumentoInteiro(termoDaBusca(novo.nome))
                                   ? ""
-                                  : " Se ele já é comprador aqui, digite o CPF inteiro."}
+                                  : " Se ele já é comprador aqui, digite o CPF ou o CNPJ inteiro."}
                               </span>
                             ) : (
                               candidatos.map((c) => (
                                 <button
-                                  // ⚠️ SEM CPF NÃO DÁ PARA ESCOLHER. O campo ao lado é só leitura:
-                                  // escolher alguém cujo documento não veio deixaria o proponente
-                                  // sem CPF e sem como digitá-lo — um beco. A rota monta o CPF a
-                                  // partir do documento da entidade, que pode vir vazio.
-                                  disabled={!c.credenciado || !cpfValido(c.cpf)}
+                                  // ⚠️ SEM DOCUMENTO NÃO DÁ PARA ESCOLHER. O campo ao lado é só
+                                  // leitura: escolher alguém cujo documento não veio deixaria o
+                                  // proponente sem documento e sem como digitá-lo — um beco. A rota
+                                  // monta o documento a partir da entidade, que pode vir vazio.
+                                  //
+                                  // ⚠️ E O DOCUMENTO PODE SER CNPJ (26/09/2026). Até hoje a régua
+                                  // era `cpfValido`, então um candidato PJ credenciado aparecia
+                                  // CINZA, com a frase "sem CPF no cadastro" — que MENTIA: ele tem
+                                  // CNPJ.
+                                  disabled={!c.credenciado || !documentoDeCompradorValido(c.cpf)}
                                   key={c.id}
                                   onClick={() => {
                                     setEscolhido(c);
@@ -1693,7 +1707,7 @@ export function ModalDeProposta({
                                     border: "none",
                                     borderBottom: `1px solid ${T.border}`,
                                     cursor:
-                                      c.credenciado && cpfValido(c.cpf)
+                                      c.credenciado && documentoDeCompradorValido(c.cpf)
                                         ? "pointer"
                                         : "default",
                                     display: "grid",
@@ -1727,9 +1741,9 @@ export function ModalDeProposta({
                                         sumir faria o coordenador concluir que a pessoa não tem
                                         cadastro, quando ela tem e está em análise de crédito. */}
                                     {c.credenciado
-                                      ? cpfValido(c.cpf)
+                                      ? documentoDeCompradorValido(c.cpf)
                                         ? null
-                                        : " · sem CPF no cadastro"
+                                        : " · sem documento no cadastro"
                                       : ` · ${c.motivo ?? "CAD não credenciada"}`}
                                   </span>
                                 </button>
@@ -1750,7 +1764,7 @@ export function ModalDeProposta({
                             seria a porta que a busca acabou de fechar. */}
                         <input
                           disabled
-                          placeholder="CPF (vem da CAD)"
+                          placeholder="CPF ou CNPJ (vem da CAD)"
                           style={{ ...campo, background: T.soft, color: T.sub }}
                           value={novo.cpf}
                         />

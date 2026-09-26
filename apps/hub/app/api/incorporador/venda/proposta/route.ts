@@ -19,6 +19,8 @@ import { ehPortalComercial } from "@/lib/apolo/incorporador/perfis-de-portal";
 import { INDICES, type PlanoComercial } from "@/lib/apolo/planos-comerciais";
 import { lerPlanosDoC2xPorIds } from "@/lib/apolo/planos-comerciais-c2x";
 import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
+import { namespaceDoHash, tipoDePessoa } from "@/lib/hercules/documento-do-comprador";
+import { titularDosProponentes } from "@/lib/hercules/proponente";
 import { descontoDoPlano, type ModoDoAjuste } from "@/lib/hercules/ajuste-de-preco";
 
 import {
@@ -281,18 +283,17 @@ function numeroDoCorpo(valor: unknown): number {
   return Number(valor);
 }
 
-/** O primeiro proponente da reserva é o titular. É ele, e só ele, que a proposta aceita. */
+/**
+ * O primeiro proponente da reserva é o titular. É ele, e só ele, que a proposta aceita.
+ *
+ * ⚠️ O LEITOR É O ÚNICO DA CASA (`lib/hercules/proponente.ts`, 26/09/2026). Antes eram três
+ * leituras ad-hoc do mesmo jsonb, com nomes diferentes, e nenhuma delas enxergava a chave
+ * `documento` — ou seja, uma reserva de PJ chegaria aqui como "sem documento".
+ */
 function titularDaReserva(proponentes: unknown): null | Proponente {
-  const lista = Array.isArray(proponentes) ? proponentes : [];
-  const primeiro = lista[0] as null | undefined | Record<string, unknown>;
-  if (!primeiro || typeof primeiro !== "object") return null;
-
-  const cpf = typeof primeiro.cpf === "string" ? primeiro.cpf : "";
-  const nome = typeof primeiro.nome === "string" ? primeiro.nome.trim() : "";
-  const telefone =
-    typeof primeiro.telefone === "string" ? primeiro.telefone : "";
-  if (!cpf && !nome) return null;
-  return { cpf, nome, telefone };
+  const lido = titularDosProponentes(proponentes);
+  if (!lido) return null;
+  return { cpf: lido.documento, nome: lido.nome, telefone: lido.telefone };
 }
 
 /**
@@ -594,7 +595,7 @@ export async function GET(request: Request) {
     const [credenciamentoCru, planos, entradaMinimaPercentual, faixas, nomes] =
       await Promise.all([
         credenciadoParaVender(admin, {
-          cpf: titular.cpf,
+          documento: titular.cpf,
           enterpriseIds: escopoDaEsteira,
         }),
         planosDaUnidade(
@@ -617,7 +618,7 @@ export async function GET(request: Request) {
       ]);
     const credenciamento = credenciamentoParaOPortal(credenciamentoCru, {
       comercial,
-      cpf: titular.cpf,
+      documento: titular.cpf,
     });
 
     return NextResponse.json(
@@ -866,10 +867,10 @@ export async function POST(request: Request) {
     // ── 4. A CAD do titular, credenciada NESTE empreendimento ──────────────
     const credenciamento = credenciamentoParaOPortal(
       await credenciadoParaVender(admin, {
-        cpf: titular.cpf,
+        documento: titular.cpf,
         enterpriseIds: escopoDaEsteira,
       }),
-      { comercial, cpf: titular.cpf },
+      { comercial, documento: titular.cpf },
     );
     if (!credenciamento.credenciado) {
       // A frase vem da lib: ela é quem sabe dizer "em análise de crédito desde 02/09", que é uma
@@ -896,14 +897,23 @@ export async function POST(request: Request) {
       Array.isArray(corpo.compradores) ? corpo.compradores : []
     ).map((bruto) => {
       const c = (bruto ?? {}) as Record<string, unknown>;
-      const cpf = String(c.cpf ?? "");
+      // (26/09/2026) O documento do comprador pode chegar na chave nova ou na antiga: a forma da
+      // CARGA de `hercules_propostas.compradores` usa `documento` (medido: 4.889 itens, e as 137
+      // linhas de 14 dígitos), e a forma nativa usa `cpf` (23 itens).
+      const cpf = String(c.documento ?? c.cpf ?? "");
       const ehOTitular =
         !jaMarcouTitular &&
         soDigitos(cpf) === cpfDoTitular &&
         cpfDoTitular !== "";
       if (ehOTitular) jaMarcouTitular = true;
+      const documento = ehOTitular ? titular.cpf : cpf;
       return {
-        cpf: ehOTitular ? titular.cpf : cpf,
+        cpf: documento,
+        // (26/09/2026) A chave `documento` entra JUNTO com a `cpf`, aproximando a forma nativa
+        // da forma da carga, que já usa `documento` e é onde PJ existe. A `cpf` nativa continua
+        // gravada neste lote de propósito: quem lê `compradores` é o PDF, a Têmis e o painel, e
+        // essa varredura é frente própria.
+        documento,
         nome: ehOTitular ? titular.nome : String(c.nome ?? "").trim(),
         participacao: numeroDoCorpo(c.participacao),
         // ⚠️ O TELEFONE DO TITULAR É O DA RESERVA, pela mesma razão do nome e do CPF: ele não se
@@ -1664,12 +1674,15 @@ export async function POST(request: Request) {
       imobiliariaEntityId: reserva.imobiliaria_entity_id,
       imobiliariaNome: nomeDaImobiliaria,
     };
-    const cpfsDosCoCompradores = [
+    // (26/09/2026) CPF OU CNPJ, pela peça única (`tipoDePessoa`): a porta da carteira vale para os
+    // dois, como a régua do titular (ver `compra-ativa.ts`). Medido: nenhum co-comprador de 14
+    // dígitos nos faturados de hoje, então nada muda para quem já vendia.
+    const documentosDosCoCompradores = [
       ...new Set(
         compradores
           .filter((c) => !c.titular)
           .map((c) => soDigitos(c.cpf))
-          .filter((cpf) => cpf.length === 11 && cpf !== cpfDoTitular),
+          .filter((doc) => tipoDePessoa(doc) !== null && doc !== cpfDoTitular),
       ),
     ];
     const [cadDoComprador, cadsDosCoCompradores] = await Promise.all([
@@ -1681,7 +1694,9 @@ export async function POST(request: Request) {
           })
         : Promise.resolve(null),
       Promise.all(
-        cpfsDosCoCompradores.map((cpf) => cadDoCoComprador(admin, cpf, escopoDaEsteira, baseDaCad)),
+        documentosDosCoCompradores.map((documento) =>
+          cadDoCoComprador(admin, documento, escopoDaEsteira, baseDaCad),
+        ),
       ).then((lista) => lista.filter((r): r is ResultadoDaCadDoComprador => r !== null)),
     ]);
     const falhasDaCad = [
@@ -1709,7 +1724,13 @@ export async function POST(request: Request) {
       c2xId,
       // O elo do PDF com a ficha do cliente no Apolo — a mesma entidade que decidiu o
       // credenciamento, e o hash do CPF do titular. Ver a 0136.
-      clienteDocumentoHash: hashIdentifier("cpf", cpfDoTitular),
+      // ⚠️ O NAMESPACE SAI DO DOCUMENTO (26/09/2026). Até hoje esta linha era
+      // `hashIdentifier("cpf", cpfDoTitular)`, e é ELA que grava `cliente_documento_hash`: com um
+      // titular PJ, o RG, o comprovante e o contrato social anexados desapareceriam da ficha do
+      // cliente no CRM e na esteira, sem erro nenhum — `hashesDaPessoa`
+      // (lib/apolo/incorporador/documentos.ts) devolve os hashes REAIS da entidade, no namespace
+      // `cnpj` (medido em 11 de 11 CADs de PJ), e o `.in(...)` nunca casaria.
+      clienteDocumentoHash: hashIdentifier(namespaceDoHash(cpfDoTitular), cpfDoTitular),
       clienteEntityId: credenciamento.entityId,
       codigo,
       compradores,
@@ -1774,12 +1795,12 @@ type BaseDaCadDoComprador = Omit<EntradaDaCadDoComprador, "compra" | "entityId">
  */
 async function cadDoCoComprador(
   admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
-  cpf: string,
+  documento: string,
   escopo: string[],
   base: BaseDaCadDoComprador,
 ): Promise<null | ResultadoDaCadDoComprador> {
   try {
-    const dele = await credenciadoParaVender(admin, { cpf, enterpriseIds: escopo });
+    const dele = await credenciadoParaVender(admin, { documento, enterpriseIds: escopo });
     if (!dele.credenciado || !dele.compra) return null;
     return await garantirCadDoComprador(admin, { ...base, compra: dele.compra, entityId: dele.entityId });
   } catch (erro) {

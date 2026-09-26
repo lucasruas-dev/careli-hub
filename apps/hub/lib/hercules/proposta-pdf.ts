@@ -695,7 +695,10 @@ export async function montarPropostaPdf(
       [
         // O nome de quem compra é o dado mais consultado da folha: ele fica em negrito.
         { largura: LARGURA * 0.5, negrito: true, titulo: "Nome" },
-        { largura: LARGURA * 0.28, titulo: "CPF" },
+        // ⚠️ "Documento", E NÃO "CPF" (26/09/2026). É UM título para uma tabela que pode ter
+        // comprador PF e PJ na mesma folha — a empresa e o sócio, por exemplo. Os valores já
+        // saem certos: `proposta-para-pdf.ts` usa `formatarDocumento`, que formata 14 dígitos.
+        { largura: LARGURA * 0.28, titulo: "Documento" },
         {
           alinhamento: "direita",
           largura: LARGURA * 0.22,
