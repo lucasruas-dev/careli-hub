@@ -1,7 +1,9 @@
 -- 0192 · O CADASTRO DO EMPREENDIMENTO GANHA TRILHA, E O BANCO RECUSA O QUE QUEBRA DADO SEM ERRO
 --
--- ⚠️ ESCRITA E NÃO APLICADA. Espera OK explícito do Lucas. O roteiro (conferência antes, aplicação,
--- conferência por objeto, prova viva desfeita e conferência depois) está em
+-- ✅ APLICADA em 26/09/2026 (apply_migration, bxgukywoxgivlrhjkwjx), com OK do Lucas ("tem o meu ok").
+-- Conferida por objeto (trilha 10 colunas, 4 constraints, RLS sem policy, 4 gatilhos, funções com
+-- search_path vazio, EXECUTE só do service_role, 38 linhas com o mesmo hash) e prova viva desfeita:
+-- 27 regras exercitadas, todas com o comportamento esperado, nada gravado. O roteiro completo está em
 -- apps/hub/scratchpad/pan124-0192-prova-viva.sql, fora do git.
 --
 -- POR QUE ELA EXISTE. O PAN-124 faz do Panteon o dono do cadastro de empreendimentos
