@@ -95,6 +95,25 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Hercules] Comprador da carteira compra de novo no mesmo empreendimento sem CAD nova; a CAD nasce credenciada na proposta (v1.385.0)`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-09-26 19:38:13 -03:00` (push na main); no ar as 19:43:19.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK explicito do Lucas ("tem o meu ok, pode subir, em assinatura nao entra"), depois das decisoes: so no mesmo empreendimento, passa mesmo em atraso, nasce a CAD credenciada.`
+- Dado corrigido antes, com pedido do Lucas ("preciso resolver isso rapido do pedro"): CAD credenciada do PEDRO AUGUSTO BRITO SILVA ARAUJO no Veredas (enterprise 19), origem comprador_da_carteira, com a imobiliaria e o corretor da reserva VDO1011, gravada as 14:05.
+- Escopo publicado: `lib/hercules/compra-ativa.ts, cad-do-comprador.ts, origem-da-cad.ts, cliente-credenciado.ts, busca-de-proponente.ts, rotas venda/proposta e venda/proponentes, ModalDeProposta.tsx, lib/temis/dados-do-contrato.ts; merge com a 1.384.0 (reserva PJ): a porta vale para CPF e CNPJ`.
+- Commit publicado: `105a10b0` (codigo em 817b9a97, 8c321e73; merge 542164b6).
+- Deployment anterior: `dpl_FP5Xynhi8LCpULYacQ1afejEaxbR` (commit `0f4768c9`, v1.384.0).
+- Deployment novo: `dpl_GptPDb6DwTejb7rAPazXCgmuer8e`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Validacoes executadas: `check-types limpo; suite completa 657 arquivos / 9.890 testes; pre-push ok; prova real so SELECT: Pedro passa sem a CAD manual, 128/128 compradores de outros empreendimentos barrados no Veredas, PJ com CAD passa, documento sem CAD e sem faturado nao passa; fonte hercules_propostas faturadas bate com o C2X em 1.969/2.037 (68 PJ); 1.481 dos 4.242 compradores sem CAD passam`.
+- Healthchecks pos-deploy: `/api/version = 1.385.0 as 19:43:19; home 200; rota da proposta 401 sem sessao; sem erro de runtime`.
+- Rollback definido: `Instant Rollback para dpl_FP5Xynhi8LCpULYacQ1afejEaxbR. As CADs que nascerem continuam credenciadas no banco (origem comprador_da_carteira) e liberam como CAD comum; ao voltar, a regra da Temis que ignora essa CAD volta junto e o corretor novo poderia ir para o contrato antigo: preferir revert so da porta.`
+- Riscos conhecidos: `o CRM do coordenador conta a CAD da carteira como recebida no dia da proposta (origem separa); distrato feito so no C2X depois de 21/09 nao chega ao Panteon.`
+- Status: `EM PRODUCAO`.
+
+Registro de producao:
+
 - Assunto: `[Apolo] Coordenador achado pelo empreendimento, habilitacoes sem fila no Board e travas contra o C2X (v1.375.0)`.
 - Squad/agente responsavel: `Zeus`.
 - Data e hora local: `2026-09-25 08:26:22 -03:00` (changelog); push na main as ~08:33; no ar as 08:41:45.
