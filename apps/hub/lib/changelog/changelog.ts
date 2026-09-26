@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-26-o-email-da-imobiliaria-nao-barra-o-dono",
+    deployedAt: "2026-09-26T14:01:04-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O dono da imobiliaria volta a se cadastrar como corretor usando o e-mail da empresa.** A trava de e-mail unico lia a ficha da imobiliaria como se fosse outra pessoa com aquele endereco, e recusava o cadastro dele.",
+              "**O corretor passa a ler o motivo da recusa quando ele mesmo pode resolver.** A tela dizia so \"tente novamente em alguns instantes\" para qualquer problema, e quem batia no e-mail tentava de novo sem nunca saber o que corrigir.",
+              "**A trava entre pessoas diferentes continua inteira.** Duas pessoas com o mesmo e-mail seguem recusadas: e por ele que a assinatura eletronica identifica quem assinou.",
+            ],
+            screen: "CAD publico - cadastro do corretor",
+          },
+        ],
+      },
+    ],
+    rollback: "30aff2ea",
+    technical: {
+      done:
+        "DUAS CAUSAS, DUAS CORRECOES. (1) A trava de e-mail unico (lib/apolo/email-unico.ts, pedido do Lucas em 07/09/2026 por causa do D4Sign, onde o signatario E o e-mail) comparava a PF do corretor com a ficha da PROPRIA imobiliaria dele. `createApoloEntity` ganhou a opcao `fichaDoMesmoDono`, que entra no `ignorarEntityIds` do conflito; `criarCorretor` manda a imobiliaria da pre-sessao. Uma ficha SO, nomeada por quem chama: o e-mail que estiver em qualquer OUTRA ficha continua recusando. (2) A rota /api/publico/cad/corretor traduzia TODA recusa de `createApoloEntity` em 500 mudo (route.ts:43), e o log guardava so a mensagem generica; nem o log de runtime da Vercel tinha stack, porque o `catch` engole. Agora `recusaPublicaDoCorretor` (lib/publico/cad/regras.ts) decide: 409 com texto para `email-repetido`, generico para o resto, porque rotas.ts abre dizendo que tres mensagens diferentes sao tres bits para quem enumera. A mensagem publica NAO diz de quem e o e-mail nem repete o endereco, para nao virar oraculo de quem esta na base. MEDICAO: 8 tentativas do Israel entre 13:36 e 14:07 de 26/09/2026 em apolo_cad_log_erros, todas 500, todas na CASAVISTA; o e-mail israel@casavistaimoveis.com.br em apolo_contacts na ficha da PJ desde 11/09 12:30; nenhuma entidade com o CPF dele (conferido pelos dois hashes); e 26 dos 55 corretores declarados sem ficha propria batendo na mesma recusa, 17 pelo e-mail da propria imobiliaria. O empreendimento 42 (ACP) esta com credenciamento e recepcao de CAD ligados, entao ele entra e ve o produto. Suite: 642 arquivos, 9.611 testes. Typecheck limpo.",
+      motivation:
+        "Lucas, 26/09/2026, com tres prints do Israel Pereira, da CASAVISTA IMOVEIS LTDA: olha o porque desse erro. A tela dizia Nao conseguimos concluir agora, tente novamente em alguns instantes ou fale com a nossa central, e ele tentou oito vezes seguidas. A decisao de negocio e do mesmo dia: a ficha da propria imobiliaria nao conta contra o corretor dela.",
+    },
+    title: "O e-mail da imobiliaria deixa de barrar o dono dela no cadastro de corretor",
+    type: "correcao",
+    version: "1.382.0",
+  },
+  {
     buildTag: "2026-09-25-quadro-de-assinatura-editavel",
     deployedAt: "2026-09-25T21:09:28-03:00",
     modules: [
