@@ -95,6 +95,26 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[PAN-124] F1 regua do cadastro de empreendimentos por id + migration 0192 (trilha e travas) (v1.382.0, interna)`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-09-26 14:23:33 -03:00` (push na main); no ar as 14:34:14.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK explicito do Lucas ("tem o meu ok") para subir a F1 e aplicar a 0192 com a prova viva.`
+- Migration aplicada ANTES do deploy: `0192_o_cadastro_do_empreendimento_tem_trilha` em bxgukywoxgivlrhjkwjx. Parte 0 (antes) batida: nada existia, 38 linhas, hash 0ddbd223e20d09c4d9b876611a93344c, sequence 100000/false, 0123 original. Parte 2 (por objeto): trilha 10 colunas, 4 constraints validas, 2 indices, RLS sem policy, acl service_role=ar, view security_invoker, 4 gatilhos ativos, funcoes com search_path vazio, movimento so service_role, 38 linhas com o mesmo hash, trilha 0, registro presente. Prova viva desfeita: 27 regras com o comportamento esperado (recusas por movimento, neto, pai de si, chave, novo pai, id do C2X, formato, motivo; saida explicita com origem correcao; Novo produto intocado). Parte 4: trilha 0, hash igual, nenhum dado de prova. get_advisors: a trilha so em rls_enabled_no_policy (INFO).
+- Escopo publicado: `lib/hercules/regua-do-cadastro.ts, lib/hercules/cadastro-em-cache.ts, nome-de-mercado-por-id delegando, fila de atendimento sem sigla inventada, plano docs/apolo/pan-124-plano-do-cadastro.md, roadmap PAN-124 (fazendo)`.
+- Commit publicado: `ae78fc59` (F1 em 0c821b60 e 6f60a0d3; 0192 em 81ce44c8, db2296e8 e 5a7b5c4d).
+- Deployment anterior: `dpl_GtD4Fy6KCKGUr1EiaEiNaeRYBT7n` (commit `30aff2ea`, v1.381.0).
+- Deployment novo: `dpl_AuHH65BLf4xAHKyeFDUTpB79ymnu`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Validacoes executadas: `check-types limpo; suite completa 9.716 verdes na F1; pre-push ok; paridade real da regua (grupos iguais, siglas 40/40, nomes 39/39)`.
+- Healthchecks pos-deploy: `/api/version = 1.382.0 as 14:34:14; home 200; sem erro de runtime`.
+- Rollback definido: `Instant Rollback para dpl_GtD4Fy6KCKGUr1EiaEiNaeRYBT7n. A 0192 pode ficar (nenhum codigo le a trilha ainda); o SQL de desfazer esta no cabecalho dela.`
+- Riscos conhecidos: `UPDATE em sigla, pai ou tipo de empreendimento com movimento agora exige a saida explicita com motivo, inclusive SQL manual. Nao rodar a versao antiga do semeador (upsert).`
+- Status: `EM PRODUCAO`.
+- Proxima acao: `F3 (vigia, 0193) e F4 (chave do grupo, 0194) do PAN-124.`
+
+Registro de producao:
+
 - Assunto: `[Apolo] Coordenador achado pelo empreendimento, habilitacoes sem fila no Board e travas contra o C2X (v1.375.0)`.
 - Squad/agente responsavel: `Zeus`.
 - Data e hora local: `2026-09-25 08:26:22 -03:00` (changelog); push na main as ~08:33; no ar as 08:41:45.
