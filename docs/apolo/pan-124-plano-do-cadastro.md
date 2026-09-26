@@ -714,6 +714,19 @@ O rótulo é distinto da coordenadora de vendas, que continua em Políticas come
  - CRIAR A PARTIR DE UM ID DO C2X ('Trazer do C2X'): uma função numa transação. Adota o id; sigla, cidade, UF e campos do legado vêm do C2X; o nome de mercado é editável. Cria o settings desligado ou só realinha o code. Religa as propostas órfãs do id. Recusa id de teste (2, 34), id já cadastrado e prefixo divergente ainda não resolvido pela F11.
  - O C2X É READ-ONLY: nada é escrito lá, e a tela nova não o lê ao vivo para mostrar. Mostra o retrato (F3); só o salvar confere as contagens ao vivo, como trava. Quando o C2X muda, o vigia avisa, a não ser que a mudança só acompanhe o Panteon. Seguir ou não é decisão do admin, pela mesma tela e com as mesmas travas.
 
+## Decisões do Lucas (26/09/2026), respondendo às três perguntas
+
+1. **Sigla: o PANTEON MANDA (opção A).** A sigla se edita na tela, com a trava de movimento (0 unidades
+   e 0 vendas nos dois lados). As unidades novas usam a sigla do cadastro (`prefixoSugerido`). O vigia
+   mostra a sigla do C2X como divergência aceita. A 0198 ("seguir a sigla do C2X") NÃO será criada: na
+   F11 a ação é "aceitar a divergência".
+2. **ACT (30) entra como FILHO da ACP (42).** A ACP tem 120 unidades: o primeiro filho é correção
+   assistida pelo Zeus, com OK. As 31 `hercules_unidades` com prefixo ADT passam antes pela F11.
+3. **Loteamento novo nasce no PANTEON e é ligado ao C2X depois.** A F12 ganha `hercules_ligar_ao_c2x`
+   (só admin, com prévia e trilha), exceção explícita à imutabilidade de `c2x_enterprise_id` da 0192.
+
+As perguntas abaixo ficam como registro do que foi perguntado.
+
 ## Perguntas ao Lucas
  - QUEM MANDA NA SIGLA de um empreendimento que tem id vivo no C2X? Bloqueia só a F10 (o campo sigla) e a F11. As fatias F1 a F9 andam sem a resposta.
 
