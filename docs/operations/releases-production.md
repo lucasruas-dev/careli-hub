@@ -95,6 +95,33 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Apolo/Temis] Quadro de assinatura editavel e fonte unica de quem assina, sem heranca da ficha; migration 0191 (v1.381.0)`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-09-25 21:09:28 -03:00` (push na main); no ar as 21:14:16.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK explicito do Lucas ("tem o meu ok, pode aplicar e subir") para aplicar a 0191 e subir o codigo, nessa ordem.`
+- Migration aplicada ANTES do deploy: `0191_quadro_de_assinatura_sem_heranca` em bxgukywoxgivlrhjkwjx (apply_migration). Conferido por objeto: coluna temis_assinantes.atualizado_por_nome criada; 13 linhas origem backfill_heranca_0191 ativas (19, 20, 27, 29, 31, 32, 33, 35, 38, 39, 40, 42, 9001), todas coordenador, posicao 1, FABRICIO LUZIANO GURGEL, contrato@fgurgel.com.br; VOR (41) intacto; zero linhas com diretoria@ no quadro.
+- Escopo publicado:
+  - `temis_assinantes vira a unica fonte de quem assina: sem heranca do representante legal da ficha na tela (lerQuadroDeAssinatura) nem no envio (assinantesDoQuadro); sai o fallback gerais.vendedora_representante_*`;
+  - `PATCH nas duas portas (editarAssinante), lapis e lixeira em toda linha, sem cadeado`;
+  - `aviso no envio quando o contrato qualifica a coordenadora e ninguem assina por ela`;
+  - `termo de acordo sem o terceiro degrau (representante legal)`.
+- Commit publicado: `30aff2ea` (codigo em `41d12ff7` e `c37edf0b`; merge da 1.380.0 sem conflito).
+- Deployment anterior: `dpl_3vDmVVhhWPPr9C1uaZEVVwCh5JKs` (commit `4bf9d08a`, v1.380.0).
+- Deployment novo: `dpl_GtD4Fy6KCKGUr1EiaEiNaeRYBT7n`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Validacoes executadas:
+  - `check-types`: `limpo (antes e depois do merge com a 1.380.0)`;
+  - `vitest`: `suite inteira 643 arquivos / 9.639 testes antes do merge; depois do merge, 189 arquivos / 3.644 testes da area (assinatura, acordo, temis, hercules, quadro, rotas); pre-push ok`;
+  - `revisao`: `workflow mapear, implementar, 3 lentes (envio e contrato, portal e seguranca, dados e migration), corrigir (6 achados reais), verificador final`.
+- Healthchecks pos-deploy: `/api/version = 1.381.0 as 21:14:16`.
+- Rollback definido: `Instant Rollback para dpl_3vDmVVhhWPPr9C1uaZEVVwCh5JKs. A 0191 pode ficar (com ela o codigo antigo ja sai com contrato@). Para desfazer os dados, SO depois de voltar o codigo: update temis_assinantes set ativo=false, desativado_por_nome='Zeus (desfaz 0191)' where origem='backfill_heranca_0191' and ativo.`
+- Riscos conhecidos: `validacao visual do lapis e da edicao inline pendente (preview nao loga). No VOR o Fabricio segue na linha 4 (Nivea 2, Huber 3); a linha 1 esta livre e pode ser ajustada pelo lapis.`
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas ou Nivea conferem a tela do quadro; retomar o PAN-124 (pausado).`
+
+Registro de producao:
+
 - Assunto: `[Apolo] Coordenador achado pelo empreendimento, habilitacoes sem fila no Board e travas contra o C2X (v1.375.0)`.
 - Squad/agente responsavel: `Zeus`.
 - Data e hora local: `2026-09-25 08:26:22 -03:00` (changelog); push na main as ~08:33; no ar as 08:41:45.
