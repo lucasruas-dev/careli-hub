@@ -792,6 +792,36 @@ describe("as seis fontes do comprador", () => {
     expect(dados.compradores[0]!.valores.rua_cliente).toBe("Rua das Acácias");
   });
 
+  it("⚠️ a ficha VAZIA do empreendimento da proposta não esconde a preenchida de outra CAD", async () => {
+    // (26/09/2026) A CAD do comprador da carteira nasce credenciada e sem ficha, no empreendimento
+    // da venda. `objeto({})` é verdadeiro: sem a régua, ela ganhava a precedência e o contrato saía
+    // sem o endereço que a mesma pessoa deu na CAD do outro loteamento.
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [
+          {
+            display_name: "THIAGO",
+            document_masked: "123.456.789-00",
+            entity_kind: "pf",
+            id: THIAGO,
+            legal_name: null,
+            trade_name: null,
+          },
+        ],
+        apolo_esteira: [
+          { enterprise_id: "39", entity_id: THIAGO, ficha: {} },
+          { enterprise_id: "35", entity_id: THIAGO, ficha: FICHA_DO_THIAGO },
+        ],
+        hercules_empreendimentos: EMPREENDIMENTO,
+        hercules_propostas: proposta(),
+        hercules_unidades: UNIDADE,
+      }),
+    ))!;
+
+    expect(dados.compradores[0]!.valores.rua_cliente).toBe("Rua das Acácias");
+  });
+
   it("casa o CPF do jsonb com o document_masked, que guarda o documento COM máscara", async () => {
     const { dados } = (await dadosDaProposta(
       "p1",

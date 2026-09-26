@@ -537,3 +537,100 @@ describe("enquanto a proposta está sendo enviada", () => {
     expect(aoFechar).toHaveBeenCalledTimes(1);
   });
 });
+
+// ── O COMPRADOR DA CARTEIRA (26/09/2026) ─────────────────────────────────────
+//
+// Quem passa pela porta da carteira (contrato ativo no empreendimento, sem CAD) aparece com o selo
+// grafite "Comprador da carteira", e não com o verde "CAD credenciada": passa, mas por outra porta,
+// e o coordenador precisa ver a diferença sem ler a frase.
+describe("o comprador da carteira", () => {
+  function comOrigem(origem: null | string) {
+    (portao as { credenciamento: Record<string, unknown> }).credenciamento = {
+      credenciado: true,
+      desde: "2024-03-10",
+      etapa: null,
+      motivo: null,
+      origem,
+    };
+  }
+
+  afterEach(() => {
+    (portao as { credenciamento: Record<string, unknown> }).credenciamento = {
+      credenciado: true,
+      desde: "2026-01-10",
+      etapa: null,
+      motivo: null,
+    };
+  });
+
+  it("o selo diz 'Comprador da carteira' no lugar de 'CAD credenciada', e o portão abre", async () => {
+    comOrigem("comprador_da_carteira");
+    await abrir();
+
+    expect(alvo.textContent).toContain("Comprador da carteira");
+    expect(alvo.textContent).toContain("Contrato ativo neste empreendimento");
+    expect(alvo.textContent).not.toContain("CAD credenciada neste empreendimento");
+    expect(alvo.querySelector('[aria-label="Comprador da carteira"] svg')).not.toBeNull();
+    expect(botao("Montar as condições").disabled).toBe(false);
+  });
+
+  it("CAD de sempre continua com o selo de sempre", async () => {
+    comOrigem("cad");
+    await abrir();
+
+    expect(alvo.textContent).toContain("CAD credenciada neste empreendimento");
+    expect(alvo.textContent).not.toContain("Comprador da carteira");
+  });
+
+  it("na busca de proponentes, o comprador da carteira vem com o selo e pode ser escolhido", async () => {
+    await abrir();
+    daBusca = [
+      {
+        credenciado: true,
+        cpf: CPF_DA_ESPOSA,
+        etapa: null,
+        id: "ent-bia",
+        motivo: null,
+        nome: "Bia da Carteira",
+        origem: "comprador_da_carteira",
+      } as EncontradoNaBusca,
+    ];
+    const campo = alvo.querySelector<HTMLInputElement>('input[placeholder="Buscar por nome ou CPF na base"]');
+    digitar(campo as HTMLInputElement, "Bia");
+    await act(async () => {
+      await new Promise((pronto) => setTimeout(pronto, 320));
+    });
+
+    const linha = [...alvo.querySelectorAll("button")].find(
+      (b) => b.querySelector("b")?.textContent?.trim() === "Bia da Carteira",
+    );
+    expect(linha?.disabled).toBe(false);
+    expect(linha?.querySelector('[aria-label="Comprador da carteira"]')).not.toBeNull();
+  });
+
+  it("⚠️ a proposta saiu mas a CAD da carteira não: o recado diz, para alguém abrir à mão", async () => {
+    comOrigem("comprador_da_carteira");
+    vi.stubGlobal(
+      "fetch",
+      fetchDoPortao(async () => ({
+        corpo: JSON.stringify({
+          data: { avisos: [{ ok: true, para: "coordenador" }], cadDoComprador: { estado: "erro" }, codigo: "PRP-9" },
+        }),
+        ok: true,
+      })),
+    );
+
+    const { aoGerar } = await abrir();
+    clicar(botao("Montar as condições"));
+    await act(async () => {
+      clicar(botao("Gerar proposta"));
+      await new Promise((pronto) => setTimeout(pronto, 0));
+    });
+
+    expect(aoGerar).toHaveBeenCalledTimes(1);
+    const recado = String(aoGerar.mock.calls[0]?.[0]);
+    expect(recado).toContain("PRP-9");
+    expect(recado).toContain("A CAD de comprador da carteira não foi registrada");
+    expect(recado).not.toMatch(/[—–]/);
+  });
+});

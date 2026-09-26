@@ -22,12 +22,27 @@
 // mandaria o corretor discutir com a coordenação um problema que é nosso — e a resposta certa para
 // quem chama é 503, não uma frase sobre a CAD do cliente. É o mesmo fail-closed do
 // `lerCadDaEsteira` (lib/apolo/esteira-cad.ts).
+//
+// (26/09/2026) ⚠️ A SEGUNDA PORTA: O COMPRADOR DA CARTEIRA. Lucas: *"tem um cliente que é
+// comprador, mas não está dando para ele comprar mais uma unidade [...] temos que aproveitar esses
+// cadastros de comprador"*. Quem NÃO TEM CAD NENHUMA no escopo, mas tem contrato ativo (faturado)
+// numa unidade da MESMA família, passa como credenciado, com `origem: "comprador_da_carteira"`
+// (ver `compra-ativa.ts`). A CAD real, quando existe, continua decidindo, inclusive para barrar: a
+// carteira não é uma linha de CAD, é a prova que SUBSTITUI a CAD quando ela não existe.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { soDigitos } from "@/lib/apolo/documento";
 import type { EtapaEsteira } from "@/lib/apolo/esteira";
 import { hashIdentifier } from "@/lib/apolo/server";
+
+import {
+  type CompraAtiva,
+  compraDaPessoa,
+  lerContratosAtivos,
+  ORIGEM_COMPRADOR_DA_CARTEIRA,
+  resolverEntidadeDoContrato,
+} from "./compra-ativa";
 
 // Só o `from` é usado. Aceita tanto o admin client do Apolo quanto um SupabaseClient cru — os dois
 // convivem nas libs do Hércules — e é o que permite testar com um cliente falso.
@@ -36,7 +51,25 @@ type ClienteDeLeitura = Pick<SupabaseClient, "from">;
 /** A etapa que libera a proposta. Uma só, e é o fim da esteira. */
 export const ETAPA_QUE_LIBERA = "credenciado";
 
+/**
+ * Por qual porta a resposta saiu.
+ *
+ * • `cad`: uma CAD do escopo decidiu (liberando ou barrando).
+ * • `comprador_da_carteira`: a pessoa tem contrato ativo na família. Vale tanto para quem ainda não
+ *   tem CAD (a porta é a própria compra, e `compra` vem preenchida) quanto para a CAD credenciada que
+ *   NASCEU da carteira (`apolo_esteira.origem = 'comprador_da_carteira'`): a tela diz "Comprador da
+ *   carteira" nos dois casos, que é o mesmo fato.
+ */
+export type OrigemDoCredenciamento = "cad" | "comprador_da_carteira";
+
 export type CredenciamentoDoTitular = {
+  /**
+   * O contrato ativo que liberou a pessoa, SÓ quando não havia CAD nenhuma no escopo.
+   *
+   * ⚠️ É ELE QUE MANDA A GRAVAÇÃO DA PROPOSTA ABRIR A CAD (`cad-do-comprador.ts`). Quando a CAD da
+   * carteira já existe, este campo é `null` e nada é escrito de novo.
+   */
+  compra: CompraAtiva | null;
   credenciado: boolean;
   /**
    * Desde quando a CAD encontrada está assim, em ISO.
@@ -65,6 +98,8 @@ export type CredenciamentoDoTitular = {
   etapa: null | string;
   /** A frase para o corretor. `null` quando está credenciado — aí não há o que explicar. */
   motivo: null | string;
+  /** Por qual porta a resposta saiu. `null` quando não houve porta nenhuma (sem CAD e sem compra). */
+  origem: null | OrigemDoCredenciamento;
 };
 
 /**
@@ -112,6 +147,8 @@ export type LinhaDaEsteira = {
   enterprise_id: null | string;
   entity_id: string;
   etapa: null | string;
+  /** De onde a CAD veio. Opcional: só é lido para dizer "Comprador da carteira" na tela. */
+  origem?: null | string;
 };
 
 /**
@@ -119,11 +156,20 @@ export type LinhaDaEsteira = {
  *
  * `enterpriseIds` é o escopo JÁ EXPANDIDO (família + grupo) — ver o aviso no topo do arquivo.
  *
+ * ⚠️ A COMPRA SÓ É LIDA QUANDO NÃO HÁ CAD NENHUMA NO ESCOPO. O caminho comum (quem tem CAD) não
+ * ganha leitura nenhuma; só a pergunta que hoje terminaria em "Este cliente não tem CAD neste
+ * empreendimento" vai aos contratos da família antes de responder.
+ *
  * @throws {FalhaAoLerCredenciamento} quando o banco não respondeu, ou quando o escopo veio vazio.
  */
 export async function credenciadoParaVender(
   admin: ClienteDeLeitura,
-  alvo: { cpf: string; enterpriseIds: string[] },
+  alvo: {
+    /** Falso desliga a porta da carteira (só a CAD vale). Ausente = ligada. */
+    compradorDaCarteira?: boolean;
+    cpf: string;
+    enterpriseIds: string[];
+  },
 ): Promise<CredenciamentoDoTitular> {
   // ⚠️ NORMALIZAR ANTES DE HASHEAR. O CPF chega como o corretor digitou ("529.982.247-25") e como a
   // reserva gravou ("52998224725"); `hashIdentifier` não normaliza nada, então os dois formatos
@@ -135,11 +181,13 @@ export async function credenciadoParaVender(
   // suficiente para procurar.
   if (digitos.length !== 11) {
     return {
+      compra: null,
       credenciado: false,
       desde: null,
       entityId: null,
       etapa: null,
       motivo: "Informe o CPF do titular para conferir o credenciamento.",
+      origem: null,
     };
   }
 
@@ -158,19 +206,50 @@ export async function credenciadoParaVender(
 
   const entityIds = await entidadesDoDocumento(admin, digitos);
 
+  // ⚠️ SEM ENTIDADE NO APOLO, A RESPOSTA CONTINUA A DE HOJE, mesmo para quem tem contrato: a CAD da
+  // carteira precisa de uma entidade para nascer, e os 2.037 faturados medidos têm o titular ligado
+  // a uma entidade sincronizada em 100% dos casos. Quem cair aqui é dado quebrado, não comprador.
   if (entityIds.length === 0) {
     return {
+      compra: null,
       credenciado: false,
       desde: null,
       entityId: null,
       etapa: null,
       motivo: "Este CPF não tem cadastro no Apolo. Abra a CAD antes de gerar a proposta.",
+      origem: null,
     };
   }
 
   const linhas = await lerEsteira(admin, entityIds, escopo);
 
-  return decidirPelasLinhas(linhas, entityIds);
+  if (linhas.length > 0 || alvo.compradorDaCarteira === false) {
+    return decidirPelasLinhas(linhas, entityIds);
+  }
+
+  const compra = await compraNaFamilia(admin, { cpf: digitos, entityIds, escopo });
+  return decidirPelasLinhas(linhas, entityIds, compra);
+}
+
+/**
+ * O contrato ativo desta pessoa na família, já com a entidade em que a CAD nasceria.
+ *
+ * ⚠️ QUALQUER ERRO VIRA `FalhaAoLerCredenciamento`, como a leitura da esteira: "o sistema não
+ * conseguiu ler os contratos" não é "este cliente não tem CAD".
+ */
+async function compraNaFamilia(
+  admin: ClienteDeLeitura,
+  alvo: { cpf: string; entityIds: string[]; escopo: string[] },
+): Promise<CompraAtiva | null> {
+  try {
+    const contratos = await lerContratosAtivos(admin, alvo.escopo);
+    const compra = compraDaPessoa(contratos, alvo);
+    return compra ? await resolverEntidadeDoContrato(admin, compra, alvo.entityIds) : null;
+  } catch (erro) {
+    throw new FalhaAoLerCredenciamento(
+      `carteira: leitura falhou (${erro instanceof Error ? erro.message : String(erro)})`,
+    );
+  }
 }
 
 /**
@@ -183,10 +262,24 @@ export async function credenciadoParaVender(
  *
  * `entityIds` serve só para o caso "achei a pessoa mas ela não tem CAD nenhuma neste escopo":
  * a resposta carrega um id para a tela conseguir abrir a ficha dela mesmo assim.
+ *
+ * `compra` (26/09/2026) é o contrato ativo da pessoa na família, quando existe. ⚠️ ELA SÓ ENTRA NO
+ * RAMO "SEM CAD NO ESCOPO". Qualquer CAD do escopo continua decidindo, inclusive a indeferida e a
+ * em revisão, pelos quatro motivos abaixo:
+ *   1. "A decisão de ontem vence a de junho" é regra DENTRO da mesma CAD (`maisRecentePorCad`) e
+ *      continua valendo como está. A carteira não é uma linha de CAD: é a prova que substitui a CAD
+ *      quando ela não existe, e não uma decisão de crédito mais nova que a da coordenação.
+ *   2. Revisão e indeferimento são crédito reprovado, e esse só a coordenação destrava, com
+ *      evidência, pelo override (esteira.ts; Lucas, 04/08).
+ *   3. A CAD da carteira não pode sobrescrever a existente, e o Board mostraria "revisão" ao lado de
+ *      uma proposta viva.
+ *   4. O custo é medido e pequeno: 2 compradores com CAD em revisão na família (26/09/2026), e para
+ *      eles a saída é o override.
  */
 export function decidirPelasLinhas(
   linhas: LinhaDaEsteira[],
   entityIds: string[],
+  compra: CompraAtiva | null = null,
 ): CredenciamentoDoTitular {
   // A régua tem DUAS METADES, e trocar a ordem delas quebra uma das duas:
   //
@@ -211,11 +304,16 @@ export function decidirPelasLinhas(
 
   if (credenciada) {
     return {
+      compra: null,
       credenciado: true,
       desde: dataDaLinha(credenciada),
       entityId: credenciada.entity_id,
       etapa: ETAPA_QUE_LIBERA,
       motivo: null,
+      origem:
+        normalizarEtapa(credenciada.origem ?? null) === ORIGEM_COMPRADOR_DA_CARTEIRA
+          ? "comprador_da_carteira"
+          : "cad",
     };
   }
 
@@ -226,8 +324,24 @@ export function decidirPelasLinhas(
   // respostas diferentes a cada clique (o mesmo motivo do `order` de `lib/apolo/esteira-cad.ts`).
   const escolhida = maisRecente(decisivas);
 
+  // ⚠️ SEM CAD NENHUMA, MAS COM CONTRATO ATIVO NA FAMÍLIA: É O COMPRADOR DA CARTEIRA. Credenciado,
+  // sem etapa (ainda não há CAD; ela nasce na gravação da proposta, nunca na leitura), e com a
+  // entidade DO CONTRATO, que é onde a CAD vai nascer e a que a proposta aponta.
+  if (!escolhida && compra) {
+    return {
+      compra,
+      credenciado: true,
+      desde: compra.desde,
+      entityId: compra.entityIdDoContrato ?? entityIds[0] ?? null,
+      etapa: null,
+      motivo: null,
+      origem: "comprador_da_carteira",
+    };
+  }
+
   if (!escolhida) {
     return {
+      compra: null,
       credenciado: false,
       desde: null,
       // ⚠️ AQUI O ID NÃO DECIDIU A RESPOSTA — não há CAD neste escopo, então não há linha para
@@ -238,6 +352,7 @@ export function decidirPelasLinhas(
       entityId: entityIds[0] ?? null,
       etapa: null,
       motivo: "Este cliente não tem CAD neste empreendimento.",
+      origem: null,
     };
   }
 
@@ -245,11 +360,13 @@ export function decidirPelasLinhas(
   const desde = dataDaLinha(escolhida);
 
   return {
+    compra: null,
     credenciado: false,
     desde,
     entityId: escolhida.entity_id,
     etapa: etapa || null,
     motivo: motivoDaEtapa(etapa, desde),
+    origem: "cad",
   };
 }
 
@@ -321,7 +438,7 @@ async function lerEsteira(
 ): Promise<LinhaDaEsteira[]> {
   const { data, error } = await admin
     .from("apolo_esteira")
-    .select("atualizado_em, chegou_em, created_at, enterprise_id, entity_id, etapa")
+    .select("atualizado_em, chegou_em, created_at, enterprise_id, entity_id, etapa, origem")
     .in("entity_id", entityIds)
     .in("enterprise_id", escopo);
 

@@ -3,7 +3,10 @@ import { NextResponse } from "next/server";
 import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
 import { autorizarOperacaoDeVenda } from "@/lib/apolo/incorporador/board-do-portal";
 import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
-import { escopoDaEsteiraDoPortal } from "@/lib/apolo/incorporador/familia-no-portal";
+import {
+  type EscopoDaEsteiraDoPortal,
+  escopoDaEsteiraDoPortal,
+} from "@/lib/apolo/incorporador/familia-no-portal";
 import { ehPortalComercial } from "@/lib/apolo/incorporador/perfis-de-portal";
 import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
 import {
@@ -12,10 +15,22 @@ import {
   MAXIMO_DE_CANDIDATOS,
   ordenar,
   type ProponenteEncontrado,
+  type TermoDaBusca,
   termoDaBusca,
 } from "@/lib/hercules/busca-de-proponente";
 import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 import { decidirPelasLinhas, type LinhaDaEsteira } from "@/lib/hercules/cliente-credenciado";
+import {
+  type CompraAtiva,
+  compraDaPessoa,
+  compradoresDoContrato,
+  contratoAtivoNoEscopo,
+  entidadesDosCpfs,
+  entidadesDosUsuariosDoC2x,
+  escolherEntidadeDoContrato,
+  type LinhaDoContrato,
+  lerContratosAtivos,
+} from "@/lib/hercules/compra-ativa";
 
 // A BUSCA DE PROPONENTE — quem pode entrar na proposta junto com o titular.
 //
@@ -37,6 +52,13 @@ import { decidirPelasLinhas, type LinhaDaEsteira } from "@/lib/hercules/cliente-
 // Apolo devolveria nome e CPF de qualquer pessoa da casa para qualquer corretor com acesso ao
 // portal. Aqui só aparece quem tem CAD NESTE empreendimento (ou na família dele) — o mesmo recorte
 // que a tela Venda já lê para contar o funil.
+//
+// (26/09/2026) ⚠️ O COMPRADOR DA CARTEIRA TAMBÉM APARECE, pela MESMA régua do titular: quem não tem
+// CAD no escopo, mas é comprador (titular ou co) de contrato ativo numa unidade da família, entra na
+// lista como credenciado, com `origem: "comprador_da_carteira"`. O recorte de privacidade é o
+// mesmo: os contratos lidos são os das unidades dos ids ABERTOS; os do espelho do pai só entram com
+// o CPF inteiro, e só o daquele CPF. A decisão é por PESSOA (todas as entidades do CPF), como a do
+// titular: uma CAD em revisão numa entidade qualquer da pessoa continua barrando.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -119,7 +141,12 @@ export async function GET(request: Request) {
         ? new Set(await entidadesDoCpf(admin, termo.digitos))
         : new Set<string>();
 
-    const entityIds = [...new Set([...linhasAbertas.map((l) => l.entity_id), ...doCpf])];
+    // Os compradores da carteira que casam com o termo, já na entidade do contrato de cada um.
+    const carteira = await compradoresDaCarteira(admin, { cpfInteiro, escopo, termo });
+
+    const entityIds = [
+      ...new Set([...linhasAbertas.map((l) => l.entity_id), ...doCpf, ...carteira.keys()]),
+    ];
     if (entityIds.length === 0) {
       return NextResponse.json({ data: { encontrados: [] } });
     }
@@ -151,32 +178,52 @@ export async function GET(request: Request) {
     }));
 
     // Para quem veio do espelho, o hash do CPF já é a prova do casamento: o `document_masked` de
-    // quem nasceu no Apolo pode estar mascarado, e o prefixo não casaria.
-    const casados = candidatos.filter((c) => casa(c, termo) || doCpf.has(c.id));
+    // quem nasceu no Apolo pode estar mascarado, e o prefixo não casaria. O comprador da carteira
+    // já casou pelo que o CONTRATO diz (nome e CPF do comprador), e é a entidade do contrato que
+    // aparece.
+    const casados = candidatos.filter((c) => casa(c, termo) || doCpf.has(c.id) || carteira.has(c.id));
 
     // A DECISÃO olha as mesmas CADs que o titular olha (abertos + espelho), mas só de quem já casou.
     // Sem isto, quem tem CAD nova no 37 e a credenciada no 35 sairia "não credenciado" pelo nome e
-    // "credenciado" pelo CPF, e a proposta do titular diria uma terceira coisa.
+    // "credenciado" pelo CPF, e a proposta do titular diria uma terceira coisa. Para o comprador da
+    // carteira entram TODAS as entidades do CPF dele, porque a régua do titular decide por pessoa.
+    const idsDaDecisao = [
+      ...new Set([
+        ...casados.map((c) => c.id),
+        ...[...carteira.values()].flatMap((v) => v.entityIdsDoCpf),
+      ]),
+    ];
     const linhasDoEspelho =
       escopo.soComCpfInteiro.length > 0 && casados.length > 0
         ? await lerEsteira(admin, {
             enterpriseIds: escopo.soComCpfInteiro,
-            entityIds: casados.map((c) => c.id),
+            entityIds: idsDaDecisao,
           })
         : [];
 
+    const todasAsLinhas = [...linhasAbertas, ...linhasDoEspelho];
     const idsCasados = new Set(casados.map((c) => c.id));
     const porEntidade = new Map<string, LinhaDaEsteira[]>();
-    for (const l of [...linhasAbertas, ...linhasDoEspelho]) {
+    for (const l of todasAsLinhas) {
       if (!idsCasados.has(l.entity_id)) continue;
       porEntidade.set(l.entity_id, [...(porEntidade.get(l.entity_id) ?? []), l]);
     }
 
     const encontrados: ProponenteEncontrado[] = casados
-      // Sem CAD em nenhum id do escopo a pessoa não aparece: "existe na base" não é resposta.
-      .filter((c) => porEntidade.has(c.id))
+      // Sem CAD em nenhum id do escopo, e sem contrato ativo na família, a pessoa não aparece:
+      // "existe na base" não é resposta.
+      .filter((c) => porEntidade.has(c.id) || carteira.has(c.id))
       .map((c) => {
-        const decisao = decidirPelasLinhas(porEntidade.get(c.id) ?? [], [c.id]);
+        const daCarteira = carteira.get(c.id);
+        // ⚠️ A MESMA FUNÇÃO DO TITULAR, com a compra no terceiro argumento: ela só vale quando a
+        // PESSOA não tem CAD nenhuma no escopo. CAD em revisão numa entidade qualquer dela barra.
+        const decisao = daCarteira
+          ? decidirPelasLinhas(
+              todasAsLinhas.filter((l) => daCarteira.entityIdsDoCpf.includes(l.entity_id)),
+              [c.id],
+              daCarteira.compra,
+            )
+          : decidirPelasLinhas(porEntidade.get(c.id) ?? [], [c.id]);
         return {
           credenciado: decisao.credenciado,
           cpf: c.documento ?? "",
@@ -184,6 +231,7 @@ export async function GET(request: Request) {
           id: c.id,
           motivo: decisao.motivo,
           nome: c.nome ?? "—",
+          origem: decisao.origem,
         };
       })
       .sort(ordenar)
@@ -217,7 +265,7 @@ async function lerEsteira(
   admin: AdminClient,
   filtro: { enterpriseIds: string[]; entityIds?: string[] },
 ): Promise<LinhaDaEsteira[]> {
-  const COLUNAS = "atualizado_em, chegou_em, created_at, enterprise_id, entity_id, etapa";
+  const COLUNAS = "atualizado_em, chegou_em, created_at, enterprise_id, entity_id, etapa, origem";
   if (!filtro.entityIds) {
     const { data, error } = await admin
       .from("apolo_esteira")
@@ -263,4 +311,89 @@ async function entidadesDoCpf(admin: AdminClient, digitos: string): Promise<stri
     if (linha.entity_id) ids.add(linha.entity_id);
   }
   return [...ids];
+}
+
+/** Quantas pessoas da carteira seguem para a resolução de entidade. A tela recebe só oito. */
+const MAXIMO_DA_CARTEIRA = 40;
+
+type CompradorDaCarteira = { compra: CompraAtiva; entityIdsDoCpf: string[] };
+
+/**
+ * Os compradores (titular e co) de contratos ativos na família que casam com o termo, por entidade
+ * do contrato.
+ *
+ * ⚠️ O MESMO RECORTE DA ESTEIRA. Nome e pedaço de CPF só olham os contratos das unidades dos ids
+ * ABERTOS; os do espelho do pai só entram com o CPF inteiro, e só o daquele CPF. O irmão de outro
+ * dono (o 36 do Lino) nunca é lido.
+ *
+ * ⚠️ O CASAMENTO É PELO QUE O CONTRATO DIZ (nome e CPF gravados no comprador), antes de ir ao banco
+ * atrás de entidade: só quem casou custa leitura de `apolo_entities` e `apolo_source_links`.
+ */
+async function compradoresDaCarteira(
+  admin: AdminClient,
+  entrada: { cpfInteiro: boolean; escopo: EscopoDaEsteiraDoPortal; termo: TermoDaBusca },
+): Promise<Map<string, CompradorDaCarteira>> {
+  const { cpfInteiro, escopo, termo } = entrada;
+  const saida = new Map<string, CompradorDaCarteira>();
+  if (termo.tipo === "curto") return saida;
+
+  const cpfDoTermo = cpfInteiro && termo.tipo === "cpf" ? termo.digitos : null;
+  const doEspelho = cpfDoTermo ? escopo.soComCpfInteiro : [];
+  if (escopo.abertos.length === 0 && doEspelho.length === 0) return saida;
+
+  const [contratosAbertos, contratosDoEspelho] = await Promise.all([
+    escopo.abertos.length > 0 ? lerContratosAtivos(admin, escopo.abertos) : ([] as LinhaDoContrato[]),
+    doEspelho.length > 0 ? lerContratosAtivos(admin, doEspelho) : ([] as LinhaDoContrato[]),
+  ]);
+
+  const abertos = new Set(escopo.abertos);
+  const nomes = new Map<string, string>();
+  for (const linha of contratosAbertos) {
+    if (!contratoAtivoNoEscopo(linha, abertos)) continue;
+    for (const c of compradoresDoContrato(linha)) {
+      if (c.cpf.length !== 11) continue;
+      if (casa({ documento: c.cpf, id: c.cpf, nome: c.nome }, termo)) {
+        nomes.set(c.cpf, c.nome ?? "");
+      }
+    }
+  }
+  if (cpfDoTermo && !nomes.has(cpfDoTermo)) {
+    const noEspelho = new Set(doEspelho);
+    const achou = contratosDoEspelho.some(
+      (l) => contratoAtivoNoEscopo(l, noEspelho) && compradoresDoContrato(l).some((c) => c.cpf === cpfDoTermo),
+    );
+    if (achou) nomes.set(cpfDoTermo, "");
+  }
+  if (nomes.size === 0) return saida;
+
+  const todos = [...contratosAbertos, ...contratosDoEspelho];
+  const compras = new Map<string, CompraAtiva>();
+  const cpfs = [...nomes.keys()]
+    .sort((a, b) => (nomes.get(a) ?? "").localeCompare(nomes.get(b) ?? "", "pt-BR") || a.localeCompare(b))
+    .slice(0, MAXIMO_DA_CARTEIRA);
+  for (const cpf of cpfs) {
+    const escopoDaPessoa = cpf === cpfDoTermo ? [...escopo.abertos, ...doEspelho] : escopo.abertos;
+    const compra = compraDaPessoa(todos, { cpf, entityIds: [], escopo: escopoDaPessoa });
+    if (compra) compras.set(cpf, compra);
+  }
+  if (compras.size === 0) return saida;
+
+  const [entidades, ligadas] = await Promise.all([
+    entidadesDosCpfs(admin, [...compras.keys()]),
+    entidadesDosUsuariosDoC2x(
+      admin,
+      [...compras.values()].map((c) => c.c2xUserId ?? "").filter(Boolean),
+    ),
+  ]);
+
+  for (const [cpf, compra] of compras) {
+    const ids = entidades.get(cpf) ?? [];
+    // Sem entidade no Apolo não há quem adicionar: a tela escolhe uma entidade, não um CPF solto.
+    if (ids.length === 0) continue;
+    const ligada = compra.c2xUserId ? (ligadas.get(compra.c2xUserId) ?? null) : null;
+    const entityId = escolherEntidadeDoContrato(compra, ids, ligada);
+    if (!entityId || saida.has(entityId)) continue;
+    saida.set(entityId, { compra: { ...compra, entityIdDoContrato: entityId }, entityIdsDoCpf: ids });
+  }
+  return saida;
 }

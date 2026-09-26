@@ -33,26 +33,47 @@ const IDENTIFICADORES: Linha[] = [
   { entity_id: "e-espelho", value_hash: "hash:cpf:33333333333" },
 ];
 
+// (26/09/2026) Os contratos ativos da carteira (`hercules_propostas` com a unidade embutida) e a
+// ligação usuário do C2X → entidade (`apolo_source_links`). O filtro com ponto percorre o embutido.
+const CONTRATOS: Linha[] = [];
+const FONTES: Linha[] = [];
+const ESTEIRA_EXTRA: Linha[] = [];
+const ENTIDADES_EXTRA: Linha[] = [];
+const IDENTIFICADORES_EXTRA: Linha[] = [];
+
+const valorDe = (linha: Linha, coluna: string): unknown =>
+  coluna
+    .split(".")
+    .reduce<unknown>((atual, parte) => (atual && typeof atual === "object" ? (atual as Linha)[parte] : undefined), linha);
+
 function clienteFalso() {
   const from = (tabela: string) => {
     const filtros: Array<(linha: Linha) => boolean> = [];
     const base = (): Linha[] => {
       if (tabela === "hercules_unidades") return [{ enterprise_id: "37", id: "u-voc", workspace_id: "careli" }];
-      if (tabela === "apolo_esteira") return ESTEIRA;
-      if (tabela === "apolo_entities") return ENTIDADES;
-      if (tabela === "apolo_entity_identifiers") return IDENTIFICADORES;
+      if (tabela === "apolo_esteira") return [...ESTEIRA, ...ESTEIRA_EXTRA];
+      if (tabela === "apolo_entities") return [...ENTIDADES, ...ENTIDADES_EXTRA];
+      if (tabela === "apolo_entity_identifiers") return [...IDENTIFICADORES, ...IDENTIFICADORES_EXTRA];
+      if (tabela === "hercules_propostas") return CONTRATOS;
+      if (tabela === "apolo_source_links") return FONTES;
       return [];
     };
     const resultado = () => ({ data: base().filter((l) => filtros.every((f) => f(l))), error: null });
     const cadeia = {
       eq: (coluna: string, valor: unknown) => {
-        filtros.push((l) => l[coluna] === valor);
+        filtros.push((l) => valorDe(l, coluna) === valor);
         return cadeia;
       },
       in: (coluna: string, valores: unknown[]) => {
-        filtros.push((l) => valores.includes(l[coluna]));
+        filtros.push((l) => valores.includes(valorDe(l, coluna)));
         return cadeia;
       },
+      is: (coluna: string, valor: unknown) => {
+        filtros.push((l) => valorDe(l, coluna) === valor);
+        return cadeia;
+      },
+      order: () => cadeia,
+      range: () => cadeia,
       limit: () => cadeia,
       maybeSingle: () => Promise.resolve({ data: resultado().data[0] ?? null, error: null }),
       select: () => cadeia,
@@ -111,6 +132,11 @@ async function buscar(q: string): Promise<string[]> {
 beforeEach(() => {
   estado.permitidos = ["37", "39"];
   estado.tipo = "incorporador";
+  CONTRATOS.length = 0;
+  FONTES.length = 0;
+  ESTEIRA_EXTRA.length = 0;
+  ENTIDADES_EXTRA.length = 0;
+  IDENTIFICADORES_EXTRA.length = 0;
 });
 
 describe("GET /api/incorporador/venda/proponentes fora do comercial", () => {
@@ -137,5 +163,125 @@ describe("GET /api/incorporador/venda/proponentes no comercial", () => {
     estado.tipo = "comercial";
     estado.permitidos = ["35", "36", "37", "41", "group:Vale do Ouro"];
     expect(await buscar("ana")).toEqual(["Ana do Espelho", "Ana do Lino", "Ana do VOC"]);
+  });
+});
+
+// ── O COMPRADOR DA CARTEIRA COMO CO-PROPONENTE (26/09/2026) ──────────────────
+//
+// A mesma régua do titular (`decidirPelasLinhas` com a compra): quem não tem CAD no escopo, mas é
+// comprador de contrato ativo numa unidade da família, aparece como credenciado. E o MESMO recorte
+// de privacidade da esteira: nome e pedaço de CPF só olham os contratos dos ids abertos; o espelho
+// do pai (35) só com o CPF inteiro; o irmão de outro dono (36, o Lino) nunca.
+
+const BIA = { cpf: "444.444.444-44", digitos: "44444444444", entidade: "e-bia", usuario: "9001" };
+
+function contratoDaBia(parcial: Linha = {}): Linha {
+  return {
+    cancelada_em: null,
+    cliente_c2x_id: BIA.usuario,
+    cliente_documento: BIA.cpf,
+    cliente_entity_id: null,
+    cliente_nome: "BIA DA CARTEIRA",
+    codigo: "000501",
+    compradores: [{ c2x_user_id: BIA.usuario, documento: BIA.cpf, nome: "BIA DA CARTEIRA", percentual: 100, titular: true }],
+    etapa: "faturado",
+    etapa_desde: "2024-05-01T12:00:00.000Z",
+    id: "prop-bia",
+    unidade: { codigo: "VOC0501", enterprise_id: "37", id: "u-501" },
+    workspace_id: "careli",
+    ...parcial,
+  };
+}
+
+function comABia(contrato: Linha) {
+  CONTRATOS.push(contrato);
+  FONTES.push({ entity_id: BIA.entidade, source_id: BIA.usuario, source_system: "c2x", source_table: "users" });
+  ENTIDADES_EXTRA.push({
+    display_name: "Bia da Carteira",
+    document_hash: null,
+    document_masked: BIA.cpf,
+    id: BIA.entidade,
+    legal_name: null,
+    trade_name: null,
+  });
+  IDENTIFICADORES_EXTRA.push({ entity_id: BIA.entidade, value_hash: `hash:cpf:${BIA.digitos}` });
+}
+
+type Achado = { credenciado: boolean; etapa: null | string; nome: string; origem?: null | string };
+
+async function buscarTudo(q: string): Promise<Achado[]> {
+  const resposta = await GET(
+    new Request(`https://c2x.app.br/api/incorporador/venda/proponentes?unidade=u-voc&q=${encodeURIComponent(q)}`),
+  );
+  expect(resposta.status).toBe(200);
+  return ((await resposta.json()) as { data: { encontrados: Achado[] } }).data.encontrados;
+}
+
+describe("GET /api/incorporador/venda/proponentes: o comprador da carteira", () => {
+  it("⚠️ sem CAD, com contrato ativo na família da sessão, aparece credenciado e marcado", async () => {
+    comABia(contratoDaBia());
+    const achados = await buscarTudo("bia");
+    expect(achados).toEqual([
+      expect.objectContaining({ credenciado: true, nome: "Bia da Carteira", origem: "comprador_da_carteira" }),
+    ]);
+  });
+
+  it("⚠️ o contrato no irmão de outro dono (36) nunca aparece, nem com o CPF inteiro", async () => {
+    comABia(contratoDaBia({ unidade: { codigo: "VOL0501", enterprise_id: "36", id: "u-36" } }));
+    expect(await buscarTudo("bia")).toEqual([]);
+    expect(await buscarTudo(BIA.digitos)).toEqual([]);
+  });
+
+  it("⚠️ o contrato no espelho do pai (35) só aparece com o CPF inteiro", async () => {
+    comABia(contratoDaBia({ unidade: { codigo: "VLO0501", enterprise_id: "35", id: "u-35" } }));
+    expect(await buscarTudo("bia")).toEqual([]);
+    expect(await buscarTudo("4444")).toEqual([]);
+    expect((await buscarTudo(BIA.cpf)).map((a) => a.nome)).toEqual(["Bia da Carteira"]);
+  });
+
+  it("o CO-COMPRADOR do contrato também aparece", async () => {
+    comABia(
+      contratoDaBia({
+        cliente_c2x_id: "9999",
+        cliente_documento: "555.555.555-55",
+        cliente_nome: "OUTRO TITULAR",
+        compradores: [
+          { c2x_user_id: "9999", documento: "555.555.555-55", nome: "OUTRO TITULAR", percentual: 50, titular: true },
+          { c2x_user_id: BIA.usuario, documento: BIA.digitos, nome: "BIA DA CARTEIRA", percentual: 50, titular: false },
+        ],
+      }),
+    );
+    const achados = await buscarTudo("bia");
+    expect(achados.map((a) => [a.nome, a.credenciado, a.origem])).toEqual([
+      ["Bia da Carteira", true, "comprador_da_carteira"],
+    ]);
+  });
+
+  it("distrato não é contrato ativo: a pessoa sem CAD continua sem aparecer", async () => {
+    comABia(contratoDaBia({ etapa: "distrato" }));
+    expect(await buscarTudo("bia")).toEqual([]);
+  });
+
+  it("⚠️ CAD em revisão numa entidade qualquer do CPF barra, como no titular", async () => {
+    comABia(contratoDaBia());
+    ENTIDADES_EXTRA.push({
+      display_name: "Bia (Apolo)",
+      document_hash: `hash:cpf:${BIA.digitos}`,
+      document_masked: "***.444.444-**",
+      id: "e-bia-apolo",
+      legal_name: null,
+      trade_name: null,
+    });
+    ESTEIRA_EXTRA.push({
+      atualizado_em: "2026-09-11",
+      chegou_em: null,
+      created_at: "2026-09-01",
+      enterprise_id: "37",
+      entity_id: "e-bia-apolo",
+      etapa: "revisao",
+    });
+    const daCarteira = (await buscarTudo("bia")).find((a) => a.nome === "Bia da Carteira");
+    expect(daCarteira?.credenciado).toBe(false);
+    expect(daCarteira?.etapa).toBe("revisao");
   });
 });

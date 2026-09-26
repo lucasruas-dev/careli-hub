@@ -32,6 +32,11 @@ export type ProponenteEncontrado = {
   /** A frase que explica por que ele não pode entrar. `null` quando pode. */
   motivo: null | string;
   nome: string;
+  /**
+   * Por qual porta a decisão saiu (26/09/2026): `cad` ou `comprador_da_carteira`. Opcional para a
+   * tela aberta antes da subida continuar lendo a resposta; ausente = CAD.
+   */
+  origem?: null | "cad" | "comprador_da_carteira";
 };
 
 /** O mínimo que a busca precisa saber de uma pessoa da base. */

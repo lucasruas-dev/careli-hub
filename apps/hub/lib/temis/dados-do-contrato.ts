@@ -1119,17 +1119,25 @@ async function camadasDoCadastro(
 
   const fichas = new Map<string, Record<string, unknown>>();
   const doEmpreendimento = new Set<string>();
+  // ⚠️ FICHA VAZIA NÃO GANHA DE FICHA PREENCHIDA (26/09/2026). `objeto({})` é verdadeiro, então a
+  // CAD do empreendimento da venda com `ficha = {}` escondia a ficha preenchida de outra CAD da
+  // mesma pessoa, e o contrato saía sem os dados que o Apolo tinha. A CAD do comprador da carteira
+  // nasce exatamente assim (credenciada, sem ficha), e 140 das 842 CADs já têm ficha vazia. A vazia
+  // continua entrando quando é a única (é o que `ehComprador` lê como "tem ficha"), mas nunca por
+  // cima de uma preenchida: é a mesma régua de `temCadastro` em `ordenarFichas`.
+  const cheia = (ficha: Record<string, unknown>) => Object.values(ficha).some(preenchido);
   for (const linha of linhasDaEsteira) {
     const ficha = objeto(linha.ficha);
     if (!ficha || !linha.entity_id) continue;
     const daVenda = Boolean(enterpriseId) && texto(linha.enterprise_id) === texto(enterpriseId);
     // A do empreendimento desta proposta sobrescreve a que a ordem por recência tinha escolhido.
-    if (daVenda && !doEmpreendimento.has(linha.entity_id)) {
+    if (daVenda && cheia(ficha) && !doEmpreendimento.has(linha.entity_id)) {
       fichas.set(linha.entity_id, ficha);
       doEmpreendimento.add(linha.entity_id);
       continue;
     }
-    if (!fichas.has(linha.entity_id)) fichas.set(linha.entity_id, ficha);
+    const atual = fichas.get(linha.entity_id);
+    if (!atual || (!cheia(atual) && cheia(ficha))) fichas.set(linha.entity_id, ficha);
   }
 
   const enderecos = new Map<string, LinhaDoEndereco>();

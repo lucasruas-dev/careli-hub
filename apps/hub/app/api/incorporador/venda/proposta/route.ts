@@ -39,6 +39,11 @@ import {
   carregarCadastroDeEmpreendimentos,
   type LinhaDoCadastro,
 } from "@/lib/hercules/cadastro";
+import {
+  enterpriseIdDaCad,
+  garantirCadDoComprador,
+  type ResultadoDaCadDoComprador,
+} from "@/lib/hercules/cad-do-comprador";
 import { desfechoDaUnidade, soltarLoteDaVendaDesfeita } from "@/lib/hercules/cancelar-reserva-server";
 import { lerSituacaoDasUnidades } from "@/lib/hercules/situacao-da-unidade";
 import { fraseDoConflito, outrosDonosDoLote } from "@/lib/hercules/trava-do-lote";
@@ -622,6 +627,9 @@ export async function GET(request: Request) {
             desde: credenciamento.desde,
             etapa: credenciamento.etapa,
             motivo: credenciamento.motivo,
+            // (26/09/2026) Por qual porta: "cad" ou "comprador_da_carteira". É o que troca o selo
+            // da modal para "Comprador da carteira". O GET só lê: a CAD da carteira nasce no POST.
+            origem: credenciamento.origem ?? null,
           },
           entradaMinimaPercentual,
           faixasDePrazo: faixas[String(c2xId)] ?? [],
@@ -1617,6 +1625,44 @@ export async function POST(request: Request) {
       );
     }
 
+    // ── 8½. A CAD do comprador da carteira ─────────────────────────────────
+    //
+    // Lucas (26/09/2026), "Nasce a CAD credenciada": quem passou pela porta da carteira (contrato
+    // ativo na família, nenhuma CAD no escopo) ganha a CAD credenciada AGORA, marcada
+    // 'comprador_da_carteira', com a imobiliária e o corretor desta reserva.
+    //
+    // ⚠️ AQUI, E NÃO ANTES. Depois do passo 8 a proposta existe e a reserva virou proposta: no 409 da
+    // corrida (a reserva saiu de 'ativa') a proposta é apagada e sobraria uma CAD órfã. A prévia
+    // (6½) já voltou lá em cima, e o GET não escreve. E ANTES do passo 9, para os avisos saírem com a
+    // CAD já no Board.
+    //
+    // ⚠️ NÃO DERRUBA A PROPOSTA. `garantirCadDoComprador` nunca lança; a falha fica no log e na
+    // resposta (`cadDoComprador`), e a venda segue gravada.
+    let cadDoComprador: null | ResultadoDaCadDoComprador = null;
+    if (credenciamento.compra) {
+      const enterpriseIdDaCadNova = enterpriseIdDaCad(cadastro, c2xId);
+      const doCadastro = empreendimentoDaUnidade(cadastro, enterpriseIdDaCadNova);
+      cadDoComprador = await garantirCadDoComprador(admin, {
+        agora,
+        atualizadoPor: sessao.usuarioId ?? null,
+        codigoDaVenda: codigo,
+        compra: credenciamento.compra,
+        corretorEntityId: reserva.corretor_entity_id,
+        corretorNome: nomeDoCorretor,
+        empreendimentoNome: doCadastro?.nome ?? empreendimento.nome,
+        enterpriseId: enterpriseIdDaCadNova,
+        entityId: credenciamento.entityId,
+        imobiliariaEntityId: reserva.imobiliaria_entity_id,
+        imobiliariaNome: nomeDaImobiliaria,
+      });
+      if (cadDoComprador.estado === "erro") {
+        console.error("[hercules][proposta] a CAD do comprador da carteira não nasceu", {
+          motivo: cadDoComprador.motivo,
+          propostaId,
+        });
+      }
+    }
+
     // ── 9. O PDF e os três avisos ──────────────────────────────────────────
     //
     // ⚠️ DAQUI PARA BAIXO NADA DERRUBA A PROPOSTA, que já está gravada. Um WhatsApp que não sai
@@ -1650,7 +1696,17 @@ export async function POST(request: Request) {
       unidadeEscrita,
     });
 
-    return NextResponse.json({ data: { avisos, codigo, id: propostaId } });
+    return NextResponse.json({
+      data: {
+        avisos,
+        // (26/09/2026) Só aparece na venda do comprador da carteira: "criada", "ja_existia" ou
+        // "erro". Campo próprio, e não uma linha em `avisos`: aquela lista diz QUEM FOI AVISADO, e
+        // "falhou para cad" seria lido como um WhatsApp que não saiu.
+        ...(cadDoComprador ? { cadDoComprador: { estado: cadDoComprador.estado } } : {}),
+        codigo,
+        id: propostaId,
+      },
+    });
   } catch (erro) {
     if (erro instanceof FalhaAoLerCredenciamento) {
       console.error("[hercules][proposta] credenciamento ilegível", erro);

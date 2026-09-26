@@ -1,5 +1,6 @@
 "use client";
 
+import { UserCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -81,6 +82,11 @@ type CredenciamentoNaTela = {
   desde: null | string;
   etapa: null | string;
   motivo: null | string;
+  /**
+   * Por qual porta passou (26/09/2026). `comprador_da_carteira` = contrato ativo neste
+   * empreendimento; a tela troca o selo por "Comprador da carteira". Ausente = CAD.
+   */
+  origem?: null | "cad" | "comprador_da_carteira";
 };
 
 type ReservaNaTela = {
@@ -440,6 +446,9 @@ export function ModalDeProposta({
   const precisaDeNota = ehDesconto || temBemOuPermuta;
   const precisaDaNota = precisaDeNota && nota.trim().length === 0;
   const credenciado = portao?.credenciamento.credenciado === true;
+  /** Passou pela porta da carteira (contrato ativo aqui), e não por uma CAD aberta na esteira. */
+  const compradorDaCarteira =
+    credenciado && portao?.credenciamento.origem === "comprador_da_carteira";
   const podeMontar =
     Boolean(portao) && credenciado && errosDoPortao.length === 0;
 
@@ -890,6 +899,8 @@ export function ModalDeProposta({
         ? (JSON.parse(texto) as {
             data?: {
               avisos: Array<{ motivo?: string; ok: boolean; para: string }>;
+              /** Só na venda do comprador da carteira (26/09/2026). */
+              cadDoComprador?: { estado: "criada" | "erro" | "ja_existia" };
               codigo?: string;
             };
             erros?: ErroDaProposta[];
@@ -908,8 +919,14 @@ export function ModalDeProposta({
 
       // O COD na frente, como no recado da reserva: é o número que ele anota e repete no telefone.
       const cod = corpo.data?.codigo ? `${corpo.data.codigo} · ` : "";
+      // ⚠️ A PROPOSTA SAIU, MAS A CAD DA CARTEIRA NÃO: a frase diz, para alguém abrir a CAD à mão.
+      // Calar faria o comprador sumir do Board sem ninguém saber por quê.
+      const semCad =
+        corpo.data?.cadDoComprador?.estado === "erro"
+          ? " A CAD de comprador da carteira não foi registrada; avise a coordenação."
+          : "";
       onGerada(
-        `${cod}Proposta de ${unidade.nome} gerada. ${comoFoiOAviso(corpo.data?.avisos ?? [])}`,
+        `${cod}Proposta de ${unidade.nome} gerada. ${comoFoiOAviso(corpo.data?.avisos ?? [])}${semCad}`,
       );
     } catch {
       setErroDoServidor("Não foi possível gerar a proposta agora.");
@@ -1332,7 +1349,28 @@ export function ModalDeProposta({
 
                   {/* ⚠️ O SELO É A DECISÃO, e vem inteiro do servidor. Verde: segue. Vermelho: a frase
                       diz em que etapa a CAD está e desde quando — é com ela que o coordenador sabe a
-                      quem cobrar, em vez de ligar para descobrir o que a tela já sabia. */}
+                      quem cobrar, em vez de ligar para descobrir o que a tela já sabia. Grafite
+                      (26/09/2026): segue pela carteira, sem CAD aberta na esteira. */}
+                  {compradorDaCarteira ? (
+                    <div
+                      style={{
+                        alignItems: "center",
+                        background: T.soft,
+                        border: `1px solid ${T.border}`,
+                        borderRadius: 10,
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 8,
+                        marginTop: 10,
+                        padding: "8px 11px",
+                      }}
+                    >
+                      <ChipCompradorDaCarteira />
+                      <span style={{ color: T.sub, fontSize: 11.5 }}>
+                        Contrato ativo neste empreendimento. A reserva pode virar proposta.
+                      </span>
+                    </div>
+                  ) : (
                   <div
                     style={{
                       background: credenciado ? T.okBg : T.dangerBg,
@@ -1359,6 +1397,7 @@ export function ModalDeProposta({
                           "A CAD deste cliente ainda não está credenciada neste empreendimento.")}
                     </div>
                   </div>
+                  )}
 
                   <p
                     style={{ color: T.muted, fontSize: 11, margin: "8px 0 0" }}
@@ -1647,7 +1686,20 @@ export function ModalDeProposta({
                                   }}
                                   type="button"
                                 >
-                                  <b style={{ fontSize: 12.5 }}>{c.nome}</b>
+                                  <span
+                                    style={{
+                                      alignItems: "center",
+                                      display: "flex",
+                                      flexWrap: "wrap",
+                                      gap: 6,
+                                    }}
+                                  >
+                                    <b style={{ fontSize: 12.5 }}>{c.nome}</b>
+                                    {/* A mesma porta do titular: contrato ativo aqui, sem CAD. */}
+                                    {c.credenciado && c.origem === "comprador_da_carteira" ? (
+                                      <ChipCompradorDaCarteira pequeno />
+                                    ) : null}
+                                  </span>
                                   <span
                                     style={{ color: T.muted, fontSize: 11 }}
                                   >
@@ -2251,5 +2303,38 @@ function Erro({ texto }: { texto: string }) {
     <p style={{ color: T.danger, fontSize: 11.5, margin: "5px 0 0" }}>
       {texto}
     </p>
+  );
+}
+
+/**
+ * O selo "Comprador da carteira" (26/09/2026).
+ *
+ * ⚠️ GRAFITE E PRETO, E O ÍCONE NA FRENTE. É a mesma cor do botão principal do portal (`btnBg`), e
+ * não o verde do "CAD credenciada": o comprador da carteira passa, mas por outra porta, e o
+ * coordenador precisa ver a diferença sem ler a frase. `aria-label` porque o ícone sozinho não diz
+ * nada a quem lê a tela com leitor.
+ */
+function ChipCompradorDaCarteira({ pequeno = false }: { pequeno?: boolean }) {
+  return (
+    <span
+      aria-label="Comprador da carteira"
+      style={{
+        alignItems: "center",
+        background: T.btnBg,
+        borderRadius: 999,
+        color: T.btnFg,
+        display: "inline-flex",
+        fontSize: pequeno ? 10.5 : 11.5,
+        fontWeight: 700,
+        gap: 5,
+        lineHeight: 1,
+        padding: pequeno ? "3px 7px" : "5px 10px",
+        whiteSpace: "nowrap",
+      }}
+      title="Tem contrato ativo neste empreendimento"
+    >
+      <UserCheck aria-hidden size={pequeno ? 11 : 13} strokeWidth={2.4} />
+      Comprador da carteira
+    </span>
   );
 }
