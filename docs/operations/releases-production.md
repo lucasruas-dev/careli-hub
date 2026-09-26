@@ -2469,6 +2469,25 @@ Atualizacao pos-deploy:
 - Validacoes finais: diff check OK; eslint escopado OK; check-types direto apps/hub OK; lint direto apps/hub OK; build hub OK; Vercel Production READY; healthchecks 200/401 esperado; logs error sem ocorrencia.
 - Observacao: producao foi publicada a partir do pacote limpo .codex-deploy/zeus-helpdesk-kanban-prod-20260526-1215/workspace, sem root misto e sem env/secret/migration/banco.
 
+## 2026-09-26 14:28:00 -03:00 - Zeus - Producao reserva PJ no Hercules e e-mail da imobiliaria no CAD (v1.383.0 + v1.384.0)
+
+- Assunto: duas entregas no mesmo push. (1) a trava de e-mail unico deixa de barrar o dono da imobiliaria que se cadastra como corretor, e a recusa que ele consegue consertar para de sair como 500 mudo; (2) a reserva do Hercules passa a aceitar pessoa juridica, do campo da tela ate o contrato.
+- Squad/agente responsavel: Zeus de plantao (workflow multi-agente com revisao adversarial na frente da PJ; a do e-mail foi investigacao direta).
+- Data e hora local: 2026-09-26 14:28 -03:00.
+- Ambiente: producao `https://c2x.app.br` via push na `main` (git automatico).
+- Origem/homologacao de referencia: nenhuma. Bug de plantao medido direto no dado de producao (so SELECT) e coberto por teste; sem validacao visual previa.
+- Escopo publicado: v1.383.0 `createApoloEntity` ganhou `fichaDoMesmoDono` (a ficha da propria imobiliaria nao conta contra o e-mail do corretor dela) e `recusaPublicaDoCorretor` (409 com texto para `email-repetido`, generico para o resto, sem dizer de quem e o e-mail); v1.384.0 pecas novas `lib/hercules/documento-do-comprador.ts`, `lib/hercules/hash-do-documento.ts` e `lib/hercules/proponente.ts`, as tres paredes da conversao em proposta derrubadas (portao de 11 digitos do credenciamento, hash no namespace `cpf`, `cpfValido` de todo comprador), o `>= 11` do hash corrigido em `venda/documentos/route.ts` e `temis/contrato-guardado-db.ts`, e a tela com um campo so para CPF ou CNPJ.
+- Commit publicado: `0f4768c9` (merge que renumerou as duas entradas).
+- Deployment anterior: v1.382.0 `2026-09-26-pan-124-regua-e-trilha-do-cadastro`, commit `ae78fc59` (candidato de Instant Rollback).
+- Deployment novo: v1.384.0 `2026-09-26-reserva-aceita-pessoa-juridica`, deployment `dpl_FP5Xynhi8LCpULYacQ1afejEaxbR`.
+- Dominio alvo autorizado: `https://c2x.app.br` (OK explicito do Lucas em 26/09: "pode subir agora e depois acaba com o group" e, para a PJ, "pode subir a correcao da reserva por pj").
+- Aliases/dominios afetados: somente `c2x.app.br`.
+- Arquivos/modulos incluidos: apps/hub (lib/hercules/{documento-do-comprador,hash-do-documento,proponente,cliente-credenciado,proposta,proposta-pdf,reserva,busca-de-proponente,historico-da-unidade}, lib/publico/cad/{dados,regras}, lib/apolo/cadastro-persist, lib/temis/contrato-guardado-db, lib/prometeu/reservas-evento, app/api/publico/cad/corretor, app/api/incorporador/venda/{reserva,proposta,proponentes,cliente,documentos}, modules/incorporador/hercules/{ModalDeReserva,ModalDeProposta,TelaVenda}, changelog).
+- Arquivos/modulos excluidos: nenhuma migration (as duas entregas rodam no schema atual; `hercules_reservas.proponentes` e jsonb sem CHECK de forma, medido). O `group:` no codigo NAO entrou: so o dado foi limpo, e o gerador do id sintetico segue como estava.
+- Validacoes executadas: `tsc --noEmit` limpo; vitest 653 arquivos / 9.790 testes verdes depois do merge; revisao adversarial em tres lentes na frente da PJ (venda dupla, caminho inteiro, cobertura), que restaurou uma decisao de 04/09/2026 apagada por engano na primeira versao; medicoes em producao so com SELECT.
+- Healthchecks pos-deploy: `c2x.app.br` 200 apos o push; deployment de producao conferido pelo commit (`0f4768c9`), e nao pelo push.
+- Riscos residuais: NENHUMA reserva PJ foi criada de ponta a ponta em producao ate este registro, entao o caminho esta provado por teste e por medicao do dado, nao por uso real; o mesmo vale para o cadastro do Israel, que precisa de uma nova tentativa dele para confirmar. O defeito do hash em venda de PJ era latente (zero documentos afetados hoje), entao a correcao nao tem como ser confirmada por dado existente. O `group:` volta a ser gravado se alguem usar a linha consolidada do catalogo, porque so o dado foi limpo.
+
 ## 2026-08-18 02:40:00 -03:00 - Zeus - Producao portal do incorporador padrao (v1.151.0)
 
 - Assunto: portal PADRAO do incorporador (CRM, Vendas, Carteira, mapa) + gestao no Setup + correcao do vencido zerado.
