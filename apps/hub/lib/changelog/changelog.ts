@@ -36,6 +36,46 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-25-quadro-de-assinatura-editavel",
+    deployedAt: "2026-09-25T21:09:28-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Toda pessoa do quadro de assinatura agora se edita e se exclui.** Cada linha ganhou um lápis para corrigir nome, CPF, e-mail, Linha e Assina em, e a lixeira. O cadeado saiu.",
+              "**O quadro mostra só quem está gravado nele, e é exatamente quem assina.** Antes a tela podia mostrar uma pessoa trazida do cadastro que o contrato não levava, como aconteceu com o Fabricio no VOR.",
+              "**O Fabricio assina pela coordenadora de vendas com contrato@fgurgel.com.br** em todos os empreendimentos, e não mais com o e-mail da diretoria.",
+            ],
+            screen: "Empreendimento · Quadro de assinatura",
+          },
+        ],
+      },
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Aviso na hora de enviar quando o contrato cita a coordenadora de vendas e ninguém assina por ela.**",
+            ],
+            screen: "Enviar para assinatura",
+          },
+        ],
+      },
+    ],
+    rollback: "4bf9d08a",
+    technical: {
+      done:
+        "O quadro (temis_assinantes) virou a única fonte de quem assina: saíram representanteDoCadastro (estrutura-servico.ts), representanteLegal e empresasDoEmpreendimento (quadro-db.ts) e o fallback gerais.vendedora_representante_* (signatarios.ts). A tela herdava com a linha 1 vazia e o envio só com o papel vazio: no VOR a tela mostrava o Fabricio e o contrato ia sem ele. PATCH novo nas duas portas (editarAssinante, mesmas checagens do incluir, papel dos termos fechado ao portal, CPF mascarado do portal só mantém o gravado se vier a máscara inteira, linha ocupada com 409 e o nome de quem ocupa, a própria linha não conta). removerAssinante responde 404 para id inexistente ou já excluído. Cartão com lápis e lixeira em toda linha, sem cadeado; nos termos a linha emprestada da Vendedora diz onde editar. Aviso de coordenadora sem assinante no envio, que trava só se a 0191 não estiver aplicada. Migration 0191 aplicada antes do deploy com OK do Lucas: coluna atualizado_por_nome e 13 linhas do Fabricio como coordenador, posição 1, contrato@fgurgel.com.br (19, 20, 27, 29, 31, 32, 33, 35, 38, 39, 40, 42, 9001), idempotente também depois de exclusão. Termo de acordo sem o terceiro degrau (nenhuma incorporadora tem representante legal). Revisão em 3 lentes, 6 achados corrigidos. Suíte inteira verde (643 arquivos, 9.639 testes); depois do merge com a 1.380.0, 189 arquivos e 3.644 testes da área.",
+      motivation:
+        "Lucas, 25/09/2026: todas assinaturas eu tenho que conseguir excluir e editar, esse cadeado está errado; não tem que ter mais sync com c2x referente a contrato; troca o e-mail da coordenadora de vendas em vez do diretoria, contrato; o fabricio não aparece para assinar.",
+    },
+    title: "Quadro de assinatura: toda linha se edita e se exclui, e é exatamente quem assina",
+    type: "melhoria",
+    version: "1.381.0",
+  },
+  {
     buildTag: "2026-09-25-cancelar-o-documento-e-nao-o-envelope",
     deployedAt: "2026-09-25T20:38:42-03:00",
     modules: [
