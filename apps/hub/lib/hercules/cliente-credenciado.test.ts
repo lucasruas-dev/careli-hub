@@ -486,6 +486,7 @@ const USUARIO_DO_C2X = "7001";
 function contrato(parcial: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     cancelada_em: null,
+    cancelamento_pedido_em: null,
     cliente_c2x_id: USUARIO_DO_C2X,
     cliente_documento: CPF,
     cliente_entity_id: null,
@@ -523,9 +524,13 @@ describe("credenciadoParaVender: o comprador da carteira", () => {
     // Sem etapa: ainda não há CAD. Ela nasce na GRAVAÇÃO da proposta, e é a `compra` que manda.
     expect(resposta.etapa).toBeNull();
     expect(resposta.motivo).toBeNull();
+    // ⚠️ Sem `desde`: não há CAD para datar, e a data do contrato antigo fica dentro da compra (o GET
+    // a mandaria ao portal que não é a Careli).
+    expect(resposta.desde).toBeNull();
     expect(resposta.entityId).toBe(ENTIDADE);
     expect(resposta.compra).toMatchObject({
       codigo: "000728",
+      desde: "2024-03-10T12:00:00.000Z",
       enterpriseIdDaUnidade: VEREDAS,
       entityIdDoContrato: ENTIDADE,
       papel: "titular",
@@ -587,6 +592,22 @@ describe("credenciadoParaVender: o comprador da carteira", () => {
     const resposta = await credenciadoParaVender(client, { cpf: CPF, enterpriseIds: [VEREDAS] });
 
     expect(resposta.credenciado).toBe(false);
+  });
+
+  it("⚠️ faturado com PEDIDO de distrato em curso não conta, e a leitura já o filtra no banco", async () => {
+    // Pelo fluxo do cancelamento, a etapa fica 'faturado' até a Têmis concluir; o pedido é só a marca.
+    const { client, consultas } = clienteFake({
+      contratos: [contrato({ cancelamento_pedido_em: "2026-09-20T12:00:00.000Z" })],
+      fontes: [fonte(ENTIDADE)],
+      identificadores: [vindaDoC2x(ENTIDADE)],
+    });
+
+    const resposta = await credenciadoParaVender(client, { cpf: CPF, enterpriseIds: [VEREDAS] });
+
+    expect(resposta.credenciado).toBe(false);
+    expect(resposta.motivo).toBe("Este cliente não tem CAD neste empreendimento.");
+    const leitura = consultas.find((c) => c.tabela === "hercules_propostas");
+    expect(leitura?.filtros).toContainEqual({ coluna: "cancelamento_pedido_em", valores: [null] });
   });
 
   it("o CPF do contrato só com dígitos casa com o CPF formatado da reserva", async () => {
@@ -773,7 +794,8 @@ describe("decidirPelasLinhas com a compra (a régua que a busca de proponentes u
     expect(decisao.credenciado).toBe(true);
     expect(decisao.origem).toBe("comprador_da_carteira");
     expect(decisao.entityId).toBe("ent-do-contrato");
-    expect(decisao.desde).toBe(COMPRA.desde);
+    expect(decisao.desde).toBeNull();
+    expect(decisao.compra?.desde).toBe(COMPRA.desde);
   });
 
   it("com CAD no escopo, a CAD decide e a compra é ignorada", () => {

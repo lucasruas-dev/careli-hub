@@ -31,6 +31,7 @@ import {
   somaDasParticipacoes,
 } from "@/lib/hercules/proposta-na-tela";
 import {
+  ehCpfInteiro,
   type ProponenteEncontrado,
   termoDaBusca,
 } from "@/lib/hercules/busca-de-proponente";
@@ -78,13 +79,20 @@ import { T } from "../tema";
 // e o carnê passam a discordar.
 
 type CredenciamentoNaTela = {
+  /**
+   * A porta da carteira foi o contrato lido AGORA (verdadeiro) ou a CAD que a carteira já abriu
+   * (falso). Só com ele a tela afirma "contrato ativo": a CAD da carteira continua valendo mesmo
+   * depois de um distrato, e aí a frase mentiria.
+   */
+  contratoAtivo?: boolean;
   credenciado: boolean;
   desde: null | string;
   etapa: null | string;
   motivo: null | string;
   /**
    * Por qual porta passou (26/09/2026). `comprador_da_carteira` = contrato ativo neste
-   * empreendimento; a tela troca o selo por "Comprador da carteira". Ausente = CAD.
+   * empreendimento, ou a CAD que nasceu dele; a tela troca o selo por "Comprador da carteira".
+   * Ausente = CAD.
    */
   origem?: null | "cad" | "comprador_da_carteira";
 };
@@ -901,6 +909,8 @@ export function ModalDeProposta({
               avisos: Array<{ motivo?: string; ok: boolean; para: string }>;
               /** Só na venda do comprador da carteira (26/09/2026). */
               cadDoComprador?: { estado: "criada" | "erro" | "ja_existia" };
+              /** Os co-compradores que entraram pela carteira, um estado por pessoa. */
+              cadsDosCoCompradores?: Array<{ estado: "criada" | "erro" | "ja_existia" }>;
               codigo?: string;
             };
             erros?: ErroDaProposta[];
@@ -922,7 +932,8 @@ export function ModalDeProposta({
       // ⚠️ A PROPOSTA SAIU, MAS A CAD DA CARTEIRA NÃO: a frase diz, para alguém abrir a CAD à mão.
       // Calar faria o comprador sumir do Board sem ninguém saber por quê.
       const semCad =
-        corpo.data?.cadDoComprador?.estado === "erro"
+        corpo.data?.cadDoComprador?.estado === "erro" ||
+        (corpo.data?.cadsDosCoCompradores ?? []).some((c) => c.estado === "erro")
           ? " A CAD de comprador da carteira não foi registrada; avise a coordenação."
           : "";
       onGerada(
@@ -1350,7 +1361,8 @@ export function ModalDeProposta({
                   {/* ⚠️ O SELO É A DECISÃO, e vem inteiro do servidor. Verde: segue. Vermelho: a frase
                       diz em que etapa a CAD está e desde quando — é com ela que o coordenador sabe a
                       quem cobrar, em vez de ligar para descobrir o que a tela já sabia. Grafite
-                      (26/09/2026): segue pela carteira, sem CAD aberta na esteira. */}
+                      (26/09/2026): segue pela carteira. "Contrato ativo" só quando o servidor leu
+                      o contrato agora; com a CAD que a carteira já abriu, a frase fala da CAD. */}
                   {compradorDaCarteira ? (
                     <div
                       style={{
@@ -1367,7 +1379,9 @@ export function ModalDeProposta({
                     >
                       <ChipCompradorDaCarteira />
                       <span style={{ color: T.sub, fontSize: 11.5 }}>
-                        Contrato ativo neste empreendimento. A reserva pode virar proposta.
+                        {portao?.credenciamento.contratoAtivo === true
+                          ? "Contrato ativo neste empreendimento. A reserva pode virar proposta."
+                          : "CAD aberta como comprador da carteira. A reserva pode virar proposta."}
                       </span>
                     </div>
                   ) : (
@@ -1650,6 +1664,11 @@ export function ModalDeProposta({
                                 CAD não encontrada neste empreendimento. Abra a
                                 CAD do proponente antes de incluí-lo na
                                 proposta.
+                                {/* (26/09/2026) O comprador da carteira só aparece pelo CPF inteiro
+                                    (a busca por nome não lista a carteira): a dica diz como achá-lo. */}
+                                {ehCpfInteiro(termoDaBusca(novo.nome))
+                                  ? ""
+                                  : " Se ele já é comprador aqui, digite o CPF inteiro."}
                               </span>
                             ) : (
                               candidatos.map((c) => (

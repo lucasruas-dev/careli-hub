@@ -19,8 +19,18 @@
 // ⚠️ NUNCA `empreendimento_codigo`. É sigla, e sigla muda (43 RDV virou PDI em 24/09): a chave é o id
 // da unidade. Ver a memória "C2X pela SIGLA quebra no renome".
 //
-// ⚠️ SÓ 'faturado' É CONTRATO ATIVO. Cancelado e distrato não contam; assinatura e contrato também
-// não (ainda não é contrato ativo, são 309 pessoas a mais que ficariam de fora de propósito).
+// ⚠️ SÓ 'faturado' É CONTRATO ATIVO. Cancelado e distrato não contam, e o faturado com PEDIDO de
+// cancelamento ou distrato em curso (`cancelamento_pedido_em`) também não: a etapa não se mexe até a
+// Têmis concluir, e nesse intervalo o contrato que o cliente pediu para desfazer não pode ser a
+// prova para comprar outro lote sem CAD (medido em 26/09/2026: 0 faturados com pedido). Marca que
+// sobrou de pedido indeferido também barra, e o lado é o seguro: a pessoa abre CAD como antes.
+//
+// ⚠️ PENDENTE DO LUCAS: 'assinatura' (26/09/2026, só SELECT). São 412 contratos em 'assinatura' com
+// estágio 5 do C2X ("Em assinatura"), data de assinatura, unidade vendida e sem pedido; 400 deles
+// estão na etapa há 91 a 365 dias. Contá-los poria 332 pessoas a mais na porta (307 titulares e 25
+// co-compradores), 322 delas sem CAD na família. Ficaram de fora porque "faturado" é a regra escrita
+// da Têmis (7 dias da última assinatura E entrada paga), e "passa mesmo em atraso" falou de parcela,
+// não de entrada. Ligar é somar a etapa aqui, na leitura e no teste de fixture.
 //
 // ⚠️ O CO-COMPRADOR CONTA (`CO_COMPRADOR_CONTA`). Ele é parte do contrato: está em client_2..5 no
 // C2X, com percentual, assina e responde pela dívida. A regra "co-comprador não conta" (04/07) é da
@@ -49,8 +59,8 @@ export const ETAPA_DO_CONTRATO_ATIVO = "faturado";
  */
 export const CO_COMPRADOR_CONTA = true;
 
-/** O valor de `apolo_esteira.origem` da CAD que nasce da carteira. */
-export const ORIGEM_COMPRADOR_DA_CARTEIRA = "comprador_da_carteira";
+/** O valor de `apolo_esteira.origem` da CAD que nasce da carteira (mora num módulo sem dependência). */
+export { ORIGEM_COMPRADOR_DA_CARTEIRA } from "./origem-da-cad";
 
 const WORKSPACE = "careli";
 
@@ -66,6 +76,8 @@ const LOTE_DE_HASH = 50;
 /** A linha de `hercules_propostas` que esta régua lê, com a unidade embutida. */
 export type LinhaDoContrato = {
   cancelada_em?: null | string;
+  /** O pedido de cancelamento ou distrato à Têmis. Preenchido, o contrato não conta. */
+  cancelamento_pedido_em?: null | string;
   cliente_c2x_id: null | number | string;
   cliente_documento: null | string;
   cliente_entity_id: null | string;
@@ -131,12 +143,13 @@ function unidadeDa(linha: LinhaDoContrato): null | UnidadeDoContrato {
  * Este contrato está ativo e dentro do escopo?
  *
  * ⚠️ A LEITURA JÁ FILTRA ISTO NO BANCO, e a função repete de propósito: é ela que os testes
- * exercitam com fixtures de distrato, assinatura e empreendimento vizinho, e é ela que impede uma
- * leitura escrita errada no futuro de deixar passar quem não devia.
+ * exercitam com fixtures de distrato, pedido de cancelamento, assinatura e empreendimento vizinho,
+ * e é ela que impede uma leitura escrita errada no futuro de deixar passar quem não devia.
  */
 export function contratoAtivoNoEscopo(linha: LinhaDoContrato, escopo: ReadonlySet<string>): boolean {
   if (texto(linha.etapa).toLowerCase() !== ETAPA_DO_CONTRATO_ATIVO) return false;
   if (texto(linha.cancelada_em)) return false;
+  if (texto(linha.cancelamento_pedido_em)) return false;
   const enterpriseId = texto(unidadeDa(linha)?.enterprise_id);
   return Boolean(enterpriseId) && escopo.has(enterpriseId);
 }
@@ -259,7 +272,8 @@ export function compraDaPessoa(
 }
 
 /**
- * Os contratos ativos (faturados, não cancelados) cujas unidades estão no escopo.
+ * Os contratos ativos (faturados, sem cancelamento e sem pedido de cancelamento) cujas unidades
+ * estão no escopo.
  *
  * ⚠️ O EMPREENDIMENTO VEM DA UNIDADE, embutida com `!inner` e filtrada no banco pelo id do C2X. A
  * família de um empreendimento tem centenas de faturados (medido: 144 no VDO, 182 no Vale do Ouro
@@ -281,11 +295,12 @@ export async function lerContratosAtivos(
     const { data, error } = await admin
       .from("hercules_propostas")
       .select(
-        "id, codigo, etapa, etapa_desde, cancelada_em, cliente_c2x_id, cliente_documento, cliente_entity_id, cliente_nome, compradores, unidade:hercules_unidades!inner(id, codigo, enterprise_id)",
+        "id, codigo, etapa, etapa_desde, cancelada_em, cancelamento_pedido_em, cliente_c2x_id, cliente_documento, cliente_entity_id, cliente_nome, compradores, unidade:hercules_unidades!inner(id, codigo, enterprise_id)",
       )
       .eq("workspace_id", WORKSPACE)
       .eq("etapa", ETAPA_DO_CONTRATO_ATIVO)
       .is("cancelada_em", null)
+      .is("cancelamento_pedido_em", null)
       .in("unidade.enterprise_id", ids)
       .order("id", { ascending: true })
       .range(de, de + PAGINA - 1);

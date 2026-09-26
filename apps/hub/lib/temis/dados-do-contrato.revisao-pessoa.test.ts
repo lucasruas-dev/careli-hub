@@ -668,4 +668,86 @@ describe("A e D. a mesma pessoa, e o comprador que não vende o próprio lote (r
     const { gerais } = await comprador(sb, "p-importada");
     expect(gerais.corretor_nome).toBe("CORRETOR DE VERDADE");
   });
+
+  it("⚠️ a CAD do COMPRADOR DA CARTEIRA não diz quem vendeu a venda antiga (26/09/2026)", async () => {
+    // Ela nasce na proposta NOVA com o corretor e a imobiliária da reserva de hoje, e a imobiliária
+    // quase sempre é a mesma da venda antiga (232 de 232 recompras medidas): a trava da imobiliária
+    // deixaria passar, e o distrato do lote antigo sairia com o corretor de 2026.
+    const CORRETOR_DE_HOJE = "c0000000-0000-0000-0000-00000000000d";
+    const sb = banco({
+      apolo_addresses: [],
+      apolo_contacts: [],
+      apolo_enterprise_settings: [],
+      apolo_entities: [
+        espelho(),
+        cad({ metadata: { ...(cad().metadata as Linha), c2xUserId: "4880" } }),
+        { display_name: "IMOBILIARIA", document_masked: "44.555.666/0001-81", entity_kind: "pj", id: IMOBILIARIA },
+        { display_name: "CORRETOR DA RESERVA DE HOJE", document_masked: "222.333.444-05", entity_kind: "pf", id: CORRETOR_DE_HOJE },
+      ],
+      apolo_esteira: [
+        {
+          atualizado_em: "2026-09-26T12:00:00Z",
+          corretor_entity_id: CORRETOR_DE_HOJE,
+          enterprise_id: "35",
+          entity_id: CAD,
+          ficha: null,
+          imobiliaria_entity_id: IMOBILIARIA,
+          origem: "comprador_da_carteira",
+        },
+      ],
+      apolo_relationships: [],
+      // A imobiliária da venda antiga é a MESMA da CAD da carteira.
+      apolo_source_links: [link(ESPELHO, "4880"), link(IMOBILIARIA, "2456")],
+      hercules_empreendimentos: [
+        { c2x_enterprise_id: "35", cidade: "Pará de Minas", codigo: "VLO", id: VLO, nome: "Vale do Ouro", pai_id: null, uf: "MG" },
+      ],
+      hercules_proposta_eventos: [],
+      hercules_propostas: [importada()],
+      hercules_unidades: [
+        { area: 360, codigo: "VLO0101", enterprise_id: "35", id: UNIDADE, lote: "01", matricula: "1", preco_tabela: 100000, quadra: "01", tipo_unidade: "lote" },
+      ],
+      temis_envelopes: [],
+    });
+    const { gerais } = await comprador(sb, "p-importada");
+    expect(gerais.corretor_nome ?? "").not.toBe("CORRETOR DA RESERVA DE HOJE");
+    expect(gerais.corretor_nome ?? "").toBe("");
+    // A imobiliária continua vindo da venda (o link do C2X), como antes.
+    expect(gerais.imobiliaria_nome).toBe("IMOBILIARIA");
+
+    // O controle: a MESMA linha, sem a origem da carteira, nomeia o corretor (a trava é a origem).
+    const semOrigem = banco({
+      apolo_addresses: [],
+      apolo_contacts: [],
+      apolo_enterprise_settings: [],
+      apolo_entities: [
+        espelho(),
+        cad({ metadata: { ...(cad().metadata as Linha), c2xUserId: "4880" } }),
+        { display_name: "IMOBILIARIA", document_masked: "44.555.666/0001-81", entity_kind: "pj", id: IMOBILIARIA },
+        { display_name: "CORRETOR DA RESERVA DE HOJE", document_masked: "222.333.444-05", entity_kind: "pf", id: CORRETOR_DE_HOJE },
+      ],
+      apolo_esteira: [
+        {
+          atualizado_em: "2026-09-26T12:00:00Z",
+          corretor_entity_id: CORRETOR_DE_HOJE,
+          enterprise_id: "35",
+          entity_id: CAD,
+          ficha: null,
+          imobiliaria_entity_id: IMOBILIARIA,
+          origem: "publico",
+        },
+      ],
+      apolo_relationships: [],
+      apolo_source_links: [link(ESPELHO, "4880"), link(IMOBILIARIA, "2456")],
+      hercules_empreendimentos: [
+        { c2x_enterprise_id: "35", cidade: "Pará de Minas", codigo: "VLO", id: VLO, nome: "Vale do Ouro", pai_id: null, uf: "MG" },
+      ],
+      hercules_proposta_eventos: [],
+      hercules_propostas: [importada()],
+      hercules_unidades: [
+        { area: 360, codigo: "VLO0101", enterprise_id: "35", id: UNIDADE, lote: "01", matricula: "1", preco_tabela: 100000, quadra: "01", tipo_unidade: "lote" },
+      ],
+      temis_envelopes: [],
+    });
+    expect((await comprador(semOrigem, "p-importada")).gerais.corretor_nome).toBe("CORRETOR DA RESERVA DE HOJE");
+  });
 });

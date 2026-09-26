@@ -544,10 +544,11 @@ describe("enquanto a proposta está sendo enviada", () => {
 // grafite "Comprador da carteira", e não com o verde "CAD credenciada": passa, mas por outra porta,
 // e o coordenador precisa ver a diferença sem ler a frase.
 describe("o comprador da carteira", () => {
-  function comOrigem(origem: null | string) {
+  function comOrigem(origem: null | string, contratoAtivo = origem === "comprador_da_carteira") {
     (portao as { credenciamento: Record<string, unknown> }).credenciamento = {
+      contratoAtivo,
       credenciado: true,
-      desde: "2024-03-10",
+      desde: null,
       etapa: null,
       motivo: null,
       origem,
@@ -574,12 +575,68 @@ describe("o comprador da carteira", () => {
     expect(botao("Montar as condições").disabled).toBe(false);
   });
 
+  it("⚠️ pela CAD que a carteira JÁ abriu, o selo não afirma contrato ativo: fala da CAD", async () => {
+    // A CAD da carteira continua credenciada mesmo depois de um distrato; afirmar "contrato ativo"
+    // aí seria mentir. O servidor diz qual das duas portas foi (`contratoAtivo`).
+    comOrigem("comprador_da_carteira", false);
+    await abrir();
+
+    expect(alvo.textContent).toContain("Comprador da carteira");
+    expect(alvo.textContent).toContain("CAD aberta como comprador da carteira");
+    expect(alvo.textContent).not.toContain("Contrato ativo neste empreendimento");
+    expect(botao("Montar as condições").disabled).toBe(false);
+  });
+
   it("CAD de sempre continua com o selo de sempre", async () => {
     comOrigem("cad");
     await abrir();
 
     expect(alvo.textContent).toContain("CAD credenciada neste empreendimento");
     expect(alvo.textContent).not.toContain("Comprador da carteira");
+  });
+
+  it("a busca vazia por nome ensina que o comprador da carteira se acha pelo CPF inteiro", async () => {
+    await abrir();
+    daBusca = [];
+    const campo = alvo.querySelector<HTMLInputElement>('input[placeholder="Buscar por nome ou CPF na base"]');
+    digitar(campo as HTMLInputElement, "Bia");
+    await act(async () => {
+      await new Promise((pronto) => setTimeout(pronto, 320));
+    });
+    expect(alvo.textContent).toContain("digite o CPF inteiro");
+
+    digitar(campo as HTMLInputElement, "529.982.247-25");
+    await act(async () => {
+      await new Promise((pronto) => setTimeout(pronto, 320));
+    });
+    expect(alvo.textContent).toContain("CAD não encontrada neste empreendimento");
+    expect(alvo.textContent).not.toContain("digite o CPF inteiro");
+  });
+
+  it("⚠️ a CAD do CO-comprador da carteira que não nasceu também vira recado", async () => {
+    vi.stubGlobal(
+      "fetch",
+      fetchDoPortao(async () => ({
+        corpo: JSON.stringify({
+          data: {
+            avisos: [{ ok: true, para: "coordenador" }],
+            cadsDosCoCompradores: [{ estado: "erro" }],
+            codigo: "PRP-10",
+          },
+        }),
+        ok: true,
+      })),
+    );
+
+    const { aoGerar } = await abrir();
+    clicar(botao("Montar as condições"));
+    await act(async () => {
+      clicar(botao("Gerar proposta"));
+      await new Promise((pronto) => setTimeout(pronto, 0));
+    });
+
+    const recado = String(aoGerar.mock.calls[0]?.[0]);
+    expect(recado).toContain("A CAD de comprador da carteira não foi registrada");
   });
 
   it("na busca de proponentes, o comprador da carteira vem com o selo e pode ser escolhido", async () => {
@@ -596,7 +653,8 @@ describe("o comprador da carteira", () => {
       } as EncontradoNaBusca,
     ];
     const campo = alvo.querySelector<HTMLInputElement>('input[placeholder="Buscar por nome ou CPF na base"]');
-    digitar(campo as HTMLInputElement, "Bia");
+    // Pelo CPF inteiro: é o único termo que a rota responde com o comprador da carteira.
+    digitar(campo as HTMLInputElement, CPF_DA_ESPOSA);
     await act(async () => {
       await new Promise((pronto) => setTimeout(pronto, 320));
     });

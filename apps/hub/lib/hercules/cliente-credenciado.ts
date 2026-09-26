@@ -78,6 +78,10 @@ export type CredenciamentoDoTitular = {
    * transição: `atualizado_em` muda em QUALQUER escrita da linha (o analista trocou o corretor, o
    * sync mexeu no empreendimento). Serve para a frase "desde 02/09" porque é a melhor aproximação
    * que existe, e é preciso saber disso antes de usá-lo como prova de prazo.
+   *
+   * ⚠️ `null` NA PORTA DA CARTEIRA SEM CAD (26/09/2026). Não há CAD para datar, e a data do contrato
+   * antigo (que fica em `compra.desde`) não é da conta de quem abre a modal: o GET a mandaria ao
+   * portal que não é a Careli, inclusive a de contrato do espelho do pai, que é dividido com o Lino.
    */
   desde: null | string;
   /**
@@ -273,8 +277,10 @@ async function compraNaFamilia(
  *      evidência, pelo override (esteira.ts; Lucas, 04/08).
  *   3. A CAD da carteira não pode sobrescrever a existente, e o Board mostraria "revisão" ao lado de
  *      uma proposta viva.
- *   4. O custo é medido e pequeno: 2 compradores com CAD em revisão na família (26/09/2026), e para
- *      eles a saída é o override.
+ *   4. O custo é medido e pequeno: 5 compradores com CAD em revisão na família (26/09/2026, 2
+ *      titulares e 3 co-compradores, contratos do VOC e do VOL, todos faturados depois da última
+ *      escrita da CAD), e
+ *      para eles a saída é o override. Ponto levado ao Lucas.
  */
 export function decidirPelasLinhas(
   linhas: LinhaDaEsteira[],
@@ -326,12 +332,13 @@ export function decidirPelasLinhas(
 
   // ⚠️ SEM CAD NENHUMA, MAS COM CONTRATO ATIVO NA FAMÍLIA: É O COMPRADOR DA CARTEIRA. Credenciado,
   // sem etapa (ainda não há CAD; ela nasce na gravação da proposta, nunca na leitura), e com a
-  // entidade DO CONTRATO, que é onde a CAD vai nascer e a que a proposta aponta.
+  // entidade DO CONTRATO, que é onde a CAD vai nascer e a que a proposta aponta. Sem `desde`: não
+  // há CAD para datar, e a data do contrato antigo fica dentro de `compra` (ver o tipo).
   if (!escolhida && compra) {
     return {
       compra,
       credenciado: true,
-      desde: compra.desde,
+      desde: null,
       entityId: compra.entityIdDoContrato ?? entityIds[0] ?? null,
       etapa: null,
       motivo: null,

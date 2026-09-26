@@ -99,6 +99,15 @@ export function termoDaBusca(cru: string): TermoDaBusca {
 }
 
 /**
+ * O termo é o CPF inteiro (onze dígitos)? É a chave que abre o espelho do pai e o comprador da
+ * carteira na busca (26/09/2026): confirmação do que o corretor já tem na mão, e não lista. A tela
+ * usa a mesma função para dizer quando vale digitar o CPF inteiro.
+ */
+export function ehCpfInteiro(termo: TermoDaBusca): termo is { digitos: string; tipo: "cpf" } {
+  return termo.tipo === "cpf" && termo.digitos.length === 11;
+}
+
+/**
  * Texto comparável: sem acento, sem caixa, sem espaço repetido.
  *
  * ⚠️ SEM ISTO, "JOAO" NÃO ACHA "João". A base tem nome vindo do C2X em caixa alta e sem acento,

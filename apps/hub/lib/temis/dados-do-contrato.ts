@@ -55,6 +55,7 @@ import { type BemOuPermuta, somarBensEPermutas, valeDinheiro } from "@/lib/hercu
 import type { FatosApurados } from "@/lib/hercules/fatos-do-contrato";
 import { lerFatosDoContrato } from "@/lib/hercules/fatos-do-contrato-server";
 import { lerComColunasDoApartamento } from "@/lib/hercules/nome-da-unidade";
+import { ORIGEM_COMPRADOR_DA_CARTEIRA } from "@/lib/hercules/origem-da-cad";
 
 import {
   areaPorExtenso,
@@ -260,6 +261,8 @@ type LinhaDaEsteira = {
   ficha: unknown;
   imobiliaria?: null | string;
   imobiliaria_entity_id?: null | string;
+  /** De onde a CAD veio. A da carteira ('comprador_da_carteira') não diz quem vendeu nada antigo. */
+  origem?: null | string;
 };
 
 type LinhaDoEndereco = {
@@ -1085,8 +1088,9 @@ async function camadasDoCadastro(
         .from("apolo_esteira")
         // ⚠️ O CORRETOR E A IMOBILIÁRIA VÊM NA MESMA VIAGEM DA FICHA: a venda importada não os tem, e
         // a CAD do titular tem (ver `quemVendeuPeloApolo`). Uma consulta a mais por card para ler
-        // colunas da linha que já vinha seria desperdício.
-        .select("corretor, corretor_entity_id, enterprise_id, entity_id, ficha, imobiliaria, imobiliaria_entity_id")
+        // colunas da linha que já vinha seria desperdício. A `origem` vem pela mesma razão: a CAD da
+        // carteira não pode responder quem vendeu (ver `quemVendeuPeloApolo`).
+        .select("corretor, corretor_entity_id, enterprise_id, entity_id, ficha, imobiliaria, imobiliaria_entity_id, origem")
         .in("entity_id", ids)
         .order("atualizado_em", { ascending: false }),
       "apolo_esteira",
@@ -1304,6 +1308,14 @@ type QuemVendeu = {
  * ⚠️ E A CAD SÓ VALE SE A IMOBILIÁRIA DELA FOR A DA VENDA. Medido: das 160, 152 casam (pelo id ou
  * pelo mesmo CNPJ) e 8 não. Nessas 8 o corretor da CAD é de OUTRA imobiliária — nomeá-lo no contrato
  * de corretagem poria um beneficiário que não vendeu. Sem casar, fica "não informado", como antes.
+ *
+ * ⚠️ A CAD DO COMPRADOR DA CARTEIRA NÃO CONTA (26/09/2026). Ela nasce na proposta NOVA com o
+ * corretor e a imobiliária da reserva de hoje (`cad-do-comprador.ts`), e quase sempre é a mesma
+ * imobiliária da venda antiga (232 de 232 compradores que repetiram compra no mesmo empreendimento),
+ * então a trava de cima deixaria passar: o distrato, o aditivo e a corretagem do lote ANTIGO sairiam
+ * com o corretor de 2026, que não vendeu aquele lote. Foi medido na venda antiga do comprador do
+ * Veredas com a CAD aberta à mão. Só a `origem` é olhada, e não a data da CAD contra a da venda: as
+ * CADs de verdade do Apolo são todas posteriores às vendas importadas, e a data apagaria o caso bom.
  */
 async function quemVendeuPeloApolo(
   sb: SupabaseClient,
@@ -1321,7 +1333,9 @@ async function quemVendeuPeloApolo(
   const daVenda = idDaImobiliaria ? (links.get(idDaImobiliaria) ?? []) : [];
 
   const comVinculo = (titular?.esteira ?? []).filter(
-    (l) => texto(l.corretor_entity_id) || texto(l.imobiliaria_entity_id),
+    (l) =>
+      (texto(l.corretor_entity_id) || texto(l.imobiliaria_entity_id)) &&
+      texto(l.origem).toLowerCase() !== ORIGEM_COMPRADOR_DA_CARTEIRA,
   );
 
   let cad: LinhaDaEsteira | null = null;

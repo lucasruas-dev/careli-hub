@@ -40,6 +40,7 @@ import {
   type LinhaDoCadastro,
 } from "@/lib/hercules/cadastro";
 import {
+  type EntradaDaCadDoComprador,
   enterpriseIdDaCad,
   garantirCadDoComprador,
   type ResultadoDaCadDoComprador,
@@ -623,6 +624,10 @@ export async function GET(request: Request) {
       {
         data: {
           credenciamento: {
+            // ⚠️ SÓ UM BOOLEANO DA COMPRA, nunca o objeto (ids, códigos e a data do contrato antigo
+            // não vão para a tela). Verdadeiro quando a porta foi o contrato lido AGORA; falso quando
+            // foi a CAD que a carteira já abriu, e aí a tela não afirma contrato ativo nenhum.
+            contratoAtivo: Boolean(credenciamento.compra),
             credenciado: credenciamento.credenciado,
             desde: credenciamento.desde,
             etapa: credenciamento.etapa,
@@ -1638,29 +1643,56 @@ export async function POST(request: Request) {
     //
     // ⚠️ NÃO DERRUBA A PROPOSTA. `garantirCadDoComprador` nunca lança; a falha fica no log e na
     // resposta (`cadDoComprador`), e a venda segue gravada.
-    let cadDoComprador: null | ResultadoDaCadDoComprador = null;
-    if (credenciamento.compra) {
-      const enterpriseIdDaCadNova = enterpriseIdDaCad(cadastro, c2xId);
-      const doCadastro = empreendimentoDaUnidade(cadastro, enterpriseIdDaCadNova);
-      cadDoComprador = await garantirCadDoComprador(admin, {
-        agora,
-        atualizadoPor: sessao.usuarioId ?? null,
-        codigoDaVenda: codigo,
-        compra: credenciamento.compra,
-        corretorEntityId: reserva.corretor_entity_id,
-        corretorNome: nomeDoCorretor,
-        empreendimentoNome: doCadastro?.nome ?? empreendimento.nome,
-        enterpriseId: enterpriseIdDaCadNova,
-        entityId: credenciamento.entityId,
-        imobiliariaEntityId: reserva.imobiliaria_entity_id,
-        imobiliariaNome: nomeDaImobiliaria,
+    //
+    // (revisão de 26/09/2026) ⚠️ O CO-COMPRADOR QUE ENTROU PELA CARTEIRA TAMBÉM GANHA A CAD. A busca
+    // de proponentes o libera pela mesma régua do titular; sem isto ele entrava na proposta sem
+    // linha nenhuma em `apolo_esteira`, fora do Board e do CRM, e a esteira deixava de ser a fonte
+    // da decisão. A pergunta é a do titular (`credenciadoParaVender`, no mesmo escopo) e só escreve
+    // quando a porta foi a compra, sem CAD no escopo. Leitura que falha vira 'erro' aqui, nunca 503:
+    // a proposta já está gravada. E NÃO BARRA o co: o POST nunca o reconferiu (a busca é o portão
+    // da tela desde 05/09), e barrar aqui seria regra nova para toda proposta com co.
+    const enterpriseIdDaCadNova = enterpriseIdDaCad(cadastro, c2xId);
+    const baseDaCad: BaseDaCadDoComprador = {
+      agora,
+      atualizadoPor: sessao.usuarioId ?? null,
+      codigoDaVenda: codigo,
+      corretorEntityId: reserva.corretor_entity_id,
+      corretorNome: nomeDoCorretor,
+      empreendimentoNome:
+        empreendimentoDaUnidade(cadastro, enterpriseIdDaCadNova)?.nome ?? empreendimento.nome,
+      enterpriseId: enterpriseIdDaCadNova,
+      imobiliariaEntityId: reserva.imobiliaria_entity_id,
+      imobiliariaNome: nomeDaImobiliaria,
+    };
+    const cpfsDosCoCompradores = [
+      ...new Set(
+        compradores
+          .filter((c) => !c.titular)
+          .map((c) => soDigitos(c.cpf))
+          .filter((cpf) => cpf.length === 11 && cpf !== cpfDoTitular),
+      ),
+    ];
+    const [cadDoComprador, cadsDosCoCompradores] = await Promise.all([
+      credenciamento.compra
+        ? garantirCadDoComprador(admin, {
+            ...baseDaCad,
+            compra: credenciamento.compra,
+            entityId: credenciamento.entityId,
+          })
+        : Promise.resolve(null),
+      Promise.all(
+        cpfsDosCoCompradores.map((cpf) => cadDoCoComprador(admin, cpf, escopoDaEsteira, baseDaCad)),
+      ).then((lista) => lista.filter((r): r is ResultadoDaCadDoComprador => r !== null)),
+    ]);
+    const falhasDaCad = [
+      ...(cadDoComprador?.estado === "erro" ? [{ motivo: cadDoComprador.motivo, quem: "titular" }] : []),
+      ...cadsDosCoCompradores.flatMap((r) => (r.estado === "erro" ? [{ motivo: r.motivo, quem: "co" }] : [])),
+    ];
+    for (const falha of falhasDaCad) {
+      console.error("[hercules][proposta] a CAD do comprador da carteira não nasceu", {
+        ...falha,
+        propostaId,
       });
-      if (cadDoComprador.estado === "erro") {
-        console.error("[hercules][proposta] a CAD do comprador da carteira não nasceu", {
-          motivo: cadDoComprador.motivo,
-          propostaId,
-        });
-      }
     }
 
     // ── 9. O PDF e os três avisos ──────────────────────────────────────────
@@ -1703,6 +1735,10 @@ export async function POST(request: Request) {
         // "erro". Campo próprio, e não uma linha em `avisos`: aquela lista diz QUEM FOI AVISADO, e
         // "falhou para cad" seria lido como um WhatsApp que não saiu.
         ...(cadDoComprador ? { cadDoComprador: { estado: cadDoComprador.estado } } : {}),
+        // Os co-compradores que entraram pela carteira, um estado por pessoa (sem nome nem CPF).
+        ...(cadsDosCoCompradores.length > 0
+          ? { cadsDosCoCompradores: cadsDosCoCompradores.map((r) => ({ estado: r.estado })) }
+          : {}),
         codigo,
         id: propostaId,
       },
@@ -1723,6 +1759,31 @@ export async function POST(request: Request) {
       { error: "Não foi possível gerar a proposta agora." },
       { status: 503 },
     );
+  }
+}
+
+/** O que a CAD da carteira do titular e a dos co-compradores têm em comum: a venda que a abriu. */
+type BaseDaCadDoComprador = Omit<EntradaDaCadDoComprador, "compra" | "entityId">;
+
+/**
+ * A CAD de um co-comprador que entrou pela carteira, se for o caso. `null` quando ele não precisa
+ * de CAD nova (tem CAD no escopo, ou não é comprador da carteira).
+ *
+ * ⚠️ NUNCA LANÇA. Roda depois de a proposta estar gravada: a leitura que falha (inclusive a
+ * `FalhaAoLerCredenciamento`, que no titular vira 503) aqui vira `erro`, no log e na resposta.
+ */
+async function cadDoCoComprador(
+  admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  cpf: string,
+  escopo: string[],
+  base: BaseDaCadDoComprador,
+): Promise<null | ResultadoDaCadDoComprador> {
+  try {
+    const dele = await credenciadoParaVender(admin, { cpf, enterpriseIds: escopo });
+    if (!dele.credenciado || !dele.compra) return null;
+    return await garantirCadDoComprador(admin, { ...base, compra: dele.compra, entityId: dele.entityId });
+  } catch (erro) {
+    return { estado: "erro", motivo: erro instanceof Error ? erro.message : String(erro) };
   }
 }
 

@@ -50,6 +50,14 @@ describe("contratoAtivoNoEscopo", () => {
     ).toBe(true);
     expect(contratoAtivoNoEscopo(linha({ unidade: null }), escopo)).toBe(false);
   });
+
+  it("⚠️ faturado com PEDIDO de cancelamento ou distrato em curso não conta (a etapa só muda no fim)", () => {
+    const escopo = new Set(["19"]);
+    expect(contratoAtivoNoEscopo(linha({ cancelamento_pedido_em: "2026-09-20T12:00:00.000Z" }), escopo)).toBe(
+      false,
+    );
+    expect(contratoAtivoNoEscopo(linha({ cancelamento_pedido_em: null }), escopo)).toBe(true);
+  });
 });
 
 describe("compradoresDoContrato", () => {

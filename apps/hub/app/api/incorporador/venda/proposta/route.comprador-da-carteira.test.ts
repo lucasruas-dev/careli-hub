@@ -17,6 +17,8 @@ const estado = vi.hoisted(() => ({
   apagado: [] as Array<{ tabela: string }>,
   avisados: 0,
   cadJaExiste: false,
+  /** A porta do CO-comprador (revisão de 26/09/2026): "carteira", "cad", "falha" ou nenhuma. */
+  coPorta: null as "cad" | "carteira" | "falha" | null,
   /** A ordem das escritas e dos avisos, para provar que a CAD vem antes do WhatsApp. */
   eventos: [] as string[],
   erroNaCad: null as null | string,
@@ -30,6 +32,7 @@ const estado = vi.hoisted(() => ({
 }));
 
 const ENTIDADE_DO_CONTRATO = "0b6f3c1e-5d7a-4c2b-9f10-3a2b1c0d9e8f";
+const ENTIDADE_DO_CO = "3e9c6f4b-8a0d-4f5e-8c43-6d5e4f3a2b1c";
 const IMOBILIARIA = "1c7a4d2f-6e8b-4d3c-8a21-4b3c2d1e0f9a";
 const CORRETOR = "2d8b5e3a-7f9c-4e4d-9b32-5c4d3e2f1a0b";
 
@@ -107,10 +110,44 @@ vi.mock("@/lib/hercules/planos-do-panteon", () => ({
   planosPreferindoOPanteon: () => [{ planos: [{ ...PLANO, descontoPercentual: 0 }] }],
 }));
 
-// A régua é dublê: devolve a porta que o teste escolheu.
+// A régua é dublê: devolve a porta que o teste escolheu. O titular é o CPF da reserva; qualquer
+// outro CPF é o co-comprador, e responde pela porta de `estado.coPorta`.
 vi.mock("@/lib/hercules/cliente-credenciado", () => ({
-  credenciadoParaVender: async () =>
-    estado.origem === "comprador_da_carteira"
+  credenciadoParaVender: async (_admin: unknown, alvo: { cpf: string }) => {
+    if (String(alvo.cpf).replace(/\D/g, "") !== "52998224725") {
+      if (estado.coPorta === "falha") throw new Error("apolo_esteira: leitura falhou (conexão caiu)");
+      if (estado.coPorta === "carteira") {
+        return {
+          compra: {
+            c2xUserId: "7002",
+            codigo: "000730",
+            desde: "2024-04-10T12:00:00.000Z",
+            enterpriseIdDaUnidade: String(estado.unidade.enterprise_id),
+            entityIdApontada: null,
+            entityIdDoContrato: ENTIDADE_DO_CO,
+            papel: "co",
+            propostaId: "prop-antiga-2",
+            unidade: "VDO0730",
+          },
+          credenciado: true,
+          desde: null,
+          entityId: ENTIDADE_DO_CO,
+          etapa: null,
+          motivo: null,
+          origem: "comprador_da_carteira",
+        };
+      }
+      return {
+        compra: null,
+        credenciado: estado.coPorta === "cad",
+        desde: null,
+        entityId: "ent-co",
+        etapa: estado.coPorta === "cad" ? "credenciado" : null,
+        motivo: null,
+        origem: estado.coPorta === "cad" ? "cad" : null,
+      };
+    }
+    return estado.origem === "comprador_da_carteira"
       ? {
           compra: {
             c2xUserId: "7001",
@@ -124,7 +161,8 @@ vi.mock("@/lib/hercules/cliente-credenciado", () => ({
             unidade: "VDO0728",
           },
           credenciado: true,
-          desde: "2024-03-10T12:00:00.000Z",
+          // Como a régua de verdade: na porta da carteira não há CAD para datar.
+          desde: null,
           entityId: ENTIDADE_DO_CONTRATO,
           etapa: null,
           motivo: null,
@@ -138,7 +176,8 @@ vi.mock("@/lib/hercules/cliente-credenciado", () => ({
           etapa: "credenciado",
           motivo: null,
           origem: "cad",
-        },
+        };
+  },
   FalhaAoLerCredenciamento: class extends Error {},
 }));
 
@@ -304,6 +343,7 @@ beforeEach(() => {
   estado.apagado = [];
   estado.avisados = 0;
   estado.cadJaExiste = false;
+  estado.coPorta = null;
   estado.eventos = [];
   estado.erroNaCad = null;
   estado.inserido = [];
@@ -414,10 +454,109 @@ describe("GET: a modal só LÊ", () => {
     );
     expect(r.status).toBe(200);
     const corpo = (await r.json()) as { data: { credenciamento: Record<string, unknown> } };
-    expect(corpo.data.credenciamento).toMatchObject({ credenciado: true, origem: "comprador_da_carteira" });
+    expect(corpo.data.credenciamento).toMatchObject({
+      contratoAtivo: true,
+      credenciado: true,
+      // ⚠️ A data do contrato antigo não vai para a tela (nem para o portal que não é a Careli).
+      desde: null,
+      origem: "comprador_da_carteira",
+    });
     // O objeto da compra (ids e códigos internos) não vai para a tela.
     expect(corpo.data.credenciamento).not.toHaveProperty("compra");
     expect(cadsGravadas()).toHaveLength(0);
     expect(estado.inserido).toHaveLength(0);
+  });
+
+  it("pela CAD de sempre, `contratoAtivo` é falso", async () => {
+    estado.origem = "cad";
+    const r = await GET(
+      new Request(`https://c2x.app.br/api/incorporador/venda/proposta?unidade=${String(estado.unidade.id)}`),
+    );
+    const corpo = (await r.json()) as { data: { credenciamento: Record<string, unknown> } };
+    expect(corpo.data.credenciamento).toMatchObject({ contratoAtivo: false, origem: "cad" });
+  });
+});
+
+// ── O CO-COMPRADOR QUE ENTROU PELA CARTEIRA (revisão de 26/09/2026) ──────────
+//
+// A busca de proponentes libera o co pela mesma régua do titular; sem a CAD dele, ele ficava fora do
+// Board e do CRM, e a esteira deixava de ser a fonte da decisão.
+
+const CPF_DO_CO = "111.444.777-35";
+const comCo = () =>
+  pedir({
+    compradores: [
+      { cpf: CPF_DO_TITULAR, nome: "Pedro", participacao: 50, telefone: "62991234567" },
+      { cpf: CPF_DO_CO, nome: "Bia", participacao: 50, telefone: "62991230000" },
+    ],
+  });
+
+describe("POST: a CAD do co-comprador da carteira", () => {
+  it("⚠️ o co sem CAD e com contrato ativo ganha a CAD credenciada, com a imobiliária e o corretor da reserva", async () => {
+    estado.origem = "cad";
+    estado.coPorta = "carteira";
+    const r = await comCo();
+
+    expect(r.status).toBe(200);
+    const corpo = (await r.json()) as { data: Record<string, unknown> };
+    expect(corpo.data).not.toHaveProperty("cadDoComprador");
+    expect(corpo.data.cadsDosCoCompradores).toEqual([{ estado: "criada" }]);
+    expect(cadsGravadas()).toHaveLength(1);
+    expect(cadsGravadas()[0]?.linha).toMatchObject({
+      corretor_entity_id: CORRETOR,
+      enterprise_id: "19",
+      entity_id: ENTIDADE_DO_CO,
+      etapa: "credenciado",
+      imobiliaria_entity_id: IMOBILIARIA,
+      origem: "comprador_da_carteira",
+    });
+    expect(cadsGravadas()[0]?.opcoes).toEqual({ ignoreDuplicates: true, onConflict: "entity_id,enterprise_id" });
+    // E antes dos avisos, como a do titular.
+    expect(estado.eventos).toEqual(["upsert:apolo_esteira", "avisos"]);
+  });
+
+  it("titular e co pela carteira: as duas CADs nascem, cada uma na sua entidade", async () => {
+    estado.coPorta = "carteira";
+    const r = await comCo();
+    expect(r.status).toBe(200);
+    expect(cadsGravadas().map((c) => c.linha.entity_id).sort()).toEqual(
+      [ENTIDADE_DO_CONTRATO, ENTIDADE_DO_CO].sort(),
+    );
+  });
+
+  it("o co com CAD de sempre não ganha escrita nenhuma", async () => {
+    estado.origem = "cad";
+    estado.coPorta = "cad";
+    const r = await comCo();
+    expect(r.status).toBe(200);
+    expect(cadsGravadas()).toHaveLength(0);
+    expect(((await r.json()) as { data: Record<string, unknown> }).data).not.toHaveProperty(
+      "cadsDosCoCompradores",
+    );
+  });
+
+  it("⚠️ a leitura do co que falha NÃO derruba a proposta: 200, avisos saem, e a resposta diz 'erro'", async () => {
+    estado.origem = "cad";
+    estado.coPorta = "falha";
+    const r = await comCo();
+    expect(r.status).toBe(200);
+    const corpo = (await r.json()) as { data: Record<string, unknown> };
+    expect(corpo.data.id).toBe("prop-nova");
+    expect(corpo.data.cadsDosCoCompradores).toEqual([{ estado: "erro" }]);
+    expect(estado.avisados).toBe(1);
+    expect(cadsGravadas()).toHaveLength(0);
+  });
+
+  it("a prévia não escreve a CAD do co", async () => {
+    estado.coPorta = "carteira";
+    const r = await pedir({
+      compradores: [
+        { cpf: CPF_DO_TITULAR, nome: "Pedro", participacao: 50, telefone: "62991234567" },
+        { cpf: CPF_DO_CO, nome: "Bia", participacao: 50, telefone: "62991230000" },
+      ],
+      previa: true,
+    });
+    expect(r.status).toBe(200);
+    expect(cadsGravadas()).toHaveLength(0);
   });
 });
