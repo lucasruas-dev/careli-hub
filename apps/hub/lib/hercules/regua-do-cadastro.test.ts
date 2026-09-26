@@ -20,7 +20,9 @@ import {
 //   2. os filhos saem na ordem (ordem, codigo) do cadastro: Lagoa Bonita = LBF, LBP, LBR;
 //   3. o VLO (35) é entrada simples E o grupo Vale do Ouro também;
 //   4. o LAB (31) fica fora das entradas;
-//   5. o nome de mercado bate com `nomeDoEmpreendimentoPorId` nas 38 linhas do cadastro.
+//   5. o nome de mercado bate com `nomeDoEmpreendimentoPorId` nas 38 linhas do cadastro;
+//   6. ter a chave do grupo não é pertencer a ele: as divisões de uma chave são `grupos[].ids`, e o
+//      pai (o 35) fica de fora pelo `papel`.
 
 type Crua = [codigo: string, nome: string, c2x: null | string, pai: null | string, ordem: number, vendendo: boolean];
 
@@ -183,12 +185,46 @@ describe("regra 1: o VLO (35) é entrada simples E o grupo Vale do Ouro também"
 
   it("o 35 responde como pai do grupo, com os filhos na ordem", () => {
     const vlo = empreendimentoPorId(REGUA, "35");
-    expect(vlo).toMatchObject({ chaveDoGrupo: "Vale do Ouro", excluido: false, pai: null, sigla: "VLO" });
+    expect(vlo).toMatchObject({
+      chaveDoGrupo: "Vale do Ouro",
+      excluido: false,
+      pai: null,
+      papel: "pai",
+      sigla: "VLO",
+    });
     expect(vlo?.filhos.map((f) => f.sigla)).toEqual(["VOC", "VOL", "VOR"]);
   });
 
   it("o espelho não entra nas divisões do grupo (somaria o loteamento duas vezes)", () => {
     expect(grupoPeloId(REGUA, "group:Vale do Ouro")?.ids).not.toContain("35");
+  });
+
+  it("ter a chave do grupo não é pertencer a ele: os membros são as divisões, e batem com grupos[].ids", () => {
+    const porChave = (chave: string) => [...REGUA.porId.values()].filter((e) => e.chaveDoGrupo === chave);
+
+    for (const grupo of REGUA.grupos) {
+      const membros = porChave(grupo.chave)
+        .filter((e) => e.papel === "divisao" && !e.excluido)
+        .map((e) => e.c2xEnterpriseId);
+      expect(new Set(membros), grupo.chave).toEqual(new Set(grupo.ids));
+    }
+
+    // A armadilha que o papel existe para evitar: filtrar só pela chave traz o pai junto.
+    expect(new Set(porChave("Vale do Ouro").map((e) => e.c2xEnterpriseId))).toEqual(new Set(["35", "36", "37", "41"]));
+    expect(new Set(porChave("Lagoa Bonita").map((e) => e.c2xEnterpriseId))).toEqual(new Set(["27", "31", "32", "33"]));
+  });
+
+  it("o papel: pai só para a raiz com filhos e id próprio (o espelho), divisão para o filho, simples para o resto", () => {
+    const pais = [...REGUA.porId.values()].filter((e) => e.papel === "pai").map((e) => `${e.c2xEnterpriseId}:${e.sigla}`);
+    expect(pais.sort()).toEqual(["31:LAB", "35:VLO"]);
+
+    const divisoes = [...REGUA.porId.values()].filter((e) => e.papel === "divisao").map((e) => e.sigla);
+    expect(new Set(divisoes)).toEqual(new Set(CADASTRO.filter((l) => l.paiId).map((l) => l.codigo)));
+
+    expect(empreendimentoPorId(REGUA, "43")?.papel).toBe("simples");
+    // Filho cujo pai não veio na leitura: simples, sem chave.
+    const semOPai = reguaDoCadastro(CADASTRO.filter((l) => l.codigo !== "LOX"));
+    expect(empreendimentoPorId(semOPai, "4")).toMatchObject({ chaveDoGrupo: null, papel: "simples" });
   });
 });
 
@@ -207,6 +243,7 @@ describe("regra 2: o LAB (31) continua fora", () => {
       chaveDoGrupo: "Lagoa Bonita",
       excluido: true,
       nomeDeMercado: "Lagoa Bonita",
+      papel: "pai",
       sigla: "LAB",
     });
   });
@@ -264,6 +301,7 @@ describe("pelo id: nome de mercado, sigla, pai, filhos e chave do grupo", () => 
       nome: "Vale do Ouro · VOC",
       nomeDeMercado: "Vale do Ouro",
       pai: { c2xEnterpriseId: "35", panteonId: uuid("VLO"), sigla: "VLO" },
+      papel: "divisao",
       sigla: "VOC",
     });
     // Pai só do Panteon: o filho sobe para ele do mesmo jeito.

@@ -525,7 +525,7 @@ Primeiro medir que leitor lê cada linha. Depois fundir, preservando o valor que
 - no Panteon, confere hercules_movimento_do_empreendimento, também do NOVO pai quando ele ainda não tem filhos;
 - grava pela função da 0197 numa transação, settings incluído.
 
-**Cache.** Sem aviso de 10 ou 30 min: o carimbo (F1) renova as outras instâncias em até 30 s.
+**Cache.** Sem aviso de 10 ou 30 min: o carimbo (F1) renova as outras instâncias pela primeira leitura depois de 30 s; a leitura seguinte já vê o novo.
 
 **Sigla, conforme a pergunta 1:**
 - (A) livre com a trava de movimento, e prefixoSugerido (app/api/apolo/empreendimentos/unidades/cadastrar/route.ts:121, :161; cadastrar-unidades-server.ts:386-388) passa a usar a sigla do cadastro pelo id;
@@ -752,7 +752,7 @@ Sem uma das duas, o produto criado no Panteon e depois no C2X fica com o vigia a
 - O vigia (F3) sobe cedo.
  - A SIGLA saiu das decisões padrão e virou a pergunta 1. Nada de F1 a F9 depende da resposta: as leituras que traduzem sigla->id já casam pelo id (c2x-pelo-id.ts:266-301), e a F5 tira as propostas da sigla.
  - FRONTEIRA COM A UNIFICAÇÃO (PAI É A FONTE): o PAN-124 NÃO muda o código da unidade. Continuam como estão:
-- os 7 montadores que cortam 3 letras (empreendimentos.ts:1174, carteira.ts:534, extrato.ts:321, vendas.ts:761, incorporador/contrato.ts:79, contratos.ts:421, attendance/data.ts:773);
+- os 6 montadores que cortam 3 letras (empreendimentos.ts:1174, carteira.ts:534, extrato.ts:321, vendas.ts:761, incorporador/contrato.ts:79, contratos.ts:421). Eram 7: o de attendance/data.ts:773 saiu na F1 (commit 0c821b60). Ele inventava a sigla por um mapa nome->sigla quando o servidor mandava a matrícula nula; agora, sem matrícula do servidor, a fila mostra '-';
 - os mapas fixos por sigla.
 Não é porque estejam certos. O código é a chave viva da unidade (a linha viva ainda é a do filho: 714 linhas com prefixo do filho e 0 segmento_id). Trocar só a exibição para VLO0104 seria o remendo de tela que o Lucas recusou; o conserto é a unificação.
 O PAN-124 vai primeiro até a F8b e entrega a régua por id (sigla do pai, filhos, chave do grupo), que a unificação consome.
@@ -784,7 +784,7 @@ Sem cadastro na partida a frio, a tela avisa e lista pelo id do C2X, sem lista v
 - ignora 2, 34 e o TST 9001.
 A troca do x-vercel-cron por Bearer CRON_SECRET continua fora do escopo.
  - CAMPOS DO LEGADO: divulgação, previsão de entrega, tipo e players vêm para o cadastro na F9, com importação única e sem sync. A tabela PRICE/SACOOC fica no financeiro, e os planos no item próprio.
- - CACHE: o cadastro em cache se renova pelo carimbo (count e max(atualizado_em)), conferido no máximo a cada 30 s por instância. Não é a cada leitura, por custo. O catálogo e o painel de contratos passam a usar esse cache.
+ - CACHE: o cadastro em cache se renova pelo carimbo (count e max(atualizado_em)), conferido no máximo a cada 30 s por instância. Não é a cada leitura, por custo. Com cadastro guardado, a leitura não espera o banco: devolve o guardado e confere em segundo plano (after()), e o que vier vale a partir da leitura seguinte. Cada ida ao banco tem prazo de 5 s; estourou, fica o anterior. Só a partida a frio espera. O catálogo e o painel de contratos passam a usar esse cache.
  - TST 9001 (vendendo = true em produção): o vigia o ignora. Pôr vendendo = false é sugerido na F13, com OK.
  - PROVAS:
 - os testes ficam no repositório, ao lado do código;

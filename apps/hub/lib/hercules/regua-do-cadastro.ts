@@ -9,6 +9,8 @@
 //   • o PAI e os FILHOS;
 //   • a CHAVE DO GRUPO. Até a F4 ela é o NOME DO PAI, porque é com ele que o catálogo, a sessão e o
 //     settings gravam `group:<Nome>` hoje; a F4 congela a chave numa coluna;
+//   • o PAPEL no grupo (divisão, pai ou simples). A chave sozinha não diz quem PERTENCE ao grupo: o
+//     pai com id vivo (o VLO 35) tem a chave e fica fora dos ids, como em ENTERPRISE_GROUPS;
 //   • os GRUPOS, derivados de `pai_id`, e não de `ENTERPRISE_GROUPS`.
 // NENHUM LEITOR TROCA DE FONTE NA F1. A régua nasce com as provas (teste e paridade só com SELECT), e
 // cada leitor passa a ela na fatia dele (F6, F7, F8b).
@@ -61,8 +63,14 @@ export type ParteDaRegua = {
 export type EmpreendimentoDaRegua = ParteDaRegua & {
   c2xEnterpriseId: string;
   /**
-   * A chave do grupo a que o id pertence: no filho, a do pai; no pai com filhos, a dele mesmo; no
-   * empreendimento sem grupo, `null`. Até a F4 é o nome do pai.
+   * A chave do grupo LIGADO ao id: na divisão, a do grupo que ela compõe; no pai, a do grupo que ele
+   * encabeça; no simples, `null`. Até a F4 é o nome do pai.
+   *
+   * ⚠️ TER A CHAVE NÃO É PERTENCER AO GRUPO. O pai com id próprio (o VLO 35) tem a chave e fica FORA
+   * de `grupos[].ids`: ENTERPRISE_GROUPS o deixa de fora de propósito, porque o 35 tem os mesmos lotes
+   * das divisões e somá-lo contaria o loteamento duas vezes. Quem quer os MEMBROS do grupo lê
+   * `grupos[].ids`, ou filtra por `papel === "divisao"` e `!excluido`: o teste prova que os dois dão o
+   * mesmo conjunto. Filtrar só por `chaveDoGrupo` traz o pai junto.
    */
   chaveDoGrupo: null | string;
   /** Está em `EXCLUDED_ENTERPRISE_IDS` (ou na lista que quem chamou passou). */
@@ -73,7 +81,20 @@ export type EmpreendimentoDaRegua = ParteDaRegua & {
   nomeDeMercado: string;
   /** O pai, para o filho. `null` para raiz. */
   pai: null | ParteDaRegua;
+  /**
+   * O lugar do id no grupo:
+   *   • "divisao": filho de um pai que veio na leitura. COMPÕE o grupo: fora os excluídos, as divisões
+   *     de uma chave são exatamente `grupos[].ids` dela;
+   *   • "pai": raiz com filhos e com id próprio no C2X. ENCABEÇA o grupo sem estar nos ids dele. É o
+   *     que o plano chama de espelho ("pai com c2x id próprio e com filhos"), que substitui
+   *     ENTERPRISE_MIRRORS na F8b: hoje o VLO 35, e o LAB 31, que é excluído;
+   *   • "simples": sem grupo (raiz sem filhos, ou filho cujo pai não veio na leitura).
+   */
+  papel: PapelNaRegua;
 };
+
+/** Ver `EmpreendimentoDaRegua.papel`. */
+export type PapelNaRegua = "divisao" | "pai" | "simples";
 
 /** Um grupo, derivado de `pai_id`: um pai do cadastro e as divisões dele. */
 export type GrupoDaRegua = {
@@ -238,14 +259,16 @@ export function reguaDoCadastro(
 
     const pai = paiDe(linha);
     const grupoProprio = linha.paiId ? undefined : grupoDoPai.get(linha.id);
+    const grupoDoFilho = pai ? grupoDoPai.get(pai.id) : undefined;
     porId.set(id, {
       ...parte(linha),
       c2xEnterpriseId: id,
-      chaveDoGrupo: pai ? (grupoDoPai.get(pai.id)?.chave ?? null) : (grupoProprio?.chave ?? null),
+      chaveDoGrupo: grupoDoFilho?.chave ?? grupoProprio?.chave ?? null,
       excluido: fora.has(id),
       filhos: grupoProprio?.divisoes ?? [],
       nomeDeMercado: nomesDeMercado.get(id) ?? "",
       pai: pai ? parte(pai) : null,
+      papel: grupoDoFilho ? "divisao" : grupoProprio ? "pai" : "simples",
     });
   }
 
