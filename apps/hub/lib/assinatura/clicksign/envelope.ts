@@ -133,6 +133,25 @@ export type FalhaNoEnvio = {
    * envelope conferir; alguém teria de caçar na lista da Clicksign, no meio de contratos de verdade.
    */
   envelopeId: null | string;
+  /**
+   * O id do DOCUMENTO que ficou dentro desse envelope, e ele viaja pelo MESMO motivo que o de cima.
+   *
+   * ⚠️ ELE FALTAVA AQUI, E A FALTA TRANCAVA O CANCELAMENTO JUSTO NO CASO PIOR. Cancelar na Clicksign
+   * v3 é `PATCH /envelopes/{envelope_id}/documents/{document_id}` (doc lida em 25/09/2026 — ver
+   * `cancelarEnvelope`): sem o id do documento não há o que cancelar. Quando o passo 6 (`notificar`)
+   * falha, o envelope já está `running` — pago, permanente, com os convites NÃO enviados —, e é
+   * exatamente a linha que alguém vai querer cancelar depois; até 25/09/2026 `carimbarFalha` gravava
+   * só `envelope_id`, então os três caminhos de cancelamento do Panteon recusariam essa linha PARA
+   * SEMPRE, porque nenhum outro lugar do código preencheria a coluna.
+   *
+   * ⚠️ E AS DUAS `carimbarFalha` GRAVAM A COLUNA AGORA, não só uma: a do contrato
+   * (`lib/assinatura/envio-db.ts`) e a do termo de acordo (`lib/hades/acordo/envio-db.ts`), que tinham
+   * o mesmo buraco pelo mesmo motivo. Quem acrescentar uma terceira precisa gravá-la também.
+   *
+   * ⚠️ `null` QUANDO NADA FICOU LÁ, na mesma régua de `envelopeId`: rascunho apagado leva o
+   * documento junto, e guardar o id de um documento que não existe mais manda alguém procurar o nada.
+   */
+  documentoId: null | string;
   erro: string;
   /** Em que passo parou — é o que diz se sobrou envelope na conta. */
   passo: "ativar" | "criar" | "documento" | "notificar" | "requisitos" | "signatarios";
@@ -193,6 +212,10 @@ export async function enviarParaAssinatura(
 ): Promise<ResultadoDoEnvio> {
   const nome = nomeDoEnvelope(pedido.identidade);
   let envelopeId = "";
+  // ⚠️ DECLARADO AQUI, ACIMA DE `falhar`, E NÃO NO PASSO 2 — e não é arrumação. `falhar` LÊ esta
+  // variável e é chamada já no passo 1: com o `let` lá embaixo, a primeira falha do envio bateria na
+  // zona morta do `let` (`ReferenceError`) e derrubaria o envio em vez de devolver a falha tipada.
+  let documentoId = "";
 
   /** Apaga o rascunho e diz se conseguiu. Só vale ANTES do `running` — ver o topo. */
   const desfazer = async (): Promise<boolean> => {
@@ -219,6 +242,12 @@ export async function enviarParaAssinatura(
       // nossa tabela deixaria uma linha apontando para o nada. `null` aqui significa, com todas as
       // letras, "nada ficou pendente lá".
       envelopeId: rascunhoApagado ? null : envelopeId || null,
+      // ⚠️ O ID DO DOCUMENTO VIAJA PELA MESMA RÉGUA, e é ele que permite CANCELAR o envelope que
+      // sobrou: na v3 quem se cancela é o documento (ver `cancelarEnvelope`, doc lida 25/09/2026).
+      // Sem isto, a linha que o passo `notificar` deixa para trás — envelope `running`, pago, sem
+      // convite enviado — nascia sem o id do documento e não tinha como ser cancelada pelo Panteon
+      // nunca mais.
+      documentoId: rascunhoApagado ? null : documentoId || null,
       erro: detalhe,
       ok: false,
       passo,
@@ -232,7 +261,8 @@ export async function enviarParaAssinatura(
   const grandeDemais = recusaPorTamanhoDoArquivo(pedido.arquivo.bytes.byteLength);
   if (grandeDemais) {
     return {
-      // Nada foi chamado: envelope nenhum existe, e não há rascunho a apagar.
+      // Nada foi chamado: envelope nenhum existe, documento nenhum subiu, e não há rascunho a apagar.
+      documentoId: null,
       envelopeId: null,
       erro: grandeDemais,
       ok: false,
@@ -260,7 +290,10 @@ export async function enviarParaAssinatura(
   }
 
   // ── 2. O PDF ──────────────────────────────────────────────────────────────
-  let documentoId = "";
+  //
+  // ⚠️ O `let documentoId` NÃO MORA AQUI, E ISSO NÃO É ARRUMAÇÃO: ele é declarado no topo da função,
+  // acima de `falhar`, porque `falhar` o LÊ e é chamada já no passo 1. Um segundo `let` com o mesmo
+  // nome aqui é `Cannot redeclare block-scoped variable` — o arquivo nem compila.
   try {
     const subido = await porta<RespostaComId>(`/envelopes/${envelopeId}/documents`, {
       corpo: {
@@ -460,16 +493,24 @@ export type ResultadoDaLeitura = EnvelopeLido | FalhaNaLeitura;
  * ⚠️ QUEM CHAMA ISTO CANCELA DEPOIS, NUNCA ANTES. A ordem é ler → recusar se estiver fechado →
  * cancelar. Ver `lib/temis/retorno-para-correcao.ts`.
  *
+ * ⚠️ E DESDE 25/09/2026 ELA É LIDA DUAS VEZES NO MESMO CLIQUE: `cancelarEnvelope` chama esta função
+ * outra vez DEPOIS do PATCH, para confirmar que o envelope morreu. A regra de cima não mudou — a
+ * leitura que DECIDE continua vindo antes; a segunda só confere o efeito, porque o 200 do PATCH fala
+ * do DOCUMENTO e a doc não diz que cancelar o documento mata o envelope. Ver `cancelarEnvelope`.
+ *
  * ⚠️ E A FALHA AQUI É PARA FECHAR O CAMINHO, não para seguir no escuro: quem chama recusa a volta
  * quando esta leitura não responde. Por isso ela NUNCA LANÇA — devolve a falha, como o cancelamento.
  *
- * ⚠️ A FORMA DO GET É INFERÊNCIA, exatamente como a do PATCH que cancela — e o aviso é deliberado.
- * O que esta casa já viu de verdade é a LISTAGEM (`/envelopes?page[number]=1`, em `sondarCabecalho`);
- * o GET de um envelope só é o caminho padrão do JSON:API, e o lugar do status na resposta
- * (`data.attributes.status`) é deduzido de onde o PATCH do passo 5 ESCREVE o status. Este arquivo já
- * teve três campos com comentário confiante afirmando o contrário da doc (o `Bearer` no token, o PDF
- * em base64 cru, o CPF sem máscara), e os três só apareceram na primeira chamada real. Quem
- * confirmar na doc (ou na primeira leitura de verdade), troque este parágrafo pela citação.
+ * ⚠️ A FORMA DO GET ESTÁ CONFERIDA NA DOC (25/09/2026), E ERA INFERÊNCIA ATÉ AQUI. A página
+ * "Detalhes do Envelope" (developers.clicksign.com) dá `GET /envelopes/{envelope_id}` e traz o status
+ * exatamente onde este código o lê: no exemplo de resposta dela, `data.attributes.status` vale
+ * `"closed"`. Ou seja, a inferência estava CERTA — ao contrário da do PATCH que cancela, que era
+ * irmã desta e estava errada (ver `cancelarEnvelope`): lá o campo certo é o do DOCUMENTO, aqui a
+ * leitura é do ENVELOPE mesmo, e nada precisou mudar.
+ *
+ * ⚠️ `data.status`, A SEGUNDA LEITURA, CONTINUA — e não é a doc que a justifica. Ela existe porque o
+ * webhook real (09/09/2026) chegou com o status ao lado do id (`document: { key, path, status }`), e
+ * tirá-la agora só faria este código parar de entender uma forma que a casa JÁ VIU chegar.
  */
 export async function consultarEnvelope(
   envelopeId: string,
@@ -568,23 +609,75 @@ export type ResultadoDoCancelamento = CancelamentoFeito | FalhaNoCancelamento;
  * gravado mataria contrato assinado por todos, e `cancelado` é terminal: o `auto_close` que chegasse
  * depois seria descartado.
  *
- * ⚠️ A FORMA DO PATCH NÃO ESTÁ CONFERIDA NA DOC — E ESTE AVISO É DELIBERADO. Ela é a mesma do passo
- * 5 (o PATCH que ativa) com `status: "canceled"` no lugar de `"running"`, porque `canceled` é um dos
- * quatro estados do envelope na v3 (`draft`, `running`, `closed`, `canceled`) e o passo 5 é o único
- * lugar onde esta casa já viu a v3 trocar status de envelope. É INFERÊNCIA, não leitura da página de
- * cancelamento. Este arquivo já teve TRÊS campos com comentário confiante afirmando o contrário da
- * doc (o `Bearer` no token, o PDF em base64 cru, o CPF sem máscara) — e os três só apareceram na
- * primeira chamada real. Quem confirmar na doc (ou no primeiro cancelamento de verdade), troque
- * este parágrafo pela citação.
+ * ⚠️ QUEM SE CANCELA É O DOCUMENTO, NÃO O ENVELOPE — LIDO NA DOC EM 25/09/2026, E ESTE PARÁGRAFO
+ * SUBSTITUI A INFERÊNCIA QUE ESTAVA AQUI. Até 25/09/2026 esta função mandava `PATCH /envelopes/{id}`
+ * com `status: "canceled"`, por analogia com o passo 5, e o comentário avisava que era INFERÊNCIA. A
+ * Nívea provou que estava errada ao tentar voltar o card da MAURA MARIA PASSOS (Vale do Ouro VOC
+ * Q03 L06) para a análise: a Clicksign devolveu **400** `/data/attributes/status status deve estar
+ * em: draft, running` (request `c788f87f-2262-4838-92ee-b21bedc02c14`, envelope
+ * `3c277f58-1a53-4ed0-9761-906b95ecfb28`). Este é o QUARTO campo deste arquivo cujo comentário
+ * confiante dizia o contrário da doc — depois do `Bearer` no token, do PDF em base64 cru e do CPF sem
+ * máscara.
+ *
+ * A doc (developers.clicksign.com, lida em 25/09/2026) separa os dois recursos com todas as letras:
+ *
+ *   • ENVELOPE, em "Campos e Regras de Negócio": *"status: A alteração desse campo determina a
+ *     ATIVAÇÃO do Envelope"* — e a página do PATCH se chama "Ativar e Editar Envelope", com `draft`
+ *     no exemplo. Ali `canceled` não existe, e é por isso que a recusa vem com a lista `draft,
+ *     running`.
+ *   • DOCUMENTO, em "Campos e Regras de Negócio": *"status: A alteração desse campo determina se
+ *     deseja `cancelar` ou `finalizar` o documento e está disponível apenas na atualização do
+ *     documento com status `em progresso` (`running`)."*, com *"Valores possíveis: draft, running,
+ *     canceled, closed"*.
+ *   • E a página "Editar Documento" dá o caminho e o corpo exatos:
+ *     `PATCH /envelopes/{envelope_id}/documents/{document_id}`, com
+ *     `{"data": {"id": "...", "type": "documents", "attributes": {"status": "canceled"}}}`.
+ *
+ * ⚠️ E O `DELETE` NÃO SERVE DE SUBSTITUTO: a página "Excluir Envelope" só vale para *"envelopes que
+ * estejam com estado em rascunho (draft)"* — é o caminho de `desfazer`, ali em cima, e não o daqui.
+ *
+ * ⚠️ O ID DO DOCUMENTO SEMPRE EXISTIU NO PANTEON, e é por isso que esta correção não pediu migration
+ * nem carga: `enviarParaAssinatura` guarda o id que a Clicksign devolve no upload do PDF e
+ * `carimbarSucesso` o grava em `temis_envelopes.provedor_documento_id` (`lib/assinatura/envio-db.ts`).
+ * Medido em 25/09/2026 por SELECT na produção (`bxgukywoxgivlrhjkwjx`): `temis_envelopes` tem 22
+ * linhas, todas `clicksign` — 15 `aguardando` e 7 `parcial` —, e 22 de 22 com
+ * `provedor_documento_id`. Nenhuma linha com `falha`.
+ *
+ * ⚠️ E O CAMINHO QUE NÃO GRAVAVA A COLUNA ERA `carimbarFalha`, corrigido no mesmo lote: até
+ * 25/09/2026 o envio que falhava no passo `notificar` deixava a linha com `envelope_id` e
+ * `provedor_documento_id` NULO — envelope `running`, pago, sem convite enviado, e sem nenhum caminho
+ * de cancelamento no Panteon. Ver `FalhaNoEnvio.documentoId`.
+ *
+ * ⚠️ O 200 DO PATCH NÃO É A MORTE DO ENVELOPE, E ISSO NÃO ESTÁ NA DOC — foi conferido em 25/09/2026,
+ * nas duas páginas, e NENHUMA das duas liga uma coisa à outra. "Editar Documento" descreve só o
+ * efeito no DOCUMENTO (*"Só é possível alterar status de documentos running"*, valores `canceled` e
+ * `closed`) e não diz uma palavra sobre o envelope; a página do envelope descreve `canceled` como
+ * *"A transação foi interrompida e o link de assinatura foi invalidado"* e não diz o que leva o
+ * envelope até lá. O caminho e o corpo do PATCH estão PROVADOS; a cascata seria o QUINTO palpite
+ * deste arquivo. Então esta função RELÊ o envelope depois do PATCH (`consultarEnvelope`, `GET`, que
+ * não custa nada e não é irreversível) e só devolve `ok: true` quando a Clicksign confirma
+ * `canceled`. Quem chama grava `estado = "cancelado"` e solta o card em cima deste `ok`, e
+ * `cancelado` é TERMINAL: um `auto_close` que chegasse depois seria descartado, e `cancelado` está
+ * em `ESTADOS_QUE_LIBERAM_REENVIO` — ou seja, um `ok` mentiroso fura por dentro a guarda contra o
+ * segundo envelope pago.
+ *
+ * ⚠️ E `closed` NÃO CONTA COMO MORTE NOSSA, de propósito: ele é tanto "todos assinaram" quanto
+ * "venceu o prazo e fechou com o que tinha" (ver `estadoDaClicksign`). Carimbar "cancelado" sobre um
+ * envelope que fechou ASSINADO apagaria do Panteon o registro da assinatura. Quando a releitura não
+ * diz `canceled`, a falha volta como DUVIDOSA — o PATCH chegou, o documento pode estar cancelado, e
+ * a frase de quem chama manda CONFERIR em vez de afirmar. Falhar fechado custa uma volta recusada;
+ * o contrário custa um contrato vivo com o card solto na Análise.
  *
  * ⚠️ NUNCA LANÇA. Quem chama decide o que fazer com a falha, e no retorno para correção a decisão é
  * FECHAR: o card não volta se o envelope não morreu.
  */
 export async function cancelarEnvelope(
   envelopeId: string,
+  documentoId: string,
   porta: PortaDaClicksign = chamar,
 ): Promise<ResultadoDoCancelamento> {
   const id = envelopeId.trim();
+  const documento = documentoId.trim();
   // ⚠️ SEM ID NÃO SE CHAMA NADA. `PATCH /envelopes/` (com o id vazio) bateria em outra rota da API,
   // e uma resposta 200 dali seria lida aqui como "cancelado" — a pior mentira possível neste lugar.
   if (!id) {
@@ -598,16 +691,36 @@ export async function cancelarEnvelope(
     };
   }
 
+  // ⚠️ SEM O ID DO DOCUMENTO TAMBÉM NÃO, PELO MESMO MOTIVO: `PATCH /envelopes/{id}/documents/` (com
+  // o documento vazio) bate na COLEÇÃO de documentos do envelope, não no documento. E o pior: a rota
+  // que sobraria por engano — o `PATCH /envelopes/{id}` de antes — é a que ATIVA o envelope. Uma
+  // resposta boa de qualquer uma das duas seria lida aqui como "cancelado", e o card voltaria para a
+  // análise com o contrato vivo na mão de quem ia assinar. Quem chama tem a frase honesta pronta
+  // (ver `conferirEnvelopeParaVoltar`, em `lib/temis/retorno-para-correcao.ts`); esta é a rede.
+  if (!documento) {
+    return {
+      duvidoso: false,
+      envelopeId: id,
+      erro: `O Panteon não sabe qual documento do envelope ${id} cancelar na Clicksign, e cancelar na v3 é um PATCH no documento. Nada foi mandado.`,
+      ok: false,
+      requestId: null,
+    };
+  }
+
   try {
-    await porta(`/envelopes/${id}`, {
-      corpo: { data: { attributes: { status: "canceled" }, id, type: "envelopes" } },
+    await porta(`/envelopes/${id}/documents/${documento}`, {
+      corpo: { data: { attributes: { status: "canceled" }, id: documento, type: "documents" } },
       metodo: "PATCH",
     });
-    return { envelopeId: id, ok: true };
   } catch (e) {
     return {
       // Ver a nota de `duvidoso`: sem resposta HTTP (status 0), ou erro que nem veio da Clicksign,
       // não dá para afirmar que o PATCH não chegou.
+      //
+      // ⚠️ E A RECUSA DA API TAMBÉM NÃO PROVA QUE O CONTRATO SEGUE ASSINÁVEL — ver o JSDoc: o
+      // documento aceita `canceled` só enquanto está `running`, então um 4xx aqui é tanto "recusou"
+      // quanto "esse documento JÁ está cancelado". `duvidoso` continua falando só da CHEGADA do
+      // pedido; quem monta a frase é quem chama, e ela manda conferir em vez de afirmar.
       duvidoso: !(e instanceof FalhaDaClicksign) || e.erro.status === 0,
       envelopeId: id,
       erro: detalheDaFalha(e),
@@ -615,6 +728,32 @@ export async function cancelarEnvelope(
       requestId: e instanceof FalhaDaClicksign ? e.erro.requestId : null,
     };
   }
+
+  // ⚠️ A CONFIRMAÇÃO VEM DA CLICKSIGN, NÃO DO 200 — ver o JSDoc. A doc não diz que cancelar o
+  // documento mata o envelope, e é o envelope que decide se alguém ainda pode assinar. `GET` não
+  // custa e não desfaz nada.
+  const depois = await consultarEnvelope(id, porta);
+  if (!depois.ok) {
+    return {
+      duvidoso: true,
+      envelopeId: id,
+      erro: `O pedido de cancelamento foi aceito, mas não deu para reler o envelope para confirmar que ele morreu: ${depois.erro}`,
+      ok: false,
+      requestId: depois.requestId,
+    };
+  }
+
+  if (depois.status !== "canceled") {
+    return {
+      duvidoso: true,
+      envelopeId: id,
+      erro: `A Clicksign aceitou o cancelamento do documento ${documento}, e ao reler o envelope ele voltou como "${depois.status}", não "canceled": daqui não dá para afirmar que ninguém mais assina aquele contrato.`,
+      ok: false,
+      requestId: null,
+    };
+  }
+
+  return { envelopeId: id, ok: true };
 }
 
 // ── A TROCA DE SIGNATÁRIO E O REENVIO DO CONVITE ────────────────────────────

@@ -514,3 +514,83 @@ describe("a lixeira do card e o envelope", () => {
     expect(bloco).toContain("window.alert(");
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
+// 25/09/2026 — A LINHA QUE NASCE DE UMA FALHA TAMBÉM PRECISA PODER SER CANCELADA
+// ────────────────────────────────────────────────────────────────────────────────────────────
+//
+// ⚠️ CANCELAR NA CLICKSIGN V3 É UM PATCH NO DOCUMENTO, não no envelope: a doc, lida em 25/09/2026,
+// diz na página "Editar Documento" `PATCH /envelopes/{envelope_id}/documents/{document_id}` e, nas
+// regras do DOCUMENTO, *"A alteração desse campo determina se deseja cancelar ou finalizar o
+// documento"* — no ENVELOPE o mesmo campo só ATIVA (foi de lá que veio o 400 `status deve estar em:
+// draft, running` que a Nívea recebeu).
+//
+// ⚠️ E É POR ISSO QUE `carimbarFalha` PASSOU A GRAVAR O `provedor_documento_id`. O envio que falha no
+// passo `notificar` deixa o envelope `running` — pago, permanente, com os convites NÃO enviados —, e é
+// justamente a linha que alguém vai querer cancelar depois. Até 25/09/2026 ela nascia com
+// `envelope_id` e a coluna do documento NULA, e nenhum outro caminho do código a preencheria: com a
+// exigência nova, `cancelarAssinaturaDoAcordo` recusaria essa linha para sempre.
+describe("a falha do notificar deixa a linha CANCELÁVEL", () => {
+  it("grava o id do documento ao lado do id do envelope", async () => {
+    const { escritas, sb } = bancoComMemoria();
+    const chamadas: { caminho: string; metodo: string }[] = [];
+
+    // O pior desfecho da casa, e o mais provável: tudo deu certo até ativar, e o convite não saiu.
+    const porta = async <T = unknown>(
+      caminho: string,
+      opcoes: { metodo?: string } = {},
+    ): Promise<T> => {
+      const metodo = opcoes.metodo ?? "GET";
+      chamadas.push({ caminho, metodo });
+      if (caminho.endsWith("/notifications")) throw new Error("Clicksign devolveu 500.");
+      if (metodo === "POST" && caminho === "/envelopes") return { data: { id: "env-9" } } as T;
+      if (caminho.endsWith("/documents")) return { data: { id: "doc-9" } } as T;
+      if (caminho.endsWith("/signers")) return { data: { id: "sig-1" } } as T;
+      return {} as T;
+    };
+
+    const saida = await enviarAcordoParaAssinatura(sb, acordo(), {}, { montarPdf: PDF_PRONTO, porta });
+
+    expect(saida.ok).toBe(false);
+    // Nada foi apagado: depois de ativado o envelope é permanente.
+    expect(chamadas.some((c) => c.metodo === "DELETE")).toBe(false);
+
+    const carimbo = escritas.filter((e) => e.tabela === "temis_envelopes" && "falha" in e.patch);
+    expect(carimbo).toHaveLength(1);
+    expect(carimbo[0]?.patch).toMatchObject({
+      envelope_id: "env-9",
+      // ⚠️ SEM ESTA COLUNA A LINHA FICA PRESA PARA SEMPRE: o cancelamento do acordo recusa quando ela
+      // é nula, e nenhum outro caminho do código a preenche depois.
+      provedor_documento_id: "doc-9",
+      // O estado só vira `aguardando` no `notificar`, que é o único desfecho em que se SABE que o
+      // envelope está ativo.
+      estado: "aguardando",
+    });
+  });
+
+  // ⚠️ E QUANDO O RASCUNHO FOI APAGADO A COLUNA NÃO É ESCRITA, na mesma régua do `envelope_id`:
+  // apagar o rascunho leva o documento junto, e gravar o id de um documento que não existe mais
+  // mandaria o cancelamento futuro tentar um PATCH no nada.
+  it("rascunho apagado não grava id de documento nenhum", async () => {
+    const { escritas, sb } = bancoComMemoria();
+
+    const porta = async <T = unknown>(
+      caminho: string,
+      opcoes: { metodo?: string } = {},
+    ): Promise<T> => {
+      const metodo = opcoes.metodo ?? "GET";
+      if (caminho.endsWith("/signers") && metodo === "POST") throw new Error("Clicksign devolveu 422.");
+      if (metodo === "POST" && caminho === "/envelopes") return { data: { id: "env-9" } } as T;
+      if (caminho.endsWith("/documents")) return { data: { id: "doc-9" } } as T;
+      return {} as T;
+    };
+
+    const saida = await enviarAcordoParaAssinatura(sb, acordo(), {}, { montarPdf: PDF_PRONTO, porta });
+
+    expect(saida.ok).toBe(false);
+    const carimbo = escritas.filter((e) => e.tabela === "temis_envelopes" && "falha" in e.patch);
+    expect(carimbo).toHaveLength(1);
+    expect(carimbo[0]?.patch).not.toHaveProperty("provedor_documento_id");
+    expect(carimbo[0]?.patch).not.toHaveProperty("envelope_id");
+  });
+});

@@ -159,19 +159,37 @@ function cenario(c: Cenario = {}): void {
           id: "reg-env",
           proposta_id: "venda-maura",
           provedor: "clicksign",
+          // ⚠️ O ID DO DOCUMENTO É O QUE SE CANCELA na v3 — ver `cancelarEnvelope` (doc lida
+          // 25/09/2026): `PATCH /envelopes/{envelope_id}/documents/{document_id}`.
+          provedor_documento_id: "doc-maura",
           workspace_id: "careli",
         },
       ]
     : [];
 }
 
-/** O duplo da porta HTTP da Clicksign. Anota quantas consultas o banco já tinha recebido. */
+/**
+ * O duplo da porta HTTP da Clicksign. Anota quantas consultas o banco já tinha recebido.
+ *
+ * ⚠️ O `get` ACEITA UMA LISTA porque o cancelamento faz DUAS leituras do envelope desde 25/09/2026: a
+ * de antes, que decide se pode cancelar, e a de DEPOIS do PATCH, que confirma que o envelope morreu —
+ * o 200 do PATCH fala só do DOCUMENTO, e nenhuma página da doc diz que um mata o outro (ver
+ * `cancelarEnvelope`). A última resposta da lista repete.
+ */
 function portaDeTeste(respostas: { get?: unknown; patch?: unknown } = {}) {
   const chamadas: { caminho: string; consultasAntes: number; metodo: string }[] = [];
+  const gets = Array.isArray(respostas.get) ? [...respostas.get] : [respostas.get];
+  let lidos = 0;
+
   const porta = async <T = unknown>(caminho: string, opcoes: Opcoes = {}): Promise<T> => {
     const metodo = opcoes.metodo ?? "GET";
     chamadas.push({ caminho, consultasAntes: estado.consultas.length, metodo });
-    const resposta = metodo === "GET" ? respostas.get : respostas.patch;
+    if (metodo !== "GET") {
+      if (respostas.patch instanceof Error) throw respostas.patch;
+      return (respostas.patch ?? {}) as T;
+    }
+    const resposta = gets[Math.min(lidos, gets.length - 1)];
+    lidos += 1;
     if (resposta instanceof Error) throw resposta;
     return (resposta ?? {}) as T;
   };
@@ -179,6 +197,9 @@ function portaDeTeste(respostas: { get?: unknown; patch?: unknown } = {}) {
 }
 
 const RODANDO = { data: { attributes: { status: "running" } } };
+const MORTO = { data: { attributes: { status: "canceled" } } };
+/** O par do cancelamento inteiro: correndo na leitura de antes, `canceled` na releitura. */
+const RODANDO_E_MORRE = [RODANDO, MORTO];
 
 const pedido = (extra: Record<string, unknown> = {}) => ({
   motivo: "Cliente desistiu da compra",
@@ -216,15 +237,19 @@ beforeEach(() => {
 describe("o contrato da MAURA em Em assinatura, com envelope vivo", () => {
   it("o envelope morre na Clicksign ANTES de a venda virar cancelado", async () => {
     cenario({ estadoDoEnvelope: "parcial" });
-    const { chamadas, porta } = portaDeTeste({ get: RODANDO });
+    const { chamadas, porta } = portaDeTeste({ get: RODANDO_E_MORRE });
 
     const r = await cancelarContratoDoCard(clienteComPadroes(), pedido(), porta);
 
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    // Leu o estado real antes de cancelar: a ordem que impede matar contrato assinado por todos.
-    expect(chamadas.map((c) => c.metodo)).toEqual(["GET", "PATCH"]);
-    expect(chamadas[1]?.caminho).toBe("/envelopes/env-maura");
+    // Leu o estado real antes de cancelar: a ordem que impede matar contrato assinado por todos. E
+    // releu DEPOIS do PATCH: o 200 fala só do DOCUMENTO, e é o ENVELOPE que decide se alguém assina.
+    expect(chamadas.map((c) => c.metodo)).toEqual(["GET", "PATCH", "GET"]);
+    // ⚠️ O PATCH QUE CANCELA É NO DOCUMENTO, não no envelope: `PATCH
+    // /envelopes/{envelope_id}/documents/{document_id}` ("Editar Documento", doc lida 25/09/2026).
+    // No envelope o campo `status` só ATIVA, e é de lá que vinha o 400 `deve estar em: draft, running`.
+    expect(chamadas[1]?.caminho).toBe("/envelopes/env-maura/documents/doc-maura");
     expect(r.conclusao.envelopeCancelado).toBe("env-maura");
     expect(linha("temis_envelopes", "reg-env")).toMatchObject({
       estado: "cancelado",
@@ -249,7 +274,7 @@ describe("o contrato da MAURA em Em assinatura, com envelope vivo", () => {
     const r = await cancelarContratoDoCard(
       clienteComPadroes(),
       pedido(),
-      portaDeTeste({ get: RODANDO }).porta,
+      portaDeTeste({ get: RODANDO_E_MORRE }).porta,
     );
 
     expect(r.ok).toBe(true);
@@ -283,7 +308,7 @@ describe("o contrato da MAURA em Em assinatura, com envelope vivo", () => {
     await cancelarContratoDoCard(
       clienteComPadroes(),
       pedido({ motivo: "Cliente desistiu: financiamento negado" }),
-      portaDeTeste({ get: RODANDO }).porta,
+      portaDeTeste({ get: RODANDO_E_MORRE }).porta,
     );
 
     // 1. a marca do pedido na venda (e é ela que leva o motivo para `cancelada_motivo`).
@@ -337,7 +362,7 @@ describe("o motivo escrito é obrigatório", () => {
     const r = await cancelarContratoDoCard(
       clienteComPadroes(),
       pedido({ motivo: "" }),
-      portaDeTeste({ get: RODANDO }).porta,
+      portaDeTeste({ get: RODANDO_E_MORRE }).porta,
     );
 
     expect(r.ok).toBe(false);
@@ -651,7 +676,7 @@ function clienteComIrmaQueMarcouPrimeiro(marcaDaIrma: string): SupabaseClient {
 describe("a proteção contra o clique duplo", () => {
   it("a requisição irmã grava a marca entre a nossa leitura e a nossa escrita: recusa 409, sem card e sem Clicksign", async () => {
     cenario({ estadoDoEnvelope: "parcial" });
-    const { chamadas, porta } = portaDeTeste({ get: RODANDO });
+    const { chamadas, porta } = portaDeTeste({ get: RODANDO_E_MORRE });
     const marcaDaIrma = new Date(Date.now() - 1_000).toISOString();
 
     const r = await cancelarContratoDoCard(
@@ -678,7 +703,7 @@ describe("a proteção contra o clique duplo", () => {
 
   it("dois cliques ao mesmo tempo: um card, uma chamada de cancelamento na Clicksign, um ok", async () => {
     cenario({ estadoDoEnvelope: "parcial" });
-    const { chamadas, porta } = portaDeTeste({ get: RODANDO });
+    const { chamadas, porta } = portaDeTeste({ get: RODANDO_E_MORRE });
     const sb = clienteComPadroes();
 
     // As duas requisições de verdade, na mesma volta do laço de eventos.
@@ -742,7 +767,7 @@ describe("o card do pedido não nasce: a frase diz o que ficou gravado", () => {
       marcaDoPedido: "2026-09-12T12:00:00.000Z",
       motivoDaMarca: "Pedido antigo do Lucas",
     });
-    const { chamadas, porta } = portaDeTeste({ get: RODANDO });
+    const { chamadas, porta } = portaDeTeste({ get: RODANDO_E_MORRE });
 
     const r = await cancelarContratoDoCard(
       clienteComIrmaQueMarcouPrimeiro(new Date(Date.now() - 1_000).toISOString()),
@@ -830,7 +855,7 @@ describe("venda em assinatura: cancelar o contrato solta o lote", () => {
       },
     ];
 
-    const r = await cancelarContratoDoCard(clienteComPadroes(), pedido(), portaDeTeste({ get: RODANDO }).porta);
+    const r = await cancelarContratoDoCard(clienteComPadroes(), pedido(), portaDeTeste({ get: RODANDO_E_MORRE }).porta);
 
     expect(r.ok).toBe(true);
     if (!r.ok) return;

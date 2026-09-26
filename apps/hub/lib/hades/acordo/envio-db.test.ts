@@ -157,6 +157,8 @@ function bancoDeTeste(dados: {
 /** O duplo da porta HTTP da Clicksign. Ver a nota de `PortaDaClicksign`. */
 function portaDeTeste(respostas: Record<string, unknown> = {}) {
   const chamadas: { caminho: string; metodo: string }[] = [];
+  /** Quantas vezes cada chave já respondeu — só serve às filas de resposta (ver abaixo). */
+  const vezes = new Map<string, number>();
 
   const porta = async <T = unknown>(
     caminho: string,
@@ -167,6 +169,17 @@ function portaDeTeste(respostas: Record<string, unknown> = {}) {
 
     for (const [padrao, resposta] of Object.entries(respostas)) {
       if (`${metodo} ${caminho}`.includes(padrao)) {
+        // ⚠️ UM ARRAY É UMA FILA DE RESPOSTAS PARA A MESMA CHAVE, e ela existe porque o cancelamento
+        // faz DUAS leituras do mesmo envelope desde 25/09/2026: a de antes, que decide se pode
+        // cancelar, e a de DEPOIS do PATCH, que confirma que o envelope morreu — o 200 do PATCH no
+        // documento fala só do documento (ver `cancelarEnvelope`). A última resposta da fila repete.
+        if (Array.isArray(resposta)) {
+          const vez = Math.min(vezes.get(padrao) ?? 0, resposta.length - 1);
+          vezes.set(padrao, vez + 1);
+          const daVez = resposta[vez];
+          if (daVez instanceof Error) throw daVez;
+          return daVez as T;
+        }
         if (resposta instanceof Error) throw resposta;
         return resposta as T;
       }
@@ -605,22 +618,54 @@ describe("cancelar o envelope do acordo", () => {
     falha: null,
     id: "registro-1",
     provedor: "clicksign",
+    // ⚠️ O ID DO DOCUMENTO É O QUE SE CANCELA na v3 — ver `cancelarEnvelope` (doc lida 25/09/2026).
+    provedor_documento_id: "doc-vivo",
   };
 
-  it("lê o estado na Clicksign antes, e cancela com PATCH", async () => {
+  /** running na leitura de antes, canceled na releitura que confirma a morte. */
+  const RUNNING_DEPOIS_CANCELED = [
+    { data: { attributes: { status: "running" }, id: "env-vivo" } },
+    { data: { attributes: { status: "canceled" }, id: "env-vivo" } },
+  ];
+
+  it("lê o estado na Clicksign antes, e cancela com PATCH no DOCUMENTO", async () => {
     const { escritas, sb } = bancoDeTeste({ envelopes: [envelopeVivo] });
     const { chamadas, porta } = portaDeTeste({
-      "GET /envelopes/env-vivo": { data: { attributes: { status: "running" }, id: "env-vivo" } },
+      "GET /envelopes/env-vivo": RUNNING_DEPOIS_CANCELED,
     });
 
     const saida = await cancelarAssinaturaDoAcordo(sb, acordo(), {}, { porta });
 
     expect(saida.ok).toBe(true);
     expect(chamadas[0]).toEqual({ caminho: "/envelopes/env-vivo", metodo: "GET" });
-    expect(chamadas.some((c) => c.metodo === "PATCH")).toBe(true);
+    // ⚠️ O PATCH QUE CANCELA É NO DOCUMENTO, não no envelope: `PATCH
+    // /envelopes/{envelope_id}/documents/{document_id}` ("Editar Documento", lida em 25/09/2026).
+    expect(chamadas).toContainEqual({
+      caminho: "/envelopes/env-vivo/documents/doc-vivo",
+      metodo: "PATCH",
+    });
+    // ⚠️ E O ENVELOPE É RELIDO DEPOIS DO PATCH: o 200 fala do DOCUMENTO, e nenhuma das duas páginas da
+    // doc diz que cancelar o documento mata o envelope. Só a releitura com `canceled` libera o `ok`.
+    expect(chamadas.filter((c) => c.metodo === "GET")).toHaveLength(2);
     // ⚠️ NUNCA DELETE: depois de ativado o envelope é permanente, e cancelar apenas o fecha.
     expect(chamadas.some((c) => c.metodo === "DELETE")).toBe(false);
     expect(escritas.some((e) => e.patch.estado === "cancelado")).toBe(true);
+  });
+
+  // ⚠️ O 200 DO PATCH NO DOCUMENTO NÃO É A MORTE DO ENVELOPE (doc lida em 25/09/2026: nenhuma das duas
+  // páginas liga uma coisa à outra). Se o envelope voltar `running`, o Panteon NÃO grava `cancelado` —
+  // gravar liberaria o reenvio e deixaria um SEGUNDO termo pago com o primeiro ainda correndo.
+  it("PATCH 200 e o envelope ainda running: não grava cancelado, e manda conferir", async () => {
+    const { escritas, sb } = bancoDeTeste({ envelopes: [envelopeVivo] });
+    const rodando = { data: { attributes: { status: "running" }, id: "env-vivo" } };
+    const { chamadas, porta } = portaDeTeste({ "GET /envelopes/env-vivo": [rodando, rodando] });
+
+    const saida = await cancelarAssinaturaDoAcordo(sb, acordo(), {}, { porta });
+
+    expect(saida.ok).toBe(false);
+    if (!saida.ok) expect(saida.erro).toContain("Não deu para confirmar o cancelamento");
+    expect(chamadas.map((c) => c.metodo)).toEqual(["GET", "PATCH", "GET"]);
+    expect(escritas.some((e) => e.patch.estado === "cancelado")).toBe(false);
   });
 
   // ⚠️ O NOSSO BANCO ESTÁ SEMPRE ATRASADO EM RELAÇÃO AO WEBHOOK. A tela carregada às 13:58 mostra
@@ -637,6 +682,26 @@ describe("cancelar o envelope do acordo", () => {
     expect(saida.ok).toBe(false);
     if (!saida.ok) expect(saida.erro).toContain("já está FECHADO");
     expect(chamadas.some((c) => c.metodo === "PATCH")).toBe(false);
+  });
+
+  // ⚠️ SEM O ID DO DOCUMENTO NÃO HÁ O QUE CANCELAR na v3, e a linha precisa de uma recusa honesta em
+  // vez de um "ok" que deixaria o termo na mão de quem ia assinar. Mas a recusa vem DEPOIS da leitura:
+  // este fluxo não tem nem a peneira do nosso banco antes dela, então recusar primeiro era mandar
+  // alguém cancelar à mão um envelope cujo estado ninguém havia lido.
+  it("envelope sem o id do documento LÊ o estado e então recusa, sem mandar PATCH", async () => {
+    const { escritas, sb } = bancoDeTeste({
+      envelopes: [{ ...envelopeVivo, provedor_documento_id: null }],
+    });
+    const { chamadas, porta } = portaDeTeste({
+      "GET /envelopes/env-vivo": { data: { attributes: { status: "running" }, id: "env-vivo" } },
+    });
+
+    const saida = await cancelarAssinaturaDoAcordo(sb, acordo(), {}, { porta });
+
+    expect(saida.ok).toBe(false);
+    if (!saida.ok) expect(saida.erro).toContain("env-vivo");
+    expect(chamadas).toEqual([{ caminho: "/envelopes/env-vivo", metodo: "GET" }]);
+    expect(escritas.some((e) => e.patch.estado === "cancelado")).toBe(false);
   });
 
   it("acordo sem envelope não tem o que cancelar", async () => {

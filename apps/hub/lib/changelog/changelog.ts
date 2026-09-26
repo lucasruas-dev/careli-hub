@@ -36,6 +36,46 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-25-cancelar-o-documento-e-nao-o-envelope",
+    deployedAt: "2026-09-25T20:38:42-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Voltar o contrato para análise volta a funcionar.** O cancelamento do contrato na Clicksign estava sendo pedido no lugar errado, e ela recusava. O card ficava preso em assinatura com o contrato ainda na rua para todo mundo assinar.",
+              "**Cancelar o contrato pela Têmis e concluir um cancelamento ou distrato** usavam o mesmo caminho e estavam com o mesmo defeito. Os três foram corrigidos juntos.",
+              "**O contrato assinado por todos continua sem poder ser cancelado.** A conferência é feita na Clicksign na hora, e nenhuma linha dessa proteção foi afrouxada.",
+            ],
+            screen: "Quadro de trabalho",
+          },
+        ],
+      },
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "**Cancelar o termo de acordo também voltou a funcionar**, pelo mesmo conserto.",
+            ],
+            screen: "Cobrança · Acordos",
+          },
+        ],
+      },
+    ],
+    rollback: "1a30a316",
+    technical: {
+      done:
+        "⚠️ O CANCELAMENTO NA CLICKSIGN É NO DOCUMENTO, NÃO NO ENVELOPE, E AGORA ESTÁ LIDO NA DOC, NÃO INFERIDO. A casa mandava `PATCH /envelopes/{id}` com `status: \"canceled\"`, e essa rota é a que ATIVA o envelope: daí o 400 que a Nívea viu em 25/09/2026, *\"status deve estar em: draft, running\"* (envelope 3c277f58, request c788f87f, card da MAURA MARIA PASSOS em assinatura com 1 de 11 assinados). CITAÇÃO que fecha o diagnóstico, lida em developers.clicksign.com em 25/09/2026, página Campos e Regras de Negócio do DOCUMENTO: *\"status: A alteração desse campo determina se deseja cancelar ou finalizar o documento e está disponível apenas na atualização do documento com status em progresso (running)\"*; e a do ENVELOPE: *\"status: A alteração desse campo determina a ATIVAÇÃO do Envelope\"*. O DELETE não substitui: *\"Excluir Envelope\"* só vale em `draft`, e é o caminho do `desfazer`. ⚠️ ESTE ARQUIVO JÁ ERROU QUATRO VEZES POR INFERÊNCIA (o `Bearer` no token, o PDF em base64 cru, o CPF sem máscara e agora o cancelamento), e o próprio comentário avisava que a forma do PATCH não estava conferida e pedia a citação quando alguém confirmasse. Está trocada. MUDANÇAS: `cancelarEnvelope` passou a receber também o id do documento e faz `PATCH /envelopes/{id}/documents/{documento}` com `type: \"documents\"`; os TRÊS chamadores de produção passam o id (retorno para correção, conclusão de cancelamento e distrato, e o termo de acordo do Hades); os selects que cancelam passaram a pedir `provedor_documento_id`, que já era gravado no envio e não era lido. REVISÃO ADVERSARIAL (3 revisores): 17 achados, 9 médios ou piores, todos corrigidos. Os dois melhores: (a) o 200 do PATCH no DOCUMENTO estava sendo gravado como morte do ENVELOPE sem releitura, e a doc não garante isso; (b) a única linha que nasce com envelope ativo e SEM o id do documento é justamente a de um envio que falhou no meio, que é a que mais precisa ser cancelada, e as guardas novas a trancariam para sempre. Também saiu a recusa que vinha ANTES de ler o estado real e matava a saída desenhada para o webhook perdido. NADA FOI CHAMADO NA CLICKSIGN DE VERDADE: conta de produção, envelope tem custo e cancelamento é irreversível; tudo por porta dublada em teste. Suíte: 641 arquivos, 9.607 testes. Typecheck limpo.",
+      motivation:
+        "Nívea, 25/09/2026, com print da faixa vermelha no card da Maura Maria Passos: a Clicksign recusou o cancelamento do envelope e o card não voltou para a análise, as pessoas continuam com o contrato atual para assinar. Lucas: olha isso por favor, não resolveu o cancelamento de envelope.",
+    },
+    title: "O cancelamento do contrato na Clicksign volta a funcionar: é no documento, não no envelope",
+    type: "correcao",
+    version: "1.380.0",
+  },
+  {
     buildTag: "2026-09-25-venda-herdada-se-comporta-como-a-nativa",
     deployedAt: "2026-09-25T18:24:27-03:00",
     modules: [

@@ -806,10 +806,20 @@ async function carimbarSucesso(
   );
 }
 
+/**
+ * ⚠️ E ELA GRAVA O `provedor_documento_id` DESDE 25/09/2026, PELO MESMO MOTIVO QUE O `envelope_id`.
+ * Cancelar na Clicksign v3 é `PATCH /envelopes/{envelope_id}/documents/{document_id}` (doc lida em
+ * 25/09/2026, citada em `cancelarEnvelope`): sem o id do DOCUMENTO, `cancelarAssinaturaDoAcordo`
+ * recusa a linha. Até esta data o envio que falhava no passo `notificar` — envelope `running`, pago,
+ * com os convites não enviados — deixava a coluna NULA, e nenhum outro caminho do código a
+ * preencheria depois: o acordo ficava sem jeito de ser cancelado pelo Panteon para sempre, que é
+ * exatamente o desfecho que o JSDoc de `carimbarSucesso` acima descreve como o pior da casa.
+ */
 async function carimbarFalha(
   sb: SupabaseClient,
   registroId: string,
   resultado: {
+    documentoId: null | string;
     envelopeId: null | string;
     erro: string;
     passo: string;
@@ -829,6 +839,10 @@ async function carimbarFalha(
       atualizado_em: new Date().toISOString(),
       falha: `passo "${resultado.passo}": ${resultado.erro}${sobrou}`,
       ...(resultado.envelopeId ? { envelope_id: resultado.envelopeId } : {}),
+      // ⚠️ SÓ QUANDO SOBROU ALGO LÁ, na mesma régua do `envelope_id`: `falhar` devolve `null` quando o
+      // rascunho foi apagado, e gravar o id de um documento que não existe mais mandaria o
+      // cancelamento futuro tentar um PATCH no nada.
+      ...(resultado.documentoId ? { provedor_documento_id: resultado.documentoId } : {}),
       // ⚠️ E O ESTADO SÓ VIRA `aguardando` NO PASSO `notificar`: é o único desfecho em que se SABE
       // que o envelope está ativo. No `ativar`, a chamada pode ter estourado depois de o servidor já
       // ter trocado o status, e afirmar "aguardando" ali trocaria uma dúvida por uma certeza falsa.
@@ -1031,12 +1045,38 @@ export async function cancelarAssinaturaDoAcordo(
     };
   }
 
-  const cancelado = await cancelarEnvelope(linha.envelope_id, pecas.porta);
+  // ⚠️ SEM O ID DO DOCUMENTO NÃO HÁ O QUE CANCELAR, e a recusa vem DEPOIS da leitura acima, nunca
+  // antes. Cancelar na Clicksign v3 é `PATCH /envelopes/{envelope_id}/documents/{document_id}` (doc
+  // lida em 25/09/2026 — ver `cancelarEnvelope`): sem `provedor_documento_id` não se cancela nada, e
+  // dizer "cancelado" deixaria o termo na mão de quem ia assinar.
+  //
+  // ⚠️ O LUGAR DA RECUSA É O QUE FAZ A FRASE PODER MANDAR CANCELAR. Chegar aqui significa que
+  // `consultarEnvelope` respondeu e que o envelope NÃO está `closed`: ele está correndo agora, medido.
+  // Recusar antes da leitura — foi assim que isto nasceu, em 25/09/2026 — mandava alguém cancelar à mão
+  // um envelope cujo estado ninguém havia lido, e este fluxo não tem nem a peneira do nosso banco
+  // antes da leitura.
+  if (!linha.provedor_documento_id) {
+    return {
+      erro: `O Panteon não guardou qual documento do envelope ${linha.envelope_id} cancelar na Clicksign, e o cancelamento é feito no documento, não no envelope. Nada foi cancelado. Cancele o envelope ${linha.envelope_id} na Clicksign.`,
+      ok: false,
+      status: 409,
+    };
+  }
+
+  const cancelado = await cancelarEnvelope(
+    linha.envelope_id,
+    linha.provedor_documento_id,
+    pecas.porta,
+  );
+  // ⚠️ "O ENVELOPE CONTINUA COMO ESTAVA" SAIU DAQUI, e a doc é o motivo: o documento só aceita
+  // `canceled` enquanto está `running` ("Editar Documento", lida em 25/09/2026), então um 4xx é tanto
+  // "recusou" quanto "esse documento JÁ está cancelado" — e no segundo caso a frase antiga afirmava,
+  // para quem clicasse duas vezes, que o termo seguia assinável quando ninguém mais assina aquilo.
   if (!cancelado.ok) {
     return {
       erro: cancelado.duvidoso
         ? `Não deu para confirmar o cancelamento do envelope ${linha.envelope_id}: ${cancelado.erro}. Confira na Clicksign se ele está cancelado antes de mandar de novo.`
-        : `A Clicksign recusou o cancelamento do envelope ${linha.envelope_id}: ${cancelado.erro}. O envelope continua como estava.`,
+        : `A Clicksign recusou o cancelamento do contrato do envelope ${linha.envelope_id}: ${cancelado.erro}. Pode ser que ele já esteja cancelado, então confira na Clicksign antes de mandar de novo.`,
       ok: false,
       status: 502,
     };
