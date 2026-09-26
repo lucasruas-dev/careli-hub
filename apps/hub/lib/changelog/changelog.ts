@@ -73,7 +73,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
         ],
       },
     ],
-    rollback: "398c2dc0",
+    rollback: "ae78fc59",
     technical: {
       done:
         "UMA PECA DECIDE PF OU PJ, E E O DOCUMENTO. Nasceram `lib/hercules/documento-do-comprador.ts` (tipo, validade, rotulo, mascara e o NOME do namespace do hash; sem banco, a tela importa daqui), `lib/hercules/hash-do-documento.ts` (a conta, separada porque `hashIdentifier` arrasta o mysql2 do legado para o bundle) e `lib/hercules/proponente.ts` (leitor unico do jsonb `hercules_reservas.proponentes`, conciliando a forma antiga `cpf` com a nova `documento`). O tipo sai do DOCUMENTO, nunca de um campo declarado, pelo mesmo motivo ja medido pelo contrato em 08/09/2026: SEIS entidades `entity_kind = pj` carregavam CPF. MEDIDO em 26/09/2026 (producao, so SELECT): a chave `documento` ja e usada em 4.889 itens de titular de `hercules_propostas.compradores` vindos da carga, e e ela que as 137 linhas de 14 digitos usam; as 30 reservas atuais tem so `cpf`, `nome` e `telefone`, todas com 11 digitos, e NENHUMA linha de dado antigo foi atualizada: quem concilia e o leitor. Existem 11 CADs de entidade `pj` na esteira, 9 credenciadas, e nas 11 o `value_hash` do identificador `cnpj` bate com o `document_hash` da entidade: o caminho da empresa ja existia no dado e so a regua recusava. TRES PAREDES INDEPENDENTES caiam na conversao em proposta e foram derrubadas juntas (o portao de 11 digitos de `cliente-credenciado.ts`, o hash no namespace `cpf` que nunca casaria com a CAD da empresa, e o `cpfValido` de todo comprador em `proposta.ts`); derrubar uma so nao resolveria. O `>= 11` de `hashDoCpf` estava repetido em `app/api/incorporador/venda/documentos/route.ts` e `lib/temis/contrato-guardado-db.ts`: deixava o CNPJ passar e gravava a chave no namespace errado, e o anexo sumia da ficha sem erro (latente, zero documentos hoje). A varredura `documento-do-comprador.varredura.test.ts` impede a nona casa do if de tamanho voltar. NA TELA: um campo so, sem seletor de tipo, corte em 14 digitos, placeholder Razao social e icone com tooltip quando o documento digitado e CNPJ. NADA FOI AFROUXADO NA PF: a reserva continua exigindo digito verificador na entrada, e a trava de venda dupla nao foi tocada (ela compara o TERRENO, nunca o documento). A revisao adversarial restaurou uma decisao de 04/09/2026 que a primeira versao tinha apagado por engano: o portao do credenciamento nao confere DV de proposito, porque `lib/prometeu/reservas-evento.ts` grava documento do salao sem validador e exigir DV ali barraria calado um lote que hoje anda. Suite: 650 arquivos, 9.733 testes. Typecheck limpo.",
@@ -82,7 +82,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     },
     title: "A reserva do Hercules passa a aceitar pessoa juridica, do campo ao contrato",
     type: "melhoria",
-    version: "1.383.0",
+    version: "1.384.0",
   },
   {
     buildTag: "2026-09-26-o-email-da-imobiliaria-nao-barra-o-dono",
@@ -103,7 +103,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
         ],
       },
     ],
-    rollback: "30aff2ea",
+    rollback: "ae78fc59",
     technical: {
       done:
         "DUAS CAUSAS, DUAS CORRECOES. (1) A trava de e-mail unico (lib/apolo/email-unico.ts, pedido do Lucas em 07/09/2026 por causa do D4Sign, onde o signatario E o e-mail) comparava a PF do corretor com a ficha da PROPRIA imobiliaria dele. `createApoloEntity` ganhou a opcao `fichaDoMesmoDono`, que entra no `ignorarEntityIds` do conflito; `criarCorretor` manda a imobiliaria da pre-sessao. Uma ficha SO, nomeada por quem chama: o e-mail que estiver em qualquer OUTRA ficha continua recusando. (2) A rota /api/publico/cad/corretor traduzia TODA recusa de `createApoloEntity` em 500 mudo (route.ts:43), e o log guardava so a mensagem generica; nem o log de runtime da Vercel tinha stack, porque o `catch` engole. Agora `recusaPublicaDoCorretor` (lib/publico/cad/regras.ts) decide: 409 com texto para `email-repetido`, generico para o resto, porque rotas.ts abre dizendo que tres mensagens diferentes sao tres bits para quem enumera. A mensagem publica NAO diz de quem e o e-mail nem repete o endereco, para nao virar oraculo de quem esta na base. MEDICAO: 8 tentativas do Israel entre 13:36 e 14:07 de 26/09/2026 em apolo_cad_log_erros, todas 500, todas na CASAVISTA; o e-mail israel@casavistaimoveis.com.br em apolo_contacts na ficha da PJ desde 11/09 12:30; nenhuma entidade com o CPF dele (conferido pelos dois hashes); e 26 dos 55 corretores declarados sem ficha propria batendo na mesma recusa, 17 pelo e-mail da propria imobiliaria. O empreendimento 42 (ACP) esta com credenciamento e recepcao de CAD ligados, entao ele entra e ve o produto. Suite: 642 arquivos, 9.611 testes. Typecheck limpo.",
@@ -111,6 +111,35 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
         "Lucas, 26/09/2026, com tres prints do Israel Pereira, da CASAVISTA IMOVEIS LTDA: olha o porque desse erro. A tela dizia Nao conseguimos concluir agora, tente novamente em alguns instantes ou fale com a nossa central, e ele tentou oito vezes seguidas. A decisao de negocio e do mesmo dia: a ficha da propria imobiliaria nao conta contra o corretor dela.",
     },
     title: "O e-mail da imobiliaria deixa de barrar o dono dela no cadastro de corretor",
+    type: "correcao",
+    version: "1.383.0",
+  },
+  {
+    buildTag: "2026-09-26-pan-124-regua-e-trilha-do-cadastro",
+    deployedAt: "2026-09-26T14:23:33-03:00",
+    // A única coisa visível é a fila de atendimento sem sigla inventada; o resto é fundação do PAN-124.
+    internal: true,
+    modules: [
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "**A fila de atendimento para de inventar código de unidade.** Quando a matrícula não vem, a coluna mostra \"-\" em vez de um código que não existe (LDO, VOV, RPR). O código real continua aparecendo ao abrir a ficha.",
+            ],
+            screen: "Fila de atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "30aff2ea",
+    technical: {
+      done:
+        "PAN-124, F1 e F2. F1: lib/hercules/regua-do-cadastro.ts (pura) responde pelo c2x_enterprise_id nome de mercado, sigla, pai, filhos na ordem (ordem, codigo), papel (divisao, pai, simples), chave do grupo e entradas no molde do catálogo; VLO 35 segue simples ao lado de group:Vale do Ouro e o 31 fica fora. lib/hercules/cadastro-em-cache.ts: cache por instância que confere count e max(atualizado_em) no máximo a cada 30 s, devolve o guardado na hora e confere em segundo plano (after), prazo de 5 s com AbortSignal, mantém o anterior na falha. nome-de-mercado-por-id delega à régua. Nenhum leitor troca de fonte ainda. Fila de atendimento (modules/guardian/attendance/data.ts): matrícula nula sai '-' (antes 217 de 240 linhas ganhavam sigla inexistente). Paridade real: grupos idênticos a ENTERPRISE_GROUPS.ids, siglas 40/40 com settings.code, nome de mercado 39/39. F2: migration 0192 aplicada antes, com OK: trilha hercules_empreendimento_alteracoes (RLS sem policy, service_role só lê e acrescenta), view hercules_empreendimento_valores_antigos, atualizado_por, gatilhos de carimbo, guarda e trilha, hercules_movimento_do_empreendimento (security definer, só service_role), CHECK de formato da sigla e a 0123 travando o pai (FOR SHARE). Prova viva desfeita: 27 regras com o comportamento esperado. Suíte 9.716 verdes.",
+      motivation:
+        "Lucas, 24/09/2026: temos que ter capacidade de editar cadastros dos empreendimentos bem como criá-los dentro do panteon. Em 26/09: o Panteon manda na sigla. A régua e a trilha são a base das fatias seguintes (painel, catálogo, tela de editar e vigia).",
+    },
+    title: "PAN-124: régua do cadastro de empreendimentos e trilha no banco",
     type: "correcao",
     version: "1.382.0",
   },

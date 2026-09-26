@@ -16,6 +16,8 @@ const banco = vi.hoisted(() => ({
   linhas: [] as Record<string, unknown>[],
   selects: [] as string[],
   sem0170: false,
+  // Os sinais que chegaram em `.abortSignal`, um por requisição (PAN-124: o prazo do cache).
+  sinais: [] as AbortSignal[],
 }));
 
 vi.mock("@/lib/apolo/server", () => ({
@@ -23,6 +25,10 @@ vi.mock("@/lib/apolo/server", () => ({
     from() {
       let colunas = "";
       const builder = {
+        abortSignal(sinal: AbortSignal) {
+          banco.sinais.push(sinal);
+          return builder;
+        },
         eq: () => builder,
         order: () => builder,
         range: () => builder,
@@ -143,6 +149,30 @@ describe("carregarCadastroDeEmpreendimentos · migration 0170 pendente", () => {
     banco.erroQualquer = true;
     await expect(carregarCadastroDeEmpreendimentos()).rejects.toThrow(/permission denied/);
     expect(banco.selects).toHaveLength(1);
+  });
+});
+
+describe("carregarCadastroDeEmpreendimentos · sinal de abortar (o prazo do cache do cadastro)", () => {
+  beforeEach(() => {
+    banco.erroQualquer = false;
+    banco.linhas = [LINHA_DO_BANCO];
+    banco.selects = [];
+    banco.sem0170 = false;
+    banco.sinais = [];
+    limparMemoriaDaMigration0170();
+  });
+
+  it("sem sinal, nenhuma requisição recebe um (os leitores de hoje não mudam)", async () => {
+    await carregarCadastroDeEmpreendimentos();
+    expect(banco.sinais).toEqual([]);
+  });
+
+  it("com sinal, TODA requisição o recebe, inclusive a repetição sem as colunas da 0170", async () => {
+    const sinal = new AbortController().signal;
+    banco.sem0170 = true;
+    await carregarCadastroDeEmpreendimentos({ sinal });
+    expect(banco.selects).toHaveLength(2);
+    expect(banco.sinais).toEqual([sinal, sinal]);
   });
 });
 
