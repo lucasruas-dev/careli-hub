@@ -196,6 +196,21 @@ export type AutorDeForaDoHub = {
  */
 export type OpcoesDoCadastro = {
   autor?: AutorDeForaDoHub | null;
+  /**
+   * A ficha que é do MESMO DONO desta que está nascendo: o e-mail dela não conta contra ela.
+   *
+   * ⚠️ EXISTE PARA O DONO DA IMOBILIÁRIA. A trava de e-mail único guarda a regra do Lucas
+   * (07/09/2026) *"não podemos ter o mesmo e-mail para duas pessoas"*, e o risco que ela evita é o
+   * do D4Sign, onde o signatário É o e-mail. Só que o dono que se cadastra como corretor usando o
+   * endereço da própria empresa NÃO é duas pessoas, e a trava o lia assim: em 26/09/2026 o Israel,
+   * da CASAVISTA, tentou entrar oito vezes no CAD público e tomou 500 em todas. Medido no mesmo
+   * dia: 17 dos 55 corretores declarados sem ficha própria estavam presos por este mesmo caminho.
+   *
+   * ⚠️ É UMA FICHA SÓ, e nomeada por quem chama. Não afrouxa nada entre pessoas diferentes: o
+   * e-mail que estiver em QUALQUER outra ficha continua recusando. Lucas (26/09/2026), ao decidir:
+   * a ficha da própria imobiliária não conta contra o corretor dela.
+   */
+  fichaDoMesmoDono?: null | string;
   fichaExistente?: "acrescentar" | "anexar";
   /**
    * (24/09/2026) O cadastro é do OPERADOR DA CARELI (o wizard do hub), e a imobiliária que ele grava
@@ -645,11 +660,21 @@ export async function createApoloEntity(
     // mesma pessoa tem ficha duplicada em 516 casos (a cópia do Asana), e o e-mail dela na cópia
     // barrava o cadastro da própria pessoa com "este e-mail já está em outro cadastro", confirmando
     // ainda que o e-mail existe na base da Careli. O hub e o link público seguem como eram.
-    ignorarEntityIds: anexarEm
-      ? acrescentar
-        ? [...new Set([anexarEm, ...fichasDoMesmoDocumento])]
-        : [anexarEm]
-      : [],
+    //
+    // A `fichaDoMesmoDono` entra SEMPRE que vier: ela não depende de haver ficha para anexar (o
+    // corretor do CAD público nasce do zero, e é justamente o caso em que a empresa dele barrava).
+    ignorarEntityIds: [
+      ...new Set(
+        [
+          ...(anexarEm
+            ? acrescentar
+              ? [anexarEm, ...fichasDoMesmoDocumento]
+              : [anexarEm]
+            : []),
+          ...(opcoes.fichaDoMesmoDono ? [opcoes.fichaDoMesmoDono] : []),
+        ].filter(Boolean),
+      ),
+    ],
   });
 
   if (conflitoEmail) {

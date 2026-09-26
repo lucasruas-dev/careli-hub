@@ -8,7 +8,10 @@
 //
 // Toda escrita checa `error` e aborta. Já houve falha SILENCIOSA por upsert do PostgREST em
 // coluna NOT NULL sem default (21/jul, 11 fichas ficaram indexadas pelo nome antigo).
-import { createApoloEntity } from "@/lib/apolo/cadastro-persist";
+import {
+  createApoloEntity,
+  type MotivoDaRecusaDoCadastro,
+} from "@/lib/apolo/cadastro-persist";
 import { listEmpreendimentosAtivos, listEmpreendimentosParaCad } from "@/lib/apolo/credenciamento";
 import { hashIdentifier, type createApoloAdminClient } from "@/lib/apolo/server";
 import {
@@ -349,7 +352,10 @@ async function empreendimentosCredenciados(
 
 export type CriarCorretorResultado =
   | { entityId: string; ok: true }
-  | { error: string; ok: false };
+  // ⚠️ O `motivo` SOBE ATÉ A ROTA, e existe por causa do incidente do Israel (26/09/2026): a porta
+  // traduzia toda recusa em 500 mudo, e ele tentou oito vezes seguidas sem nunca saber que o
+  // problema era o e-mail. Ver app/api/publico/cad/corretor/route.ts.
+  | { error: string; motivo?: MotivoDaRecusaDoCadastro; ok: false };
 
 // Idempotente por CPF: duplo-toque no celular (que é a regra, não a exceção, num botão de
 // envio em 4G) não pode gerar dois corretores.
@@ -378,18 +384,27 @@ export async function criarCorretor(
 
   // A entidade PF do corretor. `createApoloEntity` já grava documento hasheado,
   // identificadores, contatos e o índice de busca — o CPF nunca fica em claro.
-  const criado = await createApoloEntity(adminClient, {
-    identidade: { cpf: input.dados.cpf, nome: input.dados.nome },
-    origem: "publico-cad",
-    // Sem operador logado: o corretor se cadastrou sozinho. `ownerUserId` null já é caminho
-    // suportado (o UUID_RE de cadastro-persist descarta o que não for uuid).
-    ownerUserId: null,
-    perfil: { email: input.dados.email, telefone: input.dados.telefone },
-    persona: "pf",
-    role: "corretor",
-  });
+  const criado = await createApoloEntity(
+    adminClient,
+    {
+      identidade: { cpf: input.dados.cpf, nome: input.dados.nome },
+      origem: "publico-cad",
+      // Sem operador logado: o corretor se cadastrou sozinho. `ownerUserId` null já é caminho
+      // suportado (o UUID_RE de cadastro-persist descarta o que não for uuid).
+      ownerUserId: null,
+      perfil: { email: input.dados.email, telefone: input.dados.telefone },
+      persona: "pf",
+      role: "corretor",
+    },
+    // ⚠️ O E-MAIL DA IMOBILIÁRIA NÃO CONTA CONTRA O CORRETOR DELA. O dono usa o endereço da
+    // empresa, e a trava de e-mail único lia a ficha da PJ como "outra pessoa" com aquele
+    // endereço: 26 dos 55 corretores declarados sem ficha própria batiam nisso, 17 deles pelo
+    // e-mail da própria imobiliária (medido em produção em 26/09/2026). Ver
+    // lib/publico/cad/corretor-email-da-imobiliaria.test.ts.
+    { fichaDoMesmoDono: input.imobiliariaEntityId },
+  );
 
-  if (!criado.ok) return { error: criado.error, ok: false };
+  if (!criado.ok) return { error: criado.error, motivo: criado.motivo, ok: false };
 
   const ligacao = await ligarCorretorNaImobiliaria(adminClient, {
     corretorEntityId: criado.entityId,

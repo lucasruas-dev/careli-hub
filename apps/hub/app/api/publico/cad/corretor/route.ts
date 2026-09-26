@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import { criarCorretor, empreendimentosHabilitados } from "@/lib/publico/cad/dados";
-import { validarCorretor, type DadosCorretor } from "@/lib/publico/cad/regras";
+import {
+  recusaPublicaDoCorretor,
+  validarCorretor,
+  type DadosCorretor,
+} from "@/lib/publico/cad/regras";
 import { anotarContexto } from "@/lib/publico/cad/log-erros";
 import { erro, json, lerCorpo, prepararRota, recusar, responder } from "@/lib/publico/cad/rotas";
 import { emitirSessao, preSessaoDoRequest } from "@/lib/publico/cad/sessao";
@@ -40,7 +44,14 @@ export async function POST(request: Request) {
       imobiliariaEntityId: pre.pre.imobiliariaEntityId,
       imobiliariaNome: pre.pre.imobiliariaNome,
     });
-    if (!criado.ok) return responder(request, inicio, erro(undefined, 500));
+    if (!criado.ok) {
+      // ⚠️ A RECUSA QUE O CORRETOR CONSERTA PRECISA CHEGAR A ELE. Até 26/09/2026 toda saída daqui
+      // era 500 mudo, e o Israel (CASAVISTA) tentou oito vezes seguidas — 13:36 às 14:07 — sem
+      // nunca saber que o problema era o e-mail. `recusaPublicaDoCorretor` decide o que sai, e o
+      // padrão continua sendo o genérico.
+      const recusa = recusaPublicaDoCorretor(criado.motivo);
+      return responder(request, inicio, erro(recusa.mensagem, recusa.status));
+    }
 
     const habilitados = await empreendimentosHabilitados(
       adminClient,

@@ -336,3 +336,41 @@ export function protocoloDaAutenticacao(autenticacao: string | null | undefined)
   const bruto = String(autenticacao ?? "").trim().toUpperCase();
   return /^CAD-\d{4}-[A-Z0-9]+$/.test(bruto) ? bruto : "";
 }
+
+// ---------------------------------------------------------------------------
+// O que o corretor lê quando o cadastro é recusado
+// ---------------------------------------------------------------------------
+
+/**
+ * Traduz a recusa de `createApoloEntity` no que a porta pública responde.
+ *
+ * ⚠️ O PADRÃO CONTINUA SENDO O SILÊNCIO. `rotas.ts` abre dizendo que três mensagens de erro
+ * diferentes são três bits de informação para quem está enumerando, e isso segue valendo: só o que
+ * o próprio corretor consegue CONSERTAR ganha texto próprio. Falha de gravação e verificação
+ * indisponível continuam no genérico, porque saber delas não muda nada do lado de fora.
+ *
+ * ⚠️ NASCEU DE UM BECO SEM SAÍDA MEDIDO. Em 26/09/2026 o Israel, da CASAVISTA, tomou 500 oito vezes
+ * seguidas no cadastro de corretor: o e-mail dele estava travado e a tela só sabia dizer "tente
+ * novamente em alguns instantes". Ele tentou, oito vezes, e o resultado foi sempre o mesmo. Lucas:
+ * *"olha o porque desse erro"*.
+ *
+ * ⚠️ A MENSAGEM NÃO DIZ DE QUEM É O E-MAIL. A do operador diz, de propósito (lib/apolo/email-unico.ts),
+ * porque ele precisa resolver o conflito; aqui fora isso viraria oráculo — quem digitasse endereços
+ * descobriria quem está na base da Careli. Diz o que fazer, e nada sobre a base.
+ */
+export function recusaPublicaDoCorretor(motivo?: string): {
+  mensagem?: string;
+  status: number;
+} {
+  if (motivo === "email-repetido") {
+    return {
+      mensagem:
+        "Este e-mail já está em uso em outro cadastro. Use o seu e-mail pessoal, que é por ele " +
+        "que a assinatura eletrônica identifica quem assinou. Se ele for mesmo seu, fale com a " +
+        "nossa central.",
+      status: 409,
+    };
+  }
+
+  return { status: 500 };
+}
