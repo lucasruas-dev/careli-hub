@@ -22,8 +22,11 @@ import { type EstadoDoBanco, novoEstado } from "./fixtures/supabase-em-memoria";
 //
 // Medido em produção em 20/09/2026: ZERO das 23 incorporadoras tem representante legal, então o
 // bloco novo nasce VAZIO em todos os 35 empreendimentos com vendedora. O cenário "com
-// representante" abaixo é o dia seguinte ao primeiro cadastro, e é ele que revela o que o cartão
-// passa a mostrar.
+// representante" abaixo é o dia seguinte ao primeiro cadastro.
+//
+// ⚠️ DESDE 25/09/2026 O CARTÃO É SÓ O QUE ESTÁ GRAVADO. A leitura deixou de herdar o representante
+// legal da ficha (vendedora, coordenador e termos); o cenário "com representante" passou a provar
+// que a ficha NÃO acrescenta linha nenhuma, e que toda linha tem id.
 
 const estado = vi.hoisted(() => ({ banco: null as unknown }));
 
@@ -156,34 +159,28 @@ describe("o cartão do empreendimento, como está a base hoje", () => {
   });
 });
 
-describe("o cartão no dia em que a incorporadora tiver representante legal", () => {
-  // ⚠️ ESTE É O ACHADO QUE ESTE ARQUIVO REGISTRA, E ELE NÃO É DO CONTRATO — É DA TELA. Com o
-  // representante legal cadastrado, a MESMA pessoa passa a ocupar DUAS linhas do cartão: a herdada
-  // do bloco "Vendedora (quem assina o contrato)" e a herdada do bloco "Assinatura de termos
-  // (vendedora)". As duas vêm de `vendedor_entity_id`, e nenhuma delas tem id (não se apaga).
-  //
-  // O contrato não muda por causa disso: o bloco de termos não vai para o envelope. Mas o operador
-  // que abrir a tela vai ver o nome repetido, e a única diferença entre as duas linhas é o título
-  // da seção em que elas aparecem.
-  it("a mesma pessoa aparece nos dois blocos, herdada duas vezes", async () => {
+describe("com representante legal na ficha da incorporadora", () => {
+  // ⚠️ A REGRA MUDOU EM 25/09/2026, E ESTES TESTES MUDARAM COM ELA. Eles se chamavam "a mesma pessoa
+  // aparece nos dois blocos, herdada duas vezes" e "mas os papéis do contrato continuam com as mesmas
+  // linhas", e travavam o cartão mostrando o representante legal da ficha como linha SEM id, com
+  // cadeado, na vendedora e nos termos. Foi essa linha que, no VOR, mostrou o Fabricio na tela sem
+  // ele ir no contrato. Lucas: *"todas assinaturas eu tenho que conseguir excluir e editar, esse
+  // cadeado esta errado"*. Agora o cartão é o que está gravado, e a ficha não acrescenta ninguém.
+  it("a ficha não acrescenta linha nenhuma: nem na vendedora, nem nos termos", async () => {
     const lista = await cartao(cadastro(true));
 
-    const herdadas = lista.filter((a) => a.id === null);
-    expect(herdadas.map((a) => a.papel).sort()).toEqual([
-      PAPEL_DE_TERMOS_DA_VENDEDORA,
-      "vendedora",
+    expect(lista.map((a) => [a.papel, a.nome])).toEqual([
+      ["testemunha", "Primeira Testemunha Exemplo"],
     ]);
-    expect(new Set(herdadas.map((a) => a.nome)).size).toBe(1);
+    expect(lista.map((a) => a.nome)).not.toContain("Socia Administradora Exemplo");
   });
 
-  // E os TRÊS papéis do contrato continuam com exatamente as mesmas linhas de antes da mudança.
-  it("mas os papéis do contrato continuam com as mesmas linhas", async () => {
-    const lista = doContrato(await cartao(cadastro(true)));
+  it("nenhuma linha sem id: toda linha do cartão se edita e se exclui", async () => {
+    const lista = await cartao(cadastro(true));
 
-    expect(lista.map((a) => [a.papel, a.nome, a.posicao])).toEqual([
-      ["vendedora", "Socia Administradora Exemplo", 1],
-      ["testemunha", "Primeira Testemunha Exemplo", 1],
-    ]);
+    expect(lista.length).toBeGreaterThan(0);
+    expect(lista.every((a) => typeof a.id === "string" && a.id.length > 0)).toBe(true);
+    expect(lista.some((a) => a.origem === "representante")).toBe(false);
   });
 });
 
@@ -198,10 +195,7 @@ describe("a fronteira na direção contrária: quem assina o CONTRATO assinando 
     const { clienteEmMemoria: emMemoria } = await import("./fixtures/supabase-em-memoria");
     const sb = emMemoria(banco) as unknown as SupabaseClient;
     const apontado = await assinanteDeTermosDaVendedora(sb, EMPREENDIMENTO);
-    const doQuadro = await assinantesDoQuadro(sb, {
-      enterpriseId: EMPREENDIMENTO,
-      vendedoraEntityId: INCORPORADORA,
-    });
+    const doQuadro = await assinantesDoQuadro(sb, { enterpriseId: EMPREENDIMENTO });
     return apontado ?? doQuadro.find((p) => p.papel === "vendedora") ?? null;
   }
 
@@ -280,8 +274,9 @@ describe("a fronteira na direção contrária: quem assina o CONTRATO assinando 
     expect(quem?.nome).toBe("Socia Que Assina O Contrato");
 
     // O texto precisa dizer que, sem ninguém apontado, quem assina é a vendedora cadastrada no
-    // quadro — e só depois dela o representante legal.
+    // quadro. (Até 25/09/2026 havia um terceiro degrau, o representante legal da ficha; saiu.)
     expect(vazio).toContain("cadastrada como vendedora");
+    expect(vazio).not.toContain("representante legal");
   });
 });
 
@@ -409,10 +404,10 @@ describe("a porta de escrita: a mesma função, com um papel que só a Careli ap
 });
 
 describe("o custo da leitura", () => {
-  // ⚠️ O CARTÃO PASSOU A PERGUNTAR A MESMA COISA DUAS VEZES. `representanteDoCadastro` é chamado
-  // agora três vezes, e duas delas ("vendedora" e "termos_vendedora") leem a MESMA coluna
-  // (`vendedor_entity_id`) e percorrem a MESMA cadeia até o e-mail da MESMA pessoa. A medição
-  // abaixo é o número de consultas que a tela dispara, para que ninguém precise contar de novo.
+  // ⚠️ DE DEZ CONSULTAS PARA UMA (25/09/2026). Até esta data `representanteDoCadastro` rodava três
+  // vezes por carga do cartão (vendedora, coordenador e termos), percorrendo settings, vínculo,
+  // pessoa e contatos: 3 + 2 + 2 + 2 consultas além do quadro, com a ficha tendo representante. Sem
+  // a herança, a tela lê só o quadro, mesmo com o representante cadastrado na ficha.
   it("conta as consultas que o cartão dispara", async () => {
     const banco = cadastro(true);
     await cartao(banco);
@@ -422,15 +417,6 @@ describe("o custo da leitura", () => {
       return acc;
     }, {});
 
-    // Antes da mudança eram 2 consultas a `apolo_enterprise_settings` e 1 de cada uma das outras
-    // três (o coordenador deste empreendimento é nulo e para na primeira). Agora a cadeia inteira
-    // do representante da INCORPORADORA roda duas vezes, com o mesmo resultado.
-    expect(porTabela).toEqual({
-      apolo_contacts: 2,
-      apolo_enterprise_settings: 3,
-      apolo_entities: 2,
-      apolo_relationships: 2,
-      temis_assinantes: 1,
-    });
+    expect(porTabela).toEqual({ temis_assinantes: 1 });
   });
 });

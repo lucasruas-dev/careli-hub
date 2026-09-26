@@ -29,7 +29,6 @@ vi.mock("@/lib/assinatura/quadro-db", () => ({
   // `assinante-de-termos-no-envio.test.ts`.
   assinanteDeTermosDaVendedora: async () => null,
   assinantesDoQuadro: (...args: unknown[]) => quadroDoEmpreendimento(...args),
-  empresasDoEmpreendimento: async () => ({ coordenador: null, vendedora: "ent-vendedora" }),
 }));
 
 const { enviarAcordoParaAssinatura } = await import("./envio-db");

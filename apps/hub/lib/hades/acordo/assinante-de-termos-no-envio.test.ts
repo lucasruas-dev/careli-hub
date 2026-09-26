@@ -9,10 +9,14 @@ import type { GuardianCompromissoDetail } from "@/lib/guardian/compromissos";
 // campo para assinatura de termos vendedora, ae eu posso apontar quem vai assinar os termos, não
 // precisa necessariamente ser os representantes legais, pode ser o juridico, analista, enfim"*.
 //
-//     apontado para TERMOS  →  vendedora do quadro  →  representante legal da PJ
+//     apontado para TERMOS  →  vendedora do quadro
 //
-// ⚠️ OS DOIS ÚLTIMOS DEGRAUS JÁ EXISTIAM, e é isso que estes testes cobram: o campo novo ACRESCENTA
-// um degrau na frente e não tira nenhum. Quem nunca apontar ninguém tem de continuar caindo
+// (Até 25/09/2026 havia um terceiro degrau, o representante legal da PJ herdado da ficha por
+// `assinantesDoQuadro`. A herança saiu quando o quadro virou a única fonte de quem assina, e a
+// migration 0191 gravou como linha quem ela alcançaria: ninguém, medido no dia.)
+//
+// ⚠️ O ÚLTIMO DEGRAU JÁ EXISTIA, e é isso que estes testes cobram: o campo novo ACRESCENTA um
+// degrau na frente e não tira nenhum. Quem nunca apontar ninguém tem de continuar caindo
 // exatamente onde caía — um empreendimento que hoje manda acordo não pode parar de mandar porque
 // nasceu um campo que ninguém preencheu.
 //
@@ -30,7 +34,6 @@ vi.mock("@/lib/temis/dados-do-contrato", () => ({
 vi.mock("@/lib/assinatura/quadro-db", () => ({
   assinanteDeTermosDaVendedora: (...args: unknown[]) => apontadoParaTermos(...args),
   assinantesDoQuadro: (...args: unknown[]) => quadroDoEmpreendimento(...args),
-  empresasDoEmpreendimento: async () => ({ coordenador: null, vendedora: "ent-vendedora" }),
 }));
 
 const { prepararEnvioDoAcordo } = await import("./envio-db");
@@ -76,10 +79,11 @@ function vendaDoPanteon(gerais: Record<string, string> = {}) {
   };
 }
 
-const representanteLegal = {
+/** A vendedora GRAVADA no quadro (até 25/09/2026, o representante legal herdado da ficha). */
+const vendedoraDoQuadro = {
   cpf: "111.222.333-44",
-  email: "representante@incorporadora.test",
-  nome: "Fulana Representante Legal",
+  email: "vendas@incorporadora.test",
+  nome: "Fulana Vendedora Do Quadro",
   papel: "vendedora" as const,
   telefone: null,
 };
@@ -123,7 +127,7 @@ describe("quem assina pelo incorporador, na ordem em que o Panteon procura", () 
   // novo nunca valer em empreendimento que já tem o contrato configurado — ou seja, justamente nos
   // que mandam acordo.
   it("o apontado para os TERMOS vence a vendedora do quadro", async () => {
-    quadroDoEmpreendimento.mockResolvedValue([representanteLegal]);
+    quadroDoEmpreendimento.mockResolvedValue([vendedoraDoQuadro]);
     apontadoParaTermos.mockResolvedValue(analistaDosTermos);
 
     const preparo = await prepararEnvioDoAcordo(bancoSemEnvelope(), acordo());
@@ -137,11 +141,11 @@ describe("quem assina pelo incorporador, na ordem em que o Panteon procura", () 
     ]);
   });
 
-  // ⚠️ NADA DO QUE FUNCIONA HOJE PODE PARAR DE FUNCIONAR. O representante legal chega ao envio
-  // DENTRO da lista do quadro (é `assinantesDoQuadro` quem o acrescenta quando ninguém ocupou a
-  // vendedora), e esse caminho continua inteiro.
+  // ⚠️ NADA DO QUE FUNCIONA HOJE PODE PARAR DE FUNCIONAR. A vendedora chega ao envio DENTRO da
+  // lista do quadro, e esse caminho continua inteiro. (Até 25/09/2026 a lista trazia também o
+  // representante legal herdado da ficha; agora traz só o que está gravado.)
   it("sem ninguém apontado, cai na vendedora do quadro, como antes", async () => {
-    quadroDoEmpreendimento.mockResolvedValue([representanteLegal]);
+    quadroDoEmpreendimento.mockResolvedValue([vendedoraDoQuadro]);
 
     const preparo = await prepararEnvioDoAcordo(bancoSemEnvelope(), acordo());
     if (!preparo.ok) throw new Error("o preparo devia ter dado certo");
@@ -149,7 +153,7 @@ describe("quem assina pelo incorporador, na ordem em que o Panteon procura", () 
     expect(preparo.impedimento).toBeNull();
     expect(preparo.signatarios.map((s) => s.nome)).toEqual([
       "BELTRANO EXEMPLO FERREIRA",
-      "FULANA REPRESENTANTE LEGAL",
+      "FULANA VENDEDORA DO QUADRO",
       "NIVEA CARELI",
     ]);
   });

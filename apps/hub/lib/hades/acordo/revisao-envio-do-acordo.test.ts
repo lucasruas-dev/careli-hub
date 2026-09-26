@@ -29,7 +29,6 @@ vi.mock("@/lib/temis/dados-do-contrato", () => ({
 vi.mock("@/lib/assinatura/quadro-db", () => ({
   assinanteDeTermosDaVendedora: (...args: unknown[]) => apontadoParaTermos(...args),
   assinantesDoQuadro: (...args: unknown[]) => quadroDoEmpreendimento(...args),
-  empresasDoEmpreendimento: async () => ({ coordenador: null, vendedora: "ent-vendedora" }),
 }));
 
 const { enviarAcordoParaAssinatura, prepararEnvioDoAcordo } = await import("./envio-db");
@@ -75,11 +74,17 @@ function vendaDoPanteon(gerais: Record<string, string> = {}) {
   };
 }
 
-/** A pessoa que o cadastro da PJ devolve — o último degrau da precedência. */
-const representanteLegal = {
+/**
+ * A vendedora GRAVADA no quadro, o último degrau da precedência.
+ *
+ * ⚠️ ATÉ 25/09/2026 ESTA PESSOA ERA "O REPRESENTANTE LEGAL DA PJ", herdado da ficha por
+ * `assinantesDoQuadro` quando ninguém ocupava a vendedora. A herança saiu (o quadro é a única fonte
+ * de quem assina); o duplo continua devolvendo uma vendedora, agora pelo único caminho que existe.
+ */
+const vendedoraDoQuadro = {
   cpf: "111.222.333-44",
-  email: "representante@incorporadora.test",
-  nome: "Fulana Representante Legal",
+  email: "vendas@incorporadora.test",
+  nome: "Fulana Vendedora Do Quadro",
   papel: "vendedora" as const,
   telefone: null,
 };
@@ -218,10 +223,12 @@ describe("o envelope do acordo sai com três pessoas, na ordem do Lucas", () => 
     ]);
   });
 
-  // ⚠️ E O MESMO VALE PELO DEGRAU DE BAIXO. Quem nunca apontar ninguém continua mandando o
-  // representante legal, e ele tem de cair no mesmo degrau 2.
-  it("sem ninguém apontado, o representante legal ocupa o grupo 2", async () => {
-    quadroDoEmpreendimento.mockResolvedValue([representanteLegal]);
+  // ⚠️ E O MESMO VALE PELO DEGRAU DE BAIXO. Quem nunca apontar ninguém manda a vendedora do quadro,
+  // e ela tem de cair no mesmo degrau 2. (Este teste se chamava "o representante legal ocupa o
+  // grupo 2" até 25/09/2026, quando a herança da ficha saiu e o degrau de baixo passou a ser só a
+  // linha gravada.)
+  it("sem ninguém apontado, a vendedora do quadro ocupa o grupo 2", async () => {
+    quadroDoEmpreendimento.mockResolvedValue([vendedoraDoQuadro]);
     const { porta, signatarios } = portaDeTeste();
 
     await enviarAcordoParaAssinatura(
@@ -232,7 +239,7 @@ describe("o envelope do acordo sai com três pessoas, na ordem do Lucas", () => 
     );
 
     expect(signatarios.map((s) => s.group)).toEqual([1, 2, 3]);
-    expect(signatarios[1]?.name).toBe("FULANA REPRESENTANTE LEGAL");
+    expect(signatarios[1]?.name).toBe("FULANA VENDEDORA DO QUADRO");
   });
 
   /**
@@ -254,7 +261,7 @@ describe("o envelope do acordo sai com três pessoas, na ordem do Lucas", () => 
    * vendedora do CONTRATO com ordem própria 1 e mandasse um acordo antes de apontar o de termos.
    */
   it("'Assina em 1' na vendedora do contrato não adianta o incorporador", async () => {
-    quadroDoEmpreendimento.mockResolvedValue([{ ...representanteLegal, ordemPropria: 1 }]);
+    quadroDoEmpreendimento.mockResolvedValue([{ ...vendedoraDoQuadro, ordemPropria: 1 }]);
     const { porta, signatarios } = portaDeTeste();
 
     await enviarAcordoParaAssinatura(
@@ -273,7 +280,7 @@ describe("o envelope do acordo sai com três pessoas, na ordem do Lucas", () => 
 
 describe("a precedência de quem assina pelo incorporador", () => {
   it("o apontado para TERMOS vence a vendedora do quadro", async () => {
-    quadroDoEmpreendimento.mockResolvedValue([representanteLegal]);
+    quadroDoEmpreendimento.mockResolvedValue([vendedoraDoQuadro]);
     apontadoParaTermos.mockResolvedValue(analistaDosTermos);
 
     const preparo = await prepararEnvioDoAcordo(bancoDeTeste(), acordo());
@@ -287,9 +294,9 @@ describe("a precedência de quem assina pelo incorporador", () => {
     ]);
   });
 
-  // ⚠️ SEM NINGUÉM, A FRASE. E ela tem de dizer o campo e a tela: hoje é a frase que TODO acordo
-  // aprovado lê (zero linhas em `temis_assinantes`, zero representantes legais nas 23
-  // incorporadoras, medido em 20/09/2026).
+  // ⚠️ SEM NINGUÉM, A FRASE. E ela tem de dizer o campo e a tela. Desde 25/09/2026 "ninguém" quer
+  // dizer ninguém GRAVADO: a frase não manda mais procurar o representante legal da empresa, porque
+  // o envio não o lê mais.
   it("sem nenhum dos dois, a frase nomeia o campo, a tela e dispensa o representante legal", async () => {
     const preparo = await prepararEnvioDoAcordo(bancoDeTeste(), acordo());
     if (!preparo.ok) throw new Error("o preparo devia ter dado certo");
@@ -297,6 +304,7 @@ describe("a precedência de quem assina pelo incorporador", () => {
     expect(preparo.impedimento).toContain("Assinatura de termos (vendedora)");
     expect(preparo.impedimento).toContain("Quadro de assinatura do empreendimento");
     expect(preparo.impedimento).toContain("não precisa ser o representante legal");
+    expect(preparo.impedimento).not.toContain("a empresa não tem representante legal");
   });
 
   // ⚠️ E A RECUSA ACONTECE ANTES DA CLICKSIGN. Envelope custa e o ativado não se apaga: nenhuma
@@ -339,17 +347,19 @@ describe("o apontado com e-mail ruim para antes de existir envelope", () => {
     expect(signatarios).toEqual([]);
   });
 
-  // ⚠️ O APONTADO SEM E-MAIL NÃO CAI PARA O REPRESENTANTE, e isso é o certo: o operador escolheu
-  // aquela pessoa, e trocá-la calado mandaria o termo para outra. O teste prende o comportamento.
-  it("sem e-mail, NÃO cai calado para o representante legal", async () => {
-    quadroDoEmpreendimento.mockResolvedValue([representanteLegal]);
+  // ⚠️ O APONTADO SEM E-MAIL NÃO CAI PARA A VENDEDORA DO QUADRO, e isso é o certo: o operador
+  // escolheu aquela pessoa, e trocá-la calado mandaria o termo para outra. O teste prende o
+  // comportamento. (Até 25/09/2026 o nome era "NÃO cai calado para o representante legal", quando o
+  // degrau de baixo ainda herdava da ficha.)
+  it("sem e-mail, NÃO cai calado para a vendedora do quadro", async () => {
+    quadroDoEmpreendimento.mockResolvedValue([vendedoraDoQuadro]);
     apontadoParaTermos.mockResolvedValue({ ...analistaDosTermos, email: "" });
 
     const preparo = await prepararEnvioDoAcordo(bancoDeTeste(), acordo());
     if (!preparo.ok) throw new Error("o preparo devia ter dado certo");
 
     expect(preparo.impedimento).toContain("ANALISTA DO JURIDICO");
-    expect(preparo.signatarios.map((s) => s.nome)).not.toContain("FULANA REPRESENTANTE LEGAL");
+    expect(preparo.signatarios.map((s) => s.nome)).not.toContain("FULANA VENDEDORA DO QUADRO");
   });
 
   // ⚠️ O MESMO E-MAIL DO COMPRADOR é o caso da imobiliária que cadastra o próprio endereço como
@@ -516,8 +526,8 @@ describe("duas pessoas pela vendedora: só uma entra no termo", () => {
   // papel não menciona.
   it("com duas vendedoras no quadro, o termo leva a primeira e mais ninguém", async () => {
     quadroDoEmpreendimento.mockResolvedValue([
-      representanteLegal,
-      { ...representanteLegal, email: "segunda@incorporadora.test", nome: "Segunda Vendedora Silva" },
+      vendedoraDoQuadro,
+      { ...vendedoraDoQuadro, email: "segunda@incorporadora.test", nome: "Segunda Vendedora Silva" },
     ]);
 
     const preparo = await prepararEnvioDoAcordo(bancoDeTeste(), acordo());
@@ -526,7 +536,7 @@ describe("duas pessoas pela vendedora: só uma entra no termo", () => {
     expect(preparo.signatarios).toHaveLength(3);
     expect(preparo.signatarios.map((s) => s.nome)).toEqual([
       "BELTRANO EXEMPLO FERREIRA",
-      "FULANA REPRESENTANTE LEGAL",
+      "FULANA VENDEDORA DO QUADRO",
       "NIVEA CARELI",
     ]);
   });
@@ -534,7 +544,7 @@ describe("duas pessoas pela vendedora: só uma entra no termo", () => {
   // ⚠️ E O APONTADO PARA TERMOS TAMBÉM É UM SÓ: quem escolhe é `assinanteDeTermosDaVendedora`
   // (menor `posicao`, `limit(1)`), e o envio não soma a vendedora do contrato por cima.
   it("apontado para termos e vendedora do contrato não viram dois signatários", async () => {
-    quadroDoEmpreendimento.mockResolvedValue([representanteLegal]);
+    quadroDoEmpreendimento.mockResolvedValue([vendedoraDoQuadro]);
     apontadoParaTermos.mockResolvedValue(analistaDosTermos);
 
     const preparo = await prepararEnvioDoAcordo(bancoDeTeste(), acordo());

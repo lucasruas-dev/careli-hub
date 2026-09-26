@@ -7,7 +7,10 @@ import { assinanteDeTermosDaVendedora, assinantesDoQuadro } from "./quadro-db";
 // contra um duplo do Supabase em vez de um mock da própria função.
 //
 // ⚠️ O QUE ESTE ARQUIVO MEDE É A CADEIA QUE O ENVIO USA, degrau a degrau: o apontado para TERMOS,
-// depois a VENDEDORA DO QUADRO, e só então o representante legal da PJ. Até 20/09/2026 a TELA do
+// depois a VENDEDORA DO QUADRO. Até 25/09/2026 havia um terceiro degrau, o representante legal da
+// PJ herdado da ficha; ele saiu quando o quadro virou a única fonte de quem assina (Lucas: *"nao tem
+// que ter mais sync com c2x referente a contrato"*), e a migration 0191 gravou como linha quem ele
+// alcançaria. Até 20/09/2026 a TELA do
 // quadro (`lerQuadroDeAssinatura`, em `lib/temis/estrutura-servico.ts`) descrevia uma queda
 // diferente, mostrando o representante legal da PJ como linha herdada mesmo quando havia vendedora
 // digitada — o nome lido não era o nome que assinava. Quem espelha a cadeia na tela agora é
@@ -103,19 +106,19 @@ const CADASTRO_DA_PJ = {
 };
 
 describe("a queda do envio quando ninguém foi apontado para os termos", () => {
-  // ⚠️ ESTE É O CASO QUE A TELA DESCREVE CERTO: sem linha nenhuma no quadro, o representante legal
-  // é quem assina pelo incorporador, e é ele que a tela mostra herdado no campo dos termos.
-  it("sem nenhuma linha no quadro, o representante legal é quem assina", async () => {
+  // ⚠️ A REGRA MUDOU EM 25/09/2026, E ESTE TESTE MUDOU COM ELA. Ele se chamava "sem nenhuma linha
+  // no quadro, o representante legal é quem assina" e travava a herança da ficha. Agora sem linha
+  // nenhuma ninguém assina pelo incorporador, e o envio do acordo PARA com a frase de impedimento
+  // (`faltaAlgumaParte`), em vez de mandar o termo para quem a ficha dizia. O representante continua
+  // no cadastro da PJ do duplo, de propósito: é isso que prova que ele não é mais lido.
+  it("sem nenhuma linha no quadro, ninguém assina: a ficha da PJ não é lida", async () => {
     const sb = bancoComLinhas({ ...CADASTRO_DA_PJ, temis_assinantes: [] });
 
     const apontado = await assinanteDeTermosDaVendedora(sb, "31");
-    const doQuadro = await assinantesDoQuadro(sb, {
-      enterpriseId: "31",
-      vendedoraEntityId: "ent-vendedora",
-    });
+    const doQuadro = await assinantesDoQuadro(sb, { enterpriseId: "31" });
 
     expect(apontado).toBeNull();
-    expect(doQuadro.find((p) => p.papel === "vendedora")?.nome).toBe("Fulana Representante Legal");
+    expect(doQuadro).toEqual([]);
   });
 
   /**
@@ -148,10 +151,7 @@ describe("a queda do envio quando ninguém foi apontado para os termos", () => {
     });
 
     const apontado = await assinanteDeTermosDaVendedora(sb, "31");
-    const doQuadro = await assinantesDoQuadro(sb, {
-      enterpriseId: "31",
-      vendedoraEntityId: "ent-vendedora",
-    });
+    const doQuadro = await assinantesDoQuadro(sb, { enterpriseId: "31" });
 
     // Ninguém foi apontado para termos: é o degrau do meio que responde.
     expect(apontado).toBeNull();

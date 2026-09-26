@@ -14,11 +14,7 @@ import {
   envioAindaPodeEstarNoAr,
   seguraOEnvio,
 } from "@/lib/assinatura/envio-db";
-import {
-  assinanteDeTermosDaVendedora,
-  assinantesDoQuadro,
-  empresasDoEmpreendimento,
-} from "@/lib/assinatura/quadro-db";
+import { assinanteDeTermosDaVendedora, assinantesDoQuadro } from "@/lib/assinatura/quadro-db";
 import { type Pessoa, signatariosDoContrato } from "@/lib/assinatura/signatarios";
 import type { EstadoDaAssinatura, Signatario } from "@/lib/assinatura/tipos";
 import { rotuloDoEstado } from "@/lib/assinatura/traduzir";
@@ -355,7 +351,14 @@ async function cadeiaDeEmpreendimentos(
 /**
  * QUEM ASSINA PELO INCORPORADOR — o primeiro nome que a cadeia devolver, na precedência do Lucas.
  *
- *     apontado para TERMOS  →  vendedora do quadro  →  representante legal da PJ
+ *     apontado para TERMOS  →  vendedora do quadro
+ *
+ * ⚠️ ERAM TRÊS DEGRAUS ATÉ 25/09/2026, e o terceiro era o representante legal da PJ, herdado da
+ * ficha por `assinantesDoQuadro` quando ninguém ocupava o papel `vendedora`. A herança saiu das duas
+ * pontas (o quadro é a única fonte de quem assina; Lucas: *"nao tem que ter mais sync com c2x
+ * referente a contrato"*), e a migration 0191 gravou como linha de vendedora quem esse degrau
+ * alcançaria. Medido no dia: ninguém, porque zero das 35 incorporadoras com vendedora tem
+ * representante legal; os acordos enviados saíram todos do apontado.
  *
  * ⚠️ E A VARREDURA É CAMPO A CAMPO, COMO EM `herdarComissao`, e não degrau a degrau: procura-se o
  * APONTADO nos três empreendimentos da cadeia antes de aceitar a vendedora do contrato de qualquer
@@ -387,12 +390,7 @@ async function incorporadorDoAcordo(
   }
 
   for (const id of cadeia) {
-    const empresas = await empresasDoEmpreendimento(sb, id);
-    const doQuadro = await assinantesDoQuadro(sb, {
-      coordenadorEntityId: empresas.coordenador,
-      enterpriseId: id,
-      vendedoraEntityId: empresas.vendedora,
-    });
+    const doQuadro = await assinantesDoQuadro(sb, { enterpriseId: id });
     const vendedora = doQuadro.find((p) => p.papel === "vendedora");
     if (vendedora) return semAOrdemDoContrato(vendedora);
   }

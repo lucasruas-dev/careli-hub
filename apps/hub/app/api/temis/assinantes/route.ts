@@ -1,5 +1,6 @@
 import { authorizeApoloRead, authorizeApoloWrite } from "@/lib/apolo/auth";
 import {
+  editarAssinante,
   incluirAssinante,
   lerQuadroDeAssinatura,
   removerAssinante,
@@ -8,8 +9,9 @@ import {
 // O QUADRO DE ASSINATURA DO EMPREENDIMENTO. Tabela na migration 0158. A PORTA DO HUB.
 //
 // ⚠️ A LÓGICA MORA EM `lib/temis/estrutura-servico.ts`: o portal da Cecílio mantém o quadro dos
-// produtos dela pelas MESMAS funções (`/api/incorporador/temis/assinantes`). Os três papéis e a
-// linha herdada do representante legal estão explicados lá.
+// produtos dela pelas MESMAS funções (`/api/incorporador/temis/assinantes`). Os papéis, e por que
+// desde 25/09/2026 nada mais é herdado da ficha da empresa (toda linha está gravada e se edita e se
+// exclui), estão explicados lá.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -33,6 +35,16 @@ export async function POST(request: Request) {
   const auth = await authorizeApoloWrite(request);
   if (!auth.ok) return auth.response;
   return incluirAssinante(
+    { nome: auth.nome ?? "", papel: "escrita", tipo: "hub", userId: auth.userId },
+    request,
+  );
+}
+
+// EDITA uma linha (`?id=`): nome, CPF, e-mail, Linha e Assina em. O papel não muda.
+export async function PATCH(request: Request) {
+  const auth = await authorizeApoloWrite(request);
+  if (!auth.ok) return auth.response;
+  return editarAssinante(
     { nome: auth.nome ?? "", papel: "escrita", tipo: "hub", userId: auth.userId },
     request,
   );
