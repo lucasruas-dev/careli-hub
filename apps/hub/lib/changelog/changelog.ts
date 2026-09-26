@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-26-pan-124-regua-e-trilha-do-cadastro",
+    deployedAt: "2026-09-26T14:23:33-03:00",
+    // A única coisa visível é a fila de atendimento sem sigla inventada; o resto é fundação do PAN-124.
+    internal: true,
+    modules: [
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "**A fila de atendimento para de inventar código de unidade.** Quando a matrícula não vem, a coluna mostra \"-\" em vez de um código que não existe (LDO, VOV, RPR). O código real continua aparecendo ao abrir a ficha.",
+            ],
+            screen: "Fila de atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "30aff2ea",
+    technical: {
+      done:
+        "PAN-124, F1 e F2. F1: lib/hercules/regua-do-cadastro.ts (pura) responde pelo c2x_enterprise_id nome de mercado, sigla, pai, filhos na ordem (ordem, codigo), papel (divisao, pai, simples), chave do grupo e entradas no molde do catálogo; VLO 35 segue simples ao lado de group:Vale do Ouro e o 31 fica fora. lib/hercules/cadastro-em-cache.ts: cache por instância que confere count e max(atualizado_em) no máximo a cada 30 s, devolve o guardado na hora e confere em segundo plano (after), prazo de 5 s com AbortSignal, mantém o anterior na falha. nome-de-mercado-por-id delega à régua. Nenhum leitor troca de fonte ainda. Fila de atendimento (modules/guardian/attendance/data.ts): matrícula nula sai '-' (antes 217 de 240 linhas ganhavam sigla inexistente). Paridade real: grupos idênticos a ENTERPRISE_GROUPS.ids, siglas 40/40 com settings.code, nome de mercado 39/39. F2: migration 0192 aplicada antes, com OK: trilha hercules_empreendimento_alteracoes (RLS sem policy, service_role só lê e acrescenta), view hercules_empreendimento_valores_antigos, atualizado_por, gatilhos de carimbo, guarda e trilha, hercules_movimento_do_empreendimento (security definer, só service_role), CHECK de formato da sigla e a 0123 travando o pai (FOR SHARE). Prova viva desfeita: 27 regras com o comportamento esperado. Suíte 9.716 verdes.",
+      motivation:
+        "Lucas, 24/09/2026: temos que ter capacidade de editar cadastros dos empreendimentos bem como criá-los dentro do panteon. Em 26/09: o Panteon manda na sigla. A régua e a trilha são a base das fatias seguintes (painel, catálogo, tela de editar e vigia).",
+    },
+    title: "PAN-124: régua do cadastro de empreendimentos e trilha no banco",
+    type: "correcao",
+    version: "1.382.0",
+  },
+  {
     buildTag: "2026-09-25-quadro-de-assinatura-editavel",
     deployedAt: "2026-09-25T21:09:28-03:00",
     modules: [
