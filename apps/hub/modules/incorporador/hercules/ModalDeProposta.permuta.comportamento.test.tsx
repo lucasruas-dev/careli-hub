@@ -127,6 +127,11 @@ const portao = {
     desde: "2026-01-10",
     etapa: null,
     motivo: null,
+    // (26/09/2026) A PORTA VIROU CAMPO PRÓPRIO: o botão segue `podeGerarProposta`, e não
+    // `credenciado` (o coordenador gera com a CAD EM ANDAMENTO). Aqui a CAD está credenciada,
+    // então os dois andam juntos; o terceiro estado da tela está em
+    // ModalDeProposta.cad-em-andamento.comportamento.test.tsx.
+    podeGerarProposta: true,
   },
   entradaMinimaPercentual: 10,
   planos: [

@@ -42,7 +42,91 @@ type ClienteDeLeitura = Pick<SupabaseClient, "from">;
 /** A etapa que libera a proposta. Uma só, e é o fim da esteira. */
 export const ETAPA_QUE_LIBERA = "credenciado";
 
+// UMA RÉGUA, DOIS MODOS — E A CAD EM ANDAMENTO LIBERA O COORDENADOR.
+//
+// Lucas (26/09/2026): *"pode deixar os coordenadores emitirem proposta sem a cad esta credenciada.
+// ela pode estar em validacao ou em qualquer outro estagio"*. Sobre o print da CAD do MATEUS COTTA
+// SACCHETTO em `validacao` (lote EIRETAMA-14, Aldeia das Cachoeiras das Pedras, empreendimento 42):
+// *"essa devia passar"*. A coordenadora, no próprio card: *"eu só posso lançar a proposta financeira
+// depois que a CAD for aprovada? Normalmente, eu já tenho essas informações junto com o cadastro"*.
+//
+// ⚠️ MEDIDO EM PRODUÇÃO (`bxgukywoxgivlrhjkwjx`, só SELECT, 26/09/2026):
+//   select etapa, count(*) from apolo_esteira group by 1 order by 2 desc;
+//     → credenciado 662 · revisao 172 · correcao 6 · validacao 2
+//   ZERO CADs em `indeferido`, `credito` ou `prevenda` hoje: a recusa que este mapa mantém não trava
+//   ninguém agora, ela existe para o dia em que a coordenação reprovar alguém.
+//   select etapa, enterprise_id, atualizado_em from apolo_esteira where etapa = 'validacao';
+//     → enterprise_id 42, atualizado_em 2026-09-26 17:11:31+00 (a CAD do print) e uma no 20.
+//
+// ⚠️ `indeferido` CONTINUA BARRANDO, e é a segunda decisão do Lucas no mesmo dia. As demais etapas
+// são uma CAD EM ANDAMENTO — a coordenação está com ela na mão, e a proposta financeira caminha em
+// paralelo. `indeferido` é uma decisão JÁ TOMADA de reprovar o cliente: gerar proposta em cima dela
+// é vender para quem a coordenação recusou.
+//
+// ⚠️ É UM `Record<EtapaEsteira, boolean>`, E NÃO UM `Set`, pelo mesmo motivo do `ROTULO_DA_ETAPA`
+// abaixo: uma etapa nova na esteira quebra o TYPECHECK aqui, exigindo uma decisão explícita, em vez
+// de nascer liberada (ou barrada) por descuido do lado que a régua chutar.
+const LIBERA_COM_CAD_EM_ANDAMENTO_INTERNO: Record<EtapaEsteira, boolean> = {
+  correcao: true,
+  credenciado: true,
+  credito: true,
+  indeferido: false,
+  prevenda: true,
+  revisao: true,
+  validacao: true,
+};
+
+/** O mapa, exposto só para a varredura que cobra uma decisão por etapa do vocabulário. */
+export const LIBERA_COM_CAD_EM_ANDAMENTO: Readonly<Record<EtapaEsteira, boolean>> =
+  LIBERA_COM_CAD_EM_ANDAMENTO_INTERNO;
+
+/**
+ * O MODO da régua — quem está perguntando, não o que se pergunta.
+ *
+ * ⚠️ O DEFAULT É O APERTADO, e isso é o contrato. `decidirPelasLinhas` é chamada sem modo pela busca
+ * de proponentes (`app/api/incorporador/venda/proponentes/route.ts:186`), e o dia em que o default
+ * virasse o frouxo essa lista passaria a oferecer como comprador quem ninguém liberou.
+ */
+export type ModoDaRegua = {
+  /**
+   * Uma CAD em andamento (validação, revisão, crédito, correção, pré-venda) já abre a porta?
+   *
+   * `true` só para o PORTAL COMERCIAL DA CARELI — o coordenador. O portal do Cecílio
+   * (`cecilio-rocha`), que também opera a própria venda (`portalOperaVenda` em
+   * `lib/apolo/incorporador/perfis-de-portal.ts:122`), continua precisando da CAD credenciada:
+   * segunda decisão do Lucas em 26/09/2026.
+   */
+  cadEmAndamentoLibera?: boolean;
+};
+
+/**
+ * A porta, dada a verdade sobre a CAD e o modo de quem pergunta.
+ *
+ * ⚠️ NÃO É `credenciado`, E É POR ISSO QUE EXISTE. Se o afrouxamento virasse `credenciado: true`, o
+ * selo da ModalDeProposta escreveria "CAD credenciada neste empreendimento / A reserva pode virar
+ * proposta" (`modules/incorporador/hercules/ModalDeProposta.tsx:1400`) em cima de uma CAD em
+ * validação, e a tela passaria a MENTIR para o coordenador. `credenciado` continua significando a
+ * verdade sobre a CAD; quem decide a porta é este campo, e a tela mostra os dois.
+ */
+function podeGerarProposta(etapa: string, credenciado: boolean, modo: ModoDaRegua): boolean {
+  if (credenciado) return true;
+  if (!modo.cadEmAndamentoLibera) return false;
+  // A coluna é `text` sem CHECK (migration 0057): uma etapa fora do vocabulário NÃO abre porta só
+  // por não estar na lista de recusa.
+  return Object.hasOwn(LIBERA_COM_CAD_EM_ANDAMENTO_INTERNO, etapa)
+    ? LIBERA_COM_CAD_EM_ANDAMENTO_INTERNO[etapa as EtapaEsteira]
+    : false;
+}
+
 export type CredenciamentoDoTitular = {
+  /**
+   * A CAD ESTÁ CREDENCIADA NESTE EMPREENDIMENTO? A verdade sobre a CAD, e só ela.
+   *
+   * ⚠️ NÃO É A PORTA — ver `podeGerarProposta`. Desde 26/09/2026 o coordenador gera proposta com a
+   * CAD em andamento, e este campo continua `false` nesse caso de propósito: é ele que a tela usa
+   * para escrever o selo, e um `true` aqui faria a tela dizer "CAD credenciada" sobre uma CAD em
+   * validação.
+   */
   credenciado: boolean;
   /**
    * Desde quando a CAD encontrada está assim, em ISO.
@@ -71,6 +155,15 @@ export type CredenciamentoDoTitular = {
   etapa: null | string;
   /** A frase para o corretor. `null` quando está credenciado — aí não há o que explicar. */
   motivo: null | string;
+  /**
+   * A PORTA: esta reserva pode virar proposta?
+   *
+   * Igual a `credenciado` no modo de sempre. No modo do coordenador (Lucas, 26/09/2026) ele é `true`
+   * também com a CAD EM ANDAMENTO — e aí `credenciado` é `false` e `motivo` traz a frase da etapa,
+   * que a tela mostra como AVISO com o botão liberado. É este campo que o GET manda para a tela e
+   * que o POST usa para recusar com 403.
+   */
+  podeGerarProposta: boolean;
 };
 
 /**
@@ -130,6 +223,9 @@ export type LinhaDaEsteira = {
 export async function credenciadoParaVender(
   admin: ClienteDeLeitura,
   alvo: { documento: string; enterpriseIds: string[] },
+  // ⚠️ O MODO É O TERCEIRO PARÂMETRO, E NÃO UM CAMPO DE `alvo`: `alvo` é O QUE se pergunta (o
+  // documento, o escopo); o modo é QUEM pergunta. Omitido, vale o apertado de sempre.
+  modo: ModoDaRegua = {},
 ): Promise<CredenciamentoDoTitular> {
   // ⚠️ NORMALIZAR ANTES DE HASHEAR. O CPF chega como o corretor digitou ("529.982.247-25") e como a
   // reserva gravou ("52998224725"); `hashIdentifier` não normaliza nada, então os dois formatos
@@ -170,6 +266,9 @@ export async function credenciadoParaVender(
       entityId: null,
       etapa: null,
       motivo: "Informe o CPF ou o CNPJ do titular para conferir o credenciamento.",
+      // ⚠️ NÃO É ETAPA, ENTÃO O MODO DO COORDENADOR NÃO ALCANÇA. Documento insuficiente para
+      // procurar continua barrando: sem ele não há pessoa para conferir.
+      podeGerarProposta: false,
     };
   }
 
@@ -195,12 +294,15 @@ export async function credenciadoParaVender(
       entityId: null,
       etapa: null,
       motivo: `Este ${rotuloDoDocumento(digitos)} não tem cadastro no Apolo. Abra a CAD antes de gerar a proposta.`,
+      // ⚠️ SEM ENTIDADE NO APOLO O MODO DO COORDENADOR NÃO ALCANÇA (Lucas, 26/09/2026: a CAD precisa
+      // EXISTIR; o que foi afrouxado é a ETAPA dela). Sem entidade não há pessoa conferida.
+      podeGerarProposta: false,
     };
   }
 
   const linhas = await lerEsteira(admin, entityIds, escopo);
 
-  return decidirPelasLinhas(linhas, entityIds);
+  return decidirPelasLinhas(linhas, entityIds, modo);
 }
 
 /**
@@ -217,6 +319,7 @@ export async function credenciadoParaVender(
 export function decidirPelasLinhas(
   linhas: LinhaDaEsteira[],
   entityIds: string[],
+  modo: ModoDaRegua = {},
 ): CredenciamentoDoTitular {
   // A régua tem DUAS METADES, e trocar a ordem delas quebra uma das duas:
   //
@@ -246,15 +349,82 @@ export function decidirPelasLinhas(
       entityId: credenciada.entity_id,
       etapa: ETAPA_QUE_LIBERA,
       motivo: null,
+      podeGerarProposta: true,
     };
   }
+
+  // ⚠️ NO MODO DO COORDENADOR, A RECUSA É PROCURADA NO ESCOPO INTEIRO — e não na linha mais nova.
+  //
+  // Esta varredura ESPELHA o "qualquer uma serve" do `credenciado` acima com um "qualquer recusa
+  // barra", e é o que torna a segunda decisão do Lucas de 26/09/2026 verdadeira de fato:
+  // *"indeferido não"*, porque *"é uma decisão já tomada de reprovar o cliente"*. Sem ela,
+  // `indeferido` só barrava quando por acaso era a linha com o `atualizado_em` MAIOR de todo o
+  // escopo: qualquer segunda CAD do mesmo CPF em etapa em andamento passava por cima da recusa.
+  //
+  // ⚠️ MEDIDO POR MIM EM PRODUÇÃO (`bxgukywoxgivlrhjkwjx`, só SELECT, 26/09/2026 18h), e é o que
+  // diz o tamanho do risco:
+  //   select etapa, count(*) from apolo_esteira group by 1;
+  //     → credenciado 662 · revisao 173 · correcao 6 · validacao 1 · ZERO `indeferido`
+  //   select count(*) from (select value_hash from apolo_entity_identifiers
+  //     group by 1 having count(distinct entity_id) > 1) d;                            → 806
+  //   select count(*) from (select i.value_hash from apolo_esteira e
+  //     join apolo_entity_identifiers i on i.entity_id = e.entity_id
+  //     group by 1 having count(distinct e.etapa) > 1) x;                              → 16
+  //   select count(*) from (select entity_id from apolo_esteira
+  //     group by 1 having count(distinct enterprise_id) > 1) y;                        → 7
+  // NÃO HÁ VÍTIMA HOJE, porque não existe CAD indeferida. Mas a FORMA já está no dado: 16 documentos
+  // já têm CADs em etapas DIFERENTES, 7 entidades têm CAD em mais de um empreendimento, e a etapa é
+  // gravada por TELA — a ordem dos `atualizado_em` é acidente, não decisão de ninguém.
+  //
+  // ⚠️ MEDIDO ANTES DA CORREÇÃO (`npx tsx` chamando esta função de verdade, modo
+  // `{cadEmAndamentoLibera: true}`, 26/09/2026): `indeferido` no 42 em 20/09 mais `revisao` no 43 em
+  // 26/09 devolvia `{"podeGerarProposta":true,"etapa":"revisao"}`, e entidade A `indeferido` no 42
+  // em 20/09 mais entidade B `validacao` no 42 em 26/09 devolvia
+  // `{"podeGerarProposta":true,"etapa":"validacao"}`. Nos dois a proposta nascia para quem a
+  // coordenação REPROVOU, e a tela escrevia "CAD em andamento" sem citar o indeferimento.
+  //
+  // ⚠️ E É O ESCOPO QUE FAZ ISSO SER COMUM, não um caso de laboratório. O que chega aqui vem
+  // EXPANDIDO (família inteira mais os ids de grupo, `escopoDoTitular(escopoDaEsteiraDoPortal(...))`
+  // em `app/api/incorporador/venda/proposta/route.ts:585`), e as duas portas estão escritas neste
+  // arquivo: `apolo_esteira.enterprise_id` guarda a divisão E o grupo do catálogo (topo do arquivo),
+  // e o mesmo CPF tem mais de uma entidade no Apolo (`maisRecentePorCad`). Abrir CAD nova é trivial;
+  // indeferir exige motivo escrito e é etapa FINAL (`ETAPAS_FINAIS`,
+  // `lib/apolo/incorporador/resumo-do-produto.ts`). Sem a varredura, a etapa mais nova ganharia por
+  // acidente de ordem de escrita, não por decisão de ninguém.
+  //
+  // ⚠️ DEPOIS DO RAMO DO `credenciado`, DE PROPÓSITO: uma CAD credenciada em OUTRA entidade do
+  // mesmo CPF continua valendo exatamente como antes deste lote. Apertar isso aqui recusaria quem
+  // hoje passa, e esse é o erro caro — o corretor ouve "não credenciado" sobre alguém que está.
+  //
+  // ⚠️ SÓ NO MODO FROUXO, também de propósito: no modo apertado a porta já era `false` sem
+  // `credenciado`, então a varredura não mudaria decisão nenhuma — mudaria só a FRASE que o portal
+  // do Cecílio e a busca de proponentes mostram, e mexer no que ninguém pediu é outro lote.
+  //
+  // ⚠️ A RECUSA É LIDA DO MESMO MAPA que abre a porta (`LIBERA_COM_CAD_EM_ANDAMENTO_INTERNO`), e não
+  // de um `=== "indeferido"` escrito à mão: no dia em que a esteira ganhar uma segunda etapa de
+  // recusa, ela barra aqui sem precisar de um segundo lugar para lembrar disso.
+  const recusa = modo.cadEmAndamentoLibera
+    ? maisRecente(
+        decisivas.filter((l) => {
+          const etapaDaLinha = normalizarEtapa(l.etapa);
+          return (
+            Object.hasOwn(LIBERA_COM_CAD_EM_ANDAMENTO_INTERNO, etapaDaLinha) &&
+            !LIBERA_COM_CAD_EM_ANDAMENTO_INTERNO[etapaDaLinha as EtapaEsteira]
+          );
+        }),
+      )
+    : null;
 
   // ⚠️ A ETAPA VOLTA MESMO SEM LIBERAR, e é o principal serviço desta função quando a resposta é
   // não: "em análise de crédito desde 02/09" é uma conversa (o corretor cobra a coordenação);
   // "não credenciado" é um muro. Entre várias CADs não credenciadas vale a MAIS RECENTE, com
   // desempate explícito — é a que a pessoa está mexendo, e sem ordem fixa a mesma pergunta daria
   // respostas diferentes a cada clique (o mesmo motivo do `order` de `lib/apolo/esteira-cad.ts`).
-  const escolhida = maisRecente(decisivas);
+  //
+  // ⚠️ A RECUSA VEM PRIMEIRO QUANDO EXISTE, e é isso que faz a tela NÃO MENTIR POR OMISSÃO: é ela
+  // que vai para `entityId`, `etapa` e `motivo`, então o coordenador lê "está com o cadastro
+  // indeferido desde 20/09/2026" em vez de "em revisão desde 26/09/2026" sobre um cliente reprovado.
+  const escolhida = recusa ?? maisRecente(decisivas);
 
   if (!escolhida) {
     return {
@@ -268,6 +438,9 @@ export function decidirPelasLinhas(
       entityId: entityIds[0] ?? null,
       etapa: null,
       motivo: "Este cliente não tem CAD neste empreendimento.",
+      // ⚠️ "SEM CAD NESTE EMPREENDIMENTO" NÃO É ETAPA, e continua barrando o coordenador (Lucas,
+      // 26/09/2026). Sem linha na esteira não há CAD para estar em andamento.
+      podeGerarProposta: false,
     };
   }
 
@@ -279,7 +452,11 @@ export function decidirPelasLinhas(
     desde,
     entityId: escolhida.entity_id,
     etapa: etapa || null,
+    // ⚠️ A FRASE DA ETAPA CONTINUA VINDO, inclusive quando a porta abre. É ela que a tela mostra
+    // como AVISO ("A CAD deste cliente está em validação de cadastro desde 26/09/2026") com o botão
+    // liberado — o coordenador precisa continuar LENDO em que etapa a CAD está.
     motivo: motivoDaEtapa(etapa, desde),
+    podeGerarProposta: podeGerarProposta(etapa, false, modo),
   };
 }
 

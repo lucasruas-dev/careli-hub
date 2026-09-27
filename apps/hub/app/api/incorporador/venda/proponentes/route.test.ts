@@ -23,6 +23,13 @@ const ESTEIRA: Linha[] = [
   // Lucas: *"temos que habilitar pessoa fisica e pessoa juridica, hoje só atende pessoa fisica"*.
   { atualizado_em: "2026-09-10", chegou_em: null, created_at: "2026-09-01", enterprise_id: "35", entity_id: "e-pj-espelho", etapa: "credenciado" },
   { atualizado_em: "2026-09-10", chegou_em: null, created_at: "2026-09-01", enterprise_id: "36", entity_id: "e-pj-lino", etapa: "credenciado" },
+  // (26/09/2026) O CÔNJUGE COM A CAD EM ANDAMENTO, no próprio VOC. Lucas: *"pode deixar os
+  // coordenadores emitirem proposta sem a cad esta credenciada. ela pode estar em validacao ou em
+  // qualquer outro estagio"*. MEDIDO em produção (`bxgukywoxgivlrhjkwjx`, só SELECT): 97 de 4.946
+  // propostas têm dois ou mais compradores, e há 173 CADs em `revisao` hoje.
+  { atualizado_em: "2026-09-26", chegou_em: null, created_at: "2026-09-01", enterprise_id: "37", entity_id: "e-conjuge", etapa: "validacao" },
+  // E a CAD REPROVADA, que continua barrando os dois portais (segunda decisão do Lucas no mesmo dia).
+  { atualizado_em: "2026-09-26", chegou_em: null, created_at: "2026-09-01", enterprise_id: "37", entity_id: "e-reprovado", etapa: "indeferido" },
 ];
 
 const ENTIDADES: Linha[] = [
@@ -31,6 +38,8 @@ const ENTIDADES: Linha[] = [
   { display_name: "Ana do Espelho", document_masked: "333.333.333-33", document_hash: null, id: "e-espelho", legal_name: null, trade_name: null },
   { display_name: "ACME do Espelho", document_masked: "12.345.678/0001-95", document_hash: null, id: "e-pj-espelho", legal_name: "ACME Construtora Ltda", trade_name: "ACME do Espelho" },
   { display_name: "BETA do Lino", document_masked: "11.222.333/0001-81", document_hash: null, id: "e-pj-lino", legal_name: "BETA Empreendimentos Ltda", trade_name: "BETA do Lino" },
+  { display_name: "Zilda Esposa", document_masked: "444.444.444-44", document_hash: null, id: "e-conjuge", legal_name: null, trade_name: null },
+  { display_name: "Zeca Reprovado", document_masked: "555.555.555-55", document_hash: null, id: "e-reprovado", legal_name: null, trade_name: null },
 ];
 
 const IDENTIFICADORES: Linha[] = [
@@ -44,6 +53,8 @@ const IDENTIFICADORES: Linha[] = [
   // com um hash de namespace `cpf`.
   { entity_id: "e-pj-espelho", value_hash: "hash:cnpj:12345678000195" },
   { entity_id: "e-pj-lino", value_hash: "hash:cnpj:11222333000181" },
+  { entity_id: "e-conjuge", value_hash: "hash:cpf:44444444444" },
+  { entity_id: "e-reprovado", value_hash: "hash:cpf:55555555555" },
 ];
 
 function clienteFalso() {
@@ -121,6 +132,36 @@ async function buscar(q: string): Promise<string[]> {
   return corpo.data.encontrados.map((p) => p.nome).sort();
 }
 
+type Achado = {
+  credenciado: boolean;
+  etapa: null | string;
+  motivo: null | string;
+  nome: string;
+  podeGerarProposta: boolean;
+};
+
+/**
+ * A DECISÃO do único candidato que a busca devolveu.
+ *
+ * ⚠️ FALHA SE VIER MAIS DE UM, e não pega o primeiro calado: ler `[0]` de uma lista inesperada é
+ * como um teste passa a afirmar coisa sobre a pessoa errada.
+ */
+async function decidirUm(q: string): Promise<Achado> {
+  const achados = await decidir(q);
+  expect(achados).toHaveLength(1);
+  return achados[0] as Achado;
+}
+
+/** A mesma busca, devolvendo a DECISÃO de cada candidato e não só o nome. */
+async function decidir(q: string): Promise<Achado[]> {
+  const resposta = await GET(
+    new Request(`https://c2x.app.br/api/incorporador/venda/proponentes?unidade=u-voc&q=${encodeURIComponent(q)}`),
+  );
+  expect(resposta.status).toBe(200);
+  const corpo = (await resposta.json()) as { data: { encontrados: Achado[] } };
+  return corpo.data.encontrados;
+}
+
 beforeEach(() => {
   estado.permitidos = ["37", "39"];
   estado.tipo = "incorporador";
@@ -170,5 +211,72 @@ describe("GET /api/incorporador/venda/proponentes no comercial", () => {
     estado.tipo = "comercial";
     estado.permitidos = ["35", "36", "37", "41", "group:Vale do Ouro"];
     expect(await buscar("ana")).toEqual(["Ana do Espelho", "Ana do Lino", "Ana do VOC"]);
+  });
+});
+
+// ⚠️ O CO-PROPONENTE TAMBÉM, E NÃO SÓ O TITULAR (26/09/2026).
+//
+// Lucas: *"pode deixar os coordenadores emitirem proposta sem a cad esta credenciada. ela pode
+// estar em validacao ou em qualquer outro estagio"*. Enquanto esta rota chamava `decidirPelasLinhas`
+// SEM modo, o afrouxamento alcançava só o titular (que entra automático do GET da proposta): o
+// coordenador passava o marido e travava na esposa, e sobravam duas saídas erradas — esperar a CAD
+// (o que o pedido queria destravar) ou gravar 100% no titular, que muda quem assina o contrato.
+//
+// ⚠️ MEDIDO EM PRODUÇÃO (`bxgukywoxgivlrhjkwjx`, só SELECT, 26/09/2026):
+//   select count(*) as propostas,
+//          count(*) filter (where jsonb_array_length(compradores) > 1) as com_dois
+//     from hercules_propostas where compradores is not null;
+//     → 97 de 4.946 propostas têm dois ou mais compradores.
+//   select etapa, count(*) from apolo_esteira group by 1;
+//     → credenciado 662 · revisao 173 · correcao 6 · validacao 1 (ZERO em `indeferido`).
+describe("a CAD em andamento e o CO-PROPONENTE", () => {
+  it("no comercial, o cônjuge em validação PODE entrar — e `credenciado` continua dizendo a verdade", async () => {
+    estado.tipo = "comercial";
+    estado.permitidos = ["35", "36", "37", "41", "group:Vale do Ouro"];
+
+    const zilda = await decidirUm("zilda");
+
+    expect(zilda.podeGerarProposta).toBe(true);
+    // ⚠️ A TELA NÃO MENTE: `credenciado` segue `false`, e é ele que faz a frase da etapa aparecer
+    // ao lado do nome como AVISO em vez de virar um "CAD credenciada" falso.
+    expect(zilda.credenciado).toBe(false);
+    expect(zilda.etapa).toBe("validacao");
+    // ⚠️ 25/09 E NÃO 26/09: a fixture grava `atualizado_em` só com a data, e meia-noite UTC é
+    // o dia anterior em America/Sao_Paulo, que é o fuso em que a frase é escrita.
+    expect(zilda.motivo).toBe("A CAD deste cliente está em validação de cadastro desde 25/09/2026.");
+  });
+
+  it("o MESMO cônjuge NÃO entra no portal do Cecílio — só o comercial da Careli foi afrouxado", async () => {
+    // Segunda decisão do Lucas em 26/09/2026: o `cecilio-rocha` opera a própria venda
+    // (`portalOperaVenda`, perfis-de-portal.ts:122) e continua precisando da CAD credenciada.
+    const zilda = await decidirUm("zilda");
+
+    expect(zilda.nome).toBe("Zilda Esposa");
+    expect(zilda.podeGerarProposta).toBe(false);
+    expect(zilda.credenciado).toBe(false);
+  });
+
+  it("⚠️ a CAD INDEFERIDA do co-proponente não entra nem no comercial", async () => {
+    estado.tipo = "comercial";
+    estado.permitidos = ["35", "36", "37", "41", "group:Vale do Ouro"];
+
+    const zeca = await decidirUm("zeca reprovado");
+
+    expect(zeca.podeGerarProposta).toBe(false);
+    expect(zeca.motivo).toBe(
+      "A CAD deste cliente está com o cadastro indeferido desde 25/09/2026.",
+    );
+  });
+
+  it("⚠️ o afrouxamento NÃO mudou quem aparece na lista — a privacidade da busca é o ESCOPO", async () => {
+    // Quem entra na resposta é quem tem CAD no escopo (`porEntidade.has(c.id)`), e não quem está
+    // credenciado. Fora do comercial, o cliente do Lino (36) continua invisível mesmo com a régua
+    // da etapa afrouxada do outro lado.
+    expect(await buscar("ana")).toEqual(["Ana do VOC"]);
+
+    // E no comercial a família inteira continua visível, exatamente como antes deste lote.
+    estado.tipo = "comercial";
+    estado.permitidos = ["35", "36", "37", "41", "group:Vale do Ouro"];
+    expect(await buscar("2222")).toEqual(["Ana do Lino"]);
   });
 });

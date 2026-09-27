@@ -95,17 +95,21 @@ describe("casa", () => {
 });
 
 describe("ordenar", () => {
-  const p = (nome: string, credenciado: boolean): ProponenteEncontrado => ({
+  const p = (
+    nome: string,
+    credenciado: boolean,
+    podeGerarProposta = credenciado,
+  ): ProponenteEncontrado => ({
     cpf: "000",
     credenciado,
     etapa: null,
     id: nome,
     motivo: null,
     nome,
+    podeGerarProposta,
   });
 
-  it("⚠️ credenciado primeiro — é o único que a tela deixa adicionar", () => {
-    // Enterrado no meio de homônimos sem CAD, o corretor conclui que "não tem".
+  it("⚠️ quem pode entrar primeiro — enterrado no meio de homônimos, o corretor conclui que 'não tem'", () => {
     const lista = [p("Ana", false), p("Zeca", true), p("Bruno", false)].sort(ordenar);
     expect(lista.map((x) => x.nome)).toEqual(["Zeca", "Ana", "Bruno"]);
   });
@@ -113,6 +117,18 @@ describe("ordenar", () => {
   it("dentro do mesmo grupo, por nome", () => {
     const lista = [p("Zeca", true), p("Ana", true)].sort(ordenar);
     expect(lista.map((x) => x.nome)).toEqual(["Ana", "Zeca"]);
+  });
+
+  it("⚠️ a ORDEM SEGUE A PORTA, e não `credenciado`: a CAD em andamento não afunda na lista", () => {
+    // Lucas (26/09/2026): *"pode deixar os coordenadores emitirem proposta sem a cad esta
+    // credenciada"*. Uma CAD em `validacao` volta `credenciado: false` de propósito (é a verdade
+    // sobre a CAD) e `podeGerarProposta: true`. Ordenando por `credenciado`, o cônjuge que o
+    // coordenador ACABOU de ser liberado a escolher ia para o fim de uma lista com teto de 8
+    // candidatos (`MAXIMO_DE_CANDIDATOS`) — o afrouxamento existiria escondido abaixo do corte.
+    const emValidacao = p("Zilda", false, true);
+    const semCad = p("Ana", false, false);
+    const lista = [semCad, emValidacao].sort(ordenar);
+    expect(lista.map((x) => x.nome)).toEqual(["Zilda", "Ana"]);
   });
 });
 

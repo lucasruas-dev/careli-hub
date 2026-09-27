@@ -196,6 +196,12 @@ vi.mock("@/lib/hercules/cliente-credenciado", () => ({
     entityId: "ent-cliente",
     etapa: "credenciado",
     motivo: null,
+    // (26/09/2026) A PORTA VIROU CAMPO PRÓPRIO. O POST passou a conferir `podeGerarProposta`, e não
+    // `credenciado`, porque o coordenador gera com a CAD EM ANDAMENTO (Lucas: *"pode deixar os
+    // coordenadores emitirem proposta sem a cad esta credenciada"*). Aqui o dublê é do caso
+    // credenciado, então os dois campos andam juntos; o portão de verdade está em
+    // route.cad-em-andamento.test.ts, que NÃO mocka esta lib.
+    podeGerarProposta: estado.credenciado,
   }),
   FalhaAoLerCredenciamento: class extends Error {},
 }));

@@ -35,6 +35,36 @@ export type EmpreendimentoDoCatalogo = {
   stageIds: string[];
 };
 
+/**
+ * OS GRUPOS DO CATÁLOGO SEM PERGUNTAR AO C2X — a mesma lista que `agrupar` produz, montada da
+ * constante de código em vez da consulta.
+ *
+ * ⚠️ ELA EXISTE PORQUE O CATÁLOGO NUNCA LANÇA: `lerDoC2x` devolve `cache?.valor ?? []` quando o pool
+ * do C2X não abre (`:93`) e quando a query falha (`:113`). Numa instância com o cache frio isso não é
+ * "catálogo menor", é catálogo VAZIO — e quem monta escopo com `comIdsDoGrupo` perde os ids de grupo
+ * calado. Medido em 26/09/2026 (`bxgukywoxgivlrhjkwjx`, só SELECT):
+ *   select enterprise_id, etapa, count(*) from apolo_esteira
+ *    where enterprise_id like 'group:%' group by 1,2;
+ *     → 2 linhas, as duas `group:Lagoa Bonita` e as duas `credenciado`.
+ * Com o catálogo vazio, a barra da CAD (`lib/hercules/cad-para-contrato.ts`) recusaria esse credenciado
+ * por engano. (⚠️ NÃO CONFERIDO AQUI, e relatado pela revisão: que essas duas linhas alcancem a proposta
+ * LBF C11 28, já em etapa `contrato`. O elo CPF → CAD é por `value_hash` em `apolo_entity_identifiers` e
+ * não se faz em SQL solto.)
+ *
+ * ⚠️ O ID É MONTADO PELA MESMA REGRA DE `agrupar` (`group:` mais o `display`), e os `stageIds` saem
+ * de `ENTERPRISE_GROUPS.ids`, que são os `enterprises.id` de `codes` na mesma ordem (PAN-124,
+ * medidos no C2X em 25/09/2026). Se as duas regras divergirem, o grupo deixa de casar com a esteira
+ * — e é por isso que o teste desta constante compara com o `agrupar` de verdade.
+ *
+ * ⚠️ NÃO É SUBSTITUTO DO CATÁLOGO: aqui não há `codes` nem `name`, e o empreendimento SIMPLES não
+ * aparece. Serve para quem só precisa saber quais ids de grupo existem e que divisões eles cobrem.
+ */
+export const GRUPOS_DO_CATALOGO: Array<Pick<EmpreendimentoDoCatalogo, "id" | "stageIds">> =
+  ENTERPRISE_GROUPS.map((grupo) => ({
+    id: `group:${grupo.display}`,
+    stageIds: grupo.ids.map((id) => String(id)),
+  }));
+
 type LinhaCrua = { code: null | string; id: number; name: null | string };
 
 // Cache de processo, curto. O catálogo muda quando nasce empreendimento novo — algumas vezes por

@@ -16,6 +16,10 @@ import { type EnvelopeDaProposta, envelopeQueSegura } from "@/lib/assinatura/env
 // A régua de "esta venda está morta" mora num lugar só, e é pura — ver `VENDA_DESFEITA`.
 import { VENDA_DESFEITA } from "@/lib/hercules/acao-de-cancelamento";
 import {
+  recusaDaCadDaProposta,
+  recusaDaCadParaContrato,
+} from "@/lib/hercules/cad-para-contrato";
+import {
   motivoDoReflexo,
   refletirCardNaVenda,
   registrarReflexoQueNaoAndou,
@@ -958,6 +962,39 @@ export async function abrirTrabalho(
 }
 
 /**
+ * A CAD do card ABERTO À MÃO, conferido pelos campos dele.
+ *
+ * ⚠️ O CAMINHO QUE A BARRA TINHA DEIXADO INERTE. A abertura livre de `POST /api/temis/trabalhos`
+ * (`lib/temis/trabalho-servico.ts:524` a `:540`) grava `cliente_cpf` e `enterprise_id` e NÃO grava
+ * `proposta_id`; `recusaDaCadDaProposta` devolve `null` sem proposta, então um card de `tipo: contrato`
+ * aberto pelo quadro atravessava Contrato e Em assinatura sem que a CAD fosse perguntada uma vez. E
+ * `contrato` está entre os tipos abríveis, por uma rota guardada por `authorizeApoloRead` — que inclui
+ * `operator` e `viewer` (`lib/apolo/auth.ts:24`).
+ *
+ * ⚠️ SEM CPF, PASSA COM LOG: não há pessoa para conferir. É a mesma disciplina de
+ * `recusaPorVendaDesfeita` com o elo quebrado — deixa passar e grita, em vez de congelar um card sem
+ * ter medido nada.
+ */
+async function recusaDaCadDoCardSemProposta(
+  supabase: SupabaseClient,
+  linha: LinhaCrua,
+): Promise<null | { erro: string; status: 409 | 503 }> {
+  const documento = String(linha.cliente_cpf ?? "").trim();
+  if (!documento) {
+    console.error("[temis][cad] card de contrato sem proposta E sem CPF: a CAD não foi conferida", {
+      empreendimento: linha.enterprise_id ?? null,
+      trabalho: linha.id,
+    });
+    return null;
+  }
+  return recusaDaCadParaContrato(
+    supabase,
+    { documento, enterpriseId: linha.enterprise_id ?? null },
+    "marcar_atividade",
+  );
+}
+
+/**
  * Marca (ou desmarca) uma atividade — e faz o card andar quando o estágio acaba.
  *
  * ⚠️ DESMARCAR NÃO FAZ O CARD VOLTAR. Quem já passou de estágio e desmarca uma atividade está
@@ -976,7 +1013,22 @@ export async function marcarAtividade(input: {
   quem?: null | string;
   /** O nome de quem marcou (`nomeDoAutor`). Nulo quando não há nome: não se inventa autor. */
   quemNome?: null | string;
-}): Promise<{ erro: string; ok: false } | { andou: boolean; estagio: EstagioDoTrabalho; ok: true }> {
+}): Promise<
+  | { andou: boolean; estagio: EstagioDoTrabalho; ok: true }
+  /**
+   * ⚠️ O `status` VIAJA PORQUE A BARRA DA CAD DISTINGUE 409 DE 503, E ESTA PORTA JOGAVA A DISTINÇÃO
+   * FORA. `lib/temis/trabalho-servico.ts` traduzia todo `!ok` para HTTP 400, então a frase de
+   * fail-closed (*"Não foi possível conferir agora se a CAD do titular está aprovada. Nada foi movido;
+   * tente de novo em instantes"*) saía com código de erro DO CLIENTE: qualquer retry ou monitor que
+   * separa pedido inválido de falha temporária classificava um PostgREST oscilando como pedido errado,
+   * e quem lê o log concluía que a tela mandou algo inválido. As outras três portas já honram a
+   * diferença (`app/api/incorporador/venda/contrato/route.ts:227`, `lib/temis/contrato-servico.ts:561`,
+   * `lib/assinatura/envio-db.ts:117`), e a mesma barra respondia de dois jeitos dependendo da porta.
+   *
+   * Ausente = 400, que é o que todos os erros desta função sempre foram.
+   */
+  | { erro: string; ok: false; status?: 400 | 409 | 503 }
+> {
   const supabase = createApoloAdminClient();
   if (!supabase) return { erro: "sem acesso ao banco", ok: false };
 
@@ -1014,6 +1066,62 @@ export async function marcarAtividade(input: {
       erro: `esta é a última atividade antes de Concluído, e quem conclui o ${depois.tipo === "distrato" ? "distrato" : "cancelamento"} é o botão Concluir, que derruba a venda e solta o lote. Use Concluir no card; nada foi marcado.`,
       ok: false,
     };
+  }
+
+  // ── O CARD NÃO ENTRA EM CONTRATO NEM EM ASSINATURA SEM A CAD APROVADA ──
+  //
+  // Lucas (26/09/2026): *"faz uma barra, para enviar para contrato precisa da cad validada"*.
+  //
+  // ⚠️ ESTA É A PORTA QUE FOGE DE `moverCardDaTemis`, E ELA É A MAIS BARATA DE ABRIR. Barrar só o
+  // Gerar e o Enviar deixaria o card entrar em `contrato` por MARCAÇÃO: `proximoEstagio` leva
+  // `analise` → `contrato` e `refletirCardNaVenda` leva a VENDA junto, na mesma chamada, sem passar
+  // por `moverCardDaTemis`. E a rota dela, `POST /api/temis/trabalhos`, é guardada por
+  // `authorizeApoloRead`, o papel MAIS BAIXO da casa (admin, leader, operator E viewer): quem só tem
+  // direito de CONFERIR fazia o card entrar em Contrato. Em 08/09/2026 a casa tirou o Gerar desse
+  // portão depois do Lucas dizer *"estou como coordenador, nao pode ter esse botao de gerar
+  // contrato"*; esta porta ficou para trás.
+  //
+  // ⚠️ UMA BARRA QUE COBRE UMA PORTA E DEIXA OUTRA ABERTA É PIOR QUE NENHUMA, porque dá a impressão
+  // de estar resolvido: o quadro mostraria o card em Contrato e a venda em contrato sem que ninguém
+  // tivesse passado por barra alguma.
+  //
+  // ⚠️ SÓ QUANDO O CARD ANDA, E SÓ PARA ESSES DOIS DESTINOS. Marcar ou desmarcar sem fechar o estágio
+  // é correção de registro, e travá-la tiraria de quem arruma card antigo a correção que nunca fez
+  // mal a ninguém — a mesma disciplina de `recusaPorVendaDesfeita` com os cards encerrados. E os
+  // destinos depois da assinatura (`prazo_legal`, `faturado`) não são barrados: ali o contrato já foi
+  // assinado, o fato já aconteceu, e a regra nova não alcança o passado.
+  //
+  // ⚠️ E SÓ NO CARD DE `contrato`, QUE É A COMPRA E VENDA. Isto não é detalhe: `estagiosDoTipo`
+  // (`lib/temis/trabalhos.ts:164`) dá um estágio chamado `contrato` TAMBÉM ao cancelamento, ao
+  // distrato, à cessão e à correção de cancelamento — lá ele quer dizer "gerar o termo"
+  // (`trabalhos.ts:243`), e não "vender". Sem este recorte, uma CAD em revisão travaria o
+  // CANCELAMENTO de uma venda, que é o oposto do que o Lucas pediu: ele barrou a venda nascer, não a
+  // venda ser desfeita. Dois testes da casa que já existiam pegaram exatamente este excesso antes de
+  // ele sair daqui (`lib/temis/marcar-atividade-reflexo.test.ts`).
+  //
+  // ⚠️ E O CARD SEM PROPOSTA É CONFERIDO PELOS CAMPOS DELE MESMO. `recusaDaCadDaProposta` devolve
+  // `null` quando o `propostaId` é vazio (`cad-para-contrato.ts`), e a abertura livre de
+  // `POST /api/temis/trabalhos` NÃO passa `propostaId` (`lib/temis/trabalho-servico.ts:524` a `:540`)
+  // embora passe `clienteCpf` e `empreendimentoId` — que é exatamente o par que
+  // `recusaDaCadParaContrato` sabe conferir. E `contrato` está na lista de tipos abríveis
+  // (`trabalho-servico.ts:412` a `:418`), guardada por `authorizeApoloRead` (admin, leader, operator E
+  // viewer). Ou seja: a barra ficava INERTE no único caminho em que ela tinha os dados na mão. Não sai
+  // PDF nem envelope por ali (os dois exigem proposta), mas o quadro do jurídico passava a mostrar um
+  // contrato em assinatura de um cliente que ninguém credenciou — e a impressão de estar resolvido é
+  // exatamente o que esta régua diz ser pior que não ter barra.
+  //
+  // ⚠️ SEM CPF NO CARD, PASSA COM LOG. Aí não há pessoa para conferir, e inventar uma recusa travaria
+  // os quatro cards antigos do Garden e da Lavra que nasceram antes de qualquer elo.
+  const entraNoContratoDaVenda =
+    depois.tipo === "contrato" && (seguinte === "contrato" || seguinte === "assinatura");
+  if (entraNoContratoDaVenda) {
+    const linha = atual as LinhaCrua;
+    const recusaDaCad = trabalho.propostaId
+      ? await recusaDaCadDaProposta(supabase, trabalho.propostaId, "marcar_atividade")
+      : await recusaDaCadDoCardSemProposta(supabase, linha);
+    if (recusaDaCad) {
+      return { erro: recusaDaCad.erro, ok: false, status: recusaDaCad.status };
+    }
   }
 
   const mudanca: Record<string, unknown> = {

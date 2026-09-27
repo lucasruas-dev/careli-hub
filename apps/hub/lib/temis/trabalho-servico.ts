@@ -459,7 +459,13 @@ export async function agirNosTrabalhos(
       quem: idDoAutor(ator),
       quemNome: nomeDoAutor(ator),
     });
-    if (!r.ok) return NextResponse.json({ error: r.erro }, { status: 400 });
+    // ⚠️ O `status` DA RECUSA MANDA, E 400 É SÓ O PADRÃO. Antes, todo `!ok` virava 400 — inclusive o
+    // 503 de fail-closed da barra da CAD, cuja frase é *"tente de novo em instantes"*. Um monitor que
+    // separa pedido inválido de falha temporária classificava PostgREST oscilando como pedido errado, e
+    // as outras três portas da mesma barra já respondem 409 e 503 corretamente
+    // (`app/api/incorporador/venda/contrato/route.ts:227`, `lib/temis/contrato-servico.ts:561`,
+    // `lib/assinatura/envio-db.ts:117`). Os erros que já existiam aqui não têm `status` e seguem 400.
+    if (!r.ok) return NextResponse.json({ error: r.erro }, { status: r.status ?? 400 });
     registrarAtoDoPortal(ator, "atividade marcada", { atividade, trabalhoId: id });
     return NextResponse.json({ andou: r.andou, estagio: r.estagio, ok: true });
   }

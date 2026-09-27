@@ -5,6 +5,7 @@ import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { autorizarEscritaNoProduto } from "@/lib/apolo/incorporador/operacao-do-produto-servidor";
 import { portalConfeccionaContrato } from "@/lib/apolo/incorporador/perfis-de-portal";
 import { createApoloAdminClient } from "@/lib/apolo/server";
+import { recusaDaCadParaContrato } from "@/lib/hercules/cad-para-contrato";
 import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
 import { lerComColunasDoApartamento, nomeDaUnidade } from "@/lib/hercules/nome-da-unidade";
@@ -193,6 +194,38 @@ export async function POST(request: Request) {
     // para a equipe administrativa, que é quem cadastra.
     //
     // ⚠️ NÃO REPOR SEM FALAR COM O LUCAS. `route.test.ts` falha se esta recusa voltar.
+
+    // ── A CAD DO TITULAR TEM QUE ESTAR APROVADA ───────────────────────────
+    //
+    // Lucas (26/09/2026): *"faz uma barra, para enviar para contrato precisa da cad validada"*.
+    //
+    // ⚠️ A TRAVA NÃO SUMIU, ELA SE DESLOCOU. Minutos antes, no mesmo dia, ele afrouxou a PROPOSTA
+    // (*"pode deixar os coordenadores emitirem proposta sem a cad esta credenciada. ela pode estar em
+    // validacao ou em qualquer outro estagio"*, registrado em `lib/hercules/cliente-credenciado.ts`).
+    // A proposta nasce com a CAD em andamento; o CONTRATO só sai com ela aprovada. São duas
+    // perguntas, e a régua responde as duas: `podeGerarProposta` é a porta da proposta, `credenciado`
+    // é a verdade sobre a CAD. `recusaDaCadParaContrato` lê o SEGUNDO, no modo apertado.
+    //
+    // ⚠️ AQUI, ANTES DO `update`. Depois dele a venda estaria em `contrato` sem card na Têmis, que é
+    // o pior estado possível e o que o desfazer lá embaixo existe para evitar.
+    //
+    // ⚠️ O ESCOPO SAI DA UNIDADE, e a expansão de família e grupo é feita dentro da régua: medido em
+    // 26/09/2026, dos 13 cards de contrato vivos da Têmis só 4 casam pelo `enterprise_id` exato — a
+    // CAD mora no PAI (35) ou no GRUPO do catálogo e a venda mora no FILHO (36/37/41). Comparar id
+    // com id recusaria 9 clientes CREDENCIADOS, que é pior que não ter barra.
+    //
+    // ⚠️ ESTA BARRA VALE PARA A TRANSIÇÃO, NÃO PARA O PASSADO. Ela age na passagem de `proposta` para
+    // `contrato`; as 12 herdadas do C2X já paradas em `contrato` e as 414 em `assinatura` não são
+    // alcançadas. Medido em 26/09/2026: das 18 propostas nativas vivas em contrato ou adiante, 18 têm
+    // a CAD credenciada, e as ÚNICAS duas que esta barra pega hoje são herdadas do C2X em `proposta`
+    // sem CAD nenhuma no Apolo (CDJ7/ADALBERTO e MDB1/JUSSARA) — relatado ao Lucas, não decidido aqui.
+    const recusaDaCad = await recusaDaCadParaContrato(admin, {
+      documento: proposta.cliente_documento,
+      enterpriseId: unidade.enterprise_id,
+    });
+    if (recusaDaCad) {
+      return NextResponse.json({ error: recusaDaCad.erro }, { status: recusaDaCad.status });
+    }
 
     const agora = new Date().toISOString();
 

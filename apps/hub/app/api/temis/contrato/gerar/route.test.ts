@@ -45,6 +45,18 @@ const estado = vi.hoisted(() => ({
 // ⚠️ OS DOIS PORTÕES SÃO SIMULADOS PELO PAPEL, e cada chamada deixa o nome no rastro. Sem isso o
 // teste provaria só que "alguma" autorização foi chamada — e trocar de volta para a de leitura
 // passaria verde. As listas de papel de verdade têm teste próprio em `lib/temis/autorizacao.test.ts`.
+// ⚠️ A BARRA DA CAD (26/09/2026) É DUBLADA AQUI COMO "APROVADA". Lucas: *"faz uma barra, para enviar
+// para contrato precisa da cad validada"*. Este arquivo mede o PAPEL (portão, PDF, anexos, autor), não
+// o credenciamento; sem o dublê, o fixture de banco daqui (que não tem esteira nenhuma) faria toda
+// geração responder 503 e os testes passariam a medir a barra por acidente. Ela é provada em
+// `lib/temis/contrato-servico-cad-aprovada.test.ts` e em `lib/hercules/cad-para-contrato.test.ts`.
+vi.mock("@/lib/hercules/cad-para-contrato", () => ({
+  recusaDaCadDaProposta: async () => null,
+  // O recorte do TIPO do card (26/09/2026) mora nesta função, e o comportamento dela é provado em
+  // `lib/hercules/cad-para-contrato.recorte-do-ato.test.ts`.
+  recusaDaCadDoAtoDoContrato: async () => null,
+}));
+
 vi.mock("@/lib/apolo/auth", () => {
   const portao = (nome: string, papeis: string[]) => async (request: Request) => {
     estado.portoes.push(nome);

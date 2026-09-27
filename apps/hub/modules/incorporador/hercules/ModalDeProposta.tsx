@@ -80,11 +80,24 @@ import { T } from "../tema";
 // com dinheiro e com prazo é escrever o que recebeu — duas contas para o mesmo boleto é como a PA
 // e o carnê passam a discordar.
 
+// ⚠️ DOIS CAMPOS PORQUE SÃO DUAS PERGUNTAS, e desde 26/09/2026 eles DISCORDAM num caso real.
+//
+// Lucas (26/09/2026): *"pode deixar os coordenadores emitirem proposta sem a cad esta credenciada.
+// ela pode estar em validacao ou em qualquer outro estagio"*. Sobre o print da CAD do MATEUS COTTA
+// SACCHETTO em `validacao` (lote EIRETAMA-14, Aldeia das Cachoeiras das Pedras, empreendimento 42,
+// `atualizado_em` 2026-09-26 17:11 medido em produção): *"essa devia passar"*.
+//
+// `credenciado` é a VERDADE SOBRE A CAD, e é ele que escreve o selo. `podeGerarProposta` é a
+// PORTA, e é ele que acende o botão. Com a CAD em andamento o primeiro é `false` e o segundo é
+// `true`, e o terceiro estado desta tela existe exatamente para isso: a frase da etapa em tom de
+// AVISO, com o botão liberado. Ler a porta em `credenciado` faria a tela escrever "CAD credenciada
+// neste empreendimento" em cima de uma CAD em validação, e aí a tela mentiria para o coordenador.
 type CredenciamentoNaTela = {
   credenciado: boolean;
   desde: null | string;
   etapa: null | string;
   motivo: null | string;
+  podeGerarProposta: boolean;
 };
 
 type ReservaNaTela = {
@@ -444,8 +457,15 @@ export function ModalDeProposta({
   const precisaDeNota = ehDesconto || temBemOuPermuta;
   const precisaDaNota = precisaDeNota && nota.trim().length === 0;
   const credenciado = portao?.credenciamento.credenciado === true;
+  // ⚠️ A PORTA VEM DO SERVIDOR, E NÃO É `credenciado`. Quem decide se o coordenador pode seguir é
+  // a rota (app/api/incorporador/venda/proposta/route.ts:591 no GET e :871 no POST, pela MESMA
+  // régua): a tela só obedece. Recalcular a regra aqui, a partir da etapa, é como o botão passaria a
+  // oferecer um clique que o POST recusa.
+  const podeGerar = portao?.credenciamento.podeGerarProposta === true;
+  /** A CAD está EM ANDAMENTO: a porta abriu, mas ela ainda não está credenciada. O terceiro estado. */
+  const cadEmAndamento = podeGerar && !credenciado;
   const podeMontar =
-    Boolean(portao) && credenciado && errosDoPortao.length === 0;
+    Boolean(portao) && podeGerar && errosDoPortao.length === 0;
 
   /**
    * O plano desta proposta — PELO ID DA LINHA, com o nome como reserva.
@@ -1338,13 +1358,29 @@ export function ModalDeProposta({
                       : ""}
                   </div>
 
-                  {/* ⚠️ O SELO É A DECISÃO, e vem inteiro do servidor. Verde: segue. Vermelho: a frase
-                      diz em que etapa a CAD está e desde quando — é com ela que o coordenador sabe a
-                      quem cobrar, em vez de ligar para descobrir o que a tela já sabia. */}
+                  {/* ⚠️ O SELO É A DECISÃO, e vem inteiro do servidor. São TRÊS estados, e o do meio
+                      nasceu em 26/09/2026:
+                        VERDE    — CAD credenciada: segue.
+                        AVISO    — CAD EM ANDAMENTO (validação, revisão, crédito, correção,
+                                   pré-venda): o coordenador GERA, e continua LENDO em que etapa a
+                                   CAD está. É o caso do print do Mateus, sobre o qual o Lucas disse
+                                   *"essa devia passar"*.
+                        VERMELHO — barrado: CAD indeferida, sem CAD neste empreendimento, sem
+                                   cadastro no Apolo, ou o portal do Cecílio com a CAD não
+                                   credenciada.
+                      A frase do meio e a do vermelho são a MESMA (`motivo`, montada por
+                      `motivoDaEtapa` em lib/hercules/cliente-credenciado.ts): o que muda é o tom e o
+                      botão. É com ela que o coordenador sabe a quem cobrar. */}
                   <div
                     style={{
-                      background: credenciado ? T.okBg : T.dangerBg,
-                      border: `1px solid ${credenciado ? T.ok : T.danger}`,
+                      background: credenciado
+                        ? T.okBg
+                        : cadEmAndamento
+                          ? T.soft
+                          : T.dangerBg,
+                      // O tom de AVISO é o `gold` do portal (modules/incorporador/tema.tsx:340).
+                      // Ele não é verde nem vermelho, que são as duas coisas que este estado não é.
+                      border: `1px solid ${credenciado ? T.ok : cadEmAndamento ? T.gold : T.danger}`,
                       borderRadius: 10,
                       marginTop: 10,
                       padding: "8px 11px",
@@ -1352,19 +1388,36 @@ export function ModalDeProposta({
                   >
                     <b
                       style={{
-                        color: credenciado ? T.ok : T.danger,
+                        color: credenciado
+                          ? T.ok
+                          : cadEmAndamento
+                            ? T.gold
+                            : T.danger,
                         fontSize: 12,
                       }}
                     >
                       {credenciado
                         ? "CAD credenciada neste empreendimento"
-                        : "CAD não credenciada"}
+                        : cadEmAndamento
+                          ? "CAD em andamento"
+                          : "CAD não credenciada"}
                     </b>
                     <div style={{ color: T.sub, fontSize: 11.5, marginTop: 2 }}>
                       {credenciado
                         ? "A reserva pode virar proposta."
                         : (portao.credenciamento.motivo ??
                           "A CAD deste cliente ainda não está credenciada neste empreendimento.")}
+                      {/* ⚠️ A PAREDE DO FIM DO CAMINHO, DITA AQUI NO COMEÇO. Lucas (26/09/2026), na
+                          mesma tarde em que liberou a proposta: *"faz uma barra, para enviar para
+                          contrato precisa da cad validada"*. Os dois pedidos juntos criam um caminho
+                          com parede no fim — a proposta nasce com a CAD em andamento e o contrato só
+                          sai com ela aprovada. Quem monta a proposta tem que LER isso agora, não
+                          descobrir num erro vermelho depois de confirmar o envio para contrato.
+                          ⚠️ E SÓ NESTE ESTADO: na CAD credenciada não há parede (o aviso seria ruído
+                          que ensina a ignorar avisos) e na barrada a proposta nem é gerada. */}
+                      {cadEmAndamento
+                        ? " A proposta pode ser gerada, e o credenciamento segue com a coordenação. O contrato só sai depois que a CAD for aprovada."
+                        : ""}
                     </div>
                   </div>
 
@@ -1632,7 +1685,15 @@ export function ModalDeProposta({
                                   // era `cpfValido`, então um candidato PJ credenciado aparecia
                                   // CINZA, com a frase "sem CPF no cadastro" — que MENTIA: ele tem
                                   // CNPJ.
-                                  disabled={!c.credenciado || !documentoDeCompradorValido(c.cpf)}
+                                  // ⚠️ A PORTA É `podeGerarProposta`, E NÃO `credenciado`
+                                  // (26/09/2026). Ler `credenciado` aqui deixava o coordenador
+                                  // passar o titular e travar no cônjuge: com o casal em
+                                  // `validacao` ele ficava entre esperar a CAD e gravar 100% no
+                                  // titular, que muda quem assina o contrato. Medido em produção:
+                                  // 97 de 4.946 propostas têm dois ou mais compradores.
+                                  disabled={
+                                    !c.podeGerarProposta || !documentoDeCompradorValido(c.cpf)
+                                  }
                                   key={c.id}
                                   onClick={() => {
                                     setEscolhido(c);
@@ -1648,13 +1709,13 @@ export function ModalDeProposta({
                                     border: "none",
                                     borderBottom: `1px solid ${T.border}`,
                                     cursor:
-                                      c.credenciado && documentoDeCompradorValido(c.cpf)
+                                      c.podeGerarProposta && documentoDeCompradorValido(c.cpf)
                                         ? "pointer"
                                         : "default",
                                     display: "grid",
                                     font: "inherit",
                                     gap: 2,
-                                    opacity: c.credenciado ? 1 : 0.6,
+                                    opacity: c.podeGerarProposta ? 1 : 0.6,
                                     padding: "8px 12px",
                                     textAlign: "left",
                                   }}
@@ -1667,12 +1728,22 @@ export function ModalDeProposta({
                                     {c.cpf}
                                     {/* ⚠️ QUEM NÃO PASSA APARECE COM O MOTIVO, e não some da lista:
                                         sumir faria o coordenador concluir que a pessoa não tem
-                                        cadastro, quando ela tem e está em análise de crédito. */}
+                                        cadastro, quando ela tem e está em análise de crédito.
+                                        ⚠️ E A FRASE DA ETAPA CONTINUA APARECENDO QUANDO A PORTA
+                                        ABRE (26/09/2026): o candidato em `validacao` é escolhível
+                                        E lê "está em validação de cadastro desde …". É o terceiro
+                                        estado — o mesmo do selo do titular —, e sem ele a tela
+                                        mentiria por omissão sobre a CAD do cônjuge. */}
                                     {c.credenciado
                                       ? documentoDeCompradorValido(c.cpf)
                                         ? null
                                         : " · sem documento no cadastro"
-                                      : ` · ${c.motivo ?? "CAD não credenciada"}`}
+                                      : ` · ${c.motivo ?? "CAD não credenciada"}${
+                                          c.podeGerarProposta &&
+                                          !documentoDeCompradorValido(c.cpf)
+                                            ? " · sem documento no cadastro"
+                                            : ""
+                                        }`}
                                   </span>
                                 </button>
                               ))
@@ -1744,8 +1815,12 @@ export function ModalDeProposta({
                   padding: "12px 16px",
                 }}
               >
+                {/* ⚠️ O RODAPÉ SEGUE A PORTA, NÃO O SELO. A frase "Sem a CAD credenciada neste
+                    empreendimento a proposta não pode ser gerada" só aparece para quem está DE FATO
+                    barrado: com a CAD em andamento ela apareceria por baixo de um botão aceso,
+                    dizendo ao coordenador o contrário do que a rota responde. */}
                 <span style={{ color: T.muted, fontSize: 11.5 }}>
-                  {credenciado
+                  {podeGerar
                     ? "Depois vem a montagem: plano, entrada, prazo e as datas de cobrança."
                     : "Sem a CAD credenciada neste empreendimento a proposta não pode ser gerada."}
                 </span>

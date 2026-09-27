@@ -33,6 +33,18 @@ const estado = vi.hoisted(() => ({
 }));
 
 // Só a leitura do cadastro é trocada; a régua de quem opera o produto é a de verdade.
+// ⚠️ A BARRA DA CAD (26/09/2026) É DUBLADA AQUI COMO "APROVADA". Lucas: *"faz uma barra, para enviar
+// para contrato precisa da cad validada"*. Este arquivo mede o PAPEL (portão, PDF, anexos, autor), não
+// o credenciamento; sem o dublê, o fixture de banco daqui (que não tem esteira nenhuma) faria toda
+// geração responder 503 e os testes passariam a medir a barra por acidente. Ela é provada em
+// `lib/temis/contrato-servico-cad-aprovada.test.ts` e em `lib/hercules/cad-para-contrato.test.ts`.
+vi.mock("@/lib/hercules/cad-para-contrato", () => ({
+  recusaDaCadDaProposta: async () => null,
+  // O recorte do TIPO do card (26/09/2026) mora nesta função, e o comportamento dela é provado em
+  // `lib/hercules/cad-para-contrato.recorte-do-ato.test.ts`.
+  recusaDaCadDoAtoDoContrato: async () => null,
+}));
+
 vi.mock("@/lib/hercules/cadastro", async (importOriginal) => {
   const { cadastroDosProdutos } = await import("@/lib/temis/fixtures/produtos-operados");
   return {

@@ -588,10 +588,16 @@ export async function GET(request: Request) {
 
     const [credenciamentoCru, planos, entradaMinimaPercentual, faixas, nomes] =
       await Promise.all([
-        credenciadoParaVender(admin, {
-          documento: titular.cpf,
-          enterpriseIds: escopoDaEsteira,
-        }),
+        credenciadoParaVender(
+          admin,
+          { documento: titular.cpf, enterpriseIds: escopoDaEsteira },
+          // ⚠️ O MODO DO COORDENADOR, E SÓ PARA O COMERCIAL DA CARELI. Lucas (26/09/2026): *"pode
+          // deixar os coordenadores emitirem proposta sem a cad esta credenciada. ela pode estar em
+          // validacao ou em qualquer outro estagio"*. `comercial` é o MESMO booleano que já decide o
+          // escopo três linhas acima, e o `cecilio-rocha` (que também opera a própria venda)
+          // continua exigindo a CAD credenciada — segunda decisão do mesmo dia.
+          { cadEmAndamentoLibera: comercial },
+        ),
         planosDaUnidade(
           admin,
           familia,
@@ -623,6 +629,11 @@ export async function GET(request: Request) {
             desde: credenciamento.desde,
             etapa: credenciamento.etapa,
             motivo: credenciamento.motivo,
+            // ⚠️ DOIS CAMPOS PORQUE SÃO DUAS PERGUNTAS. `credenciado` é a verdade sobre a CAD (o que
+            // o selo escreve); `podeGerarProposta` é a porta (o que acende o botão). Com a CAD em
+            // andamento eles DISCORDAM de propósito: a tela mostra a frase da etapa em tom de aviso
+            // e libera o botão. Um campo só faria a tela mentir ou o coordenador travar.
+            podeGerarProposta: credenciamento.podeGerarProposta,
           },
           entradaMinimaPercentual,
           faixasDePrazo: faixas[String(c2xId)] ?? [],
@@ -852,14 +863,22 @@ export async function POST(request: Request) {
     );
 
     // ── 4. A CAD do titular, credenciada NESTE empreendimento ──────────────
+    // ⚠️ O MESMO MODO DO GET, PELO MESMO BOOLEANO. O topo de `lib/hercules/cliente-credenciado.ts`
+    // existe para esta passagem não ficar mais frouxa que a primeira; desde 26/09/2026 ela também
+    // não pode ficar mais APERTADA — um GET que acende o botão e um POST que responde 403 é a modal
+    // recusando o clique que ela mesma ofereceu.
     const credenciamento = credenciamentoParaOPortal(
-      await credenciadoParaVender(admin, {
-        documento: titular.cpf,
-        enterpriseIds: escopoDaEsteira,
-      }),
+      await credenciadoParaVender(
+        admin,
+        { documento: titular.cpf, enterpriseIds: escopoDaEsteira },
+        { cadEmAndamentoLibera: comercial },
+      ),
       { comercial, documento: titular.cpf },
     );
-    if (!credenciamento.credenciado) {
+    // ⚠️ O PORTÃO É `podeGerarProposta`, E NÃO `credenciado`. Com a CAD em andamento o coordenador
+    // passa aqui com `credenciado: false` — é o campo da PORTA que decide, e o outro só descreve a
+    // CAD para a tela.
+    if (!credenciamento.podeGerarProposta) {
       // A frase vem da lib: ela é quem sabe dizer "em análise de crédito desde 02/09", que é uma
       // conversa; "não credenciado" seria um muro.
       return NextResponse.json(

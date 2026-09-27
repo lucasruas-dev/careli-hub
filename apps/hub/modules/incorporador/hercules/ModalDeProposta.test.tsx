@@ -119,7 +119,17 @@ const CPF_DO_TITULAR = "52998224725";
 const CPF_DA_ESPOSA = "11144477735";
 
 const portao = {
-  credenciamento: { credenciado: true, desde: "2026-01-10", etapa: null, motivo: null },
+  credenciamento: {
+    credenciado: true,
+    desde: "2026-01-10",
+    etapa: null,
+    motivo: null,
+    // (26/09/2026) A PORTA VIROU CAMPO PRÓPRIO: o botão segue `podeGerarProposta`, e não
+    // `credenciado` (o coordenador gera com a CAD EM ANDAMENTO). Aqui a CAD está credenciada,
+    // então os dois andam juntos; o terceiro estado da tela está em
+    // ModalDeProposta.cad-em-andamento.comportamento.test.tsx.
+    podeGerarProposta: true,
+  },
   entradaMinimaPercentual: 10,
   planos: [
     {
@@ -172,8 +182,20 @@ type EncontradoNaBusca = {
   id: string;
   motivo: null | string;
   nome: string;
+  /**
+   * A PORTA do candidato, e é ela que a tela lê desde 26/09/2026 — não `credenciado`.
+   *
+   * ⚠️ OPCIONAL SÓ NO FIXTURE, e ausente significa "igual a `credenciado`": é como a rota respondia
+   * antes deste lote, e deixa os testes antigos dizendo o que já diziam.
+   */
+  podeGerarProposta?: boolean;
 };
 let daBusca: EncontradoNaBusca[] = [];
+
+/** O candidato como a rota o entrega: com a porta explícita. */
+function comAPorta(c: EncontradoNaBusca) {
+  return { ...c, podeGerarProposta: c.podeGerarProposta ?? c.credenciado };
+}
 
 /** Responde ao GET do portão e ao da busca; o POST cada teste arma como precisa. */
 function fetchDoPortao(aoPostar?: () => Promise<{ corpo: string; ok: boolean }>) {
@@ -189,9 +211,12 @@ function fetchDoPortao(aoPostar?: () => Promise<{ corpo: string; ok: boolean }>)
     // candidatos receber um corpo de outro formato.
     if (String(url).includes("/venda/proponentes")) {
       return {
-        json: async () => ({ data: { encontrados: daBusca } }),
+        // ⚠️ A PORTA VEM PREENCHIDA quando o fixture não a informa: a rota SEMPRE manda
+        // `podeGerarProposta`, e um dublê que o omitisse faria a tela desabilitar todo mundo por
+        // um defeito do fixture, não do código.
+        json: async () => ({ data: { encontrados: daBusca.map(comAPorta) } }),
         ok: true,
-        text: async () => JSON.stringify({ data: { encontrados: daBusca } }),
+        text: async () => JSON.stringify({ data: { encontrados: daBusca.map(comAPorta) } }),
       };
     }
     return { ok: true, text: async () => JSON.stringify({ data: portao }) };
@@ -493,6 +518,68 @@ describe("adicionar proponente", () => {
 
     expect(alvo.textContent).toContain("CAD em análise de crédito");
     expect(candidato("Larissa Andrade").disabled).toBe(true);
+  });
+
+  // ⚠️ O CO-PROPONENTE EM CAD EM ANDAMENTO PODE SER ESCOLHIDO — E A LINHA DIZ A ETAPA.
+  //
+  // Lucas (26/09/2026): *"pode deixar os coordenadores emitirem proposta sem a cad esta credenciada.
+  // ela pode estar em validacao ou em qualquer outro estagio"*. Enquanto o `disabled` desta linha
+  // lia `c.credenciado`, o coordenador passava o titular e travava na esposa: casal comprando junto
+  // chega com as DUAS CADs em andamento no mesmo dia, e sobravam esperar a CAD ou gravar 100% no
+  // titular, que muda quem assina o contrato.
+  //
+  // ⚠️ MEDIDO EM PRODUÇÃO (`bxgukywoxgivlrhjkwjx`, só SELECT, 26/09/2026):
+  //   select count(*) as propostas,
+  //          count(*) filter (where jsonb_array_length(compradores) > 1) as com_dois
+  //     from hercules_propostas where compradores is not null;
+  //     → 97 de 4.946 propostas têm dois ou mais compradores.
+  it("⚠️ a CAD EM ANDAMENTO do cônjuge é escolhível, e a linha continua dizendo a etapa", async () => {
+    await abrir();
+
+    daBusca = [
+      {
+        // A verdade sobre a CAD não muda de lado: é ela que faz a frase aparecer ao lado do nome.
+        credenciado: false,
+        cpf: CPF_DA_ESPOSA,
+        etapa: "validacao",
+        id: "cad-3",
+        motivo: "A CAD deste cliente está em validação de cadastro desde 26/09/2026.",
+        nome: "Zilda Andrade",
+        podeGerarProposta: true,
+      },
+    ];
+    digitar(campoDaBusca(), "Zilda");
+    await esperarABusca();
+
+    // A porta abre...
+    expect(candidato("Zilda Andrade").disabled).toBe(false);
+    // ...e a tela NÃO MENTE POR OMISSÃO: o coordenador lê em que etapa a CAD do cônjuge está.
+    expect(alvo.textContent).toContain(
+      "A CAD deste cliente está em validação de cadastro desde 26/09/2026.",
+    );
+  });
+
+  it("⚠️ a CAD INDEFERIDA do cônjuge continua sem poder ser escolhida", async () => {
+    // Segunda decisão do Lucas em 26/09/2026: `indeferido` é uma decisão já tomada de reprovar, e
+    // gerar proposta em cima dela é vender para quem a coordenação recusou.
+    await abrir();
+
+    daBusca = [
+      {
+        credenciado: false,
+        cpf: CPF_DA_ESPOSA,
+        etapa: "indeferido",
+        id: "cad-4",
+        motivo: "A CAD deste cliente está com o cadastro indeferido desde 26/09/2026.",
+        nome: "Zeca Andrade",
+        podeGerarProposta: false,
+      },
+    ];
+    digitar(campoDaBusca(), "Zeca");
+    await esperarABusca();
+
+    expect(candidato("Zeca Andrade").disabled).toBe(true);
+    expect(alvo.textContent).toContain("com o cadastro indeferido");
   });
 
   it("⚠️ resposta fora do formato não derruba a modal: a lista fica vazia", async () => {

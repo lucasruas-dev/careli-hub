@@ -50,6 +50,15 @@ vi.mock("@/lib/hercules/cadastro", () => ({
   lerCadastroDeEmpreendimentos: async () => ({ com0170: true, linhas: CADASTRO }),
 }));
 
+// ⚠️ A BARRA DA CAD (26/09/2026) É DUBLADA AQUI COMO "APROVADA". Lucas: *"faz uma barra, para enviar
+// para contrato precisa da cad validada"*. Estes testes existem para provar OUTRA coisa (de quem é o
+// card, quem pode escrever, o desfazer), e sem o dublê eles passariam a medir o credenciamento por
+// acidente — com um fixture de banco que não tem esteira nenhuma, toda resposta viraria 503. A barra
+// em si é provada em `route.cad-aprovada.test.ts` e em `lib/hercules/cad-para-contrato.test.ts`.
+vi.mock("@/lib/hercules/cad-para-contrato", () => ({
+  recusaDaCadParaContrato: async () => null,
+}));
+
 vi.mock("@/lib/temis/trabalhos-db", () => ({
   abrirTrabalho: async (novo: Record<string, unknown>) => {
     estado.abertos.push(novo);

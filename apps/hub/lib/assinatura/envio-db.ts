@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { APOLO_DOCS_BUCKET } from "@/lib/apolo/documentos";
+import { recusaDaCadDoAtoDoContrato } from "@/lib/hercules/cad-para-contrato";
 import { avisoDoHercules } from "@/lib/hercules/reflexo-da-temis";
 import {
   contratoVigente,
@@ -92,6 +93,37 @@ export async function prepararEnvio(
   const contrato = await contratoVigenteDaProposta(sb, propostaId);
   if (!contrato.ok) return contrato;
 
+  // ── A CAD DO TITULAR TEM QUE ESTAR APROVADA ─────────────────────────────
+  //
+  // Lucas (26/09/2026): *"faz uma barra, para enviar para contrato precisa da cad validada"*.
+  //
+  // ⚠️ É AQUI QUE O ATO CUSTA DINHEIRO E NÃO SE DESFAZ, e por isso a barra tem que valer aqui também.
+  // Medido em 26/09/2026: a ordem das recusas deste arquivo era alcance do portal, chaves da
+  // Clicksign, `impedimento`, envelope vivo e PDF no bucket — e a CAD do titular não estava em
+  // nenhuma delas. Uma CAD em `validacao`, em `correcao` ou INDEFERIDA mandava o contrato para o
+  // comprador assinar, na conta de PRODUÇÃO, e começava a contar prazo.
+  //
+  // ⚠️ E ELA MORA NO `impedimento` DE PROPÓSITO, não numa recusa nova. É o único ponto que fecha as
+  // QUATRO rotas de uma vez (as duas do hub e as duas espelho do portal) sem editar nenhuma delas,
+  // porque o GET da tela MOSTRA o impedimento antes do clique
+  // (`lib/temis/assinatura-servico.ts:359`) e o POST o EXIGE com 409 antes de existir envelope (logo
+  // abaixo, em `enviarContratoParaAssinatura`). O precedente é exato: `impedimentoDaVirada0191` já é
+  // um impedimento assíncrono que lê o banco.
+  //
+  // ⚠️ E O ERRO DE LEITURA NÃO VIRA IMPEDIMENTO, VIRA FALHA COM 503. Impedimento é uma frase sobre a
+  // venda, mostrada na tela ao lado dos nomes; um timeout do PostgREST escrito ali acusaria o cliente
+  // de algo que ninguém mediu. Fail-closed: não envia, e diz que fomos nós que não conseguimos ler.
+  // ⚠️ E SÓ QUANDO O ATO É DA COMPRA E VENDA — o recorte que faltava aqui e que `marcarAtividade` já
+  // tinha (`lib/temis/trabalhos-db.ts:1050`). Este painel é servido para QUATRO tipos de card, não só o
+  // contrato: `modules/temis/blocks/trabalho/tela-de-trabalho.tsx:2203` desenha `OrganizacaoDaAssinatura`
+  // sempre que `EXIGE_ASSINATURA[tipo]` (`lib/temis/trabalhos.ts:145`: contrato, cancelamento_correcao,
+  // cessao e distrato são `true`) e ela chama esta rota com o MESMO `propostaId` da venda
+  // (`organizacao-da-assinatura.tsx:165` e `:293`), porque o card de saída nasce com
+  // `propostaId: args.venda.id` (`lib/temis/cancelar-contrato-servico.ts:685`). Sem o recorte, a CAD
+  // `indeferido` — que é exatamente a que PRODUZ distrato — trancava a saída da venda.
+  const daCad = await recusaDaCadDoAtoDoContrato(sb, propostaId, "mandar_para_assinatura");
+  if (daCad?.status === 503) return { erro: daCad.erro, ok: false, status: 503 };
+
   const resolvido = await dadosDaProposta(propostaId, sb);
   if (!resolvido) return { erro: "Proposta não encontrada.", ok: false, status: 404 };
 
@@ -154,7 +186,12 @@ export async function prepararEnvio(
     avisos: montagem.avisos,
     contrato: contrato.contrato,
     identidade,
-    impedimento: daVirada ?? (veredito.ok ? null : veredito.erro),
+    // ⚠️ A CAD VEM PRIMEIRO ENTRE OS IMPEDIMENTOS, e isso é escolha. Um e-mail repetido entre titular
+    // e cônjuge se conserta em trinta segundos na própria tela; uma CAD não aprovada é decisão de
+    // outra equipe e muda o que a pessoa vai FAZER (procurar a coordenação, não corrigir o cadastro).
+    // Mostrar o menor dos dois primeiro mandaria o operador consertar e-mail para descobrir a parede
+    // no clique seguinte.
+    impedimento: daCad?.erro ?? daVirada ?? (veredito.ok ? null : veredito.erro),
     ok: true,
     origemDaRegra,
     origemDescrita: ordemEscolhida

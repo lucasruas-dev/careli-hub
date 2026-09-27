@@ -97,11 +97,17 @@ export async function GET(request: Request) {
       carregarCadastroDeEmpreendimentos(),
       catalogoDeEmpreendimentos(Date.now()),
     ]);
+    // ⚠️ O MESMO PERFIL QUE O TITULAR USA. `ehPortalComercial` (perfis-de-portal.ts:96) é o
+    // coordenador da Careli — o próprio código chama esse perfil assim em `origemDaReserva`
+    // (lib/apolo/incorporador/board-do-portal.ts:155, `origem = "coordenador"`). Ele decide DUAS
+    // coisas aqui: o recorte da família (privacidade, desde 16/09/2026) e, desde 26/09/2026, se a
+    // CAD em andamento libera o CO-PROPONENTE.
+    const comercial = ehPortalComercial(auth.sessao.tipo);
     const escopo = escopoDaEsteiraDoPortal({
       c2xId: String(unidade.enterprise_id),
       cadastro,
       catalogo,
-      comercial: ehPortalComercial(auth.sessao.tipo),
+      comercial,
       permitidos,
     });
     // O documento INTEIRO é o que autoriza a busca no espelho do pai: onze dígitos de CPF ou
@@ -183,7 +189,24 @@ export async function GET(request: Request) {
       // Sem CAD em nenhum id do escopo a pessoa não aparece: "existe na base" não é resposta.
       .filter((c) => porEntidade.has(c.id))
       .map((c) => {
-        const decisao = decidirPelasLinhas(porEntidade.get(c.id) ?? [], [c.id]);
+        // ⚠️ O MESMO MODO DO TITULAR, e é a segunda metade da decisão do Lucas de 26/09/2026:
+        // *"pode deixar os coordenadores emitirem proposta sem a cad esta credenciada"*. Enquanto
+        // esta chamada ia SEM modo, o afrouxamento alcançava só o titular (que entra automático do
+        // GET da proposta) e o coordenador travava no cônjuge: casal comprando junto chega com as
+        // DUAS CADs em andamento no mesmo dia, e ele ficava entre esperar a CAD ou gravar 100% no
+        // titular — participação errada no contrato.
+        //
+        // ⚠️ MEDIDO EM PRODUÇÃO (`bxgukywoxgivlrhjkwjx`, só SELECT, 26/09/2026):
+        //   select count(*) as propostas,
+        //          count(*) filter (where jsonb_array_length(compradores) > 1) as com_dois
+        //     from hercules_propostas where compradores is not null;
+        //     → 97 de 4.946 propostas têm dois ou mais compradores.
+        //
+        // ⚠️ E `credenciado` CONTINUA SENDO A VERDADE. A tela lê a porta em `podeGerarProposta` e a
+        // frase em `motivo`: o coordenador escolhe a esposa E lê que a CAD dela está em revisão.
+        const decisao = decidirPelasLinhas(porEntidade.get(c.id) ?? [], [c.id], {
+          cadEmAndamentoLibera: comercial,
+        });
         return {
           credenciado: decisao.credenciado,
           cpf: c.documento ?? "",
@@ -191,6 +214,7 @@ export async function GET(request: Request) {
           id: c.id,
           motivo: decisao.motivo,
           nome: c.nome ?? "—",
+          podeGerarProposta: decisao.podeGerarProposta,
         };
       })
       .sort(ordenar)
