@@ -94,6 +94,77 @@ import { escopoDeQuemVende } from "./quem-pode-vender";
 // testar com um cliente falso e conviver com o admin client do Apolo e com um SupabaseClient cru.
 type ClienteDeLeitura = Pick<SupabaseClient, "from">;
 
+/**
+ * O COMPRADOR DA CARTEIRA PASSA PELA BARRA DO CONTRATO? SIM — e está escrito como booleano para que
+ * invertê-lo seja UMA LINHA, com um teste dizendo o que muda.
+ *
+ * ⚠️ ISTO É A PERGUNTA QUE A JUNÇÃO DE 26/09/2026 OBRIGOU A RESPONDER, e ela não foi decidida por
+ * mim: foi implementada na leitura mais coerente com as DUAS frases do Lucas do mesmo dia, e vai ao
+ * Lucas como pergunta. As duas frases são:
+ *   • *"tem um cliente que é comprador, mas não está dando para ele comprar mais uma unidade [...]
+ *     temos que aproveitar esses cadastros de comprador"* — a porta da carteira;
+ *   • *"faz uma barra, para enviar para contrato precisa da cad validada"* — esta barra.
+ *
+ * ⚠️ A LEITURA QUE FICOU VALENDO: a carteira SUBSTITUI a CAD, ela não a dispensa. É o que
+ * `cliente-credenciado.ts` declara no topo (*"a prova que SUBSTITUI a CAD quando ela não existe"*), e
+ * o próprio sistema já age assim: a CAD do comprador da carteira NASCE na etapa `credenciado` na
+ * gravação da proposta (`cad-do-comprador.ts:114`, com `origem = 'comprador_da_carteira'`). Logo,
+ * quando esta barra roda — dias depois, sobre uma proposta já gravada — ela encontra uma CAD
+ * credenciada de verdade na esteira. Recusar aqui daria dois vereditos diferentes para o mesmo fato,
+ * e o segundo seria impossível de explicar ao coordenador.
+ *
+ * ⚠️ O QUE ISSO ALCANÇA, MEDIDO (`bxgukywoxgivlrhjkwjx`, só SELECT, 26/09/2026) — e o número grande
+ * é de gente que PODE vir, não de gente barrada hoje:
+ *   • 1.476 pessoas têm contrato `faturado` ativo numa família e NENHUMA CAD nessa família (1.509
+ *     pares pessoa×família). São elas que a porta alcança de agora em diante.
+ *
+ * ⚠️ E SÃO OITO AS PROPOSTAS VIVAS QUE ESTA DECISÃO JÁ ALCANÇA — a versão anterior deste comentário
+ * dizia ZERO, e isso era FALSO. Medido por mim (`bxgukywoxgivlrhjkwjx`, só SELECT, 26/09/2026), com
+ * a família por `coalesce(pai_id, id)` em `hercules_empreendimentos`, o faturado ativo por
+ * `etapa='faturado' and cancelada_em is null and cancelamento_pedido_em is null`, e a pessoa por
+ * `cliente_documento` OU por item de `compradores` (`documento`/`cpf`):
+ *   → 8 propostas em `assinatura`, todas do empreendimento 30 (Lagoa dos Anjos, código LAG1), todas
+ *     do CNPJ 30.098.403/0001-86 (PREMOLL CONSTRUCOES E ENGENHARIA LTDA), unidades ADTC0704, 0705,
+ *     0706, 0707, 0801, 0802, 0803 e 0813. Todas com ZERO CAD no escopo e todas com faturado ativo
+ *     na MESMA família: a unidade irmã ADTC0410, da carga do C2X.
+ *
+ * ⚠️ E ELAS CONTINUAM BARRADAS HOJE, MAS NÃO PELO MOTIVO QUE ALGUÉM SUPORIA LENDO ISTO: a entidade
+ * do CNPJ da PREMOLL NÃO EXISTE no Apolo (medido: 0 por `apolo_entities.document_hash` e 0 por
+ * `apolo_entity_identifiers.value_hash`, com
+ * `encode(digest('apolo-identifier:cnpj:30098403000186','sha256'),'hex')`), então
+ * `credenciadoParaVender` para antes, em *"Este CNPJ não tem cadastro no Apolo"*, e a carteira nem é
+ * lida. A margem de segurança é UM SYNC DE CNPJ DE DISTÂNCIA, e `compra-ativa.ts:45` registra essa
+ * ficha faltando como gap conhecido: dos 68 faturados ativos de CNPJ, 63 têm a entidade sem
+ * identificador `cnpj`.
+ *
+ * ⚠️ LOGO, ESTE É O GATILHO, ESCRITO PARA NINGUÉM SER PEGO DE SURPRESA: no dia em que a ficha da
+ * PREMOLL ganhar o CNPJ, estas 8 propostas de PJ em `assinatura` PASSAM A SER LIBERADAS pela barra
+ * sem novo deploy e sem ninguém ter decidido de novo. É por isso que a pergunta vai ao Lucas com
+ * este recorte: ele não está decidindo só sobre o futuro, está decidindo sobre 8 contratos de PJ da
+ * carga do C2X que já estão em assinatura.
+ *
+ * ⚠️ E AS DUAS PROPOSTAS EM ETAPA `proposta` QUE ESTA BARRA PEGA HOJE NÃO ENTRAM PELA CARTEIRA
+ * (medido, mesmo dia): CDJ7 CDJ0403 (ADALBERTO ANDRADE VILARINO, empreendimento 22) e MDB1 MDB1306
+ * (JUSSARA SILVA DE ALVARENGA DUARTE, empreendimento 21) têm 0 CAD no escopo e 0 faturado ativo na
+ * família. Para elas a barra continua sendo a resposta, com ou sem carteira.
+ *
+ * ⚠️ `false` AQUI BARRARIA OS DOIS CASOS, e não só um: tanto quem passou pelo contrato lido agora
+ * quanto quem já tem a CAD nascida da carteira, porque `origem` vale `comprador_da_carteira` nos dois
+ * (`cliente-credenciado.ts`). É de propósito: se a carteira não serve para o contrato, a CAD que ela
+ * abriu também não serve — ela não passou pela análise da coordenação.
+ *
+ * ⚠️ E O TIPO É `boolean` DE PROPÓSITO, não o literal que o TypeScript inferiria. Sem a anotação o
+ * compilador estreita para `true`, o ramo da recusa em `recusaPelaCarteira` fica PROVADAMENTE
+ * inalcançável e nenhum teste consegue exercitá-lo: a "uma linha" prometida ao Lucas seria uma linha
+ * mais um caminho que nunca rodou. Com `boolean`, `recusaPelaCarteira` é pura e os dois valores são
+ * testados (`juncao-carteira-e-cad-em-andamento.test.ts`).
+ */
+export const A_CARTEIRA_VALE_PARA_O_CONTRATO: boolean = true;
+
+/** A frase da recusa quando `A_CARTEIRA_VALE_PARA_O_CONTRATO` for desligado. */
+const FRASE_DA_CARTEIRA_RECUSADA =
+  "Este cliente entrou na proposta como comprador da carteira (contrato ativo neste empreendimento), e não por uma CAD analisada pela coordenação.";
+
 /** O que fazer quando a CAD não está aprovada — a frase e o código HTTP, juntos. */
 export type RecusaDaCadParaContrato = {
   erro: string;
@@ -174,6 +245,53 @@ const FRASE_DO_503 =
   "Não foi possível conferir agora se a CAD do titular está aprovada. Nada foi movido; tente de novo em instantes.";
 
 /**
+ * QUEM foi barrado, quando não é o titular.
+ *
+ * ⚠️ A BARRA PASSOU A OLHAR TODOS OS COMPRADORES, E SEM ISSO A FRASE MENTIRIA. Se a recusa vier do
+ * cônjuge, dizer *"a CAD deste cliente"* manda a administrativa conferir a pessoa errada: ela abre a
+ * ficha do titular, vê `credenciado`, e conclui que o sistema está com defeito.
+ */
+export type QuemFoiBarrado = { nome: null | string; papel: "co" | "titular" };
+
+/** A recusa, com o nome de quem a causou na frente, quando não foi o titular. */
+function comNome(
+  recusa: RecusaDaCadParaContrato,
+  quem: QuemFoiBarrado | undefined,
+): RecusaDaCadParaContrato {
+  if (!quem || quem.papel === "titular" || recusa.status === 503) return recusa;
+  const dito = String(quem.nome ?? "").trim() || "o segundo comprador desta proposta";
+  return { ...recusa, erro: `${dito} (co-comprador): ${recusa.erro}` };
+}
+
+/**
+ * O comprador da carteira é recusado por esta barra? Pura, e é pura DE PROPÓSITO.
+ *
+ * ⚠️ ELA EXISTE PARA O RAMO DA RECUSA PODER SER TESTADO SEM O BANCO E SEM TROCAR A CONSTANTE. Com a
+ * decisão lida direto de `A_CARTEIRA_VALE_PARA_O_CONTRATO` dentro da função assíncrona, o único teste
+ * possível era `expect(A_CARTEIRA_VALE_PARA_O_CONTRATO).toBe(true)`, que CONGELA o valor em vez de
+ * provar o comportamento: inverter a constante deixava a suíte vermelha nesse ponto e ligava, em
+ * produção, um caminho que nunca havia rodado. Aqui o `vale` é PARÂMETRO, e os dois valores são
+ * exercitados nos quatro atos (`juncao-carteira-e-cad-em-andamento.test.ts`).
+ *
+ * ⚠️ E ELA ALCANÇA OS DOIS CASOS DA CARTEIRA, como o comentário da constante promete: quem passou
+ * pelo contrato lido agora (`etapa: null`) e quem já tem a CAD que a carteira abriu e está
+ * `credenciado` — nos dois `origem` vale `comprador_da_carteira` (`cliente-credenciado.ts`).
+ */
+export function recusaPelaCarteira(
+  veredito: { etapa: null | string; origem: null | string },
+  ato: AtoBarradoPelaCad,
+  vale: boolean,
+): null | RecusaDaCadParaContrato {
+  if (vale) return null;
+  if (veredito.origem !== "comprador_da_carteira") return null;
+  return {
+    erro: `${FRASE_DA_CARTEIRA_RECUSADA} Leve o caso à coordenação para credenciar a CAD e ${O_QUE_FAZER_DEPOIS[ato]}.`,
+    etapa: veredito.etapa,
+    status: 409,
+  };
+}
+
+/**
  * A CAD do titular está aprovada para este documento seguir para contrato?
  *
  * Devolve `null` quando pode seguir, e a recusa quando não pode. NÃO lança: a falha de leitura sai
@@ -197,7 +315,17 @@ const FRASE_DO_503 =
  */
 export async function recusaDaCadParaContrato(
   admin: ClienteDeLeitura,
-  alvo: { documento: null | string; enterpriseId: null | string },
+  alvo: {
+    documento: null | string;
+    enterpriseId: null | string;
+    /**
+     * Quem está sendo conferido, quando NÃO é o titular — ver `QuemFoiBarrado`.
+     *
+     * ⚠️ AUSENTE QUER DIZER TITULAR, e é o comportamento de sempre: a frase sai exatamente como
+     * saía antes desta junção para quem chama com um documento só.
+     */
+    quem?: QuemFoiBarrado;
+  },
   ato: AtoBarradoPelaCad = "enviar_para_contrato",
 ): Promise<null | RecusaDaCadParaContrato> {
   const documento = String(alvo.documento ?? "").trim();
@@ -214,11 +342,14 @@ export async function recusaDaCadParaContrato(
   // documento do titular não tem pessoa para conferir, e deixá-la passar seria abrir a porta
   // justamente para a linha quebrada. É 409 (há o que consertar), não 503 (não é falha nossa).
   if (!documento) {
-    return {
-      erro: `Esta proposta está sem o CPF ou o CNPJ do titular, e sem ele não há CAD para conferir. Corrija o cliente da proposta antes de ${O_QUE_FOI_BARRADO[ato]}.`,
-      etapa: null,
-      status: 409,
-    };
+    return comNome(
+      {
+        erro: `Esta proposta está sem o CPF ou o CNPJ do titular, e sem ele não há CAD para conferir. Corrija o cliente da proposta antes de ${O_QUE_FOI_BARRADO[ato]}.`,
+        etapa: null,
+        status: 409,
+      },
+      alvo.quem,
+    );
   }
 
   let escopo: string[];
@@ -270,18 +401,78 @@ export async function recusaDaCadParaContrato(
   try {
     // ⚠️ SEM MODO: o default de `credenciadoParaVender` é o APERTADO, e é ele que queremos. Passar
     // `{ cadEmAndamentoLibera: true }` aqui abriria a barra para quem ela existe para deter.
+    //
+    // ⚠️ E COM A PORTA DA CARTEIRA LIGADA (o default de `alvo.compradorDaCarteira`), de propósito:
+    // ver `A_CARTEIRA_VALE_PARA_O_CONTRATO`. Desligá-la aqui economizaria uma leitura mas faria a
+    // barra responder sobre uma pessoa que a proposta já aceitou por outra régua, e `origem` voltaria
+    // `null` justamente no caso em que ela é a única explicação.
+    //
+    // ⚠️ E ISSO CUSTA UMA LEITURA DA FAMÍLIA INTEIRA NA ABERTURA DO PAINEL "QUEM ASSINA", escrito
+    // aqui porque o custo é REAL e não estava registrado em lugar nenhum. Esta barra roda dentro de
+    // `prepararEnvio` (`lib/assinatura/envio-db.ts:124`), que é chamada TAMBÉM pelo GET de
+    // `/assinatura/enviar?proposta=` (`lib/temis/assinatura-servico.ts:114`), com `no-store`: a cada
+    // abertura e a cada recarga do painel. Sem CAD no escopo, `credenciadoParaVender` dispara
+    // `lerContratosAtivos`, uma leitura paginada de TODOS os faturados da família com o embutido
+    // `hercules_unidades!inner` e a coluna `compradores` (jsonb) inteira.
+    // ⚠️ MEDIDO POR MIM (`bxgukywoxgivlrhjkwjx`, só SELECT, 26/09/2026), e o caso comum é justamente o
+    // caro: 405 das 422 propostas em `assinatura` estão sem CAD no escopo. Faturados lidos por
+    // abertura, por família (`etapa='faturado'`, sem cancelamento e sem pedido, agrupado pelo
+    // `coalesce(pai_id,id)` do empreendimento da unidade): 473 na família dos empreendimentos 1 e 4,
+    // 381 na dos 13/14/15, 265 na dos 7/10, 245 na dos 27/31/32/33, 182 na do 35 (Vale do Ouro). No
+    // POST da proposta o mesmo se repete uma vez por co-comprador sem CAD
+    // (`app/api/incorporador/venda/proposta/route.ts`, `cadDoCoComprador`).
+    // ⚠️ NÃO REDUZIDO AQUI, E A RAZÃO É QUE AS DUAS SAÍDAS ÓBVIAS MUDAM COMPORTAMENTO: filtrar o
+    // documento no BANCO perde o co-comprador cuja máscara no jsonb não é uma das duas previstas
+    // (`compra-ativa.ts:184`) e a carteira pararia de valer para ele, calada; e desligar a porta no
+    // GET faria a tela mostrar um impedimento que o POST não tem, acusando um cliente que passa. O
+    // número fica registrado e vai ao Lucas; a casa já tem essa armadilha na memória ("D4Sign custo
+    // na carga de tela").
+    //
+    // ⚠️ QUEM ESTA BARRA PEGA HOJE, MEDIDO POR MIM (`bxgukywoxgivlrhjkwjx`, só SELECT, 26/09/2026),
+    // com o escopo montado como acima (família por `hercules_empreendimentos.pai_id`) e a entidade
+    // achada pelos DOIS caminhos do hash (`apolo_entities.document_hash` e
+    // `apolo_entity_identifiers.value_hash`, `encode(digest('apolo-identifier:cpf:'||doc,'sha256'),'hex')`):
+    //   etapa `proposta`   → 7 vivas, 3 SEM CAD `credenciado` no escopo (2 sem CAD nenhuma:
+    //                        ADALBERTO ANDRADE VILARINO no 22 e JUSSARA SILVA DE ALVARENGA DUARTE no
+    //                        21, as duas herdadas do C2X em novembro de 2025; e 1 com CAD em
+    //                        `revisao` no 35, LETICIA DE OLIVEIRA CAMPOS GOMES, que TEM contrato
+    //                        faturado ativo na família e mesmo assim não entra pela carteira — quem
+    //                        tem CAD é decidido pela CAD).
+    //   etapa `assinatura` → 422 vivas, 405 sem CAD `credenciado` no escopo;
+    //   etapa `contrato`   → 23 vivas, 13 sem CAD `credenciado` no escopo.
+    //   ⚠️ E OITO dessas 418 TÊM contrato faturado ativo na família — a versão anterior desta linha
+    //   dizia ZERO, e estava errada. São as 8 de `assinatura` do empreendimento 30, todas do CNPJ da
+    //   PREMOLL (unidades ADTC0704/0705/0706/0707/0801/0802/0803/0813), e elas só continuam barradas
+    //   porque a entidade do CNPJ não existe no Apolo. O SQL, o motivo e o gatilho estão em
+    //   `A_CARTEIRA_VALE_PARA_O_CONTRATO`. ⚠️ NÃO CONFERI se as 418 chegam de fato a esta barra (elas só
+    //   chegariam por `gerarContratoDaProposta`/`prepararEnvio`, a v2 e o reenvio) — são vendas da
+    //   carga do C2X, e a medição de cima ("13 propostas com contrato vivo em `hercules_documentos`,
+    //   13 de 13 credenciadas") olha um conjunto MENOR, o das nativas. O número maior está aqui para
+    //   ser levado ao Lucas, não como afirmação de que 418 pessoas estão travadas hoje.
+    //   ⚠️ E o escopo que medi não soma os ids `group:` do catálogo; existem 2 linhas `group:%` na
+    //   esteira (as duas `group:Lagoa Bonita`, as duas `credenciado`), então o viés é de no máximo 2.
     const veredito = await credenciadoParaVender(admin, {
       documento,
       enterpriseIds: escopo.length > 0 ? escopo : [c2xId],
     });
 
+    // ⚠️ O COMPRADOR DA CARTEIRA PASSA, E O RAMO EXISTE PARA DIZER ISSO EM VOZ ALTA. Sem ele a
+    // resposta sairia a mesma (ele chega com `credenciado: true`), e quem lesse este arquivo não
+    // saberia que a junção de 26/09/2026 decidiu isso — acharia que a barra nunca viu a pergunta. Ver
+    // `A_CARTEIRA_VALE_PARA_O_CONTRATO`, onde a decisão e a medição estão escritas.
+    const daCarteira = recusaPelaCarteira(veredito, ato, A_CARTEIRA_VALE_PARA_O_CONTRATO);
+    if (daCarteira) return comNome(daCarteira, alvo.quem);
+
     if (veredito.credenciado) return null;
 
-    return {
-      erro: fraseDaRecusa(veredito.motivo, ato, veredito.etapa),
-      etapa: veredito.etapa,
-      status: 409,
-    };
+    return comNome(
+      {
+        erro: fraseDaRecusa(veredito.motivo, ato, veredito.etapa),
+        etapa: veredito.etapa,
+        status: 409,
+      },
+      alvo.quem,
+    );
   } catch (erro) {
     if (erro instanceof FalhaAoLerCredenciamento) {
       console.error("[cad-para-contrato] não deu para ler o credenciamento", erro.message);
@@ -313,7 +504,7 @@ export async function recusaDaCadDaProposta(
 
   const { data, error } = await admin
     .from("hercules_propostas")
-    .select("cliente_documento, unidade_id")
+    .select("cliente_documento, compradores, unidade_id")
     .eq("workspace_id", "careli")
     .eq("id", alvo)
     .maybeSingle();
@@ -326,7 +517,11 @@ export async function recusaDaCadDaProposta(
     return { erro: FRASE_DO_503, etapa: null, status: 503 };
   }
 
-  const proposta = data as null | { cliente_documento: null | string; unidade_id: null | string };
+  const proposta = data as null | {
+    cliente_documento: null | string;
+    compradores?: unknown;
+    unidade_id: null | string;
+  };
   if (!proposta) {
     console.error("[cad-para-contrato] proposta do card não existe no banco", { proposta: alvo });
     return null;
@@ -348,15 +543,92 @@ export async function recusaDaCadDaProposta(
   }
 
   const unidade = linhaDaUnidade as null | { enterprise_id: null | string };
+  const enterpriseId = unidade?.enterprise_id ?? null;
 
-  return recusaDaCadParaContrato(
-    admin,
-    {
-      documento: proposta.cliente_documento,
-      enterpriseId: unidade?.enterprise_id ?? null,
-    },
-    ato,
-  );
+  // ⚠️ TODOS OS COMPRADORES, E NÃO SÓ O TITULAR — e sem isto a barra fechava METADE do caminho.
+  // Ver `compradoresDaProposta` para a medição e para a frase do Lucas.
+  for (const pessoa of compradoresDaProposta(proposta)) {
+    const recusa = await recusaDaCadParaContrato(
+      admin,
+      { documento: pessoa.documento, enterpriseId, quem: pessoa },
+      ato,
+    );
+    if (recusa) return recusa;
+  }
+
+  return null;
+}
+
+/**
+ * Quem responde por esta proposta: o titular e os co-compradores, na ordem em que a barra pergunta.
+ *
+ * ⚠️ A BARRA SÓ OLHAVA O TITULAR, E A JUNÇÃO DE 26/09/2026 ACABOU DE AFROUXAR O CO-COMPRADOR. Este é
+ * o buraco que o merge abriu, e ele é exato: a busca de proponentes passou a receber o MODO DO
+ * COORDENADOR (`app/api/incorporador/venda/proponentes/route.ts:256`), então o cônjuge com a CAD em
+ * `revisao` virou escolhível (a tela usa `podeGerarProposta`,
+ * `modules/incorporador/hercules/ModalDeProposta.tsx:1787`). Antes do merge ele precisava estar
+ * `credenciado` para ser escolhido, e por isso a barra não precisava vê-lo. Depois do merge precisa.
+ *
+ * ⚠️ E QUEM ASSINA SÃO TODOS: `montarSignatarios` percorre `dados.compradores` inteiro
+ * (`lib/assinatura/signatarios.ts:71`) e põe cada um no envelope como `comprador`. A frase do Lucas
+ * (26/09/2026) — *"faz uma barra, para enviar para contrato precisa da cad validada"* — vale para
+ * quem assina, não para quem por acaso está na coluna `cliente_documento`.
+ *
+ * ⚠️ E ISSO NÃO ALCANÇA O PASSADO, MEDIDO ANTES DE ESCREVER (`bxgukywoxgivlrhjkwjx`, só SELECT,
+ * 26/09/2026): existem 28 co-compradores de propostas vivas sem CAD `credenciado` no escopo (27 em
+ * `assinatura`, 1 em `proposta`), e 28 de 28 estão em propostas cujo TITULAR já é barrado pela mesma
+ * barra. Ou seja: zero vítimas novas hoje. O SQL casa a pessoa por `cliente_documento` ou por item de
+ * `compradores` (`documento`/`cpf`), a família por `coalesce(pai_id, id)`, e o credenciamento pelos
+ * dois caminhos do hash (`apolo_entities.document_hash` e `apolo_entity_identifiers.value_hash`).
+ * Havia 173 CADs em `revisao` no mesmo dia: o caminho é usado.
+ *
+ * ⚠️ O TITULAR VEM PRIMEIRO, de propósito: quando os dois estão barrados, a frase que a
+ * administrativa lê é a do titular, que é a que ela já esperava. E o co-comprador SEM DOCUMENTO
+ * LEGÍVEL não entra: a régua de entrada da proposta (`conferirProposta`) já o barraria, e inventar
+ * uma segunda recusa aqui transformaria dado torto da carga do C2X em parede calada.
+ *
+ * ⚠️ DOIS FORMATOS DE `compradores`, os mesmos de `compra-ativa.ts:184`: a carga do C2X grava
+ * `documento` e a venda nativa grava `cpf`, com e sem máscara. A comparação é por dígitos, e o
+ * documento repetido (titular listado também no array) é lido UMA vez.
+ */
+function compradoresDaProposta(proposta: {
+  cliente_documento: null | string;
+  compradores?: unknown;
+}): Array<QuemFoiBarrado & { documento: string }> {
+  const lista = Array.isArray(proposta.compradores)
+    ? (proposta.compradores as Array<null | Record<string, unknown>>)
+    : [];
+  const digitos = (valor: unknown) => String(valor ?? "").replace(/\D/g, "");
+  const saida: Array<QuemFoiBarrado & { documento: string }> = [];
+  const vistos = new Set<string>();
+
+  const juntar = (documento: string, nome: null | string, papel: "co" | "titular") => {
+    if (!documento || vistos.has(documento)) return;
+    vistos.add(documento);
+    saida.push({ documento, nome, papel });
+  };
+
+  const noArray = lista.find((c) => c?.titular === true) ?? null;
+  // ⚠️ O TITULAR ENTRA MESMO SEM DOCUMENTO: é ele que produz a recusa "esta proposta está sem o CPF
+  // ou o CNPJ do titular", e sumir com ela deixaria a proposta quebrada passar calada.
+  const doTitular = digitos(proposta.cliente_documento) || digitos(noArray?.documento ?? noArray?.cpf);
+  vistos.add(doTitular);
+  saida.push({
+    documento: doTitular,
+    nome: String(noArray?.nome ?? "").trim() || null,
+    papel: "titular",
+  });
+
+  for (const c of lista) {
+    if (!c || c.titular === true) continue;
+    juntar(
+      digitos(c.documento ?? c.cpf),
+      String(c.nome ?? "").trim() || null,
+      "co",
+    );
+  }
+
+  return saida;
 }
 
 /**

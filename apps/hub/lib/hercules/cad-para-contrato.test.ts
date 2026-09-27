@@ -88,7 +88,18 @@ function clienteFake() {
           filtros.push({ coluna, valores });
           return cadeia;
         },
+        // ⚠️ `is`, `order` e `range` EXISTEM PORQUE A BARRA AGORA LÊ A CARTEIRA (junção de
+        // 26/09/2026). Quem não tem CAD no escopo faz `credenciadoParaVender` ir a
+        // `lerContratosAtivos`, que pagina com `.is(...).order(...).range(...)`. Sem estes três o fake
+        // estourava e a barra respondia 503 (fail-closed) no lugar do 409 de verdade — e um teste
+        // verde por 503 é um teste que não está lendo a recusa que diz estar lendo.
+        is(coluna: string, valor: unknown) {
+          filtros.push({ coluna, valores: [valor] });
+          return cadeia;
+        },
         maybeSingle: () => Promise.resolve(responder(true)),
+        order: () => cadeia,
+        range: () => cadeia,
         select: () => cadeia,
         then: (ok: (r: unknown) => unknown, falha?: (e: unknown) => unknown) =>
           Promise.resolve(responder(false)).then(ok, falha),

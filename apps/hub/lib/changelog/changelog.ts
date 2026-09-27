@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-26-comprador-da-carteira-compra-de-novo",
+    deployedAt: "2026-09-26T19:38:13-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**Quem já comprou no empreendimento pode comprar de novo sem abrir CAD.** O cliente com contrato faturado no mesmo empreendimento (ou nas divisões dele) gera a proposta direto, com o selo \"Comprador da carteira\". Para outro empreendimento continua valendo a CAD, como antes.",
+              "**A CAD nasce sozinha, já credenciada, quando a proposta é gravada**, com a imobiliária e o corretor da reserva. Ela aparece no Board e no CRM do coordenador como qualquer outra.",
+              "**Na busca de co-proponente, o comprador da carteira aparece digitando o CPF ou o CNPJ inteiro.** Por nome continua aparecendo só quem tem CAD.",
+            ],
+            screen: "Venda · Gerar proposta",
+          },
+        ],
+      },
+    ],
+    rollback: "0f4768c9",
+    technical: {
+      done:
+        "Porta da carteira em credenciadoParaVender (lib/hercules/cliente-credenciado.ts + lib/hercules/compra-ativa.ts): sem CAD no escopo, o documento (CPF ou CNPJ, regra da 1.384.0) com proposta faturada ativa na família do empreendimento (pelo id da unidade) passa com origem comprador_da_carteira. CAD real continua decidindo (revisão e indeferida barram); 'em assinatura' não conta (Lucas, 26/09); atraso não é olhado; co-comprador conta. A leitura dos contratos só acontece quando não há CAD. No POST da proposta, a CAD nasce por insert on conflict do nothing (lib/hercules/cad-do-comprador.ts), nunca por atualizarEtapa: não dispara WhatsApp, não entra na fila do Prometeu e não sobe ao C2X; falha dela não derruba a proposta. Busca de proponente: comprador da carteira só com o documento inteiro. Têmis: a CAD da carteira não decide quem vendeu o contrato antigo, e ficha vazia não esconde a ficha de outra CAD. Selo na modal. Fonte medida: hercules_propostas faturadas batem com o C2X em 1.969 de 2.037 (os 68 restantes são PJ). Dos 4.242 compradores sem CAD, 1.481 passam. Merge com a 1.384.0 (reserva PJ) resolvido e revisado. Suíte 657 arquivos, 9.890 testes.",
+      motivation:
+        "Lucas, 26/09/2026, com print do Pedro no Veredas: tem um cliente que é comprador, mas não está dando para ele comprar mais uma unidade; temos que aproveitar esses cadastros de comprador. Decisões: só no mesmo empreendimento; passa mesmo em atraso; nasce a CAD credenciada; em assinatura não entra.",
+    },
+    title: "Comprador da carteira compra de novo no mesmo empreendimento, sem CAD nova",
+    type: "melhoria",
+    version: "1.385.0",
+  },
+  {
     buildTag: "2026-09-26-reserva-aceita-pessoa-juridica",
     deployedAt: "2026-09-26T14:24:21-03:00",
     modules: [

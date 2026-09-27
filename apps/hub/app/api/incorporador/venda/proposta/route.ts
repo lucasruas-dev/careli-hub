@@ -19,7 +19,7 @@ import { ehPortalComercial } from "@/lib/apolo/incorporador/perfis-de-portal";
 import { INDICES, type PlanoComercial } from "@/lib/apolo/planos-comerciais";
 import { lerPlanosDoC2xPorIds } from "@/lib/apolo/planos-comerciais-c2x";
 import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
-import { namespaceDoHash } from "@/lib/hercules/documento-do-comprador";
+import { namespaceDoHash, tipoDePessoa } from "@/lib/hercules/documento-do-comprador";
 import { titularDosProponentes } from "@/lib/hercules/proponente";
 import { descontoDoPlano, type ModoDoAjuste } from "@/lib/hercules/ajuste-de-preco";
 
@@ -41,10 +41,17 @@ import {
   carregarCadastroDeEmpreendimentos,
   type LinhaDoCadastro,
 } from "@/lib/hercules/cadastro";
+import {
+  type EntradaDaCadDoComprador,
+  enterpriseIdDaCad,
+  garantirCadDoComprador,
+  type ResultadoDaCadDoComprador,
+} from "@/lib/hercules/cad-do-comprador";
 import { desfechoDaUnidade, soltarLoteDaVendaDesfeita } from "@/lib/hercules/cancelar-reserva-server";
 import { lerSituacaoDasUnidades } from "@/lib/hercules/situacao-da-unidade";
 import { fraseDoConflito, outrosDonosDoLote } from "@/lib/hercules/trava-do-lote";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
+import { A_CARTEIRA_VALE_PARA_O_CONTRATO } from "@/lib/hercules/cad-para-contrato";
 import {
   credenciadoParaVender,
   FalhaAoLerCredenciamento,
@@ -625,14 +632,33 @@ export async function GET(request: Request) {
       {
         data: {
           credenciamento: {
+            // ⚠️ SÓ UM BOOLEANO DA COMPRA, nunca o objeto (ids, códigos e a data do contrato antigo
+            // não vão para a tela). Verdadeiro quando a porta foi o contrato lido AGORA; falso quando
+            // foi a CAD que a carteira já abriu, e aí a tela não afirma contrato ativo nenhum.
+            contratoAtivo: Boolean(credenciamento.compra),
+            // ⚠️ A DECISÃO DA BARRA DO CONTRATO VIAJA ATÉ A TELA, e é por isso que ela existe aqui e
+            // não só em `cad-para-contrato.ts`. Enquanto `A_CARTEIRA_VALE_PARA_O_CONTRATO` morava só
+            // no servidor, invertê-la para `false` não alcançava a modal: o comprador da carteira
+            // chegava com `credenciado: true`, logo `cadEmAndamento` era `false`
+            // (`ModalDeProposta.tsx:480`), o aviso do contrato não renderizava, e a caixa continuava
+            // afirmando *"A reserva pode virar proposta"* sobre alguém que receberia 409 no envio
+            // para contrato. É exatamente a incoerência GET/POST que o comentário de `:1497` proíbe:
+            // *"Quem monta a proposta tem que LER isso agora, não descobrir num erro vermelho depois
+            // de confirmar o envio para contrato"*. Com este campo, inverter a constante CONTINUA
+            // sendo uma linha e a tela obedece junto.
+            contratoExigeCad: !A_CARTEIRA_VALE_PARA_O_CONTRATO,
             credenciado: credenciamento.credenciado,
             desde: credenciamento.desde,
             etapa: credenciamento.etapa,
             motivo: credenciamento.motivo,
+            // (26/09/2026) Por qual porta: "cad" ou "comprador_da_carteira". É o que troca o selo
+            // da modal para "Comprador da carteira". O GET só lê: a CAD da carteira nasce no POST.
+            origem: credenciamento.origem ?? null,
             // ⚠️ DOIS CAMPOS PORQUE SÃO DUAS PERGUNTAS. `credenciado` é a verdade sobre a CAD (o que
             // o selo escreve); `podeGerarProposta` é a porta (o que acende o botão). Com a CAD em
             // andamento eles DISCORDAM de propósito: a tela mostra a frase da etapa em tom de aviso
-            // e libera o botão. Um campo só faria a tela mentir ou o coordenador travar.
+            // e libera o botão. Um campo só faria a tela mentir ou o coordenador travar. Para o
+            // COMPRADOR DA CARTEIRA os dois são `true`, e é o `origem` que troca o selo.
             podeGerarProposta: credenciamento.podeGerarProposta,
           },
           entradaMinimaPercentual,
@@ -1646,6 +1672,76 @@ export async function POST(request: Request) {
       );
     }
 
+    // ── 8½. A CAD do comprador da carteira ─────────────────────────────────
+    //
+    // Lucas (26/09/2026), "Nasce a CAD credenciada": quem passou pela porta da carteira (contrato
+    // ativo na família, nenhuma CAD no escopo) ganha a CAD credenciada AGORA, marcada
+    // 'comprador_da_carteira', com a imobiliária e o corretor desta reserva.
+    //
+    // ⚠️ AQUI, E NÃO ANTES. Depois do passo 8 a proposta existe e a reserva virou proposta: no 409 da
+    // corrida (a reserva saiu de 'ativa') a proposta é apagada e sobraria uma CAD órfã. A prévia
+    // (6½) já voltou lá em cima, e o GET não escreve. E ANTES do passo 9, para os avisos saírem com a
+    // CAD já no Board.
+    //
+    // ⚠️ NÃO DERRUBA A PROPOSTA. `garantirCadDoComprador` nunca lança; a falha fica no log e na
+    // resposta (`cadDoComprador`), e a venda segue gravada.
+    //
+    // (revisão de 26/09/2026) ⚠️ O CO-COMPRADOR QUE ENTROU PELA CARTEIRA TAMBÉM GANHA A CAD. A busca
+    // de proponentes o libera pela mesma régua do titular; sem isto ele entrava na proposta sem
+    // linha nenhuma em `apolo_esteira`, fora do Board e do CRM, e a esteira deixava de ser a fonte
+    // da decisão. A pergunta é a do titular (`credenciadoParaVender`, no mesmo escopo) e só escreve
+    // quando a porta foi a compra, sem CAD no escopo. Leitura que falha vira 'erro' aqui, nunca 503:
+    // a proposta já está gravada. E NÃO BARRA o co: o POST nunca o reconferiu (a busca é o portão
+    // da tela desde 05/09), e barrar aqui seria regra nova para toda proposta com co.
+    const enterpriseIdDaCadNova = enterpriseIdDaCad(cadastro, c2xId);
+    const baseDaCad: BaseDaCadDoComprador = {
+      agora,
+      atualizadoPor: sessao.usuarioId ?? null,
+      codigoDaVenda: codigo,
+      corretorEntityId: reserva.corretor_entity_id,
+      corretorNome: nomeDoCorretor,
+      empreendimentoNome:
+        empreendimentoDaUnidade(cadastro, enterpriseIdDaCadNova)?.nome ?? empreendimento.nome,
+      enterpriseId: enterpriseIdDaCadNova,
+      imobiliariaEntityId: reserva.imobiliaria_entity_id,
+      imobiliariaNome: nomeDaImobiliaria,
+    };
+    // (26/09/2026) CPF OU CNPJ, pela peça única (`tipoDePessoa`): a porta da carteira vale para os
+    // dois, como a régua do titular (ver `compra-ativa.ts`). Medido: nenhum co-comprador de 14
+    // dígitos nos faturados de hoje, então nada muda para quem já vendia.
+    const documentosDosCoCompradores = [
+      ...new Set(
+        compradores
+          .filter((c) => !c.titular)
+          .map((c) => soDigitos(c.cpf))
+          .filter((doc) => tipoDePessoa(doc) !== null && doc !== cpfDoTitular),
+      ),
+    ];
+    const [cadDoComprador, cadsDosCoCompradores] = await Promise.all([
+      credenciamento.compra
+        ? garantirCadDoComprador(admin, {
+            ...baseDaCad,
+            compra: credenciamento.compra,
+            entityId: credenciamento.entityId,
+          })
+        : Promise.resolve(null),
+      Promise.all(
+        documentosDosCoCompradores.map((documento) =>
+          cadDoCoComprador(admin, documento, escopoDaEsteira, baseDaCad),
+        ),
+      ).then((lista) => lista.filter((r): r is ResultadoDaCadDoComprador => r !== null)),
+    ]);
+    const falhasDaCad = [
+      ...(cadDoComprador?.estado === "erro" ? [{ motivo: cadDoComprador.motivo, quem: "titular" }] : []),
+      ...cadsDosCoCompradores.flatMap((r) => (r.estado === "erro" ? [{ motivo: r.motivo, quem: "co" }] : [])),
+    ];
+    for (const falha of falhasDaCad) {
+      console.error("[hercules][proposta] a CAD do comprador da carteira não nasceu", {
+        ...falha,
+        propostaId,
+      });
+    }
+
     // ── 9. O PDF e os três avisos ──────────────────────────────────────────
     //
     // ⚠️ DAQUI PARA BAIXO NADA DERRUBA A PROPOSTA, que já está gravada. Um WhatsApp que não sai
@@ -1685,7 +1781,21 @@ export async function POST(request: Request) {
       unidadeEscrita,
     });
 
-    return NextResponse.json({ data: { avisos, codigo, id: propostaId } });
+    return NextResponse.json({
+      data: {
+        avisos,
+        // (26/09/2026) Só aparece na venda do comprador da carteira: "criada", "ja_existia" ou
+        // "erro". Campo próprio, e não uma linha em `avisos`: aquela lista diz QUEM FOI AVISADO, e
+        // "falhou para cad" seria lido como um WhatsApp que não saiu.
+        ...(cadDoComprador ? { cadDoComprador: { estado: cadDoComprador.estado } } : {}),
+        // Os co-compradores que entraram pela carteira, um estado por pessoa (sem nome nem CPF).
+        ...(cadsDosCoCompradores.length > 0
+          ? { cadsDosCoCompradores: cadsDosCoCompradores.map((r) => ({ estado: r.estado })) }
+          : {}),
+        codigo,
+        id: propostaId,
+      },
+    });
   } catch (erro) {
     if (erro instanceof FalhaAoLerCredenciamento) {
       console.error("[hercules][proposta] credenciamento ilegível", erro);
@@ -1702,6 +1812,31 @@ export async function POST(request: Request) {
       { error: "Não foi possível gerar a proposta agora." },
       { status: 503 },
     );
+  }
+}
+
+/** O que a CAD da carteira do titular e a dos co-compradores têm em comum: a venda que a abriu. */
+type BaseDaCadDoComprador = Omit<EntradaDaCadDoComprador, "compra" | "entityId">;
+
+/**
+ * A CAD de um co-comprador que entrou pela carteira, se for o caso. `null` quando ele não precisa
+ * de CAD nova (tem CAD no escopo, ou não é comprador da carteira).
+ *
+ * ⚠️ NUNCA LANÇA. Roda depois de a proposta estar gravada: a leitura que falha (inclusive a
+ * `FalhaAoLerCredenciamento`, que no titular vira 503) aqui vira `erro`, no log e na resposta.
+ */
+async function cadDoCoComprador(
+  admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  documento: string,
+  escopo: string[],
+  base: BaseDaCadDoComprador,
+): Promise<null | ResultadoDaCadDoComprador> {
+  try {
+    const dele = await credenciadoParaVender(admin, { documento, enterpriseIds: escopo });
+    if (!dele.credenciado || !dele.compra) return null;
+    return await garantirCadDoComprador(admin, { ...base, compra: dele.compra, entityId: dele.entityId });
+  } catch (erro) {
+    return { estado: "erro", motivo: erro instanceof Error ? erro.message : String(erro) };
   }
 }
 

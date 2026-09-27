@@ -21,6 +21,8 @@
 
 import { soDigitos } from "@/lib/apolo/documento";
 
+import { tipoDePessoa } from "./documento-do-comprador";
+
 /** Como cada candidato volta para a tela. */
 export type ProponenteEncontrado = {
   /**
@@ -58,10 +60,16 @@ export type ProponenteEncontrado = {
    * fora.
    *
    * ⚠️ E ELE NÃO MUDA QUEM APARECE NA LISTA. O filtro de quem entra na resposta é "tem CAD neste
-   * escopo" (`porEntidade.has(c.id)` em `app/api/incorporador/venda/proponentes/route.ts`), não o
-   * credenciamento: a privacidade da busca é o ESCOPO, e ela não foi tocada.
+   * escopo OU contrato ativo na família" (`porEntidade.has(c.id) || carteira.has(c.id)` em
+   * `app/api/incorporador/venda/proponentes/route.ts`), não o credenciamento: a privacidade da busca
+   * é o ESCOPO mais o documento inteiro, e ela não foi tocada por nenhum dos dois lotes de 26/09/2026.
    */
   podeGerarProposta: boolean;
+  /**
+   * Por qual porta a decisão saiu (26/09/2026): `cad` ou `comprador_da_carteira`. Opcional para a
+   * tela aberta antes da subida continuar lendo a resposta; ausente = CAD.
+   */
+  origem?: null | "cad" | "comprador_da_carteira";
 };
 
 /** O mínimo que a busca precisa saber de uma pessoa da base. */
@@ -128,6 +136,22 @@ export function termoDaBusca(cru: string): TermoDaBusca {
 
   if (texto.length < MINIMO_DE_LETRAS) return { tipo: "curto" };
   return { texto, tipo: "nome" };
+}
+
+/**
+ * O termo é o documento INTEIRO (onze dígitos de CPF ou catorze de CNPJ)? É a chave que abre o
+ * espelho do pai e o comprador da carteira na busca (26/09/2026): confirmação do que o corretor já
+ * tem na mão, e não lista. A tela usa a mesma função para dizer quando vale digitar o documento
+ * inteiro, e a rota a usa para as duas portas: uma pergunta, uma resposta.
+ *
+ * ⚠️ SEM DÍGITO VERIFICADOR, de propósito: a base tem documento torto vindo da carga do C2X, e quem
+ * digitou o documento inteiro de um cliente que existe tem de achá-lo. O tamanho é de
+ * `tipoDePessoa`, a peça única (a varredura de `documento-do-comprador.varredura.test.ts` cobra).
+ */
+export function ehDocumentoInteiro(
+  termo: TermoDaBusca,
+): termo is { digitos: string; tipo: "documento" } {
+  return termo.tipo === "documento" && tipoDePessoa(termo.digitos) !== null;
 }
 
 /**

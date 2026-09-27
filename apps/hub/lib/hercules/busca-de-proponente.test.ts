@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   casa,
   comparavel,
+  ehDocumentoInteiro,
   jaEstaNaLista,
   ordenar,
   type ProponenteEncontrado,
@@ -152,5 +153,26 @@ describe("comparavel", () => {
 
   it("nulo vira string vazia, sem quebrar", () => {
     expect(comparavel(null)).toBe("");
+  });
+});
+
+describe("ehDocumentoInteiro", () => {
+  // (26/09/2026, junção da carteira com a v1.384.0) A chave do espelho do pai E do comprador da
+  // carteira na busca: o documento INTEIRO, CPF ou CNPJ. Antes era `ehCpfInteiro`, só onze dígitos.
+  it("CPF inteiro e CNPJ inteiro abrem, em qualquer formato", () => {
+    for (const cru of ["529.982.247-25", "52998224725", "12.345.678/0001-95", "12345678000195"]) {
+      expect(ehDocumentoInteiro(termoDaBusca(cru)), cru).toBe(true);
+    }
+  });
+
+  it("⚠️ prefixo, documento de tamanho estranho e nome NÃO abrem: não se enumera a carteira", () => {
+    for (const cru of ["5299", "5299822472", "123456789012", "1234567800019", "Maria", "ab"]) {
+      expect(ehDocumentoInteiro(termoDaBusca(cru)), cru).toBe(false);
+    }
+  });
+
+  it("sem dígito verificador, de propósito: o documento torto da carga também é inteiro", () => {
+    expect(ehDocumentoInteiro(termoDaBusca("333.333.333-33"))).toBe(true);
+    expect(ehDocumentoInteiro(termoDaBusca("12.345.678/0001-00"))).toBe(true);
   });
 });

@@ -81,7 +81,11 @@ function clienteFake(cfg: {
         then: (aceitar: (r: unknown) => unknown, recusar?: (e: unknown) => unknown) =>
           Promise.resolve(responder()).then(aceitar, recusar),
       };
-      for (const metodo of ["eq", "in"]) {
+      // ⚠️ `is`, `order` e `range` EXISTEM PORQUE A PORTA DA CARTEIRA É LIDA quando não há CAD no
+      // escopo (junção de 26/09/2026, v1.385.0): `lerContratosAtivos` pagina com
+      // `.is(...).order(...).range(...)`. Sem eles o fake estourava e a resposta virava
+      // `FalhaAoLerCredenciamento` — um 503 onde o teste queria ler "sem CAD neste empreendimento".
+      for (const metodo of ["eq", "in", "is"]) {
         alvo[metodo] = (coluna: string, valores: unknown) => {
           filtros.push({
             coluna,
@@ -90,6 +94,8 @@ function clienteFake(cfg: {
           return alvo;
         };
       }
+      alvo.order = () => alvo;
+      alvo.range = () => alvo;
       alvo.select = () => alvo;
       return alvo;
     },

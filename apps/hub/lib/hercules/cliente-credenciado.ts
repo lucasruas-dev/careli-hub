@@ -26,6 +26,15 @@
 // mandaria o corretor discutir com a coordenação um problema que é nosso — e a resposta certa para
 // quem chama é 503, não uma frase sobre a CAD do cliente. É o mesmo fail-closed do
 // `lerCadDaEsteira` (lib/apolo/esteira-cad.ts).
+//
+// (26/09/2026) ⚠️ A SEGUNDA PORTA: O COMPRADOR DA CARTEIRA. Lucas: *"tem um cliente que é
+// comprador, mas não está dando para ele comprar mais uma unidade [...] temos que aproveitar esses
+// cadastros de comprador"*. Quem NÃO TEM CAD NENHUMA no escopo, mas tem contrato ativo (faturado)
+// numa unidade da MESMA família, passa como credenciado, com `origem: "comprador_da_carteira"`
+// (ver `compra-ativa.ts`). A CAD real, quando existe, continua decidindo, inclusive para barrar: a
+// carteira não é uma linha de CAD, é a prova que SUBSTITUI a CAD quando ela não existe. A porta vale
+// para CPF e para CNPJ, pela mesma peça (`tipoDePessoa`/`namespaceDoHash`) que este portão usa; a
+// medição que sustenta isso está em `compra-ativa.ts`.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -33,6 +42,13 @@ import { soDigitos } from "@/lib/apolo/documento";
 import type { EtapaEsteira } from "@/lib/apolo/esteira";
 import { hashIdentifier } from "@/lib/apolo/server";
 
+import {
+  type CompraAtiva,
+  compraDaPessoa,
+  lerContratosAtivos,
+  ORIGEM_COMPRADOR_DA_CARTEIRA,
+  resolverEntidadeDoContrato,
+} from "./compra-ativa";
 import { namespaceDoHash, rotuloDoDocumento, tipoDePessoa } from "./documento-do-comprador";
 
 // Só o `from` é usado. Aceita tanto o admin client do Apolo quanto um SupabaseClient cru — os dois
@@ -41,6 +57,19 @@ type ClienteDeLeitura = Pick<SupabaseClient, "from">;
 
 /** A etapa que libera a proposta. Uma só, e é o fim da esteira. */
 export const ETAPA_QUE_LIBERA = "credenciado";
+
+// ⚠️ DUAS PORTAS E DOIS MODOS NA MESMA RÉGUA, E ELES NÃO SE MISTURAM (junção de 26/09/2026, deste
+// arquivo com a v1.385.0). Escrito de uma vez para ninguém ter de reconstruir:
+//   • `credenciado`        → A CAD ESTÁ APROVADA (ou a carteira a substituiu). É o que a BARRA DO
+//                            CONTRATO lê (`cad-para-contrato.ts`).
+//   • `podeGerarProposta`  → A PORTA DA PROPOSTA. Igual a `credenciado`, mais a CAD EM ANDAMENTO no
+//                            modo do coordenador.
+//   • `origem`             → por qual das duas portas a resposta saiu (`cad` ou a carteira).
+//   • `compra`             → o contrato que substituiu a CAD, só quando não havia CAD nenhuma.
+// A CARTEIRA e o MODO DO COORDENADOR nunca disputam a mesma linha: a carteira só é lida quando NÃO
+// HÁ CAD NENHUMA no escopo, e o modo só mexe em CAD QUE EXISTE. Quem tem CAD em andamento é decidido
+// pelo modo; quem não tem CAD nenhuma é decidido pela carteira; quem tem CAD indeferida é BARRADO
+// pelas duas (a carteira nem é lida, e o mapa de etapas recusa).
 
 // UMA RÉGUA, DOIS MODOS — E A CAD EM ANDAMENTO LIBERA O COORDENADOR.
 //
@@ -118,14 +147,47 @@ function podeGerarProposta(etapa: string, credenciado: boolean, modo: ModoDaRegu
     : false;
 }
 
+/**
+ * Por qual porta a resposta saiu.
+ *
+ * • `cad`: uma CAD do escopo decidiu (liberando ou barrando).
+ * • `comprador_da_carteira`: a pessoa tem contrato ativo na família. Vale tanto para quem ainda não
+ *   tem CAD (a porta é a própria compra, e `compra` vem preenchida) quanto para a CAD credenciada que
+ *   NASCEU da carteira (`apolo_esteira.origem = 'comprador_da_carteira'`): a tela diz "Comprador da
+ *   carteira" nos dois casos, que é o mesmo fato.
+ *
+ * ⚠️ E TAMBÉM PARA A CAD DA CARTEIRA QUE NÃO ESTÁ MAIS CREDENCIADA (junção de 26/09/2026). Se alguém
+ * mover no Board a CAD que nasceu da carteira para `revisao`, a resposta sai `credenciado: false` com
+ * `origem: "comprador_da_carteira"`, e a tela mostra o selo âmbar "CAD em andamento" COM o chip
+ * "Comprador da carteira". Sem isto a tela esquecia o fato no momento em que ele mais explica a
+ * situação para o coordenador. ⚠️ MEDIDO EM PRODUÇÃO (`bxgukywoxgivlrhjkwjx`, só SELECT,
+ * 26/09/2026): `select etapa, origem, count(*) from apolo_esteira group by 1,2` → 1 linha com
+ * `origem = 'comprador_da_carteira'`, e ela está `credenciado`. Ou seja: ZERO pessoas caem neste
+ * ramo hoje, ele existe para o primeiro Board que mexer nessa CAD.
+ */
+export type OrigemDoCredenciamento = "cad" | "comprador_da_carteira";
+
 export type CredenciamentoDoTitular = {
   /**
-   * A CAD ESTÁ CREDENCIADA NESTE EMPREENDIMENTO? A verdade sobre a CAD, e só ela.
+   * O contrato ativo que liberou a pessoa, SÓ quando não havia CAD nenhuma no escopo.
    *
-   * ⚠️ NÃO É A PORTA — ver `podeGerarProposta`. Desde 26/09/2026 o coordenador gera proposta com a
-   * CAD em andamento, e este campo continua `false` nesse caso de propósito: é ele que a tela usa
-   * para escrever o selo, e um `true` aqui faria a tela dizer "CAD credenciada" sobre uma CAD em
-   * validação.
+   * ⚠️ É ELE QUE MANDA A GRAVAÇÃO DA PROPOSTA ABRIR A CAD (`cad-do-comprador.ts`). Quando a CAD da
+   * carteira já existe, este campo é `null` e nada é escrito de novo.
+   */
+  compra: CompraAtiva | null;
+  /**
+   * A CAD ESTÁ CREDENCIADA NESTE EMPREENDIMENTO? A verdade sobre a CAD, e só ela — ou a carteira que
+   * a SUBSTITUI quando ela não existe.
+   *
+   * ⚠️ NÃO É A PORTA DA PROPOSTA — ver `podeGerarProposta`. Desde 26/09/2026 o coordenador gera
+   * proposta com a CAD em andamento, e este campo continua `false` nesse caso de propósito: é ele que
+   * a tela usa para escrever o selo, e um `true` aqui faria a tela dizer "CAD credenciada" sobre uma
+   * CAD em validação.
+   *
+   * ⚠️ E É ELE QUE A BARRA DO CONTRATO LÊ (`cad-para-contrato.ts`, Lucas 26/09/2026: *"faz uma barra,
+   * para enviar para contrato precisa da cad validada"*). Logo, o COMPRADOR DA CARTEIRA PASSA PELA
+   * BARRA DO CONTRATO, porque para ele este campo é `true`. Isso é decisão declarada na barra, não
+   * acidente desta linha: ver `A_CARTEIRA_VALE_PARA_O_CONTRATO` em `cad-para-contrato.ts`.
    */
   credenciado: boolean;
   /**
@@ -135,6 +197,10 @@ export type CredenciamentoDoTitular = {
    * transição: `atualizado_em` muda em QUALQUER escrita da linha (o analista trocou o corretor, o
    * sync mexeu no empreendimento). Serve para a frase "desde 02/09" porque é a melhor aproximação
    * que existe, e é preciso saber disso antes de usá-lo como prova de prazo.
+   *
+   * ⚠️ `null` NA PORTA DA CARTEIRA SEM CAD (26/09/2026). Não há CAD para datar, e a data do contrato
+   * antigo (que fica em `compra.desde`) não é da conta de quem abre a modal: o GET a mandaria ao
+   * portal que não é a Careli, inclusive a de contrato do espelho do pai, que é dividido com o Lino.
    */
   desde: null | string;
   /**
@@ -155,13 +221,16 @@ export type CredenciamentoDoTitular = {
   etapa: null | string;
   /** A frase para o corretor. `null` quando está credenciado — aí não há o que explicar. */
   motivo: null | string;
+  /** Por qual porta a resposta saiu. `null` quando não houve porta nenhuma (sem CAD e sem compra). */
+  origem: null | OrigemDoCredenciamento;
   /**
-   * A PORTA: esta reserva pode virar proposta?
+   * A PORTA DA PROPOSTA: esta reserva pode virar proposta?
    *
-   * Igual a `credenciado` no modo de sempre. No modo do coordenador (Lucas, 26/09/2026) ele é `true`
-   * também com a CAD EM ANDAMENTO — e aí `credenciado` é `false` e `motivo` traz a frase da etapa,
-   * que a tela mostra como AVISO com o botão liberado. É este campo que o GET manda para a tela e
-   * que o POST usa para recusar com 403.
+   * Igual a `credenciado` no modo de sempre — e portanto `true` também para o COMPRADOR DA CARTEIRA,
+   * que entra por `credenciado`. No modo do coordenador (Lucas, 26/09/2026) ele é `true` também com a
+   * CAD EM ANDAMENTO — e aí `credenciado` é `false` e `motivo` traz a frase da etapa, que a tela
+   * mostra como AVISO com o botão liberado. É este campo que o GET manda para a tela e que o POST usa
+   * para recusar com 403.
    */
   podeGerarProposta: boolean;
 };
@@ -211,20 +280,35 @@ export type LinhaDaEsteira = {
   enterprise_id: null | string;
   entity_id: string;
   etapa: null | string;
+  /** De onde a CAD veio. Opcional: só é lido para dizer "Comprador da carteira" na tela. */
+  origem?: null | string;
 };
 
 /**
- * Este CPF pode ser titular de uma proposta neste empreendimento?
+ * Este documento (CPF ou CNPJ) pode ser titular de uma proposta neste empreendimento?
  *
  * `enterpriseIds` é o escopo JÁ EXPANDIDO (família + grupo) — ver o aviso no topo do arquivo.
+ *
+ * ⚠️ A COMPRA SÓ É LIDA QUANDO NÃO HÁ CAD NENHUMA NO ESCOPO. O caminho comum (quem tem CAD) não
+ * ganha leitura nenhuma; só a pergunta que hoje terminaria em "Este cliente não tem CAD neste
+ * empreendimento" vai aos contratos da família antes de responder.
  *
  * @throws {FalhaAoLerCredenciamento} quando o banco não respondeu, ou quando o escopo veio vazio.
  */
 export async function credenciadoParaVender(
   admin: ClienteDeLeitura,
-  alvo: { documento: string; enterpriseIds: string[] },
+  alvo: {
+    /** Falso desliga a porta da carteira (só a CAD vale). Ausente = ligada. */
+    compradorDaCarteira?: boolean;
+    /** CPF ou CNPJ, com ou sem máscara (ver `documento-do-comprador.ts`). */
+    documento: string;
+    enterpriseIds: string[];
+  },
   // ⚠️ O MODO É O TERCEIRO PARÂMETRO, E NÃO UM CAMPO DE `alvo`: `alvo` é O QUE se pergunta (o
-  // documento, o escopo); o modo é QUEM pergunta. Omitido, vale o apertado de sempre.
+  // documento, o escopo, e se a carteira conta como prova); o modo é QUEM pergunta. Omitido, vale o
+  // apertado de sempre. ⚠️ `compradorDaCarteira` FICA EM `alvo` de propósito, e não aqui: ela é uma
+  // FONTE DE PROVA sobre a pessoa, não o perfil de quem pergunta — todo portal enxerga a mesma
+  // carteira, e o que varia por portal é só a etapa da CAD que abre a porta.
   modo: ModoDaRegua = {},
 ): Promise<CredenciamentoDoTitular> {
   // ⚠️ NORMALIZAR ANTES DE HASHEAR. O CPF chega como o corretor digitou ("529.982.247-25") e como a
@@ -261,13 +345,16 @@ export async function credenciadoParaVender(
   // não há vítima — a trava seria do próximo evento, e ela seria calada.
   if (tipoDePessoa(digitos) === null) {
     return {
+      compra: null,
       credenciado: false,
       desde: null,
       entityId: null,
       etapa: null,
       motivo: "Informe o CPF ou o CNPJ do titular para conferir o credenciamento.",
-      // ⚠️ NÃO É ETAPA, ENTÃO O MODO DO COORDENADOR NÃO ALCANÇA. Documento insuficiente para
-      // procurar continua barrando: sem ele não há pessoa para conferir.
+      origem: null,
+      // ⚠️ NÃO É ETAPA E NÃO É PESSOA, ENTÃO NEM O MODO DO COORDENADOR NEM A CARTEIRA ALCANÇAM.
+      // Documento insuficiente para procurar continua barrando: sem ele não há pessoa para conferir,
+      // e nem contrato para procurar (`compraDaPessoa` exige CPF ou CNPJ).
       podeGerarProposta: false,
     };
   }
@@ -287,22 +374,65 @@ export async function credenciadoParaVender(
 
   const entityIds = await entidadesDoDocumento(admin, digitos);
 
+  // ⚠️ SEM ENTIDADE NO APOLO, A RESPOSTA CONTINUA A DE HOJE, mesmo para quem tem contrato: a CAD da
+  // carteira precisa de uma entidade para nascer, e os 2.037 faturados medidos têm o titular ligado
+  // a uma entidade sincronizada em 100% dos casos. Quem cair aqui é dado quebrado, não comprador.
+  //
+  // ⚠️ É AQUI QUE PARA A MAIOR PARTE DA PJ DA CARTEIRA (medido em 26/09/2026, produção, só SELECT):
+  // dos 68 faturados ativos de CNPJ (40 CNPJs), 63 têm a entidade ligada ao usuário do C2X SEM
+  // identificador `cnpj` e sem `document_hash` — o sync do C2X não gravou o documento da empresa —,
+  // então o hash do CNPJ não acha ninguém e a resposta é "Este CNPJ não tem cadastro no Apolo",
+  // com ou sem porta da carteira. Não é a porta que barra a empresa: é a ficha dela que não existe.
   if (entityIds.length === 0) {
     return {
+      compra: null,
       credenciado: false,
       desde: null,
       entityId: null,
       etapa: null,
       motivo: `Este ${rotuloDoDocumento(digitos)} não tem cadastro no Apolo. Abra a CAD antes de gerar a proposta.`,
+      origem: null,
       // ⚠️ SEM ENTIDADE NO APOLO O MODO DO COORDENADOR NÃO ALCANÇA (Lucas, 26/09/2026: a CAD precisa
-      // EXISTIR; o que foi afrouxado é a ETAPA dela). Sem entidade não há pessoa conferida.
+      // EXISTIR; o que foi afrouxado é a ETAPA dela). Sem entidade não há pessoa conferida — e a
+      // carteira também para aqui, pelo motivo escrito acima deste `if`.
       podeGerarProposta: false,
     };
   }
 
   const linhas = await lerEsteira(admin, entityIds, escopo);
 
-  return decidirPelasLinhas(linhas, entityIds, modo);
+  // ⚠️ A CARTEIRA SÓ É LIDA QUANDO NÃO HÁ CAD NENHUMA, E É ISSO QUE FAZ AS DUAS PORTAS CONVIVEREM
+  // (junção de 26/09/2026). Com CAD no escopo, quem decide é a CAD mais o MODO: em andamento ela abre
+  // a proposta para o coordenador, indeferida ela BARRA, e em nenhum dos dois casos o contrato antigo
+  // é consultado. É por aqui que "CAD indeferida com contrato ativo" continua barrada: a leitura da
+  // compra nem acontece.
+  if (linhas.length > 0 || alvo.compradorDaCarteira === false) {
+    return decidirPelasLinhas(linhas, entityIds, { modo });
+  }
+
+  const compra = await compraNaFamilia(admin, { documento: digitos, entityIds, escopo });
+  return decidirPelasLinhas(linhas, entityIds, { compra, modo });
+}
+
+/**
+ * O contrato ativo desta pessoa na família, já com a entidade em que a CAD nasceria.
+ *
+ * ⚠️ QUALQUER ERRO VIRA `FalhaAoLerCredenciamento`, como a leitura da esteira: "o sistema não
+ * conseguiu ler os contratos" não é "este cliente não tem CAD".
+ */
+async function compraNaFamilia(
+  admin: ClienteDeLeitura,
+  alvo: { documento: string; entityIds: string[]; escopo: string[] },
+): Promise<CompraAtiva | null> {
+  try {
+    const contratos = await lerContratosAtivos(admin, alvo.escopo);
+    const compra = compraDaPessoa(contratos, alvo);
+    return compra ? await resolverEntidadeDoContrato(admin, compra, alvo.entityIds) : null;
+  } catch (erro) {
+    throw new FalhaAoLerCredenciamento(
+      `carteira: leitura falhou (${erro instanceof Error ? erro.message : String(erro)})`,
+    );
+  }
 }
 
 /**
@@ -315,12 +445,38 @@ export async function credenciadoParaVender(
  *
  * `entityIds` serve só para o caso "achei a pessoa mas ela não tem CAD nenhuma neste escopo":
  * a resposta carrega um id para a tela conseguir abrir a ficha dela mesmo assim.
+ *
+ * `compra` (26/09/2026) é o contrato ativo da pessoa na família, quando existe. ⚠️ ELA SÓ ENTRA NO
+ * RAMO "SEM CAD NO ESCOPO". Qualquer CAD do escopo continua decidindo, inclusive a indeferida e a
+ * em revisão, pelos quatro motivos abaixo:
+ *   1. "A decisão de ontem vence a de junho" é regra DENTRO da mesma CAD (`maisRecentePorCad`) e
+ *      continua valendo como está. A carteira não é uma linha de CAD: é a prova que substitui a CAD
+ *      quando ela não existe, e não uma decisão de crédito mais nova que a da coordenação.
+ *   2. Revisão e indeferimento são crédito reprovado, e esse só a coordenação destrava, com
+ *      evidência, pelo override (esteira.ts; Lucas, 04/08).
+ *   3. A CAD da carteira não pode sobrescrever a existente, e o Board mostraria "revisão" ao lado de
+ *      uma proposta viva.
+ *   4. O custo é medido e pequeno: 5 compradores com CAD em revisão na família (26/09/2026, 2
+ *      titulares e 3 co-compradores, contratos do VOC e do VOL, todos faturados depois da última
+ *      escrita da CAD), e
+ *      para eles a saída é o override. Ponto levado ao Lucas.
+ *
+ * `modo` (26/09/2026) é quem pergunta — ver `ModoDaRegua`. ⚠️ OS DOIS NÃO SE CRUZAM NUNCA: `compra`
+ * só é lida no ramo "sem CAD no escopo", e `modo` só mexe em CAD QUE EXISTE. É por isso que a ordem
+ * dos ramos aqui embaixo é credenciada → recusa → carteira → sem CAD → etapa em andamento.
+ *
+ * ⚠️ O TERCEIRO PARÂMETRO É UM OBJETO, E NÃO DOIS POSICIONAIS (junção de 26/09/2026): o lado da CAD
+ * em andamento chegou com `modo` no terceiro lugar e o lado da carteira com `compra`. Dois posicionais
+ * fariam `decidirPelasLinhas(linhas, ids, algo)` compilar com o significado trocado em metade das
+ * chamadas. Com chaves, cada lado se nomeia, e a terceira prova que aparecer entra como chave nova.
  */
 export function decidirPelasLinhas(
   linhas: LinhaDaEsteira[],
   entityIds: string[],
-  modo: ModoDaRegua = {},
+  extras: { compra?: CompraAtiva | null; modo?: ModoDaRegua } = {},
 ): CredenciamentoDoTitular {
+  const compra = extras.compra ?? null;
+  const modo = extras.modo ?? {};
   // A régua tem DUAS METADES, e trocar a ordem delas quebra uma das duas:
   //
   // 1) ⚠️ DENTRO DA MESMA CAD, A LINHA MAIS RECENTE MANDA — por isso o corte por CAD vem
@@ -344,11 +500,13 @@ export function decidirPelasLinhas(
 
   if (credenciada) {
     return {
+      compra: null,
       credenciado: true,
       desde: dataDaLinha(credenciada),
       entityId: credenciada.entity_id,
       etapa: ETAPA_QUE_LIBERA,
       motivo: null,
+      origem: origemDaLinha(credenciada),
       podeGerarProposta: true,
     };
   }
@@ -426,8 +584,56 @@ export function decidirPelasLinhas(
   // indeferido desde 20/09/2026" em vez de "em revisão desde 26/09/2026" sobre um cliente reprovado.
   const escolhida = recusa ?? maisRecente(decisivas);
 
+  // ⚠️ SEM CAD NENHUMA, MAS COM CONTRATO ATIVO NA FAMÍLIA: É O COMPRADOR DA CARTEIRA. Credenciado,
+  // sem etapa (ainda não há CAD; ela nasce na gravação da proposta, nunca na leitura), e com a
+  // entidade DO CONTRATO, que é onde a CAD vai nascer e a que a proposta aponta. Sem `desde`: não
+  // há CAD para datar, e a data do contrato antigo fica dentro de `compra` (ver o tipo).
+  if (!escolhida && compra) {
+    return {
+      compra,
+      credenciado: true,
+      desde: null,
+      entityId: compra.entityIdDoContrato ?? entityIds[0] ?? null,
+      etapa: null,
+      motivo: null,
+      origem: "comprador_da_carteira",
+      // ⚠️ A CARTEIRA ABRE AS DUAS PORTAS, E ISSO É A PERGUNTA QUE A JUNÇÃO DE 26/09/2026 OBRIGOU A
+      // RESPONDER — escrita aqui porque é aqui que ela é decidida.
+      //
+      // A proposta: `true` por `credenciado`, que é o pedido do Lucas (*"temos que aproveitar esses
+      // cadastros de comprador"*). O CONTRATO: a barra lê `credenciado` (`cad-para-contrato.ts`,
+      // *"faz uma barra, para enviar para contrato precisa da cad validada"*), e ela também passa.
+      // É a leitura coerente com as duas frases, e é a que este arquivo já declarava no topo: a
+      // carteira *"é a prova que SUBSTITUI a CAD quando ela não existe"*. Somado a isso, a CAD desta
+      // pessoa NASCE `credenciado` na gravação da proposta (`cad-do-comprador.ts:114`): quando a barra
+      // do contrato roda, dias depois, ela encontra uma CAD credenciada de verdade e diria sim de
+      // qualquer modo. Recusar aqui só criaria uma incoerência entre os dois instantes.
+      //
+      // ⚠️ MEDIDO, porque o tamanho da decisão é parte dela (`bxgukywoxgivlrhjkwjx`, só SELECT,
+      // 26/09/2026): 1.476 pessoas têm contrato faturado ativo numa família e NENHUMA CAD nessa
+      // família — são elas que entram por aqui, de agora em diante.
+      //
+      // ⚠️ E OITO PROPOSTAS VIVAS JÁ ESTÃO NESTE RAMO, não zero — a versão anterior desta linha dizia
+      // ZERO e estava errada. Das 7 em etapa `proposta`, 3 são barradas pela barra do contrato e
+      // nenhuma das 3 entra por aqui (2 não têm CAD NEM faturado ativo na família: CDJ0403 no 22 e
+      // MDB1306 no 21; a terceira TEM faturado ativo mas tem CAD em `revisao`, então quem decide é a
+      // CAD e este ramo nem é alcançado). Mas das 422 em `assinatura`, OITO têm faturado ativo na
+      // família e ZERO CAD no escopo: as do CNPJ da PREMOLL no empreendimento 30
+      // (ADTC0704/0705/0706/0707/0801/0802/0803/0813). Elas só não chegam aqui hoje porque a entidade
+      // do CNPJ não existe no Apolo e a função para no `if` de `entityIds.length === 0` — um sync de
+      // CNPJ de distância. O SQL, o motivo e o gatilho estão em `A_CARTEIRA_VALE_PARA_O_CONTRATO`
+      // (`cad-para-contrato.ts`), onde a barra mora.
+      //
+      // ⚠️ QUEM QUISER INVERTER ISSO NÃO MEXE AQUI: é um booleano na barra do contrato
+      // (`A_CARTEIRA_VALE_PARA_O_CONTRATO`), de propósito, porque a pergunta é da barra e não da
+      // régua. Pergunta ABERTA para o Lucas, relatada e não decidida por mim.
+      podeGerarProposta: true,
+    };
+  }
+
   if (!escolhida) {
     return {
+      compra: null,
       credenciado: false,
       desde: null,
       // ⚠️ AQUI O ID NÃO DECIDIU A RESPOSTA — não há CAD neste escopo, então não há linha para
@@ -438,8 +644,10 @@ export function decidirPelasLinhas(
       entityId: entityIds[0] ?? null,
       etapa: null,
       motivo: "Este cliente não tem CAD neste empreendimento.",
+      origem: null,
       // ⚠️ "SEM CAD NESTE EMPREENDIMENTO" NÃO É ETAPA, e continua barrando o coordenador (Lucas,
-      // 26/09/2026). Sem linha na esteira não há CAD para estar em andamento.
+      // 26/09/2026). Sem linha na esteira não há CAD para estar em andamento — e, chegando aqui, a
+      // carteira também já disse não (o ramo dela é o `if` logo acima).
       podeGerarProposta: false,
     };
   }
@@ -448,6 +656,7 @@ export function decidirPelasLinhas(
   const desde = dataDaLinha(escolhida);
 
   return {
+    compra: null,
     credenciado: false,
     desde,
     entityId: escolhida.entity_id,
@@ -456,8 +665,29 @@ export function decidirPelasLinhas(
     // como AVISO ("A CAD deste cliente está em validação de cadastro desde 26/09/2026") com o botão
     // liberado — o coordenador precisa continuar LENDO em que etapa a CAD está.
     motivo: motivoDaEtapa(etapa, desde),
+    // ⚠️ A ORIGEM VEM DA LINHA ESCOLHIDA, E NÃO É UM `"cad"` FIXO (junção de 26/09/2026). A CAD que
+    // nasceu da carteira e depois foi mexida no Board sai daqui, e a tela precisa continuar dizendo
+    // "Comprador da carteira" ao lado do selo âmbar "CAD em andamento": é justamente o dado que
+    // explica ao coordenador por que aquela pessoa tem CAD sem ter passado pela esteira. Ver
+    // `OrigemDoCredenciamento` (zero linhas assim hoje, medido).
+    origem: origemDaLinha(escolhida),
     podeGerarProposta: podeGerarProposta(etapa, false, modo),
   };
+}
+
+/**
+ * Por qual porta esta LINHA de esteira nasceu: a carteira ou a esteira de sempre.
+ *
+ * ⚠️ `origem` É `text` LIVRE NA COLUNA, e há OITO valores vivos mais o nulo (medido em 26/09/2026:
+ * `asana` 575, `publico-cad` 173, `teste-panteon-nivea` 36, `cadastro-manual` 38, `teste-hercules` 8,
+ * `teste-hercules-villa-paris` 6, `manual` 1, `comprador_da_carteira` 1, e 4 linhas com `null`).
+ * Qualquer valor que não seja o da carteira é `"cad"`: quem lê isto só quer saber se a prova foi um
+ * contrato antigo, e inventar um terceiro rótulo põe nome de ferramenta interna na tela do corretor.
+ */
+function origemDaLinha(linha: LinhaDaEsteira): OrigemDoCredenciamento {
+  return normalizarEtapa(linha.origem ?? null) === ORIGEM_COMPRADOR_DA_CARTEIRA
+    ? "comprador_da_carteira"
+    : "cad";
 }
 
 /**
@@ -531,7 +761,7 @@ async function lerEsteira(
 ): Promise<LinhaDaEsteira[]> {
   const { data, error } = await admin
     .from("apolo_esteira")
-    .select("atualizado_em, chegou_em, created_at, enterprise_id, entity_id, etapa")
+    .select("atualizado_em, chegou_em, created_at, enterprise_id, entity_id, etapa, origem")
     .in("entity_id", entityIds)
     .in("enterprise_id", escopo);
 
