@@ -397,4 +397,61 @@ describe("revisão de segurança: a entrada em vezes, a mensagem do motor e o co
     }
     expect(estado.folhas).toHaveLength(0);
   });
+  // ⚠️ E ATÉ 27/09/2026 ESTE ARQUIVO NÃO TINHA UM ÚNICO CASO DE TEXTO LIVRE. Medido: tudo aqui é
+  // número, plano ou lote, e nem a descrição do bem (o texto que já entra por esta rota, com teto de
+  // 300 em `lib/hercules/bens-e-permutas.ts`) aparecia. O campo "Simulação para", pedido pelo Lucas
+  // no mesmo dia (*"coloca a opção de inserir um nome na proposta simulada"*), é o segundo texto
+  // livre desta porta sem login, e ele entra com rede.
+  it("texto gigante no nome da simulação não vira folha com um parágrafo: 200 e no máximo 80 caracteres", async () => {
+    // ⚠️ O TETO FICA NA ENTRADA, E NÃO SÓ NO DESENHO DO PAPEL. `encurtar` (proposta-pdf.ts) corta UM
+    // caractere por volta e remede a largura da string inteira a cada volta: é quadrático, e um
+    // corpo de dezenas de milhares de caracteres queimaria os 30s de `maxDuration` desta rota sem
+    // login. Com o teto na entrada, o corte custa menos de um milissegundo.
+    const r = await pedir({ ...DA_TELA, simulacaoPara: "W".repeat(60_000) });
+
+    expect(r.status).toBe(200);
+    const nome = (ultimaFolha() as unknown as { simulacaoPara?: string }).simulacaoPara ?? "";
+    expect(nome.length).toBeLessThanOrEqual(80);
+    // E o nome não abre linha nova no papel nem carrega caractere de controle.
+    // eslint-disable-next-line no-control-regex -- é o que o caso mede.
+    expect(nome).not.toMatch(/[\u0000-\u001f]/);
+  });
+
+  it("nome com quebra de linha e controle não derruba a rota nem vira comprador", async () => {
+    const r = await pedir({
+      ...DA_TELA,
+      simulacaoPara: "Maria\nJos\u00e9\u0000\u202e<script>alert(1)</script>",
+    });
+
+    expect(r.status).toBe(200);
+    // ⚠️ `compradores` CONTINUA VAZIO. O nome é rótulo de para quem a conta foi feita, e não uma
+    // parte qualificada: a folha da simulação não tem seção de comprador, e um nome vindo de uma
+    // página sem login não pode inventar uma.
+    expect(ultimaFolha().compradores).toEqual([]);
+    // ⚠️ E ESTE TEXTO NÃO VIRA RÓTULO NENHUM: a régua de FORMA de nome (só letra, espaço, apóstrofo,
+    // hífen e ponto) derruba o markup, e a folha sai sem a linha "Simulação para".
+    expect((ultimaFolha() as unknown as { simulacaoPara?: null | string }).simulacaoPara ?? null).toBeNull();
+  });
+
+  // ⚠️ AS TRÊS FRASES QUE A REVISÃO DE 27/09/2026 MEDIU SAINDO IMPRESSAS INTEIRAS NO PAPEL DA CASA.
+  // Medido com pdf-lib (Helvetica 8,6): a linha útil tem 526,28pt, o rótulo "Simulação para " ocupa
+  // 61,96pt e sobram 464,32pt. As três têm 54, 56 e 55 caracteres, mediam 278,78pt, 270,68pt e
+  // 216,17pt, e passavam INTEIRAS pelo teto de 60 da primeira versão — a última transformando o PDF
+  // da Careli em papel de captura de um terceiro. O teto de tamanho nunca as tocou; quem as derruba
+  // é a régua de FORMA de nome, e todas as três carregam dígito.
+  it("⚠️ FRASE DE VENDA NÃO SAI NO PAPEL DA CASA: a folha vem sem a linha, e o PDF vem", async () => {
+    for (const frase of [
+      "RESERVADO E PAGO - CONTRATO ASSINADO - DESCONTO 40% OK",
+      "VOCE GANHOU ESTE LOTE. LIGUE 0800 000 0000 PARA RETIRAR.",
+      "Corretor Joao - WhatsApp 62 99999-9999 - Careli Oficial",
+    ]) {
+      const r = await pedir({ ...DA_TELA, simulacaoPara: frase });
+
+      // O PDF continua saindo: quem só queria ver o preço não é castigado por causa de um rótulo.
+      expect(r.status).toBe(200);
+      expect(
+        (ultimaFolha() as unknown as { simulacaoPara?: null | string }).simulacaoPara ?? null,
+      ).toBeNull();
+    }
+  });
 });

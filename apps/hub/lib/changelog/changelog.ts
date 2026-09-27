@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-27-nome-na-simulacao-do-espelho",
+    deployedAt: "2026-09-27T10:34:25-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O simulador do link do espelho ganhou um campo para o nome do cliente.** O PDF sai com a linha \"Simulacao para Fulano\" logo abaixo do nome do empreendimento.",
+              "**O campo e opcional.** Quem so quer ver o preco pula a linha: sem nome digitado, a folha sai exatamente como saia antes.",
+              "**O nome nao vira comprador.** A simulacao continua sem quadro de compradores, porque ninguem foi qualificado e nada foi assinado. E um rotulo de cortesia, nao uma qualificacao.",
+              "**Nada e guardado.** O nome nao e gravado, nao entra em registro nenhum e nao aparece no nome do arquivo do PDF, que continua saindo pelo lote.",
+            ],
+            screen: "Espelho publico - simulador",
+          },
+        ],
+      },
+    ],
+    rollback: "528004db",
+    technical: {
+      done:
+        "UM CAMPO NOVO NUMA PAGINA SEM LOGIN, E E ISSO QUE DECIDE O DESENHO. Nasceu `lib/hercules/espelho/simulacao-para-quem.ts` (regua pura: normaliza, sanitiza e limita) com teste proprio, e o campo entrou em `modules/publico/espelho/EspelhoPublico.tsx`, que ate aqui NAO TINHA UM UNICO input proprio (todos os campos vinham de dentro do SimuladorDeProposta, que e compartilhado com a Mesa de Venda). O nome NAO entrou em `CondicoesDaProposta` de proposito: esse tipo e lido pela ModalDeProposta, que grava proposta de verdade, e poluir o tipo faria texto digitado num link publico existir no caminho que gera documento. ⚠️ TETO DE 60 CARACTERES, MEDIDO NA LARGURA DO PAPEL, e nao chutado: a linha util tem 526,28pt, o rotulo ocupa ~62pt em Helvetica 8,6 e sobram ~464pt, cerca de 116 letras. Sem teto, a frase \"Lote garantido por 30 dias pela diretoria da Careli, assinado, com desconto aprovado de 40 por cento\" (116 caracteres) sairia impressa INTEIRA num PDF com a marca da casa, que o cliente recebe como documento nosso. Um nome completo de verdade tem ~62 caracteres. A constante e UNICA e compartilhada entre o `maxLength` da tela e a regua do servidor, o mesmo molde da descricao do bem (`TAMANHO_MAXIMO_DA_DESCRICAO`, teto 300 com recusa). Sanitizacao: NFC, corte de controle e de marcas de direcao. O QUE NAO RECEBEU O NOME, cada um por um motivo: `compradores` (a secao nao existe na simulacao, e o nome ali diria que alguem foi qualificado); a tarja do rodape (ela desenha um retangulo da largura medida do texto, sem guarda, e texto a mais sangra fora da folha); `ctx.topo`, a linha que se repete no pe de toda pagina (seria dado pessoal impresso pagina a pagina, e cortado no meio); e `doc.setTitle` mais o NOME DO ARQUIVO, que continua saindo pelo lote. Nada e gravado e nada e logado: a rota da simulacao nao escreve no banco. A fileira do campo ficou entre o header e a moldura do simulador, com `flexShrink: 0`, que e o que encolhe so a area de rolagem e nao quebra a cadeia de altura que custou o corte do iPad de 22/09; e com `data-esp-print=\"fora\"`, senao um Ctrl+P imprimiria uma caixa de input vazia na folha. O campo esta preso a `mostraSimulador`: em lote indisponivel, onde nenhum PDF sai, ele nao aparece. PROVA VIVA: o teste grava o PDF em .tmpr/simulacao-com-nome.pdf e mede que a linha fica entre o subtitulo e o primeiro cartao e que o nome comeca depois da largura do rotulo; e ha teste comparando o desenho SEM nome linha a linha e coordenada a coordenada com o de hoje. Vai junto um comentario em scripts/hercules/importar-fluxo-de-venda.mjs, que ficou de fora do commit da 1.386.0: ele registra que a carga do C2X contorna a barra da CAD por desenho, porque regra nova nao alcanca o passado (medido: 2.464 das 2.482 propostas vivas em contrato ou adiante sao origem c2x). Suite: 673 arquivos, 10.107 testes. Typecheck limpo.",
+      motivation:
+        "Lucas, 27/09/2026: faz uma coisa para mim, na parte do simulador do link do espelho, coloca a opcao de inserir um nome na proposta simulada.",
+    },
+    title: "O simulador do espelho publico aceita o nome do cliente na folha",
+    type: "melhoria",
+    version: "1.387.0",
+  },
+  {
     buildTag: "2026-09-26-proposta-com-cad-em-andamento-e-barra-no-contrato",
     deployedAt: "2026-09-26T21:14:25-03:00",
     modules: [

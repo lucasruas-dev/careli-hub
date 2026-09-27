@@ -433,3 +433,176 @@ describe("bens e permutas no papel", () => {
     expect(vazia).toEqual(ausente);
   });
 });
+
+// ── PARA QUEM A SIMULAÇÃO FOI FEITA (27/09/2026) ─────────────────────────────
+//
+// Lucas: *"faz uma coisa para mim, na parte do simulador do link do espelho, coloca a opção de
+// inserir um nome na proposta simulada"*.
+//
+// ⚠️ NÃO É COMPRADOR, E ESTE ARQUIVO É QUEM GUARDA ISSO. A seção COMPRADORES foi TIRADA da
+// simulação de propósito (`if (!dados.simulacao)`, proposta-pdf.ts) porque ninguém foi qualificado
+// e o cabeçalho vazio "Nome | Documento" parecia campo esperando preenchimento à mão. O nome que o
+// Lucas pediu é um RÓTULO de cortesia — para quem a conta foi feita —, e ele mora numa LINHA no alto
+// da folha, sem tabela, sem documento e sem participação.
+
+describe("a linha 'Simulação para' na folha da simulação", () => {
+  /** A simulação como a rota pública a monta: sem comprador, com a bandeira. */
+  const SIMULACAO: PropostaParaPdf = {
+    ...EXEMPLO,
+    compradores: [],
+    logoC2x: null,
+    logoEmpreendimento: null,
+    simulacao: true,
+  };
+
+  const NOME = "Maria Aparecida da Silva";
+
+  it("⚠️ SEM NOME A FOLHA SAI EXATAMENTE COMO SAI HOJE — campo ausente, nulo e em branco", async () => {
+    // Quem só quer ver o preço não digita nada, e o papel dele não pode mudar por causa de um
+    // campo de poucos. Mesmo desenho do teste da lista de bens vazia.
+    const hoje = linhasDoPdf(await montarPropostaPdf(SIMULACAO));
+
+    for (const valor of [null, "", "   "]) {
+      const com = linhasDoPdf(
+        await montarPropostaPdf({ ...SIMULACAO, simulacaoPara: valor }),
+      );
+      expect(com).toEqual(hoje);
+    }
+  });
+
+  it("⚠️ NA PROPOSTA DE VERDADE O CAMPO É IGNORADO: quem diz para quem ela é são os COMPRADORES", async () => {
+    const semBandeira = linhasDoPdf(
+      await montarPropostaPdf({ ...EXEMPLO, simulacaoPara: NOME }),
+    );
+    expect(semBandeira).toEqual(linhasDoPdf(await montarPropostaPdf(EXEMPLO)));
+  });
+
+  it("com nome, a folha diz 'Simulação para' uma vez, e o nome uma vez", async () => {
+    const pdf = await montarPropostaPdf({ ...SIMULACAO, simulacaoPara: NOME });
+    // Para o Lucas olhar o papel, como o exemplo da proposta já faz.
+    writeFileSync(arquivo("../../../../.tmpr/simulacao-com-nome.pdf"), pdf);
+    const texto = textoDoPdf(linhasDoPdf(pdf));
+
+    expect(texto).toContain("Simulação para ");
+    expect(texto).toContain(NOME);
+    // ⚠️ UMA VEZ SÓ, E NÃO EM TODA PÁGINA. O rodapé (`ctx.topo`) se repete em cada folha e é a
+    // linha mais longa do documento: o nome ali seria dado pessoal impresso página a página, e
+    // cortado no meio pelo `centro`.
+    expect(texto.split(NOME)).toHaveLength(2);
+  });
+
+  it("⚠️ a linha fica ENTRE o subtítulo e a régua dos cartões", async () => {
+    const linhas = linhasDoPdf(
+      await montarPropostaPdf({ ...SIMULACAO, simulacaoPara: NOME }),
+    );
+    const subtitulo = alturaDe(linhas, SIMULACAO.subtitulo);
+    const rotulo = alturaDe(linhas, "Simulação para ");
+    const primeiroCartao = alturaDe(linhas, comoTitulo("Valor da unidade"));
+
+    // O y do PDF cresce para cima: descer na folha é diminuir o y.
+    expect(subtitulo).not.toBeNull();
+    expect(rotulo).not.toBeNull();
+    expect(primeiroCartao).not.toBeNull();
+    expect(rotulo!).toBeLessThan(subtitulo!);
+    expect(primeiroCartao!).toBeLessThan(rotulo!);
+  });
+
+  it("⚠️ o nome sai DEPOIS do rótulo, e não por cima dele", async () => {
+    // O mesmo cuidado da linha do total dos bens: as duas peças são desenhadas em x fixo, e medir
+    // só o texto deixaria passar 20pt de letra sobre letra.
+    const linhas = linhasDoPdf(
+      await montarPropostaPdf({ ...SIMULACAO, simulacaoPara: NOME }),
+    );
+    const doRotulo = linhas.find((l) => l.endsWith(" Simulação para "));
+    const doNome = linhas.find((l) => l.endsWith(` ${NOME}`));
+    if (!doRotulo || !doNome) throw new Error("a linha do nome não foi desenhada");
+
+    const x = (linha: string) => Number(linha.split(" ")[1]);
+    const y = (linha: string) => Number(linha.split(" ")[2]);
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+
+    expect(y(doNome)).toBe(y(doRotulo));
+    expect(x(doRotulo) + font.widthOfTextAtSize("Simulação para ", 8.6)).toBeLessThanOrEqual(
+      x(doNome),
+    );
+  });
+
+  it("⚠️ nome largo é CORTADO, e não escrito por cima da margem da folha", async () => {
+    // O teto de tamanho é da entrada (`simulacaoParaAceito`, 80 caracteres), mas `texto()` desenha
+    // em x fixo, sem quebra e sem recorte: 80 letras largas ainda passariam da margem (medido: 80
+    // "W" medem 649,47pt contra 464,32pt de linha útil). Este corte é a última linha de defesa do
+    // papel, como na descrição do bem.
+    const largo = "W".repeat(80);
+    const linhas = linhasDoPdf(
+      await montarPropostaPdf({ ...SIMULACAO, simulacaoPara: largo }),
+    );
+    const doNome = linhas.find((l) => l.includes("WWWWW"));
+    if (!doNome) throw new Error("a linha do nome não foi desenhada");
+
+    const escrito = doNome.split(" ").slice(3).join(" ");
+    expect(escrito.endsWith("...")).toBe(true);
+
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const x = Number(doNome.split(" ")[1]);
+    // 34,5 de margem em cada lado, numa folha A4 de 595,28pt.
+    expect(x + font.widthOfTextAtSize(escrito, 8.6)).toBeLessThanOrEqual(595.28 - 34.5);
+  });
+
+  it("⚠️ O NOME COMPLETO DE VERDADE SAI INTEIRO NO PAPEL, e este caso LÊ o texto impresso", async () => {
+    // ⚠️ MEDIDO COM pdf-lib EM 27/09/2026, E É O CASO QUE FALTAVA: "MARIA APARECIDA DA SILVA
+    // FERREIRA NOGUEIRA DOS SANTOS OLIVEIRA" tem 62 caracteres e mede 311,72pt dos 464,32pt que
+    // sobram na linha depois do rótulo. Com o teto de 60 da primeira versão, o papel imprimia
+    // "...DOS SANTOS OLIVEI" — palavra partida, sem reticências, com cara de nome digitado errado.
+    // Os testes de então conferiam `length <= 60`, isto é, a régua que a construção escolheu, e não
+    // o texto que o cliente lê.
+    const completo = "MARIA APARECIDA DA SILVA FERREIRA NOGUEIRA DOS SANTOS OLIVEIRA";
+    const linhas = linhasDoPdf(
+      await montarPropostaPdf({ ...SIMULACAO, simulacaoPara: completo }),
+    );
+    const doNome = linhas.find((l) => l.includes("MARIA APARECIDA"));
+    if (!doNome) throw new Error("a linha do nome não foi desenhada");
+
+    const escrito = doNome.split(" ").slice(3).join(" ");
+    expect(escrito).toBe(completo);
+    expect(escrito).not.toContain("...");
+
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const x = Number(doNome.split(" ")[1]);
+    expect(x + font.widthOfTextAtSize(escrito, 8.6)).toBeLessThanOrEqual(595.28 - 34.5);
+  });
+
+  it("⚠️ O QUE A RÉGUA AINDA DEIXA PASSAR, DESENHADO PARA O LUCAS OLHAR E DECIDIR", async () => {
+    // ⚠️ MEDIDO E DITO EM VOZ ALTA, EM 27/09/2026. A régua de forma barra dígito, %, R$, @ e
+    // telefone, e com isso as três frases que a revisão mediu saindo no papel. O que ela NÃO barra é
+    // um slogan só de letras dentro do limite de 9 palavras — e 9 é o tamanho do nome completo
+    // medido ("MARIA APARECIDA DA SILVA FERREIRA NOGUEIRA DOS SANTOS OLIVEIRA"), então baixar o
+    // limite para 6 derrubaria o nome junto. Este caso EXISTE para que a decisão do Lucas seja
+    // tomada olhando o PDF com a frase, e não o PDF com o nome da Maria.
+    const slogan = "RESERVADO E PAGO CONTRATO ASSINADO DESCONTO APROVADO PELA DIRETORIA";
+    const pdf = await montarPropostaPdf({ ...SIMULACAO, simulacaoPara: slogan });
+    writeFileSync(arquivo("../../../../.tmpr/simulacao-com-slogan.pdf"), pdf);
+
+    expect(textoDoPdf(linhasDoPdf(pdf))).toContain(slogan);
+  });
+
+  it("⚠️ e o nome NÃO entra na tabela de compradores: ela continua não existindo", async () => {
+    const texto = textoDoPdf(
+      linhasDoPdf(await montarPropostaPdf({ ...SIMULACAO, simulacaoPara: NOME })),
+    );
+    const espacado = (valor: string) => valor.toUpperCase().split("").join(" ");
+
+    expect(texto).not.toContain(comoTitulo("Compradores"));
+    expect(texto).not.toContain(espacado("Documento"));
+  });
+
+  it("a simulação com nome continua em UMA página", async () => {
+    const linhas = linhasDoPdf(
+      await montarPropostaPdf({ ...SIMULACAO, simulacaoPara: NOME }),
+    );
+    const folhas = new Set(linhas.map((l) => l.split(" ")[0]));
+    expect(folhas.size).toBe(1);
+  });
+});

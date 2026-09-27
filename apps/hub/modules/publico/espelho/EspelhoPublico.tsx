@@ -11,6 +11,10 @@ import type { TipoDeArquivo } from "@/lib/apolo/arquivos-do-produto";
 import type { ArquivoPublicoDoEspelho } from "@/lib/hercules/espelho/arquivos-publicos";
 import type { LoteDoEspelho } from "@/lib/hercules/espelho/estado-do-espelho";
 import type { PlanoPublico } from "@/lib/hercules/espelho/planos-publicos";
+import {
+  simulacaoParaAceito,
+  TAMANHO_MAXIMO_DO_SIMULACAO_PARA,
+} from "@/lib/hercules/espelho/simulacao-para-quem";
 import type { PlanoDaVenda } from "@/lib/hercules/fluxo-de-venda";
 import { MapaDeLotes } from "@/modules/espelho/MapaDeLotes";
 import {
@@ -919,6 +923,34 @@ function PainelDoLote({
   const condicoes = useRef<CondicoesDaProposta | null>(null);
   const [baixando, setBaixando] = useState(false);
   /**
+   * PARA QUEM esta simulação está sendo feita. Vazio = ninguém, que é o caso normal.
+   *
+   * Lucas (27/09/2026): *"faz uma coisa para mim, na parte do simulador do link do espelho, coloca a
+   * opção de inserir um nome na proposta simulada"*.
+   *
+   * ⚠️ ESTADO DO ESPELHO, E NÃO DE `CondicoesDaProposta`. Esse tipo é lido também pela
+   * `ModalDeProposta` da Mesa de Venda (`modules/incorporador/hercules/ModalDeProposta.tsx`), que
+   * GRAVA proposta de verdade e tira o comprador da FICHA: um nome digitado num link sem login não
+   * pode viajar pelo caminho que gera documento. Por isso ele é montado à mão no corpo do POST.
+   *
+   * ⚠️ E ELE MORRE AO FECHAR A JANELA, de propósito: `PainelDoLote` é desmontado quando o pop-up
+   * fecha (o mapa atrás não é clicável), então o nome de um cliente não vaza para o lote do próximo.
+   * A volta de 60s do polling não o apaga, porque ela só troca `estado`.
+   */
+  const [para, setPara] = useState("");
+  /**
+   * Quem digitou algo que o papel NÃO vai imprimir — e precisa saber antes de clicar.
+   *
+   * ⚠️ A RÉGUA É A DO SERVIDOR, CHAMADA AQUI. `simulacaoParaAceito` devolve nulo para o que não tem
+   * forma de nome (dígito, %, telefone, e-mail, parágrafo de mais de 9 palavras), e a rota então
+   * monta a folha SEM a linha "Simulação para". Sem este aviso o corretor clica em "Salvar em PDF",
+   * recebe o papel sem nome e não tem como saber o motivo. Chamar a mesma função é o que evita a
+   * segunda régua divergente — o erro que o quadro do contrato cometeu com a própria soma.
+   *
+   * ⚠️ E ELE SÓ ACENDE COM TEXTO DE VERDADE: campo vazio é o caso NORMAL, e não um erro.
+   */
+  const naoVaiSairNoPapel = para.trim() !== "" && simulacaoParaAceito(para) === null;
+  /**
    * A frase da rota quando ela recusa o PDF (422: prazo além do plano, composição que não fecha).
    *
    * ⚠️ ANTES O BOTÃO FICAVA MUDO: `if (!resposta.ok) return` e nada acontecia. Com a régua do plano
@@ -975,6 +1007,10 @@ function PainelDoLote({
             entradaVezes: atual.entradaVezes,
             parcelas: atual.parcelasMensais,
             plano: atual.planoNome,
+            // ⚠️ SÓ ESPAÇOS É NOME NENHUM, E O SERVIDOR CONCORDA (`simulacaoParaAceito`): nulo aqui é
+            // a simulação sem destinatário, que é o caso normal e o único que existia até 27/09/2026.
+            // A folha então sai exatamente como saía.
+            simulacaoPara: para.trim() || null,
             valor: atual.valorNegociado,
           }),
           headers: { "Content-Type": "application/json" },
@@ -1007,7 +1043,7 @@ function PainelDoLote({
     } finally {
       setBaixando(false);
     }
-  }, [baixando, lote, nomeDoEmpreendimento, token]);
+  }, [baixando, lote, nomeDoEmpreendimento, para, token]);
 
   return (
     <div
@@ -1065,6 +1101,84 @@ function PainelDoLote({
             </button>
           </div>
         </header>
+
+        {/* ⚠️ PARA QUEM É ESTA SIMULAÇÃO — o campo que o Lucas pediu em 27/09/2026 (*"coloca a opção
+            de inserir um nome na proposta simulada"*).
+
+            ⚠️ ELE É OPCIONAL, E ESTA É A REGRA QUE NÃO SE NEGOCIA: quem só quer ver o preço pula UMA
+            linha e chega nos planos. Nada na tela exige o nome, e sem ele a folha sai exatamente
+            como saía.
+
+            ⚠️ AQUI, E NÃO DENTRO DO SIMULADOR: o `SimuladorDeProposta` é o MESMO da Mesa de Venda, e
+            um campo posto lá nasceria também na tela da venda, onde o comprador vem da FICHA e não
+            de texto digitado. O nome é do papel do LINK.
+
+            ⚠️ E NEM DENTRO DO `<header>`: no celular o topo tem `flex-wrap: wrap`, e o campo
+            empurraria o botão "Salvar em PDF" para uma terceira linha. Nesta fileira própria, de
+            altura fixa (`flexShrink: 0`), ele encolhe só a área de rolagem do simulador e não mexe na
+            cadeia de altura que custou o corte do iPad de 22/09.
+
+            ⚠️ PRESO A `mostraSimulador`: pedir "para quem é esta simulação" num lote indisponível,
+            onde nenhum PDF sai, seria um campo que não produz papel nenhum.
+
+            ⚠️ E FORA DA IMPRESSÃO (`data-esp-print="fora"`), como o botão e o aviso de erro: um
+            Ctrl+P imprimiria uma caixa de texto vazia na folha. */}
+        {mostraSimulador ? (
+          <div data-esp-print="fora" style={ESTILO.paraQuem}>
+            <label htmlFor="esp-simulacao-para" style={ESTILO.paraQuemRotulo}>
+              Simulação para
+            </label>
+            <input
+              // ⚠️ PRIVACIDADE, E NÃO ESTILO: o link abre no aparelho de outra pessoa. Sem isto o
+              // navegador OFERECE o nome do dono do aparelho e GUARDA no cofre dele o nome de um
+              // terceiro que ele digitou. Mesmo par de `NovoProduto` e `CadastroDeUnidades`.
+              autoComplete="off"
+              data-esp-campo="simulacao-para"
+              id="esp-simulacao-para"
+              // ⚠️ O MESMO NÚMERO DO SERVIDOR, DA MESMA CONSTANTE (80, medido na largura da linha do
+              // papel). Cortar aqui é o que evita digitar 200 caracteres e receber o nome com
+              // reticências no papel — o par exato da descrição do bem no simulador.
+              //
+              // ⚠️ E ELE NÃO CONTA NADA A QUEM DIGITA: `maxLength` simplesmente PARA de aceitar
+              // letra, calado. Por isso o apoio abaixo troca de frase ao chegar no teto (revisão de
+              // 27/09/2026, que mediu o nome completo de 62 caracteres sendo cortado em 60 sem
+              // marca nenhuma).
+              maxLength={TAMANHO_MAXIMO_DO_SIMULACAO_PARA}
+              onChange={(ev) => setPara(ev.target.value)}
+              // A língua é a do corretor, e ela não promete nada: "O cliente / Nome completo" é o
+              // vocabulário da RESERVA (`ModalDeReserva`), onde alguém é qualificado de verdade.
+              placeholder="nome do cliente (opcional)"
+              spellCheck={false}
+              style={ESTILO.paraQuemCampo}
+              type="text"
+              value={para}
+            />
+            {/* ⚠️ TRÊS FRASES NO MESMO LUGAR, E NÃO TRÊS LINHAS: no celular cada linha nova empurra o
+                simulador, e a fileira tem altura fixa por causa do corte do iPad de 22/09/2026.
+
+                ⚠️ A DO MEIO É A QUE FALTAVA. O servidor recusa o que não tem FORMA de nome (dígito,
+                %, telefone, parágrafo) devolvendo NULO, e a folha sai sem a linha — correto, e
+                silencioso: quem digitou "Maria 2" clicaria em "Salvar em PDF" e receberia um papel
+                sem nome nenhum sem entender por quê. Aqui ele lê antes de clicar. É a MESMA função
+                do servidor (`simulacaoParaAceito`), e não uma segunda régua: duas cópias da régua é
+                como o quadro do contrato imprimiu uma soma diferente da cláusula. */}
+            <span
+              aria-live="polite"
+              data-esp-campo="simulacao-para-apoio"
+              style={
+                naoVaiSairNoPapel
+                  ? { ...ESTILO.paraQuemApoio, ...ESTILO.paraQuemApoioAlerta }
+                  : ESTILO.paraQuemApoio
+              }
+            >
+              {naoVaiSairNoPapel
+                ? "A folha sai sem esta linha: escreva só o nome da pessoa."
+                : para.length >= TAMANHO_MAXIMO_DO_SIMULACAO_PARA
+                  ? `Máximo de ${TAMANHO_MAXIMO_DO_SIMULACAO_PARA} caracteres.`
+                  : "Sai só no papel. Não reserva a unidade nem cadastra ninguém."}
+            </span>
+          </div>
+        ) : null}
 
         {erroDoPdf ? (
           <p data-esp-print="fora" role="alert" style={{ ...ESTILO.aviso, opacity: 0.9 }}>
@@ -1507,6 +1621,43 @@ const ESTILO: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
   },
   palco: { display: "flex", flex: 1, flexDirection: "column", minHeight: 0, position: "relative" },
+  // A fileira do "Simulação para": altura fixa, logo abaixo do título, acima da moldura do
+  // simulador. `flexShrink: 0` é o que faz ela encolher a área de ROLAGEM, e não a janela.
+  paraQuem: {
+    alignItems: "center",
+    display: "flex",
+    flexShrink: 0,
+    flexWrap: "wrap",
+    gap: 10,
+    margin: "12px 0 0",
+  },
+  paraQuemApoio: { fontSize: 10.5, opacity: 0.5 },
+  // O âmbar do aviso, e não vermelho: nada quebrou, o campo só não vai virar linha no papel. É o
+  // mesmo tom que a tarja da prévia usa na folha (`AVISO_TINTA`, em `proposta-pdf.ts`).
+  paraQuemApoioAlerta: { color: "#b45309", fontWeight: 600, opacity: 0.95 },
+  paraQuemCampo: {
+    background: "var(--esp-campo)",
+    border: "1px solid var(--esp-borda)",
+    borderRadius: 6,
+    color: "var(--esp-texto)",
+    flex: "1 1 220px",
+    // ⚠️ 16px NÃO É CAPRICHO: abaixo disso o Safari do iPhone dá zoom no painel ao focar o campo, e
+    // o corretor perde o mapa de vista para digitar um nome.
+    fontSize: 16,
+    height: 38,
+    maxWidth: 320,
+    minWidth: 0,
+    outline: "none",
+    padding: "0 10px",
+  },
+  paraQuemRotulo: {
+    flex: "0 0 auto",
+    fontSize: 10,
+    fontWeight: 600,
+    letterSpacing: ".05em",
+    opacity: 0.55,
+    textTransform: "uppercase",
+  },
   simulador: { borderTop: "1px solid var(--esp-borda)", marginTop: 16, paddingTop: 14 },
   simuladorTitulo: { fontSize: 12, letterSpacing: ".04em", margin: "0 0 10px", opacity: 0.6, textTransform: "uppercase" },
   titulo: { fontSize: 16, fontWeight: 700, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },

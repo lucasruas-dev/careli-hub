@@ -184,6 +184,25 @@ export type PropostaParaPdf = {
    */
   incluirReajuste?: boolean;
   simulacao?: boolean;
+  /**
+   * PARA QUEM esta simulação foi feita, quando quem gerou o papel digitou um nome.
+   *
+   * Ausente, nulo ou em branco = a linha não existe, e a folha sai exatamente como saía. Só vale
+   * junto de `simulacao`: na proposta de verdade quem diz para quem ela é são os COMPRADORES.
+   *
+   * ⚠️ NÃO É COMPRADOR, E POR ISSO NÃO ENTRA EM `compradores`. Lucas (10/09/2026), vendo o primeiro
+   * PDF da simulação: *"isso é uma simulação, ou seja, não precisa nome"* — e a seção COMPRADORES
+   * saiu do papel por isso. Lucas (27/09/2026): *"coloca a opção de inserir um nome na proposta
+   * simulada"*. O que ele pediu é o RÓTULO de para quem a conta foi feita; esse nome no quadro dos
+   * compradores diria que alguém foi qualificado, com documento e participação, numa folha que não
+   * reserva nada e não vincula ninguém.
+   *
+   * ⚠️ CHEGA LIMPO E COM TETO. Quem apara, normaliza, exige FORMA de nome e corta em 80 (com
+   * reticências, no espaço) é `simulacaoParaAceito`
+   * (`lib/hercules/espelho/simulacao-para-quem.ts`), na entrada da rota pública; aqui o corte que
+   * resta é o da LARGURA da linha, e ele é a última defesa do papel.
+   */
+  simulacaoPara?: null | string;
   reajustes: FaixaDeReajuste[];
   /**
    * Se a parcela deste plano REALMENTE muda ao longo do contrato (degrau de juros ou índice).
@@ -643,6 +662,44 @@ export async function montarPropostaPdf(
   texto(ctx, dados.unidade, M, 15, { bold: true, cor: INK });
   ctx.y -= 12;
   texto(ctx, dados.subtitulo, M, 8.6, { cor: SOFT });
+
+  // ── PARA QUEM É A SIMULAÇÃO ──────────────────────────────────────────────
+  //
+  // ⚠️ UMA LINHA DE RÓTULO, E NÃO UM QUADRO. A seção COMPRADORES não existe na simulação de
+  // propósito (mais abaixo, em `if (!dados.simulacao)`): ninguém foi qualificado. Uma tabela
+  // "Nome | Documento" aqui traria de volta exatamente o que foi tirado, agora preenchida, e a folha
+  // passaria a APRESENTAR UMA PARTE onde só existe um destinatário. O rótulo em cinza, no corpo do
+  // subtítulo e sem negrito, diz o que a linha é: negrito grafite é o tratamento do nome de quem
+  // COMPRA, na tabela dos compradores.
+  //
+  // ⚠️ MEDIDO EM 27/09/2026, RENDERIZANDO A FOLHA: a linha sai em y=716,89 (rótulo em x=34,5, nome
+  // em x=96,46) e empurra o resto 11pt para baixo. A simulação continua em UMA página — folga de
+  // 222,89pt até o piso no caso realista e de 28,89pt no pior caso que a tela permite (entrada em 12
+  // vezes com 7 anuais) —, e `garantirEspaco` quebra a página em vez de sobrepor se um dia encher.
+  // Campo ausente ou em branco desenha EXATAMENTE a folha de hoje.
+  //
+  // ⚠️ E O CORTE NÃO É ENFEITE: `texto()` desenha em x fixo, sem quebra e sem recorte. Em 8,6
+  // caberiam ~116 caracteres minúsculas; o teto da entrada é 80, mas 80 letras LARGAS ainda passariam
+  // da margem (medido: 80 "W" medem 649,47pt contra 464,32pt de linha útil) — e aí o nome sairia da
+  // folha sem erro nenhum, calado. Quem escreve as reticências é `encurtar`, logo abaixo.
+  //
+  // ⚠️ E EM BRANCO É NOME NENHUM, AQUI TAMBÉM. Quem chama a rota pública já recebe nulo de
+  // `simulacaoParaAceito`, mas o desenhista é usado por duas rotas e o tipo aceita texto: três
+  // espaços desenhariam o rótulo "Simulação para" pendurado no ar, sem nada depois.
+  const paraQuem = dados.simulacao ? (dados.simulacaoPara ?? "").trim() : "";
+  if (paraQuem) {
+    ctx.y -= 11;
+    const rotuloDoPara = "Simulação para ";
+    const larguraDoRotulo = font.widthOfTextAtSize(seguro(rotuloDoPara), 8.6);
+    texto(ctx, rotuloDoPara, M, 8.6, { cor: MUTE });
+    texto(
+      ctx,
+      encurtar(font, paraQuem, 8.6, LARGURA - larguraDoRotulo),
+      M + larguraDoRotulo,
+      8.6,
+      { cor: TEXT },
+    );
+  }
 
   // ── OS QUATRO NÚMEROS ────────────────────────────────────────────────────
   ctx.y -= 16;

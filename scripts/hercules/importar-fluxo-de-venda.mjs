@@ -21,6 +21,31 @@
 // está nula em todas e a tabela de vínculo está vazia — entra nulo, e o fluxo novo é que vai
 // preencher.
 //
+// ⚠️ ESTA CARGA CONTORNA A BARRA DA CAD, POR DESENHO. Desde 26/09/2026 existe uma barra que exige
+// a CAD do titular APROVADA (etapa `credenciado`) para a venda entrar em contrato ou em assinatura, e
+// ela está nas QUATRO portas de TELA: `app/api/incorporador/venda/contrato/route.ts`,
+// `lib/temis/contrato-servico.ts` (gerar), `lib/assinatura/envio-db.ts` (enviar para assinatura) e
+// `lib/temis/trabalhos-db.ts` (marcar atividade). Lucas (26/09/2026): *"faz uma barra, para enviar para
+// contrato precisa da cad validada"*.
+//
+// Esta carga NÃO passa por nenhuma delas: a linha `etapa: ETAPA[etapaC2x] ?? "proposta"` (na montagem,
+// abaixo) grava `contrato`, `assinatura` e `faturado` direto no banco por PostgREST, sem ler
+// `apolo_esteira`. E está certo que seja assim — a barra é regra NOVA e a carga é sobre o PASSADO, e
+// regra nova não alcança o passado sem decisão explícita do Lucas. Medido em 26/09/2026
+// (`bxgukywoxgivlrhjkwjx`, só SELECT):
+//   select origem, etapa, count(*) from hercules_propostas
+//    where workspace_id='careli' and aberta and etapa in ('contrato','assinatura','faturado')
+//    group by 1,2;
+//     → c2x: 12 em contrato, 415 em assinatura, 2.037 faturadas (2.464); panteon: 11 e 7 (18).
+// Ou seja: 2.464 das 2.482 propostas vivas em contrato ou adiante são origem `c2x` — exatamente o
+// universo que este script governa, e nenhuma delas passou pela barra.
+//
+// ⚠️ O QUE ISSO CUSTA, ESCRITO PARA QUEM FOR RODAR: as Únicas peneiras são as de baixo (proposta
+// encerrada no Panteon e proposta com `etapa_por` preenchido). Toda proposta herdada VIVA cuja etapa no
+// C2X seja 3 ou 4 e que nunca tenha sido movida na tela volta para `contrato` ou `assinatura` com a CAD
+// em qualquer estado, inclusive sem CAD nenhuma. A carga do C2X está declarada ENCERRADA desde
+// 21/09/2026; se alguém a rodar de novo, é isto que acontece, e não há trava de código impedindo.
+//
 // Uso (da raiz do repo):
 //   node scripts/hercules/importar-fluxo-de-venda.mjs            # ENSAIO: não grava
 //   node scripts/hercules/importar-fluxo-de-venda.mjs --gravar   # grava

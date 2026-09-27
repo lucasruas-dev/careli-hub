@@ -93,6 +93,22 @@ export type DadosDaFolha = {
    * `simulacao` em `proposta-pdf.ts`, que é quem desenha.
    */
   simulacao?: boolean;
+  /**
+   * PARA QUEM a simulação foi feita, quando quem gerou o papel digitou um nome. Só vale junto de
+   * `simulacao`, e em branco é nome nenhum: a folha sai exatamente como saía.
+   *
+   * ⚠️ NÃO É COMPRADOR, E NÃO ENTRA EM `compradores`. Lucas (10/09/2026), vendo o primeiro PDF da
+   * simulação: *"isso é uma simulação, ou seja, não precisa nome"*, e a seção COMPRADORES saiu do
+   * papel por isso. Lucas (27/09/2026): *"coloca a opção de inserir um nome na proposta simulada"* —
+   * um RÓTULO de para quem a conta foi feita, e não uma parte qualificada com documento e
+   * participação numa folha que não reserva nada.
+   *
+   * ⚠️ CHEGA LIMPO, COM FORMA DE NOME CONFERIDA E COM TETO DE 80 de `simulacaoParaAceito`
+   * (`lib/hercules/espelho/simulacao-para-quem.ts`), que é a entrada da página SEM LOGIN. O teto saiu
+   * de medição com pdf-lib em 27/09/2026: a linha útil da folha tem 526,28pt, o rótulo "Simulação
+   * para " ocupa 61,96pt e um nome completo de 62 caracteres mede 311,72pt.
+   */
+  simulacaoPara?: null | string;
   cronograma: Cronograma;
   diaDeVencimento: number;
   /**
@@ -531,6 +547,13 @@ export function montarFolhaDaProposta(dados: DadosDaFolha): PropostaParaPdf {
     // A bandeira segue para o desenhista: é ele que decide título, topo, compradores e tarja.
     incluirReajuste: dados.incluirReajuste ?? false,
     simulacao: dados.simulacao ?? false,
+    // ⚠️ SÓ NA SIMULAÇÃO, E SÓ COM TEXTO DE VERDADE. Na proposta quem diz para quem ela é são os
+    // COMPRADORES, lidos do CAD; e um campo em branco não pode virar uma linha "Simulação para" sem
+    // nome. AUSENTE CONTINUA AUSENTE, como o `tipoProduto` logo abaixo: é assim que a folha de quem
+    // não digitou nada sai byte a byte igual à de sempre.
+    ...(dados.simulacao && dados.simulacaoPara?.trim()
+      ? { simulacaoPara: dados.simulacaoPara.trim() }
+      : {}),
     temReajuste: temDegrau || temCorrecao,
     subtitulo,
     // Ausente continua ausente: a folha antiga (loteamento) sai idêntica.
