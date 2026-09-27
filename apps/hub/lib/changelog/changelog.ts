@@ -36,6 +36,44 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-26-proposta-com-cad-em-andamento-e-barra-no-contrato",
+    deployedAt: "2026-09-26T21:14:25-03:00",
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**A proposta pode ser montada com a CAD ainda em andamento.** O coordenador nao precisa mais esperar a CAD ser aprovada para lancar a proposta financeira: ela sai com a CAD em validacao, em revisao, em analise de credito, em correcao ou em pre-venda.",
+              "**A tela continua dizendo a verdade sobre a CAD.** Um aviso ambar mostra em que etapa ela esta, com a data, e avisa que o contrato so sai depois da aprovacao. Antes a tela so sabia dizer credenciada ou nao credenciada.",
+              "**CAD indeferida continua barrando a proposta.** Indeferida nao e uma etapa em andamento: e a decisao de reprovar o cliente.",
+            ],
+            screen: "Venda - gerar proposta",
+          },
+          {
+            items: [
+              "**Enviar para contrato agora exige a CAD aprovada.** A trava nao sumiu, ela mudou de lugar: a proposta sai antes, o contrato so depois.",
+              "**A barra vale em todos os caminhos**, inclusive no envio para assinatura, que e onde o envelope custa e o cancelamento nao se desfaz.",
+              "**A modal de confirmacao avisa antes.** Quem clica em Enviar para contrato com a CAD em andamento le o motivo na hora, e nao depois de confirmar.",
+              "**Cancelar e distratar continuam funcionando** mesmo com a CAD irregular, que e justamente quando mais se precisa deles.",
+            ],
+            screen: "Venda - enviar para contrato",
+          },
+        ],
+      },
+    ],
+    rollback: "105a10b0",
+    technical: {
+      done:
+        "UMA REGUA, DOIS CAMPOS, E E ISSO QUE FAZ AS DUAS METADES CONVIVEREM. `credenciadoParaVender` responde `podeGerarProposta` (pode montar a proposta financeira) e `credenciado` (a CAD esta aprovada, a verdade sobre a etapa real). A porta da proposta le o primeiro; a barra do contrato le o segundo. Ler o segundo campo na barra a faria nascer ja aberta para exatamente quem o afrouxamento deixou passar. A PROPOSTA: modo novo com DEFAULT APERTADO (`ModoDaRegua`), liberando as etapas em ANDAMENTO e SO para o portal comercial da Careli (`ehPortalComercial`, o mesmo booleano que o codigo ja chamava de coordenador em `origemDaReserva`); o portal do Cecilio segue exigindo a CAD credenciada. O mapa e um `Record<EtapaEsteira, boolean>` e nao um Set: etapa nova quebra o TYPECHECK e exige decisao, em vez de nascer liberada. A BARRA: `lib/hercules/cad-para-contrato.ts`, uma peca para cinco portas (gerar contrato no Hercules, emitir contrato, o servico de contrato da Temis, o card da Temis e o ENVIO PARA ASSINATURA). DUAS ARMADILHAS MEDIDAS, as duas do mesmo tipo: (1) O ESCOPO E EXPANDIDO (familia + grupo), porque a CAD mora no pai ou no grupo e a venda mora no filho: dos 13 cards de contrato vivos, so 4 casam por id exato, entao comparar id com id barraria 9 clientes CREDENCIADOS; (2) O ESCOPO SAI DA UNIDADE e nao de `hercules_propostas.empreendimento_id`, porque 33 propostas vivas nao tem essa coluna e 100% delas tem unidade com `enterprise_id`. REVISAO ADVERSARIAL em duas rodadas: os tres revisores da barra REPROVARAM a primeira versao (2 altas, 9 medias), e a melhor falha foi a barra ter caido tambem sobre a SAIDA da venda (cancelamento e distrato), barrando o que mais se precisa fazer quando o cliente esta irregular; corrigido com `oAtoEDaCompraEVenda`. MERGE COM A 1.385.0: a outra sessao acrescentou a porta do COMPRADOR DA CARTEIRA na mesma regua, e foram SEIS arquivos em conflito. As duas portas nunca disputam a mesma linha (a carteira so e lida quando nao ha CAD nenhuma; o modo do coordenador so mexe em CAD que existe), e `decidirPelasLinhas` passou a receber um OBJETO no terceiro parametro porque um lado chegou com `modo` e o outro com `compra` na mesma posicao: dois posicionais compilariam com o significado TROCADO. O comprador da carteira PASSA na barra, decisao explicita em `A_CARTEIRA_VALE_PARA_O_CONTRATO`, porque a CAD dele NASCE credenciada na gravacao da proposta e recusar daria dois vereditos diferentes para o mesmo fato. ALCANCE MEDIDO: nenhuma proposta nativa viva e barrada (18 de 18 com CAD credenciada no escopo expandido); a barra alcanca 3 propostas em etapa `proposta`, duas herdadas do C2X sem CAD nenhuma (CDJ0403 e MDB1306, de novembro de 2025) e uma com CAD em revisao (VLO0524), e nao alcanca quem ja passou para contrato ou assinatura. Suite: 671 arquivos, 10.058 testes. Typecheck limpo.",
+      motivation:
+        "Lucas, 26/09/2026, duas frases no mesmo dia: pode deixar os coordenadores emitirem proposta sem a cad esta credenciada, ela pode estar em validacao ou em qualquer outro estagio; e depois, faz uma barra, para enviar para contrato precisa da cad validada. O caso: Mateus Cotta Sacchetto, lote EIRETAMA-14 da Aldeia, com CAD em validacao desde as 17:11 do mesmo dia, e a coordenadora perguntando no proprio card se so pode lancar a proposta financeira depois que a CAD for aprovada, quando normalmente ja tem essas informacoes junto com o cadastro. Lucas, sobre o print: essa devia passar.",
+    },
+    title: "A proposta sai com a CAD em andamento, e o contrato exige a CAD aprovada",
+    type: "melhoria",
+    version: "1.386.0",
+  },
+  {
     buildTag: "2026-09-26-comprador-da-carteira-compra-de-novo",
     deployedAt: "2026-09-26T19:38:13-03:00",
     modules: [
