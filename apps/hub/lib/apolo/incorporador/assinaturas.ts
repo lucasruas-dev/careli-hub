@@ -157,6 +157,12 @@ export type DadosDoContrato = {
   unitId: number;
   /** Valor de tabela da unidade. */
   valorTabela: number;
+  /**
+   * ISO CURTO do dia em que o contrato VOLTOU PARA CORREÇÃO (o envelope foi cancelado pela volta da
+   * Têmis) e nenhum contrato novo foi gerado depois. Só nas linhas do Panteon; ausente no legado.
+   * Com ele, "aguardando emissão" quer dizer "aguardando o contrato novo", e não "gerado e parado".
+   */
+  voltouParaCorrecaoEm?: null | string;
 };
 
 /** Uma linha da lista analítica: um ENVIO (contrato) rotulado pela unidade dele. */
@@ -1171,6 +1177,8 @@ export type EnvelopeDoPanteon = {
   criado_em: null | string;
   enviado_em: null | string;
   estado: null | string;
+  /** Quem mudou o estado por último (`panteon:retorno_para_correcao`, `clicksign:sign`…). */
+  estado_cru?: null | string;
   fechado_em: null | string;
   /** `false` = todos assinam em paralelo; `true`/nulo = a ordem congelada no envio vale. */
   ordenada?: boolean | null;
@@ -1192,7 +1200,20 @@ export type ExtrasDoPanteon = {
   codigoDaUnidade?: ReadonlyMap<string, string>;
   /** `provedor_documento_id` → quem assinou. */
   assinaturasPorDocumento?: ReadonlyMap<string, AssinaturasDoDocumento>;
+  /**
+   * Proposta → instante (ISO) do contrato MAIS RECENTE gerado (`hercules_documentos` tipo contrato,
+   * não removido). Com o mapa, "gerado em" é o fato; sem ele (teste antigo), cai na entrada da etapa.
+   */
+  contratoGeradoEm?: ReadonlyMap<string, string>;
 };
+
+/** A volta da Têmis para correção cancela o envelope com este carimbo (retorno-para-correcao.ts). */
+const CARIMBO_DA_VOLTA = "panteon:retorno_para_correcao";
+
+function instanteOuNaN(valor: null | string | undefined): number {
+  const texto = limpo(valor);
+  return texto ? Date.parse(texto) : Number.NaN;
+}
 
 /** As etapas da proposta em que já existe contrato. */
 export const ETAPAS_COM_CONTRATO = ["contrato", "assinatura", "faturado"] as const;
@@ -1383,6 +1404,38 @@ export function linhasDeAssinaturaDoPanteon(
       ? limpo(extras.codigoDaUnidade?.get(limpo(proposta.unidade_id)))
       : "";
 
+    // ⚠️ "GERADO EM" É O CONTRATO, NÃO A ETAPA (Lucas, 28/09/2026, print da VOC0306: "gerado em
+    // 26/09 · aguardando emissão"). A volta para correção devolve a venda à etapa `contrato`, e
+    // `etapa_desde` passava a ser o dia da VOLTA: a linha dizia que um contrato tinha sido gerado
+    // naquele dia, quando o único contrato era de 23/09 e tinha sido cancelado. Com o mapa dos
+    // documentos, a data é a do contrato mais recente; e se a última coisa que aconteceu foi a volta
+    // (envelope cancelado pela Têmis, sem contrato novo depois), a linha diz isso.
+    const todos = [...(envelopesPorProposta.get(proposta.id) ?? [])].sort(
+      (a, b) => String(b.criado_em ?? "").localeCompare(String(a.criado_em ?? "")),
+    );
+    const ultimo = todos[0];
+    const voltaEm =
+      ultimo &&
+      limpo(ultimo.estado).toLowerCase() === "cancelado" &&
+      limpo(ultimo.estado_cru).toLowerCase() === CARIMBO_DA_VOLTA
+        ? limpo(ultimo.fechado_em) || null
+        : null;
+    const temMapaDeContratos = extras.contratoGeradoEm !== undefined;
+    const contratoMaisRecente = extras.contratoGeradoEm?.get(proposta.id) ?? null;
+    const refeitoDepoisDaVolta =
+      voltaEm !== null &&
+      contratoMaisRecente !== null &&
+      instanteOuNaN(contratoMaisRecente) > instanteOuNaN(voltaEm);
+    const voltouParaCorrecaoEm =
+      situacao === "aguardando-emissao" && voltaEm && !refeitoDepoisDaVolta ? diaCurto(voltaEm) : null;
+    const geradoEm = voltouParaCorrecaoEm
+      ? null
+      : temMapaDeContratos
+        ? isoOuNulo(contratoMaisRecente)
+        : limpo(proposta.etapa).toLowerCase() === "contrato"
+          ? isoOuNulo(proposta.etapa_desde)
+          : null;
+
     return {
       assinadas: esquema.filter((item) => item.situacao === "assinado").length,
       aviso: null,
@@ -1390,11 +1443,12 @@ export function linhasDeAssinaturaDoPanteon(
       concluida,
       contrato: {
         faturadoEm: diaCurto(proposta.data_faturamento),
-        geradoEm: limpo(proposta.etapa).toLowerCase() === "contrato" ? isoOuNulo(proposta.etapa_desde) : null,
+        geradoEm,
         imobiliaria: limpo(proposta.imobiliaria_nome) || null,
         temContrato: false,
         unitId: 0,
         valorTabela: numeroOuZero(proposta.preco_tabela ?? proposta.valor),
+        voltouParaCorrecaoEm,
       },
       empreendimento: limpo(proposta.empreendimento_codigo).toUpperCase(),
       enviadoEm: enviadoEm ?? "",
@@ -1592,7 +1646,7 @@ export async function lerAssinaturasDoPanteon(
         const { data, error } = await admin
           .from("temis_envelopes")
           .select(
-            "proposta_id,estado,fechado_em,enviado_em,criado_em,ordenada,provedor_documento_id,signatarios",
+            "proposta_id,estado,estado_cru,fechado_em,enviado_em,criado_em,ordenada,provedor_documento_id,signatarios",
           )
           .eq("workspace_id", "careli")
           .in("proposta_id", lote)
@@ -1611,11 +1665,16 @@ export async function lerAssinaturasDoPanteon(
       propostas.map((proposta) => limpo(proposta.unidade_id)).filter(Boolean),
     );
     const assinaturasPorDocumento = await assinaturasDosDocumentos(admin, envelopes);
+    const contratoGeradoEm = await contratosGeradosDasPropostas(
+      admin,
+      propostas.map((proposta) => proposta.id),
+    );
 
     return {
       linhas: linhasDeAssinaturaDoPanteon(propostas, envelopes, {
         assinaturasPorDocumento,
         codigoDaUnidade,
+        ...(contratoGeradoEm ? { contratoGeradoEm } : {}),
       }),
       ok: true,
     };
@@ -1713,4 +1772,46 @@ async function assinaturasDosDocumentos(
     await Promise.all(fila.slice(i, i + PAYLOADS_EM_PARALELO).map(lerUm));
   }
   return saida;
+}
+
+/**
+ * Proposta → o contrato MAIS RECENTE gerado (`hercules_documentos`, tipo contrato, não removido).
+ *
+ * ⚠️ FALHA DEVOLVE `null`, E NÃO MAPA VAZIO: mapa vazio diria "nenhum contrato foi gerado" em todas as
+ * linhas; `null` faz a linha cair no que dizia antes (a entrada na etapa).
+ */
+async function contratosGeradosDasPropostas(
+  admin: AdminDoApolo,
+  ids: string[],
+): Promise<Map<string, string> | null> {
+  const mapa = new Map<string, string>();
+  const unicos = [...new Set(ids.filter(Boolean))];
+  for (let i = 0; i < unicos.length; i += LOTE_DO_PANTEON) {
+    const lote = unicos.slice(i, i + LOTE_DO_PANTEON);
+    for (let de = 0; ; de += PAGINA_DO_PANTEON) {
+      const { data, error } = await admin
+        .from("hercules_documentos")
+        .select("id,proposta_id,criado_em")
+        .eq("tipo", "contrato")
+        .is("removido_em", null)
+        .in("proposta_id", lote)
+        .order("id", { ascending: true })
+        .range(de, de + PAGINA_DO_PANTEON - 1)
+        .returns<Array<{ criado_em: null | string; id: string; proposta_id: null | string }>>();
+      if (error) {
+        console.error("[incorporador][assinaturas] falha ao ler os contratos gerados", error.message);
+        return null;
+      }
+      const pagina = data ?? [];
+      for (const linha of pagina) {
+        const proposta = limpo(linha.proposta_id);
+        const quando = limpo(linha.criado_em);
+        if (!proposta || !quando) continue;
+        const atual = mapa.get(proposta);
+        if (!atual || instanteOuNaN(quando) > instanteOuNaN(atual)) mapa.set(proposta, quando);
+      }
+      if (pagina.length < PAGINA_DO_PANTEON) break;
+    }
+  }
+  return mapa;
 }

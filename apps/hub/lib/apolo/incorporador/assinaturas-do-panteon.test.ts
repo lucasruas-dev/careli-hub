@@ -169,6 +169,54 @@ describe("linhasDeAssinaturaDoPanteon", () => {
     expect(JSON.stringify(linha)).not.toContain("@");
   });
 
+  // O CASO DA VOC0306 (Lucas, 28/09/2026): contrato gerado em 23/09, enviado, e em 26/09 a Têmis o
+  // voltou para correção (envelope cancelado). A linha dizia "gerado em 26/09", que era o dia da volta.
+  it("⚠️ voltou para correção sem contrato novo: a linha diz a volta, e não um 'gerado em' falso", () => {
+    const [linha] = linhasDeAssinaturaDoPanteon(
+      [proposta({ etapa: "contrato", etapa_desde: "2026-09-26T20:41:48.000Z", id: "p1" })],
+      [
+        envelope({
+          estado: "cancelado",
+          estado_cru: "panteon:retorno_para_correcao",
+          fechado_em: "2026-09-26T20:41:48.000Z",
+          proposta_id: "p1",
+        }),
+      ],
+      { contratoGeradoEm: new Map([["p1", "2026-09-23T05:15:00.000Z"]]) },
+    );
+    expect(linha).toMatchObject({ situacao: "aguardando-emissao" });
+    expect(linha?.contrato).toMatchObject({ geradoEm: null, voltouParaCorrecaoEm: "2026-09-26" });
+  });
+
+  it("voltou para correção e o contrato novo já foi gerado: vale o 'gerado em' do contrato novo", () => {
+    const [linha] = linhasDeAssinaturaDoPanteon(
+      [proposta({ etapa: "contrato", id: "p1" })],
+      [
+        envelope({
+          estado: "cancelado",
+          estado_cru: "panteon:retorno_para_correcao",
+          fechado_em: "2026-09-26T20:41:48.000Z",
+          proposta_id: "p1",
+        }),
+      ],
+      { contratoGeradoEm: new Map([["p1", "2026-09-27T14:00:00.000Z"]]) },
+    );
+    expect(linha?.contrato).toMatchObject({
+      geradoEm: "2026-09-27T14:00:00.000Z",
+      voltouParaCorrecaoEm: null,
+    });
+  });
+
+  it("com o mapa de contratos, 'gerado em' é o contrato e não a entrada na etapa; sem contrato, nulo", () => {
+    const [comContrato, semContrato] = linhasDeAssinaturaDoPanteon(
+      [proposta({ id: "p1" }), proposta({ id: "p2", unidade_nome: "Torre A · Apto 305" })],
+      [],
+      { contratoGeradoEm: new Map([["p1", "2026-09-09T12:00:00.000Z"]]) },
+    );
+    expect(comContrato?.contrato?.geradoEm).toBe("2026-09-09T12:00:00.000Z");
+    expect(semContrato?.contrato?.geradoEm).toBeNull();
+  });
+
   it("envelope sem ordem (ordenada = false): todos os pendentes na vez, no degrau 0", () => {
     const [linha] = linhasDeAssinaturaDoPanteon(
       [proposta({ id: "p1" })],

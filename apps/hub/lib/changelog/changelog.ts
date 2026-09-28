@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-28-voltou-para-correcao-na-assinatura",
+    deployedAt: "2026-09-28T15:06:23-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**Contrato que voltou para correcao aparece assim na aba Assinatura:** Voltou para correcao em 26/09, aguardando um contrato novo. Antes a linha dizia gerado em 26/09, que era o dia da volta, e nao de um contrato.",
+              "**O gerado em das vendas do Panteon passa a ser a data do contrato de verdade**, e nao a da entrada na etapa.",
+            ],
+            screen: "Contratos - Assinatura",
+          },
+        ],
+      },
+    ],
+    rollback: "795e60c3",
+    technical: {
+      done:
+        "A volta para correcao (retorno-para-correcao.ts) cancela o envelope com estado_cru panteon:retorno_para_correcao e devolve a venda a etapa contrato, e a linha do Panteon usava etapa_desde como geradoEm: a VOC0306 dizia gerado em 26/09 (a volta), com o unico contrato sendo o de 23/09, cancelado. Agora lerAssinaturasDoPanteon le hercules_documentos (tipo contrato, nao removido, paginado com ordem, lotes de 100) e geradoEm e o contrato mais recente; quando o ultimo envelope e o cancelado pela volta e nenhum contrato foi gerado depois, DadosDoContrato.voltouParaCorrecaoEm (ISO curto, opcional, so nas linhas do Panteon) leva a linha a dizer Voltou para correcao, na lista e no popup, nas duas copias da tela (AssinaturasDoProduto e TelaVendas). Falha na leitura dos documentos devolve null e a linha cai na regra antiga, nunca em nenhum contrato gerado. Conferido so leitura contra producao: VOC0306 voltou=2026-09-26, gerado vazio; as 7 em assinatura com gerado = data do contrato. 3 testes novos.",
+      motivation:
+        "Lucas, 28/09/2026, print da VOC0306 aguardando emissao gerado em 26/09: verifica esse aqui; e, sobre ajustar o texto: pode corrigir.",
+    },
+    title: "A aba Assinatura diz quando o contrato voltou para correcao",
+    type: "correcao",
+    version: "1.390.0",
+  },
+  {
     buildTag: "2026-09-28-assinatura-do-hercules-le-o-panteon",
     deployedAt: "2026-09-28T14:43:00-03:00",
     modules: [
