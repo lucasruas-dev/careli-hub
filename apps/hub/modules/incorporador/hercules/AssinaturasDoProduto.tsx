@@ -80,6 +80,11 @@ const SITUACAO_LABELS: Record<SituacaoAssinatura, string> = {
  * há contrato vigente de onde tirar valor, imobiliária ou PDF.
  */
 type ContratoDaLinha = {
+  /**
+   * O envelope do Panteon do PDF (a leitura única, F4 da fonte única), só quando há documento. Com ele
+   * o botão abre `?contratoId=`, e a rota confere o escopo pela unidade do envelope.
+   */
+  contratoId?: string;
   /** ISO curto "YYYY-MM-DD" — formatar por STRING (rotuloDeYmd), nunca por new Date. */
   faturadoEm: null | string;
   /** ISO completo (created_at do histórico é datetime real): aqui rotuloDaData serve. */
@@ -183,6 +188,11 @@ export type DadosAssinaturas = {
     unidadesTotalmenteAssinadas: number;
   };
   taxas: { assinadas: number; esperadas: number; perfil: string }[];
+  /**
+   * Os totais do recorte INTEIRO, contados no servidor ANTES do teto de 500 linhas (a leitura única,
+   * F4 da fonte única). Ausente numa resposta antiga do cache: aí a tela conta as linhas que vieram.
+   */
+  totais?: TotaisDeContratos & { porEmpreendimento: Array<TotaisDeContratos & { empreendimento: string }> };
   unidades: UnidadeDeAssinatura[];
 };
 
@@ -436,6 +446,9 @@ function ChipDeAssinatura({ situacao }: { situacao: SituacaoAssinatura }) {
  * /api/incorporador/contrato?unitId=… em aba nova. O link leva o unitId, NUNCA o uuid: a rota
  * reconfere `unidadeNoEscopo` e resolve o documento no C2X a cada clique.
  *
+ * ⚠️ COM `contratoId` (a leitura única, F4 da fonte única), o link leva o id do ENVELOPE do Panteon, e
+ * não o do documento: a rota confere o escopo pela unidade do envelope e baixa aquele documento.
+ *
  * ⚠️ SEM CONTRATO DISPONÍVEL, A CÉLULA É "-", NUNCA UM BOTÃO QUE ERRA: sem `temContrato` não há
  * documento assinado na D4Sign, e sem `contrato` (envio de proposta que não é mais a viva) não há
  * nem unitId para onde apontar.
@@ -454,7 +467,11 @@ function BotaoDePdfDoContrato({
 
   return (
     <a
-      href={`/api/incorporador/contrato?unitId=${encodeURIComponent(contrato.unitId)}`}
+      href={
+        contrato.contratoId
+          ? `/api/incorporador/contrato?contratoId=${encodeURIComponent(contrato.contratoId)}`
+          : `/api/incorporador/contrato?unitId=${encodeURIComponent(contrato.unitId)}`
+      }
       rel="noopener noreferrer"
       style={{
         alignItems: "center",
@@ -2324,8 +2341,22 @@ export function ResumoDeContratos({
     return <Aviso texto="Nenhuma venda deste recorte chegou à etapa de contrato ainda." />;
   }
 
-  const totais = totaisDe(unidades);
-  const porEmpreendimento = totaisPorEmpreendimento(unidades);
+  // ⚠️ OS TOTAIS DO SERVIDOR, QUANDO VÊM (Regressão M1 da fonte única): a lista desce cortada em 500
+  // linhas, e contar `unidades.length` fazia o card "Contratos" dizer 500 num recorte de 2.400. O
+  // servidor conta antes do teto; a contagem pelas linhas fica só para a resposta antiga do cache.
+  const doServidor = estado.dados.totais;
+  const totais: TotaisDeContratos = doServidor
+    ? {
+        aguardandoEmissao: doServidor.aguardandoEmissao,
+        assinados: doServidor.assinados,
+        contratos: doServidor.contratos,
+        emAssinatura: doServidor.emAssinatura,
+        faturados: doServidor.faturados,
+      }
+    : totaisDe(unidades);
+  const porEmpreendimento = doServidor
+    ? doServidor.porEmpreendimento.map(({ empreendimento, ...linha }) => ({ empreendimento, totais: linha }))
+    : totaisPorEmpreendimento(unidades);
   const parteDosContratos = (parte: number): string =>
     `${porcentagem(parte, totais.contratos)} dos contratos`;
 

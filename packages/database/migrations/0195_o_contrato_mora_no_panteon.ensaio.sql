@@ -138,7 +138,27 @@ begin
     raise exception 'ensaio 8: o texto guardado mudou para %', r.quadro -> 0 ->> 'assinado_em';
   end if;
 
-  raise notice 'ENSAIO 0195: os 8 casos passaram.';
+  -- ── 9. O filtro da view temis_contratos_do_panteon (Integridade I8), SÓ LEITURA sobre os dados ───
+  -- reais. A proposta DA CARGA pendurada na linha-sombra do pai fica FORA; a NATIVA na sombra do pai
+  -- fica DENTRO (a régua de situacao-da-unidade.ts). O dublê do vitest trata a view como tabela e não
+  -- prova isto (revisão da F4, 28/09/2026); quem prova é este bloco, junto do SELECT da "Prova" da F4.
+  if exists (
+    select 1 from public.temis_contratos_do_panteon v
+     where v.espelho_de is not null and v.origem = 'c2x'
+  ) then
+    raise exception 'ensaio 9a: a view trouxe proposta da carga pendurada na sombra do pai';
+  end if;
+  if (select count(*) from public.hercules_propostas p
+        join public.hercules_unidades u on u.id = p.unidade_id
+       where u.espelho_de is not null and p.origem = 'panteon'
+         and p.etapa in ('contrato', 'assinatura', 'faturado')
+         and p.aberta is not false and p.cancelada_em is null)
+     <> (select count(*) from public.temis_contratos_do_panteon v
+          where v.espelho_de is not null and v.origem = 'panteon') then
+    raise exception 'ensaio 9b: a view cortou venda NATIVA pendurada na sombra do pai';
+  end if;
+
+  raise notice 'ENSAIO 0195: os 9 casos passaram.';
 end $$;
 
 rollback;

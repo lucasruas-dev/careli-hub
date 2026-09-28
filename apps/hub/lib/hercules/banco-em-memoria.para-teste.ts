@@ -20,7 +20,19 @@ export type Linha = Record<string, unknown>;
 type ErroDoBanco = { code: string; message: string };
 type Resposta = { data: unknown; error: ErroDoBanco | null };
 type Operacao = "insert" | "select" | "update";
-export type Consulta = { filtros: readonly string[]; n: number; operacao: Operacao; tabela: string };
+/**
+ * Uma consulta que o dublê executou. `ordem` e `paginada` só aparecem quando a consulta os usou: é por
+ * eles que um teste trava "toda página tem ORDER" (a armadilha da casa: paginar sem ordem perde linha
+ * com o total batendo). Ausentes, não mudam o `toEqual` de quem já comparava a consulta inteira.
+ */
+export type Consulta = {
+  filtros: readonly string[];
+  n: number;
+  operacao: Operacao;
+  ordem?: string;
+  paginada?: true;
+  tabela: string;
+};
 
 type Construtor = PromiseLike<Resposta> & {
   eq(coluna: string, valor: unknown): Construtor;
@@ -68,6 +80,14 @@ export const COLUNAS: Record<string, readonly string[]> = {
   // `tentado_em` são da 0195 (escrita em 28/09/2026, ainda NÃO aplicada em produção). O código da F1
   // as escreve sem recuo: a 0195 é aplicada ANTES do deploy da F1 (plano, F1).
   temis_envelopes: ["atualizado_em", "c2x_contract_signature_id", "compromisso_id", "conferido_em", "criado_em", "documento_id", "enterprise_id", "envelope_id", "enviado_em", "enviado_por", "enviado_por_nome", "estado", "estado_cru", "falha", "fechado_em", "finalidade", "id", "nome", "ordenada", "origem", "proposta_id", "provedor", "provedor_documento_id", "signatarios", "tentado_em", "trabalho_id", "unidade_id", "workspace_id"],
+  // ⚠️ AS DUAS VIEWS DA LEITURA ÚNICA (0195, escrita e NÃO aplicada em 28/09/2026): as colunas saem do
+  // `create view` da migration. O dublê as trata como tabelas; o filtro de cada uma (a sombra da carga
+  // no pai, `finalidade = 'contrato'`) é do SQL, e o teste semeia só o que a view devolveria. Quem
+  // prova o filtro da sombra é o bloco 9 de `0195_o_contrato_mora_no_panteon.ensaio.sql`.
+  temis_contratos_do_panteon: ["ar_c2x_id", "cancelamento_pedido_em", "cliente_nome", "criado_em", "data_assinatura", "data_ato", "data_faturamento", "empreendimento_codigo", "enterprise_id", "espelho_de", "etapa", "etapa_desde", "gerado_em", "imobiliaria_nome", "lote", "origem", "preco_tabela", "proposta_id", "quadra", "unidade_c2x_id", "unidade_codigo", "unidade_id", "unidade_preco_tabela", "valor", "workspace_id"],
+  temis_envelopes_de_contrato: ["atualizado_em", "c2x_contract_signature_id", "conferido_em", "criado_em", "documento_id", "envelope_id", "enviado_em", "estado", "estado_cru", "falha", "fechado_em", "id", "ordenada", "origem", "proposta_id", "provedor", "provedor_documento_id", "signatarios", "trabalho_id", "unidade_id", "workspace_id"],
+  // information_schema.columns em produção, 28/09/2026.
+  hercules_empreendimentos: ["atualizado_em", "atualizado_por", "c2x_enterprise_id", "cidade", "codigo", "criado_em", "criado_origem", "criado_por", "id", "nome", "operado_por", "ordem", "pai_id", "tipo_produto", "uf", "vendendo", "workspace_id"],
   // ⚠️ A LINHA DE ESTADO DO ESPELHO DA D4SIGN, também da 0195 (escrita, NÃO aplicada em 28/09/2026).
   temis_espelho_d4sign: ["atualizado_em", "d4sign_pausada_ate", "em_curso_ate", "id", "relatorio", "ultima_rodada_ok_em"],
   temis_trabalho_etapas: ["de", "id", "motivo", "observacao", "origem", "para", "proposta_id", "quando", "quem", "quem_nome", "trabalho_id", "trabalho_tipo", "workspace_id"],
@@ -268,7 +288,14 @@ export function criarBanco(inicial: Record<string, Linha[]>, opcoes: { origensDa
     };
 
     const executar = (): Resposta => {
-      const consulta: Consulta = { filtros: [...descricao], n: consultas.length, operacao, tabela };
+      const consulta: Consulta = {
+        filtros: [...descricao],
+        n: consultas.length,
+        operacao,
+        ...(ordem ? { ordem: `${ordem.coluna}:${ordem.ascendente ? "asc" : "desc"}` } : {}),
+        ...(faixa ? { paginada: true as const } : {}),
+        tabela,
+      };
       consultas.push(consulta);
       if (erros.length > 0) {
         problemas.push(...erros);

@@ -174,19 +174,14 @@ vi.mock("@/lib/hercules/situacao-da-unidade", async (importOriginal) => ({
   }),
 }));
 
-vi.mock("@/lib/apolo/incorporador/assinaturas", () => ({
-  lerAssinaturasDoPanteon: vi.fn(async () => ({ linhas: [], ok: true })),
-  lerAssinaturasDoPortal: vi.fn(async () => ({
-    data: { avisoDaFonte: null, cancelados: [], resumoDaFonte: null, unidades: [] },
-    ok: true,
-    uuids: [],
-  })),
-  somarAssinaturasDoPanteon: (quadro: unknown) => quadro,
-  unirComOPanteon: (quadro: unknown) => quadro,
+// ⚠️ A ABA ASSINATURA LÊ SÓ O PANTEON desde a F4 da fonte única (28/09/2026): nem C2X nem D4Sign, em
+// produto nenhum. O que se trava aqui é o recorte que chega à leitura (por ID do cadastro).
+vi.mock("@/lib/assinatura/contratos-do-panteon", () => ({
+  lerContratosDoPanteon: vi.fn(async () => ({ contratos: [], lidoEm: "2026-09-28T18:00:00.000Z", ok: true, ultimaRodadaOkEm: null })),
 }));
 
 import { loadApoloEnterpriseUnits } from "@/lib/apolo/empreendimentos";
-import { lerAssinaturasDoPanteon, lerAssinaturasDoPortal } from "@/lib/apolo/incorporador/assinaturas";
+import { lerContratosDoPanteon } from "@/lib/assinatura/contratos-do-panteon";
 import { lerEsteiraDoEscopo } from "@/lib/apolo/incorporador/crm";
 import { lerPropostasVivasDoPanteon } from "@/lib/apolo/incorporador/imobiliarias-do-produto";
 import { lerUnidadesDoPanteon } from "@/lib/apolo/incorporador/unidades-do-panteon";
@@ -242,6 +237,12 @@ const lidosPelaSituacao = (): string[] => [
   ),
 ];
 
+/** Os códigos (pelo id) que a leitura única da aba Assinatura recebeu na última chamada. */
+function idsDaLeituraUnica(): string[] {
+  const escopo = vi.mocked(lerContratosDoPanteon).mock.calls.at(-1)?.[0].escopo as undefined | { enterpriseIds?: string[] };
+  return [...(escopo?.enterpriseIds ?? [])].map((id) => CODIGO_DO_ID_NO_FUNIL[id] ?? id);
+}
+
 /**
  * Os códigos que a leitura de cada rota recebeu na última chamada. Em Unidades, a soma do que foi ao
  * C2X com o que foi ao Panteon (desde 16/09/2026 o produto próprio não vai ao C2X).
@@ -277,15 +278,8 @@ const ROTAS = [
   {
     caminho: "vendas/assinaturas",
     get: getAssinaturas,
-    // E os contratos dele saem de `hercules_propostas` + `temis_envelopes`, não do C2X/D4Sign. Desde
-    // 28/09/2026 o Panteon é lido em TODO código (a venda nativa de produto do C2X), então o mesmo
-    // código pode chegar às duas leituras: o conjunto é o que conta.
-    lidos: () => [
-      ...new Set([
-        ...(vi.mocked(lerAssinaturasDoPortal).mock.calls.at(-1)?.[0] ?? []),
-        ...(vi.mocked(lerAssinaturasDoPanteon).mock.calls.at(-1)?.[1] ?? []),
-      ]),
-    ],
+    // Os contratos saem SÓ do Panteon (`lerContratosDoPanteon`), pelo id de cada código.
+    lidos: idsDaLeituraUnica,
   },
 ] as const;
 
@@ -402,11 +396,10 @@ describe("o produto só do Panteon não vai ao C2X nas Imobiliárias nem nos Con
     expect(vi.mocked(lerPropostasVivasDoPanteon).mock.calls.at(-1)?.[1]).toEqual(["TST"]);
   });
 
-  it("⚠️ Contratos não manda o código só do Panteon ao C2X/D4Sign", async () => {
+  it("⚠️ Contratos lê o produto só do Panteon pela leitura única, pelo id", async () => {
     const resposta = await getAssinaturas(requisicao("vendas/assinaturas", "9001"));
     expect(resposta.status).toBe(200);
-    expect(vi.mocked(lerAssinaturasDoPortal).mock.calls.at(-1)?.[0]).toEqual([]);
-    expect(vi.mocked(lerAssinaturasDoPanteon).mock.calls.at(-1)?.[1]).toEqual(["TST"]);
+    expect(idsDaLeituraUnica()).toEqual(["TST"]);
   });
 
   it("o produto do C2X segue só no C2X nas Imobiliárias", async () => {
@@ -414,11 +407,10 @@ describe("o produto só do Panteon não vai ao C2X nas Imobiliárias nem nos Con
     expect(vi.mocked(lerPropostasVivasDoPanteon)).not.toHaveBeenCalled();
   });
 
-  it("⚠️ nos Contratos o produto do C2X lê o C2X E as vendas nativas do Panteon (28/09/2026)", async () => {
-    // A VOL 11 06 e as outras 7 da Clicksign: venda nativa em produto do C2X sumia da aba.
+  it("⚠️ nos Contratos o produto do C2X também lê só o Panteon (a leitura única, F4)", async () => {
+    // A VOL 11 06 e as outras 7 da Clicksign, e os contratos da D4Sign espelhados: uma fonte só.
     await getAssinaturas(requisicao("vendas/assinaturas", "37"));
-    expect(vi.mocked(lerAssinaturasDoPortal).mock.calls.at(-1)?.[0]).toEqual(["VOC"]);
-    expect(vi.mocked(lerAssinaturasDoPanteon).mock.calls.at(-1)?.[1]).toEqual(["VOC"]);
+    expect(idsDaLeituraUnica()).toEqual(["VOC"]);
   });
 });
 
@@ -447,15 +439,16 @@ describe("D2: o produto com dono marcado (o Garden da Cecílio) lê o estoque do
 
   // (16/09/2026, revisão do conjunto) As vendas antigas do Garden estão no C2X; o contrato que a
   // Cecílio fecha agora nasce no Panteon. Imobiliárias e Contratos somam as duas fontes.
-  it("⚠️ Imobiliárias e Contratos do Garden leem o C2X E o Panteon", async () => {
+  it("⚠️ Imobiliárias do Garden leem o C2X E o Panteon; Contratos, só o Panteon", async () => {
     await getImobiliarias(requisicao("produto/imobiliarias", "39", SESSAO_COM_GARDEN));
     expect(vi.mocked(loadApoloEnterpriseVendas).mock.calls.at(-1)?.[0]).toEqual(["GDN"]);
     expect(vi.mocked(lerPropostasVivasDoPanteon).mock.calls.at(-1)?.[1]).toEqual(["GDN"]);
 
+    // Os contratos do Garden: o que a Cecílio fecha no Panteon e, pelo envelope que o espelho ligou à
+    // unidade, o que ainda foi vendido no C2X (resposta 1 do Lucas). Sem ler o C2X.
     const resposta = await getAssinaturas(requisicao("vendas/assinaturas", "39", SESSAO_COM_GARDEN));
     expect(resposta.status).toBe(200);
-    expect(vi.mocked(lerAssinaturasDoPortal).mock.calls.at(-1)?.[0]).toEqual(["GDN"]);
-    expect(vi.mocked(lerAssinaturasDoPanteon).mock.calls.at(-1)?.[1]).toEqual(["GDN"]);
+    expect(idsDaLeituraUnica()).toEqual(["GDN"]);
   });
 
   it("o VOC (sem dono) continua no C2X na mesma sessão", async () => {

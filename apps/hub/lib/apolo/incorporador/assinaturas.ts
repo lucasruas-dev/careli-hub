@@ -144,6 +144,12 @@ export type GrupoDaUnidade = {
  * onde tirar valor, imobiliária ou PDF — e a visão antiga também não mostrava essa linha.
  */
 export type DadosDoContrato = {
+  /**
+   * O id do ENVELOPE do Panteon (`temis_envelopes.id`) cujo PDF o botão abre, só nas linhas da
+   * leitura única (F4 da fonte única) e só com `temContrato`. A rota do PDF confere o escopo pela
+   * unidade do envelope e baixa exatamente aquele documento, sem passar pelo C2X.
+   */
+  contratoId?: string;
   /** Data de faturamento (`billing_date`), ISO CURTO 'YYYY-MM-DD': formatar por STRING na tela. */
   faturadoEm: null | string;
   /** Primeira entrada no estágio "Contrato gerado" (ISO completo). Nulo em venda antiga. */
@@ -302,6 +308,8 @@ export type QuadroDeAssinaturas = {
  * geração (que fica no `ContratoVivo`, porque o tempo médio de assinatura sempre precisou dela).
  */
 export type FichaDoContratoVivo = {
+  /** O envelope do Panteon do PDF (leitura única, F4). Ver `DadosDoContrato.contratoId`. */
+  contratoId?: string;
   /** Nome de quem comprou, do cadastro do C2X (rotula o contrato que ainda não saiu para assinar). */
   comprador: null | string;
   /** Código do empreendimento (VAL, LBR…): a chave de unidade da lista é emp + unidade. */
@@ -316,6 +324,8 @@ export type FichaDoContratoVivo = {
   /** `enterprise_unities.id` — a chave do botão de PDF. */
   unitId: number;
   valorTabela: number;
+  /** A volta para correção sem contrato novo (leitura única, F4). Ver `DadosDoContrato`. */
+  voltouParaCorrecaoEm?: null | string;
 };
 
 /**
@@ -699,12 +709,17 @@ function dadosDoContrato(vivo: ContratoVivo | undefined): DadosDoContrato | null
   if (!vivo?.ficha) return null;
 
   return {
+    // Os dois opcionais só existem nas linhas da leitura única (F4); o legado segue sem eles.
+    ...(vivo.ficha.contratoId ? { contratoId: vivo.ficha.contratoId } : {}),
     faturadoEm: vivo.ficha.faturadoEm,
     geradoEm: vivo.geradoEm,
     imobiliaria: vivo.ficha.imobiliaria,
     temContrato: vivo.ficha.temContrato,
     unitId: vivo.ficha.unitId,
     valorTabela: vivo.ficha.valorTabela,
+    ...(vivo.ficha.voltouParaCorrecaoEm !== undefined
+      ? { voltouParaCorrecaoEm: vivo.ficha.voltouParaCorrecaoEm }
+      : {}),
   };
 }
 

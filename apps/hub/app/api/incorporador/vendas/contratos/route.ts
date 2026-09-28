@@ -3,8 +3,17 @@ import { NextResponse } from "next/server";
 import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
 import { codigosDoPedido } from "@/lib/apolo/incorporador/codigos-do-pedido";
 import { empreendimentosDoPortal } from "@/lib/apolo/incorporador/empreendimentos-do-portal";
-import { lerContratosDoPortal, TETO_DE_CONTRATOS } from "@/lib/apolo/incorporador/contratos";
-import { autorizar, codigosDaSessao, foraDoEscopo } from "@/lib/apolo/incorporador/escopo";
+import { TETO_DE_CONTRATOS } from "@/lib/apolo/incorporador/contratos";
+import {
+  autorizar,
+  codigosDaSessao,
+  foraDoEscopo,
+  idsDosCodigosNoCadastro,
+} from "@/lib/apolo/incorporador/escopo";
+import { propriosDoPortal } from "@/lib/apolo/incorporador/proprios-do-portal";
+import { createApoloAdminClient } from "@/lib/apolo/server";
+import { lerContratosDoPanteon } from "@/lib/assinatura/contratos-do-panteon";
+import { contratosDoPortal } from "@/lib/assinatura/contratos-do-panteon-montagem";
 
 // CONTRATOS GERADOS — a aba de Vendas do portal do incorporador.
 //
@@ -12,8 +21,10 @@ import { autorizar, codigosDaSessao, foraDoEscopo } from "@/lib/apolo/incorporad
 // parâmetro `emp` só ESCOLHE um empreendimento que já saiu de lá (`codigosDoPedido` reduz, nunca
 // amplia), e pedido que não sobra nada é 404 — nunca a visão consolidada.
 //
-// O botão de PDF da tela aponta para /api/incorporador/contrato?unitId=…, que reconfere
-// `unidadeNoEscopo` antes de qualquer leitura. Nenhum uuid trafega por aqui.
+// ⚠️ A LEITURA ÚNICA (F4 da fonte única, 28/09/2026): os contratos saem do Panteon
+// (`lerContratosDoPanteon` + `contratosDoPortal`), a mesma leitura da aba Assinatura, e não mais do
+// C2X. O botão de PDF leva `contratoId` (o envelope do Panteon) quando há documento; a rota do PDF
+// reconfere o escopo pela unidade do envelope antes de qualquer leitura.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -43,11 +54,16 @@ export async function GET(request: Request) {
   // id numérico de um filho). Só `codesDoRecorte` aqui não entendia nenhum dos dois e a visão
   // respondia 404 para um produto que É do coordenador. Cadastro fora do ar = 503 (resposta
   // pronta), como na rota de vendas.
+  // O cadastro e o escopo expandido da sessão: é deles que sai o id de cada código (a leitura é pelo
+  // id, não pela sigla).
+  const doPanteon = await propriosDoPortal({ catalogo, codesAutorizados, sessao: auth.sessao });
+
   const resolvido = await codigosDoPedido({
     catalogo,
-    codesAutorizados,
+    codesAutorizados: doPanteon.codesComProprios,
     empreendimentos,
     pedido,
+    proprios: doPanteon.proprios,
     sessao: auth.sessao,
   });
   if (!resolvido.ok) return resolvido.response;
@@ -58,11 +74,16 @@ export async function GET(request: Request) {
     return foraDoEscopo();
   }
 
-  const contratos = await lerContratosDoPortal(codes);
-
-  if (!contratos.ok) {
-    return NextResponse.json({ error: contratos.error }, { status: 503 });
+  const traduzido = idsDosCodigosNoCadastro(doPanteon.cadastro, catalogo, codes, doPanteon.idsDaSessao);
+  const admin = createApoloAdminClient();
+  if (!admin) {
+    return NextResponse.json({ error: "Não foi possível carregar os contratos agora." }, { status: 503 });
   }
+  const leitura = await lerContratosDoPanteon({ admin, escopo: { enterpriseIds: traduzido.ids } });
+  if (!leitura.ok) {
+    return NextResponse.json({ error: leitura.erro }, { status: 503 });
+  }
+  const contratos = { data: contratosDoPortal(leitura.contratos, TETO_DE_CONTRATOS) };
 
   return NextResponse.json(
     {

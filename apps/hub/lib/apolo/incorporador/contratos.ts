@@ -73,6 +73,11 @@ export type ContratoDoPortal = {
   /** Nome de quem comprou. Documento e contato NÃO atravessam. */
   comprador: null | string;
   /**
+   * O envelope do Panteon do PDF (leitura única, F4 da fonte única), só com `temContrato`. A rota do
+   * PDF aceita `contratoId` e confere o escopo pela unidade do envelope.
+   */
+  contratoId?: string;
+  /**
    * Data de faturamento (`billing_date`), quando houver — ISO CURTO 'YYYY-MM-DD', formatar por
    * STRING na tela (rotuloDeYmd). `billing_date` é coluna DATE e o pool fala UTC: passar por
    * `new Date` mostraria a véspera no fuso de São Paulo.

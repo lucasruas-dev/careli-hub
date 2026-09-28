@@ -404,6 +404,68 @@ async function donoNoPanteon(id: string): Promise<null | string> {
   return dono || null;
 }
 
+/** O que `idsDosCodigosNoCadastro` responde. */
+export type IdsDosCodigos = {
+  /** Os ids (do C2X, como `hercules_unidades.enterprise_id` guarda) dos códigos pedidos. */
+  ids: string[];
+  /** Os códigos que ficaram sem id (sem linha no cadastro e sem catálogo para a reserva). Aviso interno. */
+  semId: string[];
+};
+
+/**
+ * Os IDS dos CÓDIGOS já autorizados, para a leitura única do contrato (F4 da fonte única), que filtra
+ * `hercules_unidades.enterprise_id` e não sigla.
+ *
+ * ⚠️ O CADASTRO DO PANTEON PRIMEIRO, O CATÁLOGO DO C2X SÓ DE RESERVA. A leitura única não fala com o C2X;
+ * o catálogo só entra para os códigos que o cadastro não tem com id (medido em 28/09/2026: ACT, SDT e
+ * TSC, plano 0.17). ⚠️ CATÁLOGO FORA DO AR NÃO DERRUBA A TELA: segue com o cadastro, e esses códigos
+ * ficam de fora com o aviso interno (`semId`), em vez de 503 para o recorte inteiro.
+ *
+ * ⚠️ É TRADUÇÃO, NÃO PERMISSÃO. Os `codes` já saíram do escopo da sessão; o id ainda precisa estar entre
+ * os que a sessão alcança (`idsDaSessao`), a mesma trava de `soDoPanteon`. `null` = sem trava (só o
+ * script de paridade, que compara o acervo inteiro e não tem sessão).
+ */
+export function idsDosCodigosNoCadastro(
+  cadastro: readonly Pick<LinhaDoCadastro, "c2xEnterpriseId" | "codigo">[] | null,
+  catalogo: readonly Pick<EmpreendimentoDoCatalogo, "codes" | "stageIds">[],
+  codes: readonly string[],
+  idsDaSessao: readonly string[] | null,
+): IdsDosCodigos {
+  const alcance = idsDaSessao ? new Set(idsDaSessao.map((id) => String(id).trim())) : null;
+  const pedidos = [...new Set(codes.map((code) => String(code ?? "").trim().toUpperCase()).filter(Boolean))];
+
+  const doCadastro = new Map<string, string[]>();
+  for (const linha of cadastro ?? []) {
+    const codigo = String(linha.codigo ?? "").trim().toUpperCase();
+    const id = String(linha.c2xEnterpriseId ?? "").trim();
+    if (!codigo || !id) continue;
+    doCadastro.set(codigo, [...(doCadastro.get(codigo) ?? []), id]);
+  }
+  const doCatalogo = new Map<string, string[]>();
+  for (const emp of catalogo) {
+    emp.codes.forEach((code, i) => {
+      const codigo = String(code ?? "").trim().toUpperCase();
+      const id = String(emp.stageIds[i] ?? "").trim();
+      if (!codigo || !id) return;
+      doCatalogo.set(codigo, [...(doCatalogo.get(codigo) ?? []), id]);
+    });
+  }
+
+  const ids = new Set<string>();
+  const semId: string[] = [];
+  for (const codigo of pedidos) {
+    const candidatos = (doCadastro.get(codigo) ?? doCatalogo.get(codigo) ?? []).filter(
+      (id) => !alcance || alcance.has(id),
+    );
+    if (candidatos.length === 0) {
+      semId.push(codigo);
+      continue;
+    }
+    for (const id of candidatos) ids.add(id);
+  }
+  return { ids: [...ids], semId };
+}
+
 /** Para quem não tem o empreendimento, ele não existe. 404, nunca 403. */
 export function foraDoEscopo(): NextResponse {
   return NextResponse.json({ error: "Nao encontrado." }, { status: 404 });

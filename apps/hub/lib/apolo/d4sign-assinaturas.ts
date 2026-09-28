@@ -64,7 +64,9 @@ import { parearPessoas } from "@/lib/assinatura/parear-pessoas";
  *                       em movimento esses tiques são do sistema antigo.
  *   • `c2x-legado`    — a D4Sign não disse nada. Fallback, com aviso.
  */
-export type FonteDaAssinatura = "c2x-legado" | "d4sign" | "d4sign-status";
+// ⚠️ `panteon` (F4 da fonte única, 28/09/2026): a linha saiu da leitura única (`temis_envelopes`, com a
+// D4Sign espelhada pela F3), sem pergunta ao vivo a ninguém. O portal nunca recebe este campo.
+export type FonteDaAssinatura = "c2x-legado" | "d4sign" | "d4sign-status" | "panteon";
 
 /**
  * A DECISÃO DE FALLBACK, e por quê.
@@ -116,6 +118,7 @@ export const FONTE_LABELS: Record<FonteDaAssinatura, string> = {
   "c2x-legado": "Informação do sistema antigo",
   d4sign: "Confirmado no D4Sign",
   "d4sign-status": "Situação confirmada no D4Sign",
+  panteon: "Registro do Panteon",
 };
 
 /**

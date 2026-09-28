@@ -196,6 +196,11 @@ const SITUACAO_LABELS: Record<SituacaoAssinatura, string> = {
  * há contrato vigente de onde tirar valor, imobiliária ou PDF.
  */
 type ContratoDaLinha = {
+  /**
+   * O envelope do Panteon do PDF (a leitura única, F4 da fonte única), só quando há documento. Com ele
+   * o botão abre `?contratoId=`, e a rota confere o escopo pela unidade do envelope.
+   */
+  contratoId?: string;
   /** ISO curto "YYYY-MM-DD" — formatar por STRING (rotuloDeYmd), nunca por new Date. */
   faturadoEm: null | string;
   /** ISO completo (created_at do histórico é datetime real): aqui rotuloDaData serve. */
@@ -3103,6 +3108,9 @@ function ChipDeAssinatura({ situacao }: { situacao: SituacaoAssinatura }) {
  * /api/incorporador/contrato?unitId=… em aba nova. O link leva o unitId, NUNCA o uuid: a rota
  * reconfere `unidadeNoEscopo` e resolve o documento no C2X a cada clique.
  *
+ * ⚠️ COM `contratoId` (a leitura única, F4 da fonte única), o link leva o id do ENVELOPE do Panteon, e
+ * não o do documento: a rota confere o escopo pela unidade do envelope e baixa aquele documento.
+ *
  * ⚠️ SEM CONTRATO DISPONÍVEL, A CÉLULA É "-", NUNCA UM BOTÃO QUE ERRA: sem `temContrato` não há
  * documento assinado na D4Sign, e sem `contrato` (envio de proposta que não é mais a viva) não há
  * nem unitId para onde apontar.
@@ -3121,7 +3129,11 @@ function BotaoDePdfDoContrato({
 
   return (
     <a
-      href={`/api/incorporador/contrato?unitId=${encodeURIComponent(contrato.unitId)}`}
+      href={
+        contrato.contratoId
+          ? `/api/incorporador/contrato?contratoId=${encodeURIComponent(contrato.contratoId)}`
+          : `/api/incorporador/contrato?unitId=${encodeURIComponent(contrato.unitId)}`
+      }
       rel="noopener noreferrer"
       style={{
         alignItems: "center",
