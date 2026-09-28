@@ -37,7 +37,7 @@ export type ChangelogEntry = {
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
     buildTag: "2026-09-28-assinatura-do-hercules-le-o-panteon",
-    deployedAt: "2026-09-28T14:36:21-03:00",
+    deployedAt: "2026-09-28T14:43:00-03:00",
     modules: [
       {
         module: "Hercules",
