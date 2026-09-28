@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-28-corretor-autonomo-no-apolo",
+    deployedAt: "2026-09-28T09:31:15-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O Apolo passa a cadastrar corretor autonomo.** No botao de novo cadastro aparece o tipo Corretor: preenche os dados da pessoa, salva, e ele nasce como entidade propria, sem imobiliaria nenhuma.",
+              "**Ele ganha um codigo, tipo CA-0001,** gerado pelo sistema em sequencia, que identifica o autonomo e aparece na ficha dele no CRM.",
+              "**Ele nao e, e nunca aparece como, imobiliaria.** Nao entra em lista de imobiliaria, em seletor nem em coluna: e um tipo proprio.",
+              "**Antes nao havia por onde comecar**, e pior: abrir o endereco do cadastro de corretor abria calado o cadastro de cliente, como se tivesse funcionado.",
+            ],
+            screen: "CRM 360 - novo cadastro",
+          },
+        ],
+      },
+    ],
+    rollback: "528004db",
+    technical: {
+      done:
+        "FATIA 1 DE UMA FRENTE MAIOR: o cadastro. O papel `corretor` JA era aceito pela camada de baixo (`ApoloBirthRole`, o CHECK de apolo_entity_profiles, o rotulo do indice de busca) e NENHUMA coluna de apolo_entities e NOT NULL para imobiliaria: nao houve migration de papel. O que faltava era a PORTA e um FORMATO: o wizard so conhecia CAD de cliente (que exige imobiliaria na tela) e cadastro de imobiliaria (que forca PJ); corretor autonomo e PESSOA com papel proprio, e isso nao existia. Entraram o tipo em `CADASTRO_TIPOS` (o que tambem faz `findCadastroTipo` parar de devolver prospect calado para slug desconhecido), `corretor` em `ENABLED_ROLES`, e o terceiro formato do wizard, com persona PF TRAVADA mesmo se alguem anexar um cartao CNPJ: `conferirDocumento` so AVISA desde a v1.105.0, e sem a trava um CNPJ anexado por engano viraria pessoa juridica com papel de corretor, que e exatamente a pessoa fisica como imobiliaria que o Lucas nao quer. O CODIGO mora em COLUNA (`apolo_entities.broker_code`) e nao em metadata, pelo precedente escrito na 0183: o sync do C2X substitui o jsonb INTEIRO e ja apagou estado operacional assim antes; um codigo que some no proximo sync nao identifica ninguem. A unicidade e do BANCO (indice unico parcial), nao promessa de aplicacao. DOIS BLOQUEIOS QUE A REVISAO DO PLANO ACHOU E QUE TERIAM QUEBRADO NA PRIMEIRA TENTATIVA: (1) a trava de CAD duplicada, que sem empreendimento deixa de ser por produto e vira global, recusaria o cadastro de quem ja tem ficha (medido: 26 dos 131 corretores ja tem linha na esteira); agora o cadastro de corretor APROVEITA a ficha existente, uma ficha por pessoa, e o dedup de COMPRADOR continua intacto nos dois ramos; (2) a trava de e-mail unico barraria o autonomo pela ficha DELE MESMO, uma copia com o mesmo CPF (medido: 34 dos 131 tem mais de uma ficha com o mesmo document_hash, e todos os 131 tem e-mail); agora todas as fichas do MESMO documento entram no perdao, e a trava entre PESSOAS DIFERENTES continua de pe, que e a regra do D4Sign. ⚠️ FICA REGISTRADO NO CODIGO que o cadastro sozinho AINDA NAO FECHA VENDA: o cliente do autonomo nao consegue ter CAD, porque a esteira so grava com imobiliaria, e sem CAD a reserva nao vira proposta. E a fatia 2. MIGRATIONS 0193 e 0194, aplicadas em 28/09/2026 com OK do Lucas: a 0193 criou a sequencia, a funcao `next_apolo_codigo_do_corretor()` com `search_path` vazio, a coluna e o indice unico parcial. ⚠️ E A CONFERENCIA POR OBJETO PEGOU UM DEFEITO DA PROPRIA 0193: `revoke all from public` NAO alcanca `anon` nem `authenticated` no Supabase (eles tem grant proprio no schema), entao a funcao ficou chamavel pela chave que vai no bundle do site, e qualquer um poderia QUEIMAR numeros da sequencia; a 0193 voltou `success: true` com a funcao aberta. A 0194 revogou dos dois, e a conferencia depois mostrou `postgres, service_role`. Suite: 678 arquivos, 10.164 testes. Typecheck limpo.",
+      motivation:
+        "Lucas, 27/09/2026: Preciso cadastrar corretor autonomo, tipo, ele nao sera vinculado a uma imobiliaria, ele sera uma entidade. Quem fara esse cadastro e time nosso interno. precisa tudo no apolo para receber essa nova entidade. E, sobre o codigo: a minha ideia e gerar um codigo para esses corretores, assim saberemos que ele e autonomo, nao quero ter a informacao que pode ter pessoa fisica como imobiliaria, isso sera bem restrito.",
+    },
+    title: "O Apolo passa a cadastrar o corretor autonomo, com codigo proprio",
+    type: "novidade",
+    version: "1.388.0",
+  },
+  {
     buildTag: "2026-09-27-nome-na-simulacao-do-espelho",
     deployedAt: "2026-09-27T10:34:25-03:00",
     modules: [

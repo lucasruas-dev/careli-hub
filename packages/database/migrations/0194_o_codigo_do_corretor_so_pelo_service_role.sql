@@ -1,0 +1,30 @@
+-- O CÓDIGO DO CORRETOR SÓ PELO SERVICE ROLE — o conserto do grant que a 0193 achou que tinha feito.
+--
+-- ⚠️ `revoke all on function ... from public` NÃO ALCANÇA `anon` NEM `authenticated` NO SUPABASE.
+-- A 0193 fez exatamente isso e acreditou que tinha fechado a função. Conferido POR OBJETO logo
+-- depois de aplicar, em 28/09/2026:
+--
+--   select grantee from information_schema.role_routine_grants
+--    where specific_schema = 'public'
+--      and routine_name = 'next_apolo_codigo_do_corretor'
+--      and privilege_type = 'EXECUTE';
+--     → service_role, authenticated, anon, postgres
+--
+-- Os dois papéis recebem grant PRÓPRIO no schema `public` (não herdam do papel PUBLIC), então o
+-- revoke da 0193 não os tocou. Foi o `get_advisors`/conferência por objeto que pegou, e não o
+-- "success" da migration: a 0193 voltou `success: true` com a função aberta.
+--
+-- ⚠️ O QUE ISSO CUSTARIA. A chave anon vai no bundle do site
+-- (`NEXT_PUBLIC_SUPABASE_ANON_KEY`, apps/hub/lib/supabase/client.ts), e o gate do proxy protege as
+-- páginas, não a porta do PostgREST. Qualquer pessoa com o site aberto poderia chamar a função por
+-- RPC e QUEIMAR números da sequência: o próximo autônomo cadastrado sairia CA-0042 sem que existam
+-- 41 antes dele, e ninguém entenderia por quê.
+--
+-- ⚠️ NÃO É VAZAMENTO DE DADO: a função não lê nada, só devolve o próximo número. O estrago é a
+-- sequência furada e a superfície aberta de graça.
+--
+-- ⚠️ LIÇÃO PARA TODA FUNÇÃO NOVA: depois de criar, CONFERIR `role_routine_grants`. O par
+-- `revoke from public` + `grant to service_role` NÃO é suficiente no Supabase. Ver também a
+-- migration 0075, que fechou por RLS cinco tabelas que nasceram abertas pelo mesmo tipo de
+-- suposição.
+revoke execute on function public.next_apolo_codigo_do_corretor() from anon, authenticated;

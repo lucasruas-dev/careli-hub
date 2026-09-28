@@ -52,6 +52,72 @@ import type {
 
 type ApoloSupabaseClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
 
+// AS COLUNAS DA FICHA, NUM LUGAR SÓ. Duas consultas leem `apolo_entities` (a lista do CRM e a busca
+// por ids); a lista de colunas escrita duas vezes é a próxima que discorda de si mesma.
+const COLUNAS_DA_ENTIDADE =
+  "id,entity_kind,display_name,legal_name,trade_name,document_masked,status,quality_score,primary_city,primary_state,next_action,created_at,updated_at,metadata";
+
+// ⚠️ `broker_code` (migration 0193) É PEDIDO À PARTE, E A LEITURA TOLERA ELE NÃO EXISTIR.
+//
+// Medido em 27/09/2026 em produção (bxgukywoxgivlrhjkwjx): `select broker_code from apolo_entities`
+// devolve `42703: column "broker_code" does not exist` — a 0193 está escrita e PARADA (aplicar
+// migration exige OK do Lucas). E o PostgREST não ignora coluna desconhecida: ele recusa a consulta
+// INTEIRA com 400. Pedir a coluna sem rede de proteção derrubava o CRM do Apolo inteiro (lista,
+// busca e FICHA) e a lista de imobiliárias do wizard, para todo mundo, inclusive para quem nunca vai
+// cadastrar corretor — o `loadApoloImobiliarias` engole o erro e devolve `[]`, e a etapa 1 do
+// cadastro de CLIENTE travava em "falta imobiliária".
+//
+// É a armadilha "camada nova exige varrer os leitores" na versão pior: os leitores foram varridos,
+// mas não foram protegidos contra o estado de HOJE. Então a leitura tenta COM a coluna e, no 42703,
+// repete SEM ela: enquanto a 0193 não rodar a ficha simplesmente não tem código (que é o certo), e
+// no dia em que ela rodar o código aparece sem depender de ordem de deploy.
+const COLUNAS_DA_ENTIDADE_COM_CODIGO = `${COLUNAS_DA_ENTIDADE},broker_code`;
+
+// Memória do processo: uma vez sentida a ausência, não pedimos a coluna de novo (senão TODA leitura
+// pagaria duas consultas). Instância nova aprende que ela existe na primeira leitura depois da 0193.
+let aEntidadeTemColunaDoCodigo = true;
+
+function colunasDaEntidade(): string {
+  return aEntidadeTemColunaDoCodigo ? COLUNAS_DA_ENTIDADE_COM_CODIGO : COLUNAS_DA_ENTIDADE;
+}
+
+/** O erro do Postgres/PostgREST para coluna que não existe. */
+function colunaDoCodigoNaoExiste(error: null | { code?: string; message?: string }): boolean {
+  if (!error) return false;
+  return error.code === "42703" || (error.message ?? "").includes("broker_code");
+}
+
+type LeituraDeEntidades = {
+  data: ApoloEntityRow[] | null;
+  // `message` é obrigatório porque quem lê o resultado repassa a frase para a tela: erro do PostgREST
+  // sempre tem uma. `code` é opcional só porque a tolerância de coluna ausente também aceita casar
+  // pelo texto (ver `colunaDoCodigoNaoExiste`).
+  error: null | { code?: string; message: string };
+};
+
+/**
+ * Roda a leitura das fichas com `broker_code` e, quando a coluna ainda não existe, REPETE sem ela.
+ *
+ * ⚠️ NUNCA DEVOLVE ERRO DE COLUNA AUSENTE PARA A TELA: quem abre o CRM não tem nada a ver com a
+ * migration 0193, e "column apolo_entities.broker_code does not exist" é jargão de banco na cara do
+ * operador (o módulo já evita isso em PGRST205, com "Tabelas Apolo ainda nao aplicadas").
+ */
+async function lerFichas(
+  consultar: (colunas: string) => PromiseLike<LeituraDeEntidades>,
+): Promise<LeituraDeEntidades> {
+  const primeira = await consultar(colunasDaEntidade());
+
+  if (aEntidadeTemColunaDoCodigo && colunaDoCodigoNaoExiste(primeira.error)) {
+    aEntidadeTemColunaDoCodigo = false;
+    console.warn(
+      "[apolo] a coluna broker_code ainda nao existe (migration 0193 nao aplicada): a ficha segue sem o codigo do corretor",
+    );
+    return consultar(COLUNAS_DA_ENTIDADE);
+  }
+
+  return primeira;
+}
+
 type ApoloLoadResult =
   | { data: ApoloDashboardData; ok: true }
   | { message: string; ok: false; reason: "empty" | "missing_config" | "missing_tables" | "unavailable" };
@@ -69,6 +135,10 @@ type C2xUsersQueryOptions = {
 };
 
 type ApoloEntityRow = {
+  // Codigo do corretor autonomo (migration 0193). Lido aqui porque a FICHA DO CRM o mostra, e so ela.
+  // OPCIONAL de propósito: enquanto a 0193 não for aplicada a coluna não existe e a leitura repete a
+  // consulta sem ela (ver `lerFichas`), então a ficha chega sem código em vez de o CRM cair.
+  broker_code?: string | null;
   created_at: string | null;
   document_masked: string | null;
   entity_kind: string;
@@ -2449,15 +2519,15 @@ async function fetchApoloEntityRows(
     };
   }
 
-  const { data, error } = await adminClient
-    .from("apolo_entities")
-    .select(
-      "id,entity_kind,display_name,legal_name,trade_name,document_masked,status,quality_score,primary_city,primary_state,next_action,created_at,updated_at,metadata",
-    )
-    .neq("status", "archived")
-    .order("display_name", { ascending: true })
-    .limit(limit ?? DEFAULT_CRM_LIMIT)
-    .returns<ApoloEntityRow[]>();
+  const { data, error } = await lerFichas((colunas) =>
+    adminClient
+      .from("apolo_entities")
+      .select(colunas)
+      .neq("status", "archived")
+      .order("display_name", { ascending: true })
+      .limit(limit ?? DEFAULT_CRM_LIMIT)
+      .returns<ApoloEntityRow[]>(),
+  );
 
   if (error) {
     return {
@@ -2678,14 +2748,14 @@ async function fetchEntityRowsByIds(
 
   for (let index = 0; index < entityIds.length; index += chunkSize) {
     const chunk = entityIds.slice(index, index + chunkSize);
-    const { data, error } = await adminClient
-      .from("apolo_entities")
-      .select(
-        "id,entity_kind,display_name,legal_name,trade_name,document_masked,status,quality_score,primary_city,primary_state,next_action,created_at,updated_at,metadata",
-      )
-      .in("id", chunk)
-      .neq("status", "archived")
-      .returns<ApoloEntityRow[]>();
+    const { data, error } = await lerFichas((colunas) =>
+      adminClient
+        .from("apolo_entities")
+        .select(colunas)
+        .in("id", chunk)
+        .neq("status", "archived")
+        .returns<ApoloEntityRow[]>(),
+    );
 
     if (error) {
       return {
@@ -3601,6 +3671,9 @@ function mapApoloEntityRow(
     addresses: enderecos,
     audit: related.audit.map(mapApoloAuditRow),
     c2xCadastro: cadastro,
+    // O código do corretor autônomo (0193). Vem da COLUNA e não do metadata de propósito: o sync do
+    // C2X reescreve o jsonb inteiro (o mesmo motivo da 0183, do CRECI).
+    ...(row.broker_code?.trim() ? { codigoCorretor: row.broker_code.trim() } : {}),
     commercialLinks,
     confidenceScore: clampScore(row.quality_score ?? 0),
     contacts: related.contacts.map(mapApoloContactRow),

@@ -212,6 +212,10 @@ export type ApoloEntity = {
   audit: ApoloAuditSignal[];
   // Ficha cadastral ao vivo do C2X (enricher); ausente quando não pôde carregar.
   c2xCadastro?: ApoloC2xCadastro;
+  // CÓDIGO DO CORRETOR AUTÔNOMO (`apolo_entities.broker_code`, migration 0193). Ausente em quem não é
+  // autônomo — e nos 131 corretores que vieram do C2X, que são resíduo do legado (Lucas, 27/09/2026:
+  // *"pode ignorar"*). Aparece SOMENTE na ficha do CRM: *"minto, somente no CRM"*.
+  codigoCorretor?: string;
   commercialLinks: ApoloCommercialLink[];
   confidenceScore: number;
   contacts: ApoloContactPoint[];
