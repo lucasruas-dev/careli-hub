@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { lerEventoDoWebhook } from "@/lib/assinatura/clicksign/webhook";
+
 import type { ReflexoNaVenda } from "@/lib/hercules/reflexo-da-temis";
 import {
   motivoDoReflexo,
@@ -15,161 +15,216 @@ import type { EstagioDoTrabalho, TipoDeTrabalho } from "@/lib/temis/trabalhos";
 import { estagiosDoTipo } from "@/lib/temis/trabalhos";
 
 import type { EventoDaClicksign } from "./clicksign/webhook";
-import { ehTerminal, type EstadoDaAssinatura } from "./tipos";
-import { estadoDoEventoClicksign } from "./traduzir";
+import {
+  cabecalhosParaGuardar,
+  esqueletoDoPayload,
+  estadoPropostoPeloEvento,
+  fechadoEmDoPayload,
+  idComFormaDaClicksign,
+  marcasDoPayloadDaClicksign,
+  payloadReduzidoDaClicksign,
+  TETO_DO_NOME_DO_EVENTO,
+} from "./marcas";
+import { type ItemDoQuadro, registrarAssinaturas } from "./registro-db";
+import type { EstadoDaAssinatura } from "./tipos";
 
 /** Os cards de PEDIDO: nunca andam com o envelope do contrato. */
 const TIPOS_DE_PEDIDO = new Set(["cancelamento", "distrato"]);
 
-// O EVENTO DO WEBHOOK VIRA ESTADO — e o card da Têmis anda junto.
+// O EVENTO DO WEBHOOK VIRA MARCA POR PESSOA E ESTADO — e o card da Têmis anda junto.
 //
 // ⚠️ SÓ EVENTO CONFERIDO CHEGA AQUI. Quem confere é `conferirAssinaturaDoWebhook`, na rota. Este
 // arquivo assume que a assinatura bateu; chamá-lo com um evento não conferido seria o mesmo que não
 // ter conferência nenhuma.
 //
-// ⚠️ ESTADO TERMINAL NÃO REGRIDE, e esta é a proteção que falta na maioria das integrações de
-// webhook. Provedor reenvia evento quando não recebe 200, e os reenvios chegam FORA DE ORDEM: um
-// `sign` atrasado, entregue depois do `auto_close`, poria um contrato ASSINADO de volta em
-// "parcialmente assinado" — e a Têmis mandaria alguém cobrar uma assinatura que já existe. O mesmo
-// vale para um `sign` que chega depois de uma recusa.
+// ⚠️ DESDE A F1 DA FONTE ÚNICA (28/09/2026) QUEM ESCREVE É A FUNÇÃO DA 0195, NUNCA ESTE ARQUIVO. O
+// update direto de antes regredia o estado: 13 `signature_started` gravaram "aguardando" DEPOIS de um
+// `sign` em 5 documentos (medido em 28/09). A função trava a linha, move o estado só para a frente,
+// deriva "parcial" das marcas e nunca inventa `fechado_em`. Ver `lib/assinatura/registro-db.ts`.
 //
-// ⚠️ E `sign` NÃO É CONCLUSÃO. Um `sign` é UMA pessoa; o contrato só fecha em `close` / `auto_close`
-// / `document_closed`. Tratar `sign` como fim daria o contrato por concluído no primeiro dos quatro
-// compradores. A tradução mora em `traduzir.ts` e é a mesma que a tela usa.
+// ⚠️ E TODO EVENTO CONFERIDO É APLICADO, não só os que "movem estado" (bug 8.5). O payload traz o
+// histórico INTEIRO em `document.events[]`: um `add_signer` que chega depois de um `sign` carrega o
+// `sign` junto, e é dele que sai a marca de quem assinou.
+//
+// ⚠️ E `sign` NÃO É CONCLUSÃO. Um `sign` é UMA pessoa. Quem decide o estado proposto é
+// `estadoPropostoPeloEvento` (`marcas.ts`), que só diz "assinado" com a prova de que todos assinaram.
 
 export type AplicacaoDoEvento = {
   aplicado: boolean;
-  /** Uma frase para o log: por que aplicou, ou por que não. */
+  /**
+   * O `envelope_id` (Clicksign) da linha achada, para o registro do evento (bug 8.2: 226 de 226
+   * eventos gravados com `envelope_id` nulo até 28/09). `null` = linha não achada.
+   */
+  envelopeIdDoRegistro: null | string;
+  /** Uma frase para o log: por que aplicou, ou por que não. Só ids e estados, nunca e-mail. */
   motivo: string;
   /** O estado que a linha ficou (ou já tinha). */
   estado: null | EstadoDaAssinatura;
 };
 
 type LinhaDoEnvelope = {
+  envelope_id: null | string;
   estado: string;
   id: string;
   proposta_id: null | string;
+  provedor_documento_id: null | string;
 };
 
 /**
- * Move o envelope (e o card) conforme o evento.
+ * Aplica o evento: marcas por pessoa, estado proposto, documento e conferência, pela função da 0195.
  *
  * ⚠️ NUNCA LANÇA. Ele roda depois de a rota já ter respondido 200; uma exceção aqui viraria um
  * unhandled rejection no runtime da Vercel, sem ninguém para pegá-la — e sem nada no lugar do
  * estado que deveria ter mudado. Toda falha vira `aplicado: false` com o motivo escrito.
+ *
+ * ⚠️ SEM A 0195 NADA É APLICADO, e isso é o combinado (plano, F1): o evento fica registrado e o
+ * histórico inteiro chega de novo no próximo payload. Não há update em TS de reserva. Mas depois
+ * do FECHAMENTO não chega outro payload: um contrato que fechasse com a F1 no ar e sem a 0195 não
+ * viraria "assinado" sozinho. Por isso a 0195 é aplicada ANTES do deploy (topo de `registro-db.ts`).
  */
 export async function aplicarEventoDaClicksign(
   sb: SupabaseClient,
   evento: EventoDaClicksign,
+  payload: unknown,
+  recebidoEm: string = new Date().toISOString(),
 ): Promise<AplicacaoDoEvento> {
-  const novo = estadoDoEventoClicksign(evento.evento);
-  if (!novo) {
-    // Evento de bastidor (`upload`, `add_signer`, as falhas de autenticação do signatário…). Fica
-    // registrado e não move o card — ver a nota de `ESTADO_POR_EVENTO`.
-    return { aplicado: false, estado: null, motivo: `evento "${evento.evento}" não move o estado` };
-  }
+  try {
+    const achado = await acharEnvelope(sb, evento);
+    if ("motivo" in achado) {
+      return { aplicado: false, envelopeIdDoRegistro: null, estado: null, motivo: achado.motivo };
+    }
+    const linha = achado.linha;
 
-  const linha = await acharEnvelope(sb, evento);
-  if (!linha) {
+    const registro = await registrarAssinaturas(sb, linha.id, {
+      conferidoEm: recebidoEm,
+      // ⚠️ O DOCUMENTO DO EVENTO VAI JUNTO SEMPRE (bug 8.9). Linha sem documento o adota; linha com
+      // OUTRO documento recusa, e o evento do documento 1 não pinta o documento 2 do reenvio.
+      documento: evento.documentoId,
+      estado: estadoPropostoPeloEvento(evento.evento, payload),
+      estadoCru: evento.evento ? `clicksign:${evento.evento}` : null,
+      fechadoEm: fechadoEmDoPayload(payload),
+      marcas: marcasDoPayloadDaClicksign(payload),
+    });
+
+    if (!registro) {
+      return {
+        aplicado: false,
+        envelopeIdDoRegistro: linha.envelope_id,
+        estado: linha.estado as EstadoDaAssinatura,
+        motivo: "a função da 0195 não aplicou (ausente, sem linha ou falhou; ver o log do registro)",
+      };
+    }
+
+    if (registro.recusa) {
+      return {
+        aplicado: false,
+        envelopeIdDoRegistro: linha.envelope_id,
+        estado: registro.estadoAntes,
+        motivo:
+          registro.recusa === "documento_diferente"
+            ? `o evento é de outro documento que não o da linha ${linha.id}: nada aplicado`
+            : `o quadro da linha ${linha.id} mudou: nada aplicado`,
+      };
+    }
+
+    // ⚠️ O CARD SÓ ANDA QUANDO O CONTRATO FECHA, E SÓ NA BORDA. `mudouEstado` é o que impede o
+    // reenvio do mesmo webhook de mover o card de novo: a segunda chamada encontra "assinado" e não
+    // muda nada. E a data do prazo sai do QUADRO que a função devolveu (bug 8.3), não de uma
+    // segunda leitura de eventos que casava por um `envelope_id` sempre vazio.
+    if (registro.mudouEstado && registro.estadoDepois === "assinado" && linha.proposta_id) {
+      await concluirAssinaturaDoCard(sb, linha.proposta_id, {
+        fechadoEm: registro.fechadoEm,
+        quadro: registro.signatarios,
+      });
+    }
+
     return {
-      aplicado: false,
-      estado: null,
-      motivo: "não achei o envelope no Panteon (documento/envelope desconhecido)",
+      aplicado: true,
+      envelopeIdDoRegistro: linha.envelope_id,
+      estado: registro.estadoDepois,
+      motivo: `${registro.estadoAntes} → ${registro.estadoDepois} · ${registro.assinaram}/${registro.total} assinaram`,
     };
+  } catch (falha) {
+    console.error("[clicksign][webhook] falha inesperada ao aplicar o evento", {
+      message: falha instanceof Error ? falha.message : String(falha),
+    });
+    return { aplicado: false, envelopeIdDoRegistro: null, estado: null, motivo: "falha inesperada" };
   }
-
-  const atual = linha.estado as EstadoDaAssinatura;
-  if (ehTerminal(atual)) {
-    return {
-      aplicado: false,
-      estado: atual,
-      motivo: `a linha já está em "${atual}", que é terminal — evento fora de ordem não regride estado`,
-    };
-  }
-
-  const agora = new Date().toISOString();
-  const { error } = await sb
-    .from("temis_envelopes")
-    .update({
-      atualizado_em: agora,
-      estado: novo,
-      estado_cru: `clicksign:${evento.evento}`,
-      ...(ehTerminal(novo) ? { fechado_em: agora } : {}),
-    })
-    .eq("id", linha.id);
-
-  if (error) {
-    console.error("[clicksign][webhook] falha ao gravar o estado do envelope", error);
-    return { aplicado: false, estado: atual, motivo: `falha ao gravar: ${error.message}` };
-  }
-
-  // ⚠️ O CARD SÓ ANDA QUANDO O CONTRATO FECHA. Um `sign` isolado deixa o card onde está: ele
-  // continua "em assinatura", que é a verdade — falta gente. Mover a cada assinatura faria o board
-  // piscar e diria "assinado" com metade das assinaturas.
-  if (novo === "assinado" && linha.proposta_id) {
-    await concluirAssinaturaDoCard(sb, linha.proposta_id);
-  }
-
-  return { aplicado: true, estado: novo, motivo: `${atual} → ${novo}` };
 }
 
 /**
- * Acha a linha por qualquer um dos dois ids que o evento possa trazer.
+ * Acha a linha por qualquer um dos ids que o evento possa trazer.
  *
  * ⚠️ O DOCUMENTO VEM PRIMEIRO, e é uma decisão medida: os eventos da Clicksign são de DOCUMENTO
  * (`sign`, `refusal`, `document_closed`), e o id do documento é o que aparece em todos eles. O id do
- * envelope é o que aparece nos de envelope. Procurar só por um deles perderia metade dos eventos —
- * e o formato do corpo entregue ao endpoint NÃO está documentado (a doc da v3 lista os 30 eventos e
- * não mostra um exemplo do payload), então o leitor tenta os dois.
+ * envelope é o que aparece nos de envelope.
+ *
+ * ⚠️ E O `metadata` SÓ ADOTA LINHA SEM DOCUMENTO (bug 8.9). Ele é NOSSO (o Panteon o gravou no
+ * documento no envio) e é a rede de segurança do carimbo que falhou; mas a busca por proposta pega
+ * o envelope MAIS RECENTE, e depois de um reenvio esse é o documento 2. Aplicar ali as marcas do
+ * documento 1 pintaria o contrato novo com as assinaturas do velho. Linha achada pelo metadata que
+ * já tem documento não é desta conversa: o evento fica registrado e nada muda.
  */
 async function acharEnvelope(
   sb: SupabaseClient,
   evento: EventoDaClicksign,
-): Promise<LinhaDoEnvelope | null> {
-  const tentativas: Array<[string, string]> = [];
-  if (evento.documentoId) tentativas.push(["provedor_documento_id", evento.documentoId]);
-  if (evento.envelopeId) tentativas.push(["envelope_id", evento.envelopeId]);
-  // ⚠️ O `metadata` É A REDE DE SEGURANÇA, e ele é NOSSO: foi o Panteon que o gravou no documento
-  // no momento do envio, e a Clicksign o devolve inteiro no webhook (conferido no primeiro evento
-  // real, 09/09/2026 — voltaram `proposta_id`, `documento_id`, `unidade`, `comprador` e `teste`).
-  //
-  // ⚠️ E ELE VEM POR ÚLTIMO DE PROPÓSITO. O id do provedor é mais específico: identifica ESTE
-  // envelope. A proposta pode ter mais de um envelope ao longo da vida (um recusado e um reenviado),
-  // e aí a busca por proposta pegaria o mais recente — que é o certo quando não há id nenhum, e o
-  // errado quando há. Primeiro o preciso, depois o que salva.
-  const propostaDoMetadata = String(evento.metadados?.proposta_id ?? "").trim();
-  if (propostaDoMetadata) tentativas.push(["proposta_id", propostaDoMetadata]);
+): Promise<{ linha: LinhaDoEnvelope } | { motivo: string }> {
+  const precisas: Array<[string, string]> = [];
+  if (evento.documentoId) precisas.push(["provedor_documento_id", evento.documentoId]);
+  if (evento.envelopeId) precisas.push(["envelope_id", evento.envelopeId]);
 
   // ⚠️ E O TERMO DE ACORDO DO HADES ENTRA PELA OUTRA CHAVE. Ele nasce com `proposta_id` NULO de
-  // propósito (um acordo não é uma proposta, e preenchê-la faria a Têmis recusar o envio do CONTRATO
-  // daquela venda): o elo dele é `temis_envelopes.compromisso_id`, e é ele que viaja no `metadata`
-  // do documento desde 20/09/2026. Sem esta linha, um envelope de acordo cujo carimbo não gravasse
-  // ficaria sem nenhuma das três portas de entrada do webhook.
-  //
-  // ⚠️ A COLUNA PODE NÃO EXISTIR AINDA (migration 0179, que nasce pendente). O `error` do PostgREST
-  // cai no `continue` de baixo como qualquer outra falha de leitura, então um webhook de CONTRATO
-  // que chegue antes da migration continua encontrando a linha pelas duas primeiras tentativas.
+  // propósito (um acordo não é uma proposta): o elo dele é `temis_envelopes.compromisso_id`, e é
+  // ele que viaja no `metadata` do documento desde 20/09/2026.
+  const pelaRede: Array<[string, string]> = [];
+  const propostaDoMetadata = String(evento.metadados?.proposta_id ?? "").trim();
+  if (propostaDoMetadata) pelaRede.push(["proposta_id", propostaDoMetadata]);
   const acordoDoMetadata = String(evento.metadados?.compromisso_id ?? "").trim();
-  if (acordoDoMetadata) tentativas.push(["compromisso_id", acordoDoMetadata]);
+  if (acordoDoMetadata) pelaRede.push(["compromisso_id", acordoDoMetadata]);
 
-  for (const [coluna, valor] of tentativas) {
-    const { data, error } = await sb
-      .from("temis_envelopes")
-      .select("id, estado, proposta_id")
-      .eq("provedor", "clicksign")
-      .eq(coluna, valor)
-      .order("criado_em", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (error) {
-      console.error("[clicksign][webhook] falha ao procurar o envelope", error);
-      continue;
-    }
-    if (data) return data as LinhaDoEnvelope;
+  for (const [coluna, valor] of precisas) {
+    const linha = await lerUmaLinha(sb, coluna, valor);
+    if (linha) return { linha };
   }
 
-  return null;
+  for (const [coluna, valor] of pelaRede) {
+    const linha = await lerUmaLinha(sb, coluna, valor);
+    if (!linha) continue;
+    if (linha.provedor_documento_id) {
+      return {
+        motivo: `a linha ${linha.id}, achada pelo metadata, já tem outro documento: nada aplicado`,
+      };
+    }
+    return { linha };
+  }
+
+  return { motivo: "não achei o envelope no Panteon (documento/envelope desconhecido)" };
+}
+
+async function lerUmaLinha(
+  sb: SupabaseClient,
+  coluna: string,
+  valor: string,
+): Promise<LinhaDoEnvelope | null> {
+  const { data, error } = await sb
+    .from("temis_envelopes")
+    .select("id, estado, proposta_id, envelope_id, provedor_documento_id")
+    .eq("provedor", "clicksign")
+    .eq(coluna, valor)
+    .order("criado_em", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  // ⚠️ A COLUNA `compromisso_id` PODE NÃO EXISTIR AINDA (migration 0179): o erro cai aqui como
+  // qualquer outra falha de leitura, e as outras tentativas seguem. Log só com `code` e `message`.
+  if (error) {
+    console.error("[clicksign][webhook] falha ao procurar o envelope", {
+      code: error.code ?? null,
+      message: error.message ?? null,
+    });
+    return null;
+  }
+  return (data as LinhaDoEnvelope | null) ?? null;
 }
 
 /**
@@ -237,7 +292,12 @@ export async function moverCardDaTemis(
     );
 
   if (error) {
-    console.error("[temis][card] falha ao mover o card da proposta", error);
+    // ⚠️ SÓ `code` E `message`: o `details` de uma violação traz "Failing row contains (...)", e a
+    // linha de `temis_trabalhos` tem `cliente_cpf` e `cliente_nome`.
+    console.error("[temis][card] falha ao mover o card da proposta", {
+      code: error.code ?? null,
+      message: error.message ?? null,
+    });
     return { movidos: [], reflexos: [] };
   }
 
@@ -455,13 +515,17 @@ export function cardAndouDepoisDe(
  * Lucas (10/09/2026) — *"Caminho próprio, mais curto"*. Não há arrependimento nem entrada.
  *
  * ⚠️ E É AQUI QUE NASCE A CONTAGEM DOS 7 DIAS. Lucas: contam da ÚLTIMA assinatura do COMPRADOR, e
- * a vendedora não entra. Por isso a data é procurada nos eventos de assinatura, cruzando com o
- * papel congelado em `temis_envelopes.signatarios` — a ordem de assinatura não serve, porque a
- * vendedora pode estar no meio dela.
+ * a vendedora não entra. Desde a F1 da fonte única (28/09/2026) a data sai do QUADRO que a função
+ * da 0195 acabou de devolver (`envelope.quadro`), com o papel congelado no envio — a ordem de
+ * assinatura não serve, porque a vendedora pode estar no meio dela. Antes ela era procurada nos
+ * eventos por um `envelope_id` que estava nulo em 226 de 226 (bug 8.3), e o prazo começava "agora".
+ *
+ * `envelope` é opcional só para quem não passa pelo webhook; o webhook passa sempre.
  */
 export async function concluirAssinaturaDoCard(
   sb: SupabaseClient,
   propostaId: string,
+  envelope?: { fechadoEm: null | string; quadro: readonly ItemDoQuadro[] },
 ): Promise<void> {
   // ⚠️ AQUI CABIA UM `maybeSingle`, E ELE FALHAVA CALADO. Uma proposta pode ter dois cards (a
   // venda e o cancelamento dela — medido na proposta do Henrique em 10/09/2026), e o PostgREST
@@ -499,11 +563,17 @@ export async function concluirAssinaturaDoCard(
   };
 
   if (destino === "prazo_legal") {
-    const inicio = await ultimaAssinaturaDeComprador(sb, propostaId);
+    const inicio = envelope
+      ? (ultimaAssinaturaDoComprador(envelope.quadro) ?? envelope.fechadoEm)
+      : null;
     // ⚠️ SEM A DATA DO COMPRADOR, VALE O FECHAMENTO — e é o lado seguro: se a vendedora assinou
     // por último, o fechamento é DEPOIS da última assinatura de comprador, então o prazo termina
     // mais tarde e a casa espera mais para faturar. O contrário (começar antes) encurtaria um
     // prazo que é do cliente.
+    //
+    // ⚠️ O "AGORA" DO FIM É O GESTO DE ANTES, E FICA SÓ ATÉ A F2. Ele só é alcançado quando nem o
+    // quadro nem o provedor deram data (a função da 0195 não inventa `fechado_em`); na F2,
+    // `aplicarEnvelopeNaVenda` passa a não mover o card sem data real (plano, seção 7).
     remendo.arrependimento_inicio = inicio ?? new Date().toISOString();
   }
 
@@ -515,7 +585,11 @@ export async function concluirAssinaturaDoCard(
     .neq("estagio", "indeferido");
 
   if (error) {
-    console.error("[temis][card] falha ao concluir a assinatura", error);
+    // ⚠️ SÓ `code` E `message`, pelo mesmo motivo de `moverCardDaTemis` (CPF na linha do card).
+    console.error("[temis][card] falha ao concluir a assinatura", {
+      code: error.code ?? null,
+      message: error.message ?? null,
+    });
     return;
   }
 
@@ -551,84 +625,59 @@ export async function concluirAssinaturaDoCard(
   registrarReflexoQueNaoAndou(card.id, passo, await refletirCardNaVenda(sb, passo));
 }
 
+/** Os papéis cuja assinatura conta o prazo de arrependimento (é do cliente). */
+const PAPEIS_DO_COMPRADOR = new Set(["comprador", "conjuge"]);
+
 /**
- * Quando o ÚLTIMO comprador assinou.
+ * Quando o ÚLTIMO comprador assinou, lido do QUADRO (a marca `assinado_em` de cada pessoa).
  *
- * `null` quando não dá para saber — envelope sem papéis congelados, ou nenhum evento de assinatura
- * guardado. Quem chama decide o que fazer com a ausência.
+ * ⚠️ COMPRADOR É COMPRADOR OU CÔNJUGE, E NÃO "QUEM NÃO É VENDEDORA" (bug 8.3). A regra antiga
+ * contava a coordenadora, o corretor e a testemunha como compradores: se a testemunha assinasse por
+ * último, os 7 dias começavam com ela. O papel vem congelado no envio e nunca é nulo na Clicksign
+ * (medido em 8 de 8 contratos, 28/09/2026).
+ *
+ * ⚠️ COMPARA COMO DATA, E DEVOLVE O TEXTO COMO FOI GUARDADO (`-03:00`, de `emBrasilia`). `null`
+ * quando nenhum comprador tem marca: quem chama decide (o fechamento é o lado seguro).
  */
-async function ultimaAssinaturaDeComprador(
-  sb: SupabaseClient,
-  propostaId: string,
-): Promise<null | string> {
-  const { data: envelope } = await sb
-    .from("temis_envelopes")
-    .select("envelope_id, signatarios")
-    .eq("proposta_id", propostaId)
-    .order("criado_em", { ascending: false })
-    .limit(1)
-    .maybeSingle<{ envelope_id: null | string; signatarios: unknown }>();
-
-  // ⚠️ `envelope_id` É O ID DO PROVEDOR, e não a chave da nossa tabela — é por ele que os eventos
-  // se ligam (`temis_assinatura_eventos.envelope_id`, text). Nulo = envio que começou e não
-  // terminou, e aí não há evento nenhum para procurar.
-  if (!envelope?.envelope_id) return null;
-
-  // ⚠️ COMPRADOR É QUEM NÃO É VENDEDORA. O papel vem congelado no envelope no momento do envio, e
-  // é a única fonte confiável: a ORDEM de assinatura não diz papel, e a vendedora pode estar no
-  // meio dela — que é justamente o caso que faria a conta errar.
-  const emailsDeComprador = new Set(
-    (Array.isArray(envelope.signatarios) ? envelope.signatarios : [])
-      .map((s) => s as { email?: string; papel?: string })
-      .filter((s) => String(s.papel ?? "").toLowerCase() !== "vendedora")
-      .map((s) => String(s.email ?? "").trim().toLowerCase())
-      .filter(Boolean),
-  );
-
-  if (emailsDeComprador.size === 0) return null;
-
-  // ⚠️ O E-MAIL NÃO TEM COLUNA: ele vive dentro do `payload` cru. Reusar `lerEventoDoWebhook` aqui
-  // é o que garante que a leitura de agora e a do webhook enxerguem o mesmo campo — o formato do
-  // corpo da Clicksign não está documentado, e um segundo leitor divergiria no primeiro evento
-  // que viesse com a forma inesperada.
-  const { data: eventos } = await sb
-    .from("temis_assinatura_eventos")
-    .select("payload, recebido_em")
-    .eq("envelope_id", envelope.envelope_id)
-    .eq("assinatura_conferida", true)
-    .order("recebido_em", { ascending: false });
-
-  for (const ev of (eventos ?? []) as { payload: unknown; recebido_em: string }[]) {
-    if (!ev.payload) continue;
-    let email = "";
-    try {
-      email = String(
-        lerEventoDoWebhook(JSON.stringify(ev.payload)).signatarioEmail ?? "",
-      )
-        .trim()
-        .toLowerCase();
-    } catch {
-      // Payload que não volta a ser JSON não derruba a conta: segue para o próximo evento.
-      continue;
-    }
-    // A lista vem do mais novo para o mais antigo: o primeiro comprador encontrado é o ÚLTIMO
-    // que assinou.
-    if (email && emailsDeComprador.has(email)) return ev.recebido_em;
+export function ultimaAssinaturaDoComprador(quadro: readonly ItemDoQuadro[]): null | string {
+  let ultima: null | string = null;
+  for (const item of quadro) {
+    if (!PAPEIS_DO_COMPRADOR.has(String(item.papel ?? "").toLowerCase())) continue;
+    const quando = item.assinado_em;
+    if (!quando || Number.isNaN(Date.parse(quando))) continue;
+    if (ultima === null || Date.parse(quando) > Date.parse(ultima)) ultima = quando;
   }
-
-  return null;
+  return ultima;
 }
 
 /**
- * Guarda o evento cru — inclusive o que NÃO passou na conferência.
+ * Guarda o evento — inclusive o que NÃO passou na conferência — no recorte que a casa pode guardar.
  *
  * ⚠️ O QUE NÃO PASSA É JUSTAMENTE O QUE INTERESSA GUARDAR, por dois motivos opostos: um POST forjado
  * é a informação de segurança mais útil que este endpoint produz, e um evento LEGÍTIMO que não bate
- * é o sinal de que o cabeçalho do HMAC não é o que supomos — o nome dele não está documentado (ver
- * `lib/assinatura/clicksign/webhook.ts`). Descartar os dois deixaria as duas descobertas invisíveis.
+ * é o sinal de que o cabeçalho do HMAC não é o que supomos. Mas do não conferido fica só o
+ * ESQUELETO (bug 8.8): antes o corpo inteiro ia para a tabela, e qualquer um que soubesse a URL
+ * escrevia o que quisesse nela.
+ *
+ * ⚠️ E O CONFERIDO VAI REDUZIDO (`payloadReduzidoDaClicksign`): sem CPF, nascimento, geolocalização
+ * nem IP, que vinham em 201 de 226 eventos. A redução mora AQUI, e não só na rota, para que nenhum
+ * chamador consiga gravar o corpo cheio por esquecimento.
+ *
+ * ⚠️ E NO NÃO CONFERIDO NENHUMA COLUNA LEVA TEXTO LIVRE DO CORPO (revisão da F1). Não era só o
+ * `payload`: `evento`, `envelope_id`, `provedor_documento_id` e `headers` também vinham do POST de
+ * quem quisesse. O nome do evento é cortado em 80, os ids só ficam se tiverem forma de id da
+ * Clicksign (`idComFormaDaClicksign`), e os cabeçalhos passam pela mesma lista do conferido (mais o
+ * `x-real-ip`, a pista de quem forjou).
+ *
+ * ⚠️ OS CABEÇALHOS SÃO RECORTADOS AQUI, NUNCA NA ROTA (`cabecalhosParaGuardar`): a lista do que
+ * GUARDAR, e não do que omitir. A de omitir deixava passar os tokens que a Vercel injeta.
+ *
+ * ⚠️ `envelopeIdDoRegistro` É O `envelope_id` DA NOSSA LINHA (bug 8.2). Os eventos de documento não
+ * trazem o id do envelope, e a coluna ficava nula em 226 de 226: todo leitor que casava por ela
+ * (o prazo de arrependimento, inclusive) não achava nada.
  *
  * ⚠️ FALHA AQUI NÃO DERRUBA A RESPOSTA. Provedor reenvia o evento quando não recebe 200, e
- * retentativa em cima de rota que falha vira tempestade.
+ * retentativa em cima de rota que falha vira tempestade. O log leva só `code` e `message`.
  */
 export async function registrarEventoDeAssinatura(
   sb: SupabaseClient,
@@ -636,22 +685,42 @@ export async function registrarEventoDeAssinatura(
     aplicado: boolean;
     assinaturaCabecalho: null | string;
     assinaturaConferida: boolean;
+    envelopeIdDoRegistro?: null | string;
     evento: EventoDaClicksign;
     headers: Record<string, string>;
+    /** O corpo lido (JSON). Quem decide o recorte é esta função, não quem chama. */
     payload: unknown;
+    /** O tamanho do corpo cru, para o esqueleto do não conferido. */
+    tamanho?: number;
   },
 ): Promise<void> {
+  const conferido = linha.assinaturaConferida;
+  const payload = conferido
+    ? payloadReduzidoDaClicksign(linha.payload)
+    : esqueletoDoPayload(linha.payload, linha.tamanho ?? 0);
+
   const { error } = await sb.from("temis_assinatura_eventos").insert({
     aplicado: linha.aplicado,
     assinatura_cabecalho: linha.assinaturaCabecalho,
-    assinatura_conferida: linha.assinaturaConferida,
-    envelope_id: linha.evento.envelopeId,
-    evento: linha.evento.evento || null,
-    headers: linha.headers,
-    payload: linha.payload,
+    assinatura_conferida: conferido,
+    envelope_id: conferido
+      ? (linha.envelopeIdDoRegistro ?? linha.evento.envelopeId)
+      : idComFormaDaClicksign(linha.evento.envelopeId),
+    evento: conferido
+      ? linha.evento.evento || null
+      : linha.evento.evento.slice(0, TETO_DO_NOME_DO_EVENTO) || null,
+    headers: cabecalhosParaGuardar(linha.headers, conferido),
+    payload,
     provedor: "clicksign",
-    provedor_documento_id: linha.evento.documentoId,
+    provedor_documento_id: conferido
+      ? linha.evento.documentoId
+      : idComFormaDaClicksign(linha.evento.documentoId),
   });
 
-  if (error) console.error("[clicksign][webhook] falha ao registrar o evento", error);
+  if (error) {
+    console.error("[clicksign][webhook] falha ao registrar o evento", {
+      code: error.code ?? null,
+      message: error.message ?? null,
+    });
+  }
 }

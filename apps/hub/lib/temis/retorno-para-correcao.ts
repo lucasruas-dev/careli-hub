@@ -7,6 +7,7 @@ import {
   type EnvelopeParaCancelar,
   envelopeQueSegura,
 } from "@/lib/assinatura/envio-db";
+import { GUARDA_DE_TERMINAL } from "@/lib/assinatura/registro-db";
 import type { EstadoDaAssinatura } from "@/lib/assinatura/tipos";
 import { avisoDoHercules } from "@/lib/hercules/reflexo-da-temis";
 import {
@@ -788,13 +789,17 @@ export async function carimbarCancelamento(
       // continuaria sendo consultado como se ainda estivesse correndo.
       fechado_em: agora,
     })
-    .eq("id", registroId);
+    .eq("id", registroId)
+    // ⚠️ GUARDA DE TERMINAL (F1 da fonte única, 0.25 do plano). Estado terminal não muda mais: se o
+    // webhook já gravou `cancelado` (ou, numa corrida, `assinado`), este carimbo não o sobrescreve,
+    // nem a hora de fechamento que o provedor deu.
+    .not("estado", "in", GUARDA_DE_TERMINAL);
 
   if (error) {
     console.error(
       "[temis][retorno] O ENVELOPE FOI CANCELADO NA CLICKSIGN E O REGISTRO NÃO ATUALIZOU. envelope:",
       envelopeId,
-      error,
+      { code: error.code ?? null, message: error.message ?? null },
     );
   }
 }

@@ -9,7 +9,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // banco divergiriam no primeiro conserto. Este arquivo NÃO é importado por código de produção.
 //
 // ⚠️ ELE CONFERE NOMES DE COLUNA. As listas abaixo vieram de `information_schema.columns` em
-// produção em 24/09/2026 (projeto bxgukywoxgivlrhjkwjx), recortadas para o que os testes usam. Uma
+// produção em 24/09/2026 (projeto bxgukywoxgivlrhjkwjx), recortadas para o que os testes usam, MAIS
+// as colunas de migration escrita e ainda não aplicada, marcadas uma a uma na própria lista (hoje, as
+// da 0195 em `temis_envelopes`): o código que sobe depois dela já as escreve. Uma
 // consulta com coluna que não existe no banco de verdade vira `problemas`, que o teste confere no
 // fim: o `select` é string e o typecheck não o alcança.
 
@@ -62,7 +64,10 @@ export const COLUNAS: Record<string, readonly string[]> = {
   hercules_unidades: ["andar", "apartamento", "area", "area_extenso", "atualizado_em", "bloqueado_em", "bloqueado_por", "bloqueado_por_nome", "bloqueio_motivo", "categoria_id", "codigo", "criado_em", "enterprise_id", "espelho_de", "id", "lote", "matricula", "matricula_livro", "origem_c2x_id", "preco_extenso", "preco_tabela", "quadra", "segmento_id", "situacao", "tipo_unidade", "tipologia", "torre", "vagas", "vinculo_em", "vinculo_origem", "vinculo_por", "vinculo_por_nome", "workspace_id"],
   prometeu_reservas: ["area", "cancelada_em", "cancelada_motivo", "codigo", "created_at", "credenciado_id", "criado_por", "criado_por_nome", "evento_id", "grupo_id", "id", "lote", "pa_impressa_em", "pa_impressa_vezes", "preco_tabela", "proponentes", "proposta_lancada_em", "proposta_lancada_por", "quadra", "situacao", "unidade_c2x_id", "updated_at"],
   temis_assinatura_eventos: ["aplicado", "assinatura_cabecalho", "assinatura_conferida", "envelope_id", "evento", "headers", "id", "payload", "provedor", "provedor_documento_id", "recebido_em"],
-  temis_envelopes: ["atualizado_em", "compromisso_id", "criado_em", "documento_id", "enterprise_id", "envelope_id", "enviado_em", "enviado_por", "enviado_por_nome", "estado", "estado_cru", "falha", "fechado_em", "id", "nome", "ordenada", "proposta_id", "provedor", "provedor_documento_id", "signatarios", "unidade_id", "workspace_id"],
+  // ⚠️ `origem`, `finalidade`, `trabalho_id`, `c2x_contract_signature_id`, `conferido_em` e
+  // `tentado_em` são da 0195 (escrita em 28/09/2026, ainda NÃO aplicada em produção). O código da F1
+  // as escreve sem recuo: a 0195 é aplicada ANTES do deploy da F1 (plano, F1).
+  temis_envelopes: ["atualizado_em", "c2x_contract_signature_id", "compromisso_id", "conferido_em", "criado_em", "documento_id", "enterprise_id", "envelope_id", "enviado_em", "enviado_por", "enviado_por_nome", "estado", "estado_cru", "falha", "fechado_em", "finalidade", "id", "nome", "ordenada", "origem", "proposta_id", "provedor", "provedor_documento_id", "signatarios", "tentado_em", "trabalho_id", "unidade_id", "workspace_id"],
   temis_trabalho_etapas: ["de", "id", "motivo", "observacao", "origem", "para", "proposta_id", "quando", "quem", "quem_nome", "trabalho_id", "trabalho_tipo", "workspace_id"],
   temis_trabalhos: ["aberto_por", "arrependimento_inicio", "atividades_feitas", "atualizado_em", "canal", "cliente_cpf", "cliente_nome", "criado_em", "enterprise_codigo", "enterprise_id", "enterprise_nome", "estagio", "estagio_desde", "evidencia_path", "id", "indeferido_em", "indeferido_motivo", "indeferido_observacao", "indeferido_por", "indeferido_por_nome", "iris_ticket_id", "observacao", "operado_por", "proposta_id", "tipo", "trabalho_origem_id", "unidade", "venda_id", "workspace_id"],
 };

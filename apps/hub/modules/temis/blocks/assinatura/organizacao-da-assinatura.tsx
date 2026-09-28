@@ -68,6 +68,7 @@ export function OrganizacaoDaAssinatura({
   aoMudarEnvio,
   compacto = false,
   propostaId,
+  trabalhoId,
 }: {
   /**
    * Chamado DEPOIS de o envelope existir na Clicksign. Quem recebe fecha a tela e avisa o quadro.
@@ -91,6 +92,12 @@ export function OrganizacaoDaAssinatura({
   compacto?: boolean;
   /** A PROPOSTA, nunca o card. Ver a nota do topo. */
   propostaId: null | string;
+  /**
+   * O CARD que está mandando, e ele vai AO LADO da proposta, não no lugar dela (a nota do topo
+   * continua valendo). O servidor usa o card para dizer o que o envelope assina (contrato,
+   * distrato, cessão…), porque os quatro tipos mandam com o id da venda.
+   */
+  trabalhoId?: null | string;
 }) {
   const [preparo, setPreparo] = useState<null | RespostaDoPreparo>(null);
   const [erro, setErro] = useState<null | string>(null);
@@ -289,6 +296,7 @@ export function OrganizacaoDaAssinatura({
         ordem: { ordenada, ordens },
         propostaId,
         ...(pedirCpf ? {} : { semCpf: true }),
+        ...(trabalhoId ? { trabalhoId } : {}),
       };
       const resposta = await temisFetch("/assinatura/enviar", {
         body: JSON.stringify(corpo),

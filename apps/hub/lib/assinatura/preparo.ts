@@ -144,6 +144,12 @@ export type CorpoDoEnvio = {
   /** ⚠️ A PROPOSTA, NUNCA O CARD DA TÊMIS. Ver a nota de `OrganizacaoDaAssinatura`. */
   propostaId: string;
   semCpf?: true;
+  /**
+   * O card da Têmis que manda, AO LADO da proposta (nunca no lugar dela). Ele decide a `finalidade`
+   * do envelope (contrato, distrato, cessão, cancelamento por correção), porque os quatro vão para
+   * assinatura com o `proposta_id` da venda. Opcional: sem ele o servidor deduz, ou deixa nulo.
+   */
+  trabalhoId?: string;
 };
 
 /**

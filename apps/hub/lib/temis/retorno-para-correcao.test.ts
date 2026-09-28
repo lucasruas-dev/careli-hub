@@ -295,7 +295,7 @@ function bancoDeTeste(dados: {
 }) {
   const tabelas: string[] = [];
   /** O que cada `update` mandou escrever — é onde se confere o campo que a volta LIMPA. */
-  const atualizacoes: { patch: Record<string, unknown>; tabela: string }[] = [];
+  const atualizacoes: { filtros: Array<[string, unknown]>; patch: Record<string, unknown>; tabela: string }[] = [];
   /**
    * As colunas que cada `select` PEDIU, por tabela.
    *
@@ -317,6 +317,13 @@ function bancoDeTeste(dados: {
       insert: () => Promise.resolve({ data: null, error: null }),
       limit: () => Promise.resolve(leitura),
       maybeSingle: () => Promise.resolve({ data: dados.card, error: null }),
+      // ⚠️ A GUARDA DE TERMINAL DO CARIMBO DO CANCELAMENTO (F1 da fonte única): `.not("estado", ...)`.
+      // Registrada no update em curso: um no-op aqui deixava apagar a guarda sem derrubar teste nenhum.
+      not: (coluna: string, operador: string, valor: unknown) => {
+        const ultima = atualizacoes[atualizacoes.length - 1];
+        if (ehUpdate && ultima) ultima.filtros.push([`not-${operador}:${coluna}`, valor]);
+        return builder;
+      },
       order: () => builder,
       select: (colunas?: string) => {
         if (typeof colunas === "string") colunasPedidas.push({ colunas, tabela });
@@ -329,7 +336,7 @@ function bancoDeTeste(dados: {
         ),
       update: (patch: Record<string, unknown>) => {
         ehUpdate = true;
-        atualizacoes.push({ patch, tabela });
+        atualizacoes.push({ filtros: [], patch, tabela });
         return builder;
       },
     };
@@ -445,7 +452,7 @@ describe("o caminho inteiro, com a Clicksign", () => {
   const canceled = { data: { attributes: { status: "canceled" } } };
 
   it("banco diz parcial e a Clicksign diz running: cancela e volta", async () => {
-    const { sb } = bancoDeTeste({
+    const { atualizacoes, sb } = bancoDeTeste({
       card: cardEmAssinatura,
       envelopes: [linha({ envelope_id: "env-vivo", estado: "parcial" })],
     });
@@ -467,6 +474,13 @@ describe("o caminho inteiro, com a Clicksign", () => {
       { caminho: "/envelopes/env-vivo/documents/doc-1", metodo: "PATCH" },
       { caminho: "/envelopes/env-vivo", metodo: "GET" },
     ]);
+
+    // ⚠️ A GUARDA DE TERMINAL (F1 da fonte única, regra 0.25): o carimbo do cancelamento nunca
+    // escreve por cima de um terminal. Numa corrida, o webhook grava `assinado` e este update não o
+    // transforma em `cancelado` com `fechado_em` = agora.
+    const doEnvelope = atualizacoes.find((u) => u.tabela === "temis_envelopes");
+    expect(doEnvelope?.patch).toMatchObject({ estado: "cancelado" });
+    expect(doEnvelope?.filtros).toContainEqual(["not-in:estado", "(assinado,recusado,cancelado,expirado)"]);
   });
 
   // ⚠️ O TESTE DA QUINTA INFERÊNCIA, MEDIDA NO CAMINHO INTEIRO: o PATCH no documento volta 200 e o

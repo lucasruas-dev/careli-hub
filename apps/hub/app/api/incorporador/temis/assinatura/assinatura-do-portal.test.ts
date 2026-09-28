@@ -287,6 +287,23 @@ describe("portal: o contrato que a Cecílio confecciona", () => {
     );
   });
 
+  // ⚠️ O CARD DA TELA CHEGA AO ENVIO (F1 da fonte única): é por ele que `finalidadeDoEnvio` classifica
+  // o envelope (contrato, distrato, cessão). Perdido no caminho, todo envio de proposta com dois cards
+  // nasceria com finalidade nula, e o contrato ficaria fora da leitura única.
+  it("o trabalhoId do corpo chega ao envio; sem ele, vai nulo", async () => {
+    await PORTAL_ENVIAR(post(`${BASE}/enviar`, { propostaId: PROPOSTA, trabalhoId: " card-1 " }));
+    expect(espioes.enviarContratoParaAssinatura).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ propostaId: PROPOSTA, trabalhoId: "card-1" }),
+    );
+
+    await PORTAL_ENVIAR(post(`${BASE}/enviar`, { propostaId: PROPOSTA }));
+    expect(espioes.enviarContratoParaAssinatura).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ trabalhoId: null }),
+    );
+  });
+
   it("reenviar e trocar o e-mail respondem para o envelope da proposta dele", async () => {
     const reenvio = await PORTAL_SIGNATARIO(
       post(`${BASE}/signatario`, { acao: "reenviar", envelopeId: ENVELOPE, signerId: "s1" }),

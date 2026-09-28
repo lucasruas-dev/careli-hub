@@ -58,3 +58,58 @@ export function congelarSignatarios(
     };
   });
 }
+
+// ── A CHAVE OBRIGATÓRIA DA 0195 ─────────────────────────────────────────────
+//
+// ⚠️ DESDE A F1 DA FONTE ÚNICA (28/09/2026) TODO ITEM DO QUADRO TEM `chave`, e ela é a identidade
+// com que a função `temis_envelope_registrar_assinaturas` casa as marcas de quem assinou. Enquanto a
+// Clicksign não devolveu o id da pessoa (a linha nasce ANTES do envio, e o id pode nem vir), a chave
+// é `tmp:<posição>`: a posição é a do mesmo `preparo.signatarios` que o registro e o carimbo usam,
+// então o carimbo casa o `tmp:2` do registro com a pessoa 2 do envio.
+//
+// ⚠️ E `tmp:` (e o `c2x:` da D4Sign) NÃO É ID DA CLICKSIGN. O reenvio de convite manda a `chave` para
+// `POST /envelopes/{id}/signers/{signer_id}/notifications`; mandar `tmp:1` para lá é o 422 que a
+// Nívea viu em 24/09/2026 com o e-mail. Quem lê a chave para falar com a Clicksign passa por
+// `chaveDaClicksign`.
+
+/** Uma pessoa do quadro com a chave obrigatória da 0195. */
+export type ItemComChave = {
+  chave: string;
+  email: string;
+  nome: string;
+  ordem: number;
+  papel: string;
+};
+
+/** A chave provisória de quem ainda não tem id no provedor. */
+export function chaveProvisoria(posicao: number): string {
+  return `tmp:${posicao}`;
+}
+
+/** A chave serve para falar com a Clicksign? `null` para vazia, `tmp:` e `c2x:`. */
+export function chaveDaClicksign(chave: unknown): null | string {
+  if (typeof chave !== "string") return null;
+  const limpa = chave.trim();
+  if (!limpa || /^(tmp|c2x):/i.test(limpa)) return null;
+  return limpa;
+}
+
+/**
+ * O quadro do envio, com a chave de cada pessoa: o id da Clicksign quando veio, senão `tmp:<posição>`.
+ *
+ * ⚠️ SEM O MAPA (o registro que nasce antes do envio), TODO MUNDO SAI COM `tmp:`. É o que
+ * `abrirRegistro` grava; o carimbo manda o mesmo quadro com os ids e a função troca a chave de cada
+ * um pela posição (o e-mail é único no quadro: a CAD trava e-mail repetido).
+ */
+export function quadroDoEnvio(
+  pessoas: readonly PessoaDoEnvio[],
+  idPorEmail?: Record<string, string>,
+): ItemComChave[] {
+  return congelarSignatarios(pessoas, idPorEmail).map((pessoa, indice) => ({
+    chave: pessoa.chave ?? chaveProvisoria(indice + 1),
+    email: pessoa.email,
+    nome: pessoa.nome,
+    ordem: pessoa.ordem,
+    papel: pessoa.papel,
+  }));
+}

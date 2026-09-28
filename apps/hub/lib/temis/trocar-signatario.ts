@@ -6,8 +6,10 @@ import {
   notificarSignatario,
   removerSignatario,
 } from "@/lib/assinatura/clicksign/envelope";
+import { chaveProvisoria } from "@/lib/assinatura/congelar-signatarios";
 import { diarioDaProposta } from "@/lib/assinatura/diario-do-envelope-db";
 import { RECUSA_DE_REENVIO_SEM_ID } from "@/lib/assinatura/recusa-de-reenvio";
+import { chamarRegistroDasAssinaturas } from "@/lib/assinatura/registro-db";
 import { conferirSignatarios, type Pessoa } from "@/lib/assinatura/signatarios";
 import { PAPEIS, type PapelNoContrato } from "@/lib/assinatura/tipos";
 
@@ -512,8 +514,8 @@ export async function trocarEmailDoSignatario(
     chaveNova: acrescimo.signerId,
     emailAntigo: alvo.congelado.email,
     emailNovo: conferido.email,
-    registroId: linha.registroId,
-    signatarios: linha.signatarios,
+    envelopeId,
+    lido: linha,
   });
   if (!gravado) {
     avisos.push(
@@ -533,6 +535,11 @@ export async function trocarEmailDoSignatario(
 // ── AS LEITURAS ─────────────────────────────────────────────────────────────
 
 type EnvelopeLido = {
+  /**
+   * O `atualizado_em` da linha quando ela foi lida: a VERSÃO do quadro. A troca a manda para a
+   * função da 0195 (`p_quadro_de`), que recusa se o quadro mudou no meio (plano, bug 8.6).
+   */
+  atualizadoEm: null | string;
   /** O id do documento NA CLICKSIGN — é ele que os requisitos apontam. */
   documentoId: string;
   ok: true;
@@ -548,6 +555,10 @@ type EnvelopeLido = {
  * ⚠️ PELO `envelope_id` DA CLICKSIGN, e não pelo id da nossa linha: é o número que a tela do diário
  * mostra e o que o operador vê. E é o filtro que garante que o id vindo do navegador é de um
  * envelope NOSSO, e não de outro contrato qualquer da conta de produção.
+ *
+ * ⚠️ E SÓ DA CLICKSIGN (0.15 do plano). Desde a F3 a mesma tabela guarda os envelopes que o C2X
+ * mandou pela D4Sign; trocar signatário e reenviar convite são ações DA CLICKSIGN, e uma linha da
+ * D4Sign aqui mandaria à Clicksign o id de um documento que ela não conhece.
  */
 async function lerEnvelope(
   sb: SupabaseClient,
@@ -555,18 +566,23 @@ async function lerEnvelope(
 ): Promise<EnvelopeLido | { erro: string; ok: false; status: 404 | 503 }> {
   const { data, error } = await sb
     .from("temis_envelopes")
-    .select("id, proposta_id, provedor_documento_id, signatarios")
+    .select("id, proposta_id, provedor_documento_id, signatarios, atualizado_em")
+    .eq("provedor", "clicksign")
     .eq("envelope_id", envelopeId)
     .order("criado_em", { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (error) {
-    console.error("[temis][troca de signatário] falha ao ler o envelope", error);
+    console.error("[temis][troca de signatário] falha ao ler o envelope", {
+      code: error.code ?? null,
+      message: error.message ?? null,
+    });
     return { erro: "Não foi possível abrir o envelope deste contrato.", ok: false, status: 503 };
   }
 
   const linha = data as null | {
+    atualizado_em?: null | string;
     id: string;
     proposta_id: null | string;
     provedor_documento_id: null | string;
@@ -582,6 +598,7 @@ async function lerEnvelope(
   }
 
   return {
+    atualizadoEm: linha.atualizado_em ?? null,
     documentoId: (linha.provedor_documento_id ?? "").trim(),
     ok: true,
     propostaId: linha.proposta_id,
@@ -639,8 +656,12 @@ async function acharOSignatario(
   // proposta, e uma proposta pode ter mais de um (um recusado e um reenviado): casar a chave contra
   // a lista do envelope errado mandaria remover a pessoa certa do contrato errado.
   if (diario.envelope.envelopeId !== pedido.envelopeId) {
+    // ⚠️ A FRASE DIZ O PROVEDOR DO ENVELOPE QUE ESTÁ VALENDO (0.15 do plano), e não "Clicksign" fixo:
+    // o diário lê só a Clicksign hoje, mas a frase não pode mandar alguém procurar lá um envelope
+    // que está em outro provedor no dia em que isso mudar.
+    const provedor = diario.envelope.provedor === "d4sign" ? "D4Sign" : "Clicksign";
     return {
-      erro: `Este contrato já tem um envelope mais novo na Clicksign. Atualize a tela: a troca de e-mail vale para o envelope que está valendo, não para o ${pedido.envelopeId}.`,
+      erro: `Este contrato já tem um envelope mais novo na ${provedor}. Atualize a tela: a troca de e-mail vale para o envelope que está valendo, não para o ${pedido.envelopeId}.`,
       ok: false,
       status: 409,
     };
@@ -679,6 +700,13 @@ async function acharOSignatario(
  * seriam os OUTROS signatários do contrato sumindo da lista congelada — e é ela que dá o
  * denominador do "1/5" e o papel de cada um na tela.
  *
+ * ⚠️ E DESDE A F1 DA FONTE ÚNICA (28/09/2026) QUEM GRAVA É A FUNÇÃO DA 0195 (bug 8.6), com a VERSÃO
+ * lida (`p_quadro_de` = o `atualizado_em` de quando a linha foi lida). O update antigo reescrevia o
+ * jsonb sem trava: um webhook que gravasse a assinatura de alguém entre a leitura e a escrita
+ * perdia a marca. A função casa cada pessoa pela `chave`, leva as marcas de quem continua no quadro
+ * (`assinado_em` não se perde) e recusa com `quadro_mudou` se a linha andou; aí esta função relê e
+ * tenta UMA vez.
+ *
  * ⚠️ E A CHAVE NOVA VAI JUNTO COM O E-MAIL. Sem ela, a próxima troca da mesma pessoa teria de
  * esperar o webhook para saber quem ela é; com ela, o atalho de `acharOSignatario` resolve na hora.
  *
@@ -692,29 +720,64 @@ async function gravarTrocaNoRegistro(
     chaveNova: string;
     emailAntigo: string;
     emailNovo: string;
-    registroId: string;
-    signatarios: readonly SignatarioCongelado[];
+    envelopeId: string;
+    lido: EnvelopeLido;
   },
 ): Promise<boolean> {
+  let lido = dados.lido;
+
+  for (let tentativa = 1; tentativa <= 2; tentativa += 1) {
+    const lista = quadroComATroca(lido.signatarios, dados);
+    const chamada = await chamarRegistroDasAssinaturas(sb, lido.registroId, {
+      quadro: lista,
+      quadroDe: lido.atualizadoEm,
+    });
+
+    if (chamada.tipo === "feito" && !chamada.registro.recusa) return true;
+
+    if (chamada.tipo === "feito" && chamada.registro.recusa === "quadro_mudou" && tentativa === 1) {
+      // ⚠️ RELÊ E TENTA UMA VEZ: alguém (o webhook, quase sempre) gravou no quadro entre a leitura e
+      // esta escrita. A lista é refeita a partir do quadro NOVO, com as marcas dele.
+      const relido = await lerEnvelope(sb, dados.envelopeId);
+      if (!relido.ok) break;
+      lido = relido;
+      continue;
+    }
+
+    // ⚠️ SEM A 0195 (`funcao_ausente`) NÃO HÁ GESTO DE RESERVA (plano, F1: "sem caminho antigo de
+    // reserva"). O update antigo do jsonb inteiro é o próprio bug 8.6; a F1 só sobe com a 0195
+    // aplicada, e se faltar, a troca vira o aviso abaixo, como qualquer outra falha do registro.
+    break;
+  }
+
+  console.error(
+    "[temis][troca de signatário] A TROCA FOI FEITA NA CLICKSIGN E O REGISTRO NÃO ATUALIZOU. registro:",
+    lido.registroId,
+  );
+  return false;
+}
+
+/**
+ * A lista congelada com a pessoa trocada: e-mail novo e a chave nova da Clicksign.
+ *
+ * ⚠️ TODO ITEM SAI COM `chave` (a 0195 a exige): quem não tem id da Clicksign mantém a chave que já
+ * tinha (`tmp:<posição>`) ou ganha uma pela posição.
+ */
+function quadroComATroca(
+  signatarios: readonly SignatarioCongelado[],
+  dados: { chaveNova: string; emailAntigo: string; emailNovo: string },
+): Array<{ chave: string; email: string; nome: string; ordem: number; papel: string }> {
   const alvo = dados.emailAntigo.trim().toLowerCase();
-  const lista = dados.signatarios.map((p) =>
+  return signatarios.map((p, indice) =>
     p.email.trim().toLowerCase() === alvo
       ? { chave: dados.chaveNova, email: dados.emailNovo, nome: p.nome, ordem: p.ordem, papel: p.papel }
-      : { ...(p.chave ? { chave: p.chave } : {}), email: p.email, nome: p.nome, ordem: p.ordem, papel: p.papel },
+      : {
+          chave: p.chave ?? chaveProvisoria(indice + 1),
+          email: p.email,
+          nome: p.nome,
+          ordem: p.ordem,
+          papel: p.papel,
+        },
   );
-
-  const { error } = await sb
-    .from("temis_envelopes")
-    .update({ atualizado_em: new Date().toISOString(), signatarios: lista })
-    .eq("id", dados.registroId);
-
-  if (error) {
-    console.error(
-      "[temis][troca de signatário] A TROCA FOI FEITA NA CLICKSIGN E O REGISTRO NÃO ATUALIZOU. registro:",
-      dados.registroId,
-      error,
-    );
-    return false;
-  }
-  return true;
 }
+

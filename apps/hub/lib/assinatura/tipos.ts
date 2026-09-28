@@ -53,6 +53,22 @@ export type EstadoDaAssinatura =
   /** O provedor devolveu algo que não sabemos traduzir. Nunca vira silêncio: vira alerta. */
   | "desconhecido";
 
+/**
+ * O QUE o envelope assina (`temis_envelopes.finalidade`, migration 0195).
+ *
+ * ⚠️ ELA EXISTE PORQUE O `proposta_id` NÃO RESPONDE ISSO. Distrato, cessão e cancelamento por
+ * correção vão para assinatura com o `proposta_id` da VENDA (medido em 28/09/2026, `envio-db.ts`):
+ * sem a coluna, um distrato assinado virava "contrato assinado" em `lerFatosDoContrato`. Só
+ * `contrato` entra na leitura única, move o card de contrato e grava `data_assinatura`. Nulo = não
+ * se sabe (e aí não entra em nada disso).
+ */
+export type FinalidadeDoEnvelope =
+  | "acordo"
+  | "cancelamento_correcao"
+  | "cessao"
+  | "contrato"
+  | "distrato";
+
 /** Os estados em que o documento ainda pode mudar sozinho — os que valem acompanhar. */
 export const ESTADOS_EM_MOVIMENTO: EstadoDaAssinatura[] = ["aguardando", "parcial"];
 

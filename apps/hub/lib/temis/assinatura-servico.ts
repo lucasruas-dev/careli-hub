@@ -76,6 +76,9 @@ export async function alcanceDoEnvelope(
   const { data, error } = await sb
     .from("temis_envelopes")
     .select("proposta_id")
+    // ⚠️ SÓ A CLICKSIGN (0.15 do plano da fonte única): as ações que passam por aqui (reenviar e
+    // trocar signatário) são da Clicksign, e a mesma tabela passa a guardar os envelopes da D4Sign.
+    .eq("provedor", "clicksign")
     .eq("envelope_id", alvo)
     .limit(20);
 
@@ -121,7 +124,7 @@ export async function preparoDoEnvio(ator: AtorDaTemis, request: Request): Promi
   );
 }
 
-/** POST `{ propostaId, emails?, mensagem?, ordem?, prazoEmDias?, semCpf? }` — envia de verdade. */
+/** POST `{ propostaId, emails?, mensagem?, ordem?, prazoEmDias?, semCpf?, trabalhoId? }` — envia de verdade. */
 export async function enviarContratoDoAtor(
   ator: AtorDaTemis,
   request: Request,
@@ -133,9 +136,14 @@ export async function enviarContratoDoAtor(
     prazoEmDias?: unknown;
     propostaId?: unknown;
     semCpf?: unknown;
+    trabalhoId?: unknown;
   };
 
   const propostaId = typeof corpo.propostaId === "string" ? corpo.propostaId.trim() : "";
+  // ⚠️ O CARD QUE ESTÁ MANDANDO (F1 da fonte única): é ele que diz se o envelope é contrato,
+  // distrato, cessão ou cancelamento por correção (`temis_envelopes.finalidade`). Vem do navegador,
+  // e por isso `enviarContratoParaAssinatura` só o aceita se ele for DESTA proposta.
+  const trabalhoId = typeof corpo.trabalhoId === "string" ? corpo.trabalhoId.trim() : "";
   if (!propostaId) return NextResponse.json({ erro: "Sem proposta." }, { status: 400 });
 
   const sb = createApoloAdminClient();
@@ -187,6 +195,7 @@ export async function enviarContratoDoAtor(
     semCpf: corpo.semCpf === true,
     ordemEscolhida,
     propostaId,
+    trabalhoId: trabalhoId || null,
     usuarioId: autor.id,
     usuarioNome: autor.nome,
     ...(typeof corpo.mensagem === "string" && corpo.mensagem.trim()

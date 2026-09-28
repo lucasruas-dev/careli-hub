@@ -11,21 +11,32 @@ import {
   versaoDoNome,
 } from "@/lib/temis/contrato-guardado";
 import { dadosDaProposta } from "@/lib/temis/dados-do-contrato";
+import type { TipoDeTrabalho } from "@/lib/temis/trabalhos";
 
 import { enviarParaAssinatura, type FalhaNoEnvio, type PedidoDeEnvio } from "./clicksign/envelope";
 import { type PortaDaClicksign } from "./clicksign/cliente";
-import { congelarSignatarios } from "./congelar-signatarios";
+import { quadroDoEnvio } from "./congelar-signatarios";
 import { moverCardDaTemis } from "./estado-db";
 import { ordenarSignatarios, type RegraDeOrdem } from "./ordem";
 import { assinantesDoQuadro, impedimentoDaVirada0191 } from "./quadro-db";
 import { descreverOrigem, type OrigemDaRegra, regraDeOrdemDaVenda } from "./ordem-db";
+import {
+  GUARDA_DE_TERMINAL,
+  ligarEventosAoEnvelope,
+  registrarEnvioAtivo,
+} from "./registro-db";
 import {
   conferirSignatarios,
   coordenadoraSemQuemAssine,
   type Pessoa,
   signatariosDoContrato,
 } from "./signatarios";
-import { chaveDoSignatario, type EstadoDaAssinatura, type Signatario } from "./tipos";
+import {
+  chaveDoSignatario,
+  type EstadoDaAssinatura,
+  type FinalidadeDoEnvelope,
+  type Signatario,
+} from "./tipos";
 import { rotuloDoEstado } from "./traduzir";
 
 // O ENVIO, DO LADO DO BANCO — juntar o papel, quem assina e a ordem, e registrar o que saiu.
@@ -250,6 +261,12 @@ export async function enviarContratoParaAssinatura(
     ordemEscolhida?: null | RegraDeOrdem;
     prazoEmDias?: number;
     propostaId: string;
+    /**
+     * O card da Têmis que está mandando. A tela o conhece (`organizacao-da-assinatura.tsx`) e ele
+     * decide a `finalidade` do envelope: o distrato, a cessão e o cancelamento por correção também
+     * vão para assinatura com o `proposta_id` da VENDA (0.22 do plano).
+     */
+    trabalhoId?: null | string;
     usuarioId?: null | string;
     usuarioNome?: null | string;
   },
@@ -290,13 +307,16 @@ export async function enviarContratoParaAssinatura(
   }
 
   // ── A INTENÇÃO, GRAVADA ANTES ────────────────────────────────────────────
+  const destino = await finalidadeDoEnvio(sb, pedido.propostaId, pedido.trabalhoId ?? null);
   const registro = await abrirRegistro(sb, {
     documentoId: preparo.contrato.documentoId,
     enterpriseId: preparo.identidade.empreendimento,
+    finalidade: destino.finalidade,
     nome: preparo.contrato.nome,
     ordenada: preparo.regra.ordenada,
     propostaId: pedido.propostaId,
     signatarios: preparo.signatarios,
+    trabalhoId: destino.trabalhoId,
     unidadeId: preparo.contrato.unidadeId,
     usuarioId: pedido.usuarioId ?? null,
     usuarioNome: pedido.usuarioNome ?? null,
@@ -723,7 +743,7 @@ async function impedimentoDeEnvelopeVivo(
     return {
       erro:
         "Não foi possível conferir se este contrato já tem envelope aberto, e por isso nada foi mandado para a Clicksign. " +
-        "Confira se a migration 0149 (temis_envelopes) foi aplicada.",
+        "Confira se as migrations 0149 (temis_envelopes) e 0195 (finalidade do envelope) foram aplicadas.",
       ok: false,
       status: 503,
     };
@@ -783,6 +803,74 @@ async function impedimentoDeEnvelopeVivo(
   };
 }
 
+// ── A FINALIDADE DO ENVELOPE ────────────────────────────────────────────────
+
+/** O tipo do card da Têmis, na língua da `finalidade`. O cancelamento por desistência não assina. */
+const FINALIDADE_POR_TIPO: Record<TipoDeTrabalho, FinalidadeDoEnvelope | null> = {
+  cancelamento: null,
+  cancelamento_correcao: "cancelamento_correcao",
+  cessao: "cessao",
+  contrato: "contrato",
+  distrato: "distrato",
+};
+
+/**
+ * O que este envio assina, e o card que o mandou.
+ *
+ * ⚠️ O CARD VEM DA TELA, E É CONFERIDO AQUI: ele só vale se for DESTA proposta. O id chega do
+ * navegador; aceitar o card de outra venda classificaria este envelope pelo tipo errado.
+ *
+ * ⚠️ SEM CARD (a aba velha, a chamada direta à rota): se a proposta tem UM card só e ele é de
+ * contrato, é contrato; qualquer outra coisa fica NULA, com log. Nulo não entra na leitura única nem
+ * move card (a 0195 e a F2), que é o lado seguro: adivinhar "contrato" com um distrato aberto na
+ * mesma venda é exatamente o erro que a coluna existe para impedir.
+ *
+ * ⚠️ NUNCA BARRA O ENVIO. Leitura que falha vira nulo e log: a classificação não pode custar o
+ * contrato do cliente.
+ *
+ * ⚠️ EXPORTADA SÓ PARA O TESTE (`envio-db.test.ts`): é a coluna que a F2 e a F4 usam para decidir o
+ * que é CONTRATO, e um distrato classificado como contrato viraria "contrato assinado" lá na frente.
+ */
+export async function finalidadeDoEnvio(
+  sb: SupabaseClient,
+  propostaId: string,
+  trabalhoId: null | string,
+): Promise<{ finalidade: FinalidadeDoEnvelope | null; trabalhoId: null | string }> {
+  const { data, error } = await sb
+    .from("temis_trabalhos")
+    .select("id, tipo")
+    .eq("proposta_id", propostaId);
+
+  if (error) {
+    console.error("[assinatura][envio] falha ao ler os cards da proposta para a finalidade", {
+      code: error.code ?? null,
+      message: error.message ?? null,
+    });
+    return { finalidade: null, trabalhoId: null };
+  }
+
+  const cards = (data ?? []) as Array<{ id: string; tipo: TipoDeTrabalho }>;
+  const pedido = trabalhoId ? cards.find((c) => c.id === trabalhoId) : undefined;
+  if (pedido) {
+    return { finalidade: FINALIDADE_POR_TIPO[pedido.tipo] ?? null, trabalhoId: pedido.id };
+  }
+  if (trabalhoId) {
+    console.warn(
+      `[assinatura][envio] o card ${trabalhoId} não é da proposta ${propostaId}: a finalidade sai pela regra sem card.`,
+    );
+  }
+
+  const [unico] = cards;
+  if (cards.length === 1 && unico?.tipo === "contrato") {
+    return { finalidade: "contrato", trabalhoId: unico.id };
+  }
+
+  console.warn(
+    `[assinatura][envio] envelope da proposta ${propostaId} nasce sem finalidade: ${cards.length} card(s) e nenhum informado.`,
+  );
+  return { finalidade: null, trabalhoId: null };
+}
+
 // ── O REGISTRO ──────────────────────────────────────────────────────────────
 
 /**
@@ -793,52 +881,60 @@ async function impedimentoDeEnvelopeVivo(
  * invisível. O erro inclui o nome da tabela porque a causa mais provável, hoje, é a migration 0149
  * ainda não aplicada.
  */
-async function abrirRegistro(
+// ⚠️ EXPORTADA SÓ PARA O TESTE, pelo mesmo motivo de `finalidadeDoEnvio`.
+export async function abrirRegistro(
   sb: SupabaseClient,
   dados: {
     documentoId: string;
     enterpriseId: string;
+    finalidade: FinalidadeDoEnvelope | null;
     nome: string;
     ordenada: boolean;
     propostaId: string;
     signatarios: readonly Signatario[];
+    trabalhoId: null | string;
     unidadeId: null | string;
     usuarioId: null | string;
     usuarioNome: null | string;
   },
 ): Promise<FalhaAoEnviar | { id: string; ok: true }> {
+  const linha = {
+    documento_id: dados.documentoId,
+    enterprise_id: dados.enterpriseId || null,
+    estado: "rascunho",
+    nome: dados.nome,
+    ordenada: dados.ordenada,
+    proposta_id: dados.propostaId,
+    provedor: "clicksign",
+    // ⚠️ COM A `chave` OBRIGATÓRIA DA 0195: `tmp:<posição>` até a Clicksign devolver o id de cada
+    // pessoa. O carimbo manda o mesmo quadro, na mesma ordem, já com os ids.
+    signatarios: quadroDoEnvio(dados.signatarios),
+    unidade_id: dados.unidadeId,
+    enviado_por: dados.usuarioId,
+    enviado_por_nome: dados.usuarioNome,
+    workspace_id: "careli",
+  };
+
+  // ⚠️ SEM INSERT DE RESERVA SEM AS COLUNAS DA 0195 (plano, F1: a 0195 é aplicada ANTES do deploy).
+  // Se ela faltar, o insert falha, a frase abaixo aponta a migration e NADA vai para a Clicksign: o
+  // lado seguro, porque a linha de registro é a trava contra o envelope pago invisível.
   const { data, error } = await sb
     .from("temis_envelopes")
-    .insert({
-      documento_id: dados.documentoId,
-      enterprise_id: dados.enterpriseId || null,
-      estado: "rascunho",
-      nome: dados.nome,
-      ordenada: dados.ordenada,
-      proposta_id: dados.propostaId,
-      provedor: "clicksign",
-      signatarios: dados.signatarios.map((s) => ({
-        email: s.email,
-        nome: s.nome,
-        ordem: s.ordem,
-        papel: s.papel,
-      })),
-      unidade_id: dados.unidadeId,
-      enviado_por: dados.usuarioId,
-      enviado_por_nome: dados.usuarioNome,
-      workspace_id: "careli",
-    })
+    .insert({ ...linha, finalidade: dados.finalidade, trabalho_id: dados.trabalhoId })
     .select("id")
     .maybeSingle();
 
   if (error || !data) {
-    console.error("[assinatura][envio] falha ao abrir o registro do envelope", error);
+    console.error("[assinatura][envio] falha ao abrir o registro do envelope", {
+      code: error?.code ?? null,
+      message: error?.message ?? null,
+    });
     return {
       erro:
         "Não foi possível registrar o envio no Panteon, e por isso nada foi mandado para a Clicksign. " +
         // ⚠️ 0149, E NÃO 0147. A 0147 é o gate de papel em `app_metadata`: quem seguisse esta frase
         // iria conferir a migration errada, achá-la aplicada e concluir que o defeito é outro.
-        "Confira se a migration 0149 (temis_envelopes) foi aplicada.",
+        "Confira se as migrations 0149 (temis_envelopes) e 0195 (finalidade do envelope) foram aplicadas.",
       ok: false,
       status: 503,
     };
@@ -847,7 +943,20 @@ async function abrirRegistro(
   return { id: (data as { id: string }).id, ok: true };
 }
 
-async function carimbarSucesso(
+/**
+ * O carimbo do envio que deu certo.
+ *
+ * ⚠️ TRÊS PASSOS, E SÓ O PRIMEIRO É UPDATE DIRETO (F1 da fonte única, 0.25 do plano):
+ *   1. os ids do provedor e `enviado_em`, que só o envio sabe;
+ *   2. o estado `aguardando` e o quadro com a `chave` da Clicksign, PELA FUNÇÃO DA 0195
+ *      (`registrarEnvioAtivo`). O webhook chega antes do carimbo (26 de 26 uploads, medido), e o
+ *      update antigo do jsonb inteiro e do estado sem condição apagava o que ele já tinha gravado;
+ *   3. os eventos que chegaram antes ganham o `envelope_id` desta linha (Integridade M2).
+ *
+ * ⚠️ EXPORTADA SÓ PARA O TESTE (`envio-db.test.ts`): a promessa "o carimbo não escreve estado nem
+ * quadro por update direto" só se prova olhando o que ele manda ao banco.
+ */
+export async function carimbarSucesso(
   sb: SupabaseClient,
   registroId: string,
   resultado: {
@@ -862,28 +971,40 @@ async function carimbarSucesso(
     .from("temis_envelopes")
     .update({
       atualizado_em: new Date().toISOString(),
-      // ⚠️ `aguardando`, E NÃO `rascunho`: a esta altura o envelope foi ATIVADO e notificado. Manter
-      // "rascunho" faria a fila de acompanhamento ignorar um contrato que já está na mão do cliente.
-      estado: "aguardando",
-      estado_cru: "clicksign:running",
       envelope_id: resultado.envelopeId,
       enviado_em: new Date().toISOString(),
       provedor_documento_id: resultado.documentoId,
-      // ⚠️ COM A `chave` DA CLICKSIGN. Ver `lib/assinatura/congelar-signatarios.ts`: sem ela o
-      // reenvio de convite manda a key do webhook (ou o e-mail) e leva 422.
-      signatarios: congelarSignatarios(signatarios, resultado.signatarios),
     })
-    .eq("id", registroId);
+    .eq("id", registroId)
+    // ⚠️ GUARDA DE TERMINAL (F1 da fonte única): nenhum update direto escreve em linha terminal.
+    .not("estado", "in", GUARDA_DE_TERMINAL);
 
   // ⚠️ NÃO DESFAZ NADA. O envelope já está ativado e não se apaga; falhar aqui é perder o id no
-  // nosso lado, não o contrato. O log é o que permite achá-lo depois.
+  // nosso lado, não o contrato. O log é o que permite achá-lo depois (só `code` e `message`: o erro
+  // inteiro pode trazer a linha com o jsonb dos signatários).
   if (error) {
     console.error(
       "[assinatura][envio] O ENVELOPE FOI CRIADO E O REGISTRO NÃO ATUALIZOU. envelope:",
       resultado.envelopeId,
-      error,
+      { code: error.code ?? null, message: error.message ?? null },
     );
   }
+
+  // ⚠️ `aguardando`, E NÃO `rascunho`: a esta altura o envelope foi ATIVADO e notificado. E COM A
+  // `chave` DA CLICKSIGN (`lib/assinatura/congelar-signatarios.ts`): sem ela o reenvio de convite
+  // manda a key do webhook (ou o e-mail) e leva 422.
+  const gravou = await registrarEnvioAtivo(sb, registroId, {
+    estadoCru: "clicksign:running",
+    quadro: quadroDoEnvio(signatarios, resultado.signatarios),
+  });
+  if (!gravou) {
+    console.error(
+      "[assinatura][envio] O ENVELOPE FOI CRIADO E O ESTADO NÃO FOI CARIMBADO. envelope:",
+      resultado.envelopeId,
+    );
+  }
+
+  await ligarEventosAoEnvelope(sb, resultado.documentoId, resultado.envelopeId);
 }
 
 /**
@@ -912,7 +1033,8 @@ async function carimbarSucesso(
  * envelope VIVO e pago: nenhum outro lugar do código a preencheria depois, então a recusa valeria
  * PARA SEMPRE naquela linha. Ver `FalhaNoEnvio.documentoId`.
  */
-async function carimbarFalha(
+// ⚠️ EXPORTADA SÓ PARA O TESTE, pelo mesmo motivo de `carimbarSucesso`.
+export async function carimbarFalha(
   sb: SupabaseClient,
   registroId: string,
   resultado: {
@@ -940,11 +1062,24 @@ async function carimbarFalha(
       // `null` quando o rascunho foi apagado, e gravar o id de um documento que não existe mais
       // mandaria o cancelamento futuro tentar um PATCH no nada.
       ...(resultado.documentoId ? { provedor_documento_id: resultado.documentoId } : {}),
-      ...(ativado ? { estado: "aguardando", estado_cru: "clicksign:running" } : {}),
     })
-    .eq("id", registroId);
+    .eq("id", registroId)
+    // ⚠️ GUARDA DE TERMINAL (F1 da fonte única): nenhum update direto escreve em linha terminal.
+    .not("estado", "in", GUARDA_DE_TERMINAL);
 
-  if (error) console.error("[assinatura][envio] falha ao carimbar o erro do envio", error);
+  if (error) {
+    console.error("[assinatura][envio] falha ao carimbar o erro do envio", {
+      code: error.code ?? null,
+      message: error.message ?? null,
+    });
+  }
+
+  // ⚠️ O ESTADO DO ATIVADO VAI PELA FUNÇÃO DA 0195 (F1 da fonte única), como no carimbo do sucesso:
+  // um webhook que chegou antes não é regredido. O quadro fica como o registro o gravou (sem os ids
+  // da Clicksign, que o envio que falhou não devolve).
+  if (ativado) {
+    await registrarEnvioAtivo(sb, registroId, { estadoCru: "clicksign:running" });
+  }
 }
 
 /** Reexportado para quem monta a tela: a lista de pessoas sem o número da ordem. */

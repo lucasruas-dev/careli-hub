@@ -142,6 +142,10 @@ function bancoDeTeste(
         filtros[coluna] = valor;
         return builder;
       },
+      // A guarda de terminal e a ligação dos eventos dos carimbos (F1 da fonte única).
+      in: () => builder,
+      is: () => builder,
+      not: () => builder,
       insert: () => builder,
       limit: () =>
         tabela === "temis_envelopes"

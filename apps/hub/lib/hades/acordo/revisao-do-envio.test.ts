@@ -88,10 +88,34 @@ function bancoComMemoria() {
   const envelopes: Record<string, unknown>[] = [];
   const escritas: { patch: Record<string, unknown>; tabela: string }[] = [];
 
+  // ⚠️ A FUNÇÃO DA 0195 (F1 da fonte única) ENTRA COMO ESCRITA DE TABELA PRÓPRIA: os carimbos
+  // mandam o estado por ela, e o teste confere o que foi pedido. O quadro volta como veio.
+  const rpc = (nome: string, args: Record<string, unknown>) => {
+    escritas.push({ patch: args, tabela: `rpc:${nome}` });
+    return Promise.resolve({
+      data: [
+        {
+          assinaram: 0,
+          estado_antes: "rascunho",
+          estado_depois: args.p_estado ?? "rascunho",
+          fechado: null,
+          mudou_estado: Boolean(args.p_estado),
+          quadro: args.p_quadro ?? [],
+          recusa: null,
+          total: 0,
+        },
+      ],
+      error: null,
+    });
+  };
+
   const from = (tabela: string) => {
     const builder: Record<string, unknown> = {};
     Object.assign(builder, {
       eq: () => builder,
+      in: () => builder,
+      is: () => builder,
+      not: () => builder,
       insert: (patch: Record<string, unknown>) => {
         escritas.push({ patch, tabela });
         if (tabela === "temis_envelopes") {
@@ -130,7 +154,7 @@ function bancoComMemoria() {
     return builder;
   };
 
-  return { envelopes, escritas, sb: { from } as unknown as SupabaseClient };
+  return { envelopes, escritas, sb: { from, rpc } as unknown as SupabaseClient };
 }
 
 /** O duplo da porta HTTP da Clicksign. */
@@ -562,10 +586,13 @@ describe("a falha do notificar deixa a linha CANCELÁVEL", () => {
       // ⚠️ SEM ESTA COLUNA A LINHA FICA PRESA PARA SEMPRE: o cancelamento do acordo recusa quando ela
       // é nula, e nenhum outro caminho do código a preenche depois.
       provedor_documento_id: "doc-9",
-      // O estado só vira `aguardando` no `notificar`, que é o único desfecho em que se SABE que o
-      // envelope está ativo.
-      estado: "aguardando",
     });
+    // O estado só vira `aguardando` no `notificar`, que é o único desfecho em que se SABE que o
+    // envelope está ativo. E vai pela função da 0195 (F1 da fonte única), nunca por update direto.
+    expect(carimbo[0]?.patch).not.toHaveProperty("estado");
+    expect(escritas.filter((e) => e.tabela.startsWith("rpc:")).map((e) => e.patch)).toEqual([
+      expect.objectContaining({ p_estado: "aguardando", p_estado_cru: "clicksign:running" }),
+    ]);
   });
 
   // ⚠️ E QUANDO O RASCUNHO FOI APAGADO A COLUNA NÃO É ESCRITA, na mesma régua do `envelope_id`:
