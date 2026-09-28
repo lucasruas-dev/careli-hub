@@ -499,7 +499,17 @@ describe("CadastroDeUnidades · Excel", () => {
     urlDoJsdom.revokeObjectURL = () => {};
     onTestFinished(() => {
       delete urlDoJsdom.createObjectURL;
-      delete urlDoJsdom.revokeObjectURL;
+      // ⚠️ `revokeObjectURL` FICA, COMO FUNÇÃO VAZIA, E NÃO É ESQUECIMENTO. O componente revoga o
+      // endereço UM SEGUNDO DEPOIS do clique, de propósito (`setTimeout(..., 1000)` em
+      // CadastroDeUnidades.tsx:1102: revogar na mesma volta cancela o download em alguns
+      // navegadores). Esse timer sobrevive ao fim do teste, e com o `delete` ele caía num
+      // `TypeError: URL.revokeObjectURL is not a function` que o Vitest contava como UNHANDLED
+      // ERROR: a suíte terminava "678 arquivos, 10.164 testes, 1 error" e o hook de pre-push
+      // barrava, com todos os testes verdes. Medido em 28/09/2026.
+      //
+      // Deixar a função vazia não vaza estado de verdade: o jsdom não implementa nenhuma das duas,
+      // e quem precisa do endereço de blob instala o próprio remendo, como este teste faz.
+      urlDoJsdom.revokeObjectURL = () => {};
     });
     const cliques: string[] = [];
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
