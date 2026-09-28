@@ -182,6 +182,7 @@ vi.mock("@/lib/apolo/incorporador/assinaturas", () => ({
     uuids: [],
   })),
   somarAssinaturasDoPanteon: (quadro: unknown) => quadro,
+  unirComOPanteon: (quadro: unknown) => quadro,
 }));
 
 import { loadApoloEnterpriseUnits } from "@/lib/apolo/empreendimentos";
@@ -276,10 +277,14 @@ const ROTAS = [
   {
     caminho: "vendas/assinaturas",
     get: getAssinaturas,
-    // E os contratos dele saem de `hercules_propostas` + `temis_envelopes`, não do C2X/D4Sign.
+    // E os contratos dele saem de `hercules_propostas` + `temis_envelopes`, não do C2X/D4Sign. Desde
+    // 28/09/2026 o Panteon é lido em TODO código (a venda nativa de produto do C2X), então o mesmo
+    // código pode chegar às duas leituras: o conjunto é o que conta.
     lidos: () => [
-      ...(vi.mocked(lerAssinaturasDoPortal).mock.calls.at(-1)?.[0] ?? []),
-      ...(vi.mocked(lerAssinaturasDoPanteon).mock.calls.at(-1)?.[1] ?? []),
+      ...new Set([
+        ...(vi.mocked(lerAssinaturasDoPortal).mock.calls.at(-1)?.[0] ?? []),
+        ...(vi.mocked(lerAssinaturasDoPanteon).mock.calls.at(-1)?.[1] ?? []),
+      ]),
     ],
   },
 ] as const;
@@ -404,11 +409,16 @@ describe("o produto só do Panteon não vai ao C2X nas Imobiliárias nem nos Con
     expect(vi.mocked(lerAssinaturasDoPanteon).mock.calls.at(-1)?.[1]).toEqual(["TST"]);
   });
 
-  it("o produto do C2X segue só no C2X", async () => {
+  it("o produto do C2X segue só no C2X nas Imobiliárias", async () => {
     await getImobiliarias(requisicao("produto/imobiliarias", "37"));
     expect(vi.mocked(lerPropostasVivasDoPanteon)).not.toHaveBeenCalled();
+  });
+
+  it("⚠️ nos Contratos o produto do C2X lê o C2X E as vendas nativas do Panteon (28/09/2026)", async () => {
+    // A VOL 11 06 e as outras 7 da Clicksign: venda nativa em produto do C2X sumia da aba.
     await getAssinaturas(requisicao("vendas/assinaturas", "37"));
-    expect(vi.mocked(lerAssinaturasDoPanteon)).not.toHaveBeenCalled();
+    expect(vi.mocked(lerAssinaturasDoPortal).mock.calls.at(-1)?.[0]).toEqual(["VOC"]);
+    expect(vi.mocked(lerAssinaturasDoPanteon).mock.calls.at(-1)?.[1]).toEqual(["VOC"]);
   });
 });
 

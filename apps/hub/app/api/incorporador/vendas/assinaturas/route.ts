@@ -5,17 +5,13 @@ import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos"
 import {
   lerAssinaturasDoPanteon,
   lerAssinaturasDoPortal,
-  somarAssinaturasDoPanteon,
+  unirComOPanteon,
 } from "@/lib/apolo/incorporador/assinaturas";
 import { codigosParaOC2x } from "@/lib/apolo/incorporador/cadastro-do-produto";
 import { codigosDoPedido } from "@/lib/apolo/incorporador/codigos-do-pedido";
 import { empreendimentosDoPortal } from "@/lib/apolo/incorporador/empreendimentos-do-portal";
 import { autorizar, codigosDaSessao, foraDoEscopo } from "@/lib/apolo/incorporador/escopo";
-import {
-  empreendimentosIndisponiveis,
-  lidosDoPanteon,
-  propriosDoPortal,
-} from "@/lib/apolo/incorporador/proprios-do-portal";
+import { empreendimentosIndisponiveis, propriosDoPortal } from "@/lib/apolo/incorporador/proprios-do-portal";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 // GESTÃO DE ASSINATURA — a aba de Vendas do portal do incorporador.
@@ -93,21 +89,22 @@ export async function GET(request: Request) {
   // Só o que o C2X conhece vai ao C2X; com lista vazia, `lerAssinaturasDoPortal` monta o quadro vazio
   // sem tocar no MySQL nem na D4Sign.
   const codesDoC2x = codigosParaOC2x(codes, doPanteon.proprios);
-  const codesDoPanteon = lidosDoPanteon({
-    cadastro: doPanteon.cadastro,
-    codes,
-    idsDaSessao: doPanteon.idsDaSessao,
-    proprios: doPanteon.proprios,
-  }).map((produto) => produto.codigo);
 
-  const admin = codesDoPanteon.length > 0 ? createApoloAdminClient() : null;
-  if (codesDoPanteon.length > 0 && !admin) {
+  // ⚠️ O PANTEON É LIDO EM TODOS OS CÓDIGOS, NÃO SÓ NOS PRÓPRIOS (28/09/2026). A escolha por PRODUTO
+  // (`lidosDoPanteon`: só o próprio e o que tem `operado_por`) deixava de fora toda venda que nasceu no
+  // Panteon num produto do C2X: VOC, VOL e VOR tinham 8 contratos na Clicksign e a aba dizia
+  // "Aguardando emissão" (a redigitação no C2X, sem envio na D4Sign) ou nem mostrava a unidade (VOL
+  // 11 06, "0 de 185"). Lucas: *"essas informações tem que alimentar tudo"*. A leitura do Panteon só
+  // traz proposta NATIVA (`origem = 'panteon'`), então não há carga do C2X contada duas vezes; e
+  // `unirComOPanteon` tira a linha do legado que é a MESMA venda redigitada.
+  const admin = createApoloAdminClient();
+  if (!admin) {
     return NextResponse.json({ error: "Não foi possível ler as assinaturas agora." }, { status: 503 });
   }
 
   const [doLegado, doPanteonNoPedido] = await Promise.all([
     lerAssinaturasDoPortal(codesDoC2x),
-    admin ? lerAssinaturasDoPanteon(admin, codesDoPanteon) : Promise.resolve({ linhas: [], ok: true as const }),
+    lerAssinaturasDoPanteon(admin, codes),
   ]);
 
   if (!doLegado.ok) {
@@ -117,7 +114,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: doPanteonNoPedido.error }, { status: 503 });
   }
 
-  const quadro = { ...doLegado, data: somarAssinaturasDoPanteon(doLegado.data, doPanteonNoPedido.linhas) };
+  const quadro = { ...doLegado, data: unirComOPanteon(doLegado.data, doPanteonNoPedido.linhas) };
 
   // ⚠️ O QUE NÃO ATRAVESSA PARA O PORTAL, e por quê.
   //

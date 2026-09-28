@@ -36,6 +36,42 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-28-assinatura-do-hercules-le-o-panteon",
+    deployedAt: "2026-09-28T14:36:21-03:00",
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**Os contratos que o Panteon mandou para a Clicksign aparecem na aba Assinatura, com quem ja assinou.** Antes eles apareciam como Aguardando emissao, ou nem apareciam (a VOL 11 06 nao era achada na busca).",
+              "**Cada pessoa aparece como assinou ou pendente, e a tela mostra de quem e a vez.** A ordem e a mesma que foi usada no envio: primeiro as coordenadoras, depois o comprador, as testemunhas e a vendedora.",
+              "**A venda redigitada no C2X para gerar boleto nao aparece mais duplicada** como Aguardando emissao ao lado do contrato de verdade. No Vale do Ouro, o Aguardando emissao cai de 6 para 1 (a VOC0306, que voltou para correcao).",
+              "**Quando a mesma venda tem dois contratos em assinatura, os dois aparecem.** Hoje isso acontece na VOC1102: um contrato na Clicksign e outro na D4Sign pelo C2X.",
+            ],
+            screen: "Contratos - Assinatura",
+          },
+          {
+            items: [
+              "**Na ficha da venda em assinatura, a data se chama Enviado para assinatura.** Antes ela aparecia como Data da assinatura, mas era o dia em que o contrato saiu, com a assinatura ainda pela metade.",
+            ],
+            screen: "Venda - ficha da unidade",
+          },
+        ],
+      },
+    ],
+    rollback: "37908445",
+    technical: {
+      done:
+        "CORRECAO RAPIDA, ANTES DA FONTE UNICA. A rota /api/incorporador/vendas/assinaturas escolhia a fonte POR PRODUTO (`lidosDoPanteon`: so o proprio e o que tem operado_por), e VOC, VOL e VOR iam so ao C2X + D4Sign: os 8 contratos nativos na Clicksign sumiam ou viravam a venda redigitada no C2X, que la e contrato gerado sem envio (aguardando emissao). Agora `lerAssinaturasDoPanteon` roda em TODO codigo do pedido (ela so le proposta origem='panteon', entao a carga do C2X nao entra duas vezes) e `unirComOPanteon` casa as duas listas por empreendimento + CODIGO da unidade (hercules_unidades.codigo, o mesmo texto da linha do legado; antes a linha do Panteon usava o rotulo 'Quadra 11 · Lote 06', que nunca casava): Panteon com envelope vivo tira a linha aguardando-emissao do legado e desconta o KPI; Panteon sem envelope perde para o legado com envio (os contratos que foram para a D4Sign pelo C2X: VAL, LBF, REP, ACP); os dois com envio ficam os dois (VOC1102 tem Clicksign 3/11 e D4Sign 1/12, o risco de dois contratos da mesma venda). QUEM ASSINOU: o ultimo payload CONFERIDO de temis_assinatura_eventos por provedor_documento_id (limit 1 por documento, 5 em paralelo, teto 80), lido pelo mesmo parser do diario da Temis (`quemAssinou`, document.events[]), casado por e-mail e pela chave congelada no envio; a vez e o menor degrau pendente, e envelope sem ordem poe todos no degrau 0. `perfilNaLista` alinha Coordenadora de venda e Corretor com o vocabulario do legado, para a mesma funcao nao abrir duas barras. O contador x/y no Board do comercial FICOU DE FORA de proposito: a revisao mediu que ligar `comAssinaturas` ali leria o historico inteiro dos envelopes (902 kB com 7 envelopes, 129 eventos) a cada minuto por aba aberta, contra o aviso escrito em trabalhos-db.ts; ele volta na F6 da fonte unica, pela marca gravada por pessoa, sem ler payload. `unirComOPanteon` tira no maximo UMA linha aguardando do legado por venda do Panteon (a redigitacao), para nao esconder um segundo contrato. fluxo-de-venda: em assinatura a data e etapa_desde (a entrada na etapa) com o rotulo Enviado para assinatura. Conferido contra producao, so leitura, no Vale do Ouro: lista 185 para 187, aguardando emissao 6 para 1, unidades com envio 179 para 186. Sem migration, sem env, sem cron. A fonte unica (tudo no Panteon, D4Sign espelhada, Faturado andando) segue no branch fix/assinatura-fonte-unica.",
+      motivation:
+        "Lucas, 28/09/2026, com os prints da aba Assinatura e do Board: olha por favor se foi enviado esses contratos; essas informacoes tem que alimentar tudo, esta muito picado; ta vendo que esta bem desatualizado?; mas estou achando lento essa correcao.",
+    },
+    title: "A aba Assinatura do Hercules mostra os contratos da Clicksign, com quem ja assinou",
+    type: "melhoria",
+    version: "1.389.0",
+  },
+  {
     buildTag: "2026-09-28-corretor-autonomo-no-apolo",
     deployedAt: "2026-09-28T09:31:15-03:00",
     modules: [
