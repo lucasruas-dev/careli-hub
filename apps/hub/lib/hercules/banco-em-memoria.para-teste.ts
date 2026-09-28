@@ -68,6 +68,8 @@ export const COLUNAS: Record<string, readonly string[]> = {
   // `tentado_em` são da 0195 (escrita em 28/09/2026, ainda NÃO aplicada em produção). O código da F1
   // as escreve sem recuo: a 0195 é aplicada ANTES do deploy da F1 (plano, F1).
   temis_envelopes: ["atualizado_em", "c2x_contract_signature_id", "compromisso_id", "conferido_em", "criado_em", "documento_id", "enterprise_id", "envelope_id", "enviado_em", "enviado_por", "enviado_por_nome", "estado", "estado_cru", "falha", "fechado_em", "finalidade", "id", "nome", "ordenada", "origem", "proposta_id", "provedor", "provedor_documento_id", "signatarios", "tentado_em", "trabalho_id", "unidade_id", "workspace_id"],
+  // ⚠️ A LINHA DE ESTADO DO ESPELHO DA D4SIGN, também da 0195 (escrita, NÃO aplicada em 28/09/2026).
+  temis_espelho_d4sign: ["atualizado_em", "d4sign_pausada_ate", "em_curso_ate", "id", "relatorio", "ultima_rodada_ok_em"],
   temis_trabalho_etapas: ["de", "id", "motivo", "observacao", "origem", "para", "proposta_id", "quando", "quem", "quem_nome", "trabalho_id", "trabalho_tipo", "workspace_id"],
   temis_trabalhos: ["aberto_por", "arrependimento_inicio", "atividades_feitas", "atualizado_em", "canal", "cliente_cpf", "cliente_nome", "criado_em", "enterprise_codigo", "enterprise_id", "enterprise_nome", "estagio", "estagio_desde", "evidencia_path", "id", "indeferido_em", "indeferido_motivo", "indeferido_observacao", "indeferido_por", "indeferido_por_nome", "iris_ticket_id", "observacao", "operado_por", "proposta_id", "tipo", "trabalho_origem_id", "unidade", "venda_id", "workspace_id"],
 };
@@ -109,11 +111,25 @@ function listaDoPostgrest(valor: string): null | Set<string> {
 }
 
 function condicaoDoOr(expressao: string): null | { coluna: string; teste: (l: Linha) => boolean } {
-  const m = /^([a-z_0-9]+)\.(eq|in)\.(.+)$/.exec(expressao.trim());
+  const m = /^([a-z_0-9]+)\.(eq|in|is|lt)\.(.+)$/.exec(expressao.trim());
   if (!m) return null;
   const coluna = m[1] ?? "";
   const valor = m[3] ?? "";
   if (m[2] === "eq") return { coluna, teste: (l) => texto(l[coluna]) === valor };
+  // `is.null` e `lt.<instante>`: a vez da rodada do espelho da D4Sign (`em_curso_ate` nula ou vencida).
+  if (m[2] === "is") return valor === "null" ? { coluna, teste: (l) => texto(l[coluna]) === null } : null;
+  if (m[2] === "lt") {
+    return {
+      coluna,
+      teste: (l) => {
+        const t = texto(l[coluna]);
+        if (t === null) return false;
+        const a = Date.parse(t);
+        const b = Date.parse(valor);
+        return !Number.isNaN(a) && !Number.isNaN(b) ? a < b : t < valor;
+      },
+    };
+  }
   const aceitos = listaDoPostgrest(valor);
   if (!aceitos) return null;
   return {
@@ -133,6 +149,18 @@ function violacao(tabela: string, linha: Linha, outras: readonly Linha[], origen
       message:
         'new row for relation "temis_trabalho_etapas" violates check constraint "temis_trabalho_etapas_origem_valida"',
     };
+  }
+  // ⚠️ A UNICIDADE DO DOCUMENTO DA 0195 (`temis_envelopes_provedor_documento_unico`), NULLS DISTINCT.
+  if (tabela === "temis_envelopes" && texto(linha.provedor_documento_id) !== null) {
+    const repetido = outras.some(
+      (o) => texto(o.provedor) === texto(linha.provedor) && texto(o.provedor_documento_id) === texto(linha.provedor_documento_id),
+    );
+    if (repetido) {
+      return {
+        code: "23505",
+        message: 'duplicate key value violates unique constraint "temis_envelopes_provedor_documento_unico"',
+      };
+    }
   }
   if (tabela !== "hercules_reservas") return null;
   const viva = (l: Linha) => ["ativa", "proposta"].includes(String(l.situacao));

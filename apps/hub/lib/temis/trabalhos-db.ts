@@ -13,6 +13,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { type EnvelopeDaProposta, envelopeQueSegura } from "@/lib/assinatura/envio-db";
+import { lerQuadro } from "@/lib/assinatura/registro-db";
 // A régua de "esta venda está morta" mora num lugar só, e é pura — ver `VENDA_DESFEITA`.
 import { VENDA_DESFEITA } from "@/lib/hercules/acao-de-cancelamento";
 import {
@@ -457,6 +458,8 @@ function cardEsperaAssinatura(trabalho: TrabalhoDoBoard): boolean {
 
 /** O envelope, do jeito que o contador precisa dele: a régua do reenvio mais quem foi convidado. */
 type EnvelopeParaContar = EnvelopeDaProposta & {
+  /** A finalidade (0195). Só filtra a D4Sign; a Clicksign continua como estava. */
+  finalidade?: null | string;
   proposta_id: null | string;
   /** O `document.key` da Clicksign — o elo que casa com os eventos. Ver `historicoDosEnvelopes`. */
   provedor_documento_id: null | string;
@@ -490,7 +493,8 @@ type EnvelopeParaContar = EnvelopeDaProposta & {
  * ontem, e um quadro em branco por causa de um selo seria uma troca ruim — a mesma lição de
  * `contratosDasPropostas`.
  */
-async function contarAssinaturasDasPropostas(
+// (Exportada só para o teste dos filtros do selo, `selo-de-assinatura.test.ts`; quem chama é o Board.)
+export async function contarAssinaturasDasPropostas(
   sb: SupabaseClient,
   propostaIds: readonly string[],
 ): Promise<Map<string, ContagemDeAssinaturas>> {
@@ -501,31 +505,67 @@ async function contarAssinaturasDasPropostas(
   const envelopes = await envelopesDasPropostas(sb, ids);
   if (envelopes.size === 0) return porProposta;
 
-  const historicos = await historicoDosEnvelopes(sb, [...envelopes.values()]);
+  // ⚠️ OS EVENTOS SÓ EXISTEM NA CLICKSIGN (o webhook é dela). O envelope da D4Sign conta só pelas marcas
+  // do quadro, que o espelho grava pelo `/list` (F3 da fonte única).
+  const historicos = await historicoDosEnvelopes(
+    sb,
+    [...envelopes.values()].filter((e) => e.provedor !== "d4sign"),
+  );
 
   for (const [propostaId, envelope] of envelopes) {
-    const total = Array.isArray(envelope.signatarios) ? envelope.signatarios.length : 0;
-    // ⚠️ "0/0" NÃO É CONTADOR, É RUÍDO. Envelope sem signatários congelados é envio que não chegou
-    // a montar a lista; o card fica sem selo, que é a frase certa para "não sei de quantos".
-    if (total === 0) continue;
-
-    const historico = historicos.get(envelope.id);
-    // ⚠️ `assinado` MANDA NA CONTAGEM. Ele é a palavra da casa para "todos assinaram" (a tradução
-    // cuida de `closed`, que NÃO é sinônimo — ATENÇÃO 3 da 0149), e um evento perdido no caminho
-    // faria o card dizer "4/5" embaixo de um contrato fechado. Para menos, o estado não sabe nada:
-    // `parcial` não diz quantos, e por isso não corrige nada aqui.
-    const assinaram =
-      envelope.estado === "assinado" ? total : Math.min(historico?.assinaram ?? 0, total);
-
-    porProposta.set(propostaId, {
-      assinaram,
-      conviteNaoEntregue: historico?.conviteNaoEntregue ?? false,
-      estado: envelope.estado,
-      total,
-    });
+    const contagem = contagemDoSelo(envelope, historicos.get(envelope.id));
+    if (contagem) porProposta.set(propostaId, contagem);
   }
 
   return porProposta;
+}
+
+/**
+ * O SELO "x/y" DE UM ENVELOPE. Puro.
+ *
+ * ⚠️ DESDE A F3 DA FONTE ÚNICA O NÚMERO SAI DAS MARCAS DO QUADRO (`assinado_em` de cada pessoa, escrito só
+ * pela função da 0195), DOS DOIS PROVEDORES. Sem isso o card da D4Sign levado a "Em assinatura" pelo
+ * espelho mostraria "0/N" até a F6: a D4Sign não tem evento guardado para o histórico contar.
+ *
+ * ⚠️ O HISTÓRICO DOS PAYLOADS (Clicksign) FICA COMO PISO ATÉ A F6 ("Board sem payload"): nos quadros
+ * gravados antes do reprocessamento da F1 as marcas ainda não existem, e o selo não pode cair de "2/3"
+ * para "0/3" na virada. Vale o MAIOR dos dois, nunca a soma (são as mesmas pessoas).
+ *
+ * ⚠️ O CONVITE QUE VOLTOU também vem das marcas (`convite_falhou_em` sem assinatura e sem entrega
+ * posterior), além do histórico.
+ */
+export function contagemDoSelo(
+  envelope: { estado: string; signatarios: unknown },
+  historico: undefined | { assinaram: number; conviteNaoEntregue: boolean },
+): ContagemDeAssinaturas | null {
+  const quadro = lerQuadro(envelope.signatarios);
+  const total = quadro.length;
+  // ⚠️ "0/0" NÃO É CONTADOR, É RUÍDO. Envelope sem signatários congelados é envio que não chegou
+  // a montar a lista; o card fica sem selo, que é a frase certa para "não sei de quantos".
+  if (total === 0) return null;
+
+  const pelasMarcas = quadro.filter((item) => Boolean(item.assinado_em)).length;
+  const conviteVoltou = quadro.some((item) => {
+    if (!item.convite_falhou_em || item.assinado_em) return false;
+    const falhou = Date.parse(item.convite_falhou_em);
+    const entregue = item.convite_entregue_em ? Date.parse(item.convite_entregue_em) : Number.NaN;
+    return Number.isNaN(entregue) || entregue < falhou;
+  });
+
+  // ⚠️ `assinado` MANDA NA CONTAGEM. Ele é a palavra da casa para "todos assinaram" (a tradução
+  // cuida de `closed`, que NÃO é sinônimo — ATENÇÃO 3 da 0149), e um evento perdido no caminho
+  // faria o card dizer "4/5" embaixo de um contrato fechado.
+  const assinaram =
+    envelope.estado === "assinado"
+      ? total
+      : Math.min(Math.max(pelasMarcas, historico?.assinaram ?? 0), total);
+
+  return {
+    assinaram,
+    conviteNaoEntregue: (historico?.conviteNaoEntregue ?? false) || conviteVoltou,
+    estado: envelope.estado,
+    total,
+  };
 }
 
 /**
@@ -555,7 +595,7 @@ async function envelopesDasPropostas(
       // As mesmas colunas da guarda do envio, mais `signatarios` (o total), `proposta_id` (o elo
       // com o card) e `provedor_documento_id` (o elo com os eventos — ver `historicoDosEnvelopes`).
       .select(
-        "criado_em, envelope_id, estado, falha, id, proposta_id, provedor, provedor_documento_id, signatarios",
+        "criado_em, envelope_id, estado, falha, finalidade, id, proposta_id, provedor, provedor_documento_id, signatarios",
       )
       .eq("workspace_id", "careli")
       .in("proposta_id", lote)
@@ -572,6 +612,9 @@ async function envelopesDasPropostas(
 
     for (const linha of (data ?? []) as EnvelopeParaContar[]) {
       if (!linha.proposta_id) continue;
+      // ⚠️ DA D4SIGN, SÓ O ENVELOPE DE CONTRATO (F3 da fonte única): o espelho grava também o que o C2X
+      // mandou com tipo não mapeado (`finalidade` nula), e ele não é o contrato deste card.
+      if (linha.provedor === "d4sign" && linha.finalidade !== "contrato") continue;
       const lista = porProposta.get(linha.proposta_id) ?? [];
       lista.push(linha);
       porProposta.set(linha.proposta_id, lista);

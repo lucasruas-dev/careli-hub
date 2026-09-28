@@ -409,8 +409,9 @@ export type OpcoesDaReconciliacao = OpcoesDoEfeito & {
  * Nos dois casos o envelope já diz o estado novo e a borda não volta: sem esta varredura, o card e a
  * data da venda ficariam para trás para sempre. Roda em toda rodada do espelho (F3), com `limite`.
  *
- * ⚠️ ATÉ A F3 NINGUÉM A CHAMA (não há cron nem rota que a rode na F2). Quem subir a F2 sozinha sabe
- * que o efeito que falhar no webhook fica para trás até o espelho existir, e o log do webhook diz isso.
+ * ⚠️ QUEM A CHAMA É O ESPELHO DA D4SIGN (F3, `espelho-d4sign/espelho.ts`, passo 6), em toda rodada, com
+ * limite 20. Enquanto o cron do espelho não estiver no `vercel.json` (pendente de OK), ela só roda pelo
+ * script ou pelo POST manual, e o efeito que falhar no webhook fica para trás até lá (o log diz isso).
  *
  * Os dois alvos, só de venda NATIVA viva e sem pedido de cancelamento:
  *   • CONCLUSÃO: o envelope de contrato vigente está `assinado` COM `fechado_em` (plano, seção 7), e
