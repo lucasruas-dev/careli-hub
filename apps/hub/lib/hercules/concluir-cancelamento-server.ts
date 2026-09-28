@@ -619,8 +619,12 @@ export async function concluirCancelamentoDoCard(
  * envelope de outro provedor, envio sem id e cancelamento recusado ou duvidoso RECUSAM a conclusão
  * sem gravar nada no Panteon.
  *
- * ⚠️ O ENVELOPE É LIDO POR PROPOSTA, E AQUI ISSO É CERTO: só o card de contrato produz envelope
- * (`conferirEMatarOEnvelope`), então o envelope desta proposta É o do contrato da venda.
+ * ⚠️ O ENVELOPE É LIDO POR PROPOSTA, MAS SÓ O DE CONTRATO CONTA (F2 da fonte única, 0.22 do plano).
+ * Até a 0195 só o card de contrato produzia envelope; hoje distrato, cessão e cancelamento por
+ * correção também vão para assinatura com o `proposta_id` da venda, e um DISTRATO assinado lido aqui
+ * recusava o cancelamento com "agora exige distrato" (a revisão da F2 pegou pelo teste). A finalidade
+ * NULA continua contando: é "não se sabe o que foi assinado", e na dúvida a conclusão recusa, que é o
+ * lado que não derruba uma venda com contrato vivo (a mesma regra do indeferimento).
  */
 async function cancelarEnvelopeVivoDoContrato(
   sb: SupabaseClient,
@@ -632,7 +636,7 @@ async function cancelarEnvelopeVivoDoContrato(
     .from("temis_envelopes")
     // ⚠️ `COLUNAS_PARA_CANCELAR` traz `provedor_documento_id` junto: cancelar na v3 é um PATCH no
     // DOCUMENTO (doc lida 25/09/2026, ver `cancelarEnvelope`), e o id dele vem desta linha.
-    .select(COLUNAS_PARA_CANCELAR)
+    .select(`${COLUNAS_PARA_CANCELAR}, finalidade`)
     .eq("proposta_id", propostaId)
     .order("criado_em", { ascending: false })
     .limit(50);
@@ -646,7 +650,10 @@ async function cancelarEnvelopeVivoDoContrato(
     };
   }
 
-  const vivo = envelopeQueSegura((data ?? []) as unknown as EnvelopeParaCancelar[]);
+  const doContrato = ((data ?? []) as unknown as Array<EnvelopeParaCancelar & { finalidade?: null | string }>).filter(
+    (e) => !e.finalidade || e.finalidade === "contrato",
+  );
+  const vivo = envelopeQueSegura(doContrato);
   if (!vivo) return { contratoAssinado: false, envelopeCancelado: null, ok: true };
 
   // No distrato, o contrato assinado por todos é o documento que ele desfaz: fica como está.
@@ -661,6 +668,15 @@ async function cancelarEnvelopeVivoDoContrato(
     };
   }
 
+  // ⚠️ A D4SIGN VEM DO ESPELHO (o C2X mandou o contrato, F2 da fonte única): quem cancela é o C2X, e
+  // quem encerra a linha aqui é a próxima rodada do espelho, a cada 30 minutos.
+  if (vivo.provedor === "d4sign") {
+    return {
+      erro: `O contrato desta venda está em assinatura na D4Sign, enviado pelo C2X (registro ${vivo.id}), e daqui só se cancela envelope da Clicksign. Nada foi gravado. Cancele na D4Sign pelo C2X; o Panteon libera em até 30 minutos, e aí a conclusão pode ser feita.`,
+      ok: false,
+      status: 409,
+    };
+  }
   if (vivo.provedor !== "clicksign") {
     return {
       erro: `O envelope vivo do contrato desta venda não é da Clicksign (registro ${vivo.id}), e daqui só se cancela envelope da Clicksign. Nada foi gravado. Cancele o envelope no provedor dele antes de concluir.`,

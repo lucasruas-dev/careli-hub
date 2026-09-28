@@ -425,9 +425,14 @@ async function devolverAQuemVendeu(
     };
   }
 
+  // ⚠️ SÓ O ENVELOPE DO CONTRATO SEGURA A VENDA AQUI (F2 da fonte única). O card indeferido é o de
+  // contrato, e a pergunta é "o contrato desta venda está na rua?". A finalidade NULA também segura:
+  // ela é "não se sabe o que foi assinado" (o envio sem card informado), e na dúvida a venda fica em
+  // Contrato, que é o lado que não devolve a quem vendeu uma venda com contrato vivo lá fora.
+  // O recorte é feito em memória, sobre as 50 linhas mais recentes da venda (a mesma leitura de antes).
   const { data: envelopes, error: erroDoEnvelope } = await sb
     .from("temis_envelopes")
-    .select("criado_em, envelope_id, estado, falha, id, provedor")
+    .select("criado_em, envelope_id, estado, falha, finalidade, id, provedor")
     .eq("proposta_id", propostaId)
     .order("criado_em", { ascending: false })
     .limit(50);
@@ -441,7 +446,10 @@ async function devolverAQuemVendeu(
     };
   }
 
-  const vivo = envelopeQueSegura((envelopes ?? []) as EnvelopeDaProposta[]);
+  const doContrato = ((envelopes ?? []) as Array<EnvelopeDaProposta & { finalidade?: null | string }>).filter(
+    (e) => !e.finalidade || e.finalidade === "contrato",
+  );
+  const vivo = envelopeQueSegura(doContrato);
   if (vivo) {
     console.warn("[hercules][indeferimento] contrato indeferido com envelope vivo: a venda fica em contrato", {
       envelope: vivo.envelope_id,
@@ -449,6 +457,15 @@ async function devolverAQuemVendeu(
       propostaId,
       registro: vivo.id,
     });
+    // ⚠️ A FRASE É POR PROVEDOR (F2 da fonte única). O da D4Sign foi mandado pelo C2X e não volta
+    // por webhook: quem libera a venda é a próxima rodada do espelho da D4Sign, a cada 30 minutos.
+    if (vivo.provedor === "d4sign") {
+      return {
+        aviso: `Contrato indeferido, mas ${aVenda.toLowerCase()} continua em Contrato no Hércules: o contrato está em assinatura na D4Sign, enviado pelo C2X (documento ${vivo.envelope_id ?? `registro ${vivo.id}`}). Cancele na D4Sign pelo C2X; o Panteon libera em até 30 minutos.`,
+        feito: "nada",
+        recado: null,
+      };
+    }
     return {
       aviso: `Contrato indeferido, mas ${aVenda.toLowerCase()} continua em Contrato no Hércules: existe envelope vivo deste contrato na Clicksign (${vivo.envelope_id ?? `registro ${vivo.id}`}). Cancele o envelope por lá antes de devolver a venda.`,
       feito: "nada",

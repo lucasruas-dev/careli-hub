@@ -79,6 +79,8 @@ import {
   type LinhaAssinatura,
 } from "@/lib/apolo/painel-assinatura";
 import type { createApoloAdminClient } from "@/lib/apolo/server";
+// ⚠️ A RÉGUA PURA (sem banco): qual envelope vale para a venda. Some daqui na F4 da fonte única.
+import { envelopeVigente } from "@/lib/assinatura/envelope-vigente";
 import { PAPEIS, type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
 import { getHadesDbPool } from "@/lib/guardian/db";
 import { apurarFatosDoContrato } from "@/lib/hercules/fatos-do-contrato";
@@ -1159,21 +1161,25 @@ export type PropostaDoPanteonEmContrato = {
   valor: null | number | string;
 };
 
-/** Um envelope da Têmis (`temis_envelopes`), com o que a linha usa. */
+/**
+ * Um envelope de CONTRATO da Têmis (`temis_envelopes`, `finalidade = 'contrato'`), com o que a linha
+ * usa e o que a régua `envelopeVigente` lê (id, `envelope_id`, `falha`, `provedor`).
+ */
 export type EnvelopeDoPanteon = {
-  criado_em: null | string;
+  criado_em: string;
   enviado_em: null | string;
-  estado: null | string;
+  envelope_id: null | string;
+  estado: string;
+  falha: null | string;
   fechado_em: null | string;
+  id: string;
   proposta_id: null | string;
+  provedor: string;
   signatarios: unknown;
 };
 
 /** As etapas da proposta em que já existe contrato. */
 export const ETAPAS_COM_CONTRATO = ["contrato", "assinatura", "faturado"] as const;
-
-/** Envelope que terminou sem assinatura (ou nem saiu): o contrato volta a "aguardando emissão". */
-const ENVELOPES_MORTOS = new Set(["cancelado", "expirado", "rascunho", "recusado"]);
 
 function numeroOuZero(valor: null | number | string | undefined): number {
   const n = typeof valor === "number" ? valor : Number(String(valor ?? "").replace(",", "."));
@@ -1196,13 +1202,6 @@ function diaCurto(valor: null | string | undefined): null | string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) return texto;
   const iso = isoOuNulo(texto || null);
   return iso ? DIA_EM_BRASILIA.format(new Date(iso)) : null;
-}
-
-/** O envelope que vale para a proposta: o mais recente que não morreu. */
-function envelopeVigente(envelopes: EnvelopeDoPanteon[]): EnvelopeDoPanteon | null {
-  const vivos = envelopes.filter((e) => !ENVELOPES_MORTOS.has(limpo(e.estado).toLowerCase()));
-  vivos.sort((a, b) => String(b.criado_em ?? "").localeCompare(String(a.criado_em ?? "")));
-  return vivos[0] ?? null;
 }
 
 /** Quem foi chamado a assinar, congelado no envio. Papel desconhecido sai "Sem perfil", sem sumir. */
@@ -1244,7 +1243,11 @@ export function linhasDeAssinaturaDoPanteon(
   }
 
   return propostas.map((proposta) => {
-    const envelope = envelopeVigente(envelopesPorProposta.get(proposta.id) ?? []);
+    // ⚠️ A RÉGUA ÚNICA (`lib/assinatura/envelope-vigente.ts`, F2 da fonte única), e não mais a cópia
+    // local "o mais recente que não morreu": o ASSINADO vence o vivo mais novo (o contrato que vale
+    // juridicamente não some da tela por causa de um envio posterior), e o rascunho do envio em curso
+    // não é vigente. O vivo a mais vira aviso interno (`doisContratosVivos`), nunca linha do portal.
+    const envelope = envelopeVigente(envelopesPorProposta.get(proposta.id) ?? []).vigente;
     const fatos = apurarFatosDoContrato(
       [],
       {
@@ -1424,8 +1427,11 @@ export async function lerAssinaturasDoPanteon(
       for (let de = 0; ; de += PAGINA_DO_PANTEON) {
         const { data, error } = await admin
           .from("temis_envelopes")
-          .select("proposta_id,estado,fechado_em,enviado_em,criado_em,signatarios")
+          .select("id,proposta_id,provedor,estado,falha,envelope_id,fechado_em,enviado_em,criado_em,signatarios")
           .eq("workspace_id", "careli")
+          // ⚠️ SÓ O CONTRATO (0195): o distrato e a cessão também vão para assinatura com o
+          // `proposta_id` da venda, e a linha da lista é o CONTRATO dela.
+          .eq("finalidade", "contrato")
           .in("proposta_id", lote)
           .order("id", { ascending: true })
           .range(de, de + PAGINA_DO_PANTEON - 1)

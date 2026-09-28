@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 
+import { criarBanco } from "@/lib/hercules/banco-em-memoria.para-teste";
+
 import {
   abrirRegistro,
   carimbarFalha,
@@ -8,6 +10,7 @@ import {
   type EnvelopeDaProposta,
   envelopeQueSegura,
   finalidadeDoEnvio,
+  impedimentoDeEnvelopeVivo,
 } from "./envio-db";
 import type { Signatario } from "./tipos";
 
@@ -437,5 +440,37 @@ describe("abrirRegistro grava a finalidade e o card", () => {
     expect(r).toMatchObject({ ok: false, status: 503 });
     if (r.ok) return;
     expect(r.erro).toContain("0195");
+  });
+});
+
+// ⚠️ F2 DA FONTE ÚNICA: A FRASE DA RECUSA É POR PROVEDOR. O contrato vivo na D4Sign foi mandado pelo
+// C2X (a linha nasce do espelho, F3): não há webhook que libere o reenvio, e quem cancela é o C2X.
+describe("impedimentoDeEnvelopeVivo, por provedor", () => {
+  const linhaViva = (provedor: string) => ({
+    criado_em: "2026-09-20T12:00:00.000Z",
+    envelope_id: "doc-vivo",
+    estado: "aguardando",
+    falha: null,
+    finalidade: "contrato",
+    id: "reg-vivo",
+    proposta_id: "venda-1",
+    provedor,
+    workspace_id: "careli",
+  });
+
+  it("D4Sign viva: recusa, manda cancelar pelo C2X e não promete o webhook", async () => {
+    const b = criarBanco({ temis_envelopes: [linhaViva("d4sign")] });
+    const r = await impedimentoDeEnvelopeVivo(b.cliente, "venda-1");
+    expect(r).toMatchObject({ ok: false, status: 409 });
+    expect(r?.erro).toContain("cancele na D4Sign pelo C2X; o Panteon libera em até 30 minutos.");
+    expect(r?.erro).not.toContain("webhook");
+    expect(b.problemas).toEqual([]);
+  });
+
+  it("Clicksign viva: a frase de sempre, com o webhook liberando o reenvio", async () => {
+    const b = criarBanco({ temis_envelopes: [linhaViva("clicksign")] });
+    const r = await impedimentoDeEnvelopeVivo(b.cliente, "venda-1");
+    expect(r?.erro).toContain("Clicksign");
+    expect(r?.erro).toContain("o webhook libera o reenvio aqui");
   });
 });

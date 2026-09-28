@@ -264,6 +264,18 @@ export function conferirEnvelopeParaVoltar(linhas: EnvelopeParaCancelar[]): Conf
   // escreve em `temis_envelopes` é só o da Clicksign (`lib/assinatura/estado-db.ts` filtra por
   // `provedor = 'clicksign'`). Cancelar no D4Sign não volta para cá sozinho, e dizer que volta
   // deixaria alguém esperando uma liberação que nunca chega.
+  //
+  // ⚠️ E A D4SIGN TEM SAÍDA PRÓPRIA DESDE A F2 DA FONTE ÚNICA: a linha dela nasce do espelho (o C2X
+  // mandou o contrato), então quem cancela é o C2X, e quem encerra a linha aqui é a próxima rodada do
+  // espelho (a cada 30 minutos), sem ninguém mexer em `temis_envelopes` à mão.
+  if (vivo.provedor === "d4sign") {
+    return {
+      erro:
+        `O contrato desta venda está em assinatura na D4Sign, enviado pelo C2X (registro ${vivo.id}${vivo.envelope_id ? `, documento ${vivo.envelope_id}` : ""}), e daqui só se cancela envelope da Clicksign. ` +
+        "Cancele na D4Sign pelo C2X; o Panteon libera a volta em até 30 minutos.",
+      ok: false,
+    };
+  }
   if (vivo.provedor !== "clicksign") {
     return {
       erro:

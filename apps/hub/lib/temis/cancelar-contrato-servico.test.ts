@@ -156,6 +156,8 @@ function cenario(c: Cenario = {}): void {
           envelope_id: "env-maura",
           estado: c.estadoDoEnvelope,
           falha: null,
+          // ⚠️ 0195: os fatos do contrato só leem o envelope de CONTRATO (F2 da fonte única).
+          finalidade: "contrato",
           id: "reg-env",
           proposta_id: "venda-maura",
           provedor: "clicksign",

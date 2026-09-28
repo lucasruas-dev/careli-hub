@@ -16,6 +16,7 @@ import type { TipoDeTrabalho } from "@/lib/temis/trabalhos";
 import { enviarParaAssinatura, type FalhaNoEnvio, type PedidoDeEnvio } from "./clicksign/envelope";
 import { type PortaDaClicksign } from "./clicksign/cliente";
 import { quadroDoEnvio } from "./congelar-signatarios";
+import { envelopeQueSegura, type EnvelopeParaEscolher } from "./envelope-vigente";
 import { moverCardDaTemis } from "./estado-db";
 import { ordenarSignatarios, type RegraDeOrdem } from "./ordem";
 import { assinantesDoQuadro, impedimentoDaVirada0191 } from "./quadro-db";
@@ -539,15 +540,14 @@ async function baixarContrato(sb: SupabaseClient, documentoId: string): Promise<
 // envelopes ficariam `running`, os dois cobrariam, e nenhum dos dois se apaga (ver a ATENÇÃO 1 da
 // 0149).
 
-/** O que a guarda precisa ler de cada linha de `temis_envelopes` da proposta. */
-export type EnvelopeDaProposta = {
-  criado_em: string;
-  envelope_id: null | string;
-  estado: string;
-  falha: null | string;
-  id: string;
-  provedor: string;
-};
+/**
+ * O que a guarda precisa ler de cada linha de `temis_envelopes` da proposta.
+ *
+ * ⚠️ DESDE A F2 DA FONTE ÚNICA (28/09/2026) A RÉGUA MORA EM `envelope-vigente.ts`, pura: é ela que
+ * decide "qual segura o envio" e "qual vale para a venda". Este arquivo só reexporta, para os
+ * leitores de antes não mudarem de import.
+ */
+export type EnvelopeDaProposta = EnvelopeParaEscolher;
 
 /**
  * A MESMA LINHA, PARA QUEM VAI CANCELAR — com o id do DOCUMENTO.
@@ -578,59 +578,11 @@ export type EnvelopeParaCancelar = EnvelopeDaProposta & {
 export const COLUNAS_PARA_CANCELAR =
   "criado_em, envelope_id, estado, falha, id, provedor, provedor_documento_id";
 
-/**
- * Os estados que LIBERAM um novo envio.
- *
- * ⚠️ O REENVIO LEGÍTIMO É O CASO DE USO, e não uma exceção rara: envelope cancelado na Clicksign
- * (o webhook grava `cancelado`), recusado por quem ia assinar, ou vencido no prazo são exatamente as
- * três situações em que alguém precisa mandar o contrato DE NOVO. Uma guarda que travasse esses três
- * trocaria um problema caro por uma venda parada.
- *
- * ⚠️ `assinado` NÃO ESTÁ AQUI, e é o que mais importa: um segundo envelope de um contrato já assinado
- * produziria dois contratos assinados da mesma venda.
- */
-const ESTADOS_QUE_LIBERAM_REENVIO = new Set<string>([
-  "cancelado",
-  "expirado",
-  "recusado",
-] satisfies EstadoDaAssinatura[]);
-
-/**
- * A RÉGUA, SEPARADA DO BANCO: qual destas linhas segura o envio? `null` = nenhuma, pode mandar.
- *
- * ⚠️ ELA É PURA PORQUE PRECISA DE TESTE, e é a regra mais cara da casa: quem erra aqui cria o
- * segundo envelope de um contrato, pago e permanente, ou trava uma venda que tinha todo o direito de
- * ser reenviada. Dentro da função que faz o `select` ela só poderia ser conferida com um duplo de
- * Supabase inteiro; aqui se conferem as linhas, que é do que a regra fala.
- *
- * ⚠️ A ORDEM VEM DE QUEM CHAMA. A consulta pede `criado_em desc`, então a linha devolvida é a mais
- * recente que segura — é o id que a frase da recusa manda conferir na Clicksign, e mandar alguém
- * procurar o envelope mais VELHO seria mandar procurar o errado.
- *
- * ⚠️ GENÉRICA PARA NÃO PODAR A LINHA DE QUEM CHAMA. Quem vai cancelar lê uma coluna a mais
- * (`provedor_documento_id`, em `EnvelopeParaCancelar`): com o retorno fixo em `EnvelopeDaProposta`,
- * o id do documento CHEGAVA do banco e o TypeScript o apagava na saída daqui, e a régua devolveria
- * uma linha da qual não se consegue cancelar nada.
- */
-export function envelopeQueSegura<L extends EnvelopeDaProposta>(linhas: L[]): L | null {
-  return linhas.find(seguraOEnvio) ?? null;
-}
-
-/**
- * ESTA linha segura um novo envio?
- *
- * ⚠️ ELA É A RÉGUA DE `envelopeQueSegura`, SOLTA PARA QUEM PRECISA DA LISTA E NÃO DA PRIMEIRA. O
- * termo de acordo do Hades, depois de gravar a intenção, precisa saber se OUTRA linha viva nasceu na
- * mesma janela (a corrida do segundo envelope) e comparar as duas: `envelopeQueSegura` devolve uma
- * só. Escrever um segundo `find` lá faria a casa ter duas definições de "envelope vivo", e a que
- * discordasse seria a que deixa passar.
- */
-export function seguraOEnvio(linha: EnvelopeDaProposta): boolean {
-  return (
-    !ESTADOS_QUE_LIBERAM_REENVIO.has(linha.estado)
-    && (linha.envelope_id !== null || linha.falha === null)
-  );
-}
+// A RÉGUA (`ESTADOS_QUE_LIBERAM_REENVIO`, `seguraOEnvio`, `envelopeQueSegura`) SAIU PARA
+// `envelope-vigente.ts` na F2 da fonte única e é reexportada aqui. ⚠️ Não reescreva uma cópia: duas
+// definições de "envelope vivo" divergem no primeiro estado que muda de lado, e a que discordar é a
+// que deixa passar.
+export { envelopeQueSegura, ESTADOS_QUE_LIBERAM_REENVIO, seguraOEnvio } from "./envelope-vigente";
 
 /**
  * Os oito estados, escritos como `Record` DE PROPÓSITO: estado novo em `EstadoDaAssinatura` sem
@@ -722,7 +674,8 @@ export function envioAindaPodeEstarNoAr(criadoEm: string, agora = Date.now()): b
  * algo na conta — no passo 1 nada chegou a existir, e nos passos 2 a 5 o rascunho é apagado e o id
  * volta nulo de propósito. Linha com falha e sem id é, com todas as letras, "nada ficou pendente lá".
  */
-async function impedimentoDeEnvelopeVivo(
+// ⚠️ EXPORTADA SÓ PARA O TESTE (`envio-db.test.ts`): as frases da recusa, por provedor (F2).
+export async function impedimentoDeEnvelopeVivo(
   sb: SupabaseClient,
   propostaId: string,
 ): Promise<FalhaAoEnviar | null> {
@@ -788,6 +741,22 @@ async function impedimentoDeEnvelopeVivo(
       erro:
         `Este contrato JÁ FOI ASSINADO na ${provedor} (envelope ${vivo.envelope_id}). Mandar de novo criaria um segundo contrato assinado da mesma venda. ` +
         "Se o que precisa mudar é o documento, o caminho é cancelar a venda ou gerar um aditivo, e não um segundo envelope.",
+      ok: false,
+      status: 409,
+    };
+  }
+
+  // ⚠️ O ENVELOPE DA D4SIGN FOI MANDADO PELO C2X, E NÃO VOLTA POR WEBHOOK (F2 da fonte única). A linha
+  // nasce do espelho da D4Sign (`origem = 'c2x'`), ligada a esta venda porque o comprador é o mesmo:
+  // o Panteon não envia, não cancela nem troca signatário nela. A saída é cancelar pelo C2X, e quem
+  // libera o reenvio é a próxima rodada do espelho (a cada 30 minutos), não o webhook da Clicksign.
+  // Dizer "o webhook libera" deixaria alguém esperando uma liberação que não vem por ali.
+  if (vivo.provedor === "d4sign") {
+    return {
+      erro:
+        `Este contrato já está em assinatura na D4Sign, enviado pelo C2X (documento ${vivo.envelope_id}, em "${comoSeEscreveOEstado(vivo.estado)}", desde ${quando(vivo.criado_em)}). ` +
+        "Mandar pela Clicksign deixaria DOIS contratos da mesma venda para assinar. " +
+        "Se aquele envio não serve mais, cancele na D4Sign pelo C2X; o Panteon libera em até 30 minutos.",
       ok: false,
       status: 409,
     };

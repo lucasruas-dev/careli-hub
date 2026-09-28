@@ -85,6 +85,8 @@ function bancoDaVitoria(c: { card?: Linha; outros?: Linha[]; venda?: Linha } = {
         etapa: "contrato",
         etapa_desde: "2026-09-20T12:00:00.000Z",
         id: "venda-vitoria",
+        // ⚠️ NATIVA: desde a F2 só a venda nativa tem card e data movidos pelo envelope.
+        origem: "panteon",
         unidade_id: "uni-vitoria",
         workspace_id: "careli",
         ...c.venda,
@@ -226,11 +228,21 @@ describe("Gerar contrato com o card já adiante (aba velha)", () => {
   });
 });
 
+/** O contrato da Vitória fechado pela Clicksign, com a data da compradora no quadro (F2). */
+const ENVELOPE_QUE_FECHOU = {
+  fechadoEm: "2026-09-26T12:00:00.000-03:00",
+  finalidade: "contrato" as const,
+  provedor: "clicksign" as const,
+  signatarios: [
+    { assinado_em: "2026-09-26T10:00:00.000-03:00", chave: "k-comprador", email: "", nome: "Vitória", ordem: 1, papel: "comprador" },
+  ],
+};
+
 describe("o webhook de assinado", () => {
   it("card contrato vai para Pré-faturamento e a venda FICA em assinatura; o cadastro não é escrito", async () => {
     const b = bancoDaVitoria({ card: { estagio: "assinatura" }, venda: { etapa: "assinatura" } });
 
-    await concluirAssinaturaDoCard(b.cliente, "venda-vitoria");
+    await concluirAssinaturaDoCard(b.cliente, "venda-vitoria", ENVELOPE_QUE_FECHOU);
 
     expect(b.linha("temis_trabalhos", "card-vitoria")?.estagio).toBe("prazo_legal");
     expect(b.linha("hercules_propostas", "venda-vitoria")?.etapa).toBe("assinatura");
@@ -241,7 +253,7 @@ describe("o webhook de assinado", () => {
   it("venda ainda em contrato (o reflexo do envio falhou): alcança assinatura, nunca faturado", async () => {
     const b = bancoDaVitoria({ card: { estagio: "assinatura" }, venda: { etapa: "contrato" } });
 
-    await concluirAssinaturaDoCard(b.cliente, "venda-vitoria");
+    await concluirAssinaturaDoCard(b.cliente, "venda-vitoria", ENVELOPE_QUE_FECHOU);
 
     const venda = b.linha("hercules_propostas", "venda-vitoria");
     expect(venda).toMatchObject({ data_faturamento: null, etapa: "assinatura", etapa_por: null });
@@ -252,7 +264,7 @@ describe("o webhook de assinado", () => {
 
   it("venda distratada com card pendurado em assinatura: o card anda, a venda não ressuscita", async () => {
     const b = bancoDaVitoria({ card: { estagio: "assinatura" }, venda: { etapa: "distrato" } });
-    await concluirAssinaturaDoCard(b.cliente, "venda-vitoria");
+    await concluirAssinaturaDoCard(b.cliente, "venda-vitoria", ENVELOPE_QUE_FECHOU);
     expect(b.linha("hercules_propostas", "venda-vitoria")?.etapa).toBe("distrato");
   });
 });
@@ -366,6 +378,8 @@ function envelopeDaVitoria(patch: Linha = {}): Linha {
   return {
     envelope_id: "env-vitoria",
     estado: "aguardando",
+    // ⚠️ 0195: só o envelope de CONTRATO move o card de contrato e a venda (F2).
+    finalidade: "contrato",
     id: "reg-vitoria",
     proposta_id: "venda-vitoria",
     provedor: "clicksign",
@@ -612,5 +626,139 @@ describe("registrarEventoDeAssinatura (bugs 8.2 e 8.8)", () => {
       evento: "sign",
       tamanho: 10_716,
     });
+  });
+});
+
+// ── F2 DA FONTE ÚNICA: O WEBHOOK PELA PORTA ÚNICA, E A CONCLUSÃO COM COMPARAR-E-TROCAR ──────────
+//
+// ⚠️ O webhook passou a levar o contrato por `aplicarEnvelopeNaVenda` (as guardas da venda nativa,
+// viva e sem pedido de cancelamento, e só com data real) e a conclusão passou a escolher o card pela
+// FINALIDADE do envelope, com `.eq("estagio", "assinatura")` no update.
+
+/** O fechamento da Vitória pela Clicksign: todos assinaram, a compradora primeiro. */
+function payloadDoFechamento(): Record<string, unknown> {
+  return payloadDoDocumento({
+    evento: "sign",
+    eventos: [
+      { chave: "k-testemunha", email: "testemunha@x.com", nome: "Testemunha", quando: "2026-09-26T15:00:00Z" },
+      { chave: "k-vendedora", email: "vendedora@x.com", nome: "Vendedora", quando: "2026-09-26T14:00:00Z" },
+      { chave: "k-comprador", email: "compradora@x.com", nome: "Vitória", quando: "2026-09-26T13:00:00Z" },
+    ],
+    signatarios: [
+      { chave: "k-comprador", email: "compradora@x.com" },
+      { chave: "k-vendedora", email: "vendedora@x.com" },
+      { chave: "k-testemunha", email: "testemunha@x.com" },
+    ],
+    status: "closed",
+  });
+}
+
+describe("o webhook na porta única (F2)", () => {
+  it("⚠️ o contrato fecha: card no Pré-faturamento e data_assinatura gravada na venda nativa (dia em Brasília)", async () => {
+    const b = bancoDaVitoria({ card: { estagio: "assinatura" }, venda: { etapa: "assinatura" } });
+    b.semear("temis_envelopes", envelopeDaVitoria({ estado: "parcial" }));
+    comAFuncaoDa0195(b);
+
+    const payload = payloadDoFechamento();
+    await aplicarEventoDaClicksign(b.cliente, lerEventoDoWebhook(JSON.stringify(payload)), payload);
+
+    expect(b.linha("temis_trabalhos", "card-vitoria")?.estagio).toBe("prazo_legal");
+    // A data do mesmo instante do prazo: a compradora, 10h de 26/09 em Brasília.
+    expect(b.linha("hercules_propostas", "venda-vitoria")?.data_assinatura).toBe("2026-09-26");
+  });
+
+  it("⚠️ venda com pedido de cancelamento aberto: o envelope fecha, mas nem card nem data andam", async () => {
+    const b = bancoDaVitoria({
+      card: { estagio: "assinatura" },
+      venda: { cancelamento_pedido_em: "2026-09-25T12:00:00.000Z", etapa: "assinatura" },
+    });
+    b.semear("temis_envelopes", envelopeDaVitoria({ estado: "parcial" }));
+    comAFuncaoDa0195(b);
+    const aviso = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const payload = payloadDoFechamento();
+    const r = await aplicarEventoDaClicksign(b.cliente, lerEventoDoWebhook(JSON.stringify(payload)), payload);
+
+    expect(r).toMatchObject({ aplicado: true, estado: "assinado" });
+    expect(b.linha("temis_trabalhos", "card-vitoria")?.estagio).toBe("assinatura");
+    expect(b.linha("hercules_propostas", "venda-vitoria")?.data_assinatura).toBeNull();
+    // ⚠️ O contrato assinado parado não some calado: vai ao log com os ids e ao motivo que a rota loga.
+    expect(r.motivo).toContain("venda venda-vitoria: card nada");
+    const linhas = aviso.mock.calls.map((c) => String(c[0]));
+    expect(linhas.some((l) => l.includes("venda-vitoria") && l.includes("pedido de cancelamento aberto"))).toBe(true);
+    expect(linhas.join("\n")).not.toMatch(/@/);
+  });
+
+  it("envelope de CESSÃO assinado conclui o card de cessão, e o de contrato fica onde está", async () => {
+    const b = bancoDaVitoria({
+      card: { estagio: "assinatura" },
+      outros: [
+        { estagio: "assinatura", estagio_desde: "2026-09-22T12:00:00.000Z", id: "card-cessao", proposta_id: "venda-vitoria", tipo: "cessao", workspace_id: "careli" },
+      ],
+      venda: { etapa: "assinatura" },
+    });
+    b.semear("temis_envelopes", envelopeDaVitoria({ estado: "parcial", finalidade: "cessao", trabalho_id: "card-cessao" }));
+    comAFuncaoDa0195(b);
+
+    const payload = payloadDoFechamento();
+    await aplicarEventoDaClicksign(b.cliente, lerEventoDoWebhook(JSON.stringify(payload)), payload);
+
+    expect(b.linha("temis_trabalhos", "card-cessao")?.estagio).toBe("faturado");
+    expect(b.linha("temis_trabalhos", "card-vitoria")?.estagio).toBe("assinatura");
+    // A cessão não grava data de assinatura na venda.
+    expect(b.linha("hercules_propostas", "venda-vitoria")?.data_assinatura).toBeNull();
+  });
+
+  it("envelope sem finalidade assinado: nenhum card é concluído (não se sabe o que foi assinado)", async () => {
+    const b = bancoDaVitoria({ card: { estagio: "assinatura" }, venda: { etapa: "assinatura" } });
+    b.semear("temis_envelopes", envelopeDaVitoria({ estado: "parcial", finalidade: null }));
+    comAFuncaoDa0195(b);
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const payload = payloadDoFechamento();
+    await aplicarEventoDaClicksign(b.cliente, lerEventoDoWebhook(JSON.stringify(payload)), payload);
+
+    expect(b.linha("temis_trabalhos", "card-vitoria")?.estagio).toBe("assinatura");
+  });
+});
+
+describe("concluirAssinaturaDoCard (F2)", () => {
+  it("⚠️ comparar-e-trocar: o card que saiu de Em assinatura entre a leitura e o update não é concluído", async () => {
+    const b = bancoDaVitoria({ card: { estagio: "assinatura" }, venda: { etapa: "assinatura" } });
+    b.depois(
+      (q) => q.tabela === "temis_trabalhos" && q.operacao === "select",
+      (banco) => {
+        const card = banco.linha("temis_trabalhos", "card-vitoria");
+        if (card) card.estagio = "analise";
+      },
+    );
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const r = await concluirAssinaturaDoCard(b.cliente, "venda-vitoria", ENVELOPE_QUE_FECHOU);
+
+    expect(r).toBe("nada");
+    expect(b.linha("temis_trabalhos", "card-vitoria")?.estagio).toBe("analise");
+    expect(b.linhas("temis_trabalho_etapas")).toEqual([]);
+  });
+
+  it("⚠️ sem data real (nem do comprador, nem do provedor) o card NÃO anda: nada de 'agora'", async () => {
+    const b = bancoDaVitoria({ card: { estagio: "assinatura" }, venda: { etapa: "assinatura" } });
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const r = await concluirAssinaturaDoCard(b.cliente, "venda-vitoria", {
+      ...ENVELOPE_QUE_FECHOU,
+      fechadoEm: null,
+      signatarios: [{ chave: "k", email: "", nome: "Vitória", ordem: 1, papel: "comprador" }],
+    });
+
+    expect(r).toBe("sem_data_real");
+    expect(b.linha("temis_trabalhos", "card-vitoria")?.estagio).toBe("assinatura");
+  });
+
+  it("card já no Pré-faturamento: já estava, sem escrever", async () => {
+    const b = bancoDaVitoria({ card: { estagio: "prazo_legal" }, venda: { etapa: "assinatura" } });
+    const r = await concluirAssinaturaDoCard(b.cliente, "venda-vitoria", ENVELOPE_QUE_FECHOU);
+    expect(r).toBe("ja_estava");
+    expect(b.consultas.some((q) => q.tabela === "temis_trabalhos" && q.operacao === "update")).toBe(false);
   });
 });

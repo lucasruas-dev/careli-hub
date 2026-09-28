@@ -17,8 +17,10 @@
 // preenchida, um faturamento. O silêncio das duas fontes é que vira "não".
 
 // ⚠️ E FALTAVA A FONTE QUE O PRÓPRIO PANTEON ESCREVE — o defeito mais caro deste arquivo, e ele é
-// anterior à Têmis assinar contrato nenhum. As duas fontes acima são do C2X: `data_assinatura` só é
-// preenchida na carga do legado e `hercules_proposta_eventos` só é escrita por ela. Uma venda que
+// anterior à Têmis assinar contrato nenhum. As duas fontes acima eram só do C2X: `hercules_proposta_eventos`
+// só é escrita pela carga do legado, e `data_assinatura` também só era, até a F2 da fonte única
+// (28/09/2026): agora `aplicarEnvelopeNaVenda` (`lib/assinatura/envelope-na-venda.ts`) a grava na
+// venda NATIVA quando o contrato fecha, e só se estiver nula. Uma venda que
 // nasceu aqui, cujo contrato a Têmis mandou para a Clicksign e cujos DOIS compradores assinaram,
 // continuava respondendo "nenhuma assinatura registrada" — e o pedido de cancelamento saía
 // classificado como CANCELAMENTO, sobre um contrato assinado por todos.
@@ -42,11 +44,27 @@ export type EventoDoContrato = { tipo: string; valor?: null | number | string };
 export type EnvelopeDoContrato = {
   estado?: null | string;
   fechado_em?: null | string;
+  /**
+   * O que o envelope assina (0195). ⚠️ QUANDO VEM E NÃO É `contrato`, O ENVELOPE NÃO CONTA: um
+   * distrato assinado não é o contrato assinado (0.13 do plano da fonte única). Ausente = o chamador
+   * já filtrou na consulta (`fatos-do-contrato-server.ts` filtra).
+   */
+  finalidade?: null | string;
+  /** De que provedor: é onde a frase manda conferir. Ausente = Clicksign (o único de antes da F2). */
+  provedor?: null | string;
 };
+
+/** O nome do provedor na frase. ⚠️ Desconhecido cai na Clicksign, o provedor da Têmis. */
+function ondeFoiAssinado(provedor: null | string | undefined): string {
+  return String(provedor ?? "").trim().toLowerCase() === "d4sign" ? "na D4Sign" : "na Clicksign";
+}
 
 /** As datas que a própria proposta carrega. */
 export type DatasDoContrato = {
-  /** Quando o contrato foi assinado — preenchida na carga do C2X. */
+  /**
+   * Quando o contrato foi assinado. Na venda da carga, vem do C2X; na NATIVA, é gravada por
+   * `aplicarEnvelopeNaVenda` quando o contrato fecha (F2 da fonte única, decisão do Lucas de 28/09).
+   */
   data_assinatura?: null | string;
   /** O ato PAGO. Diferente de `primeiro_sinal`, que é a data prevista da primeira parcela. */
   data_ato?: null | string;
@@ -94,7 +112,9 @@ export function apurarFatosDoContrato(
   // é UM comprador de dois: pela regra do Lucas (12/09/2026) esse contrato ainda VOLTA para a
   // análise, e tratá-lo como completo empurraria para o distrato uma venda que só precisava de
   // correção.
-  const envelopeAssinado = String(envelope?.estado ?? "").trim().toLowerCase() === "assinado";
+  const finalidade = String(envelope?.finalidade ?? "").trim().toLowerCase();
+  const envelopeAssinado =
+    String(envelope?.estado ?? "").trim().toLowerCase() === "assinado" && (!finalidade || finalidade === "contrato");
   const fechadoEm = envelopeAssinado ? texto(envelope?.fechado_em) : null;
 
   const assinaturaCompleta = assinaturas.length > 0 || Boolean(dataAssinatura) || envelopeAssinado;
@@ -111,14 +131,19 @@ export function apurarFatosDoContrato(
       assinatura: assinaturas.length
         ? `${assinaturas.length} ${assinaturas.length === 1 ? "assinatura registrada" : "assinaturas registradas"}`
         : dataAssinatura
-          ? `contrato assinado em ${diaEscrito(dataAssinatura)}`
+          ? // ⚠️ COM O ENVELOPE ASSINADO AO LADO, A FRASE DA DATA TAMBÉM DIZ ONDE CONFERIR. Desde a F2 a
+            // venda nativa assinada ganha `data_assinatura`, e este ramo, que vem antes, apagaria dela a
+            // indicação do provedor (a prova está lá, não aqui). A data continua a da venda.
+            envelopeAssinado
+            ? `contrato assinado ${ondeFoiAssinado(envelope?.provedor)} em ${diaEscrito(dataAssinatura)}`
+            : `contrato assinado em ${diaEscrito(dataAssinatura)}`
           : envelopeAssinado
-            ? // ⚠️ A FRASE DIZ DE ONDE VEIO. Quem lê a modal precisa saber que a prova não está no
-              // Panteon nem no C2X: ela está na Clicksign, e é lá que se confere o documento
-              // assinado antes de assumir um distrato.
+            ? // ⚠️ A FRASE DIZ DE ONDE VEIO. Quem lê a modal precisa saber onde está a prova: na
+              // Clicksign (a Têmis mandou) ou na D4Sign (o C2X mandou, F2 da fonte única), e é lá
+              // que se confere o documento assinado antes de assumir um distrato.
               fechadoEm
-              ? `contrato assinado por todos na Clicksign em ${diaDoInstante(fechadoEm)}`
-              : "contrato assinado por todos na Clicksign"
+              ? `contrato assinado por todos ${ondeFoiAssinado(envelope?.provedor)} em ${diaDoInstante(fechadoEm)}`
+              : `contrato assinado por todos ${ondeFoiAssinado(envelope?.provedor)}`
             : "nenhuma assinatura registrada",
       pagamento: pagamentos.length
         ? `${pagamentos.length} ${pagamentos.length === 1 ? "pagamento registrado" : "pagamentos registrados"}`

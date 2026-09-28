@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { conferirConfiguracao, pareceSandbox } from "@/lib/assinatura/clicksign/cliente";
 import { enviarContratoParaAssinatura, prepararEnvio } from "@/lib/assinatura/envio-db";
+import { ENVIO_POR_OUTRO_CANAL, fraseParaOAtor } from "@/lib/assinatura/frase-para-o-portal";
 import { descreverRegra, gruposDaRegra, lerRegraDeOrdem, type RegraDeOrdem } from "@/lib/assinatura/ordem";
 import type { AmbienteDoEnvio, RespostaDoEnvio, RespostaDoPreparo } from "@/lib/assinatura/preparo";
 import { rotuloDoPapel } from "@/lib/assinatura/tipos";
@@ -216,7 +217,9 @@ export async function enviarContratoDoAtor(
     });
     return NextResponse.json(
       {
-        erro: enviado.erro,
+        // ⚠️ A RECUSA DA D4SIGN (o contrato já está lá, mandado pelo C2X) não atravessa para o portal
+        // como está: `frase-para-o-portal.ts`.
+        erro: fraseParaOAtor(ator.tipo === "hub", enviado.erro, ENVIO_POR_OUTRO_CANAL),
         ...(enviado.envelopeAtivo ? { envelopeAtivo: true } : {}),
       },
       { status: enviado.status },

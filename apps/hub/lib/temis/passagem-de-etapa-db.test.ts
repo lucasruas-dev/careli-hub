@@ -73,3 +73,27 @@ describe("a origem `conclusao` sem a 0177", () => {
     expect(inseridas).toHaveLength(1);
   });
 });
+
+describe("a origem `espelho_d4sign` sem a 0195", () => {
+  // ⚠️ F2 da fonte única: o espelho da D4Sign move o card com a origem dele, que só a 0195 põe no
+  // check. Sem ela a passagem não pode sumir calada: entra como o fato mais próximo que a 0153
+  // conhece (o do provedor, `webhook_assinatura`), uma vez só.
+  it("o check recusa a palavra: a mesma passagem entra como `webhook_assinatura`, uma vez", async () => {
+    const erro = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { inseridas, sb } = bancoQueResponde([RECUSA_DA_ORIGEM, null]);
+
+    await registrarPassagemDeEtapa(sb, {
+      ...passagem,
+      de: "analise",
+      origem: "espelho_d4sign",
+      para: "assinatura",
+      quem: null,
+      quemNome: null,
+      trabalhoTipo: "contrato",
+    });
+
+    expect(inseridas.map((l) => l.origem)).toEqual(["espelho_d4sign", "webhook_assinatura"]);
+    expect(inseridas[1]).toMatchObject({ de: "analise", para: "assinatura", quem: null, trabalho_id: "card-1" });
+    expect(erro).not.toHaveBeenCalled();
+  });
+});

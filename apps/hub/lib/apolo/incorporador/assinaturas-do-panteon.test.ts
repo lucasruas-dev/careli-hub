@@ -30,11 +30,16 @@ const proposta = (p: Partial<PropostaDoPanteonEmContrato> & { id: string }): Pro
   ...p,
 });
 
+let envelopesCriados = 0;
 const envelope = (p: Partial<EnvelopeDoPanteon> & { proposta_id: string }): EnvelopeDoPanteon => ({
   criado_em: "2026-09-11T12:00:00.000Z",
   enviado_em: "2026-09-11T12:05:00.000Z",
+  envelope_id: `env-${(envelopesCriados += 1)}`,
   estado: "aguardando",
+  falha: null,
   fechado_em: null,
+  id: `reg-${envelopesCriados}`,
+  provedor: "clicksign",
   signatarios: [
     { email: "maria@exemplo.com", nome: "Maria Souza", ordem: 1, papel: "comprador" },
     { email: "rh@careli.adm.br", nome: "Ana Testemunha", ordem: 2, papel: "testemunha" },
@@ -89,11 +94,11 @@ describe("linhasDeAssinaturaDoPanteon", () => {
     }
   });
 
-  it("o envelope que vale é o mais recente que não morreu; papel desconhecido vira Sem perfil", () => {
+  it("o envelope que vale é o mais recente vivo; o que morreu não conta; papel desconhecido vira Sem perfil", () => {
     const [linha] = linhasDeAssinaturaDoPanteon(
       [proposta({ id: "p1" })],
       [
-        envelope({ criado_em: "2026-09-01T00:00:00.000Z", estado: "assinado", proposta_id: "p1" }),
+        envelope({ criado_em: "2026-09-01T00:00:00.000Z", estado: "cancelado", proposta_id: "p1" }),
         envelope({ criado_em: "2026-09-12T00:00:00.000Z", estado: "expirado", proposta_id: "p1" }),
         envelope({
           criado_em: "2026-09-05T00:00:00.000Z",
@@ -103,11 +108,38 @@ describe("linhasDeAssinaturaDoPanteon", () => {
         }),
       ],
     );
-    // O de 01/09 era "assinado", mas o de 05/09 é mais recente e está vivo.
     expect(linha).toMatchObject({ concluida: false, situacao: "em-assinatura" });
     expect(linha?.esquema).toEqual([
       { assinadoEm: null, degrau: 0, nome: "Fulano", perfil: "Sem perfil", situacao: "aguardando" },
     ]);
+  });
+
+  // ⚠️ A RÉGUA MUDOU NA F2 DA FONTE ÚNICA (28/09/2026), E ESTE TESTE DIZIA O CONTRÁRIO. A cópia local
+  // ficava com o mais recente "que não morreu", e um envio novo de um contrato JÁ ASSINADO apagava
+  // da tela o contrato que vale juridicamente. Agora o assinado vence o vivo mais novo
+  // (`envelopeVigente`), e o vivo a mais é o aviso interno de dois contratos, nunca linha do portal.
+  it("⚠️ o assinado vence um vivo mais novo (régua única, F2)", () => {
+    const [linha] = linhasDeAssinaturaDoPanteon(
+      [proposta({ id: "p1" })],
+      [
+        envelope({
+          criado_em: "2026-09-01T00:00:00.000Z",
+          estado: "assinado",
+          fechado_em: "2026-09-02T15:00:00.000Z",
+          proposta_id: "p1",
+        }),
+        envelope({ criado_em: "2026-09-05T00:00:00.000Z", estado: "parcial", proposta_id: "p1" }),
+      ],
+    );
+    expect(linha).toMatchObject({ concluida: true, situacao: "assinado" });
+  });
+
+  it("o rascunho do envio em curso (sem envelope_id, sem falha) não é vigente: aguardando emissão", () => {
+    const [linha] = linhasDeAssinaturaDoPanteon(
+      [proposta({ id: "p1" })],
+      [envelope({ envelope_id: null, enviado_em: null, estado: "rascunho", proposta_id: "p1" })],
+    );
+    expect(linha).toMatchObject({ esquema: [], situacao: "aguardando-emissao" });
   });
 });
 

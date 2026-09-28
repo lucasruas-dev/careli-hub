@@ -92,7 +92,8 @@ const COLUNAS: Record<string, readonly string[]> = {
   ],
   prometeu_reservas: ["codigo", "evento_id", "id", "lote", "quadra", "situacao", "unidade_c2x_id"],
   temis_envelopes: [
-    "atualizado_em", "criado_em", "envelope_id", "estado", "estado_cru", "falha", "fechado_em", "id",
+    // `finalidade` é da 0195 (aplicada antes do deploy da F1): os fatos do contrato só leem o contrato (F2).
+    "atualizado_em", "criado_em", "envelope_id", "estado", "estado_cru", "falha", "fechado_em", "finalidade", "id",
     "proposta_id", "provedor", "provedor_documento_id", "workspace_id",
   ],
   temis_trabalho_etapas: [
@@ -590,6 +591,8 @@ const envelope = (extra: Linha = {}): Linha => ({
   envelope_id: "env-vivo",
   estado: "aguardando",
   falha: null,
+  // ⚠️ 0195: só envelope de CONTRATO conta como "contrato assinado" nos fatos (a F2 filtra por ela).
+  finalidade: "contrato",
   id: "reg-env",
   proposta_id: "venda-21",
   provedor: "clicksign",

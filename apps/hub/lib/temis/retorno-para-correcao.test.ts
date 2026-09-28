@@ -181,6 +181,10 @@ describe("o envelope, na hora de voltar", () => {
     expect(r.erro).toContain("D4Sign");
     expect(r.erro).toContain("reg-1");
     expect(r.erro).not.toContain("o webhook grava o cancelamento aqui");
+    // ⚠️ F2 da fonte única: a linha da D4Sign vem do espelho (o C2X mandou). A saída é o C2X, e quem
+    // libera é a próxima rodada do espelho, não o webhook nem uma edição à mão em temis_envelopes.
+    expect(r.erro).toContain("Cancele na D4Sign pelo C2X; o Panteon libera a volta em até 30 minutos.");
+    expect(r.erro).not.toContain("temis_envelopes");
   });
 
   // ⚠️ A LINHA SEM O ID DO DOCUMENTO NÃO É RECUSADA AQUI, E ISSO É A CORREÇÃO DE 25/09/2026. Cancelar
