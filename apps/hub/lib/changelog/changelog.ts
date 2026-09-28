@@ -37,7 +37,7 @@ export type ChangelogEntry = {
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
     buildTag: "2026-09-28-voltou-para-correcao-na-assinatura",
-    deployedAt: "2026-09-28T15:06:23-03:00",
+    deployedAt: "2026-09-28T15:15:55-03:00",
     internal: true,
     modules: [
       {
