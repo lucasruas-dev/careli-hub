@@ -79,6 +79,7 @@ import {
   type LinhaAssinatura,
 } from "@/lib/apolo/painel-assinatura";
 import type { createApoloAdminClient } from "@/lib/apolo/server";
+import { quemAssinou } from "@/lib/assinatura/diario-do-envelope";
 // ⚠️ A RÉGUA PURA (sem banco): qual envelope vale para a venda. Some daqui na F4 da fonte única.
 import { envelopeVigente } from "@/lib/assinatura/envelope-vigente";
 import { PAPEIS, type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
@@ -158,6 +159,12 @@ export type DadosDoContrato = {
   unitId: number;
   /** Valor de tabela da unidade. */
   valorTabela: number;
+  /**
+   * ISO CURTO do dia em que o contrato VOLTOU PARA CORREÇÃO (o envelope foi cancelado pela volta da
+   * Têmis) e nenhum contrato novo foi gerado depois. Só nas linhas do Panteon; ausente no legado.
+   * Com ele, "aguardando emissão" quer dizer "aguardando o contrato novo", e não "gerado e parado".
+   */
+  voltouParaCorrecaoEm?: null | string;
 };
 
 /** Uma linha da lista analítica: um ENVIO (contrato) rotulado pela unidade dele. */
@@ -1138,12 +1145,16 @@ function arredondar1(valor: number): number {
 // que lê a data de assinatura da proposta e o envelope `assinado`. Uma régua escrita aqui diria
 // "pendente" num contrato que a tela de cancelamento trata como assinado.
 //
-// ⚠️ O ENVELOPE NÃO DIZ QUEM ASSINOU, SÓ SE TODOS ASSINARAM. O webhook grava o estado do documento
-// (`aguardando`, `parcial`, `assinado`), não um tique por pessoa. Por isso o esquema da linha lista
-// quem foi chamado (papel e nome congelados no envio) com todos assinados quando o contrato fechou, e
-// todos aguardando enquanto não fechou: marcar "na vez" ou um tique parcial seria inventar. Pela
-// mesma razão essas linhas não entram nas taxas, na fila por degrau nem no quadro por assinante, que
-// são contas por pessoa.
+// ⚠️ QUEM ASSINOU SAI DO PAYLOAD DO WEBHOOK (28/09/2026). O envelope grava só o estado do documento
+// (`aguardando`, `parcial`, `assinado`), mas todo payload da Clicksign traz o histórico INTEIRO em
+// `document.events[]`, e `quemAssinou` (lib/assinatura/diario-do-envelope.ts, o mesmo parser do diário
+// da Têmis e do selo "1/5" do Board) diz pessoa a pessoa quem assinou e quando. Medido em 28/09: 25 de
+// 25 assinaturas casando por e-mail com a lista congelada no envio. Sem isso a linha dizia "todos
+// aguardando" num contrato em que as três coordenadoras já tinham assinado, e o Lucas via "aguardando
+// emissão" onde o Board dizia "Em assinatura". Com a ordem congelada no envio (`ordem`), quem está na
+// vez é o menor degrau pendente, a mesma régua do legado. As taxas, a fila por degrau e o quadro por
+// assinante continuam contando só o legado nesta versão; a leitura única do Panteon
+// (docs/assinatura/fonte-unica-do-contrato.md) é quem junta tudo.
 
 /** Uma proposta do Panteon com contrato, com as colunas que a linha da lista usa. */
 export type PropostaDoPanteonEmContrato = {
@@ -1157,6 +1168,8 @@ export type PropostaDoPanteonEmContrato = {
   id: string;
   imobiliaria_nome: null | string;
   preco_tabela: null | number | string;
+  /** O elo com `hercules_unidades`, de onde sai o CÓDIGO da unidade (a chave que casa com o legado). */
+  unidade_id?: null | string;
   unidade_nome: null | string;
   valor: null | number | string;
 };
@@ -1170,16 +1183,55 @@ export type EnvelopeDoPanteon = {
   enviado_em: null | string;
   envelope_id: null | string;
   estado: string;
+  /** Quem mudou o estado por último (`panteon:retorno_para_correcao`, `clicksign:sign`…). */
+  estado_cru?: null | string;
   falha: null | string;
   fechado_em: null | string;
   id: string;
+  /** `false` = todos assinam em paralelo; `true`/nulo = a ordem congelada no envio vale. */
+  ordenada?: boolean | null;
   proposta_id: null | string;
   provedor: string;
+  /** O documento na Clicksign: é por ele que os eventos do webhook casam com o envelope. */
+  provedor_documento_id?: null | string;
   signatarios: unknown;
 };
 
+/**
+ * Quem já assinou um documento, pelo que os eventos do webhook contaram: e-mail (minúsculo) ou chave
+ * da pessoa na Clicksign → instante ISO da assinatura.
+ */
+export type AssinaturasDoDocumento = ReadonlyMap<string, string>;
+
+/** O que a leitura do Panteon acrescenta às linhas, além das propostas e dos envelopes. */
+export type ExtrasDoPanteon = {
+  /** `unidade_id` → `hercules_unidades.codigo` ("VOL1106"), o mesmo rótulo da linha do legado. */
+  codigoDaUnidade?: ReadonlyMap<string, string>;
+  /** `provedor_documento_id` → quem assinou. */
+  assinaturasPorDocumento?: ReadonlyMap<string, AssinaturasDoDocumento>;
+  /**
+   * Proposta → instante (ISO) do contrato MAIS RECENTE gerado (`hercules_documentos` tipo contrato,
+   * não removido). Com o mapa, "gerado em" é o fato; sem ele (teste antigo), cai na entrada da etapa.
+   */
+  contratoGeradoEm?: ReadonlyMap<string, string>;
+};
+
+/** A volta da Têmis para correção cancela o envelope com este carimbo (retorno-para-correcao.ts). */
+const CARIMBO_DA_VOLTA = "panteon:retorno_para_correcao";
+
+function instanteOuNaN(valor: null | string | undefined): number {
+  const texto = limpo(valor);
+  return texto ? Date.parse(texto) : Number.NaN;
+}
+
 /** As etapas da proposta em que já existe contrato. */
 export const ETAPAS_COM_CONTRATO = ["contrato", "assinatura", "faturado"] as const;
+
+/**
+ * Envelope que terminou sem assinatura (ou nem saiu). ⚠️ Só para escolher de que documentos ler o
+ * payload (`assinaturasDosDocumentos`); QUAL envelope vale é a régua única `envelopeVigente`.
+ */
+const ENVELOPES_MORTOS = new Set(["cancelado", "expirado", "rascunho", "recusado"]);
 
 function numeroOuZero(valor: null | number | string | undefined): number {
   const n = typeof valor === "number" ? valor : Number(String(valor ?? "").replace(",", "."));
@@ -1205,7 +1257,9 @@ function diaCurto(valor: null | string | undefined): null | string {
 }
 
 /** Quem foi chamado a assinar, congelado no envio. Papel desconhecido sai "Sem perfil", sem sumir. */
-function signatariosDoEnvelope(bruto: unknown): Array<{ degrau: number; nome: string; perfil: string }> {
+function signatariosDoEnvelope(
+  bruto: unknown,
+): Array<{ chave: string; degrau: number; email: string; nome: string; perfil: string }> {
   if (!Array.isArray(bruto)) return [];
   return bruto
     .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
@@ -1213,18 +1267,53 @@ function signatariosDoEnvelope(bruto: unknown): Array<{ degrau: number; nome: st
       const papel = limpo(item.papel).toLowerCase();
       const ordem = Number(item.ordem);
       return {
+        // ⚠️ E-MAIL E CHAVE SÓ CASAM A ASSINATURA, E NÃO SAEM DAQUI: a linha que vai para a tela
+        // (`AssinaturaDoEsquema`) não tem campo para eles, por decisão do dono.
+        chave: limpo(item.chave),
         degrau: Number.isFinite(ordem) ? ordem : 0,
+        email: limpo(item.email).toLowerCase(),
         nome: limpo(item.nome),
-        perfil: (PAPEIS as string[]).includes(papel) ? rotuloDoPapel(papel as PapelNoContrato) : "Sem perfil",
+        perfil: perfilNaLista(papel),
       };
     });
+}
+
+/**
+ * O rótulo do papel NA LISTA DE ASSINATURA, que mistura linhas do Panteon e do legado.
+ *
+ * ⚠️ DOIS PAPÉIS FALAM A LÍNGUA DO LEGADO AQUI, e só aqui. A Têmis diz "Coordenador de Vendas" (a
+ * pessoa, `rotuloDoPapel`) e "Corretor / imobiliária"; a lista do portal agrupa e filtra por perfil
+ * ("Parado com …", as barrinhas, a taxa por perfil) e já tem "Coordenadora de venda" e "Corretor"
+ * vindos de `perfilDeTela`. Dois nomes para a mesma função abririam duas barras e dois filtros para a
+ * mesma pessoa (medido na conferência de 28/09/2026: "Coordenador de Vendas" ao lado de
+ * "Coordenadora de venda"). O rótulo da Têmis não muda.
+ */
+function perfilNaLista(papel: string): string {
+  if (papel === "coordenadora") return "Coordenadora de venda";
+  if (papel === "corretor") return "Corretor";
+  return (PAPEIS as string[]).includes(papel) ? rotuloDoPapel(papel as PapelNoContrato) : "Sem perfil";
+}
+
+/**
+ * Quem assinou, pelo payload mais recente do documento. Função pura, para o teste montar o mapa sem
+ * banco: é `quemAssinou` (o parser do diário) reduzido a e-mail/chave → quando.
+ */
+export function assinaturasDoPayload(payload: unknown): Map<string, string> {
+  const mapa = new Map<string, string>();
+  for (const pessoa of quemAssinou(payload)) {
+    if (!pessoa.assinouEm) continue;
+    if (pessoa.email) mapa.set(pessoa.email.trim().toLowerCase(), pessoa.assinouEm);
+    if (pessoa.chave) mapa.set(pessoa.chave.trim(), pessoa.assinouEm);
+  }
+  return mapa;
 }
 
 /**
  * As linhas da lista de Contratos dos produtos do Panteon, no formato do quadro. Função pura.
  *
  *   • assinado (pela régua do cancelamento) → "assinado", todos os chamados assinados;
- *   • envelope vivo enviado → "em-assinatura", todos aguardando;
+ *   • envelope vivo enviado → "em-assinatura", cada pessoa assinada ou não pelo que o webhook contou
+ *     (`extras.assinaturasPorDocumento`), e na vez quem está no menor degrau ainda pendente;
  *   • sem envelope vivo → "aguardando-emissao", sem esquema.
  *
  * ⚠️ SEM BOTÃO DE PDF (`temContrato: false`, `unitId: 0`): o botão aponta para a rota do contrato do
@@ -1234,6 +1323,7 @@ function signatariosDoEnvelope(bruto: unknown): Array<{ degrau: number; nome: st
 export function linhasDeAssinaturaDoPanteon(
   propostas: PropostaDoPanteonEmContrato[],
   envelopes: EnvelopeDoPanteon[],
+  extras: ExtrasDoPanteon = {},
 ): UnidadeDeAssinatura[] {
   const envelopesPorProposta = new Map<string, EnvelopeDoPanteon[]>();
   for (const envelope of envelopes) {
@@ -1268,18 +1358,50 @@ export function linhasDeAssinaturaDoPanteon(
     const assinadoEm = concluida
       ? (diaCurto(envelope?.fechado_em) ?? diaCurto(proposta.data_assinatura))
       : null;
+    const documento = limpo(envelope?.provedor_documento_id);
+    const assinaturas = documento ? extras.assinaturasPorDocumento?.get(documento) : undefined;
+    // ⚠️ ENVELOPE SEM ORDEM (`ordenada = false`) CHAMA TODO MUNDO JUNTO: todos no degrau 0, que é a
+    // convenção do legado para "o empreendimento não usa ordem".
+    const semOrdem = envelope?.ordenada === false;
+
+    const pessoas = signatariosDoEnvelope(envelope?.signatarios)
+      .map((signatario) => {
+        const quando = concluida
+          ? null
+          : (assinaturas?.get(signatario.email) ?? (signatario.chave ? assinaturas?.get(signatario.chave) : undefined) ?? null);
+        return {
+          ...signatario,
+          assinou: concluida || Boolean(quando),
+          degrau: semOrdem ? 0 : signatario.degrau,
+          quando,
+        };
+      })
+      .sort((a, b) => a.degrau - b.degrau || a.nome.localeCompare(b.nome, "pt-BR"));
+
+    // Quem está na vez: o menor degrau com alguém pendente. Só num envelope vivo enviado; no
+    // assinado não há vez, e no que não saiu não há esquema.
+    const pendentes = pessoas.filter((pessoa) => !pessoa.assinou);
+    const degrauDaVez =
+      situacao === "em-assinatura" && pendentes.length > 0
+        ? Math.min(...pendentes.map((pessoa) => pessoa.degrau))
+        : null;
+
     const esquema: AssinaturaDoEsquema[] =
       situacao === "aguardando-emissao"
         ? []
-        : signatariosDoEnvelope(envelope?.signatarios)
-            .sort((a, b) => a.degrau - b.degrau || a.nome.localeCompare(b.nome, "pt-BR"))
-            .map((signatario) => ({
-              assinadoEm,
-              degrau: signatario.degrau,
-              nome: signatario.nome,
-              perfil: signatario.perfil,
-              situacao: concluida ? ("assinado" as const) : ("aguardando" as const),
-            }));
+        : pessoas.map((pessoa) => ({
+            assinadoEm: concluida ? assinadoEm : diaCurto(pessoa.quando),
+            degrau: pessoa.degrau,
+            nome: pessoa.nome,
+            perfil: pessoa.perfil,
+            situacao: pessoa.assinou
+              ? ("assinado" as const)
+              : pessoa.degrau === degrauDaVez
+                ? ("vez" as const)
+                : ("aguardando" as const),
+          }));
+
+    const naVez = esquema.filter((item) => item.situacao === "vez");
 
     const compradores = [
       ...new Set(
@@ -1287,18 +1409,55 @@ export function linhasDeAssinaturaDoPanteon(
       ),
     ];
 
+    const codigoDaUnidade = limpo(proposta.unidade_id)
+      ? limpo(extras.codigoDaUnidade?.get(limpo(proposta.unidade_id)))
+      : "";
+
+    // ⚠️ "GERADO EM" É O CONTRATO, NÃO A ETAPA (Lucas, 28/09/2026, print da VOC0306: "gerado em
+    // 26/09 · aguardando emissão"). A volta para correção devolve a venda à etapa `contrato`, e
+    // `etapa_desde` passava a ser o dia da VOLTA: a linha dizia que um contrato tinha sido gerado
+    // naquele dia, quando o único contrato era de 23/09 e tinha sido cancelado. Com o mapa dos
+    // documentos, a data é a do contrato mais recente; e se a última coisa que aconteceu foi a volta
+    // (envelope cancelado pela Têmis, sem contrato novo depois), a linha diz isso.
+    const todos = [...(envelopesPorProposta.get(proposta.id) ?? [])].sort(
+      (a, b) => String(b.criado_em ?? "").localeCompare(String(a.criado_em ?? "")),
+    );
+    const ultimo = todos[0];
+    const voltaEm =
+      ultimo &&
+      limpo(ultimo.estado).toLowerCase() === "cancelado" &&
+      limpo(ultimo.estado_cru).toLowerCase() === CARIMBO_DA_VOLTA
+        ? limpo(ultimo.fechado_em) || null
+        : null;
+    const temMapaDeContratos = extras.contratoGeradoEm !== undefined;
+    const contratoMaisRecente = extras.contratoGeradoEm?.get(proposta.id) ?? null;
+    const refeitoDepoisDaVolta =
+      voltaEm !== null &&
+      contratoMaisRecente !== null &&
+      instanteOuNaN(contratoMaisRecente) > instanteOuNaN(voltaEm);
+    const voltouParaCorrecaoEm =
+      situacao === "aguardando-emissao" && voltaEm && !refeitoDepoisDaVolta ? diaCurto(voltaEm) : null;
+    const geradoEm = voltouParaCorrecaoEm
+      ? null
+      : temMapaDeContratos
+        ? isoOuNulo(contratoMaisRecente)
+        : limpo(proposta.etapa).toLowerCase() === "contrato"
+          ? isoOuNulo(proposta.etapa_desde)
+          : null;
+
     return {
-      assinadas: concluida ? esquema.length : 0,
+      assinadas: esquema.filter((item) => item.situacao === "assinado").length,
       aviso: null,
       comprador: compradores.length > 0 ? compradores.join(", ") : limpo(proposta.cliente_nome) || null,
       concluida,
       contrato: {
         faturadoEm: diaCurto(proposta.data_faturamento),
-        geradoEm: limpo(proposta.etapa).toLowerCase() === "contrato" ? isoOuNulo(proposta.etapa_desde) : null,
+        geradoEm,
         imobiliaria: limpo(proposta.imobiliaria_nome) || null,
         temContrato: false,
         unitId: 0,
         valorTabela: numeroOuZero(proposta.preco_tabela ?? proposta.valor),
+        voltouParaCorrecaoEm,
       },
       empreendimento: limpo(proposta.empreendimento_codigo).toUpperCase(),
       enviadoEm: enviadoEm ?? "",
@@ -1309,13 +1468,77 @@ export function linhasDeAssinaturaDoPanteon(
       // rota do portal tira `fonte` do payload; o valor só existe para o tipo do quadro.
       fonte: "d4sign-status",
       grupos: agruparPorPerfil(esquema),
-      naVez: [],
-      perfisNaVez: [],
+      naVez: [...new Set(naVez.map((item) => item.nome).filter(Boolean))],
+      perfisNaVez: [...new Set(naVez.map((item) => item.perfil))],
       situacao,
       total: esquema.length,
-      unidade: limpo(proposta.unidade_nome) || limpo(proposta.empreendimento_codigo),
+      // ⚠️ O CÓDIGO DA UNIDADE ("VOL1106"), E NÃO O RÓTULO DA PROPOSTA ("Quadra 11 · Lote 06"). É o
+      // mesmo texto da linha do legado (`coalesce(enterprise_unities.name, …)`), e é por ele que
+      // `unirComOPanteon` reconhece a MESMA venda redigitada no C2X e não a mostra duas vezes.
+      unidade: codigoDaUnidade || limpo(proposta.unidade_nome) || limpo(proposta.empreendimento_codigo),
     };
   });
+}
+
+/**
+ * A lista do legado JUNTO com a do Panteon, sem a mesma venda aparecer duas vezes.
+ *
+ * O caso que motivou (Lucas, 28/09/2026, prints da VOL 11 06 e da VOC0306): a venda nasce no Panteon
+ * e assina na Clicksign, e o time a REDIGITA no C2X para gerar boleto. No C2X essa redigitação vira
+ * um contrato gerado sem envio na D4Sign, que a lista do legado pinta de "Aguardando emissão". A
+ * linha verdadeira é a do Panteon. Por unidade (empreendimento + código):
+ *   • Panteon com envelope vivo ou assinado → sai a linha "aguardando emissão" do legado;
+ *   • Panteon sem envelope e o legado COM envio (o contrato foi para a D4Sign pelo C2X: VAL, LBF, REP,
+ *     ACP em 28/09) → vale a do legado, e sai a do Panteon, que diria "aguardando emissão";
+ *   • os dois sem envio → fica a do Panteon;
+ *   • os dois com envio → ficam as duas: são dois contratos de verdade, e esconder um seria mentir.
+ *
+ * ⚠️ O KPI "Aguardando emissão" do legado desconta as linhas que saíram. As taxas, a fila e o quadro
+ * por assinante do legado não mudam: as linhas que saem não têm assinante.
+ */
+export function unirComOPanteon<Q extends QuadroDeAssinaturas>(
+  quadro: Q,
+  linhas: UnidadeDeAssinatura[],
+): Q {
+  if (linhas.length === 0) return quadro;
+
+  const chave = (linha: UnidadeDeAssinatura) =>
+    `${limpo(linha.empreendimento).toUpperCase()}:${limpo(linha.unidade).toUpperCase()}`;
+
+  const doLegado = new Map<string, UnidadeDeAssinatura[]>();
+  for (const linha of quadro.unidades) {
+    doLegado.set(chave(linha), [...(doLegado.get(chave(linha)) ?? []), linha]);
+  }
+
+  const saiDoLegado = new Set<UnidadeDeAssinatura>();
+  const ficamDoPanteon: UnidadeDeAssinatura[] = [];
+  for (const linha of linhas) {
+    const mesmas = doLegado.get(chave(linha)) ?? [];
+    const legadoComEnvio = mesmas.some((outra) => outra.situacao !== "aguardando-emissao");
+    if (linha.situacao === "aguardando-emissao" && legadoComEnvio) continue;
+    // ⚠️ UMA POR UMA: cada venda do Panteon tira no máximo UMA linha "aguardando emissão" do legado,
+    // a da redigitação. Se o legado tiver duas para a mesma unidade, a segunda é outro contrato e
+    // fica (revisão de 28/09/2026: tirar todas esconderia um contrato de verdade).
+    const redigitada = mesmas.find(
+      (outra) => outra.situacao === "aguardando-emissao" && !saiDoLegado.has(outra),
+    );
+    if (redigitada) saiDoLegado.add(redigitada);
+    ficamDoPanteon.push(linha);
+  }
+
+  const base: Q =
+    saiDoLegado.size === 0
+      ? quadro
+      : {
+          ...quadro,
+          kpis: {
+            ...quadro.kpis,
+            aguardandoEmissao: Math.max(0, quadro.kpis.aguardandoEmissao - saiDoLegado.size),
+          },
+          unidades: quadro.unidades.filter((linha) => !saiDoLegado.has(linha)),
+        };
+
+  return somarAssinaturasDoPanteon(base, ficamDoPanteon);
 }
 
 /**
@@ -1340,10 +1563,14 @@ export function somarAssinaturasDoPanteon<Q extends QuadroDeAssinaturas>(
       continue;
     }
     comEnvio.set(chave(linha), (comEnvio.get(chave(linha)) ?? true) && linha.concluida);
-    if (linha.esquema.some((item) => item.perfil === "Comprador")) {
+    const doComprador = linha.esquema.filter((item) => item.perfil === "Comprador");
+    if (doComprador.length > 0) {
+      // Agora que a linha sabe quem assinou, o comprador conta quando TODOS os compradores dela
+      // assinaram, mesmo com o contrato ainda aberto (a régua do legado, `compradorOk`).
       compradorPorUnidade.set(
         chave(linha),
-        (compradorPorUnidade.get(chave(linha)) ?? true) && linha.concluida,
+        (compradorPorUnidade.get(chave(linha)) ?? true) &&
+          doComprador.every((item) => item.situacao === "assinado"),
       );
     }
   }
@@ -1401,7 +1628,7 @@ export async function lerAssinaturasDoPanteon(
         const { data, error } = await admin
           .from("hercules_propostas")
           .select(
-            "id,etapa,etapa_desde,unidade_nome,empreendimento_codigo,cliente_nome,imobiliaria_nome,valor,preco_tabela,data_assinatura,data_ato,data_faturamento",
+            "id,etapa,etapa_desde,unidade_id,unidade_nome,empreendimento_codigo,cliente_nome,imobiliaria_nome,valor,preco_tabela,data_assinatura,data_ato,data_faturamento",
           )
           .eq("workspace_id", "careli")
           // Só a proposta NATIVA. A carga do C2X também vive nesta tabela (`origem = 'c2x'`), e o
@@ -1427,7 +1654,9 @@ export async function lerAssinaturasDoPanteon(
       for (let de = 0; ; de += PAGINA_DO_PANTEON) {
         const { data, error } = await admin
           .from("temis_envelopes")
-          .select("id,proposta_id,provedor,estado,falha,envelope_id,fechado_em,enviado_em,criado_em,signatarios")
+          .select(
+            "id,proposta_id,provedor,estado,estado_cru,falha,envelope_id,fechado_em,enviado_em,criado_em,ordenada,provedor_documento_id,signatarios",
+          )
           .eq("workspace_id", "careli")
           // ⚠️ SÓ O CONTRATO (0195): o distrato e a cessão também vão para assinatura com o
           // `proposta_id` da venda, e a linha da lista é o CONTRATO dela.
@@ -1443,9 +1672,158 @@ export async function lerAssinaturasDoPanteon(
       }
     }
 
-    return { linhas: linhasDeAssinaturaDoPanteon(propostas, envelopes), ok: true };
+    const codigoDaUnidade = await codigosDasUnidades(
+      admin,
+      propostas.map((proposta) => limpo(proposta.unidade_id)).filter(Boolean),
+    );
+    const assinaturasPorDocumento = await assinaturasDosDocumentos(admin, envelopes);
+    const contratoGeradoEm = await contratosGeradosDasPropostas(
+      admin,
+      propostas.map((proposta) => proposta.id),
+    );
+
+    return {
+      linhas: linhasDeAssinaturaDoPanteon(propostas, envelopes, {
+        assinaturasPorDocumento,
+        codigoDaUnidade,
+        ...(contratoGeradoEm ? { contratoGeradoEm } : {}),
+      }),
+      ok: true,
+    };
   } catch (erro) {
     console.error("[incorporador][assinaturas] falha ao ler os contratos do Panteon", erro);
     return { error: "Não foi possível ler as assinaturas agora.", ok: false };
   }
+}
+
+/**
+ * `unidade_id` → `hercules_unidades.codigo`. Falha aqui não derruba a lista: volta o rótulo da
+ * proposta. ⚠️ E ESSE É O EFEITO DA FALHA: com o rótulo ("Quadra 11 · Lote 06") a linha não casa com
+ * a do legado em `unirComOPanteon`, e a venda redigitada aparece duas vezes (a do Panteon e a
+ * "aguardando emissão" do C2X). Degrada para duplicar, nunca para esconder.
+ */
+async function codigosDasUnidades(admin: AdminDoApolo, ids: string[]): Promise<Map<string, string>> {
+  const mapa = new Map<string, string>();
+  const unicos = [...new Set(ids)];
+  for (let i = 0; i < unicos.length; i += LOTE_DO_PANTEON) {
+    const lote = unicos.slice(i, i + LOTE_DO_PANTEON);
+    const { data, error } = await admin
+      .from("hercules_unidades")
+      .select("id,codigo")
+      .in("id", lote)
+      .returns<Array<{ codigo: null | string; id: string }>>();
+    if (error) {
+      console.error("[incorporador][assinaturas] falha ao ler o código das unidades", error.message);
+      continue;
+    }
+    for (const linha of data ?? []) {
+      const codigo = limpo(linha.codigo);
+      if (codigo) mapa.set(linha.id, codigo);
+    }
+  }
+  return mapa;
+}
+
+/** Quantos documentos pedem o payload numa leitura. Hoje são 8; o teto só existe para não virar conta. */
+const TETO_DE_DOCUMENTOS = 80;
+/** Quantas leituras de payload correm juntas. */
+const PAYLOADS_EM_PARALELO = 5;
+
+/**
+ * Quem assinou cada documento vivo, pelo payload MAIS RECENTE e CONFERIDO dele.
+ *
+ * ⚠️ UM PAYLOAD POR DOCUMENTO, E NÃO TODOS. A Clicksign manda o histórico inteiro em todo evento, e
+ * o documento acumula 15 a 25 eventos: ler todos (como o selo do Board faz) custaria MB por carga de
+ * tela. `limit(1)` por documento lê só o último.
+ *
+ * ⚠️ SÓ EVENTO CONFERIDO (HMAC que bateu). O endpoint do webhook é público; um POST forjado é
+ * registrado e não vale, e aqui não pode escrever "assinou" na tela de ninguém.
+ *
+ * ⚠️ NUNCA LANÇA E NUNCA APAGA: falha de leitura vira log e documento sem marcas (a linha fica com
+ * todos "aguardando", que é o que ela dizia antes desta leitura existir).
+ */
+async function assinaturasDosDocumentos(
+  admin: AdminDoApolo,
+  envelopes: EnvelopeDoPanteon[],
+): Promise<Map<string, Map<string, string>>> {
+  const saida = new Map<string, Map<string, string>>();
+  const documentos = [
+    ...new Set(
+      envelopes
+        .filter((envelope) => !ENVELOPES_MORTOS.has(limpo(envelope.estado).toLowerCase()))
+        .filter((envelope) => limpo(envelope.estado).toLowerCase() !== "assinado")
+        .map((envelope) => limpo(envelope.provedor_documento_id))
+        .filter(Boolean),
+    ),
+  ];
+  if (documentos.length > TETO_DE_DOCUMENTOS) {
+    console.warn(
+      `[incorporador][assinaturas] ${documentos.length} documentos vivos; lendo os ${TETO_DE_DOCUMENTOS} primeiros`,
+    );
+  }
+  const fila = documentos.slice(0, TETO_DE_DOCUMENTOS);
+
+  const lerUm = async (documento: string) => {
+    const { data, error } = await admin
+      .from("temis_assinatura_eventos")
+      .select("payload")
+      .eq("provedor_documento_id", documento)
+      .eq("assinatura_conferida", true)
+      .order("recebido_em", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      console.error("[incorporador][assinaturas] falha ao ler o payload do documento", error.message);
+      return;
+    }
+    const linha = data as null | { payload: unknown };
+    if (linha?.payload) saida.set(documento, assinaturasDoPayload(linha.payload));
+  };
+
+  for (let i = 0; i < fila.length; i += PAYLOADS_EM_PARALELO) {
+    await Promise.all(fila.slice(i, i + PAYLOADS_EM_PARALELO).map(lerUm));
+  }
+  return saida;
+}
+
+/**
+ * Proposta → o contrato MAIS RECENTE gerado (`hercules_documentos`, tipo contrato, não removido).
+ *
+ * ⚠️ FALHA DEVOLVE `null`, E NÃO MAPA VAZIO: mapa vazio diria "nenhum contrato foi gerado" em todas as
+ * linhas; `null` faz a linha cair no que dizia antes (a entrada na etapa).
+ */
+async function contratosGeradosDasPropostas(
+  admin: AdminDoApolo,
+  ids: string[],
+): Promise<Map<string, string> | null> {
+  const mapa = new Map<string, string>();
+  const unicos = [...new Set(ids.filter(Boolean))];
+  for (let i = 0; i < unicos.length; i += LOTE_DO_PANTEON) {
+    const lote = unicos.slice(i, i + LOTE_DO_PANTEON);
+    for (let de = 0; ; de += PAGINA_DO_PANTEON) {
+      const { data, error } = await admin
+        .from("hercules_documentos")
+        .select("id,proposta_id,criado_em")
+        .eq("tipo", "contrato")
+        .is("removido_em", null)
+        .in("proposta_id", lote)
+        .order("id", { ascending: true })
+        .range(de, de + PAGINA_DO_PANTEON - 1)
+        .returns<Array<{ criado_em: null | string; id: string; proposta_id: null | string }>>();
+      if (error) {
+        console.error("[incorporador][assinaturas] falha ao ler os contratos gerados", error.message);
+        return null;
+      }
+      const pagina = data ?? [];
+      for (const linha of pagina) {
+        const proposta = limpo(linha.proposta_id);
+        const quando = limpo(linha.criado_em);
+        if (!proposta || !quando) continue;
+        const atual = mapa.get(proposta);
+        if (!atual || instanteOuNaN(quando) > instanteOuNaN(atual)) mapa.set(proposta, quando);
+      }
+      if (pagina.length < PAGINA_DO_PANTEON) break;
+    }
+  }
+  return mapa;
 }

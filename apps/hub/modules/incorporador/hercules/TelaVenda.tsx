@@ -489,7 +489,7 @@ function competenciaDe(mesesAtras: number): string {
  * exatamente qual data está ali.
  */
 const ROTULO_DA_DATA: Record<string, string> = {
-  assinatura: "Data da assinatura",
+  assinatura: "Enviado para assinatura",
   cancelado: "Data do cancelamento",
   contrato: "Data do contrato",
   distrato: "Data do distrato",

@@ -589,7 +589,11 @@ function fluxoDoPlano(p: PropostaDaCarga): null | string {
  */
 function dataDaEtapa(p: PropostaDaCarga): null | string {
   if (p.etapa === "faturado") return p.data_faturamento ?? p.etapa_desde;
-  if (p.etapa === "assinatura") return p.data_assinatura ?? p.etapa_desde;
+  // ⚠️ EM ASSINATURA, A DATA É A DO ENVIO (a entrada na etapa), e o rótulo diz isso ("Enviado para
+  // assinatura", TelaVenda). Lucas, 28/09/2026, na ficha da VOL 11 06: "Data da assinatura 25/09"
+  // era o dia em que o contrato SAIU, com 2 de 11 assinaturas. A venda nativa não tem
+  // `data_assinatura` enquanto o contrato não fecha, e quem fecha vai para faturado.
+  if (p.etapa === "assinatura") return p.etapa_desde;
   return p.etapa_desde;
 }
 

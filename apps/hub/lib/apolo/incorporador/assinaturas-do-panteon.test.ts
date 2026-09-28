@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  assinaturasDoPayload,
   type EnvelopeDoPanteon,
   linhasDeAssinaturaDoPanteon,
   montarQuadroDeAssinaturas,
   type PropostaDoPanteonEmContrato,
   somarAssinaturasDoPanteon,
+  type UnidadeDeAssinatura,
+  unirComOPanteon,
 } from "./assinaturas";
 
 // OS CONTRATOS DO PRODUTO QUE SÓ EXISTE NO PANTEON, NA ABA CONTRATOS DO PORTAL (pendência da ficha,
@@ -48,7 +51,7 @@ const envelope = (p: Partial<EnvelopeDoPanteon> & { proposta_id: string }): Enve
 });
 
 describe("linhasDeAssinaturaDoPanteon", () => {
-  it("⚠️ envelope enviado e aberto: em assinatura, todos aguardando, sem e-mail no esquema", () => {
+  it("⚠️ envelope enviado e aberto: em assinatura, o primeiro degrau na vez, sem e-mail no esquema", () => {
     const [linha] = linhasDeAssinaturaDoPanteon([proposta({ id: "p1" })], [envelope({ proposta_id: "p1" })]);
     expect(linha).toMatchObject({
       assinadas: 0,
@@ -61,9 +64,10 @@ describe("linhasDeAssinaturaDoPanteon", () => {
       unidade: "Torre A · Apto 304",
     });
     expect(linha?.esquema).toEqual([
-      { assinadoEm: null, degrau: 1, nome: "Maria Souza", perfil: "Comprador", situacao: "aguardando" },
+      { assinadoEm: null, degrau: 1, nome: "Maria Souza", perfil: "Comprador", situacao: "vez" },
       { assinadoEm: null, degrau: 2, nome: "Ana Testemunha", perfil: "Testemunha", situacao: "aguardando" },
     ]);
+    expect(linha).toMatchObject({ naVez: ["Maria Souza"], perfisNaVez: ["Comprador"] });
     expect(JSON.stringify(linha)).not.toContain("@");
     // Sem botão de PDF: a rota do PDF é a do C2X.
     expect(linha?.contrato).toMatchObject({ temContrato: false, unitId: 0, valorTabela: 450000 });
@@ -110,7 +114,7 @@ describe("linhasDeAssinaturaDoPanteon", () => {
     );
     expect(linha).toMatchObject({ concluida: false, situacao: "em-assinatura" });
     expect(linha?.esquema).toEqual([
-      { assinadoEm: null, degrau: 0, nome: "Fulano", perfil: "Sem perfil", situacao: "aguardando" },
+      { assinadoEm: null, degrau: 0, nome: "Fulano", perfil: "Sem perfil", situacao: "vez" },
     ]);
   });
 
@@ -140,6 +144,187 @@ describe("linhasDeAssinaturaDoPanteon", () => {
       [envelope({ envelope_id: null, enviado_em: null, estado: "rascunho", proposta_id: "p1" })],
     );
     expect(linha).toMatchObject({ esquema: [], situacao: "aguardando-emissao" });
+  });
+
+  // O CASO DO LUCAS (28/09/2026, VOL 11 06): enviado pela Clicksign em 25/09, as três coordenadoras no
+  // degrau 1 e duas já assinaram. A linha tem de dizer 2 de 5, com o degrau 1 ainda na vez.
+  it("⚠️ quem assinou sai do payload do webhook, por e-mail ou pela chave; a vez é o menor degrau pendente", () => {
+    const payload = {
+      document: {
+        events: [
+          { data: { signer: { email: "COORD1@careli.adm.br", key: "k1" } }, name: "sign", occurred_at: "2026-09-28T13:12:50-03:00" },
+          { data: { signer: { email: "outra@careli.adm.br", key: "k2" } }, name: "sign", occurred_at: "2026-09-28T13:12:51-03:00" },
+        ],
+        signers: [
+          { email: "coord1@careli.adm.br", key: "k1", name: "Coord Um" },
+          { email: "outra@careli.adm.br", key: "k2", name: "Coord Dois" },
+          { email: "coord3@careli.adm.br", key: "k3", name: "Coord Tres" },
+          { email: "comprador@exemplo.com", key: "k4", name: "Jonatas" },
+        ],
+      },
+    };
+    const assinaturas = assinaturasDoPayload(payload);
+    const [linha] = linhasDeAssinaturaDoPanteon(
+      [proposta({ etapa: "assinatura", id: "p1", unidade_id: "u1", unidade_nome: "Quadra 11 · Lote 06" })],
+      [
+        envelope({
+          ordenada: true,
+          proposta_id: "p1",
+          provedor_documento_id: "doc-1",
+          signatarios: [
+            { email: "coord1@careli.adm.br", nome: "Coord Um", ordem: 1, papel: "coordenadora" },
+            // o e-mail congelado difere do que assinou: casa pela chave
+            { chave: "k2", email: "trocado@careli.adm.br", nome: "Coord Dois", ordem: 1, papel: "coordenadora" },
+            { email: "coord3@careli.adm.br", nome: "Coord Tres", ordem: 1, papel: "coordenadora" },
+            { email: "comprador@exemplo.com", nome: "Jonatas", ordem: 2, papel: "comprador" },
+            { email: "vend@careli.adm.br", nome: "Vendedora", ordem: 3, papel: "vendedora" },
+          ],
+        }),
+      ],
+      { assinaturasPorDocumento: new Map([["doc-1", assinaturas]]), codigoDaUnidade: new Map([["u1", "VOL1106"]]) },
+    );
+    expect(linha).toMatchObject({
+      assinadas: 2,
+      concluida: false,
+      naVez: ["Coord Tres"],
+      situacao: "em-assinatura",
+      total: 5,
+      unidade: "VOL1106",
+    });
+    expect(linha?.esquema.map((item) => [item.nome, item.situacao, item.assinadoEm])).toEqual([
+      ["Coord Dois", "assinado", "2026-09-28"],
+      ["Coord Tres", "vez", null],
+      ["Coord Um", "assinado", "2026-09-28"],
+      ["Jonatas", "aguardando", null],
+      ["Vendedora", "aguardando", null],
+    ]);
+    expect(JSON.stringify(linha)).not.toContain("@");
+  });
+
+  // O CASO DA VOC0306 (Lucas, 28/09/2026): contrato gerado em 23/09, enviado, e em 26/09 a Têmis o
+  // voltou para correção (envelope cancelado). A linha dizia "gerado em 26/09", que era o dia da volta.
+  it("⚠️ voltou para correção sem contrato novo: a linha diz a volta, e não um 'gerado em' falso", () => {
+    const [linha] = linhasDeAssinaturaDoPanteon(
+      [proposta({ etapa: "contrato", etapa_desde: "2026-09-26T20:41:48.000Z", id: "p1" })],
+      [
+        envelope({
+          estado: "cancelado",
+          estado_cru: "panteon:retorno_para_correcao",
+          fechado_em: "2026-09-26T20:41:48.000Z",
+          proposta_id: "p1",
+        }),
+      ],
+      { contratoGeradoEm: new Map([["p1", "2026-09-23T05:15:00.000Z"]]) },
+    );
+    expect(linha).toMatchObject({ situacao: "aguardando-emissao" });
+    expect(linha?.contrato).toMatchObject({ geradoEm: null, voltouParaCorrecaoEm: "2026-09-26" });
+  });
+
+  it("voltou para correção e o contrato novo já foi gerado: vale o 'gerado em' do contrato novo", () => {
+    const [linha] = linhasDeAssinaturaDoPanteon(
+      [proposta({ etapa: "contrato", id: "p1" })],
+      [
+        envelope({
+          estado: "cancelado",
+          estado_cru: "panteon:retorno_para_correcao",
+          fechado_em: "2026-09-26T20:41:48.000Z",
+          proposta_id: "p1",
+        }),
+      ],
+      { contratoGeradoEm: new Map([["p1", "2026-09-27T14:00:00.000Z"]]) },
+    );
+    expect(linha?.contrato).toMatchObject({
+      geradoEm: "2026-09-27T14:00:00.000Z",
+      voltouParaCorrecaoEm: null,
+    });
+  });
+
+  it("com o mapa de contratos, 'gerado em' é o contrato e não a entrada na etapa; sem contrato, nulo", () => {
+    const [comContrato, semContrato] = linhasDeAssinaturaDoPanteon(
+      [proposta({ id: "p1" }), proposta({ id: "p2", unidade_nome: "Torre A · Apto 305" })],
+      [],
+      { contratoGeradoEm: new Map([["p1", "2026-09-09T12:00:00.000Z"]]) },
+    );
+    expect(comContrato?.contrato?.geradoEm).toBe("2026-09-09T12:00:00.000Z");
+    expect(semContrato?.contrato?.geradoEm).toBeNull();
+  });
+
+  it("envelope sem ordem (ordenada = false): todos os pendentes na vez, no degrau 0", () => {
+    const [linha] = linhasDeAssinaturaDoPanteon(
+      [proposta({ id: "p1" })],
+      [envelope({ ordenada: false, proposta_id: "p1" })],
+    );
+    expect(linha?.esquema.every((item) => item.situacao === "vez" && item.degrau === 0)).toBe(true);
+  });
+});
+
+describe("unirComOPanteon", () => {
+  const legado = (unidade: string, situacao: UnidadeDeAssinatura["situacao"]): UnidadeDeAssinatura => ({
+    assinadas: 0,
+    aviso: null,
+    comprador: null,
+    concluida: false,
+    contrato: null,
+    empreendimento: "VOL",
+    enviadoEm: situacao === "aguardando-emissao" ? "" : "2026-09-20",
+    envioId: situacao === "aguardando-emissao" ? 0 : 99,
+    esquema: [],
+    fonte: "c2x-legado",
+    grupos: [],
+    naVez: [],
+    perfisNaVez: [],
+    situacao,
+    total: 0,
+    unidade,
+  });
+  const quadroCom = (unidades: UnidadeDeAssinatura[], aguardandoEmissao: number) => {
+    const vazio = montarQuadroDeAssinaturas([], [], new Map());
+    return { ...vazio, kpis: { ...vazio.kpis, aguardandoEmissao }, unidades };
+  };
+  const doPanteon = (etapa: string, envelopes: EnvelopeDoPanteon[]) =>
+    linhasDeAssinaturaDoPanteon(
+      [proposta({ empreendimento_codigo: "vol", etapa, id: "p1", unidade_id: "u1" })],
+      envelopes,
+      { codigoDaUnidade: new Map([["u1", "VOL1106"]]) },
+    );
+
+  it("⚠️ a venda redigitada no C2X sem envio sai; fica a do Panteon em assinatura, e o KPI desconta", () => {
+    const quadro = quadroCom([legado("VOL1106", "aguardando-emissao"), legado("VOL0101", "aguardando-emissao")], 2);
+    const unido = unirComOPanteon(quadro, doPanteon("assinatura", [envelope({ proposta_id: "p1" })]));
+    expect(unido.unidades.map((l) => [l.unidade, l.situacao]).sort()).toEqual([
+      ["VOL0101", "aguardando-emissao"],
+      ["VOL1106", "em-assinatura"],
+    ]);
+    expect(unido.kpis.aguardandoEmissao).toBe(1);
+  });
+
+  it("⚠️ o contrato que foi para a D4Sign pelo C2X vence a proposta do Panteon sem envelope", () => {
+    const quadro = quadroCom([legado("VOL1106", "em-assinatura")], 0);
+    const unido = unirComOPanteon(quadro, doPanteon("contrato", []));
+    expect(unido.unidades.map((l) => [l.unidade, l.situacao])).toEqual([["VOL1106", "em-assinatura"]]);
+    expect(unido.kpis.aguardandoEmissao).toBe(0);
+  });
+
+  it("os dois sem envio: fica uma só linha, a do Panteon", () => {
+    const quadro = quadroCom([legado("VOL1106", "aguardando-emissao")], 1);
+    const unido = unirComOPanteon(quadro, doPanteon("contrato", []));
+    expect(unido.unidades).toHaveLength(1);
+    expect(unido.unidades[0]?.fonte).not.toBe("c2x-legado");
+    expect(unido.kpis.aguardandoEmissao).toBe(1);
+  });
+
+  it("⚠️ uma por uma: duas linhas aguardando do legado na mesma unidade, sai só uma", () => {
+    const quadro = quadroCom([legado("VOL1106", "aguardando-emissao"), legado("VOL1106", "aguardando-emissao")], 2);
+    const unido = unirComOPanteon(quadro, doPanteon("assinatura", [envelope({ proposta_id: "p1" })]));
+    expect(unido.unidades.filter((l) => l.situacao === "aguardando-emissao")).toHaveLength(1);
+    expect(unido.unidades.filter((l) => l.situacao === "em-assinatura")).toHaveLength(1);
+    expect(unido.kpis.aguardandoEmissao).toBe(1);
+  });
+
+  it("os dois com envio: ficam os dois contratos, nada é escondido", () => {
+    const quadro = quadroCom([legado("VOL1106", "em-assinatura")], 0);
+    const unido = unirComOPanteon(quadro, doPanteon("assinatura", [envelope({ proposta_id: "p1" })]));
+    expect(unido.unidades).toHaveLength(2);
   });
 });
 
