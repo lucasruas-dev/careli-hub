@@ -67,6 +67,11 @@ import {
   normalizarEnterpriseId,
 } from "@/lib/apolo/esteira-cad";
 import {
+  conferirHabilitacaoDoAutonomo,
+  lerAutonomo,
+} from "@/lib/apolo/habilitacao-do-autonomo";
+import { expandirPeloCadastro } from "@/lib/apolo/habilitacao-pelo-cadastro";
+import {
   TIPOS_DE_CREDITO,
   TIPOS_DE_EMPREENDIMENTO,
   TIPOS_INTERNOS_DA_CARELI,
@@ -529,9 +534,11 @@ export async function moverCadDeEmpreendimento(input: {
   }
 
   type CadLida = {
+    corretor_entity_id: null | string;
     empreendimento: null | string;
     enterprise_id: string;
     etapa: null | string;
+    imobiliaria_entity_id: null | string;
     motivo: null | string;
     pagamento_ref: null | string;
     pago_em: null | string;
@@ -542,7 +549,7 @@ export async function moverCadDeEmpreendimento(input: {
     cad = await lerCadDaEsteira<CadLida>(
       client,
       entityId,
-      "enterprise_id, empreendimento, etapa, motivo, pagamento_ref, pago_em",
+      "enterprise_id, empreendimento, etapa, motivo, pagamento_ref, pago_em, corretor_entity_id, imobiliaria_entity_id",
       { enterpriseId: de },
     );
     cadsDaPessoa = await lerCadsDaEsteira<{ enterprise_id: null | string }>(
@@ -555,6 +562,58 @@ export async function moverCadDeEmpreendimento(input: {
     return erro(503, "Não foi possível ler a CAD agora. Nada foi alterado.");
   }
   if (!cad) return erro(404, "Esta CAD não foi encontrada neste empreendimento.");
+
+  // ⚠️ A CAD DO CORRETOR AUTÔNOMO SÓ VAI PARA ONDE ELE ESTÁ HABILITADO (revisão de 28/09/2026).
+  //
+  // Lucas (27/09/2026), perguntado se o autônomo vende em tudo ou só onde a coordenação liberar:
+  // *"Sim, empreendimento a empreendimento"*. Sem esta conferência a autorização valia só no INSTANTE
+  // do cadastro: `conferirHabilitacaoDoAutonomo` era chamada apenas em lib/apolo/cadastro-salvar.ts, na
+  // criação da CAD, e o Mover CAD levava o `corretor_entity_id` intacto para um produto que a
+  // coordenação nunca liberou. As barreiras que existiam aqui são o portão `recepcao_cad` do destino, a
+  // etapa e a cobrança: nenhuma delas olha QUEM vende. A CAD passava a existir, em nome do autônomo,
+  // num produto que não é dele, e `credenciadoParaVender` no Hércules diria credenciado ao chegar a
+  // etapa, porque a régua da venda lê apenas a esteira.
+  //
+  // ⚠️ SÓ ALCANÇA A LINHA SEM IMOBILIÁRIA E COM CORRETOR, e hoje isso é ZERO linha legada. Medido em
+  // produção (bxgukywoxgivlrhjkwjx, 28/09/2026): `select count(*) filter (where corretor_entity_id is
+  // not null and imobiliaria_entity_id is null), count(*) from apolo_esteira;` → 0 de 843. Ou seja: a
+  // trava nasce alcançando apenas as CADs que a fatia 2 cria, e nenhuma CAD de imobiliária muda de
+  // comportamento (a de imobiliária tem `imobiliaria_entity_id` e nem entra no `if`).
+  //
+  // ⚠️ CORRETOR QUE NÃO É AUTÔNOMO DA CASA PASSA IGUAL. `lerAutonomo` exige `broker_code`, `pf` e papel
+  // `corretor` ativo: o corretor de imobiliária e os 131 resíduos do sync do C2X devolvem
+  // `nao-e-autonomo` e o Mover segue como sempre. Só a leitura que FALHA recusa (503, fail-closed como
+  // a porta do cadastro), porque um blip de rede não pode virar permissão.
+  const corretorDaCad = String(cad.corretor_entity_id ?? "").trim();
+  const imobiliariaDaCad = String(cad.imobiliaria_entity_id ?? "").trim();
+  if (corretorDaCad && !imobiliariaDaCad) {
+    const ficha = await lerAutonomo(client, corretorDaCad);
+    if (!ficha.ok && ficha.motivo === "falha") return erro(503, ficha.mensagem);
+    if (ficha.ok) {
+      const conferida = await conferirHabilitacaoDoAutonomo(client, {
+        enterpriseId: para,
+        entityId: corretorDaCad,
+        // ⚠️ O CADASTRO DO PANTEON JÁ FOI LIDO AQUI (passo 0), e a leitura que falha já respondeu 503
+        // antes de chegar neste ponto. Passar o expansor pronto evita a segunda ida ao banco e mantém
+        // a expansão IDÊNTICA à que o Mover usa para `idDeMercado` e para o portão do destino: a
+        // habilitação no PAI 35 cobre a divisão 37, como na porta do cadastro.
+        // `nome` e `codigo` são `string | null` aqui e `string` no tipo do expansor; para expandir só
+        // importam `paiId` e `c2xEnterpriseId`, e nome vazio não casa com nenhum `group:`.
+        expandir: (id) =>
+          expandirPeloCadastro(
+            id,
+            cadastro.map((linha) => ({
+              ...linha,
+              codigo: linha.codigo ?? "",
+              nome: linha.nome ?? "",
+            })),
+          ),
+      });
+      if (!conferida.ok) {
+        return erro(conferida.motivo === "falha" ? 503 : 400, conferida.mensagem);
+      }
+    }
+  }
 
   // ⚠️ CAD COM COBRANÇA DE PRÉ-VENDA NÃO SE MOVE (revisão de 24/09/2026, terceira rodada; decisão
   // PADRÃO do Zeus, o Lucas pode mudar). `pagamento_ref` (a cobrança PIX gerada) e `pago_em` (o PIX

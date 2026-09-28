@@ -22,8 +22,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { corretoresDaImobiliaria } from "@/lib/apolo/disparo-credenciamento";
+import {
+  type Autonomo,
+  autonomosHabilitadosNoEmpreendimento,
+  MENSAGEM_AUTONOMO_NAO_VENDE_AQUI,
+} from "@/lib/apolo/habilitacao-do-autonomo";
 import { lerImobiliariasVinculadas } from "@/lib/apolo/incorporador/crm";
 import { comIdsDoGrupo } from "@/lib/apolo/incorporador/resumo-do-produto";
+
+import { RESERVA_SEM_QUEM_VENDE } from "./reserva";
 
 /**
  * O empreendimento da unidade e TODA a família dele (pai e filhos), em ids do C2X.
@@ -103,6 +110,16 @@ export type CorretorQueVende = {
 };
 
 export type QuemPodeVender = {
+  /**
+   * OS CORRETORES AUTÔNOMOS HABILITADOS — campo PRÓPRIO, e nunca uma linha em `corretores`
+   * (28/09/2026).
+   *
+   * ⚠️ ELE NÃO CABE EM `CorretorQueVende`: aquele tipo exige `imobiliariaId` e `imobiliariaNome`,
+   * e enfiar o autônomo lá obrigaria a inventar uma imobiliaria para ele ou a aceitar id vazio — e
+   * é por aí que o vazamento volta pela porta de trás. Lucas (27/09/2026): *"nao quero ter a
+   * informacao que pode ter pessoa fisica como imobiliaria, isso sera bem restrito"*.
+   */
+  autonomos: Autonomo[];
   corretores: CorretorQueVende[];
   imobiliarias: ImobiliariaQueVende[];
 };
@@ -118,8 +135,22 @@ export async function quemPodeVender(
   admin: SupabaseClient,
   enterpriseIds: string[],
 ): Promise<QuemPodeVender> {
-  const vinculadas = await lerImobiliariasVinculadas(admin, enterpriseIds);
+  // As duas leituras em paralelo: são duas PORTAS e dois CONJUNTOS, e uma não depende da outra. O
+  // autônomo não é corretor de imobiliaria nenhuma, então nem a ausência de imobiliarias o tira da
+  // lista — e num empreendimento onde só há autônomo habilitado, era aí que a tela dizia que ninguém
+  // podia vender.
+  const [vinculadas, lidos] = await Promise.all([
+    lerImobiliariasVinculadas(admin, enterpriseIds),
+    autonomosHabilitadosNoEmpreendimento(admin, enterpriseIds),
+  ]);
   if (!vinculadas.ok) throw new Error(vinculadas.erro);
+  // ⚠️ FALHA DO LADO DO AUTÔNOMO LANÇA IGUAL À DA IMOBILIÁRIA (revisão de 28/09/2026). Antes a
+  // consulta devolvia `[]` na falha e esta função desenhava uma lista CURTA como se fosse completa: num
+  // empreendimento onde só o autônomo está habilitado, a modal escrevia "Ninguém habilitado a vender
+  // neste empreendimento" e o coordenador ia pedir à coordenação uma habilitação que já existe. Aqui a
+  // notícia certa é a mesma que o lado da imobiliária já dá: a tela não conseguiu carregar.
+  if (!lidos.ok) throw new Error(lidos.mensagem);
+  const autonomos = lidos.autonomos;
 
   const imobiliarias: ImobiliariaQueVende[] = vinculadas.credenciadas
     .map((i) => ({
@@ -130,7 +161,7 @@ export async function quemPodeVender(
     }))
     .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 
-  if (imobiliarias.length === 0) return { corretores: [], imobiliarias: [] };
+  if (imobiliarias.length === 0) return { autonomos, corretores: [], imobiliarias: [] };
 
   // Os corretores de cada imobiliária, em paralelo: são poucas, e em série a tela esperaria a soma.
   const listas = await Promise.all(
@@ -147,6 +178,7 @@ export async function quemPodeVender(
   );
 
   return {
+    autonomos,
     corretores: listas.flat().sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
     imobiliarias,
   };
@@ -162,8 +194,34 @@ export async function quemPodeVender(
 export async function podemVender(
   admin: SupabaseClient,
   enterpriseIds: string[],
-  alvos: { corretorId?: null | string; imobiliariaId: string },
-): Promise<{ motivo: string; ok: false } | { ok: true }> {
+  alvos: { corretorId?: null | string; imobiliariaId?: null | string },
+): Promise<{ motivo: string; ok: false; status?: 403 | 503 } | { ok: true }> {
+  // ⚠️ A TERCEIRA PORTA: O CORRETOR AUTÔNOMO (28/09/2026). Lucas: a reserva exige *"um dos dois"*.
+  //
+  // ⚠️ RELAXAR SÓ A RÉGUA NÃO FAZIA A RESERVA DO AUTÔNOMO NASCER: sem este ramo, o 422 da régua virava
+  // o 403 daqui, porque `credenciadas.some((i) => i.id === "")` é sempre false. E a trava do corretor
+  // logo abaixo (`corretoresDaImobiliaria`) também não serve a ele, que não é corretor DE imobiliaria
+  // nenhuma.
+  //
+  // ⚠️ A LISTA FILTRA, O POST CONFERE, E PELA MESMA CONSULTA. Quem a lista ofereceu é quem a gravação
+  // aceita: duas consultas diferentes discordariam no dia em que uma cerca mudasse de um lado só.
+  if (!alvos.imobiliariaId) {
+    if (!alvos.corretorId) return { motivo: RESERVA_SEM_QUEM_VENDE, ok: false };
+    const lidos = await autonomosHabilitadosNoEmpreendimento(admin, enterpriseIds);
+    // ⚠️ FALHA DE LEITURA NÃO É "NÃO ESTÁ HABILITADO" (revisão de 28/09/2026). As duas respostas
+    // recusam a gravação, e é isso que habilitação exige; o que muda é o que o coordenador FAZ depois.
+    // "Não está habilitado" o manda pedir habilitação à coordenação, que são dias de espera; a frase da
+    // falha o manda tentar de novo em instantes, que é o que resolve. O 503 diz o mesmo à máquina — e é
+    // o que a fatia 2 já faz em `cadastro-salvar.ts` para o motivo `falha`.
+    if (!lidos.ok) return { motivo: lidos.mensagem, ok: false, status: 503 };
+    if (!lidos.autonomos.some((a) => a.entityId === alvos.corretorId)) {
+      // ⚠️ A FRASE DA VENDA, E NÃO A DA CAD. Ver `MENSAGEM_AUTONOMO_NAO_VENDE_AQUI`: quem está
+      // reservando um lote não pode ler uma frase sobre abrir a CAD do cliente.
+      return { motivo: MENSAGEM_AUTONOMO_NAO_VENDE_AQUI, ok: false, status: 403 };
+    }
+    return { ok: true };
+  }
+
   const vinculadas = await lerImobiliariasVinculadas(admin, enterpriseIds);
   if (!vinculadas.ok) return { motivo: vinculadas.erro, ok: false };
 

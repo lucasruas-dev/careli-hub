@@ -36,6 +36,10 @@ const estado = vi.hoisted(() => ({
   folhas: [] as Array<Record<string, unknown>>,
   inserido: [] as Array<{ linha: Record<string, unknown>; tabela: string }>,
   reserva: {} as Record<string, unknown>,
+  /** (28/09/2026) O que o envio do aviso recebeu: textos por papel e o id da ficha de cada um. */
+  avisosEnviados: [] as Array<Record<string, unknown>>,
+  /** O que a resolução de nomes recebeu. Sem imobiliária, `imobiliariaId` tem de chegar nulo. */
+  destinatariosPedidos: [] as Array<{ corretorId: null | string; imobiliariaId: null | string }>,
   /**
    * O banco AINDA SEM A 0187: o insert que nomeia `bens_e_permutas` volta com o erro de coluna
    * desconhecida. Medido em produção em 22/09/2026 — `information_schema.columns` não devolve a
@@ -171,15 +175,27 @@ vi.mock("@/lib/hercules/cliente-credenciado", () => ({
 vi.mock("@/lib/hercules/avisos-da-venda", async () => {
   const { portalConfeccionaContrato } = await import("@/lib/apolo/incorporador/perfis-de-portal");
   return {
-    avisarSobreAVenda: async () => {
+    avisarSobreAVenda: async (_admin: unknown, dados: Record<string, unknown>) => {
       estado.avisados += 1;
-      return [{ ok: true, para: "imobiliaria" }];
+      estado.avisosEnviados.push(dados);
+      return [{ ok: true, para: "corretor" }];
     },
-    destinatariosDaVenda: async () => ({
-      coordenadores: [{ nome: "Nivea", telefone: "62999990000" }],
-      corretor: { nome: "João Souza", telefone: "62988887777" },
-      imobiliaria: { nome: "GURGEL", telefone: "6232220000" },
-    }),
+    // ⚠️ O DUBLÊ IMITA A PEÇA DE VERDADE: sem imobiliária, `imobiliaria` volta NULO (e não o nome
+    // fabricado "Imobiliária", que era o que saía impresso no quadro do coordenador).
+    destinatariosDaVenda: async (
+      _admin: unknown,
+      dados: { corretorId: null | string; imobiliariaId: null | string },
+    ) => {
+      estado.destinatariosPedidos.push({
+        corretorId: dados.corretorId,
+        imobiliariaId: dados.imobiliariaId,
+      });
+      return {
+        coordenadores: [{ nome: "Nivea", telefone: "62999990000" }],
+        corretor: dados.corretorId ? { nome: "João Souza", telefone: "62988887777" } : null,
+        imobiliaria: dados.imobiliariaId ? { nome: "GURGEL", telefone: "6232220000" } : null,
+      };
+    },
     registrarAvisoNaoEnviado: async () => {
       estado.naoEnviados += 1;
       return [];
@@ -420,6 +436,8 @@ beforeEach(() => {
   estado.apagado = [];
   estado.atualizado = [];
   estado.avisados = 0;
+  estado.avisosEnviados = [];
+  estado.destinatariosPedidos = [];
   estado.com0170 = true;
   estado.leuCadastroDeOperacao = 0;
   estado.naoEnviados = 0;
@@ -1168,5 +1186,111 @@ describe("POST — titular pessoa jurídica", () => {
     const doc = estado.inserido.find((i) => i.tabela === "hercules_documentos")?.linha ?? {};
     expect(doc.cliente_documento_hash).toBe(`hash:cnpj:${CNPJ_DIGITOS}`);
     expect(doc.cliente_documento_hash).not.toBe(`hash:cpf:${CNPJ_DIGITOS}`);
+  });
+});
+
+// ── A PROPOSTA DA RESERVA DO CORRETOR AUTÔNOMO (fatia 3, 28/09/2026) ─────────
+//
+// Lucas (28/09/2026): a reserva passa a exigir *"um dos dois"*. A reserva do autônomo desemboca AQUI,
+// e até esta fatia a proposta não quebrava: ela EMUDECIA, e pior — o PAPEL DA VENDA NÃO EXISTIA.
+//
+// ⚠️ O DEFEITO MAIOR NÃO ERA O AVISO, ERA O PDF. A guarda `if (!dados.imobiliariaId) return` ficava
+// ANTES do `guardarOPdf`, e é dentro dele que mora o upload para `apolo-documents` E o insert em
+// `hercules_documentos` (a linha que torna o papel ACHÁVEL na aba Documentos). Sem imobiliária a
+// proposta gravava, a unidade andava, e não havia nem byte no bucket, nem linha na aba, nem WhatsApp:
+// a resposta voltava com uma única falha de papel `imobiliaria`, que a tela traduz como problema de
+// telefone da imobiliária.
+//
+// ⚠️ SÃO DUAS RESPONSABILIDADES COM PRÉ-REQUISITOS DIFERENTES: o PDF não depende de destinatário
+// nenhum e roda SEMPRE; só o disparo depende de haver uma ficha onde pendurar o registro.
+//
+// ⚠️ MEDIDO EM PRODUÇÃO (bxgukywoxgivlrhjkwjx, 28/09/2026, só SELECT): `select count(*) filter (where
+// imobiliaria_entity_id is null and corretor_entity_id is not null) as so_corretor, count(*) filter
+// (where imobiliaria_entity_id is null and corretor_entity_id is null) as sem_nenhum, count(*) from
+// hercules_propostas;` → 0 / 4.924 / 4.946. As 22 nativas TÊM imobiliária; as 4.924 da carga não têm
+// nenhum dos dois. A proposta do autônomo será a PRIMEIRA com corretor e sem imobiliária — e reusar o
+// ramo das importadas para ela seria herdar o silêncio delas de propósito.
+describe("POST — a proposta da reserva sem imobiliária", () => {
+  beforeEach(() => {
+    estado.reserva = { ...estado.reserva, corretor_entity_id: "corr-1", imobiliaria_entity_id: null };
+  });
+
+  it("⚠️ a proposta NASCE, com a coluna da imobiliária nula e o corretor preservado", async () => {
+    const r = await pedir({});
+    expect(r.status).toBe(200);
+    expect(gravada().imobiliaria_entity_id).toBeNull();
+    expect(gravada().corretor_entity_id).toBe("corr-1");
+    expect(gravada().imobiliaria_nome).toBeNull();
+  });
+
+  it("⚠️ O PAPEL SAI: o PDF é montado mesmo sem imobiliária", async () => {
+    await pedir({});
+    expect(estado.folhas.length).toBeGreaterThan(0);
+  });
+
+  it("⚠️ o rodapé do papel traz o COORDENADOR, que não depende da imobiliária para ser achado", async () => {
+    await pedir({});
+    const folha = estado.folhas[estado.folhas.length - 1] as {
+      atendimento: { coordenador: null | string; corretor: null | string; imobiliaria: null | string };
+    };
+    expect(folha.atendimento.coordenador).toBe("Nivea");
+    expect(folha.atendimento.corretor).toBe("João Souza");
+    expect(folha.atendimento.imobiliaria).toBeNull();
+  });
+
+  // ⚠️ O RODAPÉ É A ÚNICA LINHA DO DOCUMENTO QUE DIZ AO CLIENTE PARA QUEM LIGAR, e ela saía SEM NÚMERO
+  // (revisão de 28/09/2026). `proposta-pdf.ts:965-973` monta `Atendimento: <corretor> · <imobiliaria> ·
+  // <telefone>`, e o telefone sempre foi o da IMOBILIÁRIA: na venda do autônomo o papel saía com o nome
+  // dele e nenhum número, num PDF de compromisso financeiro que vai por WhatsApp. O número certo está no
+  // mesmo objeto, e é por ele que o aviso da proposta acabou de sair segundos antes.
+  it("⚠️ o TELEFONE do rodapé cai para o do corretor quando não há imobiliária", async () => {
+    await pedir({});
+    const folha = estado.folhas[estado.folhas.length - 1] as {
+      atendimento: { telefone: null | string };
+    };
+    expect(folha.atendimento.telefone).toBe("62988887777");
+  });
+
+  it("com imobiliária, o telefone continua sendo o DELA: a queda é só a rede", async () => {
+    estado.reserva = { ...estado.reserva, imobiliaria_entity_id: "imob-1" };
+    await pedir({});
+    const folha = estado.folhas[estado.folhas.length - 1] as {
+      atendimento: { telefone: null | string };
+    };
+    expect(folha.atendimento.telefone).toBe("6232220000");
+  });
+
+  // ⚠️ A PRÉVIA É O PAPEL QUE O COORDENADOR CONFERE ANTES DE GERAR: sem a mesma queda aqui, a falta não
+  // apareceria como falta na conferência, apareceria como se o documento fosse assim.
+  it("⚠️ a PRÉVIA também traz o telefone do corretor, e nada é gravado", async () => {
+    const r = await pedir({ previa: true });
+    expect(r.status).toBe(200);
+    expect(estado.inserido).toHaveLength(0);
+    expect((estado.folhas.at(-1) as { atendimento: { telefone: null | string } }).atendimento.telefone)
+      .toBe("62988887777");
+  });
+
+  it("⚠️ o aviso SAI para o corretor e o coordenador, e não volta uma falha de imobiliária", async () => {
+    const r = await pedir({});
+    expect(estado.avisados).toBe(1);
+    expect(estado.destinatariosPedidos).toEqual([{ corretorId: "corr-1", imobiliariaId: null }]);
+    const corpo = (await r.json()) as { data: { avisos: Array<{ ok: boolean; para: string }> } };
+    expect(corpo.data.avisos.some((a) => a.para === "imobiliaria" && !a.ok)).toBe(false);
+  });
+
+  it("⚠️ e os textos mandados não têm o papel `imobiliaria` nem chamam a pessoa física de imobiliária", async () => {
+    await pedir({});
+    const textos = estado.avisosEnviados[0]?.textos as Array<{ papel: string; texto: string }>;
+    expect(textos.map((t) => t.papel).sort()).toEqual(["coordenador", "corretor"]);
+    expect(textos.find((t) => t.papel === "coordenador")?.texto).not.toMatch(/Imobiliária/);
+  });
+
+  it("com imobiliária, tudo continua idêntico: três papéis avisados e a coluna gravada", async () => {
+    estado.reserva = { ...estado.reserva, imobiliaria_entity_id: "imob-1" };
+    const r = await pedir({});
+    expect(r.status).toBe(200);
+    expect(gravada().imobiliaria_entity_id).toBe("imob-1");
+    const textos = estado.avisosEnviados[0]?.textos as Array<{ papel: string }>;
+    expect(textos.map((t) => t.papel).sort()).toEqual(["coordenador", "corretor", "imobiliaria"]);
   });
 });

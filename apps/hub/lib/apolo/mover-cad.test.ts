@@ -1259,3 +1259,125 @@ describe("avisoDoCoordenadorQueNaoSaiu: diz o que aconteceu e, se for cadastro, 
     }
   });
 });
+
+// ─── A HABILITAÇÃO DO CORRETOR AUTÔNOMO (revisão de 28/09/2026) ───────────────────────────────────
+//
+// ⚠️ O MOVER CAD FURAVA A HABILITAÇÃO EMPREENDIMENTO A EMPREENDIMENTO, que é a razão de existir da
+// metade B da fatia 2. Lucas (27/09/2026), perguntado se o autônomo vende em tudo ou só onde a
+// coordenação liberar: *"Sim, empreendimento a empreendimento"*. `conferirHabilitacaoDoAutonomo` só era
+// chamada na CRIAÇÃO da CAD (lib/apolo/cadastro-salvar.ts), e este `update` levava o
+// `corretor_entity_id` intacto para outro produto: as únicas barreiras eram o portão `recepcao_cad` do
+// destino, a etapa e a cobrança, e nenhuma delas olha QUEM vende. A autorização valia um instante e era
+// desfeita por uma ação que já existe no Board.
+//
+// ⚠️ ZERO LINHA LEGADA É ALCANÇADA. Medido em produção (bxgukywoxgivlrhjkwjx, 28/09/2026):
+// `select count(*) filter (where corretor_entity_id is not null and imobiliaria_entity_id is null),
+// count(*) from apolo_esteira;` → 0 de 843. A trava nasce valendo só para as CADs que a fatia 2 cria.
+
+const AUTONOMO_DA_CAD = "aaaaaaaa-1111-4111-8111-111111111111";
+
+/** A habilitação do autônomo: fonte PRÓPRIA (`apolo-corretor-autonomo`), a única que autoriza. */
+const habilitacaoDoAutonomo = (enterpriseId: string): Linha => ({
+  entity_id: AUTONOMO_DA_CAD,
+  id: `hab-${enterpriseId}`,
+  label: `EMP ${enterpriseId}`,
+  metadata: { createdBy: AUTOR, enterpriseId, source: "apolo-corretor-autonomo" },
+  related_entity_id: null,
+  relationship_type: "empreendimento",
+  status: "verified",
+});
+
+/** O estado da CAD do CLIENTE do autônomo: sem imobiliária, com o autônomo em `corretor_entity_id`. */
+function tabelasDaCadDoAutonomo(habilitadoEm: string[], opts: { comImobiliaria?: boolean } = {}) {
+  const t = tabelasDoCaso({
+    esteira: [
+      {
+        atualizado_em: "2026-09-28T15:50:53.703Z",
+        corretor: "JOAO AUTONOMO",
+        corretor_entity_id: AUTONOMO_DA_CAD,
+        created_at: "2026-09-28T18:14:52.000Z",
+        empreendimento: "VEREDAS DO OURO",
+        entity_id: ENTIDADE,
+        enterprise_id: "19",
+        etapa: "validacao",
+        imobiliaria: opts.comImobiliaria ? "BELTRAO DINIZ" : null,
+        imobiliaria_entity_id: opts.comImobiliaria ? "imob-1" : null,
+        motivo: null,
+      },
+    ],
+    vinculos: [vinculo("v-19", "19"), ...habilitadoEm.map(habilitacaoDoAutonomo)],
+  });
+  // A ficha do autônomo: código (migration 0193), pessoa física e papel `corretor` ativo. Sem os três,
+  // `lerAutonomo` diz `nao-e-autonomo` e o Mover segue como sempre (é o corretor de imobiliária).
+  (t.apolo_entities as Linha[]).push({
+    broker_code: "CA-0001",
+    display_name: "JOAO AUTONOMO",
+    document_masked: "123.456.789-09",
+    entity_kind: "pf",
+    id: AUTONOMO_DA_CAD,
+    legal_name: null,
+  });
+  (t.apolo_entity_profiles as Linha[]).push({
+    entity_id: AUTONOMO_DA_CAD,
+    profile: "corretor",
+    status: "active",
+  });
+  return t;
+}
+
+describe("Mover CAD e a habilitação do corretor autônomo", () => {
+  it("⚠️ habilitado SÓ no 35, mover para o 38 RECUSA 400 e NADA é gravado", async () => {
+    const banco = bancoFalso(tabelasDaCadDoAutonomo(["35"]));
+    const r = await mover(banco, { de: "19", para: "38" });
+    expect(r.status).toBe(400);
+    expect(erro(r)).toContain("não está habilitado neste empreendimento");
+    expect(erro(r)).not.toContain("imobiliária");
+    for (const tabela of TABELAS_ESCRITAS) expect(banco.escritas(tabela)).toEqual([]);
+    // A CAD continua no 19: a recusa é antes de qualquer escrita.
+    expect(banco.tabelas.apolo_esteira?.[0]?.enterprise_id).toBe("19");
+  });
+
+  it("habilitado no 35, mover para o Vale do Ouro passa e a CAD muda de empreendimento", async () => {
+    const banco = bancoFalso(tabelasDaCadDoAutonomo(["35"]));
+    const r = await mover(banco, { de: "19", para: "37" });
+    expect(r.status).toBe(200);
+    expect(banco.tabelas.apolo_esteira?.[0]?.enterprise_id).toBe("35");
+    // O vínculo da CAD viaja; o `corretor_entity_id` do autônomo fica.
+    expect(banco.tabelas.apolo_esteira?.[0]?.corretor_entity_id).toBe(AUTONOMO_DA_CAD);
+  });
+
+  it("habilitado na DIVISÃO 37, mover para o PAI 35 passa: a expansão é a mesma da porta do cadastro", async () => {
+    const banco = bancoFalso(tabelasDaCadDoAutonomo(["37"]));
+    const r = await mover(banco, { de: "19", para: "35" });
+    expect(r.status).toBe(200);
+    expect(banco.tabelas.apolo_esteira?.[0]?.enterprise_id).toBe("35");
+  });
+
+  it("⚠️ o vínculo do MODAL DA FICHA (source apolo) não habilita: mover recusa", async () => {
+    const tabelas = tabelasDaCadDoAutonomo([]);
+    tabelas.apolo_relationships.push({
+      ...habilitacaoDoAutonomo("35"),
+      metadata: { createdBy: AUTOR, enterpriseId: "35", source: "apolo" },
+    });
+    const banco = bancoFalso(tabelas);
+    const r = await mover(banco, { de: "19", para: "37" });
+    expect(r.status).toBe(400);
+    expect(erro(r)).toContain("não está habilitado neste empreendimento");
+  });
+
+  it("a CAD de cliente de IMOBILIÁRIA com corretor continua movendo igual (a trava não a alcança)", async () => {
+    const banco = bancoFalso(tabelasDaCadDoAutonomo([], { comImobiliaria: true }));
+    const r = await mover(banco, { de: "19", para: "37" });
+    expect(r.status).toBe(200);
+    expect(banco.tabelas.apolo_esteira?.[0]?.enterprise_id).toBe("35");
+  });
+
+  it("corretor que NÃO é autônomo da casa (sem broker_code) não é barrado: é corretor de imobiliária", async () => {
+    const tabelas = tabelasDaCadDoAutonomo([]);
+    const ficha = (tabelas.apolo_entities as Linha[]).find((e) => e.id === AUTONOMO_DA_CAD);
+    if (ficha) ficha.broker_code = null;
+    const banco = bancoFalso(tabelas);
+    const r = await mover(banco, { de: "19", para: "37" });
+    expect(r.status).toBe(200);
+  });
+});

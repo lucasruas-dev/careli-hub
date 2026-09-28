@@ -318,3 +318,67 @@ describe("privacidade da reprovação", () => {
     expect(paraCoordenador?.text ?? anexos.length > 0).toBeTruthy();
   });
 });
+
+// ⚠️ CAD SEM IMOBILIÁRIA NÃO GRAVA DISPARO COM `papel: "imobiliaria"` (revisão de 28/09/2026).
+//
+// A CAD do cliente do corretor autônomo nasce, por regra, SEM imobiliária (fatia 2), e Lucas
+// (27/09/2026) foi literal: *"nao quero ter a informacao que pode ter pessoa fisica como imobiliaria,
+// isso sera bem restrito"*. Antes, o autônomo sem telefone em `apolo_contacts` fazia o `alvo` cair no
+// ramo da imobiliária com `nome: cad.imobiliariaNome` (null), e o disparo era gravado como
+// `etapa_validacao_imobiliaria` numa CAD que por regra não tem imobiliária. O `tipo` aparece no painel
+// de disparos do Board.
+describe("a CAD do corretor autônomo e o papel do disparo", () => {
+  it("⚠️ autônomo SEM telefone: o tipo termina em `_corretor`, nunca em `_imobiliaria`", async () => {
+    limpar();
+    const { avisarEtapa } = await import("./esteira-avisos");
+    const r = await avisarEtapa(
+      clienteFake({
+        cad: {
+          corretor: "JOAO AUTONOMO",
+          corretor_entity_id: "autonomo-1",
+          imobiliaria: null,
+          imobiliaria_entity_id: null,
+        },
+        telefonePorEntidade: {},
+      }) as never,
+      { enterpriseId: "39", entityId: "cliente-1", etapa: "correcao", etapaAnterior: "validacao" },
+    );
+
+    expect(r?.corretor.papel).toBe("corretor");
+    expect(r?.corretor.ok).toBe(false);
+    const doParceiro = gravados.find((g) => String(g.tipo).startsWith("etapa_correcao_"));
+    expect(String(doParceiro?.tipo)).toBe("etapa_correcao_corretor");
+    expect(String(doParceiro?.tipo)).not.toContain("imobiliaria");
+    expect(String(doParceiro?.erro)).toBe("Corretor vinculado, mas sem telefone no cadastro.");
+  });
+
+  it("autônomo COM telefone continua sendo avisado como corretor (nada muda)", async () => {
+    limpar();
+    const { avisarEtapa } = await import("./esteira-avisos");
+    const r = await avisarEtapa(
+      clienteFake({
+        cad: {
+          corretor: "JOAO AUTONOMO",
+          corretor_entity_id: "autonomo-1",
+          imobiliaria: null,
+          imobiliaria_entity_id: null,
+        },
+        telefonePorEntidade: { "autonomo-1": "31997250000" },
+      }) as never,
+      { enterpriseId: "39", entityId: "cliente-1", etapa: "correcao", etapaAnterior: "validacao" },
+    );
+
+    expect(r?.corretor).toMatchObject({ ok: true, papel: "corretor" });
+    expect(enviados[0]!.telefone).toBe("5531997250000");
+  });
+
+  it("a CAD de cliente de IMOBILIÁRIA sem corretor continua caindo na imobiliária", async () => {
+    limpar();
+    const { avisarEtapa } = await import("./esteira-avisos");
+    const r = await avisarEtapa(
+      clienteFake({ cad: { corretor_entity_id: null } }) as never,
+      { enterpriseId: "39", entityId: "cliente-1", etapa: "correcao", etapaAnterior: "validacao" },
+    );
+    expect(r?.corretor.papel).toBe("imobiliaria");
+  });
+});

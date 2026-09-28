@@ -643,7 +643,15 @@ export type DadosDoAvisoDaProposta = {
   empreendimento: string;
   entradaTotal: number;
   entradaVezes: number;
-  imobiliaria: string;
+  /**
+   * O nome da imobiliaria, ou NULO na venda do corretor autonomo (28/09/2026).
+   *
+   * ⚠️ REUSAR ESTE CAMPO PARA O NOME DO AUTÔNOMO MANDARIA "Imobiliária: *JOAO DA SILVA*" para o
+   * WhatsApp do coordenador — exatamente a frase que o Lucas proibiu em 27/09/2026 (*"nao quero ter a
+   * informacao que pode ter pessoa fisica como imobiliaria"*), e no canal que não volta atrás:
+   * mensagem enviada não se apaga. Nulo tira a linha do quadro e o texto do papel `imobiliaria`.
+   */
+  imobiliaria: null | string;
   /** O valor de uma mensal. No plano que reajusta, é a do PRIMEIRO ciclo. */
   parcela: number;
   /**
@@ -796,23 +804,27 @@ export function avisosDaProposta(
         `${anexo} Confira com o cliente antes de seguir para a minuta.`,
       ]),
     },
-    {
-      papel: "imobiliaria",
-      texto: juntar([
-        `Olá, ${dados.imobiliaria}!`,
-        "",
-        `Saiu a proposta da unidade ${lote} para ${cliente}. ${cod}`.trim(),
-        dados.corretor
-          ? `Corretor responsável: *${dados.corretor}*.`
-          : "Proposta no nome da imobiliária.",
-        "",
-        `Entrada ${entrada}`,
-        `Parcelas ${mensais}, ${vencimento}`,
-        vale,
-        "",
-        anexo,
-      ]),
-    },
+    ...(dados.imobiliaria
+      ? [
+          {
+            papel: "imobiliaria" as const,
+            texto: juntar([
+              `Olá, ${dados.imobiliaria}!`,
+              "",
+              `Saiu a proposta da unidade ${lote} para ${cliente}. ${cod}`.trim(),
+              dados.corretor
+                ? `Corretor responsável: *${dados.corretor}*.`
+                : "Proposta no nome da imobiliária.",
+              "",
+              `Entrada ${entrada}`,
+              `Parcelas ${mensais}, ${vencimento}`,
+              vale,
+              "",
+              anexo,
+            ]),
+          },
+        ]
+      : []),
     {
       papel: "coordenador",
       texto: juntar([
@@ -821,7 +833,11 @@ export function avisosDaProposta(
         `Unidade: ${lote}`,
         `Cliente: ${cliente}`,
         outros,
-        `Imobiliária: *${dados.imobiliaria}*`,
+        // ⚠️ A LINHA NÃO SOME, ELA DIZ O QUE É: fora o corretor, era a única que dizia ao coordenador
+        // de quem é a venda. O rótulo próprio responde sem chamar pessoa física de empresa.
+        dados.imobiliaria
+          ? `Imobiliária: *${dados.imobiliaria}*`
+          : "Venda de *corretor autônomo* (sem imobiliária)",
         dados.corretor
           ? `Corretor: *${dados.corretor}*`
           : "Corretor: não informado",
@@ -926,7 +942,8 @@ export type DadosDoCancelamentoDaProposta = {
   codigo: null | string;
   corretor: null | string;
   empreendimento: string;
-  imobiliaria: string;
+  /** Nulo na venda do corretor autônomo. Ver `DadosDaProposta.imobiliaria`. */
+  imobiliaria: null | string;
   motivo: string;
   unidade: string;
 };
@@ -960,18 +977,24 @@ export function avisosDeCancelamentoDaProposta(
         "O PDF que foi enviado não vale mais. A unidade já voltou para a disponibilidade e pode ser reservada de novo.",
       ]),
     },
-    {
-      papel: "imobiliaria",
-      texto: juntar([
-        `Olá, ${dados.imobiliaria}!`,
-        "",
-        `A proposta da unidade ${lote}, de *${dados.cliente}*, foi *cancelada*.`,
-        `Motivo: ${dados.motivo}.${cod}`,
-        dados.corretor ? `Corretor: *${dados.corretor}*.` : "",
-        "",
-        "O PDF que foi enviado não vale mais. A unidade voltou para a disponibilidade.",
-      ]),
-    },
+    // Mesma regra dos outros avisos: sem imobiliária, o texto dela não existe — destino sem texto
+    // volta como `{ motivo: "sem texto", ok: false }` e apareceria na tela como falha.
+    ...(dados.imobiliaria
+      ? [
+          {
+            papel: "imobiliaria" as const,
+            texto: juntar([
+              `Olá, ${dados.imobiliaria}!`,
+              "",
+              `A proposta da unidade ${lote}, de *${dados.cliente}*, foi *cancelada*.`,
+              `Motivo: ${dados.motivo}.${cod}`,
+              dados.corretor ? `Corretor: *${dados.corretor}*.` : "",
+              "",
+              "O PDF que foi enviado não vale mais. A unidade voltou para a disponibilidade.",
+            ]),
+          },
+        ]
+      : []),
     {
       papel: "coordenador",
       texto: juntar([
@@ -979,7 +1002,9 @@ export function avisosDeCancelamentoDaProposta(
         "",
         `Unidade: ${lote}`,
         `Cliente: *${dados.cliente}*`,
-        `Imobiliária: *${dados.imobiliaria}*`,
+        dados.imobiliaria
+          ? `Imobiliária: *${dados.imobiliaria}*`
+          : "Venda de *corretor autônomo* (sem imobiliária)",
         dados.corretor
           ? `Corretor: *${dados.corretor}*`
           : "Corretor: não informado",

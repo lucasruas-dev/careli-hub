@@ -119,6 +119,20 @@ const estado = vi.hoisted(() => ({
   atualizados: [] as Array<{ linha: unknown; tabela: string }>,
   /** A reserva virou proposta entre a leitura e o UPDATE do cancelamento: o UPDATE não casa nada. */
   reservaMudou: false,
+  /** (28/09/2026) O que `podemVender` recebeu: é aqui que se vê se a ausência chega como null ou "". */
+  alvosDePodemVender: [] as unknown[],
+  /** O que a resolução de nomes recebeu, e o que o envio recebeu. */
+  destinatariosPedidos: [] as Array<{ corretorId: null | string; imobiliariaId: null | string }>,
+  avisosEnviados: [] as Array<Record<string, unknown>>,
+  /** A reserva viva que o PATCH lê. Sem imobiliária = a reserva do corretor autônomo. */
+  reservaViva: { corretor_entity_id: null as null | string, imobiliaria_entity_id: "imo-1" as null | string },
+  /**
+   * (revisão de 28/09/2026) A recusa que `podemVender` devolve, quando o teste quer uma.
+   *
+   * ⚠️ O `status` É O ASSUNTO. A peça distingue "você não pode" (403) de "não consegui conferir" (503),
+   * e quem traduz isso em resposta HTTP é a rota: sem este controle, o teste não alcançaria a tradução.
+   */
+  recusaDePodemVender: null as null | { motivo: string; status?: 403 | 503 },
 }));
 
 const CECILIO = {
@@ -174,8 +188,19 @@ vi.mock("@/lib/hercules/cadastro", () => ({
 vi.mock("@/lib/hercules/quem-pode-vender", () => ({
   escopoDeQuemVende: (_cadastro: unknown, _catalogo: unknown, id: string) => [id],
   familiaDoEmpreendimento: (_cadastro: unknown, id: string) => [id],
-  podemVender: async () => ({ ok: true }),
-  quemPodeVender: async () => [],
+  podemVender: async (_admin: unknown, _escopo: unknown, alvos: unknown) => {
+    estado.alvosDePodemVender.push(alvos);
+    if (estado.recusaDePodemVender) return { ...estado.recusaDePodemVender, ok: false };
+    return { ok: true };
+  },
+  // (28/09/2026) A resposta do GET tem TRÊS conjuntos, e o do autônomo é campo PRÓPRIO: enfiá-lo em
+  // `corretores` obrigaria a inventar uma imobiliária para ele (`CorretorQueVende` exige
+  // `imobiliariaId` e `imobiliariaNome`), e é por aí que o vazamento volta pela porta de trás.
+  quemPodeVender: async () => ({
+    autonomos: [{ codigo: "CA-0001", entityId: "aut-1", nome: "JOAO AUTONOMO" }],
+    corretores: [],
+    imobiliarias: [],
+  }),
 }));
 
 // O escopo da reserva lê o catálogo do C2X para achar o grupo; no teste ele não existe.
@@ -186,15 +211,27 @@ vi.mock("@/lib/apolo/catalogo-empreendimentos", () => ({
 vi.mock("@/lib/hercules/avisos-da-venda", async () => {
   const { portalConfeccionaContrato } = await import("@/lib/apolo/incorporador/perfis-de-portal");
   return {
-    avisarSobreAVenda: async () => {
+    avisarSobreAVenda: async (_admin: unknown, dados: Record<string, unknown>) => {
       estado.avisados += 1;
-      return [{ ok: true, para: "imobiliaria" }];
+      estado.avisosEnviados.push(dados);
+      return [{ ok: true, para: "corretor" }];
     },
-    destinatariosDaVenda: async () => ({
-      coordenadores: [],
-      corretor: null,
-      imobiliaria: { nome: "Imobiliária", telefone: null },
-    }),
+    // ⚠️ O DUBLÊ IMITA A PEÇA DE VERDADE: sem imobiliária, `imobiliaria` volta NULO, e não o nome
+    // fabricado "Imobiliária" que a versão antiga devolvia com o id vazio.
+    destinatariosDaVenda: async (
+      _admin: unknown,
+      dados: { corretorId: null | string; imobiliariaId: null | string },
+    ) => {
+      estado.destinatariosPedidos.push({
+        corretorId: dados.corretorId,
+        imobiliariaId: dados.imobiliariaId,
+      });
+      return {
+        coordenadores: [{ nome: "Nivea", telefone: "62999990000" }],
+        corretor: dados.corretorId ? { nome: "JOAO AUTONOMO", telefone: "62988887777" } : null,
+        imobiliaria: dados.imobiliariaId ? { nome: "GURGEL", telefone: "6232220000" } : null,
+      };
+    },
     registrarAvisoNaoEnviado: async () => {
       estado.naoEnviados += 1;
       return [];
@@ -238,10 +275,10 @@ vi.mock("@/lib/apolo/server", () => {
       if (tabela === "hercules_reservas") {
         return {
           data: {
-            corretor_entity_id: null,
+            corretor_entity_id: estado.reservaViva.corretor_entity_id,
             empreendimento_id: "voc",
             id: "res-viva",
-            imobiliaria_entity_id: "imo-1",
+            imobiliaria_entity_id: estado.reservaViva.imobiliaria_entity_id,
             proponentes: [{ nome: "Ana" }],
             protocolo_numero: 7,
             situacao: "ativa",
@@ -279,7 +316,12 @@ vi.mock("@/lib/apolo/server", () => {
   return { createApoloAdminClient: () => ({ from: consulta }) };
 });
 
-import { PATCH, POST } from "./route";
+import {
+  MENSAGEM_AUTONOMO_NAO_VENDE_AQUI,
+  MENSAGEM_FALHA_AO_LER_HABILITACAO,
+} from "@/lib/apolo/habilitacao-do-autonomo";
+
+import { GET, PATCH, POST } from "./route";
 
 const DAQUI_A_TRES_DIAS = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -333,6 +375,11 @@ beforeEach(() => {
   estado.revalidou = 0;
   estado.sessao = CECILIO;
   estado.unidade = unidadeEm("37");
+  estado.alvosDePodemVender = [];
+  estado.destinatariosPedidos = [];
+  estado.avisosEnviados = [];
+  estado.reservaViva = { corretor_entity_id: null, imobiliaria_entity_id: "imo-1" };
+  estado.recusaDePodemVender = null;
 });
 
 describe("POST: a régua de quem opera o produto (D1)", () => {
@@ -514,5 +561,190 @@ describe("PATCH: cancelar a reserva também é escrita", () => {
     expect(estado.atualizados.some((a) => a.tabela === "hercules_reservas")).toBe(true);
     expect(estado.avisados).toBe(0);
     expect(estado.naoEnviados).toBe(1);
+  });
+});
+
+// ── A RESERVA DO CORRETOR AUTÔNOMO (fatia 3, 28/09/2026) ─────────────────────
+//
+// Lucas (28/09/2026), sobre deixar a reserva sair no nome do corretor autônomo: *"pode fazer, exige
+// um dos dois"* — imobiliária OU corretor autônomo, e NUNCA nenhum dos dois.
+//
+// ⚠️ MEDIDO EM PRODUÇÃO (bxgukywoxgivlrhjkwjx, 28/09/2026, só SELECT): `select count(*) filter (where
+// imobiliaria_entity_id is null) from hercules_reservas;` → 0 de 36. Este caminho é INÉDITO, e as
+// colunas já aceitam: as duas são `uuid` nullable (`information_schema.columns`), então nenhuma
+// migration entra nesta fatia.
+const AUTONOMO = "aut-1";
+
+const reservarComAutonomo = (vinculo: Record<string, unknown>) =>
+  POST(
+    new Request("https://c2x.app.br/api/incorporador/venda/reserva", {
+      body: JSON.stringify({
+        proponente: { cpf: "529.982.247-25", nome: "Maria da Silva", telefone: "62991234567" },
+        unidadeId: "u-1",
+        validadeEm: DAQUI_A_TRES_DIAS,
+        ...vinculo,
+      }),
+      method: "POST",
+    }),
+  );
+
+describe("POST: um dos dois, e nunca nenhum", () => {
+  it("⚠️ com o autônomo e SEM imobiliária, a reserva NASCE — com a coluna da imobiliária nula", async () => {
+    estado.sessao = GURGEL;
+    const resposta = await reservarComAutonomo({ corretorEntityId: AUTONOMO });
+    expect(resposta.status).toBe(200);
+    expect(reservasGravadas()).toHaveLength(1);
+    expect(reservasGravadas()[0]?.linha).toMatchObject({
+      corretor_entity_id: AUTONOMO,
+      imobiliaria_entity_id: null,
+    });
+  });
+
+  it("⚠️ a ausência chega ao portão como NULL, e não como string vazia", async () => {
+    // `""` é falsy nos `if` mas é uma string que chega em `entity_id uuid NOT NULL` e explode no
+    // cast, em vez de dar erro de not-null: um único valor de ausência em toda a cadeia.
+    estado.sessao = GURGEL;
+    await reservarComAutonomo({ corretorEntityId: AUTONOMO });
+    expect(estado.alvosDePodemVender).toEqual([
+      { corretorId: AUTONOMO, imobiliariaId: null },
+    ]);
+    expect(estado.destinatariosPedidos).toEqual([
+      { corretorId: AUTONOMO, imobiliariaId: null },
+    ]);
+  });
+
+  it("⚠️ o aviso da reserva do autônomo SAI, e não cai no silêncio", async () => {
+    estado.sessao = GURGEL;
+    const resposta = await reservarComAutonomo({ corretorEntityId: AUTONOMO });
+    expect(resposta.status).toBe(200);
+    expect(estado.avisados).toBe(1);
+    expect(estado.naoEnviados).toBe(0);
+    const avisos = (await resposta.json()) as { data: { avisos: unknown[] } };
+    expect(avisos.data.avisos).not.toEqual([]);
+  });
+
+  it("⚠️ e os textos mandados NÃO incluem o papel `imobiliaria`: destino sem texto viraria falha", async () => {
+    estado.sessao = GURGEL;
+    await reservarComAutonomo({ corretorEntityId: AUTONOMO });
+    const textos = estado.avisosEnviados[0]?.textos as Array<{ papel: string; texto: string }>;
+    expect(textos.map((t) => t.papel).sort()).toEqual(["coordenador", "corretor"]);
+    // E o quadro do coordenador não chama uma pessoa física de imobiliária.
+    expect(textos.find((t) => t.papel === "coordenador")?.texto).not.toMatch(/Imobiliária/);
+  });
+
+  it("⚠️ SEM NENHUM DOS DOIS: 422, nada gravado, e nenhum aviso", async () => {
+    estado.sessao = GURGEL;
+    const resposta = await reservarComAutonomo({});
+    expect(resposta.status).toBe(422);
+    const corpo = (await resposta.json()) as { erros: Array<{ campo: string; mensagem: string }> };
+    expect(corpo.erros.map((e) => e.campo)).toContain("imobiliaria");
+    expect(corpo.erros.find((e) => e.campo === "imobiliaria")?.mensagem).toContain("corretor autônomo");
+    expect(reservasGravadas()).toHaveLength(0);
+    expect(estado.avisados).toBe(0);
+    expect(estado.naoEnviados).toBe(0);
+  });
+
+  it("a reserva COM imobiliária continua idêntica: grava os dois ids e avisa os três papéis", async () => {
+    estado.sessao = GURGEL;
+    const resposta = await reservarComAutonomo({
+      corretorEntityId: "cor-1",
+      imobiliariaEntityId: "imo-1",
+    });
+    expect(resposta.status).toBe(200);
+    expect(reservasGravadas()[0]?.linha).toMatchObject({
+      corretor_entity_id: "cor-1",
+      imobiliaria_entity_id: "imo-1",
+    });
+    const textos = estado.avisosEnviados[0]?.textos as Array<{ papel: string }>;
+    expect(textos.map((t) => t.papel).sort()).toEqual([
+      "coordenador",
+      "corretor",
+      "imobiliaria",
+    ]);
+  });
+});
+
+// ⚠️ A RECUSA DO PORTÃO TEM DUAS NATUREZAS, E A ROTA PRECISA SEPARÁ-LAS (revisão de 28/09/2026).
+// `podemVender` recusa por DECISÃO do cadastro ("não está habilitado", 403) e por FALHA de leitura
+// ("não consegui conferir", 503). A rota respondia 403 aos dois, e o coordenador que leu 403 vai pedir
+// habilitação à coordenação: dias de espera para uma reserva que sairia no minuto seguinte com um F5.
+//
+// ⚠️ E A FRASE DA DECISÃO NÃO PODE SER A DA CAD. A primeira versão devolvia
+// `MENSAGEM_AUTONOMO_SEM_HABILITACAO`, que diz *"a CAD do cliente dele não pode ser aberta aqui"*: quem
+// está reservando um lote é mandado para outro módulo. Ver `MENSAGEM_AUTONOMO_NAO_VENDE_AQUI`.
+describe("POST: a recusa do portão do autônomo", () => {
+  it("⚠️ 'não está habilitado' é 403, e a frase NÃO fala de CAD", async () => {
+    estado.sessao = GURGEL;
+    estado.recusaDePodemVender = { motivo: MENSAGEM_AUTONOMO_NAO_VENDE_AQUI, status: 403 };
+    const resposta = await reservarComAutonomo({ corretorEntityId: AUTONOMO });
+
+    expect(resposta.status).toBe(403);
+    const corpo = (await resposta.json()) as { error: string };
+    expect(corpo.error).not.toContain("CAD");
+    expect(corpo.error).toContain("habilitado a vender");
+    expect(reservasGravadas()).toHaveLength(0);
+  });
+
+  it("⚠️ falha ao CONFERIR a habilitação é 503, e não 403", async () => {
+    estado.sessao = GURGEL;
+    estado.recusaDePodemVender = { motivo: MENSAGEM_FALHA_AO_LER_HABILITACAO, status: 503 };
+    const resposta = await reservarComAutonomo({ corretorEntityId: AUTONOMO });
+
+    expect(resposta.status).toBe(503);
+    const corpo = (await resposta.json()) as { error: string };
+    expect(corpo.error).toContain("Tente de novo");
+    expect(reservasGravadas()).toHaveLength(0);
+  });
+
+  it("recusa sem `status` continua 403, como as da imobiliária sempre foram", async () => {
+    estado.sessao = GURGEL;
+    estado.recusaDePodemVender = { motivo: "Esta imobiliária não está habilitada a vender neste empreendimento." };
+    const resposta = await reservarComAutonomo({ imobiliariaEntityId: "imo-1" });
+    expect(resposta.status).toBe(403);
+  });
+});
+
+describe("GET: o autônomo sai em campo PRÓPRIO, nunca na lista de imobiliárias", () => {
+  it("⚠️ a resposta tem os três conjuntos, e o autônomo só no dele", async () => {
+    estado.sessao = GURGEL;
+    const resposta = await GET(
+      new Request("https://c2x.app.br/api/incorporador/venda/reserva?unidade=u-1"),
+    );
+    expect(resposta.status).toBe(200);
+    const corpo = (await resposta.json()) as {
+      data: { autonomos: Array<{ entityId: string }>; corretores: unknown[]; imobiliarias: unknown[] };
+    };
+    expect(corpo.data.autonomos.map((a) => a.entityId)).toEqual([AUTONOMO]);
+    expect(JSON.stringify(corpo.data.imobiliarias)).not.toContain("AUTONOMO");
+    expect(JSON.stringify(corpo.data.corretores)).not.toContain("AUTONOMO");
+  });
+});
+
+describe("PATCH: o cancelamento da reserva do autônomo também avisa", () => {
+  it("⚠️ sem imobiliária o aviso NÃO cai no silêncio: o autônomo e o coordenador são avisados", async () => {
+    // O `if (imobiliariaId)` que envolvia o aviso inteiro deixava o corretor que leu "o lote é seu
+    // até quinta" descobrir pelo mapa que deixou de ser — e a tela dizia "O aviso não chegou a ser
+    // enviado", que se lê como falha de sistema e não como decisão.
+    estado.sessao = GURGEL;
+    estado.unidade = { ...unidadeEm("37"), situacao: "reservada" };
+    estado.reservaViva = { corretor_entity_id: AUTONOMO, imobiliaria_entity_id: null };
+    const resposta = await cancelar();
+    expect(resposta.status).toBe(200);
+    expect(estado.avisados).toBe(1);
+    expect(estado.destinatariosPedidos).toEqual([
+      { corretorId: AUTONOMO, imobiliariaId: null },
+    ]);
+  });
+
+  it("a reserva importada sem NENHUM dos dois continua sem avisar ninguém, e sem erro", async () => {
+    // As 4.924 propostas da carga do C2X não têm nem imobiliária nem corretor: não há ficha onde
+    // pendurar o registro do disparo, e inventar uma seria pior do que não avisar.
+    estado.sessao = GURGEL;
+    estado.unidade = { ...unidadeEm("37"), situacao: "reservada" };
+    estado.reservaViva = { corretor_entity_id: null, imobiliaria_entity_id: null };
+    const resposta = await cancelar();
+    expect(resposta.status).toBe(200);
+    expect(estado.avisados).toBe(0);
+    expect(estado.naoEnviados).toBe(0);
   });
 });

@@ -1308,9 +1308,14 @@ export function ModalDeProposta({
                         fontSize: 11.5,
                       }}
                     >
+                      {/* ⚠️ A PROMESSA SEGUE O VÍNCULO DA RESERVA (28/09/2026). Na venda do corretor
+                          autônomo não há imobiliária para receber nada, e prometer três WhatsApps
+                          quando saem dois é a tela mentindo sobre o que ela acabou de fazer. */}
                       {enviando
                         ? "Gerando a proposta e enviando o PDF por WhatsApp. Não feche esta janela até terminar."
-                        : "Ao gerar, a proposta fica cadastrada e o PDF vai por WhatsApp para coordenador, imobiliária e corretor."}
+                        : portao.reserva.imobiliaria
+                          ? "Ao gerar, a proposta fica cadastrada e o PDF vai por WhatsApp para coordenador, imobiliária e corretor."
+                          : "Ao gerar, a proposta fica cadastrada e o PDF vai por WhatsApp para o coordenador e o corretor autônomo."}
                     </span>
                     <div style={{ display: "flex", gap: 8 }}>
                       {/* ⚠️ DISCRETO AO LADO DO SÓLIDO. Dois botões do mesmo peso lado a lado fazem
@@ -1398,11 +1403,18 @@ export function ModalDeProposta({
                       ) || portao.reserva.titular.cpf}
                     </span>
                   </div>
+                  {/* ⚠️ "SEM IMOBILIÁRIA" SE LÊ COMO CADASTRO QUEBRADO, e a saída curta de quem lê
+                      isso é cancelar uma reserva boa. Na venda do corretor autônomo (28/09/2026) não
+                      falta nada: a linha diz o que a venda É. O rótulo continua nunca sendo
+                      "Imobiliária" ao lado de uma pessoa física (Lucas, 27/09/2026). */}
                   <div style={{ color: T.muted, fontSize: 11.5, marginTop: 2 }}>
-                    {portao.reserva.imobiliaria?.nome ?? "Sem imobiliária"}
-                    {portao.reserva.corretor
-                      ? ` · ${portao.reserva.corretor.nome}`
-                      : ""}
+                    {portao.reserva.imobiliaria
+                      ? `${portao.reserva.imobiliaria.nome}${
+                          portao.reserva.corretor ? ` · ${portao.reserva.corretor.nome}` : ""
+                        }`
+                      : portao.reserva.corretor
+                        ? `Corretor autônomo · ${portao.reserva.corretor.nome}`
+                        : "Venda importada, sem imobiliária e sem corretor"}
                   </div>
 
                   {/* ⚠️ O SELO É A DECISÃO, e vem inteiro do servidor. São TRÊS CAIXAS, e a do meio

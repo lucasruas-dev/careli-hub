@@ -150,16 +150,24 @@ export function documentoDaIdentificacao(formato: FormatoDoCadastro): {
  *
  * ⚠️ O QUE NÃO PEDE VÍNCULO NÃO PEDE IMOBILIÁRIA. É o caso do corretor autônomo: ele não é vinculado
  * a nenhuma. No público o vínculo vem do token e o browser não o preenche, como sempre.
+ *
+ * ⚠️ A CAD DO CLIENTE PODE TER IMOBILIÁRIA **OU** CORRETOR AUTÔNOMO (fatia 2, 28/09/2026). Lucas
+ * (27/09/2026): *"Sim, empreendimento a empreendimento"*, sobre habilitar o autônomo produto por
+ * produto. Com o autônomo escolhido, o corretor NÃO é uma pendência à parte: ele É o corretor da
+ * venda. Por isso a segunda pendência muda de texto, em vez de existir uma segunda lista.
  */
 export function faltaNoVinculo(params: {
+  /** (fatia 2) A entidade do corretor autônomo escolhido como vínculo, quando for o caso. */
+  autonomoId?: string;
   formato: FormatoDoCadastro;
   imobiliariaId: string;
   modoPublico: boolean;
   vinculoOk: boolean;
 }): string[] {
   if (!params.formato.exigeVinculo || params.modoPublico) return [];
+  const autonomo = (params.autonomoId ?? "").trim();
   return [
-    params.imobiliariaId.trim() ? null : "imobiliária",
-    params.vinculoOk ? null : "empreendimento e corretor",
+    autonomo || params.imobiliariaId.trim() ? null : "imobiliária ou corretor autônomo",
+    params.vinculoOk ? null : autonomo ? "empreendimento" : "empreendimento e corretor",
   ].filter((item): item is string => item !== null);
 }

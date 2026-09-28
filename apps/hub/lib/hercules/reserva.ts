@@ -54,11 +54,23 @@ export function documentoDoProponente(proponente: ProponenteDaReserva): string {
 }
 
 export type PedidoDeReserva = {
-  /** O corretor. Opcional: a reserva pode sair no nome só da imobiliária. */
+  /**
+   * O corretor. Opcional: a reserva pode sair no nome só da imobiliária.
+   *
+   * ⚠️ E É AQUI QUE O CORRETOR AUTÔNOMO ENTRA (28/09/2026). Ele não é corretor DE imobiliária
+   * nenhuma: na reserva dele este campo está preenchido e `imobiliariaEntityId` fica NULO. O código
+   * do autônomo (`broker_code`) NÃO entra na reserva — Lucas: *"somente no CRM"*.
+   */
   corretorEntityId?: null | string;
   /** O código de país do telefone do cliente, só dígitos. Ausente = Brasil. */
   ddi?: null | string;
-  imobiliariaEntityId: string;
+  /**
+   * A imobiliária. Opcional desde 28/09/2026, pelo mesmo motivo que o corretor.
+   *
+   * ⚠️ O TIPO ERA A PRIMEIRA PORTA, ANTES DA RÉGUA: com `string` sem `| null`, o typecheck barrava
+   * quem tentasse montar o pedido do autônomo antes de qualquer regra de negócio.
+   */
+  imobiliariaEntityId?: null | string;
   proponente: ProponenteDaReserva;
   unidadeId: string;
   /** Quando a reserva vence, em ISO. */
@@ -118,6 +130,18 @@ export function telefoneParecePossivel(bruto: string, ddi = "55"): boolean {
 }
 
 /**
+ * A recusa da reserva que não sai no nome de ninguém.
+ *
+ * ⚠️ A FRASE NOMEIA AS DUAS SAÍDAS. A anterior dizia só *"precisa sair no nome de uma imobiliária
+ * habilitada"*, e quem lesse isso numa venda de corretor autônomo iria pedir credenciamento de
+ * imobiliária — que é o caminho errado e demora dias. A constante existe para que o teste e a régua
+ * leiam a MESMA frase: o texto antigo estava cravado na régua e em lugar nenhum mais.
+ */
+export const RESERVA_SEM_QUEM_VENDE =
+  "A reserva precisa sair no nome de uma imobiliária habilitada ou de um corretor autônomo " +
+  "habilitado neste empreendimento.";
+
+/**
  * O que impede esta reserva de existir.
  *
  * ⚠️ DEVOLVE TODOS OS ERROS, não o primeiro. Um formulário que reclama de um campo por vez faz a
@@ -137,11 +161,14 @@ export function conferirReserva(
     erros.push({ campo: "unidade", mensagem: "Escolha a unidade." });
   }
 
-  if (!pedido.imobiliariaEntityId) {
-    erros.push({
-      campo: "imobiliaria",
-      mensagem: "A reserva precisa sair no nome de uma imobiliária habilitada.",
-    });
+  // ⚠️ UM DOS DOIS, E NUNCA NENHUM. Lucas (28/09/2026), perguntado se a reserva pode nascer no nome
+  // do corretor autônomo: *"pode fazer, exige um dos dois"*. Reserva sem nenhum dos dois nasce órfã:
+  // ninguém para avisar e ninguém para comissionar.
+  //
+  // ⚠️ O `campo` CONTINUA `imobiliaria` DE PROPÓSITO. A modal desenha a frase por campo
+  // (`erroDe("imobiliaria")`, ModalDeReserva.tsx) e um campo novo apareceria em lugar nenhum.
+  if (!pedido.imobiliariaEntityId && !pedido.corretorEntityId) {
+    erros.push({ campo: "imobiliaria", mensagem: RESERVA_SEM_QUEM_VENDE });
   }
 
   const documento = documentoDoProponente(pedido.proponente);
@@ -237,7 +264,16 @@ export type DadosDoAviso = {
   /** CPF ou CNPJ: o rótulo da frase sai do próprio documento. */
   cpf: string;
   empreendimento: string;
-  imobiliaria: string;
+  /**
+   * O nome da imobiliária, ou NULO na venda do corretor autônomo (28/09/2026).
+   *
+   * ⚠️ NULO NÃO É "NOME DESCONHECIDO", É "NÃO HÁ IMOBILIÁRIA NESTA VENDA". Até esta data o campo era
+   * `string` obrigatório e `destinatariosDaVenda` devolvia o literal "Imobiliária" quando o id chegava
+   * vazio: o quadro do coordenador saía com `Imobiliária: *Imobiliária*`, e mensagem enviada não volta.
+   * É exatamente a informação que o Lucas proibiu em 27/09/2026: *"nao quero ter a informacao que pode
+   * ter pessoa fisica como imobiliaria"*.
+   */
+  imobiliaria: null | string;
   /** `000123` — o COD da venda. É por ele que se acha a venda depois, e é o que o corretor anota. */
   codigo: string;
   /** "Quadra 12 · Lote 06", como a tela escreve. */
@@ -271,6 +307,8 @@ export function avisosDaReserva(dados: DadosDoAviso): AvisoDaReserva[] {
   // código.
   const cod = dados.codigo ? `COD *${dados.codigo}*.` : "";
 
+  const imobiliaria = dados.imobiliaria;
+
   return [
     {
       papel: "corretor",
@@ -283,16 +321,23 @@ export function avisosDaReserva(dados: DadosDoAviso): AvisoDaReserva[] {
         "Depois desse prazo a unidade volta para a disponibilidade automaticamente. Para seguir com a venda, gere a proposta antes do vencimento.",
       ].join("\n"),
     },
-    {
-      papel: "imobiliaria",
-      texto: [
-        `Olá, ${dados.imobiliaria}!`,
-        "",
-        `A unidade ${lote} foi *reservada* para ${cliente}.`,
-        dados.corretor ? `Corretor responsável: *${dados.corretor}*.` : "Reserva no nome da imobiliária.",
-        `Válida até *${ate}*. ${cod}`.trim(),
-      ].join("\n"),
-    },
+    // ⚠️ SEM IMOBILIÁRIA O TEXTO DELA NEM É MONTADO, e isso não é economia: `avisarSobreAVenda` casa
+    // texto e destino POR PAPEL, e um destino sem texto volta `{ motivo: "sem texto", ok: false }` —
+    // outra falha silenciosa na tela. A lista de textos e a de destinos têm de mudar JUNTAS.
+    ...(imobiliaria
+      ? [
+          {
+            papel: "imobiliaria" as const,
+            texto: [
+              `Olá, ${imobiliaria}!`,
+              "",
+              `A unidade ${lote} foi *reservada* para ${cliente}.`,
+              dados.corretor ? `Corretor responsável: *${dados.corretor}*.` : "Reserva no nome da imobiliária.",
+              `Válida até *${ate}*. ${cod}`.trim(),
+            ].join("\n"),
+          },
+        ]
+      : []),
     {
       papel: "coordenador",
       texto: [
@@ -300,7 +345,10 @@ export function avisosDaReserva(dados: DadosDoAviso): AvisoDaReserva[] {
         "",
         `Unidade: ${lote}`,
         `Cliente: ${cliente}`,
-        `Imobiliária: *${dados.imobiliaria}*`,
+        // ⚠️ A LINHA NÃO SOME, ELA DIZ O QUE É. Fora o corretor, a linha da imobiliária era a única
+        // coisa que dizia ao coordenador de quem é a venda: apagada, o quadro deixaria a pergunta
+        // sem resposta. O rótulo próprio responde sem chamar pessoa física de empresa.
+        imobiliaria ? `Imobiliária: *${imobiliaria}*` : "Venda de *corretor autônomo* (sem imobiliária)",
         dados.corretor ? `Corretor: *${dados.corretor}*` : "Corretor: não informado",
         `Vence em *${ate}*`,
         dados.codigo ? `COD: *${dados.codigo}*` : "",
@@ -384,7 +432,8 @@ export type DadosDoCancelamento = {
   codigo: string;
   corretor: null | string;
   empreendimento: string;
-  imobiliaria: string;
+  /** Nulo na venda do corretor autônomo. Ver `DadosDoAviso.imobiliaria`. */
+  imobiliaria: null | string;
   motivo: string;
   unidade: string;
 };
@@ -415,20 +464,25 @@ export function avisosDeCancelamento(dados: DadosDoCancelamento): AvisoDaReserva
         "A unidade já voltou para a disponibilidade e pode ser reservada de novo.",
       ].join("\n"),
     },
-    {
-      papel: "imobiliaria",
-      texto: [
-        `Olá, ${dados.imobiliaria}!`,
-        "",
-        `A reserva da unidade ${lote}, de *${dados.cliente}*, foi *cancelada*.`,
-        `Motivo: ${dados.motivo}.${cod}`,
-        dados.corretor ? `Corretor: *${dados.corretor}*.` : "",
-        "",
-        "A unidade voltou para a disponibilidade.",
-      ]
-        .filter((l, i, todas) => l !== "" || todas[i - 1] !== "")
-        .join("\n"),
-    },
+    // Mesma regra do aviso da reserva: sem imobiliária, o texto dela não existe.
+    ...(dados.imobiliaria
+      ? [
+          {
+            papel: "imobiliaria" as const,
+            texto: [
+              `Olá, ${dados.imobiliaria}!`,
+              "",
+              `A reserva da unidade ${lote}, de *${dados.cliente}*, foi *cancelada*.`,
+              `Motivo: ${dados.motivo}.${cod}`,
+              dados.corretor ? `Corretor: *${dados.corretor}*.` : "",
+              "",
+              "A unidade voltou para a disponibilidade.",
+            ]
+              .filter((l, i, todas) => l !== "" || todas[i - 1] !== "")
+              .join("\n"),
+          },
+        ]
+      : []),
     {
       papel: "coordenador",
       texto: [
@@ -436,7 +490,9 @@ export function avisosDeCancelamento(dados: DadosDoCancelamento): AvisoDaReserva
         "",
         `Unidade: ${lote}`,
         `Cliente: *${dados.cliente}*`,
-        `Imobiliária: *${dados.imobiliaria}*`,
+        dados.imobiliaria
+          ? `Imobiliária: *${dados.imobiliaria}*`
+          : "Venda de *corretor autônomo* (sem imobiliária)",
         dados.corretor ? `Corretor: *${dados.corretor}*` : "Corretor: não informado",
         `Motivo: *${dados.motivo}*`,
         dados.codigo ? `COD: *${dados.codigo}*` : "",
