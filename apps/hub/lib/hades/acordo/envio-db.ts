@@ -7,7 +7,7 @@ import {
   type PedidoDeEnvio,
 } from "@/lib/assinatura/clicksign/envelope";
 import type { PortaDaClicksign } from "@/lib/assinatura/clicksign/cliente";
-import { congelarSignatarios } from "@/lib/assinatura/congelar-signatarios";
+import { quadroDoEnvio } from "@/lib/assinatura/congelar-signatarios";
 import {
   type EnvelopeDaProposta,
   envelopeQueSegura,
@@ -15,6 +15,11 @@ import {
   seguraOEnvio,
 } from "@/lib/assinatura/envio-db";
 import { assinanteDeTermosDaVendedora, assinantesDoQuadro } from "@/lib/assinatura/quadro-db";
+import {
+  GUARDA_DE_TERMINAL,
+  ligarEventosAoEnvelope,
+  registrarEnvioAtivo,
+} from "@/lib/assinatura/registro-db";
 import { type Pessoa, signatariosDoContrato } from "@/lib/assinatura/signatarios";
 import type { EstadoDaAssinatura, Signatario } from "@/lib/assinatura/tipos";
 import { rotuloDoEstado } from "@/lib/assinatura/traduzir";
@@ -611,7 +616,9 @@ async function perdemosACorrida(
       falha: `desistiu antes de chamar a Clicksign: o envio ${primeiro.id} do mesmo acordo começou primeiro`,
       fechado_em: new Date().toISOString(),
     })
-    .eq("id", registroId);
+    .eq("id", registroId)
+    // ⚠️ GUARDA DE TERMINAL (F1 da fonte única): estado terminal não muda mais, nem por nós.
+    .not("estado", "in", GUARDA_DE_TERMINAL);
 
   return CORRIDA_PERDIDA;
 }
@@ -700,30 +707,32 @@ async function abrirRegistro(
     usuarioNome: null | string;
   },
 ): Promise<FalhaNoAcordo | { id: string; ok: true }> {
+  const linha = {
+    compromisso_id: dados.compromissoId,
+    enterprise_id: dados.enterpriseId || null,
+    enviado_por: dados.usuarioId,
+    enviado_por_nome: dados.usuarioNome,
+    estado: "rascunho",
+    nome: dados.nome,
+    // A ordem do acordo é sempre ligada: comprador, depois incorporador, depois Careli.
+    ordenada: true,
+    // ⚠️ NULO DE PROPÓSITO. Ver a nota do topo: preencher faria a Têmis e o portal do incorporador
+    // tratarem este envelope como o contrato daquela venda.
+    proposta_id: null,
+    provedor: "clicksign",
+    // ⚠️ COM A `chave` OBRIGATÓRIA DA 0195 (`tmp:<posição>` até o carimbo trazer os ids).
+    signatarios: quadroDoEnvio(dados.signatarios),
+    unidade_id: dados.unidadeId,
+    workspace_id: "careli",
+  };
+
+  // ⚠️ `finalidade: "acordo"` (0195): o termo do Hades nunca entra na leitura do CONTRATO da venda.
+  //
+  // ⚠️ SEM INSERT DE RESERVA SEM A COLUNA (plano, F1: a 0195 é aplicada ANTES do deploy). Se ela
+  // faltar, o insert falha, a frase abaixo aponta a migration e nada vai para a Clicksign.
   const { data, error } = await sb
     .from("temis_envelopes")
-    .insert({
-      compromisso_id: dados.compromissoId,
-      enterprise_id: dados.enterpriseId || null,
-      enviado_por: dados.usuarioId,
-      enviado_por_nome: dados.usuarioNome,
-      estado: "rascunho",
-      nome: dados.nome,
-      // A ordem do acordo é sempre ligada: comprador, depois incorporador, depois Careli.
-      ordenada: true,
-      // ⚠️ NULO DE PROPÓSITO. Ver a nota do topo: preencher faria a Têmis e o portal do incorporador
-      // tratarem este envelope como o contrato daquela venda.
-      proposta_id: null,
-      provedor: "clicksign",
-      signatarios: dados.signatarios.map((s) => ({
-        email: s.email,
-        nome: s.nome,
-        ordem: s.ordem,
-        papel: s.papel,
-      })),
-      unidade_id: dados.unidadeId,
-      workspace_id: "careli",
-    })
+    .insert({ ...linha, finalidade: "acordo" })
     .select("id")
     .maybeSingle();
 
@@ -737,11 +746,16 @@ async function abrirRegistro(
     if (ehConflitoDeEnvioVivo(error)) {
       return { erro: CORRIDA_PERDIDA, ok: false, status: 409 };
     }
-    console.error("[hades][acordo][assinatura] falha ao abrir o registro do envelope", error);
+    // ⚠️ SÓ `code` E `message`: o `details` de um 23502/23514 traz "Failing row contains (...)", e a
+    // linha leva o jsonb dos signatários, com nome e e-mail.
+    console.error("[hades][acordo][assinatura] falha ao abrir o registro do envelope", {
+      code: error?.code ?? null,
+      message: error?.message ?? null,
+    });
     return {
       erro:
         "Não foi possível registrar o envio no Panteon, e por isso nada foi mandado para a Clicksign. " +
-        `Confira se as migrations 0149 (temis_envelopes) e ${MIGRATION_DO_ELO_DO_ACORDO} (compromisso_id) foram aplicadas.`,
+        `Confira se as migrations 0149 (temis_envelopes), ${MIGRATION_DO_ELO_DO_ACORDO} (compromisso_id) e 0195 (finalidade do envelope) foram aplicadas.`,
       ok: false,
       status: 503,
     };
@@ -774,28 +788,45 @@ async function carimbarSucesso(
   },
   signatarios: readonly Signatario[],
 ): Promise<null | string> {
+  // ⚠️ OS IDS POR UPDATE; O ESTADO E O QUADRO PELA FUNÇÃO DA 0195 (F1 da fonte única, 0.25 do
+  // plano). O update antigo gravava `aguardando` e o jsonb inteiro sem condição, por cima do que o
+  // webhook (que chega antes do carimbo) já tinha gravado. Ver `carimbarSucesso` em
+  // `lib/assinatura/envio-db.ts`: é o mesmo gesto, nas mesmas três partes.
   const { error } = await sb
     .from("temis_envelopes")
     .update({
       atualizado_em: new Date().toISOString(),
-      // ⚠️ `aguardando`, E NÃO `rascunho`: a esta altura o envelope foi ATIVADO e notificado.
-      estado: "aguardando",
-      estado_cru: "clicksign:running",
       envelope_id: resultado.envelopeId,
       enviado_em: new Date().toISOString(),
       provedor_documento_id: resultado.documentoId,
-      // ⚠️ COM A `chave` DA CLICKSIGN. Ver `lib/assinatura/congelar-signatarios.ts`: sem ela o
-      // reenvio de convite manda a key do webhook (ou o e-mail) e leva 422.
-      signatarios: congelarSignatarios(signatarios, resultado.signatarios),
     })
-    .eq("id", registroId);
+    .eq("id", registroId)
+    // ⚠️ GUARDA DE TERMINAL (F1 da fonte única): nenhum update direto escreve em linha terminal.
+    .not("estado", "in", GUARDA_DE_TERMINAL);
 
-  if (!error) return null;
+  if (!error) {
+    // ⚠️ `aguardando`, E NÃO `rascunho`: a esta altura o envelope foi ATIVADO e notificado. E COM A
+    // `chave` DA CLICKSIGN: sem ela o reenvio de convite manda a key do webhook e leva 422.
+    const gravou = await registrarEnvioAtivo(sb, registroId, {
+      estadoCru: "clicksign:running",
+      quadro: quadroDoEnvio(signatarios, resultado.signatarios),
+    });
+    if (!gravou) {
+      // Os ids estão gravados, então a guarda do reenvio e o cancelamento acham o envelope; o que
+      // falta é o estado, que o próximo webhook traz. É log, não frase para a tela.
+      console.error(
+        "[hades][acordo][assinatura] o envelope foi criado e o estado não foi carimbado. envelope:",
+        resultado.envelopeId,
+      );
+    }
+    await ligarEventosAoEnvelope(sb, resultado.documentoId, resultado.envelopeId);
+    return null;
+  }
 
   console.error(
     "[hades][acordo][assinatura] O ENVELOPE FOI CRIADO E O REGISTRO NÃO ATUALIZOU. envelope:",
     resultado.envelopeId,
-    error,
+    { code: error.code ?? null, message: error.message ?? null },
   );
 
   return (
@@ -843,14 +874,25 @@ async function carimbarFalha(
       // rascunho foi apagado, e gravar o id de um documento que não existe mais mandaria o
       // cancelamento futuro tentar um PATCH no nada.
       ...(resultado.documentoId ? { provedor_documento_id: resultado.documentoId } : {}),
-      // ⚠️ E O ESTADO SÓ VIRA `aguardando` NO PASSO `notificar`: é o único desfecho em que se SABE
-      // que o envelope está ativo. No `ativar`, a chamada pode ter estourado depois de o servidor já
-      // ter trocado o status, e afirmar "aguardando" ali trocaria uma dúvida por uma certeza falsa.
-      ...(ativado ? { estado: "aguardando", estado_cru: "clicksign:running" } : {}),
     })
-    .eq("id", registroId);
+    .eq("id", registroId)
+    // ⚠️ GUARDA DE TERMINAL (F1 da fonte única): nenhum update direto escreve em linha terminal.
+    .not("estado", "in", GUARDA_DE_TERMINAL);
 
-  if (error) console.error("[hades][acordo][assinatura] falha ao carimbar o erro do envio", error);
+  if (error) {
+    console.error("[hades][acordo][assinatura] falha ao carimbar o erro do envio", {
+      code: error.code ?? null,
+      message: error.message ?? null,
+    });
+  }
+
+  // ⚠️ E O ESTADO SÓ VIRA `aguardando` NO PASSO `notificar`: é o único desfecho em que se SABE que o
+  // envelope está ativo. No `ativar`, a chamada pode ter estourado depois de o servidor já ter
+  // trocado o status, e afirmar "aguardando" ali trocaria uma dúvida por uma certeza falsa. E vai
+  // PELA FUNÇÃO DA 0195 (F1 da fonte única): um webhook que chegou antes não é regredido.
+  if (ativado) {
+    await registrarEnvioAtivo(sb, registroId, { estadoCru: "clicksign:running" });
+  }
 }
 
 // ── O ENVIO ─────────────────────────────────────────────────────────────────
@@ -1091,12 +1133,18 @@ export async function cancelarAssinaturaDoAcordo(
       falha: `cancelado por ${pedido.usuarioNome ?? "alguém do hub"}${pedido.motivo ? `: ${pedido.motivo}` : ""}`,
       fechado_em: new Date().toISOString(),
     })
-    .eq("id", linha.id);
+    .eq("id", linha.id)
+    // ⚠️ GUARDA DE TERMINAL (F1 da fonte única): um termo que o webhook já deu por assinado não vira
+    // "cancelado" aqui por uma corrida entre o clique e o evento.
+    .not("estado", "in", GUARDA_DE_TERMINAL);
 
   // ⚠️ FALHA AQUI NÃO DESFAZ O CANCELAMENTO — ele já aconteceu lá, e não se desfaz. O webhook
   // `canceled` chega em seguida e grava o mesmo estado; o log é o que explica a janela entre os dois.
   if (error) {
-    console.error("[hades][acordo][assinatura] cancelou na Clicksign e não gravou aqui", error);
+    console.error("[hades][acordo][assinatura] cancelou na Clicksign e não gravou aqui", {
+      code: error.code ?? null,
+      message: error.message ?? null,
+    });
   }
 
   return { envelopeId: linha.envelope_id, ok: true };

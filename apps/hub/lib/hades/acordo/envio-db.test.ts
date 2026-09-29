@@ -113,14 +113,49 @@ function bancoDeTeste(dados: {
   erroDosEnvelopes?: { code: string; message: string };
   erroNoInsert?: { code: string; message: string };
 }) {
-  const escritas: { patch: Record<string, unknown>; tabela: string }[] = [];
+  const escritas: { filtros: Array<[string, unknown]>; patch: Record<string, unknown>; tabela: string }[] = [];
+  /** As chamadas à função da 0195 (`temis_envelope_registrar_assinaturas`), com os parâmetros. */
+  const rpcs: Record<string, unknown>[] = [];
+
+  // ⚠️ A FUNÇÃO DA 0195 DEVOLVE O QUADRO QUE RECEBEU: é o que basta para os carimbos, que só mandam
+  // `aguardando` e o quadro com as chaves da Clicksign (a regra monotônica é do banco, e o ensaio
+  // SQL da 0195 é quem a prova).
+  const rpc = (_nome: string, args: Record<string, unknown>) => {
+    rpcs.push(args);
+    return Promise.resolve({
+      data: [
+        {
+          assinaram: 0,
+          estado_antes: "rascunho",
+          estado_depois: args.p_estado ?? "rascunho",
+          fechado: null,
+          mudou_estado: Boolean(args.p_estado),
+          quadro: args.p_quadro ?? [],
+          recusa: null,
+          total: Array.isArray(args.p_quadro) ? args.p_quadro.length : 0,
+        },
+      ],
+      error: null,
+    });
+  };
 
   const from = (tabela: string) => {
     const builder: Record<string, unknown> = {};
+    /** A escrita deste builder, para os filtros que vêm depois dela (a guarda de terminal). */
+    let daqui: (typeof escritas)[number] | undefined;
     Object.assign(builder, {
       eq: () => builder,
+      in: () => builder,
+      is: () => builder,
+      // ⚠️ A GUARDA DE TERMINAL (F1 da fonte única) fica registrada na escrita: um no-op aqui deixava
+      // apagar o `.not("estado", "in", ...)` do cancelamento sem derrubar teste nenhum.
+      not: (coluna: string, operador: string, valor: unknown) => {
+        daqui?.filtros.push([`not-${operador}:${coluna}`, valor]);
+        return builder;
+      },
       insert: (patch: Record<string, unknown>) => {
-        escritas.push({ patch, tabela });
+        daqui = { filtros: [], patch, tabela };
+        escritas.push(daqui);
         return builder;
       },
       limit: () =>
@@ -144,14 +179,15 @@ function bancoDeTeste(dados: {
       then: (resolver: (r: { error: null }) => unknown) =>
         Promise.resolve(resolver({ error: null })),
       update: (patch: Record<string, unknown>) => {
-        escritas.push({ patch, tabela });
+        daqui = { filtros: [], patch, tabela };
+        escritas.push(daqui);
         return builder;
       },
     });
     return builder;
   };
 
-  return { escritas, sb: { from } as unknown as SupabaseClient };
+  return { escritas, rpcs, sb: { from, rpc } as unknown as SupabaseClient };
 }
 
 /** O duplo da porta HTTP da Clicksign. Ver a nota de `PortaDaClicksign`. */
@@ -338,15 +374,32 @@ describe("o registro em temis_envelopes", () => {
   });
 
   it("o carimbo do sucesso grava o id do envelope e o estado aguardando", async () => {
-    const { escritas, sb } = bancoDeTeste({});
+    const { escritas, rpcs, sb } = bancoDeTeste({});
     const { porta } = portaDeTeste();
 
     await enviarAcordoParaAssinatura(sb, acordo(), {}, { montarPdf: PDF_PRONTO, porta });
 
     const carimbo = escritas.find((e) => e.patch.envelope_id === "env-acordo");
-    expect(carimbo?.patch.estado).toBe("aguardando");
-    expect(carimbo?.patch.estado_cru).toBe("clicksign:running");
     expect(carimbo?.patch.provedor_documento_id).toBe("doc-acordo");
+    // ⚠️ O ESTADO NÃO VAI MAIS POR UPDATE DIRETO (F1 da fonte única): vai pela função da 0195, que
+    // não regride o que o webhook (chegado antes do carimbo) já gravou.
+    expect(carimbo?.patch).not.toHaveProperty("estado");
+    expect(carimbo?.patch).not.toHaveProperty("signatarios");
+    expect(rpcs).toEqual([
+      expect.objectContaining({ p_estado: "aguardando", p_estado_cru: "clicksign:running" }),
+    ]);
+  });
+
+  it("o registro nasce com a finalidade `acordo` e a chave provisória de cada pessoa", async () => {
+    const { escritas, sb } = bancoDeTeste({});
+    const { porta } = portaDeTeste();
+
+    await enviarAcordoParaAssinatura(sb, acordo(), {}, { montarPdf: PDF_PRONTO, porta });
+
+    const insert = escritas.find((e) => "compromisso_id" in e.patch);
+    expect(insert?.patch.finalidade).toBe("acordo");
+    const quadro = (insert?.patch.signatarios ?? []) as Array<{ chave: string }>;
+    expect(quadro.map((p) => p.chave)).toEqual(["tmp:1", "tmp:2", "tmp:3"]);
   });
 
   // ⚠️ O ID DO SIGNATÁRIO É O QUE A CLICKSIGN DEVOLVEU, E O CARIMBO É O ÚNICO LUGAR ONDE ELE CABE.
@@ -355,7 +408,7 @@ describe("o registro em temis_envelopes", () => {
   // `POST /envelopes/{id}/signers/{signer_id}/notifications`. Esse id existia por milissegundos
   // dentro de `enviarParaAssinatura` e morria ali.
   it("o carimbo de sucesso congela a chave da Clicksign de cada signatário", async () => {
-    const { escritas, sb } = bancoDeTeste({});
+    const { escritas, rpcs, sb } = bancoDeTeste({});
     // Um id DIFERENTE por pessoa: com um id só, o teste passaria mesmo se a junção casasse errado.
     let n = 0;
     const { porta } = portaDeTeste();
@@ -372,8 +425,9 @@ describe("o registro em temis_envelopes", () => {
 
     await enviarAcordoParaAssinatura(sb, acordo(), {}, { montarPdf: PDF_PRONTO, porta: portaComIds });
 
-    const carimbo = escritas.find((e) => e.patch.envelope_id === "env-acordo");
-    const congelados = (carimbo?.patch.signatarios ?? []) as Array<{
+    // ⚠️ O QUADRO VAI PELA FUNÇÃO DA 0195 (`p_quadro`), que casa cada pessoa com a do registro.
+    expect(escritas.some((e) => e.patch.envelope_id === "env-acordo")).toBe(true);
+    const congelados = (rpcs[0]?.p_quadro ?? []) as Array<{
       chave?: string;
       papel: string;
     }>;
@@ -649,7 +703,11 @@ describe("cancelar o envelope do acordo", () => {
     expect(chamadas.filter((c) => c.metodo === "GET")).toHaveLength(2);
     // ⚠️ NUNCA DELETE: depois de ativado o envelope é permanente, e cancelar apenas o fecha.
     expect(chamadas.some((c) => c.metodo === "DELETE")).toBe(false);
-    expect(escritas.some((e) => e.patch.estado === "cancelado")).toBe(true);
+    const doCancelamento = escritas.find((e) => e.patch.estado === "cancelado");
+    expect(doCancelamento).toBeDefined();
+    // ⚠️ A GUARDA DE TERMINAL (F1 da fonte única, regra 0.25): um termo que o webhook já deu por
+    // assinado não vira "cancelado" aqui por uma corrida entre o clique e o evento.
+    expect(doCancelamento?.filtros).toContainEqual(["not-in:estado", "(assinado,recusado,cancelado,expirado)"]);
   });
 
   // ⚠️ O 200 DO PATCH NO DOCUMENTO NÃO É A MORTE DO ENVELOPE (doc lida em 25/09/2026: nenhuma das duas

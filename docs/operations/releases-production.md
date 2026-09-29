@@ -95,6 +95,58 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Hercules/Temis] Contrato e assinatura moram no Panteon: Clicksign e D4Sign na mesma leitura (v1.392.0, F1 a F4 da fonte unica)`.
+- Squad/agente responsavel: `Zeus` (implementacao por workflow com 3 lentes de revisao por fatia; subida conduzida pelo Zeus).
+- Data e hora local: `2026-09-29 13:33:34 -03:00` (changelog); no ar conferido as ~13:40 (`/api/version` = 1.392.0).
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK explicito do Lucas em 28-29/09 ("tem o meu ok, pode seguir com os passos 1 a 5"; "pode tentar novamente"; "pode colocar o cron de novo, eu aprovo"). Plano: docs/assinatura/fonte-unica-do-contrato.md.`
+- Escopo publicado:
+  - `F1: migration 0195 (aplicada 29/09, conferida por objeto: 6 colunas, finalidade 8 contrato/18 acordo, unicidade do documento, funcao temis_envelope_registrar_assinaturas so service_role, views security_invoker so service_role, RLS); webhook da Clicksign le event.data.signer, grava envelope_id e nao regride estado`;
+  - `F2: regua unica de envelope vigente; envelope -> card -> venda sem provedor (MOVER_VENDAS = false: o card ainda NAO anda pela D4Sign)`;
+  - `F3: espelho da D4Sign (cron /api/assinatura/d4sign/espelho, 7,37 * * * *, so Bearer CRON_SECRET, C2X so SELECT READ ONLY)`;
+  - `F4: /api/incorporador/vendas/assinaturas e /vendas/contratos leem so o Panteon (lerContratosDoPanteon), sem C2X nem D4Sign ao vivo`.
+- Operacoes de dado (com OK): `carga do espelho --gravar (2.231 contratos D4Sign: 2.171 assinados, 42 em assinatura, 18 cancelados; 0 sem unidade; 0 dado pessoal; 4 vendas nativas ligadas: ACP 1, REP 1, VAL 2); backfill de quem assinou na Clicksign ANTES do deploy (32 marcas em 8 envelopes; a paridade mostrou que sem ele a tela nova diria 0/12); 0195.dados.sql (258 de 261 eventos ganharam envelope_id); reduzir-payloads --gravar (261 eventos: 0 com CPF/nascimento/geo e 0 com credencial nos cabecalhos depois).`
+- Commit publicado: `253f1af338731103c4c1dd50a2dde931d343dc19` (merge da 1.391.1 em `1cf33b92`).
+- Deployment anterior: `dpl_7J9Hk1RGjJwTnDJavwNUhiYSTaLp` (commit `52694d80`, v1.391.1) = rollback do codigo. Rollback do dado: tirar o cron; as linhas d4sign/c2x ficam paradas (apagar so com OK).
+- Deployment novo: `dpl_HrFYtm73ZwBjdatR14L1UY2dzPdm` (READY).
+- Dominio alvo autorizado: `https://c2x.app.br` (git automatico).
+- Validacoes executadas:
+  - `check-types`: `limpo` (o pre-push barrou duas vezes por access violation do Node no PowerShell, intermitente; na terceira passou);
+  - `suite`: `verde no pre-push`;
+  - `paridade (scripts/temis/comparar-leitura-de-assinaturas.mjs, so leitura, 37 codigos)`: `261 iguais, 6 so rotulo de perfil, 1 venda desfeita no C2X; 78 inexplicados todos explicados: VLO 8 = a mesma venda no pai e no filho (o novo mostra so a do filho, regra "VLO e reflexo"); ACT 70 = o C2X renomeou ADT para ACT e o Panteon guarda ADTC (mesmos contratos, rotulo diferente; 10 cadastrados na ACP). Nenhum contrato sumiu.`
+- Healthchecks pos-deploy: `/api/version` 1.392.0; sem runtime error nas rotas de assinatura, contratos, webhook e espelho.
+- Riscos residuais: `a ACT aparece com rotulo ADTC na aba (PAN-124). O card da Temis ainda nao anda pela D4Sign (MOVER_VENDAS false; liga com OK separado). F5 (Apolo e desligar os links publicos) e F6 (contador no Board) no branch wip/f5-apolo-e-links-publicos, fora desta subida. Primeira rodada do cron as 14:07.`
+
+Registro de producao:
+
+- Assunto: `[Hercules] A aba Assinatura le as vendas do Panteon em todo produto, com quem assinou pessoa a pessoa (v1.389.0)`.
+- Squad/agente responsavel: `Zeus` (correcao rapida direta + revisao por subagente reviewer).
+- Data e hora local: `2026-09-28 14:43:00 -03:00` (changelog); push na main as ~14:44; no ar conferido as ~14:50 (`/api/version` = 1.389.0).
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK explicito do Lucas ("tem o meu ok, pode subir" e, depois do bloqueio do controle de permissoes, "pode subir de novo, tem o meu ok"). Pedido do dia: "olha por favor se foi enviado esses contratos", "essas informacoes tem que alimentar tudo", "estou achando lento essa correcao".`
+- Escopo publicado:
+  - `rota /api/incorporador/vendas/assinaturas: o Panteon (propostas origem panteon + temis_envelopes) e lido em TODO codigo, nao so nos proprios; unirComOPanteon casa com o legado por empreendimento + hercules_unidades.codigo e tira so a linha aguardando-emissao da redigitacao (uma por venda)`;
+  - `linha do Panteon com quem assinou pessoa a pessoa (ultimo payload CONFERIDO por documento, quemAssinou), vez pelo menor degrau pendente, perfis alinhados ao vocabulario do legado`;
+  - `ficha da venda: em assinatura a data e a do envio, rotulo "Enviado para assinatura"`;
+  - `teste de varredura do documento le CRLF (4 falsos alarmes que barravam o pre-push no Windows)`.
+- Commit publicado: `795e60c342f0cc44e124999eb216fc0684de77b9` (codigo em `4e3a847a`, teste em `3b1c04d1`).
+- Deployment anterior: `dpl_82VmKcXyKXQXGBUfDv5nFwR1XnkC` (commit `37908445`, v1.388.0) = rollback.
+- Deployment novo: `dpl_36JkswMCBoSmXDANuMSLAh66c2Jn` (READY).
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Arquivos/modulos incluidos: `apps/hub/app/api/incorporador/vendas/assinaturas/route.ts`, `lib/apolo/incorporador/assinaturas.ts`, `lib/hercules/fluxo-de-venda.ts`, `modules/incorporador/hercules/TelaVenda.tsx`, testes (`assinaturas-do-panteon.test.ts`, `so-do-panteon.test.ts`, `documento-do-comprador.varredura.test.ts`), changelog 1.389.0.
+- Arquivos/modulos excluidos: `NENHUMA MIGRATION, nenhuma env, nenhum cron. O contador x/y no Board do comercial saiu da entrega: a revisao mediu 902 kB por carga (7 envelopes, 129 eventos) a cada minuto por aba aberta; volta na F6 da fonte unica (branch fix/assinatura-fonte-unica), pela marca gravada por pessoa.`
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `npx vitest run`: `678 arquivos, 10.172 testes passando, sem Errors`; pre-push ok (typecheck, suite, lint dos 8 arquivos, changelog);
+  - `conferencia so leitura contra producao (Vale do Ouro)`: `lista 185 -> 187, aguardando emissao 6 -> 1, unidades com envio 179 -> 186; VOL1106 e VOL0710 passam a aparecer`;
+  - `revisao`: `reviewer aprovou com ressalvas; aceitas: custo do Board (retirado), casamento 1:1 (feito, com teste), efeito da falha do codigo da unidade (documentado)`.
+- Healthchecks pos-deploy: `/api/version` 1.389.0; runtime errors nas rotas mexidas nos ultimos 30 min: nenhum.
+- Riscos residuais: `VOC1102 tem DOIS contratos em assinatura (Clicksign 3/11 e D4Sign pelo C2X 1/12): a tela mostra os dois de proposito; um precisa ser cancelado. A Nivea (Careli) esta no papel coordenador do quadro de VOL/VOC/VOR e segura VOL0710 e VOL1106. As taxas, a fila e o quadro por assinante ainda contam so o legado; a leitura unica do Panteon (fonte unica, F1 a F9) segue no branch fix/assinatura-fonte-unica.`
+
+Registro de producao:
+
 - Assunto: `[Apolo] Coordenador achado pelo empreendimento, habilitacoes sem fila no Board e travas contra o C2X (v1.375.0)`.
 - Squad/agente responsavel: `Zeus`.
 - Data e hora local: `2026-09-25 08:26:22 -03:00` (changelog); push na main as ~08:33; no ar as 08:41:45.

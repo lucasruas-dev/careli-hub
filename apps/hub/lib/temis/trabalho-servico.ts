@@ -41,6 +41,12 @@ import { comIdsDoGrupo } from "@/lib/apolo/incorporador/resumo-do-produto";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { diarioDaProposta } from "@/lib/assinatura/diario-do-envelope-db";
 import { type EnvelopeDaProposta, envelopeQueSegura } from "@/lib/assinatura/envio-db";
+import { envelopeVigente } from "@/lib/assinatura/envelope-vigente";
+import {
+  fraseParaOAtor,
+  INDEFERIMENTO_POR_OUTRO_CANAL,
+  RECUSA_POR_OUTRO_CANAL,
+} from "@/lib/assinatura/frase-para-o-portal";
 import type { EstadoDaAssinatura } from "@/lib/assinatura/tipos";
 import { rotuloDoEstado } from "@/lib/assinatura/traduzir";
 import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
@@ -928,7 +934,11 @@ export async function abrirCardDoTrabalho(
         analise,
         assinatura,
         card: { ...card, contratos },
-        envelopeVivo,
+        // ⚠️ O PORTAL RECEBE O ENVELOPE SEM O VOCABULÁRIO INTERNO (plano, seções 4 e 5): o aviso de
+        // dois contratos é só da tela interna, e `provedor` e o id do documento da D4Sign (o uuid do
+        // C2X) nunca atravessam. A tela de trabalho é a MESMA função nos dois lados, então o corte é
+        // aqui, pelo ator, e não na tela.
+        envelopeVivo: ator.tipo === "hub" ? envelopeVivo : envelopeVivoParaOPortal(envelopeVivo),
         podeEmitir,
         situacaoDoPedido,
       },
@@ -1003,25 +1013,64 @@ async function envelopeVivoDaProposta(
 ): Promise<EnvelopeVivoDoCard | null> {
   const { data, error } = await sb
     .from("temis_envelopes")
-    // As mesmas colunas que a guarda do envio e a volta leem — é a mesma régua.
-    .select("criado_em, envelope_id, estado, falha, id, provedor")
+    // As mesmas colunas que a guarda do envio e a volta leem — é a mesma régua. `enviado_em` e
+    // `finalidade` entram para a régua do contrato vigente (F2 da fonte única).
+    .select("criado_em, envelope_id, enviado_em, estado, falha, finalidade, id, provedor")
     .eq("proposta_id", propostaId)
     .order("criado_em", { ascending: false })
     .limit(50);
 
   if (error) {
-    console.error("[temis][trabalho] falha ao ler o envelope da proposta", error);
-    return { conferido: false, estado: "desconhecido", id: null, rotulo: "Não deu para conferir" };
+    console.error("[temis][trabalho] falha ao ler o envelope da proposta", {
+      code: error.code ?? null,
+      message: error.message ?? null,
+    });
+    return {
+      conferido: false,
+      doisContratosVivos: false,
+      estado: "desconhecido",
+      id: null,
+      provedor: null,
+      rotulo: "Não deu para conferir",
+    };
   }
 
-  const vivo = envelopeQueSegura((data ?? []) as EnvelopeDaProposta[]);
+  const linhas = (data ?? []) as Array<EnvelopeDaProposta & { finalidade: null | string }>;
+  const vivo = envelopeQueSegura(linhas);
   if (!vivo) return null;
+
+  // ⚠️ O AVISO DE DOIS CONTRATOS É SÓ ENTRE ENVELOPES DE CONTRATO (plano, seção 4): um distrato vivo
+  // na mesma venda não é "dois contratos". Quem segura a volta continua sendo QUALQUER envelope vivo
+  // (a guarda acima, sem filtro), porque é essa a pergunta que a tela faz antes de cancelar.
+  const doContrato = linhas.filter((l) => l.finalidade === "contrato");
 
   return {
     conferido: true,
+    doisContratosVivos: envelopeVigente(doContrato).doisContratosVivos,
     estado: vivo.estado,
     id: vivo.envelope_id,
+    provedor: vivo.provedor,
     rotulo: comoSeEscreveOEstado(vivo.estado),
+  };
+}
+
+/** O que o portal recebe do envelope vivo: sem provedor, sem o aviso interno. */
+type EnvelopeVivoDoPortal = Omit<EnvelopeVivoDoCard, "doisContratosVivos" | "provedor">;
+
+/**
+ * O envelope vivo cortado para o portal (ALLOWLIST, seção 5 do plano).
+ *
+ * ⚠️ O `id` SÓ VAI QUANDO É DA CLICKSIGN, como ia antes da F2 (é o envelope que a própria Têmis
+ * mandou). Na linha do espelho da D4Sign o id é o documento do C2X, e ele não atravessa; `null` já
+ * é um caso que a tela conhece (a linha viva sem id: avisa pelo pior caso).
+ */
+function envelopeVivoParaOPortal(vivo: EnvelopeVivoDoCard | null): EnvelopeVivoDoPortal | null {
+  if (!vivo) return null;
+  return {
+    conferido: vivo.conferido,
+    estado: vivo.estado,
+    id: vivo.provedor === "clicksign" ? vivo.id : null,
+    rotulo: vivo.rotulo,
   };
 }
 
@@ -1034,6 +1083,11 @@ type EnvelopeVivoDoCard = {
    * antecede o cancelamento de um envelope pago.
    */
   conferido: boolean;
+  /**
+   * Dois contratos em assinatura (ou um assinado e outro vivo) para a mesma venda, de qualquer
+   * provedor (F2 da fonte única). É o aviso interno da seção 4 do plano; a tela o desenha na F6.
+   */
+  doisContratosVivos: boolean;
   /** O estado CRU de `temis_envelopes` — é por ele que a tela decide qual frase mostrar. */
   estado: string;
   /**
@@ -1043,6 +1097,12 @@ type EnvelopeVivoDoCard = {
    * Panteon nunca soube como terminou. Ela SEGURA a volta, e a tela avisa pelo pior caso.
    */
   id: null | string;
+  /**
+   * De que provedor é o envelope vivo (`clicksign` ou `d4sign`). ⚠️ Com a D4Sign ligada à venda (o C2X
+   * mandou, F3), a volta não cancela daqui: a tela precisa saber para não prometer o que não faz.
+   * `null` só quando a leitura falhou.
+   */
+  provedor: null | string;
   /** O mesmo estado em palavra da casa, pronto para a tela ESCREVER. */
   rotulo: string;
 };
@@ -1154,7 +1214,11 @@ export async function decidirSobreOTrabalho(
     });
 
     if (!feito.ok) {
-      return NextResponse.json({ error: feito.erro }, { status: feito.status });
+      // ⚠️ A RECUSA DA D4SIGN NÃO ATRAVESSA PARA O PORTAL COMO ESTÁ (`frase-para-o-portal.ts`).
+      return NextResponse.json(
+        { error: fraseParaOAtor(ator.tipo === "hub", feito.erro, RECUSA_POR_OUTRO_CANAL) },
+        { status: feito.status },
+      );
     }
 
     registrarAtoDoPortal(ator, "voltou para análise", {
@@ -1192,7 +1256,10 @@ export async function decidirSobreOTrabalho(
     });
 
     if (!feito.ok) {
-      return NextResponse.json({ error: feito.erro }, { status: feito.status });
+      return NextResponse.json(
+        { error: fraseParaOAtor(ator.tipo === "hub", feito.erro, RECUSA_POR_OUTRO_CANAL) },
+        { status: feito.status },
+      );
     }
 
     registrarAtoDoPortal(ator, `${feito.tipo} concluído`, {
@@ -1386,12 +1453,13 @@ export async function decidirSobreOTrabalho(
     trabalhoId: card.id,
     venda: naVenda.feito,
   });
+  const avisoDaVenda = fraseParaOAtor(ator.tipo === "hub", naVenda.aviso, INDEFERIMENTO_POR_OUTRO_CANAL);
   return NextResponse.json(
     {
       // ⚠️ O AVISO VIAJA SEPARADO: é o que o quadro mostra em âmbar e só fecha no clique.
-      aviso: naVenda.aviso,
+      aviso: avisoDaVenda,
       ok: true,
-      recado: [naVenda.recado, naVenda.aviso].filter(Boolean).join(" ") || null,
+      recado: [naVenda.recado, avisoDaVenda].filter(Boolean).join(" ") || null,
       venda: naVenda.feito,
     },
     { headers: { "Cache-Control": "no-store" } },

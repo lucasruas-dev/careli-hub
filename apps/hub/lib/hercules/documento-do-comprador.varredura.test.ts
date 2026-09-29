@@ -136,8 +136,12 @@ const ehTeste = (relativo: string) => /\.test\.tsx?$/.test(relativo);
 /** Linhas de código, sem comentário de linha nem de bloco: o aviso fala de `cpf` de propósito. */
 function linhasDeCodigo(texto: string): string[] {
   const semBloco = texto.replace(/\/\*[\s\S]*?\*\//g, "");
+  // ⚠️ `\r?\n`, E NÃO "\n": no checkout do Windows (core.autocrlf) os arquivos varridos têm CRLF, o
+  // `\r` sobra no fim da linha e o `.` do regex do comentário não o atravessa. O comentário de linha
+  // não era tirado, e a varredura acusava a própria explicação escrita no código (4 falsos alarmes
+  // que barraram o pre-push em 28/09/2026).
   return semBloco
-    .split("\n")
+    .split(/\r?\n/)
     .map((linha) => linha.replace(/\/\/.*$/, ""))
     .filter((linha) => linha.trim().length > 0);
 }

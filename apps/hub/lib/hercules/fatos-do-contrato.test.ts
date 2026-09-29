@@ -135,3 +135,37 @@ describe("apurarFatosDoContrato", () => {
     expect(f.comoSoube.assinatura).toBe("contrato assinado por todos na Clicksign em 11/09/2026");
   });
 });
+
+// ⚠️ F2 DA FONTE ÚNICA (28/09/2026): o envelope diz de QUE provedor veio e O QUE assina.
+describe("apurarFatosDoContrato com provedor e finalidade (F2)", () => {
+  it("a frase diz onde conferir: na D4Sign (o C2X mandou) ou na Clicksign (a Têmis mandou)", () => {
+    const d4sign = apurarFatosDoContrato([], {}, { estado: "assinado", fechado_em: "2026-09-12T00:40:00Z", provedor: "d4sign" });
+    expect(d4sign.comoSoube.assinatura).toBe("contrato assinado por todos na D4Sign em 11/09/2026");
+    const clicksign = apurarFatosDoContrato([], {}, { estado: "assinado", provedor: "clicksign" });
+    expect(clicksign.comoSoube.assinatura).toBe("contrato assinado por todos na Clicksign");
+  });
+
+  it("⚠️ a venda nativa com a data gravada (F2) continua dizendo onde conferir a prova", () => {
+    const f = apurarFatosDoContrato(
+      [],
+      { data_assinatura: "2026-09-11" },
+      { estado: "assinado", fechado_em: "2026-09-12T00:40:00Z", provedor: "d4sign" },
+    );
+    expect(f.comoSoube.assinatura).toBe("contrato assinado na D4Sign em 11/09/2026");
+    // Sem envelope assinado ao lado (a carga do C2X), a frase de antes.
+    expect(apurarFatosDoContrato([], { data_assinatura: "2026-09-11" }, null).comoSoube.assinatura).toBe(
+      "contrato assinado em 11/09/2026",
+    );
+  });
+
+  it("⚠️ envelope de DISTRATO assinado não vira \"contrato assinado\"", () => {
+    const f = apurarFatosDoContrato([], {}, { estado: "assinado", fechado_em: "2026-09-12T00:40:00Z", finalidade: "distrato" });
+    expect(f.assinaturaCompleta).toBe(false);
+    expect(f.comoSoube.assinatura).toBe("nenhuma assinatura registrada");
+  });
+
+  it("envelope de contrato assinado continua contando", () => {
+    const f = apurarFatosDoContrato([], {}, { estado: "assinado", finalidade: "contrato" });
+    expect(f.assinaturaCompleta).toBe(true);
+  });
+});

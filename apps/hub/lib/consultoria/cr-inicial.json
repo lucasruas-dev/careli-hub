@@ -1,0 +1,1116 @@
+{
+  "versao": 1,
+  "projeto": {
+    "empresa": "C&R Construtora",
+    "cidade": "Pará de Minas/MG",
+    "consultor": "Lucas Ruas · C2X",
+    "patrocinador": "Vitor Cecílio",
+    "inicio": "01/10/2026",
+    "fim": "30/09/2027",
+    "objetivo": "Organizar a operação da C&R Construtora por processos: cada setor com fluxo desenhado, papéis claros, indicadores medidos e rotina de gestão funcionando, para dar previsibilidade às obras, ao caixa e ao crescimento.",
+    "resultados": [
+      "Obras dentro do cronograma e do orçamento, com desvio medido todo mês",
+      "Compras planejadas a partir da obra, com menos compra emergencial",
+      "Cada pendência com responsável e prazo, sem tarefa órfã",
+      "Diretoria enxergando a empresa por indicadores, não por percepção"
+    ],
+    "premissas": [
+      "Patrocínio ativo da diretoria",
+      "Um ponto focal por setor, com agenda para a consultoria",
+      "Acesso a dados, planilhas e sistemas",
+      "Decisões da diretoria dentro do prazo combinado"
+    ],
+    "foraDoEscopo": [
+      "Execução das rotinas no lugar da equipe",
+      "Compra ou desenvolvimento de sistemas (a consultoria especifica e acompanha)",
+      "Serviços jurídicos, contábeis e de engenharia de projeto"
+    ],
+    "inicioMes": "2026-10"
+  },
+  "meses": [
+    "Out/26",
+    "Nov/26",
+    "Dez/26",
+    "Jan/27",
+    "Fev/27",
+    "Mar/27",
+    "Abr/27",
+    "Mai/27",
+    "Jun/27",
+    "Jul/27",
+    "Ago/27",
+    "Set/27"
+  ],
+  "fases": [
+    {
+      "n": 1,
+      "nome": "Diagnóstico & Raio-X",
+      "meses": [
+        0,
+        1
+      ],
+      "itens": [
+        "Entrevista com a liderança (visão estratégica e prioridades)",
+        "Levantamento das dores percebidas pela diretoria",
+        "Acompanhamento da equipe operacional de cada setor",
+        "Entendimento do processo real (o que acontece no dia a dia)",
+        "Identificação de desalinhamentos entre gestão e operação"
+      ],
+      "entrega": "Relatório de Diagnóstico por setor"
+    },
+    {
+      "n": 2,
+      "nome": "Consolidação do Cenário & Plano",
+      "meses": [
+        1,
+        2
+      ],
+      "itens": [
+        "Consolidação das informações coletadas",
+        "Priorização das dores (impacto x urgência)",
+        "Definição do foco e da ordem das ondas",
+        "Linha de base dos indicadores (o \"antes\")"
+      ],
+      "entrega": "Plano Diretor da Reestruturação"
+    },
+    {
+      "n": 3,
+      "nome": "Redesenho de Processos & Fluxos",
+      "meses": [
+        2,
+        8
+      ],
+      "itens": [
+        "Redesenho dos fluxos: obras, suprimentos, financeiro, comercial, RH e tecnologia",
+        "Organograma, funções e responsabilidades (matriz RACI)",
+        "Alçadas de aprovação e pontos de controle",
+        "Checkpoints e rituais mínimos de gestão"
+      ],
+      "entrega": "Processos desenhados (as-is e to-be) e manuais"
+    },
+    {
+      "n": 4,
+      "nome": "Acompanhamento da Implantação",
+      "meses": [
+        3,
+        11
+      ],
+      "itens": [
+        "Implantação assistida dos fluxos, onda a onda",
+        "Treinamento das equipes e dos gestores",
+        "Ajustes finos baseados na realidade",
+        "Correção de desvios e medição do \"depois\""
+      ],
+      "entrega": "Processos em funcionamento e relatório de resultados"
+    }
+  ],
+  "ondas": [
+    {
+      "nome": "Onda 1",
+      "meses": [
+        2,
+        5
+      ],
+      "frentes": [
+        "obras",
+        "suprimentos",
+        "organograma",
+        "papeis"
+      ]
+    },
+    {
+      "nome": "Onda 2",
+      "meses": [
+        4,
+        8
+      ],
+      "frentes": [
+        "financeiro",
+        "comercial",
+        "indicadores"
+      ]
+    },
+    {
+      "nome": "Onda 3",
+      "meses": [
+        6,
+        10
+      ],
+      "frentes": [
+        "rh",
+        "tecnologia"
+      ]
+    }
+  ],
+  "frentes": [
+    {
+      "id": "organograma",
+      "grupo": "Transversal",
+      "setor": "ADMINISTRATIVO / PROCESSOS",
+      "nome": "Organograma",
+      "icone": "network",
+      "objetivo": "Estrutura da empresa clara: quem responde a quem, níveis e pontos de decisão.",
+      "escopo": [
+        "Organograma atual (como é de fato)",
+        "Organograma proposto",
+        "Níveis de liderança e amplitude de gestão",
+        "Plano de transição"
+      ],
+      "entregas": [
+        {
+          "nome": "Organograma atual (as-is)",
+          "tipo": "Desenho",
+          "status": "todo",
+          "link": ""
+        },
+        {
+          "nome": "Organograma proposto (to-be)",
+          "tipo": "Desenho",
+          "status": "todo",
+          "link": ""
+        },
+        {
+          "nome": "Plano de transição",
+          "tipo": "Documento",
+          "status": "todo",
+          "link": ""
+        }
+      ],
+      "atividades": [
+        {
+          "nome": "Entrevista com a diretoria sobre a estrutura",
+          "status": "todo",
+          "prazo": "09/10"
+        },
+        {
+          "nome": "Levantamento do quadro atual por setor",
+          "status": "todo",
+          "prazo": "23/10"
+        },
+        {
+          "nome": "Organograma atual validado",
+          "status": "todo",
+          "prazo": "06/11"
+        }
+      ],
+      "janela": {
+        "redesenho": [
+          2,
+          4
+        ],
+        "implantacao": [
+          4,
+          7
+        ]
+      },
+      "kpis": [
+        "pendencias"
+      ],
+      "principais": [
+        "Estrutura da empresa clara: quem responde a quem, níveis e pontos de decisão.",
+        "Diagnóstico do setor em outubro",
+        "Redesenho em Dez/26 a Fev/27"
+      ],
+      "proximos": [
+        {
+          "acao": "Entrevista com a diretoria sobre a estrutura",
+          "resp": "Lucas Ruas",
+          "prazo": "09/10"
+        },
+        {
+          "acao": "Levantamento do quadro atual por setor",
+          "resp": "Lucas Ruas",
+          "prazo": "23/10"
+        },
+        {
+          "acao": "Organograma atual validado",
+          "resp": "Lucas Ruas",
+          "prazo": "06/11"
+        }
+      ],
+      "pontos": [],
+      "implantados": [],
+      "registros": []
+    },
+    {
+      "id": "papeis",
+      "grupo": "Transversal",
+      "setor": "ADMINISTRATIVO / PROCESSOS",
+      "nome": "Funções e papéis",
+      "icone": "users",
+      "objetivo": "Cada função com responsabilidades, entregas e alçadas definidas. Fim da tarefa sem dono.",
+      "escopo": [
+        "Descritivo de cada função",
+        "Matriz RACI por processo",
+        "Alçadas de aprovação (compras, pagamentos, contratos)",
+        "Integração de novos colaboradores ao papel"
+      ],
+      "entregas": [
+        {
+          "nome": "Descritivos de função",
+          "tipo": "Documento",
+          "status": "todo",
+          "link": ""
+        },
+        {
+          "nome": "Matriz RACI",
+          "tipo": "Ferramenta",
+          "status": "todo",
+          "link": ""
+        },
+        {
+          "nome": "Matriz de alçadas",
+          "tipo": "Documento",
+          "status": "todo",
+          "link": ""
+        }
+      ],
+      "atividades": [
+        {
+          "nome": "Levantamento das funções existentes",
+          "status": "todo",
+          "prazo": "30/10"
+        },
+        {
+          "nome": "Mapear sobreposições e lacunas",
+          "status": "todo",
+          "prazo": "13/11"
+        }
+      ],
+      "janela": {
+        "redesenho": [
+          2,
+          5
+        ],
+        "implantacao": [
+          4,
+          8
+        ]
+      },
+      "kpis": [
+        "pendencias"
+      ],
+      "principais": [
+        "Cada função com responsabilidades, entregas e alçadas definidas. Fim da tarefa sem dono.",
+        "Diagnóstico do setor em outubro",
+        "Redesenho em Dez/26 a Mar/27"
+      ],
+      "proximos": [
+        {
+          "acao": "Levantamento das funções existentes",
+          "resp": "Lucas Ruas",
+          "prazo": "30/10"
+        },
+        {
+          "acao": "Mapear sobreposições e lacunas",
+          "resp": "Lucas Ruas",
+          "prazo": "13/11"
+        }
+      ],
+      "pontos": [],
+      "implantados": [],
+      "registros": []
+    },
+    {
+      "id": "indicadores",
+      "grupo": "Transversal",
+      "setor": "ADMINISTRATIVO / PROCESSOS",
+      "nome": "Indicadores",
+      "icone": "gauge",
+      "objetivo": "Painel de gestão com antes, atual e meta por setor, alimentado todo mês e discutido em ritual.",
+      "escopo": [
+        "Dicionário de indicadores (fórmula, fonte, dono)",
+        "Linha de base (o antes)",
+        "Painel mensal da diretoria",
+        "Ritual mensal de resultados"
+      ],
+      "entregas": [
+        {
+          "nome": "Dicionário de indicadores",
+          "tipo": "Documento",
+          "status": "todo",
+          "link": ""
+        },
+        {
+          "nome": "Linha de base",
+          "tipo": "Planilha",
+          "status": "todo",
+          "link": ""
+        },
+        {
+          "nome": "Painel mensal",
+          "tipo": "Ferramenta",
+          "status": "todo",
+          "link": ""
+        }
+      ],
+      "atividades": [
+        {
+          "nome": "Definir os indicadores com a diretoria",
+          "status": "todo",
+          "prazo": "23/10"
+        },
+        {
+          "nome": "Levantar as fontes de dado existentes",
+          "status": "todo",
+          "prazo": "06/11"
+        },
+        {
+          "nome": "Medir a linha de base",
+          "status": "todo",
+          "prazo": "27/11"
+        }
+      ],
+      "janela": {
+        "redesenho": [
+          1,
+          4
+        ],
+        "implantacao": [
+          3,
+          11
+        ]
+      },
+      "kpis": [
+        "processos"
+      ],
+      "principais": [
+        "Painel de gestão com antes, atual e meta por setor, alimentado todo mês e discutido em ritual.",
+        "Diagnóstico do setor em outubro",
+        "Redesenho em Nov/26 a Fev/27"
+      ],
+      "proximos": [
+        {
+          "acao": "Definir os indicadores com a diretoria",
+          "resp": "Lucas Ruas",
+          "prazo": "23/10"
+        },
+        {
+          "acao": "Levantar as fontes de dado existentes",
+          "resp": "Lucas Ruas",
+          "prazo": "06/11"
+        },
+        {
+          "acao": "Medir a linha de base",
+          "resp": "Lucas Ruas",
+          "prazo": "27/11"
+        }
+      ],
+      "pontos": [],
+      "implantados": [],
+      "registros": []
+    },
+    {
+      "id": "obras",
+      "grupo": "Setor",
+      "setor": "ENGENHARIA / OBRAS",
+      "nome": "Obras",
+      "icone": "hard-hat",
+      "objetivo": "Obra planejada e controlada: cronograma físico-financeiro, medição, diário e controle de retrabalho.",
+      "escopo": [
+        "Planejamento e cronograma de obra",
+        "Diário de obra e apontamento de produção",
+        "Medição de empreiteiros",
+        "Controle de retrabalho e qualidade",
+        "Acompanhamento do orçamento (previsto x realizado)"
+      ],
+      "entregas": [
+        {
+          "nome": "Fluxo de planejamento e controle de obra",
+          "tipo": "Processo",
+          "status": "todo",
+          "link": ""
+        },
+        {
+          "nome": "Modelo de cronograma físico-financeiro",
+          "tipo": "Ferramenta",
+          "status": "todo",
+          "link": ""
+        },
+        {
+          "nome": "Diário de obra padrão",
+          "tipo": "Ferramenta",
+          "status": "todo",
+          "link": ""
+        },
+        {
+          "nome": "Rotina semanal de obra",
+          "tipo": "Ritual",
+          "status": "todo",
+          "link": ""
+        }
+      ],
+      "atividades": [
+        {
+          "nome": "Acompanhamento do dia a dia (processo real)",
+          "status": "todo",
+          "prazo": "30/10"
+        },
+        {
+          "nome": "Levantamento de planilhas, documentos e sistemas",
+          "status": "todo",
+          "prazo": "30/10"
+        },
+        {
+          "nome": "Mapa do processo atual (as-is)",
+          "status": "todo",
+          "prazo": "13/11"
+        }
+      ],
+      "janela": {
+        "redesenho": [
+          2,
+          4
+        ],
+        "implantacao": [
+          4,
+          8
+        ]
+      },
+      "kpis": [
+        "cronograma",
+        "atrasadas",
+        "retrabalho",
+        "desvio",
+        "produtividade"
+      ],
+      "principais": [
+        "Obra planejada e controlada: cronograma físico-financeiro, medição, diário e controle de retrabalho.",
+        "Diagnóstico do setor em outubro",
+        "Redesenho em Dez/26 a Fev/27"
+      ],
+      "proximos": [
+        {
+          "acao": "Acompanhamento do dia a dia (processo real)",
+          "resp": "Lucas Ruas",
+          "prazo": "30/10"
+        },
+        {
+          "acao": "Levantamento de planilhas, documentos e sistemas",
+          "resp": "Lucas Ruas",
+          "prazo": "30/10"
+        },
+        {
+          "acao": "Mapa do processo atual (as-is)",
+          "resp": "Lucas Ruas",
+          "prazo": "13/11"
+        }
+      ],
+      "pontos": [
+        "Indicadores de obra dependem de cronograma atualizado: validar se existe hoje"
+      ],
+      "implantados": [],
+      "registros": []
+    },
+    {
+      "id": "suprimentos",
+      "grupo": "Setor",
+      "setor": "COMPRAS / SUPRIMENTOS",
+      "nome": "Suprimentos",
+      "icone": "package",
+      "objetivo": "Compra puxada pela obra: requisição, cotação, aprovação, pedido e recebimento com prazo e alçada.",
+      "escopo": [
+        "Fluxo requisição → cotação → aprovação → pedido → recebimento",
+        "Planejamento de compras pelo cronograma de obra",
+        "Cadastro e avaliação de fornecedores",
+        "Curva ABC de insumos",
+        "Controle de estoque de obra"
+      ],
+      "entregas": [
+        {
+          "nome": "Fluxo de compras",
+          "tipo": "Processo",
+          "status": "todo",
+          "link": ""
+        },
+        {
+          "nome": "Mapa de cotação padrão",
+          "tipo": "Ferramenta",
+          "status": "todo",
+          "link": ""
+        },
+        {
+          "nome": "Cadastro de fornecedores",
+          "tipo": "Ferramenta",
+          "status": "todo",
+          "link": ""
+        }
+      ],
+      "atividades": [
+        {
+          "nome": "Acompanhamento do dia a dia (processo real)",
+          "status": "todo",
+          "prazo": "30/10"
+        },
+        {
+          "nome": "Levantamento de planilhas, documentos e sistemas",
+          "status": "todo",
+          "prazo": "30/10"
+        },
+        {
+          "nome": "Mapa do processo atual (as-is)",
+          "status": "todo",
+          "prazo": "13/11"
+        }
+      ],
+      "janela": {
+        "redesenho": [
+          2,
+          4
+        ],
+        "implantacao": [
+          4,
+          8
+        ]
+      },
+      "kpis": [
+        "prazoCompras",
+        "emergenciais"
+      ],
+      "principais": [
+        "Compra puxada pela obra: requisição, cotação, aprovação, pedido e recebimento com prazo e alçada.",
+        "Diagnóstico do setor em outubro",
+        "Redesenho em Dez/26 a Fev/27"
+      ],
+      "proximos": [
+        {
+          "acao": "Acompanhamento do dia a dia (processo real)",
+          "resp": "Lucas Ruas",
+          "prazo": "30/10"
+        },
+        {
+          "acao": "Levantamento de planilhas, documentos e sistemas",
+          "resp": "Lucas Ruas",
+          "prazo": "30/10"
+        },
+        {
+          "acao": "Mapa do processo atual (as-is)",
+          "resp": "Lucas Ruas",
+          "prazo": "13/11"
+        }
+      ],
+      "pontos": [
+        "Levantar as compras emergenciais dos últimos 3 meses para a linha de base"
+      ],
+      "implantados": [],
+      "registros": []
+    },
+    {
+      "id": "financeiro",
+      "grupo": "Setor",
+      "setor": "FINANCEIRO",
+      "nome": "Financeiro",
+      "icone": "landmark",
+      "objetivo": "Caixa previsível: contas a pagar e receber, fluxo de caixa, custo por obra e fechamento mensal.",
+      "escopo": [
+        "Contas a pagar e a receber",
+        "Fluxo de caixa projetado",
+        "Centro de custo por obra",
+        "Conciliação bancária",
+        "Fechamento mensal"
+      ],
+      "entregas": [
+        {
+          "nome": "Fluxo de contas a pagar",
+          "tipo": "Processo",
+          "status": "todo",
+          "link": ""
+        },
+        {
+          "nome": "Fluxo de caixa projetado",
+          "tipo": "Ferramenta",
+          "status": "todo",
+          "link": ""
+        },
+        {
+          "nome": "Calendário de fechamento",
+          "tipo": "Ritual",
+          "status": "todo",
+          "link": ""
+        }
+      ],
+      "atividades": [
+        {
+          "nome": "Acompanhamento do dia a dia (processo real)",
+          "status": "todo",
+          "prazo": "30/10"
+        },
+        {
+          "nome": "Levantamento de planilhas, documentos e sistemas",
+          "status": "todo",
+          "prazo": "30/10"
+        },
+        {
+          "nome": "Mapa do processo atual (as-is)",
+          "status": "todo",
+          "prazo": "13/11"
+        }
+      ],
+      "janela": {
+        "redesenho": [
+          4,
+          6
+        ],
+        "implantacao": [
+          6,
+          10
+        ]
+      },
+      "kpis": [
+        "desvio"
+      ],
+      "principais": [
+        "Caixa previsível: contas a pagar e receber, fluxo de caixa, custo por obra e fechamento mensal.",
+        "Diagnóstico do setor em outubro",
+        "Redesenho em Fev/27 a Abr/27"
+      ],
+      "proximos": [
+        {
+          "acao": "Acompanhamento do dia a dia (processo real)",
+          "resp": "Lucas Ruas",
+          "prazo": "30/10"
+        },
+        {
+          "acao": "Levantamento de planilhas, documentos e sistemas",
+          "resp": "Lucas Ruas",
+          "prazo": "30/10"
+        },
+        {
+          "acao": "Mapa do processo atual (as-is)",
+          "resp": "Lucas Ruas",
+          "prazo": "13/11"
+        }
+      ],
+      "pontos": [],
+      "implantados": [],
+      "registros": []
+    },
+    {
+      "id": "comercial",
+      "grupo": "Setor",
+      "setor": "COMERCIAL / VENDAS",
+      "nome": "Comercial",
+      "icone": "handshake",
+      "objetivo": "Funil de vendas medido do lead ao contrato, com relacionamento com corretores e pós-venda organizados.",
+      "escopo": [
+        "Atendimento e funil de vendas",
+        "Proposta, análise de crédito e contrato",
+        "Relacionamento com imobiliárias e corretores",
+        "Entrega de chaves e pós-venda"
+      ],
+      "entregas": [
+        {
+          "nome": "Fluxo comercial (lead ao contrato)",
+          "tipo": "Processo",
+          "status": "todo",
+          "link": ""
+        },
+        {
+          "nome": "Fluxo de pós-venda",
+          "tipo": "Processo",
+          "status": "todo",
+          "link": ""
+        },
+        {
+          "nome": "Painel do funil",
+          "tipo": "Ferramenta",
+          "status": "todo",
+          "link": ""
+        }
+      ],
+      "atividades": [
+        {
+          "nome": "Acompanhamento do dia a dia (processo real)",
+          "status": "todo",
+          "prazo": "30/10"
+        },
+        {
+          "nome": "Levantamento de planilhas, documentos e sistemas",
+          "status": "todo",
+          "prazo": "30/10"
+        },
+        {
+          "nome": "Mapa do processo atual (as-is)",
+          "status": "todo",
+          "prazo": "13/11"
+        }
+      ],
+      "janela": {
+        "redesenho": [
+          4,
+          6
+        ],
+        "implantacao": [
+          6,
+          10
+        ]
+      },
+      "kpis": [],
+      "principais": [
+        "Funil de vendas medido do lead ao contrato, com relacionamento com corretores e pós-venda organizados.",
+        "Diagnóstico do setor em outubro",
+        "Redesenho em Fev/27 a Abr/27"
+      ],
+      "proximos": [
+        {
+          "acao": "Acompanhamento do dia a dia (processo real)",
+          "resp": "Lucas Ruas",
+          "prazo": "30/10"
+        },
+        {
+          "acao": "Levantamento de planilhas, documentos e sistemas",
+          "resp": "Lucas Ruas",
+          "prazo": "30/10"
+        },
+        {
+          "acao": "Mapa do processo atual (as-is)",
+          "resp": "Lucas Ruas",
+          "prazo": "13/11"
+        }
+      ],
+      "pontos": [],
+      "implantados": [],
+      "registros": []
+    },
+    {
+      "id": "rh",
+      "grupo": "Setor",
+      "setor": "RH / GESTÃO DE PESSOAS",
+      "nome": "RH",
+      "icone": "id-card",
+      "objetivo": "Ciclo de pessoas organizado: contratação, integração, ponto, treinamento e avaliação.",
+      "escopo": [
+        "Recrutamento e seleção",
+        "Admissão, integração e desligamento",
+        "Ponto e folha",
+        "Treinamento e segurança do trabalho",
+        "Avaliação de desempenho"
+      ],
+      "entregas": [
+        {
+          "nome": "Fluxo de admissão e integração",
+          "tipo": "Processo",
+          "status": "todo",
+          "link": ""
+        },
+        {
+          "nome": "Plano de treinamento",
+          "tipo": "Documento",
+          "status": "todo",
+          "link": ""
+        },
+        {
+          "nome": "Avaliação de desempenho",
+          "tipo": "Ferramenta",
+          "status": "todo",
+          "link": ""
+        }
+      ],
+      "atividades": [
+        {
+          "nome": "Acompanhamento do dia a dia (processo real)",
+          "status": "todo",
+          "prazo": "30/10"
+        },
+        {
+          "nome": "Levantamento de planilhas, documentos e sistemas",
+          "status": "todo",
+          "prazo": "30/10"
+        },
+        {
+          "nome": "Mapa do processo atual (as-is)",
+          "status": "todo",
+          "prazo": "13/11"
+        }
+      ],
+      "janela": {
+        "redesenho": [
+          6,
+          8
+        ],
+        "implantacao": [
+          8,
+          11
+        ]
+      },
+      "kpis": [
+        "produtividade"
+      ],
+      "principais": [
+        "Ciclo de pessoas organizado: contratação, integração, ponto, treinamento e avaliação.",
+        "Diagnóstico do setor em outubro",
+        "Redesenho em Abr/27 a Jun/27"
+      ],
+      "proximos": [
+        {
+          "acao": "Acompanhamento do dia a dia (processo real)",
+          "resp": "Lucas Ruas",
+          "prazo": "30/10"
+        },
+        {
+          "acao": "Levantamento de planilhas, documentos e sistemas",
+          "resp": "Lucas Ruas",
+          "prazo": "30/10"
+        },
+        {
+          "acao": "Mapa do processo atual (as-is)",
+          "resp": "Lucas Ruas",
+          "prazo": "13/11"
+        }
+      ],
+      "pontos": [],
+      "implantados": [],
+      "registros": []
+    },
+    {
+      "id": "tecnologia",
+      "grupo": "Setor",
+      "setor": "TECNOLOGIA",
+      "nome": "Tecnologia",
+      "icone": "monitor-smartphone",
+      "objetivo": "Sistemas a serviço dos processos: uma fonte por informação, sem redigitação e com acesso controlado.",
+      "escopo": [
+        "Mapa de sistemas e planilhas",
+        "Fonte única de cada informação",
+        "Ferramenta de gestão de tarefas e projetos",
+        "Acessos e segurança da informação"
+      ],
+      "entregas": [
+        {
+          "nome": "Mapa de sistemas",
+          "tipo": "Desenho",
+          "status": "todo",
+          "link": ""
+        },
+        {
+          "nome": "Plano de sistemas",
+          "tipo": "Documento",
+          "status": "todo",
+          "link": ""
+        }
+      ],
+      "atividades": [
+        {
+          "nome": "Inventário de sistemas e planilhas",
+          "status": "todo",
+          "prazo": "30/10"
+        },
+        {
+          "nome": "Mapa de onde nasce cada informação",
+          "status": "todo",
+          "prazo": "13/11"
+        }
+      ],
+      "janela": {
+        "redesenho": [
+          6,
+          8
+        ],
+        "implantacao": [
+          8,
+          11
+        ]
+      },
+      "kpis": [
+        "processos"
+      ],
+      "principais": [
+        "Sistemas a serviço dos processos: uma fonte por informação, sem redigitação e com acesso controlado.",
+        "Diagnóstico do setor em outubro",
+        "Redesenho em Abr/27 a Jun/27"
+      ],
+      "proximos": [
+        {
+          "acao": "Inventário de sistemas e planilhas",
+          "resp": "Lucas Ruas",
+          "prazo": "30/10"
+        },
+        {
+          "acao": "Mapa de onde nasce cada informação",
+          "resp": "Lucas Ruas",
+          "prazo": "13/11"
+        }
+      ],
+      "pontos": [],
+      "implantados": [],
+      "registros": []
+    }
+  ],
+  "indicadores": [
+    {
+      "id": "cronograma",
+      "nome": "Obras dentro do cronograma",
+      "frente": "obras",
+      "unidade": "%",
+      "antes": null,
+      "atual": null,
+      "meta": null,
+      "melhor": "maior"
+    },
+    {
+      "id": "atrasadas",
+      "nome": "Atividades atrasadas",
+      "frente": "obras",
+      "unidade": "qtd",
+      "antes": null,
+      "atual": null,
+      "meta": null,
+      "melhor": "menor"
+    },
+    {
+      "id": "retrabalho",
+      "nome": "Retrabalhos identificados",
+      "frente": "obras",
+      "unidade": "qtd",
+      "antes": null,
+      "atual": null,
+      "meta": null,
+      "melhor": "menor"
+    },
+    {
+      "id": "prazoCompras",
+      "nome": "Prazo médio de compras",
+      "frente": "suprimentos",
+      "unidade": "dias",
+      "antes": null,
+      "atual": null,
+      "meta": null,
+      "melhor": "menor"
+    },
+    {
+      "id": "emergenciais",
+      "nome": "Compras emergenciais",
+      "frente": "suprimentos",
+      "unidade": "%",
+      "antes": null,
+      "atual": null,
+      "meta": null,
+      "melhor": "menor"
+    },
+    {
+      "id": "desvio",
+      "nome": "Desvio de orçamento das obras",
+      "frente": "obras",
+      "unidade": "%",
+      "antes": null,
+      "atual": null,
+      "meta": null,
+      "melhor": "menor"
+    },
+    {
+      "id": "produtividade",
+      "nome": "Produtividade das equipes",
+      "frente": "obras",
+      "unidade": "índice",
+      "antes": null,
+      "atual": null,
+      "meta": null,
+      "melhor": "maior"
+    },
+    {
+      "id": "pendencias",
+      "nome": "Pendências sem responsável",
+      "frente": "papeis",
+      "unidade": "qtd",
+      "antes": null,
+      "atual": null,
+      "meta": 0,
+      "melhor": "menor"
+    },
+    {
+      "id": "processos",
+      "nome": "Processos implantados",
+      "frente": "indicadores",
+      "unidade": "qtd",
+      "antes": 0,
+      "atual": 0,
+      "meta": null,
+      "melhor": "maior"
+    }
+  ],
+  "plano30": [
+    {
+      "acao": "Reunião de abertura com a diretoria (kick-off)",
+      "frente": "Geral",
+      "resp": "Lucas Ruas / Vitor Cecílio",
+      "prazo": "02/10",
+      "esperado": "Escopo, agenda e pontos focais aprovados",
+      "status": "todo"
+    },
+    {
+      "acao": "Indicar um ponto focal por setor",
+      "frente": "Geral",
+      "resp": "Vitor Cecílio",
+      "prazo": "06/10",
+      "esperado": "Um responsável por setor nomeado",
+      "status": "todo"
+    },
+    {
+      "acao": "Entrevista com a liderança",
+      "frente": "Geral",
+      "resp": "Lucas Ruas",
+      "prazo": "09/10",
+      "esperado": "Visão estratégica e prioridades registradas",
+      "status": "todo"
+    },
+    {
+      "acao": "Acompanhamento do dia a dia em obra e escritório",
+      "frente": "Obras / Suprimentos",
+      "resp": "Lucas Ruas",
+      "prazo": "30/10",
+      "esperado": "Processo real registrado",
+      "status": "todo"
+    },
+    {
+      "acao": "Inventário de planilhas, documentos e sistemas",
+      "frente": "Tecnologia",
+      "resp": "Lucas Ruas + pontos focais",
+      "prazo": "30/10",
+      "esperado": "Mapa de onde está cada informação",
+      "status": "todo"
+    },
+    {
+      "acao": "Definir os indicadores com a diretoria",
+      "frente": "Indicadores",
+      "resp": "Lucas Ruas / Vitor Cecílio",
+      "prazo": "23/10",
+      "esperado": "Lista de indicadores aprovada",
+      "status": "todo"
+    },
+    {
+      "acao": "Primeiro relatório mensal",
+      "frente": "Geral",
+      "resp": "Lucas Ruas",
+      "prazo": "05/11",
+      "esperado": "Relatório de outubro apresentado",
+      "status": "todo"
+    }
+  ],
+  "governanca": [
+    {
+      "nome": "Reunião mensal de resultados",
+      "quem": "Diretoria + consultoria",
+      "quando": "1ª semana do mês",
+      "saida": "Relatório mensal apresentado e assinado"
+    },
+    {
+      "nome": "Checkpoint semanal por frente",
+      "quem": "Gestor do setor + consultoria",
+      "quando": "Semanal, 30 min",
+      "saida": "Plano de ação atualizado (responsável e prazo)"
+    },
+    {
+      "nome": "Revisão de rota",
+      "quem": "Diretoria + consultoria",
+      "quando": "Trimestral",
+      "saida": "Prioridades e ondas revistas"
+    }
+  ],
+  "pendencias": {
+    "consultoria": [],
+    "gestores": [],
+    "diretoria": [],
+    "decisoes": []
+  },
+  "relatorios": {}
+}

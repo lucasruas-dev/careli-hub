@@ -36,6 +36,200 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-29-card-anda-pela-d4sign",
+    deployedAt: "2026-09-29T13:49:45-03:00",
+    modules: [
+      {
+        module: "Temis",
+        screens: [
+          {
+            items: [
+              "**O card da venda anda sozinho quando o contrato e assinado pela D4Sign**, como ja acontecia com a Clicksign: enviado, vai para Em assinatura; todos assinaram, vai para Pre-faturamento, com os 7 dias contados do fechamento.",
+              "**A data de assinatura passa a ficar gravada na venda** quando o contrato da D4Sign fecha.",
+              "**As vendas que ja estavam em assinatura na D4Sign** (ACP, REP e duas da VAL) saem da Analise e vao para Em assinatura na primeira conferencia depois desta versao.",
+            ],
+            screen: "Board e venda",
+          },
+        ],
+      },
+    ],
+    rollback: "253f1af3",
+    technical: {
+      done:
+        "MOVER_VENDAS = true (lib/assinatura/envelope-na-venda.ts), com OK do Lucas em 29/09/2026, depois da prova da F3 (carga de 2.231 contratos, paridade sem contrato perdido, 4 casamentos com venda nativa pelo mesmo comprador). O cron do espelho (7,37) passa a chamar aplicarEnvelopeNaVenda nas bordas da D4Sign (entrada em assinatura e assinado com fechado_em real) e a reconciliacao com o alvo entrada leva a Em assinatura os cards cuja borda passou com a chave desligada (ACP, REP, VAL x2), com comparar-e-trocar por card e passagem de origem espelho_d4sign. So venda nativa viva, sem pedido de cancelamento, finalidade contrato. Efeito so no banco: sem WhatsApp, notificacao ou fila do C2X (medido na 0.11 do plano).",
+      motivation:
+        "Lucas, 28/09/2026, escolhendo que o card anda sozinho tambem pela D4Sign; e em 29/09: pode ligar o card andar pela D4Sign.",
+    },
+    title: "O card da Temis anda sozinho tambem pela D4Sign",
+    type: "melhoria",
+    version: "1.393.0",
+  },
+  {
+    buildTag: "2026-09-29-contrato-e-assinatura-moram-no-panteon",
+    deployedAt: "2026-09-29T13:33:34-03:00",
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**A aba Assinatura e o Resumo passam a ler so o Panteon.** Os contratos da Clicksign e os da D4Sign aparecem na mesma lista, com quem ja assinou e de quem e a vez.",
+              "**Os contratos que o time manda pela D4Sign do C2X aparecem ligados a venda do Panteon, em assinatura**, e nao mais como Aguardando emissao.",
+              "**A tela nao espera mais a D4Sign responder.** O status e conferido a cada 30 minutos e fica guardado no Panteon, e a faixa Estamos confirmando as assinaturas deixa de aparecer.",
+              "**Quando a mesma venda tem dois contratos em assinatura, os dois aparecem**, para ninguem deixar o comprador assinar dois contratos do mesmo negocio.",
+            ],
+            screen: "Contratos - Assinatura e Resumo",
+          },
+        ],
+      },
+      {
+        module: "Temis",
+        screens: [
+          {
+            items: [
+              "**Quem assinou fica gravado pessoa a pessoa**, venha a assinatura da Clicksign ou da D4Sign.",
+              "**O estado do contrato nao volta mais atras.** Um aviso da Clicksign que chegava fora de ordem levava o contrato de Parcialmente assinado para Aguardando.",
+            ],
+            screen: "Board e tela do card",
+          },
+        ],
+      },
+    ],
+    rollback: "52694d80",
+    technical: {
+      done:
+        "FONTE UNICA DO CONTRATO, F1 a F4 (plano em docs/assinatura/fonte-unica-do-contrato.md). F1: migration 0195 (aplicada em 29/09 com OK): temis_envelopes ganha origem, finalidade, trabalho_id, c2x_contract_signature_id, conferido_em e tentado_em; unicidade de (provedor, provedor_documento_id); a funcao temis_envelope_registrar_assinaturas e a unica escrita de quadro, marca por pessoa e estado (monotonica, atomica, casada pela chave, nunca inventa fechado_em, so service_role); o webhook da Clicksign le event.data.signer, grava o envelope_id no evento e deixa de regredir estado. F2: uma regua de envelope vigente para tela e trava de reenvio, e o caminho envelope -> card -> venda sem provedor (MOVER_VENDAS = false nesta versao: o card ainda nao anda pela D4Sign). F3: o espelho da D4Sign (cron /api/assinatura/d4sign/espelho a cada 30 min, so Bearer CRON_SECRET, C2X so SELECT em transacao READ ONLY, nada de CPF, IP ou geolocalizacao gravado), com a carga inicial feita em 29/09 com OK. F4: /api/incorporador/vendas/assinaturas e /vendas/contratos leem lerContratosDoPanteon (views temis_contratos_do_panteon e temis_envelopes_de_contrato), sem C2X nem D4Sign ao vivo e sem o aquecimento no after(); o payload do portal e uma allowlist sem e-mail, provedor ou nome de sistema. A F5 (Apolo e desligar os links publicos) e a F6 (contador no Board) ficaram fora desta subida.",
+      motivation:
+        "Lucas, 28/09/2026: ja cansei de falar que informacoes de venda, contrato, assinatura tem que morar em um local e ele alimentar tudo; Hoje estamos trabalhando com a click e d4sign; faz tudo morar no Panteon; C2X por enquanto cuida somente do financeiro, o resto tudo e o panteon.",
+    },
+    title: "Contrato e assinatura moram no Panteon: Clicksign e D4Sign na mesma lista",
+    type: "melhoria",
+    version: "1.392.0",
+  },
+  {
+    buildTag: "2026-09-29-consultoria-sem-login",
+    deployedAt: "2026-09-29T13:10:19-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Consultoria",
+        screens: [
+          {
+            items: [
+              "**A tela da consultoria abre sem login e sem o Panteon:** o consultor entra por um link de edição próprio, que fica guardado no navegador; depois disso o endereço c2x.app.br/consultoria/cr abre direto.",
+            ],
+            screen: "Consultoria - C&R",
+          },
+        ],
+      },
+    ],
+    rollback: "1948d38c",
+    technical: {
+      done:
+        "Edição passa a entrar por token_edicao (migration 0197) no cabeçalho x-consultoria-edicao, pela mesma porta pública da leitura (/api/publico/consultoria/[slug], GET e PUT). A rota /api/consultoria/[slug] com Bearer do hub foi removida. A tela guarda o código em localStorage e o tira da URL. Botão do link do cliente escondido por enquanto.",
+      motivation:
+        "Lucas, 29/09/2026, ao abrir a tela em produção e ver 'Sua sessão do Panteon expirou': não precisa ter esse acesso ao panteon; não precisa de login.",
+    },
+    title: "Consultoria sem login, por link de edição",
+    type: "correcao",
+    version: "1.391.1",
+  },
+  {
+    buildTag: "2026-09-29-consultoria-cr",
+    deployedAt: "2026-09-29T12:44:58-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Consultoria",
+        screens: [
+          {
+            items: [
+              "**Nova tela c2x.app.br/consultoria/cr, fora do Panteon, com a marca da C&R Construtora:** escopo, jornada de 12 meses, as 9 frentes com o painel de cada uma, plano de 30 dias, indicadores, entregas e o relatório mensal no modelo pedido pelo Vitor.",
+              "**O consultor edita na própria tela (modo edição) e tudo fica salvo no banco.** O cliente acompanha por um link de leitura, sem login.",
+              "**Fechar o mês congela o relatório daquele mês**, para comparar a evolução de um mês para o outro.",
+            ],
+            screen: "Consultoria - C&R",
+          },
+        ],
+      },
+    ],
+    rollback: "fac81adf",
+    technical: {
+      done:
+        "Rota app/consultoria/[slug]/route.ts entrega o mockup aprovado (consultoria-telas/projeto.html) lido do disco. Documento em consultoria_projetos (jsonb, migration 0196) com histórico em consultoria_projetos_historico; escrita em /api/consultoria/[slug] com Bearer do hub e dono por e-mail (CONSULTORIA_OWNER_EMAILS, padrão lucas.ruas@careli.adm.br), com conferência de versão (409). Leitura do cliente em /api/publico/consultoria/[slug] pelo token no cabeçalho x-consultoria-token, comparado em tempo constante. Raiz consultoria em RAIZES_EXTERNAS.",
+      motivation:
+        "Lucas, 29/09/2026: consultoria de reestruturação na C&R a partir de outubro, com uma apresentação que seja também o arquivo de trabalho do projeto, no domínio c2x.app.br/consultoria/cr.",
+    },
+    title: "Tela da consultoria de reestruturação da C&R",
+    type: "novidade",
+    version: "1.391.0",
+  },
+  {
+    buildTag: "2026-09-28-voltou-para-correcao-na-assinatura",
+    deployedAt: "2026-09-28T15:15:55-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**Contrato que voltou para correcao aparece assim na aba Assinatura:** Voltou para correcao em 26/09, aguardando um contrato novo. Antes a linha dizia gerado em 26/09, que era o dia da volta, e nao de um contrato.",
+              "**O gerado em das vendas do Panteon passa a ser a data do contrato de verdade**, e nao a da entrada na etapa.",
+            ],
+            screen: "Contratos - Assinatura",
+          },
+        ],
+      },
+    ],
+    rollback: "795e60c3",
+    technical: {
+      done:
+        "A volta para correcao (retorno-para-correcao.ts) cancela o envelope com estado_cru panteon:retorno_para_correcao e devolve a venda a etapa contrato, e a linha do Panteon usava etapa_desde como geradoEm: a VOC0306 dizia gerado em 26/09 (a volta), com o unico contrato sendo o de 23/09, cancelado. Agora lerAssinaturasDoPanteon le hercules_documentos (tipo contrato, nao removido, paginado com ordem, lotes de 100) e geradoEm e o contrato mais recente; quando o ultimo envelope e o cancelado pela volta e nenhum contrato foi gerado depois, DadosDoContrato.voltouParaCorrecaoEm (ISO curto, opcional, so nas linhas do Panteon) leva a linha a dizer Voltou para correcao, na lista e no popup, nas duas copias da tela (AssinaturasDoProduto e TelaVendas). Falha na leitura dos documentos devolve null e a linha cai na regra antiga, nunca em nenhum contrato gerado. Conferido so leitura contra producao: VOC0306 voltou=2026-09-26, gerado vazio; as 7 em assinatura com gerado = data do contrato. 3 testes novos.",
+      motivation:
+        "Lucas, 28/09/2026, print da VOC0306 aguardando emissao gerado em 26/09: verifica esse aqui; e, sobre ajustar o texto: pode corrigir.",
+    },
+    title: "A aba Assinatura diz quando o contrato voltou para correcao",
+    type: "correcao",
+    version: "1.390.0",
+  },
+  {
+    buildTag: "2026-09-28-assinatura-do-hercules-le-o-panteon",
+    deployedAt: "2026-09-28T14:43:00-03:00",
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**Os contratos que o Panteon mandou para a Clicksign aparecem na aba Assinatura, com quem ja assinou.** Antes eles apareciam como Aguardando emissao, ou nem apareciam (a VOL 11 06 nao era achada na busca).",
+              "**Cada pessoa aparece como assinou ou pendente, e a tela mostra de quem e a vez.** A ordem e a mesma que foi usada no envio: primeiro as coordenadoras, depois o comprador, as testemunhas e a vendedora.",
+              "**A venda redigitada no C2X para gerar boleto nao aparece mais duplicada** como Aguardando emissao ao lado do contrato de verdade. No Vale do Ouro, o Aguardando emissao cai de 6 para 1 (a VOC0306, que voltou para correcao).",
+              "**Quando a mesma venda tem dois contratos em assinatura, os dois aparecem.** Hoje isso acontece na VOC1102: um contrato na Clicksign e outro na D4Sign pelo C2X.",
+            ],
+            screen: "Contratos - Assinatura",
+          },
+          {
+            items: [
+              "**Na ficha da venda em assinatura, a data se chama Enviado para assinatura.** Antes ela aparecia como Data da assinatura, mas era o dia em que o contrato saiu, com a assinatura ainda pela metade.",
+            ],
+            screen: "Venda - ficha da unidade",
+          },
+        ],
+      },
+    ],
+    rollback: "37908445",
+    technical: {
+      done:
+        "CORRECAO RAPIDA, ANTES DA FONTE UNICA. A rota /api/incorporador/vendas/assinaturas escolhia a fonte POR PRODUTO (`lidosDoPanteon`: so o proprio e o que tem operado_por), e VOC, VOL e VOR iam so ao C2X + D4Sign: os 8 contratos nativos na Clicksign sumiam ou viravam a venda redigitada no C2X, que la e contrato gerado sem envio (aguardando emissao). Agora `lerAssinaturasDoPanteon` roda em TODO codigo do pedido (ela so le proposta origem='panteon', entao a carga do C2X nao entra duas vezes) e `unirComOPanteon` casa as duas listas por empreendimento + CODIGO da unidade (hercules_unidades.codigo, o mesmo texto da linha do legado; antes a linha do Panteon usava o rotulo 'Quadra 11 · Lote 06', que nunca casava): Panteon com envelope vivo tira a linha aguardando-emissao do legado e desconta o KPI; Panteon sem envelope perde para o legado com envio (os contratos que foram para a D4Sign pelo C2X: VAL, LBF, REP, ACP); os dois com envio ficam os dois (VOC1102 tem Clicksign 3/11 e D4Sign 1/12, o risco de dois contratos da mesma venda). QUEM ASSINOU: o ultimo payload CONFERIDO de temis_assinatura_eventos por provedor_documento_id (limit 1 por documento, 5 em paralelo, teto 80), lido pelo mesmo parser do diario da Temis (`quemAssinou`, document.events[]), casado por e-mail e pela chave congelada no envio; a vez e o menor degrau pendente, e envelope sem ordem poe todos no degrau 0. `perfilNaLista` alinha Coordenadora de venda e Corretor com o vocabulario do legado, para a mesma funcao nao abrir duas barras. O contador x/y no Board do comercial FICOU DE FORA de proposito: a revisao mediu que ligar `comAssinaturas` ali leria o historico inteiro dos envelopes (902 kB com 7 envelopes, 129 eventos) a cada minuto por aba aberta, contra o aviso escrito em trabalhos-db.ts; ele volta na F6 da fonte unica, pela marca gravada por pessoa, sem ler payload. `unirComOPanteon` tira no maximo UMA linha aguardando do legado por venda do Panteon (a redigitacao), para nao esconder um segundo contrato. fluxo-de-venda: em assinatura a data e etapa_desde (a entrada na etapa) com o rotulo Enviado para assinatura. Conferido contra producao, so leitura, no Vale do Ouro: lista 185 para 187, aguardando emissao 6 para 1, unidades com envio 179 para 186. Sem migration, sem env, sem cron. A fonte unica (tudo no Panteon, D4Sign espelhada, Faturado andando) segue no branch fix/assinatura-fonte-unica.",
+      motivation:
+        "Lucas, 28/09/2026, com os prints da aba Assinatura e do Board: olha por favor se foi enviado esses contratos; essas informacoes tem que alimentar tudo, esta muito picado; ta vendo que esta bem desatualizado?; mas estou achando lento essa correcao.",
+    },
+    title: "A aba Assinatura do Hercules mostra os contratos da Clicksign, com quem ja assinou",
+    type: "melhoria",
+    version: "1.389.0",
+  },
+  {
     buildTag: "2026-09-28-corretor-autonomo-no-apolo",
     deployedAt: "2026-09-28T09:31:15-03:00",
     modules: [

@@ -34,6 +34,11 @@ import type { EstagioDoTrabalho, TipoDeTrabalho } from "@/lib/temis/trabalhos";
  * (`lib/hercules/concluir-cancelamento-server.ts`). Enquanto a 0177 não for aplicada, o banco recusa
  * a palavra; `ORIGEM_ENQUANTO_FALTA_MIGRATION` grava a passagem com a origem antiga mais próxima, em
  * vez de perder a linha do histórico.
+ *
+ * ⚠️ `espelho_d4sign` É O NONO, E ELE É DA 0195 (F2 da fonte única, 28/09/2026): o card andou porque o
+ * espelho da D4Sign viu o contrato que o C2X mandou (enviado ou assinado). Sem ele a passagem diria
+ * `envio_assinatura` ou `webhook_assinatura` e mentiria sobre quem mandou. A 0195 redefine o CHECK
+ * com `conclusao` e `espelho_d4sign` juntos (ATENCAO 9 dela: não aplicar a 0177 depois).
  */
 export type OrigemDaPassagem =
   | "abertura"
@@ -41,6 +46,7 @@ export type OrigemDaPassagem =
   | "conclusao"
   | "contrato_gerado"
   | "envio_assinatura"
+  | "espelho_d4sign"
   | "indeferimento"
   | "retorno_para_correcao"
   | "webhook_assinatura";
@@ -56,6 +62,9 @@ export type OrigemDaPassagem =
  */
 const ORIGEM_ENQUANTO_FALTA_MIGRATION: Partial<Record<OrigemDaPassagem, OrigemDaPassagem>> = {
   conclusao: "atividade",
+  // ⚠️ O espelho sem a 0195: o fato mais próximo que a 0153 conhece é o do provedor (o webhook).
+  // Perde a precisão de QUAL provedor, mas a passagem, com quando, de onde e para onde, fica.
+  espelho_d4sign: "webhook_assinatura",
 };
 
 /** O banco recusou a ORIGEM pelo check da 0153 (e não outra coisa). */

@@ -1042,6 +1042,8 @@ export function TelaDeTrabalho({
               // ⚠️ O TIPO É TRAVA, e sem ele a etapa oferece assinatura para quem não assina. Ver a
               // nota de `EtapaDoContrato` — o caso dos dois cards do Henrique.
               tipo={card.tipo}
+              // O card vai junto (F1 da fonte única): é ele que diz o que o envelope assina.
+              trabalhoId={card.id}
             />
           ) : null}
 
@@ -2122,6 +2124,7 @@ function EtapaDoContrato({
   podeEmitir,
   propostaId,
   tipo,
+  trabalhoId,
 }: {
   /** O envelope já existe na Clicksign: quem recebe fecha a tela e avisa o quadro. */
   /** O envio saiu. `avisoDoHercules` = a venda não acompanhou o card (é aviso: o envio deu certo). */
@@ -2143,6 +2146,8 @@ function EtapaDoContrato({
   propostaId: null | string;
   /** O que este card produz. É ele que decide se existe assinatura — ver a nota acima. */
   tipo: TipoDeTrabalho;
+  /** O id DESTE card, que o envio usa para dizer o que o envelope assina (`finalidade`). */
+  trabalhoId: string;
 }) {
   /**
    * O envio para a Clicksign está no ar, e quem avisa é o próprio painel.
@@ -2222,6 +2227,7 @@ function EtapaDoContrato({
             aoMudarEnvio={setEnviando}
             compacto
             propostaId={propostaId}
+            trabalhoId={trabalhoId}
           />
         ) : null}
 

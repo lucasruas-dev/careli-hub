@@ -45,6 +45,7 @@ import {
   type TipoDeDivergencia,
 } from "@/lib/apolo/d4sign-divergencias";
 import { perfilDeTela, type LinhaAssinatura } from "@/lib/apolo/painel-assinatura";
+import { parearPessoas } from "@/lib/assinatura/parear-pessoas";
 
 /**
  * De onde veio o que está na tela. SÃO TRÊS, e a do meio é a que a listagem em lote criou.
@@ -63,7 +64,9 @@ import { perfilDeTela, type LinhaAssinatura } from "@/lib/apolo/painel-assinatur
  *                       em movimento esses tiques são do sistema antigo.
  *   • `c2x-legado`    — a D4Sign não disse nada. Fallback, com aviso.
  */
-export type FonteDaAssinatura = "c2x-legado" | "d4sign" | "d4sign-status";
+// ⚠️ `panteon` (F4 da fonte única, 28/09/2026): a linha saiu da leitura única (`temis_envelopes`, com a
+// D4Sign espelhada pela F3), sem pergunta ao vivo a ninguém. O portal nunca recebe este campo.
+export type FonteDaAssinatura = "c2x-legado" | "d4sign" | "d4sign-status" | "panteon";
 
 /**
  * A DECISÃO DE FALLBACK, e por quê.
@@ -115,6 +118,7 @@ export const FONTE_LABELS: Record<FonteDaAssinatura, string> = {
   "c2x-legado": "Informação do sistema antigo",
   d4sign: "Confirmado no D4Sign",
   "d4sign-status": "Situação confirmada no D4Sign",
+  panteon: "Registro do Panteon",
 };
 
 /**
@@ -165,16 +169,6 @@ export type ConciliacaoDoDocumento = {
   /** A situação do documento na D4Sign. Nula quando ela não respondeu. */
   situacao: null | SituacaoD4Sign;
 };
-
-/** Tira acento, caixa e espaço dobrado: é o que faz "JOSÉ  DA SILVA" casar com "Jose da Silva". */
-function chaveDeNome(nome: string): string {
-  return nome
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, " ");
-}
 
 /** A data curta da assinatura, na régua de `LinhaAssinatura.assinadoEm` ("2026-07-01"). */
 export function dataCurtaDaAssinatura(assinadoEm: null | string): null | string {
@@ -235,52 +229,26 @@ function casarAssinantes(
   soNoC2x: number[];
   soNoD4Sign: SignatarioD4Sign[];
 } {
+  // ⚠️ A RÉGUA MORA EM `lib/assinatura/parear-pessoas.ts` DESDE A F3 DA FONTE ÚNICA: o espelho da
+  // D4Sign pareia o quadro do envio com a MESMA régua, e duas cópias divergiriam no primeiro conserto.
+  const pareamento = parearPessoas(
+    linhas.map((linha) => ({ email: linha.email, nome: linha.usuario })),
+    signatarios.map((s) => ({ email: s.email, nome: s.nome })),
+  );
+
   const paresPorLinha = new Map<number, SignatarioD4Sign>();
-  const linhasUsadas = new Set<number>();
-  const signatariosUsados = new Set<number>();
-
-  const porEmail = new Map<string, number[]>();
-  const porNome = new Map<string, number[]>();
-  linhas.forEach((linha, indice) => {
-    const email = linha.email.trim().toLowerCase();
-    if (email) porEmail.set(email, [...(porEmail.get(email) ?? []), indice]);
-    const nome = chaveDeNome(linha.usuario);
-    if (nome) porNome.set(nome, [...(porNome.get(nome) ?? []), indice]);
-  });
-
-  const primeiroLivre = (indices: undefined | number[]): number | undefined =>
-    indices?.find((indice) => !linhasUsadas.has(indice));
-
-  const parear = (chave: (s: SignatarioD4Sign) => number | undefined): void => {
-    signatarios.forEach((signatario, indice) => {
-      if (signatariosUsados.has(indice)) return;
-      const alvo = chave(signatario);
-      if (alvo === undefined) return;
-      linhasUsadas.add(alvo);
-      signatariosUsados.add(indice);
-      paresPorLinha.set(alvo, signatario);
-    });
-  };
-
-  parear((s) => (s.email ? primeiroLivre(porEmail.get(s.email)) : undefined));
-  parear((s) => primeiroLivre(porNome.get(chaveDeNome(s.nome))));
-
-  const linhasSobrando = linhas.map((_, indice) => indice).filter((i) => !linhasUsadas.has(i));
-  const signatariosSobrando = signatarios.filter((_, i) => !signatariosUsados.has(i));
-
-  const unicaLinha = linhasSobrando.length === 1 ? linhasSobrando[0] : undefined;
-  const unicoSignatario = signatariosSobrando.length === 1 ? signatariosSobrando[0] : undefined;
-
-  if (unicaLinha !== undefined && unicoSignatario !== undefined) {
-    paresPorLinha.set(unicaLinha, unicoSignatario);
-    return { paresPorLinha, paresPorPosicao: [unicaLinha], soNoC2x: [], soNoD4Sign: [] };
+  for (const [linha, indice] of pareamento.pares) {
+    const signatario = signatarios[indice];
+    if (signatario) paresPorLinha.set(linha, signatario);
   }
 
   return {
     paresPorLinha,
-    paresPorPosicao: [],
-    soNoC2x: linhasSobrando,
-    soNoD4Sign: signatariosSobrando,
+    paresPorPosicao: pareamento.paresPorPosicao,
+    soNoC2x: pareamento.soNoA,
+    soNoD4Sign: pareamento.soNoB
+      .map((i) => signatarios[i])
+      .filter((s): s is SignatarioD4Sign => s !== undefined),
   };
 }
 

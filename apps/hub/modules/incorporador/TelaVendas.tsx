@@ -196,6 +196,11 @@ const SITUACAO_LABELS: Record<SituacaoAssinatura, string> = {
  * há contrato vigente de onde tirar valor, imobiliária ou PDF.
  */
 type ContratoDaLinha = {
+  /**
+   * O envelope do Panteon do PDF (a leitura única, F4 da fonte única), só quando há documento. Com ele
+   * o botão abre `?contratoId=`, e a rota confere o escopo pela unidade do envelope.
+   */
+  contratoId?: string;
   /** ISO curto "YYYY-MM-DD" — formatar por STRING (rotuloDeYmd), nunca por new Date. */
   faturadoEm: null | string;
   /** ISO completo (created_at do histórico é datetime real): aqui rotuloDaData serve. */
@@ -206,6 +211,11 @@ type ContratoDaLinha = {
   /** A chave do botão de PDF; a rota que o recebe reconfere o escopo do lado de lá. */
   unitId: number;
   valorTabela: number;
+  /**
+   * ISO curto do dia em que o contrato VOLTOU PARA CORREÇÃO sem contrato novo depois (só nas
+   * vendas do Panteon). Com ele, a linha diz "voltou para correção", e não "gerado e parado".
+   */
+  voltouParaCorrecaoEm?: null | string;
 };
 
 type AssinanteDaTela = {
@@ -3098,6 +3108,9 @@ function ChipDeAssinatura({ situacao }: { situacao: SituacaoAssinatura }) {
  * /api/incorporador/contrato?unitId=… em aba nova. O link leva o unitId, NUNCA o uuid: a rota
  * reconfere `unidadeNoEscopo` e resolve o documento no C2X a cada clique.
  *
+ * ⚠️ COM `contratoId` (a leitura única, F4 da fonte única), o link leva o id do ENVELOPE do Panteon, e
+ * não o do documento: a rota confere o escopo pela unidade do envelope e baixa aquele documento.
+ *
  * ⚠️ SEM CONTRATO DISPONÍVEL, A CÉLULA É "-", NUNCA UM BOTÃO QUE ERRA: sem `temContrato` não há
  * documento assinado na D4Sign, e sem `contrato` (envio de proposta que não é mais a viva) não há
  * nem unitId para onde apontar.
@@ -3116,7 +3129,11 @@ function BotaoDePdfDoContrato({
 
   return (
     <a
-      href={`/api/incorporador/contrato?unitId=${encodeURIComponent(contrato.unitId)}`}
+      href={
+        contrato.contratoId
+          ? `/api/incorporador/contrato?contratoId=${encodeURIComponent(contrato.contratoId)}`
+          : `/api/incorporador/contrato?unitId=${encodeURIComponent(contrato.unitId)}`
+      }
       rel="noopener noreferrer"
       style={{
         alignItems: "center",
@@ -3958,7 +3975,13 @@ function LinhaDaUnidade({
   const percentual = unidade.total > 0 ? (unidade.assinadas / unidade.total) * 100 : 0;
   const apoio = [
     unidade.contrato ? brl(unidade.contrato.valorTabela) : null,
-    unidade.contrato?.geradoEm ? `gerado em ${rotuloDaData(unidade.contrato.geradoEm)}` : null,
+    // ⚠️ A VOLTA PARA CORREÇÃO VENCE O "GERADO EM" (Lucas, 28/09/2026, VOC0306): o contrato que
+    // tinha sido gerado foi cancelado, e o que falta é um contrato NOVO.
+    unidade.contrato?.voltouParaCorrecaoEm
+      ? `voltou para correção em ${rotuloDeYmd(unidade.contrato.voltouParaCorrecaoEm)}`
+      : unidade.contrato?.geradoEm
+        ? `gerado em ${rotuloDaData(unidade.contrato.geradoEm)}`
+        : null,
   ].filter(Boolean);
 
   return (
@@ -4017,7 +4040,9 @@ function LinhaDaUnidade({
           {unidade.situacao === "aguardando-emissao" ? (
             // Contrato gerado que não saiu para assinar: não há esquema, e barrinha vazia mentiria.
             <div style={{ color: T.muted, fontSize: 12, lineHeight: 1.5 }}>
-              O contrato foi gerado e ainda não saiu para assinatura.
+              {unidade.contrato?.voltouParaCorrecaoEm
+                ? "Voltou para correção. Aguarda um contrato novo."
+                : "O contrato foi gerado e ainda não saiu para assinatura."}
             </div>
           ) : unidade.grupos.length === 0 ? (
             <div style={{ color: T.muted, fontSize: 12 }}>
@@ -4055,9 +4080,11 @@ function LinhaDaUnidade({
             <div style={{ marginTop: 4 }}>
               {unidade.situacao === "aguardando-emissao" ? (
                 <span style={{ color: T.muted, fontSize: 11.5, lineHeight: 1.4 }}>
-                  {unidade.contrato?.geradoEm
-                    ? rotuloDeEspera(unidade.contrato.geradoEm.slice(0, 10))
-                    : "sem data de geração registrada"}
+                  {unidade.contrato?.voltouParaCorrecaoEm
+                    ? rotuloDeEspera(unidade.contrato.voltouParaCorrecaoEm.slice(0, 10))
+                    : unidade.contrato?.geradoEm
+                      ? rotuloDeEspera(unidade.contrato.geradoEm.slice(0, 10))
+                      : "sem data de geração registrada"}
                 </span>
               ) : unidade.concluida ? (
                 <span
@@ -4388,8 +4415,9 @@ function ModalDoEsquema({
 
           {unidade.situacao === "aguardando-emissao" ? (
             <p style={{ color: T.muted, fontSize: 13, margin: 0, padding: 24, textAlign: "center" }}>
-              O contrato foi gerado e ainda não saiu para assinatura. Quando ele for enviado, a
-              tabela de assinatura aparece aqui.
+              {dados?.voltouParaCorrecaoEm
+                ? `O contrato voltou para correção em ${rotuloDeYmd(dados.voltouParaCorrecaoEm)} e o envio anterior foi cancelado. Quando um contrato novo for gerado e enviado, a tabela de assinatura aparece aqui.`
+                : "O contrato foi gerado e ainda não saiu para assinatura. Quando ele for enviado, a tabela de assinatura aparece aqui."}
             </p>
           ) : unidade.esquema.length === 0 ? (
             <p style={{ color: T.muted, fontSize: 13, margin: 0, padding: 24, textAlign: "center" }}>

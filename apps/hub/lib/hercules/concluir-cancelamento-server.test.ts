@@ -85,7 +85,8 @@ const COLUNAS: Record<string, readonly string[]> = {
   ],
   prometeu_reservas: ["codigo", "evento_id", "id", "lote", "quadra", "situacao", "unidade_c2x_id"],
   temis_envelopes: [
-    "atualizado_em", "criado_em", "envelope_id", "estado", "estado_cru", "falha", "fechado_em", "id",
+    // `finalidade` é da 0195 (aplicada antes do deploy da F1): os fatos do contrato só leem o contrato (F2).
+    "atualizado_em", "criado_em", "envelope_id", "estado", "estado_cru", "falha", "fechado_em", "finalidade", "id",
     "proposta_id", "provedor", "provedor_documento_id", "workspace_id",
   ],
   temis_trabalho_etapas: [
@@ -584,6 +585,8 @@ const envelope = (extra: Linha = {}): Linha => ({
   envelope_id: "env-vivo",
   estado: "aguardando",
   falha: null,
+  // ⚠️ 0195: só envelope de CONTRATO conta como "contrato assinado" nos fatos (a F2 filtra por ela).
+  finalidade: "contrato",
   id: "reg-env",
   proposta_id: "venda-21",
   provedor: "clicksign",
@@ -795,8 +798,26 @@ describe("os fatos são reapurados no clique", () => {
     const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), portaDeTeste().porta);
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(r.erro).toContain("agora exige distrato");
+    // ⚠️ A FRASE DOS FATOS, E NÃO A DA GUARDA DO ENVELOPE: prende QUAL guarda disparou (as duas dizem
+    // "agora exige distrato"). Sem `finalidade` na fábrica, os fatos deixavam de ver o envelope e o
+    // teste continuava verde pela outra porta.
+    expect(r.erro).toContain("A situação mudou: agora exige distrato (");
     expect(escritas(banco)).toEqual([]);
+  });
+
+  it("⚠️ envelope de DISTRATO assinado não reclassifica a venda: o cancelamento segue como cancelamento", async () => {
+    silenciar();
+    const banco = cenario({
+      envelopes: [envelope({ estado: "assinado", fechado_em: "2026-09-15T12:00:00.000Z", finalidade: "distrato" })],
+    });
+    const { chamadas, porta } = portaDeTeste();
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), porta);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.tipo).toBe("cancelamento");
+    // O envelope do distrato não é o contrato: nem recusa, nem é cancelado na Clicksign.
+    expect(r.envelopeCancelado).toBeNull();
+    expect(chamadas).toEqual([]);
   });
 
   it("leitura dos fatos que falha é recusa, e não 'não pagou'", async () => {
@@ -814,6 +835,20 @@ describe("os fatos são reapurados no clique", () => {
 // ── O ENVELOPE DO CONTRATO NA CLICKSIGN ─────────────────────────────────────────
 
 describe("o envelope do contrato ainda vivo", () => {
+  it("⚠️ envelope vivo da D4SIGN (o C2X mandou): 409 com o caminho pelo C2X, nada gravado e nenhuma chamada à Clicksign", async () => {
+    const banco = cenario({ envelopes: [envelope({ envelope_id: "uuid-d4", provedor: "d4sign", provedor_documento_id: "uuid-d4" })] });
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(409);
+    expect(r.erro).toContain("Cancele na D4Sign pelo C2X");
+    expect(escritas(banco)).toEqual([]);
+    expect(chamadas).toEqual([]);
+  });
+
   it("a Clicksign diz running: o envelope morre ANTES de a venda cair, e o registro diz quem cancelou", async () => {
     const banco = cenario({ envelopes: [envelope()] });
     const { chamadas, porta } = portaDeTeste({

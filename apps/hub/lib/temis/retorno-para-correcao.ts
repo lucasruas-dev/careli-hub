@@ -7,6 +7,7 @@ import {
   type EnvelopeParaCancelar,
   envelopeQueSegura,
 } from "@/lib/assinatura/envio-db";
+import { GUARDA_DE_TERMINAL } from "@/lib/assinatura/registro-db";
 import type { EstadoDaAssinatura } from "@/lib/assinatura/tipos";
 import { avisoDoHercules } from "@/lib/hercules/reflexo-da-temis";
 import {
@@ -263,6 +264,18 @@ export function conferirEnvelopeParaVoltar(linhas: EnvelopeParaCancelar[]): Conf
   // escreve em `temis_envelopes` é só o da Clicksign (`lib/assinatura/estado-db.ts` filtra por
   // `provedor = 'clicksign'`). Cancelar no D4Sign não volta para cá sozinho, e dizer que volta
   // deixaria alguém esperando uma liberação que nunca chega.
+  //
+  // ⚠️ E A D4SIGN TEM SAÍDA PRÓPRIA DESDE A F2 DA FONTE ÚNICA: a linha dela nasce do espelho (o C2X
+  // mandou o contrato), então quem cancela é o C2X, e quem encerra a linha aqui é a próxima rodada do
+  // espelho (a cada 30 minutos), sem ninguém mexer em `temis_envelopes` à mão.
+  if (vivo.provedor === "d4sign") {
+    return {
+      erro:
+        `O contrato desta venda está em assinatura na D4Sign, enviado pelo C2X (registro ${vivo.id}${vivo.envelope_id ? `, documento ${vivo.envelope_id}` : ""}), e daqui só se cancela envelope da Clicksign. ` +
+        "Cancele na D4Sign pelo C2X; o Panteon libera a volta em até 30 minutos.",
+      ok: false,
+    };
+  }
   if (vivo.provedor !== "clicksign") {
     return {
       erro:
@@ -788,13 +801,17 @@ export async function carimbarCancelamento(
       // continuaria sendo consultado como se ainda estivesse correndo.
       fechado_em: agora,
     })
-    .eq("id", registroId);
+    .eq("id", registroId)
+    // ⚠️ GUARDA DE TERMINAL (F1 da fonte única, 0.25 do plano). Estado terminal não muda mais: se o
+    // webhook já gravou `cancelado` (ou, numa corrida, `assinado`), este carimbo não o sobrescreve,
+    // nem a hora de fechamento que o provedor deu.
+    .not("estado", "in", GUARDA_DE_TERMINAL);
 
   if (error) {
     console.error(
       "[temis][retorno] O ENVELOPE FOI CANCELADO NA CLICKSIGN E O REGISTRO NÃO ATUALIZOU. envelope:",
       envelopeId,
-      error,
+      { code: error.code ?? null, message: error.message ?? null },
     );
   }
 }

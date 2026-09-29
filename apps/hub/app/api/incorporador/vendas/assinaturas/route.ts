@@ -1,43 +1,46 @@
-import { after, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
-import { aquecerD4SignEmSegundoPlano } from "@/lib/guardian/d4sign-consulta";
 import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
-import {
-  lerAssinaturasDoPanteon,
-  lerAssinaturasDoPortal,
-  somarAssinaturasDoPanteon,
-} from "@/lib/apolo/incorporador/assinaturas";
-import { codigosParaOC2x } from "@/lib/apolo/incorporador/cadastro-do-produto";
 import { codigosDoPedido } from "@/lib/apolo/incorporador/codigos-do-pedido";
 import { empreendimentosDoPortal } from "@/lib/apolo/incorporador/empreendimentos-do-portal";
-import { autorizar, codigosDaSessao, foraDoEscopo } from "@/lib/apolo/incorporador/escopo";
 import {
-  empreendimentosIndisponiveis,
-  lidosDoPanteon,
-  propriosDoPortal,
-} from "@/lib/apolo/incorporador/proprios-do-portal";
+  autorizar,
+  codigosDaSessao,
+  foraDoEscopo,
+  idsDosCodigosNoCadastro,
+} from "@/lib/apolo/incorporador/escopo";
+import { empreendimentosIndisponiveis, propriosDoPortal } from "@/lib/apolo/incorporador/proprios-do-portal";
 import { createApoloAdminClient } from "@/lib/apolo/server";
+import { lerContratosDoPanteon } from "@/lib/assinatura/contratos-do-panteon";
+import { quadroDosContratos, quadroParaOPortal } from "@/lib/assinatura/contratos-do-panteon-montagem";
 
-// GESTÃO DE ASSINATURA — a aba de Vendas do portal do incorporador.
+// GESTÃO DE ASSINATURA — a aba de Vendas do portal do incorporador, e as sub-abas Assinatura e Resumo
+// da tela Contratos do Hércules (`AssinaturasDoProduto`, pílula Contratos da `TelaVendas`).
 //
 // Mesmo esqueleto de /api/incorporador/vendas: escopo do TOKEN (`codigosDaSessao`), `emp` só
-// reduz (`codigosDoPedido`), pedido que não sobra nada é 404. As regras de fila (assinado / na
-// vez / aguardando) são as do painel interno, importadas em lib/apolo/incorporador/assinaturas.
+// reduz (`codigosDoPedido`), pedido que não sobra nada é 404.
 //
 // Os NOMES dos assinantes do fluxo aparecem (decisão já comunicada ao dono). Telefone e e-mail
 // não atravessam.
 //
-// ⚠️ O PRODUTO QUE SÓ EXISTE NO PANTEON NÃO VAI AO C2X NEM À D4SIGN (pendência da ficha, onda 1,
-// 16/09/2026). Lá não há venda dele: a lista saía vazia para o contrato que a Têmis do portal gerou.
-// Os contratos desses códigos saem de `hercules_propostas` e `temis_envelopes`
-// (`lerAssinaturasDoPanteon`) e se somam ao quadro do legado dos demais códigos.
+// ⚠️ A LEITURA ÚNICA (F4 da fonte única, 28/09/2026). Lucas: *"já cansei de falar que informações de
+// venda, contrato, assinatura tem que morar em um local e ele alimentar tudo"*. Até aqui esta rota
+// lia o C2X e a D4Sign AO VIVO (`lerAssinaturasDoPortal`) e somava por cima as vendas nativas do
+// Panteon (`unirComOPanteon`, v1.389.0). Agora ela lê SÓ o Panteon (`lerContratosDoPanteon`): as
+// vendas vivas com contrato das duas origens e os envelopes de contrato dos dois provedores, com a
+// D4Sign espelhada pela F3. Sai o C2X, sai a D4Sign ao vivo e sai o `after(aquecer...)`.
 //
-// (16/09/2026, revisão do conjunto) ⚠️ O PRODUTO COM DONO (o Garden da Cecílio, D2) LÊ AS DUAS FONTES.
-// Ele é código do C2X, então as vendas antigas continuam no legado; mas o contrato que a Cecílio fecha
-// agora nasce e assina no Panteon (Têmis do portal) e não existe no C2X. Ler só o legado deixava esse
-// contrato fora de Resumo e Assinaturas. A regra de quem lê o Panteon é a mesma de Unidades e Resumo
-// (`lidosDoPanteon`); o que é só do Panteon continua sem ir ao C2X. Não há contagem dobrada: a leitura do
-// Panteon só traz proposta nativa (`origem = 'panteon'`), e o contrato nativo não é escrito no C2X.
+// ⚠️ SEM EXCEÇÃO QUE LÊ O C2X (resposta 1 do Lucas: "aparecem pelo envelope, sem ler o C2X"). A venda
+// que não está no Panteon (o Garden, o que foi vendido direto no C2X depois da carga) aparece pelo
+// envelope que o espelho ligou à unidade; no portal ela não diz por que não tem venda.
+//
+// ⚠️ CONTRATO DE VENDA DESFEITA SOME DAQUI (resposta 2, o padrão (a)): fica só na tela interna, com o
+// aviso. É diferença visível em relação à versão anterior, que mostrava o envio até o C2X cancelá-lo.
+//
+// ⚠️ O QUE ATRAVESSA É UMA ALLOWLIST (`quadroParaOPortal`, plano seção 5): nada de e-mail, provedor,
+// procedência, aviso de linha, id do documento no provedor, nem os nomes dos sistemas (decisão do
+// Lucas em 18/08/2026: *"não queria esse tipo de comunicado para o incorporador"*). A queda da
+// conferência continua sendo dita, com o texto genérico (`AVISO_DE_ATUALIZACAO`).
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -67,11 +70,8 @@ export async function GET(request: Request) {
 
   const pedido = new URL(request.url).searchParams.get("emp");
 
-  // ⚠️ O MESMO `emp` DA ROTA DE VENDAS, RESOLVIDO PELA MESMA FUNÇÃO. A TelaVendas manda para cá o
-  // `empFixo` que o "Ver mais" da aba Produtos abriu ("pai:<uuid>" do cadastro do Panteon, ou o
-  // id numérico de um filho). Só `codesDoRecorte` aqui não entendia nenhum dos dois e a visão
-  // respondia 404 para um produto que É do coordenador. Cadastro fora do ar = 503 (resposta
-  // pronta), como na rota de vendas.
+  // ⚠️ O MESMO `emp` DA ROTA DE VENDAS, RESOLVIDO PELA MESMA FUNÇÃO ("pai:<uuid>" do cadastro do
+  // Panteon, ou o id numérico de um filho). Cadastro fora do ar = 503 (resposta pronta).
   const resolvido = await codigosDoPedido({
     catalogo,
     codesAutorizados: doPanteon.codesComProprios,
@@ -90,78 +90,29 @@ export async function GET(request: Request) {
     return doPanteon.cadastro === null ? empreendimentosIndisponiveis() : foraDoEscopo();
   }
 
-  // Só o que o C2X conhece vai ao C2X; com lista vazia, `lerAssinaturasDoPortal` monta o quadro vazio
-  // sem tocar no MySQL nem na D4Sign.
-  const codesDoC2x = codigosParaOC2x(codes, doPanteon.proprios);
-  const codesDoPanteon = lidosDoPanteon({
-    cadastro: doPanteon.cadastro,
-    codes,
-    idsDaSessao: doPanteon.idsDaSessao,
-    proprios: doPanteon.proprios,
-  }).map((produto) => produto.codigo);
+  // ⚠️ A LEITURA É PELO ID (`hercules_unidades.enterprise_id`), NÃO PELA SIGLA (a sigla muda num
+  // renome, PAN-124). O cadastro dá o id; o catálogo do C2X só de reserva para quem não tem linha nele
+  // (ACT, SDT, TSC), e catálogo fora do ar não derruba a tela.
+  const traduzido = idsDosCodigosNoCadastro(doPanteon.cadastro, catalogo, codes, doPanteon.idsDaSessao);
+  if (traduzido.semId.length > 0) {
+    console.warn(`[incorporador][assinaturas] códigos sem id no cadastro nem no catálogo: ${traduzido.semId.join(",")}`);
+  }
+  if (traduzido.ids.length === 0 && doPanteon.cadastro === null) return empreendimentosIndisponiveis();
 
-  const admin = codesDoPanteon.length > 0 ? createApoloAdminClient() : null;
-  if (codesDoPanteon.length > 0 && !admin) {
+  const admin = createApoloAdminClient();
+  if (!admin) {
     return NextResponse.json({ error: "Não foi possível ler as assinaturas agora." }, { status: 503 });
   }
 
-  const [doLegado, doPanteonNoPedido] = await Promise.all([
-    lerAssinaturasDoPortal(codesDoC2x),
-    admin ? lerAssinaturasDoPanteon(admin, codesDoPanteon) : Promise.resolve({ linhas: [], ok: true as const }),
-  ]);
-
-  if (!doLegado.ok) {
-    return NextResponse.json({ error: doLegado.error }, { status: 503 });
-  }
-  if (!doPanteonNoPedido.ok) {
-    return NextResponse.json({ error: doPanteonNoPedido.error }, { status: 503 });
+  const leitura = await lerContratosDoPanteon({ admin, escopo: { enterpriseIds: traduzido.ids } });
+  if (!leitura.ok) {
+    return NextResponse.json({ error: leitura.erro }, { status: 503 });
   }
 
-  const quadro = { ...doLegado, data: somarAssinaturasDoPanteon(doLegado.data, doPanteonNoPedido.linhas) };
-
-  // ⚠️ O QUE NÃO ATRAVESSA PARA O PORTAL, e por quê.
-  //
-  // 1. DIAGNÓSTICO. `montarQuadroComD4Sign` devolve `cancelados` (ids crus de
-  //    `contract_signatures`) e `resumoDaFonte` (a contabilidade da reconciliação). Não é dado
-  //    pessoal, mas é dado NOSSO, e este payload vai para o navegador de um cliente externo.
-  //
-  // 2. O VOCABULÁRIO INTERNO — decisão do Lucas em 18/08/2026, olhando a faixa no portal:
-  //    *"não queria esse tipo de comunicado para o incorporador"*. Os avisos da lib nomeiam os
-  //    sistemas ("o D4Sign confirmou… a marcação vem do sistema antigo (C2X)"), o que na tela do
-  //    time é precisão e na vitrine do loteador é tripa à mostra: ele não decide nada com essa
-  //    informação e ela só passa insegurança sobre o produto. Então saem daqui: o
-  //    `avisoDosAssinantes` (que no Vale do Ouro ficava aceso todo dia) e o `aviso` de cada linha.
-  //
-  // ⚠️ A LIMPEZA É NO SERVIDOR, DE PROPÓSITO. Esconder na tela deixaria o texto técnico viajando
-  // no JSON, visível a qualquer um que abra a aba de rede — o portal não fala de C2X nem em
-  // payload. E a tela interna (/apolo/assinaturas) continua recebendo tudo, que é onde a decisão
-  // de cobrar acontece.
-  //
-  // ⚠️ A QUEDA DA FONTE CONTINUA SENDO DITA, com outras palavras. Se a confirmação não acontece, o
-  // que está na tela pode mostrar como pendente uma assinatura já colhida — calar isso seria
-  // mentir por omissão. O texto abaixo diz o EFEITO (pode faltar atualizar) sem nomear sistema
-  // nenhum, e é raro por construção: só aparece quando a confirmação falha de verdade.
-  const { cancelados: _cancelados, resumoDaFonte: _resumoDaFonte, ...paraTela } = quadro.data;
-
-  const AVISO_DE_ATUALIZACAO =
-    "Estamos confirmando as assinaturas mais recentes. Alguns contratos podem levar alguns minutos para aparecer atualizados aqui.";
-
-  // Ver o comentário gêmeo em app/api/apolo/painel-contratos/route.ts: o aquecimento roda DEPOIS
-  // da resposta, e é isso que tira a espera da tela.
-  after(() => {
-    aquecerD4SignEmSegundoPlano(quadro.uuids);
-  });
+  const quadro = quadroParaOPortal(quadroDosContratos(leitura.contratos, { interno: false }));
 
   return NextResponse.json(
-    {
-      data: {
-        ...paraTela,
-        avisoDaFonte: paraTela.avisoDaFonte ? AVISO_DE_ATUALIZACAO : null,
-        avisoDosAssinantes: null,
-        filtro: pedido?.trim() ? pedido.trim() : null,
-        unidades: paraTela.unidades.map(({ aviso: _aviso, fonte: _fonte, ...unidade }) => unidade),
-      },
-    },
+    { data: { ...quadro, filtro: pedido?.trim() ? pedido.trim() : null } },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { DEPOIS_DO_CONTRATO } from "./acao-de-cancelamento";
 import { type EtapaDoEspelho, type EtapaDoFluxo, ETAPAS_DO_FLUXO } from "./fluxo-de-venda";
 import { soltarMarcasQueSobraram } from "./marca-de-pedido";
+import { glebasFilhasDoPai, unirTerrenos } from "./terreno";
 
 // A SITUAÇÃO DA UNIDADE — UM LUGAR SÓ.
 //
@@ -286,18 +287,8 @@ export function acharUnidade(
 const PAGINA = 1000;
 const LOTE_DO_IN = 100;
 
-/**
- * Quadra ou lote comparável: sem espaço, sem caixa e sem zero à esquerda ("06" e "6" são o mesmo
- * lote). A carga grava "06" hoje; basta uma linha escrita "6" para o terreno se partir em dois, e
- * terreno partido é lote vendido duas vezes.
- */
-function parteDoLote(valor: null | string): string {
-  return String(valor ?? "").trim().toUpperCase().replace(/^0+(?=\d)/, "");
-}
-
-function chaveDoLote(ent: string, quadra: null | string, lote: null | string): string {
-  return `${ent}|${parteDoLote(quadra)}|${parteDoLote(lote)}`;
-}
+// ⚠️ `parteDoLote`, `chaveDoLote` e a união do terreno moram em `lib/hercules/terreno.ts` desde a F3
+// da fonte única (o espelho da D4Sign usa a mesma régua). O comportamento daqui não mudou.
 
 type LinhaDaUnidade = {
   atualizado_em?: null | string;
@@ -424,14 +415,7 @@ export async function lerSituacaoDasUnidades(
   for (const a of antigasDaFamilia) porId.set(a.id, a);
 
   // As glebas filhas de cada pai, deduzidas de para onde as linhas do pai apontam.
-  const filhasDoPai = new Map<string, Set<string>>();
-  for (const a of antigasDaFamilia) {
-    const alvo = a.espelho_de ? porId.get(a.espelho_de) : undefined;
-    if (!alvo) continue;
-    const filhas = filhasDoPai.get(String(a.enterprise_id)) ?? new Set<string>();
-    filhas.add(String(alvo.enterprise_id));
-    filhasDoPai.set(String(a.enterprise_id), filhas);
-  }
+  const filhasDoPai = glebasFilhasDoPai(antigasDaFamilia, porId);
 
   // As irmãs soltas também precisam estar lidas: pedir só a VOC não pode ignorar a VOR.
   const glebasFaltando = [...new Set([...filhasDoPai.values()].flatMap((f) => [...f]))].filter(
@@ -458,32 +442,7 @@ export async function lerSituacaoDasUnidades(
   // pai apontando para a mesma viva, a primeira ficava sozinha com o processo dela e a viva saía
   // livre. Aqui é uma união: tudo que se liga (pai → viva, pai → gleba com a mesma quadra e lote)
   // termina no mesmo terreno, em qualquer ordem de leitura.
-  const raiz = new Map<string, string>();
-  const acharRaiz = (id: string): string => {
-    let r = id;
-    while (raiz.has(r) && raiz.get(r) !== r) r = raiz.get(r) as string;
-    raiz.set(id, r);
-    return r;
-  };
-  const juntar = (a: string, b: string) => {
-    const ra = acharRaiz(a);
-    const rb = acharRaiz(b);
-    if (ra !== rb) raiz.set(rb, ra);
-  };
-  const linhasDoLote = new Map<string, string[]>();
-  for (const l of porId.values()) {
-    if (l.espelho_de) continue;
-    const chave = chaveDoLote(String(l.enterprise_id), l.quadra, l.lote);
-    linhasDoLote.set(chave, [...(linhasDoLote.get(chave) ?? []), l.id]);
-  }
-  for (const a of antigasDaFamilia) {
-    if (a.espelho_de) juntar(a.id, a.espelho_de);
-    for (const filha of filhasDoPai.get(String(a.enterprise_id)) ?? []) {
-      for (const viva of linhasDoLote.get(chaveDoLote(filha, a.quadra, a.lote)) ?? []) juntar(a.id, viva);
-    }
-  }
-  const grupoDe = new Map<string, string>();
-  for (const l of porId.values()) grupoDe.set(l.id, `terreno:${acharRaiz(l.id)}`);
+  const grupoDe = unirTerrenos(porId, antigasDaFamilia, filhasDoPai);
 
   // ⚠️ PROCESSO LIDO INTEIRO E FILTRADO EM MEMÓRIA, E EM PARALELO. As propostas vivas do banco são
   // poucas páginas; as reservas, poucas dezenas de linhas. `.in()` com milhares de ids seria a URL
