@@ -78,7 +78,7 @@ const { catalogoDeEmpreendimentos } = await importar("lib/apolo/catalogo-empreen
 const { carregarCadastroDeEmpreendimentos } = await importar("lib/hercules/cadastro.ts");
 const { lerContratosDoPanteon } = await importar("lib/assinatura/contratos-do-panteon.ts");
 const { quadroDosContratos } = await importar("lib/assinatura/contratos-do-panteon-montagem.ts");
-const { d4signRecusouPorCotaDesde } = await importar("lib/guardian/d4sign-consulta.ts");
+const { carregarCatalogoD4Sign, d4signRecusouPorCotaDesde } = await importar("lib/guardian/d4sign-consulta.ts");
 const { compararLeituras, linhaAntiga, linhasNovas, totalInexplicado } = await importar("lib/assinatura/paridade-das-leituras.ts");
 const { finalidadeDoTipoDoC2x } = await importar("lib/assinatura/espelho-d4sign/finalidade.ts");
 const { parteDoLote } = await importar("lib/hercules/terreno.ts");
@@ -149,6 +149,8 @@ try {
 
   const antigas = [];
   const novas = [];
+  const naoConferidas = {};
+  const sumiramNoNovo = [];
   const cortados = [];
   const falhas = [];
   const tempoMedio = [];
@@ -156,9 +158,25 @@ try {
   const inicio = Date.now();
   let paradoPorCota = false;
 
+  // ⚠️ O CATÁLOGO DA D4SIGN AQUECIDO UMA VEZ, ANTES DO LAÇO (29/09/2026). O leitor antigo roda com
+  // `semEsperar: true`, como a tela: sem o catálogo em memória ele NÃO chama a D4Sign e volta
+  // degradado (`avisoDaFonte`). Na tela o aquecimento acontece no `after()` da rota e a próxima
+  // abertura já acha o catálogo quente; num processo isolado ele nunca aquece, e a primeira rodada do
+  // ensaio (VOC, VOL, VOR) saiu 3 de 3 "antigo-degradado" com ZERO chamadas à D4Sign. Uma leitura do
+  // catálogo (8 páginas) vale para o ensaio inteiro, no TTL de 5 min da lib.
+  const catalogoQuente = await carregarCatalogoD4Sign();
+  if (!catalogoQuente) {
+    console.error("o catálogo da D4Sign não respondeu: sem ele o leitor antigo sai degradado e a comparação não vale.");
+    process.exit(1);
+  }
+
   for (const codigo of codigos) {
     const { ids } = idsDosCodigosNoCadastro(cadastro, catalogo, [codigo], null);
     for (const id of ids) if (/^\d+$/.test(id)) idsDoC2x.add(Number(id));
+
+    // O catálogo vale 5 min e um código leva minutos no C2X: reaquece a cada código (no cache é de graça;
+    // vencido, são as 8 páginas de novo). Sem isso o antigo esfria no meio e cai no C2X cru.
+    await carregarCatalogoD4Sign();
 
     // O LEITOR ANTIGO, como a rota da v1.389.0 fazia.
     const [doLegado, doPanteon] = await Promise.all([lerAssinaturasDoPortal([codigo]), lerAssinaturasDoPanteon(admin, [codigo])]);
@@ -174,12 +192,23 @@ try {
     }
     const quadroAntigo = unirComOPanteon(doLegado.data, doPanteon.linhas);
     if (quadroAntigo.aviso) cortados.push(codigo); // a lista antiga veio cortada no teto: a comparação é parcial
-    if (quadroAntigo.avisoDaFonte) {
-      // O antigo veio degradado (a D4Sign não confirmou): comparar com ele esconderia ou inventaria diferença.
+    // ⚠️ SÓ AS LINHAS QUE A D4SIGN NÃO CONFIRMOU FICAM DE FORA, E NOS DOIS LADOS (29/09/2026). O
+    // `avisoDaFonte` acende se UM contrato do recorte caiu no registro do C2X (em movimento além do teto
+    // de 20 `/list` por carga, ou documento que a D4Sign não achou naquela hora): descartar o
+    // empreendimento inteiro por isso deixou VOC, VOL e VOR sem comparação nenhuma, duas vezes. A linha
+    // antiga com envio e `fonte = 'c2x-legado'` é a não confirmada; ela e a linha nova da MESMA unidade
+    // saem da conta e viram o número `naoConferidas`, que vai para a saída. Só se o antigo veio degradado
+    // e não dá para apontar QUAIS linhas, o empreendimento inteiro continua sendo falha.
+    const chaveDaLinha = (l) => `${String(l.empreendimento).trim().toUpperCase()}:${String(l.unidade).trim().toUpperCase()}`;
+    const semConfirmacao = new Set(
+      quadroAntigo.unidades.filter((u) => u.envioId !== 0 && u.fonte === "c2x-legado").map(chaveDaLinha),
+    );
+    if (quadroAntigo.avisoDaFonte && semConfirmacao.size === 0) {
       falhas.push(`${codigo}:antigo-degradado`);
       continue;
     }
-    antigas.push(...quadroAntigo.unidades.map(linhaAntiga));
+    if (semConfirmacao.size > 0) naoConferidas[codigo] = semConfirmacao.size;
+    antigas.push(...quadroAntigo.unidades.filter((u) => !semConfirmacao.has(chaveDaLinha(u))).map(linhaAntiga));
 
     // A LEITURA ÚNICA.
     const leitura = await lerContratosDoPanteon({ admin, agora, escopo: { enterpriseIds: ids } });
@@ -187,7 +216,14 @@ try {
       falhas.push(`${codigo}:novo`);
       continue;
     }
-    novas.push(...linhasNovas(leitura.contratos, agora));
+    const todasNovas = linhasNovas(leitura.contratos, agora);
+    novas.push(...todasNovas.filter((l) => !semConfirmacao.has(chaveDaLinha(l))));
+    // ⚠️ A NÃO CONFIRMADA AINDA TEM DE EXISTIR NO NOVO. Sem status para comparar, sobra a pergunta que
+    // mais importa: o contrato sumiu? Unidade com envio no antigo e sem linha nenhuma no novo é inexplicado.
+    const chavesNovas = new Set(todasNovas.map(chaveDaLinha));
+    for (const chave of semConfirmacao) {
+      if (!chavesNovas.has(chave)) sumiramNoNovo.push(chave);
+    }
     // O tempo médio de assinatura dos dois lados (0.12: o novo perde amostra antiga; "gerado em" da carga
     // deixou de vir do histórico do C2X). Só números.
     tempoMedio.push({
@@ -313,7 +349,11 @@ try {
     cortadosNoTetoAntigo: cortados,
     falhas,
     geradoEm: agora.toISOString(),
-    inexplicado: totalInexplicado(relatorio),
+    inexplicado: totalInexplicado(relatorio) + sumiramNoNovo.length,
+    // Unidades que a D4Sign não confirmou no leitor antigo, fora da comparação nos dois lados.
+    naoConferidas,
+    // Dessas, as que não têm linha nenhuma no novo (só código de unidade).
+    sumiramNoNovo,
     paradoPorCota,
     tempoMedio,
     ...relatorio,
@@ -335,3 +375,6 @@ try {
 } finally {
   await pool.end().catch(() => undefined);
 }
+// ⚠️ O PROCESSO TERMINA AQUI: um socket da D4Sign ou do Supabase aberto deixava o node pendurado depois
+// do relatório (29/09/2026, a segunda rodada saiu por timeout com a saída já impressa).
+process.exit(process.exitCode ?? 0);
