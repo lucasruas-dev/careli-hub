@@ -6,6 +6,11 @@ xlsx por favor nessa tela"*, e logo depois *"na tela do financeiro tbm"*.
 Commit `0878f972` na branch `feat/portal-cecilio-melhorias`. Nenhuma escrita no banco, nenhuma
 migration.
 
+**No ar como v1.395.0** (OK do Lucas: *"tem o meu ok"*, 29/09/2026): push na main
+`d8c2ec81..26d62344`, deployment `dpl_4RCnDUfYDTWJktf8LoYPhDDgBAK7`. Rollback:
+`dpl_FdGkt7F5gESoPw2op8DcghMHDz2P` (commit `d8c2ec81`, v1.394.1). O login não funciona no preview, e
+por isso a conferência visual é em produção.
+
 ## LSoft Integração
 
 Botão **Excel** no cabeçalho, ao lado do recarregar, só na visão Carteira. Vale nas duas portas: o
