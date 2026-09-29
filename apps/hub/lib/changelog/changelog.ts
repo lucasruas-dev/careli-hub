@@ -37,7 +37,7 @@ export type ChangelogEntry = {
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
     buildTag: "2026-09-29-consultoria-sem-login",
-    deployedAt: "2026-09-29T14:00:00-03:00",
+    deployedAt: "2026-09-29T13:10:19-03:00",
     internal: true,
     modules: [
       {
