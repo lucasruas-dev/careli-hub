@@ -95,6 +95,38 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Portal do incorporador/LSoft/Financeiro] Exportar para Excel na LSoft Integracao e na Carteira por unidade (v1.395.0)`.
+- Squad/agente responsavel: `Zeus (sessao do portal da Cecilio Rocha)`; implementacao por workflow (2 implementadores, 3 lentes de revisao por tela, 1 corretor por tela).
+- Data e hora local: `2026-09-29 15:01:00 -03:00` (changelog); push na main logo depois.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK explicito do Lucas ("tem o meu ok", 29/09/2026). Preview da branch dpl_3kPRLFboZMZKceQpPQFaDtTZ5p16 (commit 1b8aa228) READY; o login nao funciona no preview, entao a validacao visual e em producao`.
+- Escopo publicado:
+  - `LSoft Integracao (portal e /lsoft interno): botao Excel com Clientes, Parcelas e Sobre, montado no servidor com o filtro da tela`;
+  - `Financeiro, aba Carteira: botao Excel na tabela Carteira por unidade, montado no navegador com a busca, o filtro e a ordem da tela`;
+  - `Financeiro: so a ultima leitura da carteira escreve na tela (a resposta atrasada de outro empreendimento e descartada) e o botao trava durante a carga`;
+  - `Excel do extrato: download sem a corrida do revoke e nome com o dia de Sao Paulo`.
+- Commit publicado: `26d6234450dcbab57b7292e0e0f405cc3d111f4d`.
+- Deployment anterior: `dpl_FdGkt7F5gESoPw2op8DcghMHDz2P` (commit `d8c2ec81`, v1.394.1).
+- Deployment novo: `dpl_4RCnDUfYDTWJktf8LoYPhDDgBAK7`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Arquivos/modulos incluidos: `lib/lsoft/planilha-da-carteira.ts`, `lib/lsoft/filtro-da-tela.ts`, `app/api/lsoft/carteira/route.ts`, `app/api/incorporador/lsoft/route.ts`, `modules/lsoft/api.ts`, `modules/lsoft/CarteiraLsoft.tsx`, `lib/apolo/incorporador/planilha-da-carteira-por-unidade.ts`, `modules/incorporador/TelaCarteira.tsx`, `app/api/incorporador/carteira/route.ts` e os testes (inclusive o novo `TelaCarteira.comportamento.test.tsx`).
+- Arquivos/modulos excluidos: `nenhuma migration, nenhuma escrita no banco`.
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `hook de pre-push`: `719 arquivos, 10.736 testes passando (2 pulados)`;
+  - `medicao em producao, so leitura`: `Todos 475 clientes, 32.660 parcelas, 1,54 MB, 9,9 s; Só patrimonio 73 clientes (os mesmos 73 do card da tela); fecha com a view em 475 de 475 clientes`.
+- Healthchecks pos-deploy: `ver abaixo, depois do READY`.
+- Logs recentes: `ver abaixo`.
+- Rollback definido: `Instant Rollback para dpl_FdGkt7F5gESoPw2op8DcghMHDz2P (commit d8c2ec81)`.
+- Riscos conhecidos: `a exportacao do LSoft le a carteira inteira (~10 s); as duas rotas declaram maxDuration = 60`.
+- Pendencias: `tres migrations para o Lucas decidir (views do LSoft em UTC, Caixa confirmada somada em "Todos", campos_c2x_* fora da 0107); ver docs/operations/2026-09-29-exportar-excel-lsoft-e-financeiro.md`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas conferir os dois botoes por print (LSoft Integracao e Financeiro, aba Carteira) e abrir um arquivo de cada no Excel`.
+
+Registro de producao:
+
 - Assunto: `[Hercules/Temis] Contrato e assinatura moram no Panteon: Clicksign e D4Sign na mesma leitura (v1.392.0, F1 a F4 da fonte unica)`.
 - Squad/agente responsavel: `Zeus` (implementacao por workflow com 3 lentes de revisao por fatia; subida conduzida pelo Zeus).
 - Data e hora local: `2026-09-29 13:33:34 -03:00` (changelog); no ar conferido as ~13:40 (`/api/version` = 1.392.0).
