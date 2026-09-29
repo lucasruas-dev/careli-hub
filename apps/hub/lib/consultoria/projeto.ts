@@ -53,7 +53,11 @@ async function lerLinha(slug: string): Promise<Linha | null> {
     .maybeSingle<Linha>();
 
   if (error) throw new Error(error.message);
-  return data ?? null;
+  if (!data) return null;
+  // Projeto criado VAZIO no banco (só com os códigos dos links) nasce do conteúdo aprovado no
+  // mockup. O primeiro salvamento grava esse conteúdo de verdade.
+  const vazio = !data.dados || typeof data.dados !== "object" || Object.keys(data.dados).length === 0;
+  return vazio ? { ...data, dados: PROJETOS_DE_CONSULTORIA[slug] } : data;
 }
 
 function confere(recebido: string, esperado: null | string): boolean {
