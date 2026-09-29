@@ -106,6 +106,15 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
     titulo: "Panteon dono do cadastro de empreendimentos: consultas do C2X pelo id, tela de editar e criar",
   },
   {
+    id: "PAN-125",
+    entregueEm: "2026-09-29",
+    evidencia: "v1.395.0. LSoft Integração: `lib/lsoft/planilha-da-carteira.ts` (Clientes, Parcelas e Sobre, montado no servidor com o filtro da tela) nas duas portas, /lsoft e portal; medido em produção, só leitura: 475 clientes, 32.660 parcelas, 1,54 MB, 9,9 s, fechando com a view em 475 de 475. Financeiro: `lib/apolo/incorporador/planilha-da-carteira-por-unidade.ts`, montado no navegador com a busca, o filtro e a ordem da tela. Revisão com 10 agentes, 7 achados distintos consertados. ⚠️ Três pendências de migration (views do LSoft em UTC, Caixa confirmada em \"Todos\", `campos_c2x_*` fora da 0107) em docs/operations/2026-09-29-exportar-excel-lsoft-e-financeiro.md.",
+    modulo: "Portal do incorporador",
+    porque: "Lucas (29/09/2026), olhando a LSoft Integração no portal da Cecílio Rocha: *\"coloca exportação para xlsx por favor nessa tela\"*, e depois: *\"na tela do financeiro tbm\"*. O time analisa e corrige a carteira fora da tela, e a planilha viaja por e-mail sem a tela junto: por isso ela leva o filtro escrito e avisa quando não está inteira.",
+    situacao: "entregue",
+    titulo: "Exportar para Excel na LSoft Integração e na Carteira por unidade do Financeiro",
+  },
+  {
     id: "PAN-123",
     entregueEm: "2026-09-25",
     evidencia: "v1.375.0. `lib/apolo/coordenador-do-empreendimento.ts` (Panteon primeiro, C2X por id, grupo pelas divisões, falha registrada), a perna de habilitações sem fila em `lib/apolo/board-do-servidor.ts` e `lib/apolo/habilitada-sem-fila.ts`, o aviso do cadastro interno em `lib/apolo/habilitacao-pelo-cadastro.ts`, e as travas no semeador, no settings e no sync. O 43 (Portal do Ibituruna / PDI) foi acertado no banco com OK do Lucas.",

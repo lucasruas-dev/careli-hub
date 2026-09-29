@@ -36,6 +36,41 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-29-exportar-excel-lsoft-e-financeiro",
+    deployedAt: "2026-09-29T15:01:00-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "**Botão Excel ao lado do recarregar.** Baixa os clientes e as parcelas do que está na tela: a busca, o empreendimento, \"Só o que falta validar\" e \"Só patrimônio\".",
+              "**A planilha tem três abas:** Clientes (a lista da tela), Parcelas (com a marca de patrimônio e a situação do subsídio Caixa) e Sobre (o filtro usado e de quando são os dados do LSoft).",
+              "**Vale também na tela interna do LSoft**, a do time da Careli.",
+            ],
+            screen: "LSoft Integração",
+          },
+          {
+            items: [
+              "**Botão Excel na tabela Carteira por unidade.** Baixa as unidades da lista, com a busca, o filtro e a ordem da tela, e o valor líquido de cada uma.",
+              "**Trocar de empreendimento não mistura mais as unidades.** A tabela e o arquivo esperam a carteira nova chegar.",
+              "**O Excel do extrato baixa sem falhar calado**, e o nome do arquivo sai com a data certa também depois das 21h.",
+            ],
+            screen: "Financeiro",
+          },
+        ],
+      },
+    ],
+    rollback: "d8c2ec81",
+    technical: {
+      done: "LSoft: `lib/lsoft/planilha-da-carteira.ts` monta o xlsx no servidor (Clientes, Parcelas, Sobre) com o filtro da tela, pela função única `lib/lsoft/filtro-da-tela.ts`; `formato=xlsx` em GET /api/lsoft/carteira (authorizeApoloRead) e GET /api/incorporador/lsoft (autorizar + portalVeBaseLsoft). Leitura em lotes de 100 clientes, páginas ordenadas por id com contagem exata e ids distintos; recusa se o patrimônio não fechar (antes do filtro) e com 1.000 clientes ou mais. Medido em produção, só leitura: 475 clientes, 32.660 parcelas, 1,54 MB, 9,9 s; fecha com a view em 475 de 475. Financeiro: `lib/apolo/incorporador/planilha-da-carteira-por-unidade.ts` monta no navegador (ExcelJS por import dinâmico) o recorte da tela; o nome do recorte sai de `dados.filtro`, só a última leitura da carteira escreve na tela, e o botão trava durante a carga. Extrato: download com o link no documento e revogação adiada; nome com `hojeNaCasa`. Revisão: 10 agentes, 7 achados distintos, todos consertados. ⚠️ Pendências de migration no doc do dia: `current_date` das views 0097/0107 em UTC, Caixa confirmada somada em \"Todos\" (0097) e `campos_c2x_*` fora da 0107.",
+      motivation: "Lucas (29/09/2026), olhando a LSoft Integração no portal da Cecílio Rocha: \"coloca exportação para xlsx por favor nessa tela\", e logo depois: \"na tela do financeiro tbm\".",
+    },
+    title: "Exportar para Excel na LSoft Integração e no Financeiro",
+    type: "novidade",
+    version: "1.395.0",
+  },
+  {
     buildTag: "2026-09-29-consultoria-porta-limpa",
     deployedAt: "2026-09-29T14:41:32-03:00",
     internal: true,
