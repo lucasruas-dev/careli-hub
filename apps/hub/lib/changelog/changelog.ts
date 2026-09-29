@@ -36,6 +36,48 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-29-contrato-e-assinatura-moram-no-panteon",
+    deployedAt: "2026-09-29T13:33:34-03:00",
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**A aba Assinatura e o Resumo passam a ler so o Panteon.** Os contratos da Clicksign e os da D4Sign aparecem na mesma lista, com quem ja assinou e de quem e a vez.",
+              "**Os contratos que o time manda pela D4Sign do C2X aparecem ligados a venda do Panteon, em assinatura**, e nao mais como Aguardando emissao.",
+              "**A tela nao espera mais a D4Sign responder.** O status e conferido a cada 30 minutos e fica guardado no Panteon, e a faixa Estamos confirmando as assinaturas deixa de aparecer.",
+              "**Quando a mesma venda tem dois contratos em assinatura, os dois aparecem**, para ninguem deixar o comprador assinar dois contratos do mesmo negocio.",
+            ],
+            screen: "Contratos - Assinatura e Resumo",
+          },
+        ],
+      },
+      {
+        module: "Temis",
+        screens: [
+          {
+            items: [
+              "**Quem assinou fica gravado pessoa a pessoa**, venha a assinatura da Clicksign ou da D4Sign.",
+              "**O estado do contrato nao volta mais atras.** Um aviso da Clicksign que chegava fora de ordem levava o contrato de Parcialmente assinado para Aguardando.",
+            ],
+            screen: "Board e tela do card",
+          },
+        ],
+      },
+    ],
+    rollback: "52694d80",
+    technical: {
+      done:
+        "FONTE UNICA DO CONTRATO, F1 a F4 (plano em docs/assinatura/fonte-unica-do-contrato.md). F1: migration 0195 (aplicada em 29/09 com OK): temis_envelopes ganha origem, finalidade, trabalho_id, c2x_contract_signature_id, conferido_em e tentado_em; unicidade de (provedor, provedor_documento_id); a funcao temis_envelope_registrar_assinaturas e a unica escrita de quadro, marca por pessoa e estado (monotonica, atomica, casada pela chave, nunca inventa fechado_em, so service_role); o webhook da Clicksign le event.data.signer, grava o envelope_id no evento e deixa de regredir estado. F2: uma regua de envelope vigente para tela e trava de reenvio, e o caminho envelope -> card -> venda sem provedor (MOVER_VENDAS = false nesta versao: o card ainda nao anda pela D4Sign). F3: o espelho da D4Sign (cron /api/assinatura/d4sign/espelho a cada 30 min, so Bearer CRON_SECRET, C2X so SELECT em transacao READ ONLY, nada de CPF, IP ou geolocalizacao gravado), com a carga inicial feita em 29/09 com OK. F4: /api/incorporador/vendas/assinaturas e /vendas/contratos leem lerContratosDoPanteon (views temis_contratos_do_panteon e temis_envelopes_de_contrato), sem C2X nem D4Sign ao vivo e sem o aquecimento no after(); o payload do portal e uma allowlist sem e-mail, provedor ou nome de sistema. A F5 (Apolo e desligar os links publicos) e a F6 (contador no Board) ficaram fora desta subida.",
+      motivation:
+        "Lucas, 28/09/2026: ja cansei de falar que informacoes de venda, contrato, assinatura tem que morar em um local e ele alimentar tudo; Hoje estamos trabalhando com a click e d4sign; faz tudo morar no Panteon; C2X por enquanto cuida somente do financeiro, o resto tudo e o panteon.",
+    },
+    title: "Contrato e assinatura moram no Panteon: Clicksign e D4Sign na mesma lista",
+    type: "melhoria",
+    version: "1.392.0",
+  },
+  {
     buildTag: "2026-09-29-consultoria-sem-login",
     deployedAt: "2026-09-29T13:10:19-03:00",
     internal: true,
