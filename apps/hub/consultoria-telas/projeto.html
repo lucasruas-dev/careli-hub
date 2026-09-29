@@ -214,8 +214,9 @@ aside .modo svg{width:15px;height:15px}
 // =====================================================================================
 // A CONSULTORIA · tela de trabalho e de apresentação (c2x.app.br/consultoria/<slug>)
 // O desenho é o mockup aprovado pelo Lucas em 29/09/2026. Os dados vêm da API:
-//   • com ?t=<token> no link  → leitura do cliente (/api/publico/consultoria/<slug>)
-//   • sem token               → consultor, com a sessão do hub (/api/consultoria/<slug>)
+//   • ?e=<código> (guardado no navegador) → consultor, lê e salva
+//   • ?t=<código>                         → cliente, só leitura
+// Os dois pela mesma porta, /api/publico/consultoria/<slug>, com o código no cabeçalho.
 // =====================================================================================
 const SLUG = location.pathname.split('/').filter(Boolean).pop();
 const TOKEN_DO_LINK = new URLSearchParams(location.search).get('t') || '';
@@ -224,7 +225,7 @@ const CICLO = {todo:'doing', doing:'ok', ok:'late', late:'todo'};
 const MESES_LONGOS = ['Outubro/2026','Novembro/2026','Dezembro/2026','Janeiro/2027','Fevereiro/2027','Março/2027','Abril/2027','Maio/2027','Junho/2027','Julho/2027','Agosto/2027','Setembro/2027'];
 const TIPOS_DE_REGISTRO = [['problema','Problemas e gargalos identificados'],['acao','Ações realizadas'],['resultado','Resultados obtidos']];
 
-let DOC=null, ATUALIZADO=null, PODE_EDITAR=false, LINK_DE_LEITURA='', BEARER='';
+let DOC=null, ATUALIZADO=null, PODE_EDITAR=false, LINK_DE_LEITURA='';
 let PROJETO,MESES,FASES,ONDAS,FRENTES,INDICADORES,PLANO30,GOVERNANCA;
 let MES_ATUAL=0;
 let estado = {secao:'geral',frente:null,aba:'painel',mesRel:0,mesReg:0};
@@ -239,40 +240,27 @@ function vincular(){
   MES_ATUAL=Math.max(0,Math.min(11,(hoje.getFullYear()-ano)*12+(hoje.getMonth()+1-mes)));
 }
 
-// ---------------------------------------------------------------- sessão do hub
-// O hub guarda a sessão do Supabase no localStorage deste mesmo domínio (`sb-<ref>-auth-token`,
-// às vezes quebrada em pedaços `.0`, `.1`). A tela só LÊ o token; quem renova é o Panteon.
-function sessaoDoHub(){
-  try{
-    const chaves=[];
-    for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&/^sb-[a-z0-9]+-auth-token(\.\d+)?$/.test(k))chaves.push(k);}
-    if(!chaves.length)return null;
-    const base=chaves.find(k=>!/\.\d+$/.test(k));
-    let bruto=base?localStorage.getItem(base):chaves.filter(k=>/\.\d+$/.test(k)).sort((a,b)=>+a.split('.').pop()-+b.split('.').pop()).map(k=>localStorage.getItem(k)).join('');
-    if(!bruto)return null;
-    if(bruto.startsWith('base64-')){const b=bruto.slice(7).replace(/-/g,'+').replace(/_/g,'/');bruto=decodeURIComponent(escape(atob(b)));}
-    const s=JSON.parse(bruto); const sess=s.currentSession||s;
-    if(!sess.access_token)return null;
-    return {token:sess.access_token,expira:(sess.expires_at||0)*1000};
-  }catch{return null;}
-}
+// ---------------------------------------------------------------- acesso por link (sem login)
+// Link do consultor: /consultoria/<slug>?e=<código>. Na primeira abertura o código vai para o
+// localStorage deste navegador e sai da barra de endereço; daí em diante o endereço limpo abre
+// direto em modo edição. Link do cliente: ?t=<código>, só leitura.
+const CHAVE_EDICAO = `consultoria-edicao-${SLUG}`;
+function lerEdicao(){ try{return localStorage.getItem(CHAVE_EDICAO)||'';}catch{return '';} }
+function guardarEdicao(v){ try{ v?localStorage.setItem(CHAVE_EDICAO,v):localStorage.removeItem(CHAVE_EDICAO); }catch{} }
+let CODIGO_EDICAO='';
+(function(){
+  const q=new URLSearchParams(location.search), e=q.get('e');
+  if(e){ guardarEdicao(e); q.delete('e'); history.replaceState(null,'',location.pathname+(q.toString()?`?${q}`:'')); }
+  CODIGO_EDICAO=lerEdicao();
+})();
+const cabecalhos=()=>CODIGO_EDICAO?{'x-consultoria-edicao':CODIGO_EDICAO}:{'x-consultoria-token':TOKEN_DO_LINK};
 
 async function carregar(){
+  if(!CODIGO_EDICAO && !TOKEN_DO_LINK) return porta('Esta página é acessada pelo link enviado pelo consultor.');
   let r;
-  try{
-    if(TOKEN_DO_LINK){
-      r=await fetch(`/api/publico/consultoria/${SLUG}`,{headers:{'x-consultoria-token':TOKEN_DO_LINK},cache:'no-store'});
-    }else{
-      const s=sessaoDoHub();
-      if(!s) return porta('Esta página é restrita. Se você recebeu um link da consultoria, abra o link completo. Se você é o consultor, <a href="/login">entre no Panteon</a> e volte aqui.');
-      if(s.expira && s.expira<Date.now()) return porta('Sua sessão do Panteon expirou. <a href="/" target="_blank">Abra o Panteon</a> em outra aba e depois recarregue esta página.');
-      BEARER=s.token;
-      r=await fetch(`/api/consultoria/${SLUG}`,{headers:{authorization:`Bearer ${BEARER}`},cache:'no-store'});
-    }
-  }catch{return porta('Não foi possível conectar. Verifique a internet e recarregue a página.');}
-  if(r.status===404) return porta('Link inválido ou expirado. Peça um novo link ao consultor.');
-  if(r.status===401) return porta('Sua sessão do Panteon expirou. <a href="/" target="_blank">Abra o Panteon</a> em outra aba e depois recarregue esta página.');
-  if(r.status===403) return porta('Este projeto é editado só pelo consultor. Para acompanhar, use o link de leitura que ele enviou.');
+  try{ r=await fetch(`/api/publico/consultoria/${SLUG}`,{headers:cabecalhos(),cache:'no-store'}); }
+  catch{return porta('Não foi possível conectar. Verifique a internet e recarregue a página.');}
+  if(r.status===404){ if(CODIGO_EDICAO) guardarEdicao(''); return porta('Link inválido ou expirado. Peça um novo link ao consultor.'); }
   if(!r.ok) return porta('Não foi possível abrir o projeto agora. Tente de novo em instantes.');
   const j=await r.json();
   DOC=j.dados; ATUALIZADO=j.atualizadoEm; PODE_EDITAR=!!j.podeEditar; LINK_DE_LEITURA=j.linkDeLeitura||'';
@@ -292,10 +280,9 @@ async function salvar(){
   if(!pendente)return;
   salvando=true; pendente=false; marcaSalvo('Salvando…');
   try{
-    const s=sessaoDoHub(); if(s) BEARER=s.token;
-    const r=await fetch(`/api/consultoria/${SLUG}`,{method:'PUT',headers:{authorization:`Bearer ${BEARER}`,'content-type':'application/json'},body:JSON.stringify({dados:DOC,base:ATUALIZADO})});
+    const r=await fetch(`/api/publico/consultoria/${SLUG}`,{method:'PUT',headers:{...cabecalhos(),'content-type':'application/json'},body:JSON.stringify({dados:DOC,base:ATUALIZADO})});
     if(r.status===409){travado=true;faixa('Este projeto foi alterado em outra janela. Para não apagar aquele trabalho, esta aba parou de salvar.','Recarregar',()=>location.reload());marcaSalvo('Não salvo',true);return;}
-    if(r.status===401){pendente=true;faixa('Sua sessão do Panteon expirou e a última alteração NÃO foi salva. Abra o Panteon em outra aba, entre, e clique em Tentar de novo.','Tentar de novo',()=>{faixa();salvar();});marcaSalvo('Não salvo',true);return;}
+    if(r.status===404){travado=true;faixa('O link de edição deste navegador não vale mais. A última alteração NÃO foi salva.');marcaSalvo('Não salvo',true);return;}
     if(!r.ok){pendente=true;marcaSalvo('Erro ao salvar · tentando de novo',true);timerSalvar=setTimeout(salvar,5000);return;}
     ATUALIZADO=(await r.json()).atualizadoEm; marcaSalvo('Salvo');
   }catch{pendente=true;marcaSalvo('Sem conexão · tentando de novo',true);timerSalvar=setTimeout(salvar,5000);}
@@ -376,7 +363,7 @@ function montarApp(){
   <aside>
     <div class="brand"><span class="selo"><img src="/marcas/cecilio-rocha.svg" alt=""></span><div><b>C&amp;R</b><span>Reestruturação</span></div></div>
     <nav id="nav"></nav>
-    ${PODE_EDITAR?`<div class="modo"><button id="b-editar">${ic('pencil-line')}Modo edição</button><button id="b-link">${ic('link')}Copiar link do cliente</button><div class="salvo" id="salvo"></div></div>`:''}
+    ${PODE_EDITAR?`<div class="modo"><button id="b-editar">${ic('pencil-line')}Modo edição</button><div class="salvo" id="salvo"></div></div>`:''}
     <div class="foot">Consultoria <b>${esc(PROJETO.consultor)}</b><br>Out/2026 a Set/2027</div>
   </aside>
   <main><div class="faixa" id="faixa"></div><div id="main"></div></main></div>`;
@@ -385,7 +372,6 @@ function montarApp(){
     document.body.classList.toggle('editando',ligado);
     const b=$('#b-editar'); b.classList.toggle('on',ligado);
     b.onclick=()=>{const on=document.body.classList.toggle('editando');b.classList.toggle('on',on);try{localStorage.setItem('consultoria-editando',on?'1':'0');}catch{}};
-    $('#b-link').onclick=async()=>{const url=location.origin+LINK_DE_LEITURA;try{await navigator.clipboard.writeText(url);marcaSalvo('Link copiado');}catch{prompt('Link de leitura do cliente:',url);}};
     marcaSalvo('Salvo');
   }
 }

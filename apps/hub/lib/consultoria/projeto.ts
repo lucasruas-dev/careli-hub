@@ -1,6 +1,4 @@
-import { randomBytes, timingSafeEqual } from "node:crypto";
-
-import { NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
@@ -11,8 +9,12 @@ import DOCUMENTO_INICIAL_CR from "./cr-inicial.json";
 // Documento de trabalho da consultoria do Lucas num cliente: escopo, frentes, plano de ação,
 // indicadores e o relatório mensal. Não é módulo do Panteon e não lê nada do Panteon.
 //
-// Quem ESCREVE: o dono (Lucas, por e-mail do token verificado; papel admin NÃO basta, a consultoria
-// é dele e não da Careli). Quem LÊ: o dono, e o cliente por um link com token secreto.
+// SEM LOGIN, POR LINK (Lucas, 29/09/2026: "não precisa ter esse acesso ao panteon" e "não precisa
+// de login"). São dois links secretos, cada um com o seu código guardado no banco:
+//   • EDIÇÃO (`?e=`): o do consultor. A tela guarda o código no navegador e daí em diante o
+//     endereço limpo abre direto em modo edição.
+//   • LEITURA (`?t=`): o do cliente, só leitura.
+// Quem não tem nenhum dos dois vê a porta fechada. Trocar um código no banco derruba o link dele.
 //
 // ⚠️ O documento é salvo INTEIRO pela tela. Duas abas abertas escrevendo ao mesmo tempo apagariam
 // uma o trabalho da outra em silêncio, por isso todo salvamento diz de qual versão partiu
@@ -22,7 +24,6 @@ export const PROJETOS_DE_CONSULTORIA: Record<string, unknown> = {
   cr: DOCUMENTO_INICIAL_CR,
 };
 
-const DONOS_PADRAO = ["lucas.ruas@careli.adm.br"];
 // Teto do documento. O conteúdo inicial tem ~30 KB; 12 meses de registro cabem com folga. Um corpo
 // maior que isso é erro de quem chamou, não crescimento do projeto.
 const TAMANHO_MAXIMO = 2_000_000;
@@ -30,46 +31,16 @@ const TAMANHO_MAXIMO = 2_000_000;
 // depois de cada edição.
 const JANELA_DO_HISTORICO_MS = 20 * 60 * 1000;
 
-function donos(): string[] {
-  const doEnv = (process.env.CONSULTORIA_OWNER_EMAILS ?? "")
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
-
-  return doEnv.length > 0 ? doEnv : DONOS_PADRAO;
-}
-
 export function ehProjetoConhecido(slug: string): boolean {
   return Object.prototype.hasOwnProperty.call(PROJETOS_DE_CONSULTORIA, slug);
 }
 
-function erro(status: number, mensagem: string) {
-  return NextResponse.json({ error: mensagem }, { headers: { "cache-control": "no-store" }, status });
-}
-
-type Acesso = { email: string; ok: true } | { ok: false; response: NextResponse };
-
-export async function autorizarDono(request: Request): Promise<Acesso> {
-  const header = request.headers.get("authorization") ?? "";
-  const token = header.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() ?? "";
-
-  if (!token) return { ok: false, response: erro(401, "Sessão ausente.") };
-
-  const client = createApoloAdminClient();
-  if (!client) return { ok: false, response: erro(503, "Banco indisponível.") };
-
-  const { data, error } = await client.auth.getUser(token);
-  if (error || !data.user) return { ok: false, response: erro(401, "Sessão inválida ou expirada.") };
-
-  const email = (data.user.email ?? "").trim().toLowerCase();
-  if (!email || !donos().includes(email)) {
-    return { ok: false, response: erro(403, "Só o consultor edita este projeto.") };
-  }
-
-  return { email, ok: true };
-}
-
-type Linha = { atualizado_em: string; dados: unknown; token_leitura: string };
+type Linha = {
+  atualizado_em: string;
+  dados: unknown;
+  token_edicao: null | string;
+  token_leitura: string;
+};
 
 async function lerLinha(slug: string): Promise<Linha | null> {
   const client = createApoloAdminClient();
@@ -77,7 +48,7 @@ async function lerLinha(slug: string): Promise<Linha | null> {
 
   const { data, error } = await client
     .from("consultoria_projetos")
-    .select("dados,token_leitura,atualizado_em")
+    .select("dados,token_leitura,token_edicao,atualizado_em")
     .eq("slug", slug)
     .maybeSingle<Linha>();
 
@@ -85,56 +56,49 @@ async function lerLinha(slug: string): Promise<Linha | null> {
   return data ?? null;
 }
 
-/** Lê o projeto; se ainda não existe no banco, nasce aqui com o conteúdo inicial aprovado. */
-export async function abrirProjetoDoDono(slug: string, email: string): Promise<Linha> {
-  const existente = await lerLinha(slug);
-  if (existente) return existente;
-
-  const client = createApoloAdminClient();
-  if (!client) throw new Error("Banco indisponível.");
-
-  const nova = {
-    atualizado_por: email,
-    dados: PROJETOS_DE_CONSULTORIA[slug],
-    slug,
-    token_leitura: randomBytes(24).toString("base64url"),
-  };
-  // `ignoreDuplicates`: duas abas abrindo ao mesmo tempo não podem gerar dois tokens; a segunda
-  // relê o que a primeira gravou.
-  const { error } = await client
-    .from("consultoria_projetos")
-    .upsert(nova, { ignoreDuplicates: true, onConflict: "slug" });
-  if (error) throw new Error(error.message);
-
-  const criada = await lerLinha(slug);
-  if (!criada) throw new Error("Projeto não foi criado.");
-  return criada;
-}
-
-function tokenConfere(recebido: string, esperado: string): boolean {
+function confere(recebido: string, esperado: null | string): boolean {
+  if (!recebido || !esperado) return false;
   const a = Buffer.from(recebido);
   const b = Buffer.from(esperado);
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-/** Leitura do cliente pelo link. Token errado e projeto inexistente respondem igual. */
-export async function abrirProjetoPeloLink(slug: string, token: string) {
-  if (!token || !ehProjetoConhecido(slug)) return null;
+export type Credenciais = { edicao: string; leitura: string };
+
+/**
+ * Abre o projeto pelo código do link. Código errado e projeto inexistente respondem igual (null),
+ * para o link não virar oráculo. O de edição, quando confere, também devolve os dois links.
+ */
+export async function abrirProjeto(slug: string, { edicao, leitura }: Credenciais) {
+  if (!ehProjetoConhecido(slug) || (!edicao && !leitura)) return null;
   const linha = await lerLinha(slug);
-  if (!linha || !tokenConfere(token, linha.token_leitura)) return null;
-  return { atualizadoEm: linha.atualizado_em, dados: linha.dados };
+  if (!linha) return null;
+
+  if (confere(edicao, linha.token_edicao)) {
+    return {
+      atualizadoEm: linha.atualizado_em,
+      dados: linha.dados,
+      linkDeLeitura: `/consultoria/${slug}?t=${linha.token_leitura}`,
+      podeEditar: true,
+    };
+  }
+  if (confere(leitura, linha.token_leitura)) {
+    return { atualizadoEm: linha.atualizado_em, dados: linha.dados, podeEditar: false };
+  }
+  return null;
 }
 
 export type ResultadoDoSalvamento =
   | { atualizadoEm: string; ok: true }
-  | { motivo: "conflito" | "invalido"; ok: false };
+  | { motivo: "conflito" | "invalido" | "negado"; ok: false };
 
 export async function salvarProjeto(
   slug: string,
-  email: string,
+  edicao: string,
   dados: unknown,
   base: string,
 ): Promise<ResultadoDoSalvamento> {
+  if (!ehProjetoConhecido(slug)) return { motivo: "negado", ok: false };
   if (!dados || typeof dados !== "object" || Array.isArray(dados)) return { motivo: "invalido", ok: false };
   if (JSON.stringify(dados).length > TAMANHO_MAXIMO) return { motivo: "invalido", ok: false };
 
@@ -142,7 +106,7 @@ export async function salvarProjeto(
   if (!client) throw new Error("Banco indisponível.");
 
   const atual = await lerLinha(slug);
-  if (!atual) return { motivo: "conflito", ok: false };
+  if (!atual || !confere(edicao, atual.token_edicao)) return { motivo: "negado", ok: false };
   if (new Date(atual.atualizado_em).getTime() !== new Date(base).getTime()) {
     return { motivo: "conflito", ok: false };
   }
@@ -152,18 +116,18 @@ export async function salvarProjeto(
   // pode ter salvo, e aí nenhuma linha casa.
   const { data, error } = await client
     .from("consultoria_projetos")
-    .update({ atualizado_em: agora, atualizado_por: email, dados })
+    .update({ atualizado_em: agora, atualizado_por: "link de edição", dados })
     .eq("slug", slug)
     .eq("atualizado_em", atual.atualizado_em)
     .select("atualizado_em");
   if (error) throw new Error(error.message);
   if (!data || data.length === 0) return { motivo: "conflito", ok: false };
 
-  await guardarNoHistorico(slug, atual, email);
+  await guardarNoHistorico(slug, atual);
   return { atualizadoEm: agora, ok: true };
 }
 
-async function guardarNoHistorico(slug: string, anterior: Linha, email: string) {
+async function guardarNoHistorico(slug: string, anterior: Linha) {
   const client = createApoloAdminClient();
   if (!client) return;
 
@@ -179,7 +143,7 @@ async function guardarNoHistorico(slug: string, anterior: Linha, email: string) 
 
   const { error } = await client.from("consultoria_projetos_historico").insert({
     dados: anterior.dados,
-    salvo_por: email,
+    salvo_por: "link de edição",
     slug,
     versao_de: anterior.atualizado_em,
   });

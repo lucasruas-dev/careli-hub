@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-29-consultoria-sem-login",
+    deployedAt: "2026-09-29T14:00:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Consultoria",
+        screens: [
+          {
+            items: [
+              "**A tela da consultoria abre sem login e sem o Panteon:** o consultor entra por um link de edição próprio, que fica guardado no navegador; depois disso o endereço c2x.app.br/consultoria/cr abre direto.",
+            ],
+            screen: "Consultoria - C&R",
+          },
+        ],
+      },
+    ],
+    rollback: "1948d38c",
+    technical: {
+      done:
+        "Edição passa a entrar por token_edicao (migration 0197) no cabeçalho x-consultoria-edicao, pela mesma porta pública da leitura (/api/publico/consultoria/[slug], GET e PUT). A rota /api/consultoria/[slug] com Bearer do hub foi removida. A tela guarda o código em localStorage e o tira da URL. Botão do link do cliente escondido por enquanto.",
+      motivation:
+        "Lucas, 29/09/2026, ao abrir a tela em produção e ver 'Sua sessão do Panteon expirou': não precisa ter esse acesso ao panteon; não precisa de login.",
+    },
+    title: "Consultoria sem login, por link de edição",
+    type: "correcao",
+    version: "1.391.1",
+  },
+  {
     buildTag: "2026-09-29-consultoria-cr",
     deployedAt: "2026-09-29T12:44:58-03:00",
     internal: true,
