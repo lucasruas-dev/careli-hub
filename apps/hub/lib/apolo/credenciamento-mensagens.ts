@@ -315,3 +315,48 @@ export function mensagemCorretorCredenciado(input: {
 
   return linhas.join("\n");
 }
+
+// 4) PARA O COORDENADOR, SOBRE O CORRETOR AUTÔNOMO (fatia 2, 28/09/2026).
+//
+// ⚠️ MENSAGEM PRÓPRIA, E NÃO A DA IMOBILIÁRIA. `mensagemCoordenadorHabilitacao` abre com
+// *"Imobiliária habilitada no seu empreendimento"* e fala em CNPJ e em corretores cadastrados:
+// reusá-la mandaria ao coordenador, por escrito, que uma PESSOA FÍSICA é uma imobiliária. É
+// literalmente o que o Lucas proibiu em 27/09/2026: *"nao quero ter a informacao que pode ter pessoa
+// fisica como imobiliaria, isso sera bem restrito"*. Duas mensagens, porque são duas coisas.
+//
+// ⚠️ O CÓDIGO VAI AQUI DE PROPÓSITO. Ele é o que identifica o autônomo (Lucas: *"a minha ideia e gerar
+// um codigo para esses corretores, assim saberemos que ele e autonomo"*), e este aviso é interno, para
+// a coordenação. A regra *"minto, somente no CRM"* vale para reserva, proposta, contrato e BI, que é
+// onde o código NÃO entra.
+export function mensagemCoordenadorHabilitacaoDoAutonomo(input: {
+  codigo: string;
+  corretor: string;
+  cpf?: null | string;
+  empreendimentos: EmpreendimentoHabilitado[];
+  responsavel?: null | string;
+}): string {
+  const linhas = [
+    "*Corretor autônomo habilitado no seu empreendimento*",
+    "",
+    `*${input.corretor}*`,
+    `Código ${input.codigo}`,
+  ];
+
+  if (input.cpf) {
+    linhas.push(`CPF ${input.cpf}`);
+  }
+
+  linhas.push(
+    "",
+    input.empreendimentos.length === 1 ? "Habilitado em:" : "Habilitado nos empreendimentos:",
+    listaDeEmpreendimentos(input.empreendimentos),
+    "",
+    "Ele vende sem imobiliária, por conta própria, e já pode abrir CAD de cliente aí.",
+  );
+
+  if (input.responsavel) {
+    linhas.push("", `Habilitado por ${input.responsavel}.`);
+  }
+
+  return linhas.join("\n");
+}

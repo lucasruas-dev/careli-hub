@@ -8,6 +8,7 @@ import { getHadesDbPool } from "@/lib/guardian/db";
 import type { RowDataPacket } from "mysql2/promise";
 
 import { lerCadDaEsteira, maisRecentePorEntidade } from "./esteira-cad";
+import { lerAutonomo } from "./habilitacao-do-autonomo";
 import { createApoloAdminClient } from "./server";
 import {
   C2X_ESCOLARIDADE,
@@ -880,6 +881,11 @@ export type ResultadoEnvio = {
 // CLASSE (de quem é o conserto). O ENSAIO continua não gravando nada — diagnóstico que muda o
 // estado é a outra metade do mesmo problema, e quem roda o dry-run está só olhando.
 export type ClasseRecusaC2x =
+  // ⚠️ A CAD É DE CORRETOR AUTÔNOMO, E O C2X AINDA NÃO SABE RECEBER ESSE VÍNCULO (28/09/2026). Classe
+  // PRÓPRIA porque a de imobiliária mandava o operador fazer o que o Lucas proibiu: *"nao quero ter a
+  // informacao que pode ter pessoa fisica como imobiliaria, isso sera bem restrito"* (27/09/2026).
+  // Ver `recusaPorImobiliaria`.
+  | "autonomo"
   // Falta dado NA FICHA do cliente (o caso dos 25 "campo em branco").
   | "ficha"
   // As duas fontes discordam sobre QUEM é a pessoa (nome da mãe, nascimento).
@@ -895,6 +901,7 @@ export type ClasseRecusaC2x =
 // O PREFIXO QUE DIZ PARA ONDE IR. Quem lê o card precisa saber, na primeira linha, se o trabalho é
 // na ficha do cliente, no cadastro da imobiliária ou em lugar nenhum (esperar o C2X voltar).
 const PARA_ONDE_IR: Record<ClasseRecusaC2x, string> = {
+  autonomo: "CAD DE CORRETOR AUTÔNOMO",
   ficha: "FICHA DO CLIENTE",
   identidade: "CONFERIR A IDENTIDADE",
   imobiliaria: "CADASTRO DA IMOBILIÁRIA",
@@ -1533,6 +1540,13 @@ export async function enviarEntidadeParaC2x(input: {
 // cria. Nulo = sem imobiliária vinculada (a CAD não pode subir). `cache` evita reconsultar o C2X
 // pela mesma imobiliária no lote (são 24 distintas para centenas de clientes).
 export type ImobiliariaDaCad = {
+  /**
+   * ⚠️ O CÓDIGO DO CORRETOR AUTÔNOMO DESTA CAD, quando ela não tem imobiliária (28/09/2026). Só é
+   * preenchido no caminho `entityId: null`, e serve para a recusa NÃO dizer "vincule a imobiliária" numa
+   * CAD que, por regra do Lucas, nunca terá uma. Null = ou tem imobiliária, ou o corretor da esteira não
+   * é autônomo da casa (sem `broker_code`).
+   */
+  autonomo: null | string;
   // O `vinculed_by_id` do cliente. Null = a imobiliária não foi encontrada no C2X pelo documento.
   c2xUserId: number | null;
   // ⚠️ false = NÃO DEU PARA PERGUNTAR ao C2X (banco do legado fora). Sem este campo, o
@@ -1569,7 +1583,37 @@ export async function resolverImobiliariaDaCad(
   const imobId = (rel ?? [])[0]?.related_entity_id as string | undefined;
   if (!imobId) {
     // Nada a conferir no C2X: a pendência é o vínculo no Apolo, e disso a gente sabe sozinho.
-    return { c2xUserId: null, conferida: true, documento: null, entityId: null, nome: null };
+    //
+    // ⚠️ MAS ANTES: ESTA CAD É DE CORRETOR AUTÔNOMO? (28/09/2026) A trava do C2X não lê a esteira, lê
+    // `apolo_relationships`, e a CAD do cliente do autônomo NÃO TEM o vínculo `imobili%` de propósito
+    // (a fatia 2 apaga `imobiliariaId`/`imobiliariaLabel` em lib/apolo/cadastro-salvar.ts:406-409, e o
+    // vínculo nasce por presença desses campos em cadastro-persist.ts:1217-1228). Sem distinguir os dois
+    // casos, a recusa dizia "Vincule a imobiliária na CAD e mande de novo" e a única saída que a tela
+    // oferecia ao operador era exatamente o que o Lucas proibiu em 27/09/2026: *"nao quero ter a
+    // informacao que pode ter pessoa fisica como imobiliaria, isso sera bem restrito"* — e a CAD do
+    // autônomo passaria a contar como CAD daquela imobiliária no CRM e no relatório de 18h30.
+    //
+    // ⚠️ SÓ NESTE RAMO, e o custo está medido: `select count(*) filter (where imobiliaria_entity_id is
+    // null) from apolo_esteira;` → 486 de 843 em 28/09/2026 (bxgukywoxgivlrhjkwjx), mas destas ZERO
+    // têm `corretor_entity_id`, então a leitura extra só acontece para as CADs que a fatia 2 cria.
+    // BEST-EFFORT: qualquer falha aqui deixa `autonomo: null` e a recusa volta a ser a de imobiliária,
+    // que é o comportamento de hoje. Isto NÃO libera envio nenhum, só troca a FRASE da recusa.
+    let autonomo: null | string = null;
+    try {
+      const linhaDaEsteira = await lerCadDaEsteira<{ corretor_entity_id: null | string }>(
+        client,
+        entityId,
+        "corretor_entity_id",
+      );
+      const corretor = String(linhaDaEsteira?.corretor_entity_id ?? "").trim();
+      if (corretor) {
+        const ficha = await lerAutonomo(client, corretor);
+        if (ficha.ok) autonomo = ficha.autonomo.codigo;
+      }
+    } catch {
+      /* best-effort: sem isto, a recusa é a de imobiliária, como sempre foi */
+    }
+    return { autonomo, c2xUserId: null, conferida: true, documento: null, entityId: null, nome: null };
   }
 
   const emCache = cache?.get(imobId);
@@ -1592,6 +1636,7 @@ export async function resolverImobiliariaDaCad(
 
   const achada: ImobiliariaDaCad = {
     c2xUserId: consulta?.ok ? (consulta.ids.get(digitos) ?? null) : null,
+    autonomo: null,
     // Sem dígitos nem chegamos a perguntar, e não precisamos: o CNPJ vazio já é a pendência.
     conferida: consulta ? consulta.ok : true,
     documento,
@@ -1623,6 +1668,25 @@ export function recusaPorImobiliaria(imob: ImobiliariaDaCad): {
   classe: ClasseRecusaC2x;
   motivo: string;
 } {
+  // ⚠️ CAD DE CORRETOR AUTÔNOMO: FRASE PRÓPRIA, E ELA NÃO MANDA VINCULAR IMOBILIÁRIA (28/09/2026).
+  //
+  // Lucas (27/09/2026): *"nao quero ter a informacao que pode ter pessoa fisica como imobiliaria, isso
+  // sera bem restrito"*. A frase de baixo ("Vincule a imobiliária na CAD e mande de novo") é a única
+  // saída que a tela oferecia ao operador, e seguir a instrução reintroduzia a CAD como CAD de uma
+  // imobiliária no CRM e no relatório de 18h30. O impedimento é REAL e continua barrando: o C2X exige
+  // `vinculed_by_id`, e QUEM é esse vínculo para o autônomo é decisão do Lucas, não do código (o
+  // `users` do próprio autônomo, ou uma entidade padrão da Careli). O que muda aqui é a recusa dizer a
+  // verdade em vez de pedir o proibido.
+  if (!imob.entityId && imob.autonomo) {
+    return {
+      classe: "autonomo",
+      motivo:
+        `esta CAD é do cliente de um corretor autônomo (${imob.autonomo}), e o C2X ainda não aceita ` +
+        "este vínculo: ele exige o `vinculed_by_id` de uma imobiliária. NADA foi enviado, e NÃO " +
+        "vincule uma imobiliária a esta CAD para destravar (a venda passaria a ser dela). Esta CAD " +
+        "fica fora do envio ao C2X até a Careli definir o vínculo do autônomo no legado.",
+    };
+  }
   if (!imob.entityId) {
     return {
       classe: "imobiliaria",
@@ -1707,13 +1771,20 @@ function faltantesDaEmpresa(empresa: EmpresaParaDiagnostico): string[] {
 }
 
 // `empresa` presente = a ficha é PJ e o diagnóstico usa a lista de empresa, não a de pessoa.
+//
+// ⚠️ `rotuloDoVinculo` EXISTE PARA A CAD DO CORRETOR AUTÔNOMO (28/09/2026). A lista de faltantes sobe
+// para a TELA (o card e a linha do lote), e "Imobiliária" escrito numa CAD que por regra nunca terá uma
+// é a informação que o Lucas proibiu: *"nao quero ter a informacao que pode ter pessoa fisica como
+// imobiliaria"* (27/09/2026). O padrão continua "Imobiliária", então nenhuma CAD de imobiliária muda.
+export const ROTULO_DO_VINCULO_DO_C2X = "Imobiliária";
 export function diagnosticarCadastro(
   cadMeta: Record<string, unknown>,
   temImobiliaria: boolean,
   empresa?: EmpresaParaDiagnostico | null,
+  rotuloDoVinculo: string = ROTULO_DO_VINCULO_DO_C2X,
 ): string[] {
   const faltam: string[] = [];
-  if (!temImobiliaria) faltam.push("Imobiliária");
+  if (!temImobiliaria) faltam.push(rotuloDoVinculo);
   if (empresa) return [...faltam, ...faltantesDaEmpresa(empresa)];
   for (const o of OBRIGATORIOS) {
     if (!texto(cadMeta[o.campo])) faltam.push(o.rotulo);
@@ -2086,6 +2157,10 @@ export async function processarLoteC2x(input: {
     // legal). Sem isto ela cairia em "faltando Estado civil / Escolaridade / Renda...", campos
     // que não existem em ficha de empresa, e o silêncio de hoje só mudaria de lugar.
     const ehPj = ent.entity_kind === "pj";
+    // ⚠️ NA CAD DO AUTÔNOMO O RÓTULO DO VÍNCULO NÃO É "IMOBILIÁRIA" (28/09/2026). Esta lista aparece na
+    // tela; ver `diagnosticarCadastro`. `outros` abaixo filtra pelo MESMO rótulo, senão o que falta na
+    // ficha sairia repetido dentro da frase da recusa.
+    const rotuloDoVinculo = imob.autonomo ? "Vínculo do cliente no C2X" : ROTULO_DO_VINCULO_DO_C2X;
     const faltantes = diagnosticarCadastro(
       cadMeta,
       vinculedById != null,
@@ -2096,6 +2171,7 @@ export async function processarLoteC2x(input: {
             razaoSocial: ent.legal_name,
           }
         : null,
+      rotuloDoVinculo,
     );
 
     // Com `tentarTodas`, o nosso diagnóstico vira aviso: quem decide é a API do C2X. Sem ele, a
@@ -2108,7 +2184,7 @@ export async function processarLoteC2x(input: {
     // assim que as ~8 de 08/08 viraram "Cliente sem imobiliária vinculada" sem dizer qual.
     const semImobiliaria = vinculedById == null;
     if (faltantes.length > 0 && (!input.tentarTodas || semImobiliaria)) {
-      const outros = faltantes.filter((f) => f !== "Imobiliária");
+      const outros = faltantes.filter((f) => f !== rotuloDoVinculo);
       const daImobiliaria = semImobiliaria ? recusaPorImobiliaria(imob) : null;
       // A FRASE É CALCULADA SEMPRE, mesmo no ensaio — o que o ensaio não faz é GRAVAR.
       //

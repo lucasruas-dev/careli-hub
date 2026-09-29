@@ -83,10 +83,10 @@ describe("GET (o cron)", () => {
     expect(m.chamadas).toHaveLength(0);
   });
 
-  it("Bearer certo → roda gravando, sem mover vendas (MOVER_VENDAS nasce false), teto 20", async () => {
+  it("Bearer certo → roda gravando e movendo vendas (MOVER_VENDAS ligada em 29/09/2026), teto 20", async () => {
     const resposta = await GET(pedido("GET", { authorization: "Bearer segredo-do-cron" }));
     expect(resposta.status).toBe(200);
-    expect(m.chamadas[0]?.opcoes).toMatchObject({ concorrencia: 3, gravar: true, moverVendas: false, orcamentoMs: 240_000, tetoDeListas: 20 });
+    expect(m.chamadas[0]?.opcoes).toMatchObject({ concorrencia: 3, gravar: true, moverVendas: true, orcamentoMs: 240_000, tetoDeListas: 20 });
   });
 });
 

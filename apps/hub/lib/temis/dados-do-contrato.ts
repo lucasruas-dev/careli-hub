@@ -2128,9 +2128,45 @@ function gerais(
     vendeu.imobiliariaNome;
   const corretorNome = texto(proposta.corretor_nome) || vendeu.corretorNome;
   const vinculado = imobiliariaNome || corretorNome;
+  // ⚠️ A VENDA DO CORRETOR AUTÔNOMO NÃO TEM IMOBILIÁRIA, E `imobiliaria_nome` NÃO PODE CARREGAR O NOME
+  // DE UMA PESSOA FÍSICA (28/09/2026). Sem esta condição, `imobiliariaNome` cai no
+  // `vendeu.vinculado.razaoSocial` — que é o `legal_name` da ficha do próprio autônomo — e a variável
+  // cujo rótulo é "Nome da imobiliária" (lib/temis/variaveis.ts) passa a levar o nome dele. Lucas
+  // (27/09/2026): *"nao quero ter a informacao que pode ter pessoa fisica como imobiliaria"*.
+  //
+  // ⚠️ HOJE ISSO AINDA NÃO CHEGA AO PAPEL, E ESSA É A RAZÃO DE FECHAR AGORA. MEDIDO em produção
+  // (bxgukywoxgivlrhjkwjx, 28/09/2026, só SELECT): ZERO das 5 minutas publicadas usa
+  // `[imobiliaria_nome]` ou `[corretor_nome]`. É bomba de relógio, não incêndio: a PRIMEIRA minuta que
+  // usar a variável imprimiria o autônomo como imobiliária, e aí a violação está no papel assinado.
+  // Quem TAMBÉM lê `imobiliaria_nome` hoje é a tela de conferência da Têmis
+  // (lib/temis/analise-do-trabalho.ts), num campo rotulado "Imobiliária" — e 4.170 das 4.905 entidades
+  // `pf` da base têm `legal_name` preenchido, então o nome vazaria ali primeiro.
+  //
+  // ⚠️ `nome_vinculado` CONTINUA SAINDO CERTO: a família `vinculado` é neutra de propósito ("a
+  // imobiliária OU o corretor da venda") e a precedência devolve o mesmo nome.
+  const vendaTemImobiliaria = Boolean(
+    texto(proposta.imobiliaria_entity_id) ||
+      texto(proposta.imobiliaria_nome) ||
+      vendeu.imobiliariaNome,
+  );
   if (vinculado) {
     por("nome_vinculado", vinculado);
-    por("imobiliaria_nome", imobiliariaNome);
+    // ⚠️ AQUI A CHAVE ENTRA VAZIA DE PROPÓSITO, E `por` NÃO SERVE (revisão de 28/09/2026). `por` só
+    // grava o que tem valor (:1966-1968), e a nota de :1741 diz por quê: *"chave sem valor NÃO entra, o
+    // motor imprime `[nome]` e alguém vê"*. Numa venda de corretor autônomo é exatamente esse o efeito
+    // indesejado: `por("imobiliaria_nome", "")` APAGA a chave, `valorDaVariavel` devolve `null`
+    // (lib/temis/preencher-contrato.ts:1186-1193) e o motor escreve `[imobiliaria_nome]` no papel que
+    // vai para assinatura (:1074-1081), além de registrar o nome em `semValor`. Chave PRESENTE e vazia
+    // imprime nada, que é o que a venda sem imobiliária tem a dizer.
+    //
+    // ⚠️ HOJE NENHUMA MINUTA USA A VARIÁVEL, e é por isso que dá para fechar agora e não depois. MEDIDO
+    // em produção (bxgukywoxgivlrhjkwjx, 28/09/2026, só SELECT): das 5 minutas `publicada`, ZERO contêm
+    // `[imobiliaria_nome]` ou `[corretor_nome]` (`select nome, conteudo_html ilike '%[imobiliaria_nome]%'
+    // from temis_minutas where situacao = 'publicada'` → false nas cinco). A Nívea e o Northon são os
+    // únicos que editam minuta: no dia em que um deles puser a variável no texto, a venda do autônomo
+    // já sai em branco em vez de sair com o colchete escrito.
+    if (vendaTemImobiliaria) por("imobiliaria_nome", imobiliariaNome);
+    else g.imobiliaria_nome = "";
     por("corretor_nome", corretorNome);
   }
 

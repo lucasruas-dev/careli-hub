@@ -34,9 +34,14 @@ describe("conferirReserva", () => {
   it("⚠️ devolve TODOS os erros de uma vez, não o primeiro", () => {
     // Um formulário que reclama de um campo por vez faz a pessoa clicar quatro vezes para
     // descobrir quatro problemas.
+    // ⚠️ O CORRETOR TAMBÉM É ZERADO AQUI DESDE 28/09/2026. A régua passou a exigir UM DOS DOIS
+    // (Lucas: *"pode fazer, exige um dos dois"*), e com `corretorEntityId: "cor-1"` do PEDIDO base o
+    // vínculo estaria satisfeito — o erro `imobiliaria` não apareceria e este caso deixaria de
+    // provar que os quatro voltam juntos. Os dois ramos novos vivem em `reserva.um-dos-dois.test.ts`.
     const erros = conferirReserva(
       {
         ...PEDIDO,
+        corretorEntityId: null,
         imobiliariaEntityId: "",
         proponente: { cpf: "111", nome: "Ana", telefone: "999" },
       },
@@ -53,6 +58,11 @@ describe("conferirReserva", () => {
   it("a reserva pode sair só no nome da imobiliária", () => {
     // Lucas: *"o ideal é o corretor"* — ideal, não obrigatório.
     expect(conferirReserva({ ...PEDIDO, corretorEntityId: null }, AGORA)).toEqual([]);
+  });
+
+  it("a reserva pode sair só no nome do CORRETOR AUTÔNOMO", () => {
+    // Lucas (28/09/2026): *"pode fazer, exige um dos dois"*. Ver `reserva.um-dos-dois.test.ts`.
+    expect(conferirReserva({ ...PEDIDO, imobiliariaEntityId: null }, AGORA)).toEqual([]);
   });
 
   it("exige nome completo, não só o primeiro", () => {

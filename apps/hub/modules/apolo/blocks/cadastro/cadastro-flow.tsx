@@ -821,6 +821,62 @@ async function apiCorretoresDaImob(
   }
 }
 
+export type CorretorAutonomoOpcao = { codigo: string; entityId: string; nome: string };
+
+// OS CORRETORES AUTÔNOMOS (fatia 2, 28/09/2026): a outra porta do bloco Vínculo.
+//
+// ⚠️ ROTA PRÓPRIA, E NÃO `/api/apolo/imobiliarias`. Lucas (27/09/2026): *"nao quero ter a informacao
+// que pode ter pessoa fisica como imobiliaria, isso sera bem restrito"*. Juntar os dois numa lista só
+// faria o autônomo aparecer em toda tela que pede imobiliárias, porque aquela rota tem mais de um
+// consumidor. Duas portas, dois conjuntos. `[]` em erro, como os helpers vizinhos.
+async function apiCorretoresAutonomos(): Promise<CorretorAutonomoOpcao[]> {
+  try {
+    const token = await accessToken();
+    const response = await fetch("/api/apolo/corretores-autonomos", {
+      cache: "no-store",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    const json = (await response.json().catch(() => null)) as
+      | { data?: { corretores?: Array<{ codigo?: string; entityId?: string; nome?: string }> } }
+      | null;
+    return (json?.data?.corretores ?? [])
+      .filter((row) => row?.entityId && row?.nome)
+      .map((row) => ({
+        codigo: String(row.codigo ?? ""),
+        entityId: String(row.entityId),
+        nome: String(row.nome),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+// Empreendimentos em que UM corretor autônomo está HABILITADO (fatia 2). Espelho de
+// `apiEmpreendimentosDaImob`: alimenta o mesmo seletor "Empreendimento" do bloco Vínculo.
+//
+// ⚠️ A LISTA É A HABILITAÇÃO, e o servidor é que a separa do vínculo de CAD de um cliente (medido em
+// 28/09/2026: 169 dos 170 vínculos `empreendimento` em entidade `pf` são `publico-cad`, ou seja, marca
+// de produto de CAD, não autorização). Ver lib/apolo/habilitacao-do-autonomo.ts.
+async function apiEmpreendimentosDoAutonomo(
+  autonomoId: string,
+): Promise<Array<{ enterpriseId: string; nome: string }>> {
+  try {
+    const token = await accessToken();
+    const response = await fetch(`/api/apolo/corretores-autonomos/${autonomoId}/empreendimentos`, {
+      cache: "no-store",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    const json = (await response.json().catch(() => null)) as
+      | { data?: { empreendimentos?: Array<{ enterpriseId?: string; nome?: string }> } }
+      | null;
+    return (json?.data?.empreendimentos ?? [])
+      .filter((row) => row?.enterpriseId && row?.nome)
+      .map((row) => ({ enterpriseId: String(row.enterpriseId), nome: String(row.nome) }));
+  } catch {
+    return [];
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Adapter de I/O: interno (Bearer) x público (token de sessão do corretor).
 //
@@ -1342,6 +1398,20 @@ export function CadastroFlow({
     Array<{ entityId: string; nome: string; email: string | null }>
   >([]);
   const [corretorImobSel, setCorretorImobSel] = useState("");
+  // (fatia 2, 28/09/2026) O VÍNCULO DA CAD É UMA IMOBILIÁRIA **OU** UM CORRETOR AUTÔNOMO.
+  //
+  // ⚠️ POR QUE UM ESCOLHEDOR, E NÃO OS DOIS NO MESMO SELETOR. Lucas (27/09/2026): *"nao quero ter a
+  // informacao que pode ter pessoa fisica como imobiliaria, isso sera bem restrito"*. O seletor de
+  // imobiliária é alimentado por `/api/apolo/imobiliarias`, que sai de
+  // `apolo_entity_profiles.profile = 'imobiliaria'` e é lido por outras telas: pôr o autônomo lá o faria
+  // aparecer como imobiliária em todas elas. Aqui são dois campos, e o operador diz qual é o caso.
+  //
+  // ⚠️ E ELES SÃO EXCLUSIVOS, com a barra de verdade no servidor: `lib/apolo/cadastro-salvar.ts` recusa
+  // 400 quando o corpo traz os dois (uma CAD tem UM vínculo, e uma CAD do autônomo contada como CAD da
+  // imobiliária apareceria como venda dela no CRM e no relatório de 18h30).
+  const [tipoDeVinculo, setTipoDeVinculo] = useState<"autonomo" | "imobiliaria">("imobiliaria");
+  const [autonomos, setAutonomos] = useState<CorretorAutonomoOpcao[]>([]);
+  const [autonomoSel, setAutonomoSel] = useState("");
   // Etapas extras que o EMPREENDIMENTO liga no Setup (hoje: comprovante de renda). Parte de
   // "nenhuma": a tela só acrescenta etapa depois de o servidor confirmar que ela está ligada.
   const [exigencias, setExigencias] = useState<ExigenciasCad>(SEM_EXIGENCIAS);
@@ -1366,6 +1436,23 @@ export function CadastroFlow({
     };
   }, [api, isCorretor, modoPublico]);
 
+  // (fatia 2, 28/09/2026) Os CORRETORES AUTÔNOMOS da casa, para a outra porta do bloco Vínculo. Mesma
+  // condição do efeito de cima: no público o vínculo vem do token, e o cadastro DO corretor não tem
+  // bloco Vínculo nenhum. Lista vazia = o operador só vê a porta da imobiliária, que é o certo
+  // enquanto não houver nenhum autônomo cadastrado (medido em 28/09/2026: `select count(*) from
+  // apolo_entities where broker_code is not null;` → 0, a fatia 1 ainda não foi publicada).
+  useEffect(() => {
+    if (modoPublico || isCorretor || isImobiliaria) return;
+    let alive = true;
+    void (async () => {
+      const lista = await apiCorretoresAutonomos();
+      if (alive) setAutonomos(lista);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [isCorretor, isImobiliaria, modoPublico]);
+
   // Empreendimentos ativos pro vínculo de trabalho da imobiliária. Interno lê o C2X read-only;
   // na imobiliária PÚBLICA o adapter devolve a vitrine que veio do token/prop (sem rede). Só a
   // imobiliária usa isto — no CAD do corretor `isImobiliaria` é false e o efeito nem roda.
@@ -1389,11 +1476,21 @@ export function CadastroFlow({
   // trabalha e os corretores dela (rotas próprias). Só dispara quando `imobiliariaId` é uma
   // imobiliária de verdade (UUID) — o mesmo seletor casa corretores avulsos, cujo id não é UUID.
   // Trocar de imobiliária zera as seleções; 1 empreendimento já seleciona; 0 ou vários = operador.
+  //
+  // (fatia 2, 28/09/2026) ⚠️ O MESMO EFEITO SERVE AO CORRETOR AUTÔNOMO, e o seletor de empreendimento é
+  // o MESMO (`empImobLista`/`empImobSel`). É de propósito: tudo que vem depois no wizard depende de
+  // `empImobSel` (as exigências do empreendimento, a checagem de CPF por produto, o `vinculoProspect`).
+  // Um segundo par de estados para o autônomo seria a segunda régua que um dia discorda da primeira, e
+  // metade do wizard passaria a enxergar só o caminho da imobiliária.
+  //
+  // ⚠️ COM AUTÔNOMO NÃO HÁ SELETOR DE CORRETOR: ele É o corretor da venda. A lista fica vazia, e o
+  // `vinculoProspectOk` já trata lista vazia como "nada a escolher".
   useEffect(() => {
-    // Nem para o corretor autônomo: ele não tem imobiliária de onde tirar empreendimento e corretor.
+    // Nem para o cadastro DO corretor: ele não tem bloco Vínculo nenhum.
     if (isImobiliaria || isCorretor || modoPublico) return;
-    const imobId = perfil.imobiliariaId;
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(imobId);
+    const comAutonomo = tipoDeVinculo === "autonomo";
+    const vinculoId = comAutonomo ? autonomoSel : perfil.imobiliariaId;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(vinculoId);
     if (!isUuid) {
       setEmpImobLista([]);
       setEmpImobSel("");
@@ -1402,12 +1499,12 @@ export function CadastroFlow({
       return;
     }
     let alive = true;
-    // Zera a seleção de corretor de cara: a lista da imobiliária ANTERIOR não vale pra esta.
+    // Zera a seleção de corretor de cara: a lista do vínculo ANTERIOR não vale pra este.
     setCorretorImobSel("");
     void (async () => {
       const [emps, cors] = await Promise.all([
-        apiEmpreendimentosDaImob(imobId),
-        apiCorretoresDaImob(imobId),
+        comAutonomo ? apiEmpreendimentosDoAutonomo(vinculoId) : apiEmpreendimentosDaImob(vinculoId),
+        comAutonomo ? Promise.resolve([]) : apiCorretoresDaImob(vinculoId),
       ]);
       if (!alive) return;
       setEmpImobLista(emps);
@@ -1419,7 +1516,14 @@ export function CadastroFlow({
     return () => {
       alive = false;
     };
-  }, [isCorretor, isImobiliaria, modoPublico, perfil.imobiliariaId]);
+  }, [
+    autonomoSel,
+    isCorretor,
+    isImobiliaria,
+    modoPublico,
+    perfil.imobiliariaId,
+    tipoDeVinculo,
+  ]);
 
   // Etapas extras do EMPREENDIMENTO (hoje só o comprovante de renda). No público o empreendimento
   // vem do token e a leitura acontece uma vez; no interno ela reage à escolha do Vínculo, porque é
@@ -1520,6 +1624,9 @@ export function CadastroFlow({
     setEmpImobSel("");
     setCorretorImobLista([]);
     setCorretorImobSel("");
+    // (fatia 2) O escolhedor do vínculo volta à imobiliária, que é o caso comum.
+    setTipoDeVinculo("imobiliaria");
+    setAutonomoSel("");
     setResetKey((k) => k + 1);
   }
 
@@ -1527,15 +1634,26 @@ export function CadastroFlow({
   // salvar. Só existe quando um empreendimento foi resolvido (auto no caso de 1, ou escolhido).
   const empImobSelObj = empImobLista.find((e) => e.enterpriseId === empImobSel);
   const corretorImobSelObj = corretorImobLista.find((c) => c.entityId === corretorImobSel);
+  //
+  // (fatia 2, 28/09/2026) ⚠️ COM CORRETOR AUTÔNOMO, O VÍNCULO É ELE, e o `corretorEntityId`/`Nome` do
+  // caminho da imobiliária não viajam: o servidor resolve o nome pela ficha do id que ele mesmo
+  // conferiu (lib/apolo/cadastro-salvar.ts), nunca por este texto do browser.
+  const comAutonomoNoVinculo = tipoDeVinculo === "autonomo" && Boolean(autonomoSel);
   const vinculoProspect =
     formato.exigeVinculo && !modoPublico && empImobSel
-      ? {
-          corretorEmail: corretorImobSelObj?.email ?? undefined,
-          corretorEntityId: corretorImobSel || undefined,
-          corretorNome: corretorImobSelObj?.nome ?? undefined,
-          empreendimentoNome: empImobSelObj?.nome ?? undefined,
-          enterpriseId: empImobSel,
-        }
+      ? comAutonomoNoVinculo
+        ? {
+            corretorAutonomoEntityId: autonomoSel,
+            empreendimentoNome: empImobSelObj?.nome ?? undefined,
+            enterpriseId: empImobSel,
+          }
+        : {
+            corretorEmail: corretorImobSelObj?.email ?? undefined,
+            corretorEntityId: corretorImobSel || undefined,
+            corretorNome: corretorImobSelObj?.nome ?? undefined,
+            empreendimentoNome: empImobSelObj?.nome ?? undefined,
+            enterpriseId: empImobSel,
+          }
       : null;
 
   const activeIndex = Math.min(step, steps.length - 1);
@@ -1616,6 +1734,8 @@ export function CadastroFlow({
         <div key={resetKey} className="contents">
         {current === "Identificação" ? (
           <StepIdentificacao
+            autonomoSel={autonomoSel}
+            autonomos={autonomos}
             conjuge={conjuge}
             corretorImobLista={corretorImobLista}
             corretorImobSel={corretorImobSel}
@@ -1632,6 +1752,19 @@ export function CadastroFlow({
             isImobiliaria={isImobiliaria}
             perfil={perfil}
             persona={persona}
+            tipoDeVinculo={tipoDeVinculo}
+            onAutonomoChange={setAutonomoSel}
+            // Trocar a porta do vínculo zera a outra: o servidor recusa os dois juntos, e a tela não
+            // pode chegar num estado que ele recusa.
+            onTipoDeVinculoChange={(tipo) => {
+              setTipoDeVinculo(tipo);
+              setAutonomoSel("");
+              setPerfil((p) => ({ ...p, imobiliariaId: "", imobiliariaLabel: "" }));
+              setEmpImobLista([]);
+              setEmpImobSel("");
+              setCorretorImobLista([]);
+              setCorretorImobSel("");
+            }}
             onConjugeChange={(patch) => setConjuge((c) => ({ ...c, ...patch }))}
             onCorretorImobChange={setCorretorImobSel}
             onEmpImobChange={setEmpImobSel}
@@ -1812,6 +1945,10 @@ export function CadastroFlow({
         {current === "Revisão" ? (
           <StepRevisao
             exigeComprovanteRenda={exigeRenda}
+            // (fatia 2) O vínculo do autônomo, para a revisão mostrar QUEM é, e nunca uma
+            // "Imobiliária" vazia. Só vai quando a porta escolhida foi a do autônomo.
+            autonomoSel={tipoDeVinculo === "autonomo" ? autonomoSel : ""}
+            autonomos={autonomos}
             conjuge={temConjuge ? conjuge : null}
             // No portal a imobiliária também vem de fora do wizard (escolhida na TelaCrm).
             publico={publico ?? (portal ? { imobiliariaNome: portal.imobiliariaNome } : undefined)}
@@ -2249,6 +2386,8 @@ function NavButtons({
 }
 
 function StepIdentificacao({
+  autonomoSel,
+  autonomos,
   conjuge,
   corretorImobLista,
   corretorImobSel,
@@ -2263,6 +2402,7 @@ function StepIdentificacao({
   identidade,
   imobiliarias,
   isImobiliaria,
+  onAutonomoChange,
   onConjugeChange,
   onCorretorImobChange,
   onDocumento,
@@ -2276,9 +2416,14 @@ function StepIdentificacao({
   onNext,
   onPerfilChange,
   onPersona,
+  onTipoDeVinculoChange,
   perfil,
   persona,
+  tipoDeVinculo,
 }: {
+  // (fatia 2, 28/09/2026) A outra porta do bloco Vinculo: o corretor autonomo.
+  autonomoSel: string;
+  autonomos: CorretorAutonomoOpcao[];
   conjuge: Conjuge;
   corretorImobLista: Array<{ entityId: string; nome: string; email: string | null }>;
   corretorImobSel: string;
@@ -2305,11 +2450,14 @@ function StepIdentificacao({
   // Correção à mão do que a leitura não trouxe. Ver o comentário do bloco "Dados do documento".
   onIdentidadeChange: (patch: Partial<Identidade>) => void;
   onNext: () => void;
+  onAutonomoChange: (id: string) => void;
   onPerfilChange: (patch: Partial<Perfil>) => void;
   onPersona: (persona: Persona) => void;
+  onTipoDeVinculoChange: (tipo: "autonomo" | "imobiliaria") => void;
   perfil: Perfil;
   persona: Persona;
   publico?: { corretorNome?: string; imobiliariaNome?: string } | null;
+  tipoDeVinculo: "autonomo" | "imobiliaria";
 }) {
   // Adapter de leitura/enriquecimento + flag público (esconde o seletor de imobiliária e
   // dispensa `imobiliariaId`, que no público vem do token).
@@ -2507,6 +2655,7 @@ function StepIdentificacao({
         // mais travar por não achar a dele na lista. A padronização acontece depois, na validação.
         temProfissao(perfil.profissaoId, perfil.profissaoOutro) ? null : "profissão",
         ...faltaNoVinculo({
+          autonomoId: tipoDeVinculo === "autonomo" ? autonomoSel : "",
           formato,
           imobiliariaId: perfil.imobiliariaId,
           modoPublico,
@@ -2532,6 +2681,7 @@ function StepIdentificacao({
     : [
         empresa.documentoLido ? null : "o cartão CNPJ",
         ...faltaNoVinculo({
+          autonomoId: tipoDeVinculo === "autonomo" ? autonomoSel : "",
           formato,
           imobiliariaId: perfil.imobiliariaId,
           modoPublico,
@@ -2548,20 +2698,70 @@ function StepIdentificacao({
     <StepCard title="1. Identificação">
       {!formato.exigeVinculo || modoPublico ? null : (
         <Secao title="Vínculo">
-          <SearchableSelect
-            label="Imobiliária / corretor"
-            value={perfil.imobiliariaId}
-            options={imobiliarias}
-            placeholder="Buscar imobiliária ou corretor…"
-            onChange={(v) => onPerfilChange({ imobiliariaId: v })}
-          />
-          {/* Escolhida a imobiliária, vincula-se o empreendimento (que ela trabalha) e o corretor
-              dela. 0 empreendimentos = aviso; 1 = já resolvido (read-only); vários = seletor. */}
-          {perfil.imobiliariaId ? (
+          {/* (fatia 2, 28/09/2026) O ESCOLHEDOR DO VÍNCULO: imobiliária ou corretor autônomo.
+              Lucas (27/09/2026): *"nao quero ter a informacao que pode ter pessoa fisica como
+              imobiliaria, isso sera bem restrito"*. Por isso são DOIS campos, e não um seletor só com
+              os dois conjuntos dentro: a lista de imobiliárias é lida por outras telas.
+              ⚠️ SÓ APARECE QUANDO EXISTE AUTÔNOMO CADASTRADO. Sem nenhum, o operador vê a tela de
+              sempre, sem uma escolha a mais para não fazer diferença nenhuma. */}
+          {autonomos.length > 0 ? (
+            <div className="flex items-center gap-1 rounded-lg border border-line bg-subtle p-1 sm:col-span-2 lg:col-span-3">
+              {(
+                [
+                  { label: "Imobiliária", tipo: "imobiliaria" as const },
+                  { label: "Corretor autônomo", tipo: "autonomo" as const },
+                ]
+              ).map((opcao) => (
+                <button
+                  key={opcao.tipo}
+                  type="button"
+                  aria-pressed={tipoDeVinculo === opcao.tipo}
+                  onClick={() => onTipoDeVinculoChange(opcao.tipo)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                    tipoDeVinculo === opcao.tipo
+                      ? "bg-surface text-ink shadow-[0_1px_2px_rgba(15,23,42,0.08)]"
+                      : "text-ink-muted hover:text-ink"
+                  }`}
+                >
+                  {opcao.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {tipoDeVinculo === "autonomo" ? (
+            <SearchableSelect
+              label="Corretor autônomo"
+              value={autonomoSel}
+              options={autonomos.map((a) => ({
+                id: a.entityId,
+                // O CÓDIGO no rótulo: é o que identifica o autônomo (Lucas, 27/09/2026: *"assim
+                // saberemos que ele e autonomo"*, e *"somente no CRM"*). Dois homônimos sem o código
+                // seriam indistinguíveis na lista.
+                label: a.codigo ? `${a.nome} · ${a.codigo}` : a.nome,
+              }))}
+              placeholder="Buscar corretor autônomo…"
+              onChange={onAutonomoChange}
+            />
+          ) : (
+            <SearchableSelect
+              label="Imobiliária / corretor"
+              value={perfil.imobiliariaId}
+              options={imobiliarias}
+              placeholder="Buscar imobiliária ou corretor…"
+              onChange={(v) => onPerfilChange({ imobiliariaId: v })}
+            />
+          )}
+          {/* Escolhido o vínculo, vincula-se o empreendimento (que ele trabalha) e, só no caminho da
+              imobiliária, o corretor dela. 0 empreendimentos = aviso; 1 = já resolvido (read-only);
+              vários = seletor.
+              ⚠️ COM AUTÔNOMO NÃO HÁ SELETOR DE CORRETOR: ele É o corretor da venda. */}
+          {(tipoDeVinculo === "autonomo" ? autonomoSel : perfil.imobiliariaId) ? (
             <>
               {empImobLista.length === 0 ? (
                 <p className="m-0 rounded-lg border border-line bg-subtle px-3 py-2 text-xs text-ink-muted sm:col-span-2 lg:col-span-1">
-                  Esta imobiliária não tem empreendimento habilitado.
+                  {tipoDeVinculo === "autonomo"
+                    ? "Este corretor autônomo não está habilitado em nenhum empreendimento. Peça a habilitação à coordenação do produto."
+                    : "Esta imobiliária não tem empreendimento habilitado."}
                 </p>
               ) : empImobLista.length === 1 ? (
                 <ReadField
@@ -2577,13 +2777,15 @@ function StepIdentificacao({
                   onChange={onEmpImobChange}
                 />
               )}
-              <SearchableSelect
-                label="Corretor"
-                value={corretorImobSel}
-                options={corretorImobLista.map((c) => ({ id: c.entityId, label: c.nome }))}
-                placeholder="Buscar corretor…"
-                onChange={onCorretorImobChange}
-              />
+              {tipoDeVinculo === "autonomo" ? null : (
+                <SearchableSelect
+                  label="Corretor"
+                  value={corretorImobSel}
+                  options={corretorImobLista.map((c) => ({ id: c.entityId, label: c.nome }))}
+                  placeholder="Buscar corretor…"
+                  onChange={onCorretorImobChange}
+                />
+              )}
             </>
           ) : null}
         </Secao>
@@ -4010,6 +4212,8 @@ function StepRenda({
 }
 
 function StepRevisao({
+  autonomoSel,
+  autonomos,
   conjuge,
   corretores,
   documentos,
@@ -4034,6 +4238,10 @@ function StepRevisao({
   tipo,
   vinculo,
 }: {
+  // (fatia 2, 28/09/2026) O VÍNCULO DA CAD QUANDO ELE É O CORRETOR AUTÔNOMO. Vazio = a CAD é de
+  // imobiliária (ou não tem bloco de vínculo), e a revisão continua idêntica ao que era.
+  autonomoSel?: string;
+  autonomos?: CorretorAutonomoOpcao[];
   conjuge: Conjuge | null;
   corretores: CorretorCadastro[];
   documentos: DocumentosAnexados;
@@ -4074,6 +4282,15 @@ function StepRevisao({
   const { api, modoPublico, portal } = useCadastroCtx();
   const label = (options: SelectOption[], id: string) =>
     options.find((o) => o.id.toString() === id)?.label ?? "";
+
+  // ⚠️ O AUTÔNOMO DESTA CAD, RESOLVIDO PELO ID (fatia 2, 28/09/2026). Com nome E código, porque é o
+  // código que identifica (Lucas, 27/09/2026: *"assim saberemos que ele e autonomo"*) e dois homônimos
+  // na lista se distinguem só por ele. Id escolhido mas fora da lista (a lista recarregou) não inventa
+  // linha nenhuma: cai no `null` e a revisão não afirma um vínculo que não sabe qual é.
+  const autonomoDaRevisao =
+    (autonomoSel ?? "") && (autonomos ?? []).length > 0
+      ? ((autonomos ?? []).find((a) => a.entityId === autonomoSel) ?? null)
+      : null;
 
   // Empreendimentos vinculados (só imobiliária): resolve os ids selecionados pros rótulos.
   const empreendimentosLabels = empreendimentosSel
@@ -4677,12 +4894,24 @@ function StepRevisao({
 
           {/* ⚠️ O CORRETOR AUTÔNOMO NÃO TEM LINHA DE IMOBILIÁRIA, NEM VAZIA (27/09/2026). Um campo
               "Imobiliária" em branco na revisão dele já é a informação que o Lucas não quer na casa:
-              *"NAO QUERO TER A INFORMACAO QUE PODE TER PESSOA FISICA COMO IMOBILIARIA"*. */}
+              *"NAO QUERO TER A INFORMACAO QUE PODE TER PESSOA FISICA COMO IMOBILIARIA"*.
+              ⚠️ E ISSO VALE NOS DOIS CASOS (revisão de 28/09/2026). O comentário acima só era verdade
+              para o cadastro DO corretor (`exigeVinculo` false, sem a seção). Na CAD do CLIENTE do
+              autônomo, que é o assunto da fatia 2, `exigeVinculo` é true e `perfil.imobiliariaId` foi
+              zerado de propósito (o `onTipoDeVinculoChange` na tela e lib/apolo/cadastro-salvar.ts no
+              servidor): a linha aparecia, e aparecia VAZIA. Pior, o último ponto de conferência antes de
+              uma gravação irreversível (cria entidade, grava a esteira, gera e autentica o PDF) não dizia
+              QUAL autônomo é o vínculo, e dois homônimos na lista se distinguem só pelo código. */}
           <Secao title={formato.exigeVinculo ? "Contato e vínculo" : "Contato"}>
             <ReadField label="Telefone" value={perfil.telefone} />
             <ReadField label="E-mail" value={perfil.email} span2 />
             {/* No público o rótulo vem do token (o portão repassa); no interno, da lista. */}
-            {formato.exigeVinculo ? (
+            {formato.exigeVinculo && autonomoDaRevisao ? (
+              <ReadField
+                label="Corretor autônomo"
+                value={`${autonomoDaRevisao.nome} · ${autonomoDaRevisao.codigo}`}
+              />
+            ) : formato.exigeVinculo ? (
               <ReadField
                 label="Imobiliária"
                 value={publico?.imobiliariaNome || label(imobiliarias, perfil.imobiliariaId)}

@@ -1294,13 +1294,19 @@ export async function POST(request: Request) {
       // que circula por WhatsApp. `destinatariosDaVenda` é leitura pura (não dispara nada) e é ela
       // que o `guardarOPdf` usa; sem imobiliária na reserva, o rodapé sai sem a linha, que é o
       // mesmo que aconteceria lá.
-      const paraORodape = reserva.imobiliaria_entity_id
-        ? await destinatariosDaVenda(admin, {
-            corretorId: reserva.corretor_entity_id,
-            empreendimento: { c2xId, nome: empreendimento.nome },
-            imobiliariaId: reserva.imobiliaria_entity_id,
-          }).catch(() => null)
-        : null;
+      // ⚠️ A CONDIÇÃO É "HÁ UM DOS DOIS", E NÃO "HÁ IMOBILIÁRIA" (28/09/2026). Com a guarda antiga, a
+      // prévia da venda do corretor autônomo saia SEM O NOME DO COORDENADOR — e o coordenador não
+      // depende da imobiliaria para ser achado: `coordenadoresDosPedidos` e `coordenadoresDoPanteon`
+      // buscam pelo id do EMPREENDIMENTO. O papel dizia "Atendimento" sem coordenação num produto que
+      // tem coordenador cadastrado.
+      const paraORodape =
+        reserva.imobiliaria_entity_id || reserva.corretor_entity_id
+          ? await destinatariosDaVenda(admin, {
+              corretorId: reserva.corretor_entity_id,
+              empreendimento: { c2xId, nome: empreendimento.nome },
+              imobiliariaId: reserva.imobiliaria_entity_id,
+            }).catch(() => null)
+          : null;
 
       const bytes = await bytesDoPdfDaProposta(
         admin,
@@ -1309,8 +1315,12 @@ export async function POST(request: Request) {
           atendimento: {
             coordenador: paraORodape?.coordenadores[0]?.nome ?? null,
             corretor: paraORodape?.corretor?.nome ?? nomeDoCorretor,
-            imobiliaria: paraORodape?.imobiliaria.nome ?? nomeDaImobiliaria,
-            telefone: paraORodape?.imobiliaria.telefone ?? null,
+            imobiliaria: paraORodape?.imobiliaria?.nome ?? nomeDaImobiliaria,
+            // ⚠️ SEM IMOBILIÁRIA, O TELEFONE É O DO CORRETOR (28/09/2026). Ver a mesma linha no PDF
+            // definitivo, dentro de `avisar`: a prévia é o papel que o coordenador confere ANTES de
+            // gerar, e sem esta queda a falta não apareceria como falta, apareceria como se o documento
+            // fosse assim.
+            telefone: paraORodape?.imobiliaria?.telefone ?? paraORodape?.corretor?.telefone ?? null,
           },
           // A prévia é o papel que o coordenador confere ANTES de gerar: sem os bens aqui, ele
           // aprovaria um documento diferente do que o cliente vai receber.
@@ -1922,14 +1932,16 @@ async function avisar(
     unidadeEscrita: string;
   },
 ): Promise<ResultadoDoAviso[]> {
-  // Sem imobiliária não há para quem mandar pelo caminho do Relacionamento (o `entity_id` do
-  // registro do disparo é o dela, inclusive o do coordenador). A proposta continua gravada.
-  if (!dados.imobiliariaId) {
-    return [
-      { motivo: "reserva sem imobiliária", ok: false, para: "imobiliaria" },
-    ];
-  }
-
+  // ⚠️ A GUARDA DE "NÃO HÁ QUEM AVISAR" DESCEU PARA DEPOIS DO PDF (28/09/2026), E ERA ELA O DEFEITO
+  // MAIOR DA VENDA SEM IMOBILIÁRIA. Até esta data o `if (!dados.imobiliariaId) return` ficava AQUI, no
+  // topo, 16 linhas ANTES do `guardarOPdf` — e é dentro dele que mora o upload para `apolo-documents`
+  // E o insert em `hercules_documentos`, que é a linha que torna o papel ACHÁVEL na aba Documentos.
+  // Resultado: a proposta gravava, a unidade andava, e o PAPEL DA VENDA NÃO EXISTIA — nenhum byte no
+  // bucket, nenhuma linha na aba, nenhum WhatsApp — e a tela ainda escrevia "falhou para imobiliária",
+  // mandando o coordenador procurar um telefone que não existe nesta venda.
+  //
+  // ⚠️ SÃO DUAS RESPONSABILIDADES COM PRÉ-REQUISITOS DIFERENTES: o PDF não depende de destinatário
+  // nenhum e roda SEMPRE; só o disparo depende de haver uma ficha onde pendurar o registro.
   try {
     const destinatarios = await destinatariosDaVenda(admin, {
       corretorId: dados.corretorId,
@@ -1953,8 +1965,16 @@ async function avisar(
       atendimento: {
         coordenador: destinatarios.coordenadores[0]?.nome ?? null,
         corretor: destinatarios.corretor?.nome ?? null,
-        imobiliaria: destinatarios.imobiliaria.nome,
-        telefone: destinatarios.imobiliaria.telefone,
+        // ⚠️ O RODAPÉ DO PDF NÃO ROTULA A IMOBILIÁRIA (`proposta-pdf.ts` junta corretor, imobiliaria e
+        // telefone com " · "), então o nome do autônomo sai em `corretor` e a linha dela simplesmente
+        // não existe — o papel nunca o chama de imobiliaria.
+        imobiliaria: destinatarios.imobiliaria?.nome ?? null,
+        // ⚠️ SEM IMOBILIÁRIA, O TELEFONE É O DO CORRETOR (revisão de 28/09/2026). O rodapé é
+        // `Atendimento: <corretor> · <imobiliaria> · <telefone>` (lib/hercules/proposta-pdf.ts:965-973)
+        // e o telefone sempre foi o da imobiliária: na venda do autônomo saía o nome dele e NENHUM
+        // número, e essa é a única linha do documento que diz ao cliente para quem ligar. O número está
+        // à mão no mesmo objeto, e é por ele que o WhatsApp da proposta acabou de sair.
+        telefone: destinatarios.imobiliaria?.telefone ?? destinatarios.corretor?.telefone ?? null,
       },
       bensEPermutas: dados.bensEPermutas,
       clienteDocumentoHash: dados.clienteDocumentoHash,
@@ -1975,6 +1995,25 @@ async function avisar(
       valorNegociado: dados.pedido.valorNegociado,
       plano: dados.plano,
     });
+
+    // ⚠️ SEM NENHUMA DAS DUAS FICHAS NÃO HÁ ONDE PENDURAR O REGISTRO DO DISPARO, e o papel já está
+    // guardado acima. É o caso das 4.924 propostas importadas do C2X (MEDIDO em produção,
+    // bxgukywoxgivlrhjkwjx, 28/09/2026: `select count(*) filter (where imobiliaria_entity_id is null
+    // and corretor_entity_id is null) from hercules_propostas;` → 4.924 de 4.946): `apolo_disparos
+    // .entity_id` é `uuid NOT NULL`, e inventar uma ficha seria pendurar o histórico na pessoa errada.
+    //
+    // ⚠️ A VENDA DO CORRETOR AUTÔNOMO NÃO CAI AQUI: ela tem a ficha DELE, e por isso avisa.
+    if (!dados.imobiliariaId && !dados.corretorId) {
+      const semQuemAvisar = [
+        { motivo: "venda sem imobiliária e sem corretor", ok: false, para: "imobiliaria" },
+      ];
+      return anexo
+        ? semQuemAvisar
+        : [
+            ...semQuemAvisar,
+            { motivo: "não foi possível gerar o PDF", ok: false, para: "documento" },
+          ];
+    }
 
     // ⚠️ PORTAL QUE OPERA SOZINHO: o papel ficou guardado acima, e aqui para. Nenhum texto é montado
     // e nenhum WhatsApp sai; cada destinatário ganha a linha "não enviado por decisão".
@@ -2006,7 +2045,7 @@ async function avisar(
       // montada à mão. Sai do cronograma, que é a série de verdade.
       entradaPrimeira: dados.cronograma.entrada[0]?.valor ?? null,
       entradaVezes: dados.cronograma.entrada.length,
-      imobiliaria: destinatarios.imobiliaria.nome,
+      imobiliaria: destinatarios.imobiliaria?.nome ?? null,
       parcela: primeiraMensal?.valor ?? 0,
       parcelaFixa,
       parcelas: dados.cronograma.mensais.length,
@@ -2800,10 +2839,15 @@ export async function PATCH(request: Request) {
       "cliente";
     const codigo = proposta.codigo || codigoDaVenda(proposta.protocolo_numero);
 
-    // Proposta sem imobiliária não tem para quem avisar: o registro do disparo pendura na ficha
-    // dela, inclusive o do coordenador. É a mesma regra do cancelamento da reserva.
+    // ⚠️ A GUARDA É "HÁ UM DOS DOIS" DESDE 28/09/2026. Com `if (imobiliariaId)` sozinho, o
+    // cancelamento da proposta do corretor autônomo não avisava NEM ele NEM o coordenador, e a tela
+    // escrevia "O aviso não chegou a ser enviado" — o corretor descobriria pelo mapa que a venda do
+    // cliente dele caiu. O que a guarda protege continua: sem NENHUMA das duas fichas não há onde
+    // pendurar o registro do disparo (`apolo_disparos.entity_id` é uuid NOT NULL, medido), e é o caso
+    // das 4.924 importadas do C2X.
     let avisos: ResultadoDoAviso[] = [];
     const imobiliariaId = proposta.imobiliaria_entity_id;
+    const temQuemAvisar = Boolean(imobiliariaId || proposta.corretor_entity_id);
     // ⚠️ NA RETOMADA, SÓ AVISA QUEM AINDA NÃO FOI AVISADO. A reserva ligada viva é a prova de que a
     // primeira tentativa parou no 503 da reserva, ANTES dos avisos. Sem ela a primeira passou da
     // soltura e já avisou: avisar de novo mandaria o segundo WhatsApp de cancelamento.
@@ -2816,14 +2860,14 @@ export async function PATCH(request: Request) {
     // carimbo lido é o `agora` que esta requisição acabou de gravar; na retomada, o que veio do
     // banco. Quem perde não avisa, e diz que os avisos saíram na outra tentativa.
     const vez =
-      imobiliariaId && !jaAvisou
+      temQuemAvisar && !jaAvisou
         ? await tomarAVezDeAvisar(admin, {
             atualizadoEm: retomada ? proposta.atualizado_em : agora,
             id: proposta.id,
           })
         : "minha";
     if (vez === "outra_tentativa") avisosJaSairam = true;
-    if (imobiliariaId && !jaAvisou && vez === "minha") {
+    if (temQuemAvisar && !jaAvisou && vez === "minha") {
       const destinatarios = await destinatariosDaVenda(admin, {
         corretorId: proposta.corretor_entity_id,
         empreendimento: {
@@ -2844,7 +2888,7 @@ export async function PATCH(request: Request) {
               codigo,
               corretor: destinatarios.corretor?.nome ?? null,
               empreendimento: nomeDoEmpreendimento,
-              imobiliaria: destinatarios.imobiliaria.nome,
+              imobiliaria: destinatarios.imobiliaria?.nome ?? null,
               motivo,
               unidade: nomeDaUnidade(unidade),
             }),

@@ -3780,6 +3780,48 @@ async function startApoloSyncRun(adminClient: ApoloSupabaseClient): Promise<Sync
 // Exportada para o teste (`sync-c2x-identidade.test.ts`): é aqui que as DUAS rotas de sync
 // (`/api/apolo/sync/c2x` e `.../incremental`) gravam, então é aqui que se prova que o cadastro
 // mantido no Apolo sobrevive à rodada do cron.
+/** O que a correção humana pode ter mudado numa ficha que o sync vai varrer de novo. */
+type FichaGravada = {
+  display_name: null | string;
+  document_hash: null | string;
+  document_masked: null | string;
+  entity_kind: null | string;
+  legal_name: null | string;
+  trade_name: null | string;
+};
+
+/**
+ * As fichas do lote que JÁ EXISTEM, com as colunas de identidade que o Apolo é dono de manter.
+ *
+ * ⚠️ FATIADO EM 100 IDS. Um lote do sync tem 400 fichas e cada uuid ocupa ~39 bytes na querystring
+ * do `.in()`: a lista inteira passa do teto de URL do PostgREST e a leitura volta vazia (ou 414),
+ * que aqui significaria "ninguém corrigiu nada" — exatamente o contrário do que se quer provar.
+ * Falha de leitura NÃO é tratada como mapa vazio: ela sobe, porque gravar às cegas é o dano.
+ */
+async function lerFichasGravadas(
+  adminClient: ApoloSupabaseClient,
+  ids: string[],
+): Promise<Map<string, FichaGravada>> {
+  const mapa = new Map<string, FichaGravada>();
+
+  for (let index = 0; index < ids.length; index += 100) {
+    const { data, error } = await adminClient
+      .from("apolo_entities")
+      .select("id, display_name, document_hash, document_masked, entity_kind, legal_name, trade_name")
+      .in("id", ids.slice(index, index + 100));
+
+    if (error) {
+      throw error;
+    }
+
+    for (const linha of (data ?? []) as (FichaGravada & { id: string })[]) {
+      mapa.set(linha.id, linha);
+    }
+  }
+
+  return mapa;
+}
+
 export async function persistApoloEntityBatch(
   adminClient: ApoloSupabaseClient,
   rawUsers: C2xUserRow[],
@@ -3879,7 +3921,52 @@ export async function persistApoloEntityBatch(
     status: "active",
     updated_at: syncedAt,
   }));
-  const searchRows = users.map((user) => buildSearchRow(user, syncedAt));
+  // ⚠️ O QUE A CORREÇÃO HUMANA JÁ MUDOU NESTAS FICHAS, LIDO ANTES DE ESCREVER (29/09/2026).
+  //
+  // Por que passou a ser obrigatório: em 28/09/2026 a recusa de ficha espelho saiu de
+  // `lib/apolo/identidade-persist.ts` (decisão do Lucas: *"TUDO PRECISA MORAR DENTRO DO PANTEON, não
+  // tem mais cadastro vindo do c2x"*), então as 4.789 fichas espelho passaram a receber correção de
+  // identidade — e duas escritas desta função desfaziam esse trabalho:
+  //
+  //   • O DOCUMENTO. `ignorarDuplicados` (ON CONFLICT DO NOTHING) protege a linha QUE AINDA EXISTE.
+  //     A correção de documento APAGA a linha antiga de `apolo_entity_identifiers` e insere a nova
+  //     (passo 6 de identidade-persist), então a tupla (entity_id, cpf, hash VELHO) não existe mais,
+  //     não conflita com nada e era REINSERIDA na rodada seguinte, com `is_primary = true`. A ficha
+  //     ficava com DOIS documentos primários e o errado voltava a ser caminho de busca e de dedup
+  //     (`checar-cpf` público, o dedup do cadastro e do Asana, a busca da Iris/CACÁ por documento) —
+  //     o incidente "fichas com a pessoa errada" de novo, e o dono legítimo daquele CPF levando 409.
+  //
+  //   • O NOME NO ÍNDICE DE BUSCA. `apolo_search_entries` continua em upsert de verdade de propósito
+  //     (a razão está no bloco logo abaixo: metade do `normalized_text` é carteira), e
+  //     `buildSearchRow` reimprimia `display_name` e `document_masked` do LEGADO por cima do nome
+  //     corrigido. MEDIDO EM 29/09/2026 (só SELECT): 6 fichas espelho com nome certo em
+  //     `apolo_entities` e nome do legado em `apolo_search_entries`, re-estampadas naquele dia entre
+  //     09:20 e 10:55 — uma delas com o nome de OUTRA PESSOA. É o campo em que o Apolo, a rota da
+  //     Iris e a CACÁ fazem ilike, ou seja, a tela mostrava o nome certo e o atendimento chamava a
+  //     empresa pelo nome errado para sempre.
+  //
+  // A leitura é UMA por lote (400 fichas), fatiada em 100 ids por causa do teto de URL do `.in()`.
+  const fichasGravadas = await lerFichasGravadas(
+    adminClient,
+    entityRows.map((linha) => linha.id),
+  );
+
+  // O documento do legado não volta para a ficha cujo documento foi corrigido no Apolo: quando
+  // `apolo_entities.document_hash` existe e é DIFERENTE do hash que o legado traz, quem manda é o
+  // Apolo. Os outros identificadores (legacy_id, e-mail, telefone) seguem entrando normalmente.
+  const identifierRowsParaGravar = identifierRows.filter((linha) => {
+    if (linha.identifier_type !== "cnpj" && linha.identifier_type !== "cpf") return true;
+    const gravada = fichasGravadas.get(linha.entity_id);
+    return !gravada?.document_hash || gravada.document_hash === linha.value_hash;
+  });
+
+  const searchRows = users.map((user) =>
+    buildSearchRow(
+      user,
+      syncedAt,
+      fichasGravadas.get(deterministicUuid(`apolo:c2x:users:${user.id}`)),
+    ),
+  );
 
   // ⚠️ CADASTRO: O APOLO É O DONO — O C2X SÓ SEMEIA.
   //
@@ -3926,7 +4013,7 @@ export async function persistApoloEntityBatch(
     ignorarDuplicados: true,
     onConflict: "source_system,source_table,source_id",
   });
-  await upsertApoloRows(adminClient, "apolo_entity_identifiers", identifierRows, {
+  await upsertApoloRows(adminClient, "apolo_entity_identifiers", identifierRowsParaGravar, {
     ignorarDuplicados: true,
     onConflict: "entity_id,identifier_type,value_hash",
   });
@@ -3983,8 +4070,20 @@ export async function persistApoloEntityBatch(
   // regravada com e-mail, telefone e imobiliária, que o texto do C2X não traz. Perdem-se ESSES
   // TERMOS EXTRAS e nada mais — a ficha continua achável por nome, CPF, cidade e carteira, e o
   // cadastro em si mora em `apolo_entities.metadata.cadastro`, protegido lá em cima. Era o
-  // comportamento de sempre até hoje de manhã. `identidade-persist.ts` não entra nessa conta:
-  // ele RECUSA ficha espelho do C2X (checa `apolo_source_links`) antes de escrever.
+  // comportamento de sempre até hoje de manhã.
+  //
+  // ⚠️ `identidade-persist.ts` ENTRA NESSA CONTA DESDE 28/09/2026, E A FRASE QUE ESTAVA AQUI ERA
+  // FALSA. Ela dizia "ele RECUSA ficha espelho do C2X (checa `apolo_source_links`) antes de
+  // escrever" — a recusa saiu naquele dia (decisão do Lucas de 04/08/2026 sobre ON CONFLICT DO
+  // NOTHING; ver o cabeçalho de `identidade-persist.ts`), então a correção de identidade agora
+  // alcança as 4.789 fichas espelho. O que isso muda aqui, e é o que fecha a conta:
+  //   • a IDENTIDADE do índice (`display_name`, `document_masked`, `legal_name`, `trade_name`) não é
+  //     mais reimpressa do legado: `buildSearchRow` recebe a ficha GRAVADA e ela vence;
+  //   • os TERMOS EXTRAS (carteira, e-mail, telefone, imobiliária) não são mais perdidos pela
+  //     correção de identidade: o passo 7 de `identidade-persist.ts` costura o nome novo em cima do
+  //     `normalized_text` existente em vez de montá-lo do zero.
+  // Sobra a perda de termos extras do MODO ANEXO do `cadastro-persist.ts`, que é o parágrafo acima e
+  // segue sendo o comportamento de sempre.
   await upsertApoloRows(adminClient, "apolo_search_entries", searchRows, {
     onConflict: "entity_id",
   });
@@ -4392,15 +4491,30 @@ function buildAuditRows(user: C2xUserRow, syncedAt: string) {
   }));
 }
 
-function buildSearchRow(user: C2xUserRow, syncedAt: string) {
+/**
+ * A linha do índice de busca da ficha.
+ *
+ * ⚠️ `gravada` É A FICHA QUE JÁ ESTÁ NO BANCO, E ELA VENCE NA IDENTIDADE (29/09/2026). Sem isso o
+ * upsert desta tabela reimprimia `display_name`, `document_masked`, `legal_name` e `trade_name` do
+ * LEGADO por cima da correção humana a cada 6 horas — e é por este texto que o Apolo, a rota da Iris
+ * e a CACÁ fazem ilike. A CARTEIRA (empreendimento, bloco/lote, unidade, solicitação, adimplência)
+ * continua vindo toda do C2X: é dele, e é a razão de a tabela seguir em upsert de verdade.
+ */
+function buildSearchRow(user: C2xUserRow, syncedAt: string, gravada?: FichaGravada) {
   const profiles = mapC2xProfiles(user.profile_id, user.person_type_id);
   const profileLabels = profiles.map((profile) => apoloProfileLabels[profile]);
   const document = user.cpf ?? user.cnpj ?? null;
-  const documentDisplay = formatDocumentForDisplay(document);
-  const entityKind = deriveC2xEntityKind(user);
+  const documentoDoLegado = formatDocumentForDisplay(document);
+  // O documento gravado só vence quando é documento de verdade: a ficha em revisão guarda a FRASE
+  // "Documento em revisao" (formatDocumentForDisplay), e ela não é melhor que a do legado.
+  const documentDisplay = onlyDigits(gravada?.document_masked).length >= 11
+    ? (gravada?.document_masked as string)
+    : documentoDoLegado;
+  const entityKind = gravada?.entity_kind ?? deriveC2xEntityKind(user);
   const relationships = buildC2xRelationships(user);
   const status = deriveC2xEntityStatus(user, documentDisplay, relationships);
-  const displayName = user.display_name?.trim() || `Cadastro ${user.id}`;
+  const displayName =
+    gravada?.display_name?.trim() || user.display_name?.trim() || `Cadastro ${user.id}`;
   const location = normalizeLocationLabel(user.location_label);
   const buyerSearchLabel = toNumber(user.payment_count) > 0
     ? toNumber(user.overdue_installments) > 0
@@ -4421,8 +4535,13 @@ function buildSearchRow(user: C2xUserRow, syncedAt: string) {
     normalized_text: normalizeSearchText(
       [
         displayName,
-        legalNameFromC2x(user),
-        tradeNameFromC2x(user),
+        // ⚠️ SEM CAIR NO `display_name` DO LEGADO. `legalNameFromC2x` e `tradeNameFromC2x` terminam
+        // em `row.display_name`, então usá-los numa ficha que já existe devolvia o nome VELHO ao
+        // índice pela porta de trás, mesmo com `display_name` já vindo da ficha. Na ficha existente as
+        // colunas gravadas são a fonte: é o que o sync escreveu ao criar (e DO NOTHING preservou) ou o
+        // que a correção humana pôs no lugar. `atualizarIdentidade` zera `trade_name` em PF.
+        gravada ? gravada.legal_name : legalNameFromC2x(user),
+        gravada ? gravada.trade_name : tradeNameFromC2x(user),
         documentDisplay,
         location,
         buyerSearchLabel,

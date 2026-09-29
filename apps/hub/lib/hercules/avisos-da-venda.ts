@@ -68,7 +68,16 @@ export type DestinatariosDaVenda = {
    */
   coordenadores: PessoaDoAviso[];
   corretor: null | PessoaDoAviso;
-  imobiliaria: PessoaDoAviso;
+  /**
+   * A imobiliaria da venda, ou NULO quando ela nao existe (28/09/2026).
+   *
+   * ⚠️ ERA NAO-NULAVEL, E ISSO FAZIA A PECA MENTIR. Com o id vazio, `nomePorId.get("")` voltava
+   * undefined e o objeto saia com o nome LITERAL "Imobiliaria" e telefone nulo: um nome fabricado
+   * circulava como se fosse dado, ia impresso na mensagem do coordenador e virava, na tela, a frase
+   * falsa "imobiliaria nao tem telefone cadastrado". Lucas (27/09/2026): *"nao quero ter a informacao
+   * que pode ter pessoa fisica como imobiliaria"* — e um nome inventado e pior que um nulo.
+   */
+  imobiliaria: null | PessoaDoAviso;
 };
 
 /**
@@ -90,7 +99,8 @@ export async function destinatariosDaVenda(
   dados: {
     corretorId: null | string;
     empreendimento: { c2xId: string; nome: string };
-    imobiliariaId: string;
+    /** Nulo na venda do corretor autonomo. Ver `DestinatariosDaVenda.imobiliaria`. */
+    imobiliariaId: null | string;
   },
 ): Promise<DestinatariosDaVenda> {
   const ids = [dados.imobiliariaId, dados.corretorId].filter(Boolean) as string[];
@@ -153,10 +163,12 @@ export async function destinatariosDaVenda(
             telefone: telefonePorId.get(dados.corretorId) ?? null,
           }
         : null,
-      imobiliaria: {
-        nome: nomePorId.get(dados.imobiliariaId) ?? "Imobiliária",
-        telefone: telefonePorId.get(dados.imobiliariaId) ?? null,
-      },
+      imobiliaria: dados.imobiliariaId
+        ? {
+            nome: nomePorId.get(dados.imobiliariaId) ?? "Imobiliária",
+            telefone: telefonePorId.get(dados.imobiliariaId) ?? null,
+          }
+        : null,
     };
   } catch (erro) {
     console.error("[hercules][avisos] falha ao resolver destinatários", erro);
@@ -164,7 +176,7 @@ export async function destinatariosDaVenda(
       coordenadorAusente: MOTIVO_FALHA_DE_LEITURA,
       coordenadores: [],
       corretor: dados.corretorId ? { nome: "—", telefone: null } : null,
-      imobiliaria: { nome: "Imobiliária", telefone: null },
+      imobiliaria: dados.imobiliariaId ? { nome: "Imobiliária", telefone: null } : null,
     };
   }
 }
@@ -187,7 +199,7 @@ type DestinoDoAviso = {
 function destinosDoAviso(dados: {
   corretorId: null | string;
   destinatarios: DestinatariosDaVenda;
-  imobiliariaId: string;
+  imobiliariaId: null | string;
 }): DestinoDoAviso[] {
   const destinos: DestinoDoAviso[] = [];
 
@@ -198,28 +210,55 @@ function destinosDoAviso(dados: {
       telefone: dados.destinatarios.corretor.telefone,
     });
   }
-  destinos.push({
-    entityId: dados.imobiliariaId,
-    papel: "imobiliaria",
-    telefone: dados.destinatarios.imobiliaria.telefone,
-  });
-  for (const coordenador of dados.destinatarios.coordenadores) {
+  // ⚠️ O DESTINO DA IMOBILIÁRIA PASSOU A TER UM `if` (28/09/2026), E ELE É O CONSERTO. Sem ele, a
+  // reserva do corretor autônomo fabricava um destino FANTASMA de papel `imobiliaria` — nome literal
+  // "Imobiliária", telefone nulo — que voltava como falha "sem telefone" e a tela traduzia em
+  // "imobiliária não tem telefone cadastrado": frase FALSA, que manda o operador procurar um cadastro
+  // que não existe nesta venda. Lucas (28/09/2026): a reserva exige *"um dos dois"*.
+  if (dados.imobiliariaId && dados.destinatarios.imobiliaria) {
     destinos.push({
       entityId: dados.imobiliariaId,
-      papel: "coordenador",
-      telefone: coordenador.telefone,
+      papel: "imobiliaria",
+      telefone: dados.destinatarios.imobiliaria.telefone,
     });
   }
-  // ⚠️ NINGUÉM ACHADO AINDA É UM DESTINO, com o motivo (Lucas, 24/09/2026). Sem esta linha, a venda
-  // de um empreendimento sem coordenador saía com dois avisos e nenhum registro do terceiro, e a
-  // tela dizia "aviso enviado" como se o coordenador estivesse sabendo.
-  if (dados.destinatarios.coordenadores.length === 0 && dados.destinatarios.coordenadorAusente) {
-    destinos.push({
-      entityId: dados.imobiliariaId,
-      impedimento: dados.destinatarios.coordenadorAusente,
-      papel: "coordenador",
-      telefone: null,
-    });
+  // ⚠️ A FICHA ONDE O REGISTRO DO COORDENADOR PENDURA, E ELA NÃO É SEMPRE A DA IMOBILIÁRIA.
+  // `apolo_disparos.entity_id` é `uuid NOT NULL` e não tem FK nenhuma (MEDIDO em produção,
+  // bxgukywoxgivlrhjkwjx, 28/09/2026: `select conname, pg_get_constraintdef(oid) from pg_constraint
+  // where conrelid='public.apolo_disparos'::regclass;` devolve só a PK). O coordenador do C2X não tem
+  // entidade no Apolo, e por isso o registro dele sempre pendurou na ficha da imobiliária.
+  //
+  // Sem imobiliaria, mandar `""` fazia TRÊS estragos ao mesmo tempo: o WhatsApp do coordenador SAIA de
+  // verdade (o telefone dele é real), o INSERT do registro morria no cast de uuid, e o erro era
+  // ENGOLIDO (`catch {}` em lib/apolo/disparo-credenciamento.ts). Coordenador avisado, histórico sem
+  // linha. A ficha do próprio corretor autônomo é o lugar certo: ele é o parceiro da venda, e o dado
+  // já prova que ficha `pf` é destino válido (`select d.destinatario, count(*) filter (where
+  // e.entity_kind='pf') from apolo_disparos d join apolo_entities e on e.id=d.entity_id where
+  // d.tipo='hercules_reserva' group by 1;` → corretor 53 de 53 em `pf`).
+  //
+  // ⚠️ SEM NENHUMA DAS DUAS FICHAS, O COORDENADOR NÃO VIRA DESTINO. É o caso das 4.924 propostas
+  // importadas do C2X, que não têm nem imobiliária nem corretor: inventar uma ficha para gravar o
+  // registro seria pendurar o histórico da venda na pessoa errada.
+  const fichaDoCoordenador = dados.imobiliariaId || dados.corretorId;
+  if (fichaDoCoordenador) {
+    for (const coordenador of dados.destinatarios.coordenadores) {
+      destinos.push({
+        entityId: fichaDoCoordenador,
+        papel: "coordenador",
+        telefone: coordenador.telefone,
+      });
+    }
+    // ⚠️ NINGUÉM ACHADO AINDA É UM DESTINO, com o motivo (Lucas, 24/09/2026). Sem esta linha, a
+    // venda de um empreendimento sem coordenador saía com dois avisos e nenhum registro do terceiro,
+    // e a tela dizia "aviso enviado" como se o coordenador estivesse sabendo.
+    if (dados.destinatarios.coordenadores.length === 0 && dados.destinatarios.coordenadorAusente) {
+      destinos.push({
+        entityId: fichaDoCoordenador,
+        impedimento: dados.destinatarios.coordenadorAusente,
+        papel: "coordenador",
+        telefone: null,
+      });
+    }
   }
   return destinos;
 }
@@ -265,7 +304,8 @@ export async function registrarAvisoNaoEnviado(
   dados: {
     corretorId: null | string;
     destinatarios: DestinatariosDaVenda;
-    imobiliariaId: string;
+    /** Nulo na venda do corretor autonomo. Ver `destinosDoAviso`. */
+    imobiliariaId: null | string;
     /** O mesmo `origem` que o envio usaria (`reserva:whatsapp`, `proposta:cancelamento`...). */
     origem: string;
     /** O mesmo `tipo` que o envio usaria (`hercules_reserva`, `hercules_proposta`). */
@@ -317,7 +357,8 @@ export async function avisarSobreAVenda(
     anexo?: null | { fileName: string; url: string };
     corretorId: null | string;
     destinatarios: DestinatariosDaVenda;
-    imobiliariaId: string;
+    /** Nulo na venda do corretor autonomo. Ver `destinosDoAviso`. */
+    imobiliariaId: null | string;
     /** `reserva:whatsapp`, `proposta:whatsapp` — de onde partiu, para separar na tela de status. */
     origem: string;
     textos: AvisoDaVenda[];

@@ -40,6 +40,7 @@ vi.mock("@/lib/hercules/cadastro", () => ({
 }));
 
 import { criarReservaNoHercules } from "@/lib/hercules/criar-reserva";
+import { RESERVA_SEM_QUEM_VENDE } from "@/lib/hercules/reserva";
 import { lerSituacaoDasUnidades } from "@/lib/hercules/situacao-da-unidade";
 import { outrosDonosDoLote } from "@/lib/hercules/trava-do-lote";
 
@@ -525,6 +526,10 @@ describe("a reserva do salão nasce no Hércules", () => {
       criadoPor: "op-1",
       criadoPorNome: "vitor",
       evento: EVENTO,
+      // A imobiliária do titular vai junto porque desde 28/09/2026 o cupom sem nenhum dos dois é
+      // recusado ANTES de conferir lote (ver "o cupom do salão sem imobiliária nenhuma"): sem ela, este
+      // teste passaria pela recusa errada e não provaria nada sobre o id do legado.
+      imobiliariaEntityId: "imob-1",
       proponentes: PROPONENTES,
       unidades: [doCupom("JDG0101", "9002")],
     });
@@ -882,5 +887,81 @@ describe("proponentesParaOHercules", () => {
       percentual: 100,
       telefone: "",
     });
+  });
+});
+
+// ── UM DOS DOIS, E NUNCA NENHUM — TAMBÉM NO SALÃO ─────────────────────────────
+//
+// Lucas (28/09/2026), sobre a reserva no nome do corretor autônomo: *"pode fazer, exige um dos dois"*.
+// A régua nova foi escrita em `conferirReserva` e em `podemVender`, e as duas só são alcançadas pela rota
+// HTTP da Venda. ESTA é a segunda porta de escrita de `hercules_reservas`, e ela chama
+// `criarReservaNoHercules` direto: passava `imobiliariaEntityId: entrada.imobiliariaEntityId ?? null` e
+// NUNCA um corretor, então as duas colunas iam nulas na mesma linha e a reserva nascia órfã — nenhum
+// destino para o aviso, nenhuma ficha onde pendurar o registro do disparo, e o lote preso até alguém
+// notar na grade.
+//
+// ⚠️ A NULIDADE VEM DE TRÊS CAMINHOS REAIS em app/api/prometeu/reserva-touch/route.ts:364-397:
+// credenciado sem `entity_id`, vínculo de imobiliária inexistente, e o `catch { return nada }` de
+// qualquer falha de leitura — o comentário da própria linha 363 dizia "Sem vínculo, fica nula (a Venda
+// aceita)".
+//
+// ⚠️ MEDIDO em produção (bxgukywoxgivlrhjkwjx, 28/09/2026, só SELECT): dos 679 `prometeu_credenciados`, 4
+// estão sem `entity_id` e outros 22 têm `entity_id` sem nenhum vínculo `imobiliaria*` vivo — 26
+// credenciados (3,8%). O furo nunca foi exercitado: `select origem, count(*) from hercules_reservas group
+// by 1` → só `coordenador`, 36 linhas, e ZERO com as duas colunas nulas.
+describe("o cupom do salão sem imobiliária nenhuma", () => {
+  const semImobiliaria = (banco: ReturnType<typeof criarBanco>) =>
+    criarReservaDoEvento(banco.cliente as never, {
+      credenciadoId: "cred-1",
+      criadoPor: "op-1",
+      criadoPorNome: "vitor",
+      evento: EVENTO,
+      imobiliariaEntityId: null,
+      proponentes: PROPONENTES,
+      unidades: [doCupom("JDG0101", "9001")],
+    });
+
+  it("⚠️ é RECUSADO, e nenhuma reserva órfã nasce", async () => {
+    const banco = novoBanco();
+    const r = await semImobiliaria(banco);
+
+    expect(r.grupoId).toBeUndefined();
+    expect(reservasDoHercules(banco)).toEqual([]);
+    expect(banco.linhas("prometeu_reservas")).toEqual([]);
+    // E o lote continua livre: recusar não pode prender o chão.
+    expect(cadastroDe(banco, "u1")).toBe("disponivel");
+  });
+
+  it("⚠️ a frase é a do SALÃO: fala do credenciado, e não de um seletor que o tótem não tem", async () => {
+    const r = await semImobiliaria(novoBanco());
+
+    expect(r.error).toContain("credenciado");
+    expect(r.error).toContain("Nada foi gravado");
+    // A frase da Venda mandaria o operador do salão procurar um campo que não existe na tela dele.
+    expect(r.error).not.toContain("corretor autônomo habilitado neste empreendimento");
+    expect(r.error).not.toContain("Refaça sem esse lote");
+  });
+
+  it("⚠️ e a PORTA ÚNICA recusa por si, sem depender desta régua (é lá que a invariante mora)", async () => {
+    const banco = novoBanco();
+    const situacoes = await lerSituacaoDasUnidades(banco.cliente, ["50"]);
+    const r = await criarReservaNoHercules(
+      banco.cliente,
+      {
+        corretorEntityId: null,
+        empreendimentoId: "emp-jdg",
+        enterpriseId: "50",
+        imobiliariaEntityId: null,
+        origem: "salao",
+        proponentes: [],
+        unidadeId: "u1",
+      },
+      { situacoes },
+    );
+
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.status).toBe(409);
+    expect(!r.ok && r.motivo).toBe(RESERVA_SEM_QUEM_VENDE);
+    expect(reservasDoHercules(banco)).toEqual([]);
   });
 });

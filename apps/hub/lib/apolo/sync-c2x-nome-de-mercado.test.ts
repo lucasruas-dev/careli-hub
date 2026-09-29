@@ -26,12 +26,33 @@ import { mapC2xPortfolioRowToCommercialLink, persistApoloEntityBatch } from "./s
 type Linha = Record<string, unknown>;
 type UsuarioC2x = Parameters<typeof persistApoloEntityBatch>[1][number];
 
-// Mesmo banco em memória de `sync-c2x-identidade.test.ts`: só o upsert, que é o que o lote usa.
+// Mesmo banco em memória de `sync-c2x-identidade.test.ts`: o upsert do lote e o `select(...).in(...)`
+// de `lerFichasGravadas` (a leitura que impede o sync de reimprimir o nome do legado por cima da
+// correção humana).
 function bancoFake() {
   const tabelas: Record<string, Linha[]> = {};
   const client = {
     from(tabela: string) {
       return {
+        select() {
+          const filtros: ((linha: Linha) => boolean)[] = [];
+          const consulta = {
+            in(coluna: string, lista: unknown[]) {
+              filtros.push((linha) => lista.includes(linha[coluna]));
+              return consulta;
+            },
+            then(
+              resolve: (valor: { data: Linha[]; error: null }) => unknown,
+              rejeitar?: (erro: unknown) => unknown,
+            ) {
+              const linhas = (tabelas[tabela] ?? []).filter((linha) =>
+                filtros.every((teste) => teste(linha)),
+              );
+              return Promise.resolve({ data: linhas, error: null }).then(resolve, rejeitar);
+            },
+          };
+          return consulta;
+        },
         upsert(linhas: Linha[], opcoes?: { ignoreDuplicates?: boolean; onConflict?: string }) {
           const chave = (opcoes?.onConflict ?? "id").split(",").map((c) => c.trim());
           const existentes = (tabelas[tabela] ??= []);

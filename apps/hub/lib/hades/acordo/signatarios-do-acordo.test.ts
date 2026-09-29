@@ -115,7 +115,8 @@ describe("o dado que falta vira FRASE, e o envio não sai", () => {
       incorporador,
     });
 
-    expect(impedimento).toContain("BELTRANO EXEMPLO FERREIRA");
+    // ⚠️ O TEXTO DO CADASTRO, e não o nome limpo: ver `doCadastro` em `lib/assinatura/signatarios.ts`.
+    expect(impedimento).toContain("Beltrano Exemplo Ferreira");
     expect(impedimento).toContain("sem e-mail");
   });
 

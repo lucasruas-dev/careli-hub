@@ -27,6 +27,11 @@ import {
 } from "@/lib/apolo/documentos";
 import { nomeDeMercadoDoEmpreendimento } from "@/lib/apolo/empreendimento-de-mercado";
 import { exigeComprovanteRenda } from "@/lib/apolo/enterprise-settings";
+import {
+  type Autonomo,
+  conferirHabilitacaoDoAutonomo,
+  MENSAGEM_NAO_E_AUTONOMO,
+} from "@/lib/apolo/habilitacao-do-autonomo";
 import { normalizarEnterpriseId } from "@/lib/apolo/esteira-cad";
 import type { createApoloAdminClient } from "@/lib/apolo/server";
 import { montarCadPdf, type CadDoc } from "@/modules/apolo/blocks/cadastro/cad-pdf";
@@ -144,6 +149,18 @@ export type SalvarPayload = CreateApoloEntityInput & {
   // perfil.imobiliariaId; aqui vêm o empreendimento e o corretor. Grava a esteira igual ao portal
   // público, para a CAD manual NÃO nascer órfã de empreendimento.
   vinculo?: {
+    /**
+     * O CORRETOR AUTÔNOMO como VÍNCULO da CAD, no lugar da imobiliária (fatia 2, 28/09/2026).
+     *
+     * ⚠️ É A ENTIDADE DO AUTÔNOMO (`apolo_entities.id`), e ela ocupa `apolo_esteira.corretor_entity_id`,
+     * NUNCA `imobiliaria_entity_id`. Medido em produção em 28/09/2026: `imobiliaria_entity_id` aponta
+     * para PJ em 100% das 357 linhas preenchidas e `corretor_entity_id` para PF em 186 de 186. Pôr o
+     * autônomo no slot da imobiliária seria o primeiro PF ali, e é literalmente o que o Lucas proibiu
+     * em 27/09/2026: *"nao quero ter a informacao que pode ter pessoa fisica como imobiliaria"*.
+     *
+     * ⚠️ E ELE É EXCLUSIVO COM `perfil.imobiliariaId`: uma CAD tem UM vínculo (ver a barra na porta).
+     */
+    corretorAutonomoEntityId?: string;
     corretorEmail?: string;
     corretorEntityId?: string;
     corretorNome?: string;
@@ -201,7 +218,9 @@ export type CadastroSalvo = {
  * O que aconteceu com a ESTEIRA (a fila do board):
  *   • `gravada`     → a CAD entrou na fila de validação;
  *   • `falhou`      → tentou e o banco recusou (o motivo foi para `warnings`);
- *   • `sem-vinculo` → não tentou: falta empreendimento ou imobiliária (a regra de sempre).
+ *   • `sem-vinculo` → não tentou: falta empreendimento, ou falta o vínculo (imobiliária OU corretor
+ *                     autônomo habilitado). ⚠️ O autônomo NÃO HABILITADO nem chega aqui: a porta
+ *                     recusa com 400 antes de criar a ficha (fatia 2, 28/09/2026).
  */
 export type EsteiraDoSalvar = "falhou" | "gravada" | "sem-vinculo";
 
@@ -292,6 +311,51 @@ export async function salvarCadastroDoApolo(
     return invalido(obrigatorios.mensagem, 400);
   }
 
+  const formato = formatoDoCadastro(role);
+
+  // O VÍNCULO DA CAD: A IMOBILIÁRIA **OU** O CORRETOR AUTÔNOMO, E A BARRA É AQUI (fatia 2, 28/09/2026).
+  //
+  // Lucas (27/09/2026), perguntado se o autônomo vende em tudo: *"Sim, empreendimento a empreendimento"*.
+  // Ou seja: o cliente do autônomo só pode abrir CAD onde a coordenação habilitou o autônomo.
+  //
+  // ⚠️ RECUSA ANTES DE CRIAR A FICHA, e não aviso depois. A ficha é criada em `createApoloEntity` logo
+  // abaixo, e uma recusa dali para frente deixaria a pessoa cadastrada e a CAD faltando — que é
+  // exatamente o estado invisível que a fatia 1 registrou como pendência ("a esteira só é gravada com
+  // imobiliária... e sem CAD a reserva não vira proposta"). Aqui nada foi gravado.
+  //
+  // ⚠️ E OS DOIS JUNTOS SÃO RECUSADOS. Sem esta barra, um corpo com imobiliária E autônomo gravaria a
+  // linha com `imobiliaria_entity_id` preenchido e o autônomo em `corretor_entity_id`, e a CAD passaria
+  // a contar como CAD daquela imobiliária no CRM do incorporador e no relatório de 18h30 — uma venda do
+  // autônomo aparecendo como venda dela. Uma CAD tem UM vínculo.
+  const imobiliariaDoPedido = formato.exigeVinculo
+    ? (payload.perfil?.imobiliariaId?.trim() ?? "")
+    : "";
+  const autonomoDoPedido = formato.exigeVinculo
+    ? (payload.vinculo?.corretorAutonomoEntityId?.trim() ?? "")
+    : "";
+  let autonomoDoVinculo: null | Autonomo = null;
+  if (autonomoDoPedido && imobiliariaDoPedido) {
+    return invalido(
+      "Escolha a imobiliária OU o corretor autônomo desta CAD, nunca os dois.",
+      400,
+    );
+  }
+  if (autonomoDoPedido) {
+    if (!UUID_RE.test(autonomoDoPedido)) {
+      return invalido(MENSAGEM_NAO_E_AUTONOMO, 400);
+    }
+    const conferida = await conferirHabilitacaoDoAutonomo(adminClient, {
+      enterpriseId: payload.vinculo?.enterpriseId ?? "",
+      entityId: autonomoDoPedido,
+    });
+    if (!conferida.ok) {
+      // `falha` é indisponibilidade (leitura do banco caiu), não pedido errado: 503, como a sequência
+      // do código faz. As outras duas são o corpo que não serve: 400.
+      return invalido(conferida.mensagem, conferida.motivo === "falha" ? 503 : 400);
+    }
+    autonomoDoVinculo = conferida.autonomo;
+  }
+
   // O CÓDIGO DO CORRETOR AUTÔNOMO (27/09/2026).
   //
   // ⚠️ QUEM PEDE O NÚMERO É A GRAVAÇÃO, DEPOIS DAS TRAVAS. A porta entrega uma FUNÇÃO, e
@@ -335,10 +399,14 @@ export async function salvarCadastroDoApolo(
   // caso (modules/apolo/blocks/cadastro/cadastro-flow.tsx, o `vinculoProspect`); a imobiliária e o
   // corretor chegam com os dois campos vazios. O que muda é a porta deixar de ACEITAR o que a tela
   // não manda. O portal do incorporador só cadastra prospect, que exige vínculo, e passa intacto.
-  const formato = formatoDoCadastro(role);
-  const perfilDoPapel = formato.exigeVinculo
-    ? payload.perfil
-    : { ...payload.perfil, imobiliariaId: "", imobiliariaLabel: "" };
+  //
+  // ⚠️ O VÍNCULO DO AUTÔNOMO APAGA A IMOBILIÁRIA DA FICHA PELO MESMO MOTIVO (fatia 2, 28/09/2026). A
+  // barra lá em cima já recusa os dois juntos; aqui é a segunda volta da chave, para que nem por
+  // caminho novo o `imobiliariaLabel` do autônomo entre no índice de busca da ficha.
+  const perfilDoPapel =
+    formato.exigeVinculo && !autonomoDoVinculo
+      ? payload.perfil
+      : { ...payload.perfil, imobiliariaId: "", imobiliariaLabel: "" };
   const vinculoDoPapel = formato.exigeVinculo ? payload.vinculo : undefined;
 
   // 1) Cria a entidade coordenadamente — com DEDUP por documento (não cria 2ª ficha do mesmo CPF).
@@ -409,22 +477,47 @@ export async function salvarCadastroDoApolo(
   //
   // A IMOBILIÁRIA continua entrando de propósito: ela TEM documento para validar (contrato social,
   // ficha dos sócios). Só o corretor está fora.
+  //
+  // ⚠️ E O CORRETOR AUTÔNOMO ABRE CAD PARA O CLIENTE DELE, SEM IMOBILIÁRIA (fatia 2, 28/09/2026).
+  // A condição exigia `imobiliariaId` por CÓPIA, não por necessidade de nenhum leitor: o bloco foi
+  // escrito para gravar *"como o portal público faz"*, e no portal público a imobiliária é obrigatória
+  // por CHECK de banco (`apolo_esteira_vinculo_publico_check`, migration 0061, escopado em
+  // `origem = 'publico-cad'`). Aqui ela nunca foi necessária, e isso está MEDIDO em produção
+  // (bxgukywoxgivlrhjkwjx, 28/09/2026):
+  //   • `apolo_esteira.imobiliaria` e `imobiliaria_entity_id` são as duas NULLABLE, e o único CHECK que
+  //     as exige é o escopado por origem acima. ESTA FATIA NÃO PRECISA DE MIGRATION;
+  //   • 41 das 843 linhas de hoje JÁ ESTÃO sem as duas (nem id, nem texto), inclusive em etapa
+  //     `credenciado` e `revisao`, e nada quebrou;
+  //   • nenhum dos 17 leitores da esteira esconde a CAD por falta de imobiliária. O Board mostra a
+  //     coluna vazia (lib/apolo/board-do-servidor.ts:773, `?? null`), a régua da venda NEM LÊ a coluna
+  //     (lib/hercules/cliente-credenciado.ts:764), e a aba Imobiliárias do portal já tem balde próprio
+  //     para o caso (`cadsForaDaLista`, lib/apolo/incorporador/imobiliarias-do-produto.ts:251).
+  //   ⚠️ A ÚNICA EXCEÇÃO CONHECIDA, e ela fica de fora desta fatia de propósito:
+  //     lib/apolo/relatorio-imobiliaria.ts:218 faz `if (!imob) continue` e DESCARTA a CAD em silêncio.
+  //     Está certo para a regra (o relatório de 18h30 é enviado A CADA imobiliária, e o autônomo não é
+  //     uma), mas é o número que vai deixar de bater com o Board. Quem perguntar "por que o total do
+  //     relatório não fecha com a fila" acha a resposta nessa linha.
+  //
+  // ⚠️ O PRECEDENTE JÁ ESTAVA NO AR: lib/hercules/cad-do-comprador.ts:112-118 grava, por desenho e
+  // desde a v1.385.0, uma linha desta tabela com `imobiliaria: null` e `imobiliaria_entity_id: null`.
   const vinculo = payload.vinculo;
-  const imobiliariaId = payload.perfil?.imobiliariaId?.trim();
+  const imobiliariaId = autonomoDoVinculo ? "" : payload.perfil?.imobiliariaId?.trim();
   let esteira: EsteiraDoSalvar = "sem-vinculo";
-  if (role !== "corretor" && vinculo?.enterpriseId && imobiliariaId) {
-    const imobiliariaNome = await nomeDaImobiliaria(
-      adminClient,
-      imobiliariaId,
-      payload.perfil?.imobiliariaLabel,
-    );
+  if (role !== "corretor" && vinculo?.enterpriseId && (imobiliariaId || autonomoDoVinculo)) {
+    const imobiliariaNome = imobiliariaId
+      ? await nomeDaImobiliaria(adminClient, imobiliariaId, payload.perfil?.imobiliariaLabel)
+      : "";
     const { error: esteiraError } = await adminClient.from("apolo_esteira").upsert(
       {
         chegou_em: new Date().toISOString(),
-        corretor: vinculo.corretorNome?.trim() || null,
-        corretor_email: vinculo.corretorEmail?.trim() || null,
-        corretor_entity_id:
-          vinculo.corretorEntityId && UUID_RE.test(vinculo.corretorEntityId)
+        // ⚠️ COM AUTÔNOMO, O NOME VEM DO SERVIDOR (`autonomoDoVinculo.nome`, resolvido pela ficha do id
+        // que a porta conferiu), e NUNCA do texto do browser: é a mesma doutrina do empreendimento
+        // impresso na CAD, que o corpo não dita. `corretorNome` do payload é o corretor DA IMOBILIÁRIA.
+        corretor: autonomoDoVinculo?.nome ?? (vinculo.corretorNome?.trim() || null),
+        corretor_email: autonomoDoVinculo ? null : vinculo.corretorEmail?.trim() || null,
+        corretor_entity_id: autonomoDoVinculo
+          ? autonomoDoVinculo.entityId
+          : vinculo.corretorEntityId && UUID_RE.test(vinculo.corretorEntityId)
             ? vinculo.corretorEntityId
             : null,
         empreendimento: vinculo.empreendimentoNome?.trim() || null,
@@ -432,7 +525,8 @@ export async function salvarCadastroDoApolo(
         entity_id: entityId,
         etapa: "validacao",
         imobiliaria: imobiliariaNome || null,
-        imobiliaria_entity_id: UUID_RE.test(imobiliariaId) ? imobiliariaId : null,
+        imobiliaria_entity_id:
+          imobiliariaId && UUID_RE.test(imobiliariaId) ? imobiliariaId : null,
         origem: input.origemDaEsteira,
       },
       // A chave da esteira é `(entity_id, enterprise_id)` desde a 0080: uma CAD por pessoa POR
@@ -608,11 +702,21 @@ export async function salvarCadastroDoApolo(
         role === "prospect"
           ? await nomeDeMercadoDoEmpreendimento(adminClient, payload.vinculo?.enterpriseId)
           : "";
+      // ⚠️ COM CORRETOR AUTÔNOMO, O CAMPO "Imobiliaria" DO PDF SAI VAZIO, E O `vinculo` LEGADO TAMBÉM
+      // (fatia 2, 28/09/2026). O PDF imprime `cad.imobiliaria || cad.vinculo` sob o rótulo
+      // "Imobiliaria" (modules/apolo/blocks/cadastro/cad-pdf.ts:290-293), e o `vinculo` é montado no
+      // BROWSER: sem apagá-lo, o nome do autônomo sairia IMPRESSO como imobiliária no papel que vai
+      // para o corretor e para o coordenador. É literalmente o que o Lucas proibiu em 27/09/2026:
+      // *"nao quero ter a informacao que pode ter pessoa fisica como imobiliaria"*. Quem vendeu vai na
+      // linha do CORRETOR, que é o campo próprio dele.
       const bytes = await montarCadPdf({
         ...cad,
         autenticacao: result.autenticacao,
+        ...(autonomoDoVinculo
+          ? { corretor: cad.corretor?.trim() || autonomoDoVinculo.nome, vinculo: "" }
+          : {}),
         empreendimento: empreendimento || undefined,
-        imobiliaria: imobiliariaNome || cad.vinculo || "",
+        imobiliaria: autonomoDoVinculo ? "" : imobiliariaNome || cad.vinculo || "",
       });
       cadBase64 = Buffer.from(bytes).toString("base64");
 

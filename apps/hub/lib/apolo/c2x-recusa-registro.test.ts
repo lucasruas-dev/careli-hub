@@ -279,6 +279,7 @@ describe("recusa no lote (processarLoteC2x)", () => {
 
 describe("recusaPorImobiliaria: cada desfecho tem um conserto diferente", () => {
   const base: ImobiliariaDaCad = {
+    autonomo: null,
     c2xUserId: null,
     conferida: true,
     documento: "44.988.977/0001-34",
@@ -304,6 +305,35 @@ describe("recusaPorImobiliaria: cada desfecho tem um conserto diferente", () => 
     expect(r.classe).toBe("imobiliaria");
     expect(r.motivo).toContain("não tem cadastro no C2X");
     expect(r.motivo).toContain("não na ficha do cliente");
+  });
+
+  // ⚠️ A CAD DO CLIENTE DO CORRETOR AUTÔNOMO (revisão de 28/09/2026). A trava do C2X não lê a esteira,
+  // lê `apolo_relationships`, e essa CAD não tem o vínculo `imobili%` de propósito (a fatia 2 apaga
+  // `imobiliariaId`/`imobiliariaLabel` em cadastro-salvar.ts:406-409). Sem um ramo próprio, a recusa
+  // gravada dizia "Vincule a imobiliária na CAD e mande de novo", e a única saída que a tela oferecia ao
+  // operador era exatamente o que o Lucas proibiu em 27/09/2026: *"nao quero ter a informacao que pode
+  // ter pessoa fisica como imobiliaria, isso sera bem restrito"*. Seguir a instrução punha a CAD no nome
+  // de uma imobiliária no CRM e no relatório de 18h30.
+  it("⚠️ CAD de corretor autônomo: classe própria, o código no texto e NUNCA 'vincule a imobiliária'", () => {
+    const r = recusaPorImobiliaria({
+      ...base,
+      autonomo: "CA-0001",
+      documento: null,
+      entityId: null,
+      nome: null,
+    });
+    expect(r.classe).toBe("autonomo");
+    expect(r.motivo).toContain("CA-0001");
+    expect(r.motivo).toContain("NADA foi enviado");
+    // A frase antiga, que mandava o operador fazer o proibido, não pode sobrar em pedaço nenhum.
+    expect(r.motivo).not.toContain("Vincule a imobiliária na CAD");
+    expect(r.motivo).not.toContain("não tem imobiliária vinculada no Apolo");
+  });
+
+  it("CAD sem imobiliária e SEM autônomo continua com a recusa de imobiliária (nada mudou para ela)", () => {
+    const r = recusaPorImobiliaria({ ...base, documento: null, entityId: null, nome: null });
+    expect(r.classe).toBe("imobiliaria");
+    expect(r.motivo).toContain("Vincule a imobiliária na CAD");
   });
 
   it("🔴 C2X mudo: NÃO acusa a imobiliária — 'não perguntei' nunca pode virar 'não existe'", () => {

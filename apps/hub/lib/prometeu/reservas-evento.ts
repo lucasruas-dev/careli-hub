@@ -104,6 +104,29 @@ function comparaNatural(a: string, b: string): number {
 const NAO_DEU_PARA_CONFERIR =
   "Não foi possível confirmar que os lotes estão livres. Nada foi gravado; tente de novo em instantes.";
 
+/**
+ * O CUPOM DO SALÃO SEM IMOBILIÁRIA NENHUMA — a recusa em palavras de quem está no salão.
+ *
+ * ⚠️ A PORTA ÚNICA JÁ RECUSA (`criarReservaNoHercules`, passo 0), e a frase dela é a da Venda: fala de
+ * "imobiliária habilitada ou corretor autônomo habilitado neste empreendimento", que é o vocabulário
+ * de quem tem o seletor na tela. No tótem não há seletor: o atendimento é o credenciado da etiqueta, e
+ * o que falta é o VÍNCULO dele. Deixar a frase da Venda chegar ao salão mandaria o operador procurar um
+ * campo que a tela dele não tem, e ainda colada em "Refaça sem esse lote" — o lote não é o problema.
+ *
+ * ⚠️ E ELA RECUSA ANTES DE QUALQUER LEITURA: nada é gravado, nenhum lote é conferido, e o cupom inteiro
+ * cai de uma vez, em vez de morrer no primeiro lote e desfazer os anteriores.
+ *
+ * ⚠️ MEDIDO em produção (bxgukywoxgivlrhjkwjx, 28/09/2026, só SELECT): 26 dos 679
+ * `prometeu_credenciados` cairiam aqui hoje — 4 sem `entity_id` e 22 com `entity_id` sem nenhum vínculo
+ * `imobiliaria*` vivo. Até agora eles não criavam reserva órfã porque o salão nunca gravou reserva do
+ * Hércules em produção (`select origem, count(*) from hercules_reservas group by 1` → só
+ * `coordenador`, 36 linhas).
+ */
+const CUPOM_SEM_QUEM_VENDE =
+  "Este credenciado não tem imobiliária vinculada no cadastro, e a reserva não pode sair sem " +
+  "imobiliária nem corretor. Peça à coordenação para vincular a imobiliária dele e refaça o cupom. " +
+  "Nada foi gravado.";
+
 function enterpriseDoEvento(evento: EventoDaReserva): null | string {
   const id = Number(evento.enterpriseId);
   // `hercules_unidades.enterprise_id` guarda o id do C2X como texto ("35"); o Number normaliza o
@@ -420,6 +443,14 @@ export async function criarReservaDoEvento(
 
   const erroProponentes = validarProponentes(entrada.proponentes);
   if (erroProponentes) return { error: erroProponentes };
+
+  // ⚠️ UM DOS DOIS, E NUNCA NENHUM — TAMBÉM NO SALÃO (28/09/2026). Lucas: *"pode fazer, exige um dos
+  // dois"*. O tótem não escolhe quem vende (o atendimento é o credenciado da etiqueta), então o que
+  // ele tem para oferecer é a imobiliária do titular; sem ela, a reserva nasceria sem ninguém para
+  // avisar e sem ninguém para comissionar, e o lote ficaria preso até alguém notar na grade. A porta
+  // única recusa de todo jeito (`criarReservaNoHercules`, passo 0): aqui a recusa vem ANTES, com a
+  // frase do salão e com o cupom inteiro intacto. Ver `CUPOM_SEM_QUEM_VENDE`.
+  if (!entrada.imobiliariaEntityId) return { error: CUPOM_SEM_QUEM_VENDE };
 
   const enterpriseId = enterpriseDoEvento(entrada.evento);
   if (!enterpriseId) return { error: "Evento sem empreendimento vinculado no Setup." };

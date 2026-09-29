@@ -102,10 +102,37 @@ describe("o que falta no Vínculo (a mesma lista que habilita o botão e monta o
   const prospect = formatoDoCadastro("prospect");
   const corretor = formatoDoCadastro("corretor");
 
-  it("prospect sem imobiliária: continua cobrando imobiliária e empreendimento/corretor", () => {
+  // (fatia 2, 28/09/2026) A frase passou a nomear as DUAS portas do vínculo, porque o bloco agora
+  // oferece as duas: imobiliária ou corretor autônomo. Lucas (27/09/2026), sobre o autônomo:
+  // *"Sim, empreendimento a empreendimento"*.
+  it("prospect sem vínculo: cobra imobiliária OU corretor autônomo, e empreendimento/corretor", () => {
     expect(
       faltaNoVinculo({ formato: prospect, imobiliariaId: "", modoPublico: false, vinculoOk: false }),
-    ).toEqual(["imobiliária", "empreendimento e corretor"]);
+    ).toEqual(["imobiliária ou corretor autônomo", "empreendimento e corretor"]);
+  });
+
+  it("⚠️ com o corretor autônomo escolhido, o corretor NÃO é cobrado: ele É o corretor", () => {
+    expect(
+      faltaNoVinculo({
+        autonomoId: "aaaaaaaa-1111-4111-8111-111111111111",
+        formato: prospect,
+        imobiliariaId: "",
+        modoPublico: false,
+        vinculoOk: false,
+      }),
+    ).toEqual(["empreendimento"]);
+  });
+
+  it("autônomo com empreendimento resolvido: nada falta, e sem pedir imobiliária", () => {
+    expect(
+      faltaNoVinculo({
+        autonomoId: "aaaaaaaa-1111-4111-8111-111111111111",
+        formato: prospect,
+        imobiliariaId: "",
+        modoPublico: false,
+        vinculoOk: true,
+      }),
+    ).toEqual([]);
   });
 
   it("prospect com o vínculo resolvido: nada falta", () => {

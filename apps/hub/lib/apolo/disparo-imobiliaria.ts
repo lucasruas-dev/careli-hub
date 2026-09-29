@@ -14,6 +14,7 @@ import {
   montarEmailImobReprovado,
 } from "@/lib/apolo/emails-imobiliaria";
 import { lerCadDaEsteira } from "@/lib/apolo/esteira-cad";
+import { lerAutonomo } from "@/lib/apolo/habilitacao-do-autonomo";
 import { imobiliariaEntityIdDoCliente } from "@/lib/apolo/imobiliaria-do-cliente";
 import { getCacaSender, isGmailConfigured, sendGmailMessage } from "@/lib/iris/gmail";
 
@@ -46,6 +47,12 @@ function normalizarCelular(valor: string | null | undefined): string | null {
 }
 
 export type ContatoImobiliaria = {
+  /**
+   * ⚠️ O CÓDIGO DO CORRETOR AUTÔNOMO DESTA CAD (28/09/2026). Preenchido só quando a CAD NÃO tem
+   * imobiliária e o corretor da esteira é autônomo da casa. Existe para o registro do silêncio não
+   * acusar uma imobiliária que, por regra do Lucas, nunca existirá nesta CAD.
+   */
+  autonomo: null | string;
   email: string | null;
   entityId: string | null;
   nome: string;
@@ -100,6 +107,7 @@ export async function contatoDaEntidadeImobiliaria(
   };
 
   return {
+    autonomo: null,
     email: pega(["email"]),
     entityId: imobEntityId,
     nome,
@@ -116,10 +124,33 @@ export async function contatoDaImobiliariaDaCad(
   const { imobEntityId, label } = await imobiliariaEntityIdDoCliente(client, entityId);
 
   if (!imobEntityId) {
+    // ⚠️ ESTA CAD É DE CORRETOR AUTÔNOMO? (28/09/2026) A CAD do cliente dele nasce sem imobiliária, por
+    // regra (fatia 2), e sem esta pergunta o registro do silêncio dizia "erro: imobiliária sem telefone"
+    // e "erro: imobiliária sem e-mail" na ficha do cliente dele, culpando uma imobiliária que não
+    // existe. Lucas (27/09/2026): *"nao quero ter a informacao que pode ter pessoa fisica como
+    // imobiliaria, isso sera bem restrito"*.
+    //
+    // ⚠️ BEST-EFFORT: falha de leitura deixa `autonomo: null` e o comportamento é o de hoje.
+    let autonomo: null | string = null;
+    try {
+      const linha = await lerCadDaEsteira<{ corretor_entity_id: null | string }>(
+        client,
+        entityId,
+        "corretor_entity_id",
+      );
+      const corretor = String(linha?.corretor_entity_id ?? "").trim();
+      if (corretor) {
+        const ficha = await lerAutonomo(client, corretor);
+        if (ficha.ok) autonomo = ficha.autonomo.codigo;
+      }
+    } catch {
+      /* best-effort */
+    }
     return {
+      autonomo,
       email: null,
       entityId: null,
-      nome: (label ?? "").trim() || "a imobiliária",
+      nome: autonomo ? "o corretor autônomo" : (label ?? "").trim() || "a imobiliária",
       telefone: null,
     };
   }
@@ -170,6 +201,42 @@ async function dispararParaImobiliaria(input: {
   tipoRegistro: string;
 }): Promise<{ email: EnvioCanal; whatsapp: EnvioCanal }> {
   const { client, contato } = input;
+
+  // ⚠️ CAD DE CORRETOR AUTÔNOMO: UMA LINHA, COM `tipo` PRÓPRIO E A VERDADE ESCRITA (28/09/2026).
+  //
+  // Antes, esta CAD (que por regra não tem imobiliária) gravava DUAS linhas `falhou` com "erro:
+  // imobiliária sem telefone" e "erro: imobiliária sem e-mail" na ficha do cliente do autônomo,
+  // acusando uma imobiliária inexistente num `tipo` que diz `imob_`. Medido em produção
+  // (bxgukywoxgivlrhjkwjx, 28/09/2026): `select tipo, status, count(*) from apolo_disparos where tipo
+  // like 'imob_%' group by 1,2;` → imob_relatorio 435 enviado / 37 falhou, imob_pix_enviado 178 falhou
+  // / 10 enviado, imob_credito_reprovado 111 enviado / 81 falhou, imob_pix_pago 39 enviado / 49 falhou.
+  // O `tipo` aparece no painel de disparos do Board, e é por isso que ele não pode mentir.
+  //
+  // ⚠️ E O AUTÔNOMO CONTINUA SEM SER AVISADO, DE PROPÓSITO NESTA FATIA. O WhatsApp destes três avisos é
+  // template Meta APROVADO (`imob_credito_reprovado`, `imob_pix_enviado`, `imob_pix_pago`), e template
+  // novo para o autônomo é pedido à Meta, não código: mandar um nome que não existe lá volta erro. O
+  // texto dos e-mails (`montarEmailImob*`) também fala com uma imobiliária. Então esta fatia para no
+  // ponto honesto: NÃO mente no registro e NÃO manda o operador vincular imobiliária. O aviso ao
+  // autônomo é fatia própria, e o registro abaixo é o que faz ela aparecer na fila de trabalho.
+  if (contato.autonomo) {
+    // `imob_credito_reprovado` → `autonomo_credito_reprovado`: o prefixo é o que a tela agrupa.
+    const tipoDoAutonomo = input.tipoRegistro.replace(/^imob_/, "autonomo_");
+    const motivo =
+      `erro: CAD de corretor autônomo (${contato.autonomo}); o aviso automático ao corretor ` +
+      "autônomo ainda não existe (template próprio pendente). NADA foi enviado.";
+    await registrarDisparoImob(client, {
+      canal: "whatsapp",
+      destinatario: null,
+      entityId: input.entityIdCliente,
+      erro: motivo,
+      template: input.templateWa,
+      tipo: tipoDoAutonomo,
+    });
+    return {
+      email: { destino: null, erro: motivo, ok: false },
+      whatsapp: { destino: null, erro: motivo, ok: false },
+    };
+  }
 
   // WHATSAPP
   const telefone = normalizarCelular(contato.telefone);

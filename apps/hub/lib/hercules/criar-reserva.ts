@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { RESERVA_SEM_QUEM_VENDE } from "./reserva";
 import {
   acharUnidade,
   estaLivre,
@@ -26,6 +27,12 @@ import { type DonoDoLote, fraseDoConflito, outrosDonosDoLote } from "./trava-do-
 //   5. o cadastro da linha passa a `reservada`.
 //
 // ⚠️ SEM SABER, NÃO VENDE. Toda leitura que falha termina em recusa, nunca em gravação.
+//
+// ⚠️ E SEM NINGUÉM, TAMBÉM NÃO VENDE (passo 0, 28/09/2026). Lucas, sobre a reserva no nome do
+// corretor autônomo: *"pode fazer, exige um dos dois"*. UM DOS DOIS, E NUNCA NENHUM — e a exigência
+// tinha de morar AQUI, e não só na régua da rota da Venda: esta função tem DOIS chamadores, e o
+// segundo é o cupom do salão (`lib/prometeu/reservas-evento.ts`), que passa a imobiliária do titular
+// e NUNCA um corretor. Ver o passo 0 no corpo.
 
 export type NovaReservaNoHercules = {
   corretorEntityId?: null | string;
@@ -69,6 +76,29 @@ export async function criarReservaNoHercules(
     situacoes?: SituacaoDasUnidades;
   },
 ): Promise<ResultadoDaReserva> {
+  // ── 0. UM DOS DOIS, E NUNCA NENHUM ──
+  //
+  // ⚠️ A RESERVA ÓRFÃ NASCIA POR AQUI, E A RÉGUA NOVA NÃO ALCANÇAVA ESTA PORTA. `conferirReserva`
+  // (lib/hercules/reserva.ts) e `podemVender` (lib/hercules/quem-pode-vender.ts) só são chamadas pela
+  // rota HTTP da Venda; o cupom do salão chama esta função DIRETO, passando
+  // `imobiliariaEntityId: entrada.imobiliariaEntityId ?? null` e nenhum corretor
+  // (lib/prometeu/reservas-evento.ts:503-511). Quando o vínculo do titular não é achado — credenciado
+  // sem `entity_id`, sem vínculo de imobiliária, ou o `catch` que engole falha de leitura em
+  // app/api/prometeu/reserva-touch/route.ts:386-388 — as duas colunas iam nulas na MESMA linha.
+  //
+  // ⚠️ E A AUSÊNCIA NÃO É HIPOTÉTICA. MEDIDO em produção (bxgukywoxgivlrhjkwjx, 28/09/2026, só
+  // SELECT): dos 679 `prometeu_credenciados`, 4 estão sem `entity_id` e outros 22 têm `entity_id` sem
+  // nenhum vínculo `imobiliaria*` vivo — 26 credenciados (3,8%) fecham cupom sem imobiliária nenhuma.
+  // Que o furo ainda não foi exercitado também está medido: `select origem, count(*) from
+  // hercules_reservas group by 1` → só `coordenador`, 36 linhas, e ZERO com as duas colunas nulas.
+  //
+  // ⚠️ POR QUE 409 E NÃO 422: quem chama esta função trata 409 como "o lote não pode ser reservado
+  // assim" e mostra o motivo; a rota da Venda continua recusando ANTES, com 422 e a frase por campo,
+  // porque lá existe formulário para apontar. Aqui a resposta é do tamanho do que se sabe.
+  if (!nova.imobiliariaEntityId && !nova.corretorEntityId) {
+    return { motivo: RESERVA_SEM_QUEM_VENDE, ok: false, status: 409 };
+  }
+
   // ── 1. A situação única do terreno ──
   let situacoes: SituacaoDasUnidades;
   try {

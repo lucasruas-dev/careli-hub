@@ -362,9 +362,22 @@ export async function avisarEtapa(
     // onde os dois existem; mandar só para o corretor deixaria 47 CADs sem ninguém avisado.
     const telCorretor = await telefoneDaEntidade(client, cad.corretorEntityId);
     const telImob = telCorretor ? null : await telefoneDaEntidade(client, cad.imobiliariaEntityId);
+    // ⚠️ CAD SEM IMOBILIÁRIA NÃO GRAVA DISPARO COM `papel: "imobiliaria"` (revisão de 28/09/2026).
+    //
+    // A CAD do cliente do corretor autônomo nasce, por regra, SEM imobiliária (fatia 2), e Lucas
+    // (27/09/2026) foi literal: *"nao quero ter a informacao que pode ter pessoa fisica como
+    // imobiliaria, isso sera bem restrito"*. Sem esta linha, o autônomo sem telefone em `apolo_contacts`
+    // fazia o `alvo` cair no ramo da imobiliária com `nome: cad.imobiliariaNome` (null) e o disparo era
+    // gravado como `etapa_validacao_imobiliaria`, carimbando a palavra na CAD dele. O `tipo` aparece no
+    // painel de disparos do Board.
+    //
+    // ⚠️ A CAD DE IMOBILIÁRIA NÃO MUDA: com `imobiliariaEntityId` preenchido, o ramo é o mesmo de antes.
+    const semImobiliaria = !cad.imobiliariaEntityId;
     const alvo = telCorretor
       ? { nome: cad.corretorNome, papel: "corretor" as const, telefone: telCorretor }
-      : { nome: cad.imobiliariaNome, papel: "imobiliaria" as const, telefone: telImob };
+      : semImobiliaria
+        ? { nome: cad.corretorNome, papel: "corretor" as const, telefone: null }
+        : { nome: cad.imobiliariaNome, papel: "imobiliaria" as const, telefone: telImob };
 
     const pulado: ResultadoAviso = { destinatario: null, erro: "não solicitado", ok: false };
 

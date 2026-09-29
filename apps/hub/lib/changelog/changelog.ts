@@ -36,6 +36,118 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-29-consultoria-porta-limpa",
+    deployedAt: "2026-09-29T14:41:32-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Consultoria",
+        screens: [
+          {
+            items: ["**A tela fechada da consultoria mostra só a marca e o título**, sem frase de instrução."],
+            screen: "Consultoria - C&R",
+          },
+        ],
+      },
+    ],
+    rollback: "d4db2243",
+    technical: {
+      done: "consultoria-telas/projeto.html: porta() sem mensagem quando não há código de link.",
+      motivation: "Lucas, 29/09/2026, print da tela fechada: não faz sentido essa frase abaixo do título, pode retirar.",
+    },
+    title: "Consultoria: tela fechada sem a frase",
+    type: "correcao",
+    version: "1.394.1",
+  },
+  {
+    buildTag: "2026-09-29-corretor-autonomo-vende-e-o-mei-assina",
+    deployedAt: "2026-09-29T14:03:07-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O corretor autonomo passa a ser habilitado empreendimento a empreendimento**, como uma imobiliaria, e so vende onde a coordenacao liberou.",
+              "**O cliente dele consegue ter CAD.** Antes a CAD so nascia com imobiliaria, e sem CAD a reserva nunca virava proposta: o cadastro do autonomo existia e nao servia para vender.",
+            ],
+            screen: "CRM 360 e Board",
+          },
+          {
+            items: [
+              "**A razao social de empresa volta a ser editavel na validacao da CAD.** O campo ficava cinza e ninguem sabia se era defeito ou regra.",
+              "**Vale para todas as fichas**, inclusive as que vieram do C2X. O CNPJ continua so de leitura: trocar o CNPJ e mudar quem a empresa e.",
+            ],
+            screen: "Board - validacao da CAD",
+          },
+        ],
+      },
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**A reserva aceita corretor autonomo no lugar da imobiliaria.** A regra passou a ser UM DOS DOIS: ou imobiliaria, ou autonomo, e nunca nenhum, para a reserva nao nascer sem quem avisar.",
+            ],
+            screen: "Venda - reserva",
+          },
+        ],
+      },
+      {
+        module: "Temis",
+        screens: [
+          {
+            items: [
+              "**O contrato de quem e MEI volta a ir para assinatura.** O CPF que faz parte da razao social do MEI era recusado pela Clicksign, e o envio travava com \"tem numero no nome\".",
+              "**A razao social continua completa no contrato.** O numero sai apenas do nome que vai para a assinatura; o papel imprime o nome juridico inteiro.",
+              "**Empresa com numero no nome de verdade continua sendo conferida**, e nao sai adulterada: DS2, TS 360, ON 1 e parecidas param antes de virar envelope, com o motivo na tela.",
+            ],
+            screen: "Enviar para assinatura",
+          },
+        ],
+      },
+    ],
+    rollback: "7f491d7d",
+    technical: {
+      done:
+        "TRES FRENTES. (1) CORRETOR AUTONOMO, fatias 2 e 3: a esteira exigia imobiliaria numa condicao copiada do portal publico, onde ela e obrigatoria por CHECK de banco; medido que as duas colunas sao NULLABLE, que o unico CHECK e escopado em origem='publico-cad' e que 41 CADs sem imobiliaria JA EXISTIAM em producao, inclusive em `credenciado`, sem nada quebrado. A habilitacao reusa o vinculo de empreendimento sem que o autonomo apareca em lista de imobiliaria (medido: ZERO entidade pf com papel imobiliaria, e os slots sao limpos, imobiliaria_entity_id 100% PJ e corretor_entity_id 100% PF). ⚠️ Relaxar so a regua da reserva NAO bastava: havia uma SEGUNDA porta (`podemVender`) que recusaria o autonomo com 403 depois de a regua passar. (2) RAZAO SOCIAL: a trava vivia de premissa morta em 04/08/2026, quando as 7 tabelas de identidade do sync passaram a ON CONFLICT DO NOTHING (\"quem nao existe nasce, quem ja existe fica INTOCADO\"). O sync AINDA RODA e ainda CRIA ficha, porque venda feita direto no legado precisa de ficha para pendurar a carteira e ha FK, mas nao sobrescreve nenhuma ha quase dois meses. PROVA: 64 eventos `edit_identity`, 43 em ficha espelho, TODOS entre 20/07 e 01/08/2026, e essas 43 correcoes continuam gravadas hoje; depois de 01/08, zero, porque a trava barrava 433 das 483 imobiliarias. (3) NOME DO SIGNATARIO: a limpeza entrou em `nomeDeSignatario` (lib/assinatura/ordem.ts), o funil unico dos dois montadores, e `conferirSignatarios` passou a julgar o nome LIMPO, um ponto so. ⚠️ SO SAI A PALAVRA QUE E DOCUMENTO (8, 11 ou 14 digitos; barra so nos 14, porque data tem 8 como a raiz do CNPJ e ha ficha com a data colada no nome). MEDIDO: 36 fichas pj com numero na razao social, 26 sao documento e foram resolvidas (6 no formato \"NOME + CPF\" e 20 no formato novo do MEI, com a raiz do CNPJ na frente), e as outras 10 tem numero de marca e continuam recusadas de proposito: a primeira versao apagava qualquer palavra com numero e mandaria a DS2 como \"EMPREENDIMENTOS IMOBILIARIOS LTDA\", trocando uma recusa barata por um contrato ASSINADO com o nome errado. As tres recusas seguem ANTES de existir envelope, que custa e nao se desfaz. Suite: 715 arquivos, 10.660 testes, zero erro nao capturado. Typecheck limpo.",
+      motivation:
+        "Lucas, 27 e 28/09/2026: precisa cadastrar corretor autonomo, que nao sera vinculado a uma imobiliaria, e deixar tudo pronto para gerar reserva e proposta. Depois, sobre a razao social: nao conseguimos editar a razao social de PJ, tudo precisa morar dentro do Panteon, todos eu poderia alterar. E em 29/09, com o print do envio travado: da uma pausa ou pede alguem para resolver esse BUG urgente.",
+    },
+    title: "O corretor autonomo vende, a razao social volta a ser editavel e o MEI assina",
+    type: "novidade",
+    version: "1.394.0",
+  },
+  {
+    buildTag: "2026-09-29-card-anda-pela-d4sign",
+    deployedAt: "2026-09-29T13:49:45-03:00",
+    modules: [
+      {
+        module: "Temis",
+        screens: [
+          {
+            items: [
+              "**O card da venda anda sozinho quando o contrato e assinado pela D4Sign**, como ja acontecia com a Clicksign: enviado, vai para Em assinatura; todos assinaram, vai para Pre-faturamento, com os 7 dias contados do fechamento.",
+              "**A data de assinatura passa a ficar gravada na venda** quando o contrato da D4Sign fecha.",
+              "**As vendas que ja estavam em assinatura na D4Sign** (ACP, REP e duas da VAL) saem da Analise e vao para Em assinatura na primeira conferencia depois desta versao.",
+            ],
+            screen: "Board e venda",
+          },
+        ],
+      },
+    ],
+    rollback: "253f1af3",
+    technical: {
+      done:
+        "MOVER_VENDAS = true (lib/assinatura/envelope-na-venda.ts), com OK do Lucas em 29/09/2026, depois da prova da F3 (carga de 2.231 contratos, paridade sem contrato perdido, 4 casamentos com venda nativa pelo mesmo comprador). O cron do espelho (7,37) passa a chamar aplicarEnvelopeNaVenda nas bordas da D4Sign (entrada em assinatura e assinado com fechado_em real) e a reconciliacao com o alvo entrada leva a Em assinatura os cards cuja borda passou com a chave desligada (ACP, REP, VAL x2), com comparar-e-trocar por card e passagem de origem espelho_d4sign. So venda nativa viva, sem pedido de cancelamento, finalidade contrato. Efeito so no banco: sem WhatsApp, notificacao ou fila do C2X (medido na 0.11 do plano).",
+      motivation:
+        "Lucas, 28/09/2026, escolhendo que o card anda sozinho tambem pela D4Sign; e em 29/09: pode ligar o card andar pela D4Sign.",
+    },
+    title: "O card da Temis anda sozinho tambem pela D4Sign",
+    type: "melhoria",
+    version: "1.393.0",
+  },
+  {
     buildTag: "2026-09-29-contrato-e-assinatura-moram-no-panteon",
     deployedAt: "2026-09-29T13:33:34-03:00",
     modules: [

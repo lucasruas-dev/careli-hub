@@ -9,6 +9,26 @@ import pg from "pg";
 const batchSize = readNumberArg("--batch-size", 400);
 const envFile = readArg("--env-file");
 const target = readArg("--target") ?? "local";
+// ⚠️ ESTE SCRIPT NUNCA RECEBEU A DECISÃO DE 04/08/2026, E ISSO ERA UMA BOMBA (corrigido em
+// 29/09/2026).
+//
+// As duas ROTAS de sync (`syncApoloFromC2x` e `syncApoloIncrementalFromC2x`, que convergem em
+// `persistApoloEntityBatch`) gravam as 7 tabelas de IDENTIDADE com ON CONFLICT DO NOTHING desde a
+// decisão do Lucas de 04/08/2026: *"CRIAR QUANDO NÃO EXISTE E NUNCA SOBRESCREVER QUANDO EXISTE"*.
+// Este arquivo é a outra cópia do sync e fazia upsert NORMAL em tudo: `buildEntityRow` regrava
+// `display_name`, `document_*`, `entity_kind`, `status`, `next_action` e um `metadata` REMONTADO só
+// com `profileNames` — e o PostgREST substitui a coluna jsonb inteira, ou seja, apagava
+// `metadata.cadastro`. É a forma exata do incidente de 20/jul (122 CADs perdendo etapa e analista).
+//
+// Nada aqui impedia apontar para PRODUÇÃO: o arquivo carrega `apps/hub/.env.local` e
+// `NEXT_PUBLIC_SUPABASE_URL`, e `--target local` é só o default. E desde 28/09/2026 o convite ficou
+// grande: a razão social de ficha espelho passou a ser corrigível pela tela em 4.789 fichas, então
+// uma reconciliação repetida traria o retrato do legado de volta em todas elas.
+//
+// Agora a identidade vai com `ignoreDuplicados` (igual às rotas). `--recarga-identidade` é a saída
+// explícita para quem REALMENTE quiser sobrepor identidade, e ela não existe por acidente: a carga do
+// legado foi encerrada em 21/09/2026.
+const recargaDeIdentidade = process.argv.includes("--recarga-identidade");
 
 loadEnvFile(".env");
 loadEnvFile(".env.local");
@@ -218,37 +238,52 @@ async function persistBatch(users, syncRunId, syncedAt) {
   const sourceRows = users.map((user) => buildSourceRow(user, syncRunId, syncedAt));
   const searchRows = users.map((user) => buildSearchRow(user, syncedAt));
 
+  // IDENTIDADE (as 7 primeiras): quem não existe nasce, quem já existe fica INTOCADO.
+  // CARTEIRA (`apolo_commercial_links`, `apolo_module_records`) e o índice de busca: upsert de
+  // verdade, porque dinheiro é do C2X — a mesma divisão de `persistApoloEntityBatch`.
+  //
+  // ⚠️ UMA DIFERENÇA QUE FICA ESCRITA: `apolo_search_entries` aqui NÃO tem a guarda que a rota tem.
+  // Em `lib/apolo/server.ts` o `buildSearchRow` recebe a ficha GRAVADA e o nome corrigido vence; este
+  // arquivo tem a cópia velha da função e reimprime `display_name` do legado no índice de busca. Quem
+  // rodar isto sabendo disso: a ficha e o contrato ficam certos, a busca por nome pode voltar ao nome
+  // do legado, e a correção é reindexar (a próxima correção de identidade pela tela já conserta).
+  const identidade = { ignorarDuplicados: !recargaDeIdentidade };
+
   return (
-    (await upsertRows("apolo_entities", entityRows, "id")) +
-    (await upsertRows("apolo_entity_profiles", profileRows, "entity_id,profile")) +
+    (await upsertRows("apolo_entities", entityRows, "id", identidade)) +
+    (await upsertRows("apolo_entity_profiles", profileRows, "entity_id,profile", identidade)) +
     (await upsertRows(
       "apolo_entity_identifiers",
       identifierRows,
       "entity_id,identifier_type,value_hash",
+      identidade,
     )) +
-    (await upsertRows("apolo_contacts", contactRows, "id")) +
-    (await upsertRows("apolo_addresses", addressRows, "id")) +
-    (await upsertRows("apolo_relationships", relationshipRows, "id")) +
+    (await upsertRows("apolo_contacts", contactRows, "id", identidade)) +
+    (await upsertRows("apolo_addresses", addressRows, "id", identidade)) +
+    (await upsertRows("apolo_relationships", relationshipRows, "id", identidade)) +
     (await upsertRows("apolo_commercial_links", commercialRows, "id")) +
     (await upsertRows("apolo_module_records", moduleRows, "module_key,record_type,record_id")) +
-    (await upsertRows("apolo_source_links", sourceRows, "source_system,source_table,source_id")) +
+    (await upsertRows("apolo_source_links", sourceRows, "source_system,source_table,source_id", identidade)) +
     (await upsertRows("apolo_search_entries", searchRows, "entity_id"))
   );
 }
 
-async function upsertRows(table, rows, onConflict) {
+async function upsertRows(table, rows, onConflict, opcoes = {}) {
   if (rows.length === 0) {
     return 0;
   }
 
   const uniqueRows = dedupeRows(rows, onConflict);
+  const ignorarDuplicados = Boolean(opcoes.ignorarDuplicados);
 
   if (postgresClient) {
-    await upsertPostgresRows(table, uniqueRows, onConflict);
+    await upsertPostgresRows(table, uniqueRows, onConflict, ignorarDuplicados);
     return uniqueRows.length;
   }
 
-  const { error } = await supabase.from(table).upsert(uniqueRows, { onConflict });
+  const { error } = await supabase
+    .from(table)
+    .upsert(uniqueRows, { ignoreDuplicates: ignorarDuplicados, onConflict });
 
   if (error) {
     throw error;
@@ -279,7 +314,7 @@ async function updatePostgresRow(table, values, conflictKey, conflictValue) {
   );
 }
 
-async function upsertPostgresRows(table, rows, onConflict) {
+async function upsertPostgresRows(table, rows, onConflict, ignorarDuplicados = false) {
   if (rows.length === 0) {
     return;
   }
@@ -309,14 +344,14 @@ async function upsertPostgresRows(table, rows, onConflict) {
   }
 
   const updateClause =
-    updateColumns.length > 0
-      ? `do update set ${updateColumns
+    ignorarDuplicados || updateColumns.length === 0
+      ? "do nothing"
+      : `do update set ${updateColumns
           .map(
             (column) =>
               `${quoteIdentifier(column)} = excluded.${quoteIdentifier(column)}`,
           )
-          .join(", ")}`
-      : "do nothing";
+          .join(", ")}`;
 
   await postgresClient.query(
     `

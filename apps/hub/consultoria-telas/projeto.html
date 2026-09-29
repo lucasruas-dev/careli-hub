@@ -256,7 +256,7 @@ let CODIGO_EDICAO='';
 const cabecalhos=()=>CODIGO_EDICAO?{'x-consultoria-edicao':CODIGO_EDICAO}:{'x-consultoria-token':TOKEN_DO_LINK};
 
 async function carregar(){
-  if(!CODIGO_EDICAO && !TOKEN_DO_LINK) return porta('Esta página é acessada pelo link enviado pelo consultor.');
+  if(!CODIGO_EDICAO && !TOKEN_DO_LINK) return porta('');
   let r;
   try{ r=await fetch(`/api/publico/consultoria/${SLUG}`,{headers:cabecalhos(),cache:'no-store'}); }
   catch{return porta('Não foi possível conectar. Verifique a internet e recarregue a página.');}
@@ -269,7 +269,7 @@ async function carregar(){
   montarApp(); render();
 }
 function porta(msg){
-  document.getElementById('raiz').innerHTML=`<div class="porta"><div><span class="selo"><img src="/marcas/cecilio-rocha.svg" alt="Cecílio Rocha Construtora"></span><h2 style="font-family:Marcellus,serif;font-weight:400;font-size:26px;margin:0 0 8px;color:#fff">Reestruturação de Processos</h2><p>${msg}</p></div></div>`;
+  document.getElementById('raiz').innerHTML=`<div class="porta"><div><span class="selo"><img src="/marcas/cecilio-rocha.svg" alt="Cecílio Rocha Construtora"></span><h2 style="font-family:Marcellus,serif;font-weight:400;font-size:26px;margin:0 0 8px;color:#fff">Reestruturação de Processos</h2>${msg?`<p>${msg}</p>`:''}</div></div>`;
 }
 
 // ---------------------------------------------------------------- salvamento

@@ -174,7 +174,11 @@ export async function POST(request: Request) {
 
   const pedido: PedidoDeReserva = {
     corretorEntityId: corpo.corretorEntityId ?? null,
-    imobiliariaEntityId: String(corpo.imobiliariaEntityId ?? "").trim(),
+    // ⚠️ A AUSÊNCIA É `null`, E NUNCA `""` (28/09/2026). Até esta data a linha normalizava para string
+    // vazia, e o `""` percorria a cadeia inteira: falsy nos `if`, mas uma STRING que chegava em
+    // `apolo_disparos.entity_id uuid NOT NULL` e explodia no cast, em vez de dar erro de not-null — e
+    // o erro era engolido. Um único valor de ausência para a régua, o portão, a gravação e o aviso.
+    imobiliariaEntityId: String(corpo.imobiliariaEntityId ?? "").trim() || null,
     proponente: {
       documento: documentoDoCorpo,
       nome: String(corpo.proponente?.nome ?? "").trim(),
@@ -223,12 +227,19 @@ export async function POST(request: Request) {
     ]);
     const escopo = escopoDeQuemVende(cadastro, catalogo, String(unidade.enterprise_id));
 
+    // ⚠️ A SEGUNDA PORTA, E ELA NÃO ESTÁ NA RÉGUA. `podemVender` confere a habilitação de verdade: a
+    // imobiliaria credenciada no empreendimento, ou — desde 28/09/2026 — o corretor AUTÔNOMO
+    // habilitado nele, pela consulta própria da fatia 2. Sem este ramo, relaxar a régua só trocaria o
+    // 422 por um 403: a reserva do autônomo continuaria recusada.
     const habilitados = await podemVender(admin, escopo, {
       corretorId: pedido.corretorEntityId,
-      imobiliariaId: pedido.imobiliariaEntityId,
+      imobiliariaId: pedido.imobiliariaEntityId ?? null,
     });
     if (!habilitados.ok) {
-      return NextResponse.json({ error: habilitados.motivo }, { status: 403 });
+      // ⚠️ 503 QUANDO A HABILITAÇÃO NÃO PÔDE SER LIDA (revisão de 28/09/2026). 403 é "você não pode",
+      // e a tela trata como decisão do cadastro; falha de leitura é "não sei", e quem lê a frase tem de
+      // tentar de novo, não abrir pedido de habilitação. `podemVender` diz qual é o caso.
+      return NextResponse.json({ error: habilitados.motivo }, { status: habilitados.status ?? 403 });
     }
 
     // ⚠️ O EMPREENDIMENTO DA RESERVA É O PAI. As unidades moram no espelho (o pai do cadastro), e é
@@ -258,7 +269,7 @@ export async function POST(request: Request) {
         criadoPorNome: sessao.usuarioNome,
         empreendimentoId: empreendimento.id,
         enterpriseId: String(unidade.enterprise_id),
-        imobiliariaEntityId: pedido.imobiliariaEntityId,
+        imobiliariaEntityId: pedido.imobiliariaEntityId ?? null,
         observacao: corpo.observacao ?? null,
         origem,
         // ⚠️ A CHAVE NOVA É `documento`, E A `cpf` SÓ É ESPELHADA QUANDO O DOCUMENTO É UM CPF.
@@ -306,7 +317,7 @@ export async function POST(request: Request) {
     const destinatarios = await destinatariosDaVenda(admin, {
       corretorId: pedido.corretorEntityId ?? null,
       empreendimento: { c2xId: String(unidade.enterprise_id), nome: empreendimento.nome },
-      imobiliariaId: pedido.imobiliariaEntityId,
+      imobiliariaId: pedido.imobiliariaEntityId ?? null,
     });
 
     // ⚠️ A RESERVA DO PORTAL QUE OPERA SOZINHO NÃO AVISA NINGUÉM (Lucas, 16/09/2026): nenhum
@@ -316,7 +327,7 @@ export async function POST(request: Request) {
       ? await avisarSobreAVenda(admin, {
           corretorId: pedido.corretorEntityId ?? null,
           destinatarios,
-          imobiliariaId: pedido.imobiliariaEntityId,
+          imobiliariaId: pedido.imobiliariaEntityId ?? null,
           origem: "reserva:whatsapp",
           textos: avisosDaReserva({
             cliente: pedido.proponente.nome,
@@ -325,7 +336,9 @@ export async function POST(request: Request) {
             // O rótulo da frase sai do próprio documento: CPF ou CNPJ.
             cpf: documentoDoProponente(pedido.proponente),
             empreendimento: empreendimento.nome,
-            imobiliaria: destinatarios.imobiliaria.nome,
+            // ⚠️ NULO NA VENDA DO AUTÔNOMO, e o texto do papel `imobiliaria` nem é montado. Ver
+            // `avisosDaReserva`: destino sem texto volta como falha silenciosa na tela.
+            imobiliaria: destinatarios.imobiliaria?.nome ?? null,
             unidade: nomeDaUnidade(unidade),
             validadeEm: pedido.validadeEm,
           }),
@@ -334,7 +347,7 @@ export async function POST(request: Request) {
       : await registrarAvisoNaoEnviado(admin, {
           corretorId: pedido.corretorEntityId ?? null,
           destinatarios,
-          imobiliariaId: pedido.imobiliariaEntityId,
+          imobiliariaId: pedido.imobiliariaEntityId ?? null,
           origem: "reserva:whatsapp",
           tipo: "hercules_reserva",
         });
@@ -499,11 +512,18 @@ export async function PATCH(request: Request) {
     const titular = titularDosProponentes(reserva.proponentes);
     const codigo = codigoDaVenda(reserva.protocolo_numero);
 
-    // Reserva sem imobiliaria nao tem para quem avisar: o registro do disparo pendura na ficha
-    // dela, inclusive o do coordenador.
+    // ⚠️ O AVISO DO CANCELAMENTO JÁ ERA O SILÊNCIO, E A GUARDA MUDOU EM 28/09/2026. O `if` antigo era
+    // `if (imobiliariaId)` e envolvia o aviso INTEIRO: a reserva do corretor autônomo cancelava sem
+    // avisar NEM ele NEM o coordenador, e `avisos: []` virava, na tela, "O aviso não chegou a ser
+    // enviado" — que se lê como falha de sistema e não como decisão. O corretor que recebeu "o lote é
+    // seu até quinta" descobriria pelo mapa que deixou de ser.
+    //
+    // ⚠️ O QUE A GUARDA PROTEGE CONTINUA EXISTINDO: sem NENHUMA das duas fichas não há onde pendurar
+    // o registro do disparo (`apolo_disparos.entity_id` é uuid NOT NULL, medido), e é o caso das
+    // reservas importadas do C2X. Com uma das duas, agora avisa.
     const imobiliariaId = reserva.imobiliaria_entity_id;
     let avisos: ResultadoDoAvisoDaVenda[] = [];
-    if (imobiliariaId) {
+    if (imobiliariaId || reserva.corretor_entity_id) {
       const destinatarios = await destinatariosDaVenda(admin, {
         corretorId: reserva.corretor_entity_id,
         empreendimento: { c2xId: String(unidade.enterprise_id), nome: nomeDoEmpreendimento },
@@ -521,7 +541,7 @@ export async function PATCH(request: Request) {
               codigo,
               corretor: destinatarios.corretor?.nome ?? null,
               empreendimento: nomeDoEmpreendimento,
-              imobiliaria: destinatarios.imobiliaria.nome,
+              imobiliaria: destinatarios.imobiliaria?.nome ?? null,
               motivo,
               unidade: nomeDaUnidade(unidade),
             }),

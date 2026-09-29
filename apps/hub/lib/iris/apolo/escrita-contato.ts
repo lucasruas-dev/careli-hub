@@ -87,8 +87,21 @@ export function documentoValido(documento: string): "cnpj" | "cpf" | null {
  * dígito verificador, procura colisão em DUAS fontes, reescreve o identificador e o índice de
  * busca, e grava `apolo_audit_events` com o antes e o depois.
  *
- * Ele recusa ficha ESPELHO do C2X (id determinístico, resync de 6 em 6 horas reescreve a linha
- * inteira). É recusa correta: gravar ali é trabalho que some sozinho horas depois.
+ * ⚠️ ELE NÃO RECUSA MAIS FICHA ESPELHO DO C2X (28/09/2026), E O COCKPIT ALCANÇA ESSAS FICHAS.
+ *
+ * O que estava escrito aqui — "ele recusa ficha ESPELHO do C2X (id determinístico, resync de 6 em 6
+ * horas reescreve a linha inteira); é recusa correta: gravar ali é trabalho que some sozinho horas
+ * depois" — deixou de ser verdade em 04/08/2026, quando as 7 tabelas de identidade do sync passaram a
+ * ON CONFLICT DO NOTHING (`lib/apolo/server.ts`, `ignorarDuplicados: true`): quem já existe fica
+ * INTOCADO. A recusa saiu de `atualizarIdentidade` em 28/09/2026, decisão do Lucas: *"TUDO PRECISA
+ * MORAR DENTRO DO PANTEON, não tem mais cadastro vindo do c2x"*, *"TODOS eu poderia alterar,
+ * atualizar"*. Ou seja: a correção de identidade feita daqui, pelo cockpit, agora grava nas 4.789
+ * fichas com vínculo `apolo_source_links.source_system = 'c2x'` (medido em 28/09/2026, só SELECT).
+ *
+ * O que continua de pé, e é o que protege esta superfície: a colisão de documento nas DUAS fontes
+ * (409), a auditoria `edit_identity` com o antes e o depois, e — desde 29/09/2026 — a guarda do
+ * resync que impede o documento VELHO de voltar em 6 horas (`lerFichasGravadas` em
+ * `lib/apolo/server.ts`).
  */
 export async function corrigirIdentidadeDoContato(
   client: AdminClient,

@@ -34,6 +34,28 @@ function bancoFake() {
   const client = {
     from(tabela: string) {
       return {
+        // `persistApoloEntityBatch` LÊ as fichas do lote antes de escrever (`lerFichasGravadas`),
+        // para não devolver o retrato do legado por cima da correção humana. O fake cobre só o que
+        // ela encadeia: select("...").in("id", [...]).
+        select() {
+          const filtros: ((linha: Linha) => boolean)[] = [];
+          const consulta = {
+            in(coluna: string, lista: unknown[]) {
+              filtros.push((linha) => lista.includes(linha[coluna]));
+              return consulta;
+            },
+            then(
+              resolve: (valor: { data: Linha[]; error: null }) => unknown,
+              rejeitar?: (erro: unknown) => unknown,
+            ) {
+              const linhas = (tabelas[tabela] ?? []).filter((linha) =>
+                filtros.every((teste) => teste(linha)),
+              );
+              return Promise.resolve({ data: linhas, error: null }).then(resolve, rejeitar);
+            },
+          };
+          return consulta;
+        },
         upsert(
           linhas: Linha[],
           opcoes?: { ignoreDuplicates?: boolean; onConflict?: string },
@@ -335,5 +357,143 @@ describe("persistApoloEntityBatch — o Apolo é dono do cadastro", () => {
         (linha) => linha.enterprise_name === "Vale do Ouro",
       ),
     ).toBe(true);
+  });
+});
+
+// O RESYNC NÃO PODE DESFAZER A CORREÇÃO DE IDENTIDADE FEITA EM FICHA ESPELHO.
+//
+// Em 28/09/2026 a recusa de ficha espelho saiu de `identidade-persist.ts` (Lucas: *"TUDO PRECISA
+// MORAR DENTRO DO PANTEON, não tem mais cadastro vindo do c2x"*, *"TODOS eu poderia alterar,
+// atualizar"*), então as 4.789 fichas com vínculo `apolo_source_links.source_system = 'c2x'` passaram
+// a receber correção humana. Duas escritas DESTA função a desfaziam, e as duas são cobradas aqui:
+//
+//   1. O DOCUMENTO. `ignorarDuplicados` (ON CONFLICT DO NOTHING) protege a linha QUE AINDA EXISTE; a
+//      correção de documento APAGA a linha antiga de `apolo_entity_identifiers`, então a tupla
+//      (entity_id, cpf, hash VELHO) não conflitava com nada e era REINSERIDA na rodada seguinte, com
+//      `is_primary = true`. A ficha ficava com DOIS documentos primários e o CPF errado — de OUTRA
+//      PESSOA, no caso JFL/cônjuge que motivou a tela — voltava a resolver esta ficha no `checar-cpf`
+//      público, no dedup do cadastro e do Asana e na busca da Iris/CACÁ por documento.
+//   2. O NOME NO ÍNDICE DE BUSCA. `apolo_search_entries` continua em upsert de verdade de propósito
+//      (metade do `normalized_text` é carteira), e `buildSearchRow` reimprimia `display_name` do
+//      legado. Medido em 29/09/2026 (só SELECT): 6 fichas espelho com nome certo em `apolo_entities` e
+//      nome do legado em `apolo_search_entries`, re-estampadas naquele dia entre 09:20 e 10:55.
+describe("persistApoloEntityBatch — o resync não desfaz a correção de identidade", () => {
+  it("documento corrigido no Apolo: o CPF VELHO do legado não volta na rodada seguinte", async () => {
+    const { banco, ficha } = await fichaJaExistente();
+
+    const identificadores = banco.tabelas.apolo_entity_identifiers ?? [];
+    const cpfDoLegado = identificadores.find((linha) => linha.identifier_type === "cpf");
+
+    if (!cpfDoLegado) {
+      throw new Error("a primeira rodada deveria ter criado o cpf do legado");
+    }
+
+    // O que `atualizarIdentidade` faz no passo 6: APAGA os cpf/cnpj e insere o novo.
+    banco.tabelas.apolo_entity_identifiers = identificadores.filter(
+      (linha) => linha.identifier_type !== "cnpj" && linha.identifier_type !== "cpf",
+    );
+    banco.tabelas.apolo_entity_identifiers.push({
+      entity_id: ficha.id,
+      identifier_type: "cpf",
+      is_primary: true,
+      source_system: "apolo",
+      value_hash: "hash-do-cpf-certo",
+      value_masked: "987.654.321-00",
+    });
+    // E o passo 5, que grava o hash do documento novo na ficha.
+    Object.assign(ficha, { document_hash: "hash-do-cpf-certo", document_masked: "987.654.321-00" });
+
+    await persistApoloEntityBatch(banco.client, [MARIA_NO_C2X], "run-2", "2026-08-02T18:00:00.000Z");
+
+    const documentos = (banco.tabelas.apolo_entity_identifiers ?? []).filter(
+      (linha) => linha.identifier_type === "cpf" || linha.identifier_type === "cnpj",
+    );
+
+    // UM documento, o certo. Duas linhas `is_primary` era o estrago.
+    expect(documentos).toHaveLength(1);
+    expect(documentos[0]?.value_hash).toBe("hash-do-cpf-certo");
+    expect(documentos[0]?.source_system).toBe("apolo");
+    // E o resto dos identificadores do legado continua entrando normalmente.
+    expect(
+      (banco.tabelas.apolo_entity_identifiers ?? []).some(
+        (linha) => linha.identifier_type === "legacy_id",
+      ),
+    ).toBe(true);
+  });
+
+  it("ficha SEM correção de documento: o cpf do legado continua sendo mantido", async () => {
+    const { banco } = await fichaJaExistente();
+
+    await persistApoloEntityBatch(banco.client, [MARIA_NO_C2X], "run-2", "2026-08-02T18:00:00.000Z");
+
+    expect(
+      (banco.tabelas.apolo_entity_identifiers ?? []).filter(
+        (linha) => linha.identifier_type === "cpf",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("nome corrigido no Apolo: a BUSCA não volta ao nome do legado, e a carteira nova entra", async () => {
+    const { banco, ficha } = await fichaJaExistente();
+
+    // A ficha já está com "Maria da Silva" (EDICAO_HUMANA). O legado continua com "MARIA D SILVA".
+    // `atualizarIdentidade` zera `trade_name` em PF (PF não tem nome fantasia), e é o que a correção
+    // real deixa na ficha — sem isso o `tradeNameFromC2x` do legado voltaria pela porta de trás.
+    Object.assign(ficha, { trade_name: null });
+
+    const comCompraNova = usuarioC2x({
+      ...MARIA_NO_C2X,
+      latest_paid_enterprise_name: "Vale do Ouro Central",
+      latest_paid_unit_code: "VOC-Q10-L07",
+    });
+
+    await persistApoloEntityBatch(banco.client, [comCompraNova], "run-2", "2026-08-02T18:00:00.000Z");
+
+    const busca = banco.tabelas.apolo_search_entries?.[0];
+    const texto = String(busca?.normalized_text ?? "");
+
+    expect(busca?.display_name).toBe("Maria da Silva");
+    expect(texto).toContain("maria da silva");
+    expect(texto).not.toContain("maria d silva");
+    // A CARTEIRA continua vindo do C2X: é dela que a tabela segue em upsert de verdade.
+    expect(texto).toContain("vale do ouro central");
+    expect(texto).toContain("voc-q10-l07");
+    // E a ficha segue intocada.
+    expect(ficha.display_name).toBe("Maria da Silva");
+  });
+
+  it("razão social de PJ corrigida no Apolo: a busca usa o nome novo, não o do legado", async () => {
+    const banco = bancoFake();
+    const imobiliaria = usuarioC2x({
+      cnpj: "12345678000195",
+      display_name: "IMOB VALE LTDA",
+      fantasy_name: "IMOB VALE",
+      id: 9001,
+      person_type_id: 2,
+      profile_id: 6,
+      profile_name: "Imobiliaria",
+    });
+
+    await persistApoloEntityBatch(banco.client, [imobiliaria], "run-1", "2026-08-02T09:00:00.000Z");
+
+    const ficha = banco.tabelas.apolo_entities?.[0];
+    if (!ficha) throw new Error("a primeira rodada deveria ter criado a ficha da imobiliária");
+
+    Object.assign(ficha, {
+      display_name: "IMOBILIARIA VALE DO OURO LTDA",
+      legal_name: "IMOBILIARIA VALE DO OURO LTDA",
+      trade_name: "VALE DO OURO IMOVEIS",
+    });
+
+    await persistApoloEntityBatch(banco.client, [imobiliaria], "run-2", "2026-08-02T18:00:00.000Z");
+
+    const texto = String(banco.tabelas.apolo_search_entries?.[0]?.normalized_text ?? "");
+
+    expect(banco.tabelas.apolo_search_entries?.[0]?.display_name).toBe(
+      "IMOBILIARIA VALE DO OURO LTDA",
+    );
+    expect(texto).toContain("imobiliaria vale do ouro ltda");
+    expect(texto).toContain("vale do ouro imoveis");
+    expect(texto).not.toContain("imob vale");
   });
 });

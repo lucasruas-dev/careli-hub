@@ -11,6 +11,7 @@ import {
   type Pais,
   telefoneComPais,
 } from "@/lib/hercules/paises";
+import type { Autonomo as AutonomoQueVende } from "@/lib/apolo/habilitacao-do-autonomo";
 import type { CorretorQueVende, ImobiliariaQueVende } from "@/lib/hercules/quem-pode-vender";
 import {
   comoFoiOAviso,
@@ -52,14 +53,31 @@ import { T } from "../tema";
 // um clique e uma decisão a mais em toda reserva para dizer o que o próprio documento já diz.
 export type DadosDaReserva = {
   corretorEntityId: null | string;
-  imobiliariaEntityId: string;
+  imobiliariaEntityId: null | string;
   proponente: { documento: string; nome: string; telefone: string };
   validadeEm: string;
 };
 
-type Lista = { corretores: CorretorQueVende[]; imobiliarias: ImobiliariaQueVende[] };
+// ── O CORRETOR AUTÔNOMO NO SELETOR (28/09/2026) ──────────────────────────────
+//
+// Lucas (28/09/2026), sobre a reserva sair no nome do autônomo: *"pode fazer, exige um dos dois"*.
+//
+// ⚠️ TRÊS CONJUNTOS, E O DO AUTÔNOMO É O SEU PRÓPRIO. Ele NÃO entra em `imobiliarias` (é o array que
+// esta tela rotula de "Imobiliária") e NÃO entra em `corretores` (aquele tipo exige `imobiliariaId` e
+// `imobiliariaNome`, e enfiá-lo ali obrigaria a INVENTAR uma imobiliária para ele). Lucas
+// (27/09/2026): *"nao quero ter a informacao que pode ter pessoa fisica como imobiliaria, isso sera
+// bem restrito"*.
+//
+// ⚠️ E O CÓDIGO DELE (CA-0001) É SÓ ROTULO AQUI, nunca campo do pedido. Lucas: *"somente no CRM"* —
+// ele serve para o coordenador distinguir dois homônimos na lista, e não entra na reserva.
+type Lista = {
+  autonomos: AutonomoQueVende[];
+  corretores: CorretorQueVende[];
+  imobiliarias: ImobiliariaQueVende[];
+};
 
 type Escolhido =
+  | { autonomo: AutonomoQueVende; tipo: "autonomo" }
   | { corretor: CorretorQueVende; tipo: "corretor" }
   | { imobiliaria: ImobiliariaQueVende; tipo: "imobiliaria" }
   | null;
@@ -118,7 +136,15 @@ export function ModalDeReserva({
           setFalhaDaLista(corpo.error ?? "Não foi possível carregar quem pode vender.");
           return;
         }
-        setLista(corpo.data ?? { corretores: [], imobiliarias: [] });
+        // ⚠️ `autonomos` COM PADRÃO VAZIO, e a ordem do spread importa: a aba aberta no navegador de um
+        // coordenador no dia do deploy recebe a resposta NOVA, mas o contrário também acontece (build
+        // velha em cache lendo o campo que ainda não existia). Sem o padrão, `.filter` num undefined
+        // derruba a modal inteira e ele não reserva.
+        setLista(
+          corpo.data
+            ? { ...corpo.data, autonomos: corpo.data.autonomos ?? [] }
+            : { autonomos: [], corretores: [], imobiliarias: [] },
+        );
       } catch {
         if (vivo) setFalhaDaLista("Não foi possível carregar quem pode vender.");
       }
@@ -133,6 +159,10 @@ export function ModalDeReserva({
   const imobiliariaEscolhida = useMemo(() => {
     if (!escolhido) return null;
     if (escolhido.tipo === "imobiliaria") return escolhido.imobiliaria;
+    // ⚠️ O AUTÔNOMO NÃO TEM IMOBILIÁRIA, E NÃO SE FABRICA UMA PARA ELE. Sem este ramo, o `??` abaixo
+    // montaria uma imobiliária de id e nome VAZIOS e a tela imprimiria uma PESSOA FÍSICA com o rótulo
+    // "Imobiliária" embaixo — precisamente o que o Lucas proibiu em 27/09/2026.
+    if (escolhido.tipo === "autonomo") return null;
     return (
       lista?.imobiliarias.find((i) => i.id === escolhido.corretor.imobiliariaId) ?? {
         documento: null,
@@ -142,6 +172,9 @@ export function ModalDeReserva({
       }
     );
   }, [escolhido, lista]);
+
+  /** O autônomo escolhido, quando foi ele. É a única fonte do ramo sem imobiliária. */
+  const autonomoEscolhido = escolhido?.tipo === "autonomo" ? escolhido.autonomo : null;
 
   /** Os corretores da imobiliária escolhida — a segunda metade do pedido dele. */
   const corretoresDaEscolhida = useMemo(
@@ -154,9 +187,20 @@ export function ModalDeReserva({
 
   const achados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    if (!lista) return { corretores: [], imobiliarias: [] };
-    if (!termo) return { corretores: lista.corretores.slice(0, 6), imobiliarias: lista.imobiliarias };
+    if (!lista) return { autonomos: [], corretores: [], imobiliarias: [] };
+    if (!termo) {
+      return {
+        autonomos: lista.autonomos,
+        corretores: lista.corretores.slice(0, 6),
+        imobiliarias: lista.imobiliarias,
+      };
+    }
     return {
+      // ⚠️ O CÓDIGO ENTRA NA BUSCA, e só nela: dois homônimos na lista se distinguem por "CA-0001", e
+      // é por ele que a coordenação vai procurar. No PEDIDO ele não entra (Lucas: *"somente no CRM"*).
+      autonomos: lista.autonomos.filter(
+        (a) => a.nome.toLowerCase().includes(termo) || a.codigo.toLowerCase().includes(termo),
+      ),
       corretores: lista.corretores.filter(
         (c) =>
           c.nome.toLowerCase().includes(termo) || c.imobiliariaNome.toLowerCase().includes(termo),
@@ -166,10 +210,12 @@ export function ModalDeReserva({
   }, [busca, lista]);
 
   const pedido = {
-    corretorEntityId: corretorId,
+    // ⚠️ NO RAMO DO AUTÔNOMO ELE **É** O CORRETOR, e a imobiliária vai NULA (28/09/2026). `null` e não
+    // `""`: é o único valor de ausência que a régua, o portão, a gravação e o aviso compartilham.
+    corretorEntityId: autonomoEscolhido?.entityId ?? corretorId,
     ddi: pais.ddi,
     observacao,
-    imobiliariaEntityId: imobiliariaEscolhida?.id ?? "",
+    imobiliariaEntityId: imobiliariaEscolhida?.id ?? null,
     // ⚠️ O TELEFONE VAI COM O PAÍS NA FRENTE, sempre: é assim que o gateway entrega, e guardar sem
     // o código deixaria um número estrangeiro indistinguível de um nacional depois.
     proponente: { documento, nome, telefone: telefoneComPais(telefone, pais.ddi) },
@@ -281,10 +327,14 @@ export function ModalDeReserva({
               <p style={{ color: T.danger, fontSize: 12.5, margin: 0 }}>{falhaDaLista}</p>
             ) : !lista ? (
               <p style={{ color: T.muted, fontSize: 12.5, margin: 0 }}>Carregando…</p>
-            ) : lista.imobiliarias.length === 0 ? (
+            ) : /* ⚠️ O ESTADO VAZIO OLHA OS DOIS CONJUNTOS DESDE 28/09/2026. Antes ele bloqueava com
+                   `imobiliarias.length === 0`, e num empreendimento em que só há corretor autônomo
+                   habilitado a tela dizia que ninguém podia vender. */
+            lista.imobiliarias.length === 0 && lista.autonomos.length === 0 ? (
               <p style={{ color: T.muted, fontSize: 12.5, margin: 0 }}>
-                Nenhuma imobiliária habilitada a vender neste empreendimento. O vínculo é feito no
-                credenciamento, no Apolo.
+                Ninguém habilitado a vender neste empreendimento: nenhuma imobiliária credenciada e
+                nenhum corretor autônomo habilitado. A imobiliária entra pelo credenciamento; o
+                corretor autônomo, pela habilitação, no Apolo.
               </p>
             ) : escolhido ? (
               <div style={{ display: "grid", gap: 10 }}>
@@ -300,10 +350,18 @@ export function ModalDeReserva({
                     padding: "9px 12px",
                   }}
                 >
+                  {/* ⚠️ RÓTULO PRÓPRIO, E NUNCA "Imobiliária" DEBAIXO DE UMA PESSOA FÍSICA. Lucas
+                      (27/09/2026): *"nao quero ter a informacao que pode ter pessoa fisica como
+                      imobiliaria, isso sera bem restrito"*. O código aparece aqui porque é o que
+                      distingue dois homônimos; ele não vai no pedido. */}
                   <span>
-                    <b style={{ fontSize: 13 }}>{imobiliariaEscolhida?.nome}</b>
+                    <b style={{ fontSize: 13 }}>
+                      {autonomoEscolhido ? autonomoEscolhido.nome : imobiliariaEscolhida?.nome}
+                    </b>
                     <div style={{ color: T.muted, fontSize: 11 }}>
-                      Imobiliária{imobiliariaEscolhida?.documento ? ` · ${imobiliariaEscolhida.documento}` : ""}
+                      {autonomoEscolhido
+                        ? `Corretor autônomo · ${autonomoEscolhido.codigo}`
+                        : `Imobiliária${imobiliariaEscolhida?.documento ? ` · ${imobiliariaEscolhida.documento}` : ""}`}
                     </div>
                   </span>
                   <button
@@ -320,7 +378,10 @@ export function ModalDeReserva({
                 </div>
 
                 {/* ⚠️ ESCOLHER A IMOBILIÁRIA MOSTRA OS CORRETORES DELA — é o segundo caminho que
-                    ele descreveu, e o corretor continua opcional (*"o ideal é o corretor"*). */}
+                    ele descreveu, e o corretor continua opcional (*"o ideal é o corretor"*).
+                    ⚠️ E O BLOCO NÃO APARECE NO RAMO DO AUTÔNOMO: ali ele MESMO é o corretor, e uma
+                    lista de "corretores dele" não existe. */}
+                {autonomoEscolhido ? null : (
                 <div>
                   <div style={{ ...rotulo, marginBottom: 6 }}>Corretor</div>
                   {corretoresDaEscolhida.length === 0 ? (
@@ -364,17 +425,39 @@ export function ModalDeReserva({
                     </div>
                   )}
                 </div>
+                )}
               </div>
             ) : (
               <div style={{ display: "grid", gap: 8 }}>
                 <input
                   autoFocus
                   onChange={(e) => setBusca(e.target.value)}
-                  placeholder="Buscar corretor ou imobiliária"
+                  placeholder="Buscar corretor, imobiliária ou código do autônomo"
                   style={campo}
                   value={busca}
                 />
                 <div style={{ display: "grid", gap: 4, maxHeight: 210, overflow: "auto" }}>
+                  {/* ⚠️ O AUTÔNOMO VEM PRIMEIRO E COM RÓTULO PRÓPRIO: "Corretor autônomo · CA-0001",
+                      que não se confunde com o "Corretor · <imobiliária>" da linha de baixo. Escolhê-lo
+                      já define quem vende: ele é o corretor, e não há imobiliária nenhuma. */}
+                  {achados.autonomos.map((a) => (
+                    <button
+                      key={`a-${a.entityId}`}
+                      onClick={() => {
+                        setEscolhido({ autonomo: a, tipo: "autonomo" });
+                        setCorretorId(a.entityId);
+                      }}
+                      style={{ ...linhaDaBusca, color: T.text }}
+                      type="button"
+                    >
+                      <span>
+                        <b style={{ fontSize: 12.5 }}>{a.nome}</b>
+                        <div style={{ color: T.muted, fontSize: 11 }}>
+                          Corretor autônomo · {a.codigo}
+                        </div>
+                      </span>
+                    </button>
+                  ))}
                   {achados.corretores.map((c) => (
                     <button
                       key={`c-${c.id}`}
@@ -408,7 +491,8 @@ export function ModalDeReserva({
                       </span>
                     </button>
                   ))}
-                  {achados.corretores.length + achados.imobiliarias.length === 0 ? (
+                  {achados.autonomos.length + achados.corretores.length + achados.imobiliarias.length ===
+                  0 ? (
                     <p style={{ color: T.muted, fontSize: 12, margin: "4px 0 0" }}>
                       Ninguém com esse nome está habilitado neste empreendimento.
                     </p>
@@ -528,9 +612,12 @@ export function ModalDeReserva({
             padding: "12px 16px",
           }}
         >
+          {/* ⚠️ A PROMESSA MUDA NO RAMO DO AUTÔNOMO, porque não há imobiliária para receber nada: a
+              frase única prometia três avisos e sairiam dois. */}
           <span style={{ color: T.muted, fontSize: 11.5 }}>
-            Ao reservar, corretor, imobiliária e coordenador recebem o aviso pelo WhatsApp do
-            Relacionamento.
+            {autonomoEscolhido
+              ? "Ao reservar, o corretor autônomo e o coordenador recebem o aviso pelo WhatsApp do Relacionamento."
+              : "Ao reservar, corretor, imobiliária e coordenador recebem o aviso pelo WhatsApp do Relacionamento."}
           </span>
           <button
             disabled={enviando}
