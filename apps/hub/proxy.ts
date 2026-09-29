@@ -131,6 +131,11 @@ const PUBLIC_API_PREFIXES = [
   // Lavra do Ouro), e nao ha parametro de loteamento. Sem GLOTES_API_TOKEN configurado a API
   // responde 503, nunca abre. Ver docs/integrations/glotes-openapi.yaml.
   "/api/integrations/glotes",
+  // O documento da CONSULTORIA em so leitura, pelo link que o Lucas manda a diretoria do cliente
+  // (c2x.app.br/consultoria/cr?t=...). O token vem no cabecalho x-consultoria-token e e' conferido
+  // DENTRO da rota, em tempo constante, contra o do banco. A escrita NAO esta aqui: mora em
+  // /api/consultoria/<slug>, com Bearer do hub e dono por e-mail.
+  "/api/publico/consultoria",
 ];
 
 function isPublicApi(pathname: string) {
