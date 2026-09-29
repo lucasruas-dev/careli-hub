@@ -36,6 +36,30 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-29-consultoria-porta-limpa",
+    deployedAt: "2026-09-29T14:41:32-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Consultoria",
+        screens: [
+          {
+            items: ["**A tela fechada da consultoria mostra só a marca e o título**, sem frase de instrução."],
+            screen: "Consultoria - C&R",
+          },
+        ],
+      },
+    ],
+    rollback: "d4db2243",
+    technical: {
+      done: "consultoria-telas/projeto.html: porta() sem mensagem quando não há código de link.",
+      motivation: "Lucas, 29/09/2026, print da tela fechada: não faz sentido essa frase abaixo do título, pode retirar.",
+    },
+    title: "Consultoria: tela fechada sem a frase",
+    type: "correcao",
+    version: "1.394.1",
+  },
+  {
     buildTag: "2026-09-29-corretor-autonomo-vende-e-o-mei-assina",
     deployedAt: "2026-09-29T14:03:07-03:00",
     modules: [
