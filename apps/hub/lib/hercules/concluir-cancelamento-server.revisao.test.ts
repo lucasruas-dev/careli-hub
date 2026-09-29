@@ -92,8 +92,9 @@ const COLUNAS: Record<string, readonly string[]> = {
   ],
   prometeu_reservas: ["codigo", "evento_id", "id", "lote", "quadra", "situacao", "unidade_c2x_id"],
   temis_envelopes: [
-    "atualizado_em", "criado_em", "envelope_id", "estado", "estado_cru", "falha", "fechado_em", "id",
-    "proposta_id", "provedor", "workspace_id",
+    // `finalidade` é da 0195 (aplicada antes do deploy da F1): os fatos do contrato só leem o contrato (F2).
+    "atualizado_em", "criado_em", "envelope_id", "estado", "estado_cru", "falha", "fechado_em", "finalidade", "id",
+    "proposta_id", "provedor", "provedor_documento_id", "workspace_id",
   ],
   temis_trabalho_etapas: [
     "de", "id", "motivo", "observacao", "origem", "para", "proposta_id", "quem", "quem_nome",
@@ -555,26 +556,48 @@ function escritas(banco: Banco): string[] {
 }
 
 /** O duplo da porta HTTP da Clicksign: registra o que foi pedido. */
-function portaDeTeste(respostas: { get?: Error | unknown; patch?: Error | unknown } = {}) {
+/**
+ * ⚠️ O `get` ACEITA UMA LISTA porque o cancelamento faz DUAS leituras do envelope desde 25/09/2026: a
+ * de antes, que decide se pode cancelar, e a de DEPOIS do PATCH, que confirma que o envelope morreu —
+ * o 200 do PATCH no documento fala só do documento (ver `cancelarEnvelope`). A última resposta repete.
+ */
+function portaDeTeste(
+  respostas: { get?: Error | unknown | (Error | unknown)[]; patch?: Error | unknown } = {},
+) {
   const chamadas: { caminho: string; metodo: string }[] = [];
+  const gets = Array.isArray(respostas.get) ? [...respostas.get] : [respostas.get];
+  let lidos = 0;
+
   const porta = async <T = unknown>(caminho: string, opcoes: Opcoes = {}): Promise<T> => {
     const metodo = opcoes.metodo ?? "GET";
     chamadas.push({ caminho, metodo });
-    const resposta = metodo === "GET" ? respostas.get : respostas.patch;
+    if (metodo !== "GET") {
+      if (respostas.patch instanceof Error) throw respostas.patch;
+      return (respostas.patch ?? {}) as T;
+    }
+    const resposta = gets[Math.min(lidos, gets.length - 1)];
+    lidos += 1;
     if (resposta instanceof Error) throw resposta;
     return (resposta ?? {}) as T;
   };
   return { chamadas, porta };
 }
 
+/** A releitura que CONFIRMA a morte do envelope — é o único desfecho que solta a conclusão. */
+const RELEITURA_CANCELED = { data: { attributes: { status: "canceled" } } };
+
 const envelope = (extra: Linha = {}): Linha => ({
   criado_em: "2026-09-13T12:00:00.000Z",
   envelope_id: "env-vivo",
   estado: "aguardando",
   falha: null,
+  // ⚠️ 0195: só envelope de CONTRATO conta como "contrato assinado" nos fatos (a F2 filtra por ela).
+  finalidade: "contrato",
   id: "reg-env",
   proposta_id: "venda-21",
   provedor: "clicksign",
+  // ⚠️ O ID DO DOCUMENTO É O QUE SE CANCELA na v3 — ver `cancelarEnvelope` (doc lida 25/09/2026).
+  provedor_documento_id: "doc-vivo",
   ...extra,
 });
 
@@ -825,7 +848,9 @@ describe("REVISÃO (5): envelope vivo de venda caída", () => {
   it("o envelope cancelado no distrato fica no histórico do card, não só no recado", async () => {
     silenciar();
     const banco = distratoComEnvelopeVivo();
-    const { porta } = portaDeTeste({ get: { data: { attributes: { status: "running" } } } });
+    const { porta } = portaDeTeste({
+      get: [{ data: { attributes: { status: "running" } } }, RELEITURA_CANCELED],
+    });
 
     const r = await concluirCancelamentoDoCard(banco.cliente, pedido({ declaracoes: DECLAROU_TUDO }), porta);
     expect(r.ok).toBe(true);

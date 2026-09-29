@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { acaoDeCancelamento } from "./acao-de-cancelamento";
+import { acaoDeCancelamento, type SituacaoDaUnidade } from "./acao-de-cancelamento";
 
 const base = { propostaDoLegado: false, propostaNativa: false };
 
@@ -17,10 +17,38 @@ describe("acaoDeCancelamento", () => {
     expect(a.rotulo).toBe("Cancelar proposta");
   });
 
-  it("⚠️ proposta do C2X não se cancela daqui, e o motivo diz onde se cancela", () => {
+  // ⚠️ A PROPOSTA HERDADA DO C2X SE CANCELA AQUI (Lucas, 25/09/2026: *"essas reservas tem que
+  // comportar iguais as outras"*). O caso antigo devolvia `tipo: null` com "o cancelamento dela é
+  // feito lá": a premissa era que o Panteon não escreveria a mudança de volta no legado, e a carga
+  // do C2X foi ENCERRADA em 21/09/2026. É a mesma revogação que o Lucas já tinha feito para o
+  // contrato em 16/09/2026 (*"será feito aqui"*).
+  it("⚠️ proposta do C2X se cancela AQUI, como a nativa, e o motivo não fala do legado", () => {
     const a = acaoDeCancelamento({ ...base, etapa: "proposta", propostaDoLegado: true });
-    expect(a.tipo).toBeNull();
-    expect(a.motivo).toContain("C2X");
+    expect(a.tipo).toBe("proposta");
+    expect(a.rotulo).toBe("Cancelar proposta");
+    expect(a.motivo).not.toContain("C2X");
+  });
+
+  // ⚠️ A AÇÃO VEM DA ETAPA E DE ONDE A LINHA MORA, NUNCA DA COLUNA `origem`. As 11 herdadas em
+  // `reservado` são linha de `hercules_propostas` e NÃO têm linha em `hercules_reservas` (medido em
+  // 25/09/2026, projeto bxgukywoxgivlrhjkwjx, zero em 13/13): quem cancela é a rota da PROPOSTA. O
+  // RÓTULO continua "Cancelar reserva", que é o que o coordenador lê na grade.
+  it("⚠️ reservado herdado SEM reserva do Hércules: rota da proposta, rótulo de reserva", () => {
+    const a = acaoDeCancelamento({
+      ...base,
+      etapa: "reservado",
+      propostaDoLegado: true,
+      reservaDoHercules: false,
+    });
+    expect(a.tipo).toBe("reserva_do_legado");
+    expect(a.rotulo).toBe("Cancelar reserva");
+    expect(a.motivo).not.toContain("C2X");
+  });
+
+  it("reservado COM reserva do Hércules continua na rota da reserva", () => {
+    const a = acaoDeCancelamento({ ...base, etapa: "reservado", reservaDoHercules: true });
+    expect(a.tipo).toBe("reserva");
+    expect(a.rotulo).toBe("Cancelar reserva");
   });
 
   it("⚠️ na situação em_cancelamento, a ficha diz que o pedido JÁ EXISTE", () => {
@@ -85,5 +113,20 @@ describe("acaoDeCancelamento", () => {
 
   it("etapa ausente não quebra", () => {
     expect(acaoDeCancelamento({ ...base, etapa: null }).tipo).toBeNull();
+  });
+
+  it("nenhum motivo tem travessão", () => {
+    const casos: SituacaoDaUnidade[] = [
+      { ...base, etapa: "reservado" },
+      { ...base, etapa: "reservado", propostaDoLegado: true, reservaDoHercules: false },
+      { ...base, etapa: "proposta", propostaNativa: true },
+      { ...base, etapa: "proposta", propostaDoLegado: true },
+      { ...base, etapa: "contrato" },
+      { ...base, etapa: "contrato", pedidoAberto: true },
+      { ...base, etapa: "em_cancelamento" },
+      { ...base, etapa: "vendida" },
+      { ...base, etapa: "disponivel" },
+    ];
+    for (const caso of casos) expect(acaoDeCancelamento(caso).motivo).not.toContain("—");
   });
 });

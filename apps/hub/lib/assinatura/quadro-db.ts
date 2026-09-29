@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { COLUNAS_DA_0191, ehColunaDeAutoriaAusente } from "@/lib/temis/autoria-dos-modelos";
+
 import type { Pessoa } from "./signatarios";
 import type { PapelNoContrato } from "./tipos";
 
@@ -18,6 +20,17 @@ import type { PapelNoContrato } from "./tipos";
 // chave que não conhece — renomeá-la faria a ordem cadastrada do empreendimento voltar ao padrão em
 // silêncio. A tela já diz "Coordenador de Vendas"; a chave fica como está. Mesma disciplina de
 // `valor_imovel_venda`, que mantém o nome porque as 41 minutas do legado o trazem.
+//
+// ⚠️ O QUADRO É A ÚNICA FONTE, E NADA MAIS É HERDADO DA FICHA (25/09/2026). Até esta data
+// `assinantesDoQuadro` acrescentava o representante legal da empresa vendedora e o da coordenadora
+// de vendas (`apolo_relationships` + `apolo_entities` + o primeiro e-mail de `apolo_contacts`)
+// quando ninguém ocupava o papel, e a tela fazia o mesmo quando a LINHA 1 estava livre. As duas
+// regras divergiam: no VOR a Nívea gravou coordenadores nas linhas 2 e 3, a tela mostrava o
+// Fabricio herdado na linha 1 e o contrato saía sem ele. Lucas, no mesmo dia: *"todas assinaturas eu
+// tenho que conseguir excluir e editar, esse cadeado esta errado"* e *"nao tem que ter mais sync com
+// c2x referente a contrato"* (as fichas nasceram da sincronização do C2X). Quem herdava virou linha
+// gravada pela migration 0191, com o e-mail que o Lucas escolheu; daqui em diante quem assina é
+// exatamente o que está em `temis_assinantes`, e a tela lê a mesma tabela.
 
 /**
  * Como o papel do quadro se chama dentro do contrato.
@@ -54,56 +67,6 @@ type LinhaDoQuadro = {
 };
 
 /**
- * Quem assina por esta empresa, segundo o cadastro dela.
- *
- * ⚠️ O REPRESENTANTE NÃO MORA NO QUADRO, e é por isso que ele é lido aqui. Ele vem de
- * `apolo_relationships` do cadastro da PJ; copiá-lo para `temis_assinantes` criaria uma segunda
- * verdade sobre quem representa a empresa, e o dia em que o cadastro mudasse o envelope continuaria
- * indo para o nome antigo.
- */
-async function representanteLegal(
-  sb: SupabaseClient,
-  entityId: string,
-  papel: PapelNoContrato,
-): Promise<null | Pessoa> {
-  const { data: vinculo } = await sb
-    .from("apolo_relationships")
-    .select("related_entity_id")
-    .eq("entity_id", entityId)
-    .eq("relationship_type", "representante_legal")
-    .limit(1)
-    .maybeSingle<{ related_entity_id: null | string }>();
-
-  const pessoaId = vinculo?.related_entity_id;
-  if (!pessoaId) return null;
-
-  const [{ data: pessoa }, { data: contatos }] = await Promise.all([
-    sb
-      .from("apolo_entities")
-      .select("display_name, document_masked")
-      .eq("id", pessoaId)
-      .maybeSingle<{ display_name: null | string; document_masked: null | string }>(),
-    sb
-      .from("apolo_contacts")
-      .select("value")
-      .eq("entity_id", pessoaId)
-      .eq("contact_type", "email")
-      .limit(1),
-  ]);
-
-  const nome = String(pessoa?.display_name ?? "").trim();
-  if (!nome) return null;
-
-  return {
-    cpf: pessoa?.document_masked ?? null,
-    email: String((contatos ?? [])[0]?.value ?? "").trim(),
-    nome,
-    papel,
-    telefone: null,
-  };
-}
-
-/**
  * As pessoas do quadro deste empreendimento, prontas para virar signatárias.
  *
  * ⚠️ FALHA DE LEITURA DEVOLVE LISTA VAZIA, E NÃO DERRUBA O ENVIO. Um timeout do PostgREST aqui não
@@ -117,12 +80,7 @@ async function representanteLegal(
  */
 export async function assinantesDoQuadro(
   sb: SupabaseClient,
-  alvo: {
-    /** O COORDENADOR daquele empreendimento (0159) — não a Coordenação de Vendas da casa. */
-    coordenadorEntityId?: null | string;
-    enterpriseId: null | string;
-    vendedoraEntityId?: null | string;
-  },
+  alvo: { enterpriseId: null | string },
 ): Promise<Pessoa[]> {
   const enterpriseId = String(alvo.enterpriseId ?? "").trim();
   if (!enterpriseId) return [];
@@ -162,31 +120,61 @@ export async function assinantesDoQuadro(
       });
     }
 
-    // ⚠️ O REPRESENTANTE ENTRA SÓ SE NINGUÉM OCUPOU A VENDEDORA. Quem digitou uma linha de vendedora
-    // no quadro decidiu quem assina pela empresa; somar o herdado por cima poria duas pessoas na
-    // mesma linha do contrato. É a mesma regra que a tela aplica, e de propósito: duas versões dela
-    // divergiriam no primeiro ajuste.
-    const herdar = async (
-      entityId: null | string | undefined,
-      papel: PapelNoContrato,
-    ) => {
-      if (!entityId) return;
-      if (pessoas.some((p) => p.papel === papel)) return;
-      const rep = await representanteLegal(sb, entityId, papel);
-      if (rep) pessoas.unshift(rep);
-    };
-
-    await herdar(alvo.vendedoraEntityId, "vendedora");
-    // ⚠️ O COORDENADOR TAMBÉM HERDA. Lucas (13/09/2026): *"o coordenador pode vir preenchido, só
-    // vamos incluir se precisar, vendedora também que vir"*. O papel no código continua `coordenadora`
-    // porque é a chave gravada no jsonb da ordem — só o RÓTULO da tela mudou para o masculino.
-    await herdar(alvo.coordenadorEntityId, "coordenadora");
-
     return pessoas;
   } catch (e) {
     console.warn("[assinatura/quadro] falhou:", e instanceof Error ? e.message : e);
     return [];
   }
+}
+
+/**
+ * A TRAVA DA VIRADA: o envio para quando o código sem herança está no ar e a migration 0191 não.
+ *
+ * ⚠️ A ORDEM DO DEPLOY ESTAVA SÓ ESCRITA, E PUSH NA MAIN É PRODUÇÃO (revisão de 25/09/2026). A 0191
+ * grava como linha quem o quadro herdava da ficha (13 empreendimentos medidos no dia, todos com o
+ * Fabricio como coordenador). Se o código subir antes dela, o papel coordenador aparece vazio
+ * naqueles 13 e o envelope sai sem a coordenação: o defeito do VOR repetido 13 vezes, com envelope
+ * pago e irreversível. O aviso de `signatariosDoContrato` aparece, mas deixa enviar.
+ *
+ * ⚠️ TRAVA SÓ O QUE A VIRADA QUEBRARIA. Só roda quando o contrato QUALIFICA uma coordenadora e
+ * ninguém assina por ela (`coordenadoraSemQuemAssine`), que é exatamente o caso dos 13; os outros
+ * envios não pagam nem a consulta. Depois da 0191 a coluna existe e isto nunca mais trava: faltar a
+ * coordenadora volta a ser só aviso, porque o Lucas quer poder excluir qualquer linha do quadro.
+ *
+ * ⚠️ A PROVA DE QUE A 0191 RODOU É A COLUNA `atualizado_por_nome`. A migration cria a coluna e grava
+ * o backfill na MESMA transação (`begin` ... `commit`): coluna presente quer dizer backfill feito.
+ * Contar linhas de `origem = 'backfill_heranca_0191'` não serviria, porque excluí-las pela lixeira é
+ * permitido e as faria sumir.
+ *
+ * ⚠️ QUALQUER OUTRA FALHA DA CONSULTA NÃO TRAVA, a mesma disciplina de `assinantesDoQuadro`: só o
+ * "coluna não existe", pelo nome da coluna (`ehColunaDeAutoriaAusente`), é prova de migration
+ * pendente. Um timeout não é.
+ *
+ * O operador sai da trava de dois jeitos, e a frase diz os dois: a 0191 aplicada, ou alguém
+ * cadastrado no bloco Coordenador de Vendas daquele empreendimento.
+ */
+export async function impedimentoDaVirada0191(
+  sb: SupabaseClient,
+  coordenadoraSemAssinante: null | string,
+): Promise<null | string> {
+  if (!coordenadoraSemAssinante) return null;
+
+  try {
+    const { error } = await sb
+      .from("temis_assinantes")
+      .select(COLUNAS_DA_0191.temis_assinantes.join(","))
+      .limit(1);
+    if (!ehColunaDeAutoriaAusente(error, COLUNAS_DA_0191.temis_assinantes)) return null;
+  } catch {
+    return null;
+  }
+
+  return (
+    `Ninguém assina pela COORDENADORA DE VENDAS (${coordenadoraSemAssinante}), e o banco ainda não ` +
+    "recebeu a migration 0191, que grava quem assinava por ela até 25/09/2026. Avise quem cuida do " +
+    "banco, ou cadastre quem assina no bloco Coordenador de Vendas do Quadro de assinatura do " +
+    "empreendimento."
+  );
 }
 
 /**
@@ -205,19 +193,20 @@ export async function assinantesDoQuadro(
  * tela de categorias a aprender um papel que não assina contrato nenhum.
  *
  * ⚠️ NÃO HÁ QUEDA AQUI DENTRO, E É DE PROPÓSITO. Quem encadeia é `incorporadorDoAcordo`, em
- * `envio-db.ts`: o apontado vence, depois a vendedora do quadro, depois o representante legal — e
- * esses dois últimos degraus já saem prontos e nessa ordem de `assinantesDoQuadro`. Repetir a queda
- * aqui faria duas versões da mesma precedência, que é como a tela e o envio passam a discordar sem
- * ninguém perceber.
+ * `envio-db.ts`: o apontado vence, depois a vendedora do quadro, e o segundo degrau sai pronto de
+ * `assinantesDoQuadro`. Repetir a queda aqui faria duas versões da mesma precedência, que é como a
+ * tela e o envio passam a discordar sem ninguém perceber. (Até 25/09/2026 havia um terceiro degrau,
+ * o representante legal herdado da ficha; ele saiu com a herança, e a migration 0191 gravou como
+ * linha de vendedora quem ele alcançaria. Medido no dia: ninguém, porque nenhuma incorporadora tem
+ * representante legal cadastrado.)
  *
  * ⚠️ E É ELE TAMBÉM QUE PERCORRE PAI E FILHO. Esta função responde por UM empreendimento; a cadeia
  * (divisão da unidade, empreendimento da proposta, pai) é do chamador, pela mesma razão: a regra de
  * herança da casa mora num lugar só.
  *
  * ⚠️ FALHA DE LEITURA DEVOLVE `null`, E NÃO DERRUBA O ENVIO — a mesma disciplina de
- * `assinantesDoQuadro`: um timeout do PostgREST vira "ninguém apontado", o envio cai no
- * representante legal e, se nem ele existir, o operador lê a frase de impedimento em vez de uma
- * tela de erro.
+ * `assinantesDoQuadro`: um timeout do PostgREST vira "ninguém apontado", o envio cai na vendedora
+ * do quadro e, se nem ela existir, o operador lê a frase de impedimento em vez de uma tela de erro.
  *
  * ⚠️ O MENOR `posicao` VENCE, e só ele vai. O termo tem UMA linha para a vendedora; cadastrar dois
  * apontados é o operador trocando de pessoa sem apagar a antiga, e nesse caso a linha 1 é a que ele
@@ -272,51 +261,5 @@ export async function assinanteDeTermosDaVendedora(
       e instanceof Error ? e.message : e,
     );
     return null;
-  }
-}
-
-/**
- * As duas empresas do empreendimento de quem o quadro herda representante.
- *
- * ⚠️ TRÊS COLUNAS PARECIDAS, E A ORDEM ENTRE DUAS DELAS MUDOU EM 22/09/2026.
- * `vendedor_entity_id` é a incorporadora; `coordenadora_entity_id` é a Coordenação de Vendas da casa
- * (a Gurgel, a mesma em todos os produtos) e é ela que o TEXTO do contrato imprime;
- * `coordenador_entity_id` (0159) é quem o C2X registrou como coordenador daquele empreendimento.
- *
- * ⚠️ A COORDENADORA ASSINA — Lucas, 22/09/2026: *"a gurgel assina sim"*. Até esta data o papel
- * `coordenadora` do envelope saía de `coordenador_entity_id`, e o TEXTO do contrato de
- * `coordenadora_entity_id`: o nome impresso e quem o sistema convidava nunca eram a mesma empresa.
- * Medido no dia: 16 linhas com `coordenadora_entity_id`, TODAS apontando a Gurgel; 24 com
- * `coordenador_entity_id`, em 7 empresas diferentes, sendo 19 delas imobiliárias; linhas em que as
- * duas coincidem: ZERO. No Vale do Ouro o contrato imprimia a Gurgel e mandava assinar a HUBER —
- * que nem representante legal cadastrado tem, então a linha saía vazia no papel.
- *
- * ⚠️ O `coordenador_entity_id` FICA COMO QUEDA, e não sai de cena: é o único que responde no
- * produto cuja coordenação ainda não foi apontada (o ACP e o LOS não têm a coluna nova preenchida).
- * Trocar as três já pôs o captador no lugar do coordenador uma vez; por isso aqui se troca UMA.
- */
-export async function empresasDoEmpreendimento(
-  sb: SupabaseClient,
-  enterpriseId: null | string,
-): Promise<{ coordenador: null | string; vendedora: null | string }> {
-  const vazio = { coordenador: null, vendedora: null };
-  const id = String(enterpriseId ?? "").trim();
-  if (!id) return vazio;
-  try {
-    const { data } = await sb
-      .from("apolo_enterprise_settings")
-      .select("vendedor_entity_id, coordenador_entity_id, coordenadora_entity_id")
-      .eq("enterprise_id", id)
-      .maybeSingle<{
-        coordenador_entity_id: null | string;
-        coordenadora_entity_id: null | string;
-        vendedor_entity_id: null | string;
-      }>();
-    return {
-      coordenador: data?.coordenadora_entity_id ?? data?.coordenador_entity_id ?? null,
-      vendedora: data?.vendedor_entity_id ?? null,
-    };
-  } catch {
-    return vazio;
   }
 }

@@ -47,6 +47,10 @@
 // falharam, medido em 24/09/2026) voltava "incompleto" para sempre, escondendo uma falha real de dado.
 // `avisos` sai sem repetição.
 
+import {
+  MOTIVO_GRUPO_SEM_DIVISOES,
+  MOTIVO_SEM_COORDENADOR,
+} from "@/lib/apolo/coordenador-do-empreendimento";
 import { garantirNaFilaDoLancamento } from "@/lib/apolo/credenciado-para-fila";
 import { cnpjValido, cpfValido } from "@/lib/apolo/documento";
 import { listEnterprisesRecebendo } from "@/lib/apolo/enterprise-settings";
@@ -130,17 +134,42 @@ const trecho = (texto: null | string | undefined): string =>
 
 /**
  * Motivos de `avisarEtapa` (esteira-avisos.ts, `coordenadorDaCad`) que são CADASTRO, e não envio: o
- * que a coordenação confere para o próximo aviso sair. Chaveado pelo `trecho` do motivo (sem ponto
+ * que a coordenação confere para o próximo aviso sair. Comparado pelo `trecho` do motivo (sem ponto
  * final), para a comparação não depender da pontuação de quem escreveu.
+ *
+ * ⚠️ AS CHAVES SÃO AS CONSTANTES DE QUEM ESCREVE O MOTIVO, NUNCA A FRASE COPIADA (revisão de 24/09/2026).
+ * O mapa antigo tinha as frases do `coordenadorDaCad` da busca pela sigla ("...no C2X.", "sem sigla
+ * cadastrada no Apolo."). A busca passou a ser pelo id (lib/apolo/coordenador-do-empreendimento.ts) e
+ * as frases mudaram, então nenhuma casava mais: mover uma CAD para o Garden dizia "Coordenador CARELI
+ * ACESSORIA sem telefone no cadastro do Panteon" sem dica, e as dicas que sobravam apontavam para o C2X
+ * e para a sigla, quando quem prevalece agora é o cadastro do Panteon. O coordenador sem telefone vem
+ * com o NOME no meio da frase, por isso casa por padrão.
  */
-const CONFERIR_NO_CADASTRO: Record<string, string> = {
-  [trecho("Empreendimento sem coordenador de vendas no C2X.")]:
-    "Confira o coordenador de vendas do empreendimento no C2X.",
-  [trecho("Coordenador sem telefone no C2X.")]:
-    "Confira o telefone do coordenador de vendas do empreendimento no C2X.",
-  [trecho("Empreendimento sem sigla cadastrada no Apolo.")]:
-    "Confira a sigla do empreendimento no Apolo.",
-};
+const CONFERIR_NO_CADASTRO: ReadonlyArray<{ conferir: string; quando: (motivo: string) => boolean }> = [
+  {
+    conferir: "Confira o coordenador de vendas no cadastro do empreendimento, no Panteon.",
+    quando: (motivo) => motivo === trecho(MOTIVO_SEM_COORDENADOR),
+  },
+  {
+    conferir: "Confira as divisões do empreendimento no cadastro do Panteon.",
+    quando: (motivo) => motivo === trecho(MOTIVO_GRUPO_SEM_DIVISOES),
+  },
+  {
+    conferir: "Confira o telefone na ficha do coordenador, no Panteon.",
+    quando: (motivo) => /^coordenador .+ sem telefone no cadastro do panteon$/i.test(motivo),
+  },
+  {
+    // O coordenador veio do C2X porque o Panteon não tem um cadastrado: o conserto é cadastrá-lo aqui.
+    conferir: "Cadastre o coordenador de vendas do empreendimento no Panteon, com o telefone.",
+    quando: (motivo) => /^coordenador .+ sem telefone no c2x$/i.test(motivo),
+  },
+  {
+    conferir: "Confira o telefone na ficha do coordenador, no Panteon.",
+    quando: (motivo) =>
+      /^coordenador .+ com telefone que não serve para whatsapp$/i.test(motivo) ||
+      /^coordenador sem telefone$/i.test(motivo),
+  },
+];
 
 /**
  * A frase de quando o coordenador DO DESTINO não recebeu o aviso (revisão de 24/09/2026, terceira
@@ -155,7 +184,7 @@ const CONFERIR_NO_CADASTRO: Record<string, string> = {
 export function avisoDoCoordenadorQueNaoSaiu(erroDoAviso: null | string | undefined): string {
   const motivo = trecho(erroDoAviso);
   const aconteceu = `O aviso ao coordenador do novo empreendimento não saiu${motivo ? `: ${motivo}` : ""}.`;
-  const conferir = motivo ? CONFERIR_NO_CADASTRO[motivo] : undefined;
+  const conferir = motivo ? CONFERIR_NO_CADASTRO.find((dica) => dica.quando(motivo))?.conferir : undefined;
   return conferir ? `${aconteceu} ${conferir}` : aconteceu;
 }
 

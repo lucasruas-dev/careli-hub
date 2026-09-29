@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { lerPlanosDoC2x } from "@/lib/apolo/planos-comerciais-c2x";
+import { idDoC2x } from "@/lib/apolo/c2x-pelo-id";
+import { lerPlanosDoC2x, lerPlanosDoC2xPorIds } from "@/lib/apolo/planos-comerciais-c2x";
 import { resolverTextosDaPa } from "@/lib/prometeu/pa-textos";
 import {
   ordenarParaAFolha,
@@ -32,6 +33,9 @@ export const runtime = "nodejs";
  */
 const ESPERA_PELOS_PLANOS_MS = 4_000;
 
+/** O pedaço do evento que diz de qual empreendimento são os planos. */
+type EmpreendimentoDoEvento = null | { enterpriseCode: null | string; enterpriseId: null | string };
+
 type PlanosDaFolha = {
   planos: PlanoComercial[];
   /** Nulo = deu tudo certo. Preenchido = a tela do posto TEM que mostrar antes de imprimir. */
@@ -49,12 +53,24 @@ type PlanosDaFolha = {
  *     pedido de conferência antes de entregar o papel.
  * Tratar os dois como "lista vazia" faz a folha sair errada calada no dia em que o banco
  * simplesmente não respondeu.
+ *
+ * ⚠️ PELO ID DO EMPREENDIMENTO, E NÃO PELA SIGLA (PAN-124). A sigla do evento
+ * (`prometeu_eventos.enterprise_code`) é uma CÓPIA guardada no dia em que o lançamento foi
+ * configurado no Setup: se alguém renomear o empreendimento no C2X (o 43 foi de RDV para PDI em
+ * 24/09/2026), a busca pela sigla guardada volta vazia, e a PA sai com os planos padrão da casa e o
+ * aviso de "sem plano cadastrado", sobre um empreendimento que tem plano. O `enterprise_id` não muda
+ * num renome (medido em 25/09/2026: os três eventos têm o id preenchido, 35, 38 e 40). A sigla só
+ * entra quando o id falta, e continua sendo o rótulo dos avisos (é o que o operador reconhece).
  */
-async function planosDaFolha(code: null | string): Promise<PlanosDaFolha> {
+async function planosDaFolha(evento: EmpreendimentoDoEvento): Promise<PlanosDaFolha> {
   const padrao = {
     planos: PLANOS_PADRAO_DA_CASA,
     planosSaoPadrao: true,
   };
+
+  const idNoC2x = idDoC2x(evento?.enterpriseId);
+  const sigla = (evento?.enterpriseCode ?? "").trim();
+  const code = sigla || (idNoC2x !== null ? String(idNoC2x) : "");
 
   if (!code) {
     return {
@@ -65,7 +81,7 @@ async function planosDaFolha(code: null | string): Promise<PlanosDaFolha> {
   }
 
   const leitura = await Promise.race([
-    lerPlanosDoC2x([code]),
+    idNoC2x !== null ? lerPlanosDoC2xPorIds([idNoC2x]) : lerPlanosDoC2x([sigla]),
     new Promise<"timeout">((resolve) =>
       setTimeout(() => resolve("timeout"), ESPERA_PELOS_PLANOS_MS),
     ),
@@ -158,7 +174,7 @@ export async function GET(request: NextRequest) {
   // medição mostrou que os 24 empreendimentos cadastrados têm planos distintos, com o NORMAL
   // variando de 37 a 200 parcelas. Uma folha com os planos de outro empreendimento é um
   // documento que o cliente assina prometendo o que o sistema não vai cobrar.
-  const dosPlanos = await planosDaFolha(evento?.enterpriseCode ?? null);
+  const dosPlanos = await planosDaFolha(evento);
 
   return NextResponse.json(
     {

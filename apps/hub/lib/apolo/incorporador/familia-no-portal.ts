@@ -96,12 +96,15 @@ export const SEM_CAD_NO_EMPREENDIMENTO = "Este cliente não tem CAD neste empree
  */
 export function credenciamentoParaOPortal<
   T extends { credenciado: boolean; desde: null | string; entityId: null | string; etapa: null | string; motivo: null | string },
->(credenciamento: T, contexto: { comercial: boolean; cpf: string }): T {
+>(credenciamento: T, contexto: { comercial: boolean; documento: string }): T {
   if (contexto.comercial || credenciamento.credenciado) return credenciamento;
-  const digitos = String(contexto.cpf ?? "").replace(/\D/g, "");
+  const digitos = String(contexto.documento ?? "").replace(/\D/g, "");
   const semEntidade =
     credenciamento.entityId === null && credenciamento.etapa === null && credenciamento.desde === null;
-  if (digitos.length === 11 && semEntidade) {
+  // (26/09/2026) CNPJ também: com PJ o documento inteiro tem catorze dígitos, e a frase
+  // neutra vale igual — dizer ao Cecílio que uma empresa existe na base da Careli é o mesmo
+  // oráculo que dizer de uma pessoa.
+  if ((digitos.length === 11 || digitos.length === 14) && semEntidade) {
     return { ...credenciamento, motivo: SEM_CAD_NO_EMPREENDIMENTO };
   }
   return credenciamento;

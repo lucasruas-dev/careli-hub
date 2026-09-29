@@ -122,7 +122,6 @@ vi.mock("@/lib/assinatura/quadro-db", () => ({
       telefone: null,
     },
   ],
-  empresasDoEmpreendimento: async () => ({ coordenador: null, vendedora: "ent-vendedora" }),
 }));
 
 vi.mock("@/lib/assinatura/diario-do-envelope-db", () => ({
@@ -153,6 +152,10 @@ function bancoDeTeste() {
     };
     Object.assign(builder, {
       eq: () => builder,
+      // A guarda de terminal e a ligação dos eventos dos carimbos (F1 da fonte única).
+      in: () => builder,
+      is: () => builder,
+      not: () => builder,
       insert: () => builder,
       limit: () => builder,
       maybeSingle: () => Promise.resolve(linha),

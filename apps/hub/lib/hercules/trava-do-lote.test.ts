@@ -660,6 +660,32 @@ describe("outrosDonosDoLote: quem é dono", () => {
     expect(ids(await donosDe(banco, "vor-1206", VOR))).toEqual(["p-nativa"]);
   });
 
+  // ⚠️ A RESERVA HERDADA DO C2X CONTINUA SENDO OUTRO DONO, E ABRIR A PORTA DELA NÃO MEXE NISSO.
+  // Lucas, 25/09/2026: *"essas reservas tem que comportar iguais as outras"*. Medido em 25/09/2026
+  // (projeto bxgukywoxgivlrhjkwjx, só SELECT): 13 propostas com `origem_c2x_id` preenchido em etapa
+  // `reservado` ou `proposta` numa linha VIVA de unidade (`espelho_de is null`), com `reserva_id`
+  // NULO em 13/13 e ZERO linhas em `hercules_reservas` para essas unidades. O cancelamento delas
+  // passou a ser feito aqui em 25/09/2026, pela rota da PROPOSTA, e a trava NÃO ganhou exceção
+  // nenhuma: ela lê propostas por `.in("etapa", ETAPAS_DO_FLUXO)` e só descarta a `doPaiImportada`
+  // e a filha da minha reserva. Herdada viva numa linha viva não é nenhuma das duas.
+  it("⚠️ proposta herdada do C2X em `reservado`, sem reserva do Hércules, é dona do lote", async () => {
+    const banco = novoBanco();
+    banco.semear("hercules_propostas", propostaImportada("p-herdada", "voc-0305", "reservado"));
+    expect(ids(await donosDe(banco, "voc-0305", VOC))).toEqual(["p-herdada"]);
+    // E prende o terreno inteiro, como qualquer outra: a irmã do mesmo chão também não sai.
+    expect(ids(await donosDe(banco, "vlo-0305", VLO))).toEqual(["p-herdada"]);
+  });
+
+  // ⚠️ E É ASSIM QUE O LOTE SAI: a rota da proposta grava `etapa: "cancelado"` ANTES de chamar
+  // `soltarLoteDaVendaDesfeita`, e nesse instante a linha já saiu de ETAPAS_DO_FLUXO. Sem este par
+  // de casos, alguém "resolveria" o cancelamento da herdada abrindo um segundo "não é outro dono"
+  // aqui dentro, e aí a regra de ouro do Lucas (18/09/2026) deixaria de valer para 146 linhas.
+  it("⚠️ a mesma herdada em `cancelado` já não é dona: o lote sai pela etapa, não por exceção", async () => {
+    const banco = novoBanco();
+    banco.semear("hercules_propostas", propostaImportada("p-herdada", "voc-0305", "cancelado"));
+    expect(await donosDe(banco, "voc-0305", VOC)).toEqual([]);
+  });
+
   it("proposta cancelada ou em distrato não prende", async () => {
     const banco = novoBanco();
     banco.semear("hercules_propostas", propostaImportada("p-c", "voc-0305", "cancelado"));

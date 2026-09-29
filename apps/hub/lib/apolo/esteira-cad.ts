@@ -25,8 +25,8 @@ import { canonizador, type ComDivisoes } from "@/lib/apolo/empreendimento-equiva
 // lib/cliente-sem-mysql.varredura.test.ts barra o "use client" que passar a alcançá-lo.
 import {
   ENTERPRISE_GROUPS,
-  EXCLUDED_ENTERPRISE_CODES,
-  MIRROR_ENTERPRISE_CODES,
+  EXCLUDED_ENTERPRISE_IDS,
+  MIRROR_ENTERPRISE_IDS,
 } from "@/lib/guardian/c2x-analytics";
 
 // Só o que estes helpers usam. Aceita tanto o admin client do Apolo quanto um SupabaseClient
@@ -178,13 +178,21 @@ const PREFIXO_GRUPO = "group:";
  *   3. fora dos grupos, o filho sobe ao pai do cadastro quando o pai tem id do C2X.
  *
  * ⚠️ O LAGOA BONITA FICA "group:Lagoa Bonita", e é de propósito. O pai dele no cadastro é o LAB (31),
- * que está em EXCLUDED_ENTERPRISE_CODES: fora do catálogo, sem configuração de crédito, fora do escopo
+ * que está em EXCLUDED_ENTERPRISE_IDS: fora do catálogo, sem configuração de crédito, fora do escopo
  * dos coordenadores, e o CAD público do Lagoa Bonita grava "group:Lagoa Bonita". Mover uma CAD para o
  * 31 seria repetir o caso do Jonatas: a CAD num id que ninguém enxerga. O mesmo vale para Lavra do
  * Ouro, Rio de Pedras e Portal dos Vales, cujo pai não é espelho: o mercado os conhece pelo grupo.
  *
  * Id que o cadastro não conhece volta como veio (19, 29...): não é papel desta régua inventar
  * equivalência para o que ela não sabe.
+ *
+ * ⚠️ PELO ID DO C2X, E NÃO PELA SIGLA (PAN-124, 25/09/2026). "Excluído" e "espelho" eram decididos pela
+ * `codigo` do cadastro contra as listas de siglas, e as divisões dos grupos eram achadas casando a
+ * sigla de `ENTERPRISE_GROUPS.codes` com a `codigo` do cadastro. A sigla muda quando alguém renomeia
+ * (no C2X ou no cadastro do Panteon); o id do C2X, não. Agora os três casam pelo `c2xEnterpriseId`:
+ * `EXCLUDED_ENTERPRISE_IDS`, `MIRROR_ENTERPRISE_IDS` e `ENTERPRISE_GROUPS.ids`. É IDÊNTICO ao de antes,
+ * medido no cadastro de produção em 25/09/2026: a única linha excluída é o LAB (31), o único espelho é
+ * o VLO (35), e as siglas das divisões no cadastro são as mesmas dos grupos, com os mesmos ids.
  */
 export function idDeMercado(
   enterpriseId: unknown,
@@ -194,27 +202,31 @@ export function idDeMercado(
   if (!id) return null;
 
   const porC2x = new Map<string, EmpreendimentoDoCadastro>();
-  const porCodigo = new Map<string, EmpreendimentoDoCadastro>();
   const porId = new Map<string, EmpreendimentoDoCadastro>();
   for (const linha of cadastro) {
     porId.set(linha.id, linha);
     const c2x = normalizarEnterpriseId(linha.c2xEnterpriseId);
     if (c2x) porC2x.set(c2x, linha);
-    const codigo = (linha.codigo ?? "").trim().toUpperCase();
-    if (codigo) porCodigo.set(codigo, linha);
   }
+  // Pelo id do C2X que a linha guarda (PAN-124). Linha sem id do C2X (os pais LOX, RDX e PDX, e o
+  // produto nascido no Panteon) não é excluída nem espelho, como a sigla dela também não era.
+  const idDoC2xDaLinha = (linha: EmpreendimentoDoCadastro | undefined) =>
+    Number(normalizarEnterpriseId(linha?.c2xEnterpriseId) ?? Number.NaN);
   const excluido = (linha: EmpreendimentoDoCadastro | undefined) =>
-    EXCLUDED_ENTERPRISE_CODES.includes((linha?.codigo ?? "").trim().toUpperCase());
+    EXCLUDED_ENTERPRISE_IDS.includes(idDoC2xDaLinha(linha));
   const espelho = (linha: EmpreendimentoDoCadastro | undefined) =>
-    MIRROR_ENTERPRISE_CODES.includes((linha?.codigo ?? "").trim().toUpperCase());
+    MIRROR_ENTERPRISE_IDS.includes(idDoC2xDaLinha(linha));
 
-  // 1. Os grupos do catálogo, com as divisões resolvidas pelo CÓDIGO no cadastro. O `canonizador`
-  //    reconhece a divisão ("37") e o próprio id do grupo ("group:Vale do Ouro").
+  // 1. Os grupos do catálogo, com as divisões pelos IDS de `ENTERPRISE_GROUPS` (PAN-124). O
+  //    `canonizador` reconhece a divisão ("37") e o próprio id do grupo ("group:Vale do Ouro").
+  //
+  //    ⚠️ SÓ A DIVISÃO QUE O CADASTRO CONHECE, como antes: a sigla que o cadastro não tinha não virava
+  //    id nenhum, e o resto da régua (o pai comum das divisões) só funciona com a linha do cadastro.
+  //    Com o cadastro inteiro (produção), são exatamente as divisões de antes; num cadastro parcial
+  //    também, porque o que faltava lá falta aqui.
   const grupos: Array<ComDivisoes & { stageIds: string[] }> = ENTERPRISE_GROUPS.map((grupo) => ({
     id: `${PREFIXO_GRUPO}${grupo.display}`,
-    stageIds: grupo.codes
-      .map((code) => normalizarEnterpriseId(porCodigo.get(code.toUpperCase())?.c2xEnterpriseId))
-      .filter((c2x): c2x is string => Boolean(c2x)),
+    stageIds: grupo.ids.map((c2x) => String(c2x)).filter((c2x) => porC2x.has(c2x)),
   }));
   const canon = canonizador(grupos);
   const linha = porC2x.get(id);

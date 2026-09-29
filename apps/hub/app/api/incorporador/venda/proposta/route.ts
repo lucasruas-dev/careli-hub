@@ -16,9 +16,11 @@ import {
   escopoDoTitular,
 } from "@/lib/apolo/incorporador/familia-no-portal";
 import { ehPortalComercial } from "@/lib/apolo/incorporador/perfis-de-portal";
-import type { PlanoComercial } from "@/lib/apolo/planos-comerciais";
-import { lerPlanosDoC2x } from "@/lib/apolo/planos-comerciais-c2x";
+import { INDICES, type PlanoComercial } from "@/lib/apolo/planos-comerciais";
+import { lerPlanosDoC2xPorIds } from "@/lib/apolo/planos-comerciais-c2x";
 import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
+import { namespaceDoHash, tipoDePessoa } from "@/lib/hercules/documento-do-comprador";
+import { titularDosProponentes } from "@/lib/hercules/proponente";
 import { descontoDoPlano, type ModoDoAjuste } from "@/lib/hercules/ajuste-de-preco";
 
 import {
@@ -39,15 +41,26 @@ import {
   carregarCadastroDeEmpreendimentos,
   type LinhaDoCadastro,
 } from "@/lib/hercules/cadastro";
+import {
+  type EntradaDaCadDoComprador,
+  enterpriseIdDaCad,
+  garantirCadDoComprador,
+  type ResultadoDaCadDoComprador,
+} from "@/lib/hercules/cad-do-comprador";
 import { desfechoDaUnidade, soltarLoteDaVendaDesfeita } from "@/lib/hercules/cancelar-reserva-server";
 import { lerSituacaoDasUnidades } from "@/lib/hercules/situacao-da-unidade";
 import { fraseDoConflito, outrosDonosDoLote } from "@/lib/hercules/trava-do-lote";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
+import { A_CARTEIRA_VALE_PARA_O_CONTRATO } from "@/lib/hercules/cad-para-contrato";
 import {
   credenciadoParaVender,
   FalhaAoLerCredenciamento,
 } from "@/lib/hercules/cliente-credenciado";
 import { montarCronograma } from "@/lib/hercules/cronograma";
+import {
+  escolherPlanoDaProposta,
+  type PlanoDaMesa,
+} from "@/lib/hercules/escolher-plano";
 import {
   lerComColunasDoApartamento,
   nomeDaUnidade,
@@ -56,6 +69,7 @@ import {
 import type { TipoProduto } from "@/lib/hercules/produto-novo";
 import { lerFaixasDoPanteon } from "@/lib/hercules/planos-do-panteon";
 import type { FaixaDePrazo } from "@/lib/hercules/premissa-do-prazo";
+import { planoEfetivo } from "@/lib/hercules/premissa-efetiva";
 import { descontoDoPlanoNoPrazo } from "@/lib/hercules/tabela-do-lote";
 import { rotuloDoIndice } from "@/lib/temis/planos";
 import {
@@ -133,6 +147,14 @@ type UnidadeDaProposta = {
   area: null | number | string;
   codigo: string;
   enterprise_id: string;
+  /**
+   * Preenchido = esta linha é o REGISTRO ANTIGO do terreno, a linha do pai de um produto dividido.
+   *
+   * ⚠️ É O QUE A ROTA PRECISA SABER PARA NÃO ESCREVER NELA (revisão de 25/09/2026). Havia um
+   * comentário afirmando que `unidadePorId` já mantinha as 139 herdadas da sombra do pai fora do
+   * cancelamento; era falso, porque ele nem lia esta coluna. Quem as mantinha fora era só a TELA.
+   */
+  espelho_de: null | string;
   id: string;
   lote: null | string;
   preco_tabela: null | number | string;
@@ -156,7 +178,7 @@ async function unidadePorId(
   const { data } = await lerComColunasDoApartamento((extras) =>
     admin
       .from("hercules_unidades")
-      .select(`id,codigo,quadra,lote,situacao,preco_tabela,area,enterprise_id${extras}`)
+      .select(`id,codigo,quadra,lote,situacao,preco_tabela,area,enterprise_id,espelho_de${extras}`)
       .eq("workspace_id", WORKSPACE)
       .eq("id", unidadeId)
       .maybeSingle(),
@@ -262,18 +284,17 @@ function numeroDoCorpo(valor: unknown): number {
   return Number(valor);
 }
 
-/** O primeiro proponente da reserva é o titular. É ele, e só ele, que a proposta aceita. */
+/**
+ * O primeiro proponente da reserva é o titular. É ele, e só ele, que a proposta aceita.
+ *
+ * ⚠️ O LEITOR É O ÚNICO DA CASA (`lib/hercules/proponente.ts`, 26/09/2026). Antes eram três
+ * leituras ad-hoc do mesmo jsonb, com nomes diferentes, e nenhuma delas enxergava a chave
+ * `documento` — ou seja, uma reserva de PJ chegaria aqui como "sem documento".
+ */
 function titularDaReserva(proponentes: unknown): null | Proponente {
-  const lista = Array.isArray(proponentes) ? proponentes : [];
-  const primeiro = lista[0] as null | undefined | Record<string, unknown>;
-  if (!primeiro || typeof primeiro !== "object") return null;
-
-  const cpf = typeof primeiro.cpf === "string" ? primeiro.cpf : "";
-  const nome = typeof primeiro.nome === "string" ? primeiro.nome.trim() : "";
-  const telefone =
-    typeof primeiro.telefone === "string" ? primeiro.telefone : "";
-  if (!cpf && !nome) return null;
-  return { cpf, nome, telefone };
+  const lido = titularDosProponentes(proponentes);
+  if (!lido) return null;
+  return { cpf: lido.documento, nome: lido.nome, telefone: lido.telefone };
 }
 
 /**
@@ -322,20 +343,29 @@ function codigoDoEmpreendimento(
  * slot) não têm id nenhum para carregar. `PlanosDoEmpreendimento.planos` é tipado como
  * `PlanoComercial` porque as duas fontes se misturam ali, e o id se perde no TIPO — não no objeto.
  */
-type PlanoDaMesa = PlanoComercial & { id?: null | string };
 
-/** Os planos que o simulador oferece para esta unidade: Panteon primeiro, C2X depois. */
+/**
+ * Os planos que o simulador oferece para esta unidade: Panteon primeiro, C2X depois.
+ *
+ * @param idNoC2x O id do empreendimento no C2X, ou `null` quando ele não tem código em lugar nenhum
+ *   (`codigoDoEmpreendimento` nulo): aí não se pergunta ao legado, como antes.
+ */
 async function planosDaUnidade(
   admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
   familia: string[],
-  codigo: null | string,
+  idNoC2x: null | string,
 ): Promise<PlanoDaMesa[]> {
   // ⚠️ FALHA NÃO DERRUBA A TELA, dos dois lados — a mesma escolha da rota `/venda`: sem plano o
   // simulador cai na conta simples, que é o que ele já fazia. Perder a proposta inteira porque o
   // legado não respondeu seria pior.
+  //
+  // ⚠️ O C2X PELO ID (PAN-124). A rota já tem o `c2xId` da unidade; ir pela sigla era traduzir id →
+  // sigla → id, e a sigla muda num renome no legado (o 43, de RDV para PDI, em 24/09/2026). Pelo id,
+  // o plano do empreendimento renomeado continua achado, e o do LAB (31, que o catálogo não lista)
+  // volta a ser lido como era antes da tradução pelo catálogo.
   const [doC2x, doPanteon] = await Promise.all([
-    codigo
-      ? lerPlanosDoC2x([codigo]).catch(() => ({ ok: false }) as const)
+    idNoC2x
+      ? lerPlanosDoC2xPorIds([idNoC2x]).catch(() => ({ ok: false }) as const)
       : Promise.resolve({ ok: false } as const),
     lerPlanosDoPanteon(admin, familia).catch((erro) => {
       console.error("[hercules][proposta] planos do panteon", erro);
@@ -353,76 +383,6 @@ async function planosDaUnidade(
     doC2x.ok ? doC2x.empreendimentos : [],
     doPanteon,
   ).flatMap((e) => e.planos as PlanoDaMesa[]);
-}
-
-/**
- * O plano desta proposta: pelo ID da linha de `temis_planos`, com o nome como reserva.
- *
- * ⚠️ O NOME NÃO É CHAVE, E ISSO CUSTA DINHEIRO DE VERDADE. Até 22/09/2026 a rota casava o plano por
- * `p.nome.trim() === planoNome`, e os nomes dos planos são texto que o cadastro edita. No dia em que
- * o Garden trocou NORMAL por INVESTIDOR, INVESTIDOR PARCELADO por PROMOÇÃO PARCELADO e INVESTIDOR
- * por PROMOÇÃO À VISTA, um simulador que já estava aberto continuou mandando `planoNome:
- * "INVESTIDOR"` querendo o plano de 36 parcelas — e o nome passou a casar com a linha de 60. O
- * objeto ia inteiro para `montarCronograma` e congelava na gravação: medido no banco, o de 36x tem
- * `juros_taxa` 0,000000 e o de 60x tem 6,000000 ao ano. São 6% ao ano gravados numa proposta de
- * verdade, num cronograma que alimenta o contrato. Não é tela errada, é dinheiro errado que fica.
- *
- * ⚠️ OS DOIS SÃO ACEITOS DE PROPÓSITO. O id é a chave; o nome é a reserva para quem não o manda —
- * qualquer aba aberta antes desta subida, e o C2X, que não tem o que mandar (`commercial_plans` é
- * lido por slot e não tem id que sobreviva à leitura, então lá o nome é a única chave que existe).
- * Recusar tudo o que chega sem id pararia a venda de todo mundo no minuto do deploy.
- *
- * ⚠️ ID QUE NÃO CASA NÃO CAI NO NOME. Seria reabrir exatamente o buraco: a tela velha manda o id
- * certo E o nome velho, e um fallback silencioso a levaria de volta para a linha renomeada. Id que
- * não existe mais é uma frase para o coordenador, não um palpite.
- *
- * ⚠️ E O CAMINHO SEM ID É O `find` DE SEMPRE, DESFEITO E DEVOLVIDO NO MESMO DIA EM QUE SAIU
- * (22/09/2026). Duas regras nasceram aqui junto com o casamento por id, e as duas saíram por
- * medição, porque mudavam regra de venda de quem não pediu nada:
- *
- *   • A TRAVA DO NOME AMBÍGUO (recusar com 422 quando dois planos de mesmo nome discordavam no
- *     dinheiro) PARAVA A VENDA DO LAGOA BONITA INTEIRA, hoje e sem rename nenhum. `planosDaUnidade`
- *     achata a família (pai e irmãos), e medido em 22/09/2026 no banco: o "NORMAL 01" do LBR
- *     (enterprise 27) pede 12% de entrada e o do LBF (enterprise 33) pede 20%, os dois cadastrados
- *     de propósito; o "INVESTIDOR 02" tem a mesma diferença. São cadastros CERTOS, de produtos
- *     diferentes, que a trava comparava como se fossem candidatos ao mesmo lote.
- *
- *   • O RECORTE POR EMPREENDIMENTO DA UNIDADE, criado para consertar a trava, GRAVAVA PROPOSTA QUE
- *     SE CONTRADIZIA: ele escolhia o plano numa lista recortada enquanto a tela e
- *     `pedido.planosDaTabela` continuavam olhando a família inteira. Medido: uma proposta do LBF
- *     congelava `plano.entradaPercentual = 20` ao lado de uma entrada de 12%, no mesmo objeto.
- *
- * O nome repetido escolhe o PRIMEIRO da lista, como sempre escolheu. Quem fecha esse buraco é o id,
- * que a tela passou a mandar — e não uma recusa que para venda legítima para todo mundo.
- */
-function escolherPlanoDaProposta(
-  planos: PlanoDaMesa[],
-  escolhido: { id: string; nome: string },
-): { motivo: string; plano: null } | { motivo: null; plano: PlanoDaMesa } {
-  if (escolhido.id) {
-    const porId = planos.find(
-      (p) => String(p.id ?? "").trim() === escolhido.id,
-    );
-    return porId
-      ? { motivo: null, plano: porId }
-      : {
-          motivo:
-            "O plano escolhido não está mais disponível neste empreendimento. Abra a proposta de novo e escolha o plano na lista.",
-          plano: null,
-        };
-  }
-
-  if (!escolhido.nome) return { motivo: "Escolha o plano da proposta.", plano: null };
-
-  // ⚠️ ESTE `find` É O DE SEMPRE, LETRA POR LETRA — ver o cabeçalho. Mexer nele é mexer na regra de
-  // venda de todo empreendimento servido pelo C2X e de toda aba que ainda não manda o id.
-  const porNome = planos.find((p) => p.nome.trim() === escolhido.nome);
-  return porNome
-    ? { motivo: null, plano: porNome }
-    : {
-        motivo: `O plano "${escolhido.nome}" não está disponível neste empreendimento.`,
-        plano: null,
-      };
 }
 
 /** A % mínima de entrada DESTE empreendimento. Nulo = a tela cai no padrão da casa. */
@@ -446,6 +406,86 @@ async function pisoDaEntrada(
     (data as null | { entrada_minima_percentual: null | number | string })
       ?.entrada_minima_percentual,
   );
+}
+
+/**
+ * A PREMISSA QUE O CORRETOR ESCREVEU POR CIMA — a taxa e o índice que ele escolheu na tela.
+ *
+ * ⚠️ AFIRMAÇÃO EM CAIXA ALTA: ATÉ 25/09/2026 ESTES DOIS VALORES MORRIAM NO NAVEGADOR. O que subia
+ * era só o booleano `premissaAlterada`, que abre a caixa de nota — o servidor sabia que ALGUÉM
+ * mexeu e não sabia no quê, e seguia calculando pelo cadastro. Nívea (24/09/2026), sobre a proposta
+ * 000038: *"Na proposta não está saindo o novo cenário de juros e correção."* Lucas, no mesmo dia:
+ * *"vamos corrigir isso ae"*.
+ *
+ * ⚠️ AUSENTE É "NÃO MEXEU", E NUNCA ZERO. `Number("")` é 0: ler o campo vazio como número faria a
+ * aba que não manda nada (qualquer uma aberta antes desta subida, e toda proposta sem alteração)
+ * zerar os juros de um contrato em silêncio. Por isso ausência e string vazia saem daqui como nulo,
+ * e o nulo significa "use a premissa do cadastro e da faixa".
+ *
+ * ⚠️ E LIXO RECUSA COM FRASE, em vez de virar palpite. `Number("abc")` é NaN e NaN entra em conta
+ * sem reclamar; um índice que o catálogo não conhece, ignorado em silêncio, gravaria a correção do
+ * cadastro num contrato que a tela mostrava com outra. Aqui é 422 com o que fazer.
+ *
+ * ⚠️ E A VÍRGULA PERDIDA TAMBÉM RECUSA (25/09/2026). `0,7207` digitado como `7207` era um número
+ * finito e positivo, então passava sem uma palavra enquanto "abc" era recusado com frase — e virava
+ * cronograma, PDF e quadro NOMINAL do contrato (`lib/temis/tabela-de-pagamentos.ts`). A maior taxa
+ * cadastrada da casa é 8 ao ANO (medido em 25/09/2026, `select max(juros_taxa) from temis_planos
+ * where ativo` por periodicidade: 0,8000 no mensal), então `TAXA_MAXIMA` de 100% é folga de duas
+ * ordens de grandeza — ela não recusa negócio nenhum, só recusa dígito perdido.
+ */
+/** O teto de sanidade da taxa escrita à mão, em % na periodicidade do plano. Ver `lerPremissaEscolhida`. */
+const TAXA_MAXIMA = 100;
+
+function lerPremissaEscolhida(corpo: {
+  indiceEscolhido?: unknown;
+  jurosEscolhido?: unknown;
+}): {
+  erros: Array<{ campo: string; mensagem: string }>;
+  indice: null | string;
+  juros: null | number;
+} {
+  const erros: Array<{ campo: string; mensagem: string }> = [];
+
+  let juros: null | number = null;
+  const taxa = corpo.jurosEscolhido;
+  if (taxa != null && taxa !== "") {
+    const n =
+      typeof taxa === "number"
+        ? taxa
+        : typeof taxa === "string"
+          ? Number(taxa.replace(",", "."))
+          : Number.NaN;
+    if (!Number.isFinite(n) || n < 0) {
+      erros.push({
+        campo: "juros",
+        mensagem:
+          "A taxa de juros escolhida não é um número válido. Escreva a taxa em % (0 para sem juros) ou deixe o campo em branco para usar a do cadastro.",
+      });
+    } else if (n > TAXA_MAXIMA) {
+      erros.push({
+        campo: "juros",
+        mensagem: `A taxa de juros escolhida (${n}%) não é possível. Escreva a taxa em % na periodicidade do plano — 0,7207 e não 7207 — ou deixe o campo em branco para usar a do cadastro.`,
+      });
+    } else {
+      juros = n;
+    }
+  }
+
+  let indice: null | string = null;
+  const correcao = corpo.indiceEscolhido;
+  if (correcao != null && correcao !== "") {
+    if (typeof correcao !== "string" || !Object.hasOwn(INDICES, correcao)) {
+      erros.push({
+        campo: "correcao",
+        mensagem:
+          "A Correção escolhida não é um índice que o sistema conhece. Escolha um da lista ou deixe em branco para usar a do cadastro.",
+      });
+    } else {
+      indice = correcao;
+    }
+  }
+
+  return { erros, indice, juros };
 }
 
 /** Nome de imobiliária e corretor, para a tela e para o papel. */
@@ -555,14 +595,20 @@ export async function GET(request: Request) {
 
     const [credenciamentoCru, planos, entradaMinimaPercentual, faixas, nomes] =
       await Promise.all([
-        credenciadoParaVender(admin, {
-          cpf: titular.cpf,
-          enterpriseIds: escopoDaEsteira,
-        }),
+        credenciadoParaVender(
+          admin,
+          { documento: titular.cpf, enterpriseIds: escopoDaEsteira },
+          // ⚠️ O MODO DO COORDENADOR, E SÓ PARA O COMERCIAL DA CARELI. Lucas (26/09/2026): *"pode
+          // deixar os coordenadores emitirem proposta sem a cad esta credenciada. ela pode estar em
+          // validacao ou em qualquer outro estagio"*. `comercial` é o MESMO booleano que já decide o
+          // escopo três linhas acima, e o `cecilio-rocha` (que também opera a própria venda)
+          // continua exigindo a CAD credenciada — segunda decisão do mesmo dia.
+          { cadEmAndamentoLibera: comercial },
+        ),
         planosDaUnidade(
           admin,
           familia,
-          codigoDoEmpreendimento(catalogo, empreendimento, c2xId),
+          codigoDoEmpreendimento(catalogo, empreendimento, c2xId) ? c2xId : null,
         ),
         pisoDaEntrada(admin, c2xId),
         // ⚠️ AS FAIXAS DESTE EMPREENDIMENTO, e falha não derruba a modal: sem elas o simulador cai
@@ -579,17 +625,41 @@ export async function GET(request: Request) {
       ]);
     const credenciamento = credenciamentoParaOPortal(credenciamentoCru, {
       comercial,
-      cpf: titular.cpf,
+      documento: titular.cpf,
     });
 
     return NextResponse.json(
       {
         data: {
           credenciamento: {
+            // ⚠️ SÓ UM BOOLEANO DA COMPRA, nunca o objeto (ids, códigos e a data do contrato antigo
+            // não vão para a tela). Verdadeiro quando a porta foi o contrato lido AGORA; falso quando
+            // foi a CAD que a carteira já abriu, e aí a tela não afirma contrato ativo nenhum.
+            contratoAtivo: Boolean(credenciamento.compra),
+            // ⚠️ A DECISÃO DA BARRA DO CONTRATO VIAJA ATÉ A TELA, e é por isso que ela existe aqui e
+            // não só em `cad-para-contrato.ts`. Enquanto `A_CARTEIRA_VALE_PARA_O_CONTRATO` morava só
+            // no servidor, invertê-la para `false` não alcançava a modal: o comprador da carteira
+            // chegava com `credenciado: true`, logo `cadEmAndamento` era `false`
+            // (`ModalDeProposta.tsx:480`), o aviso do contrato não renderizava, e a caixa continuava
+            // afirmando *"A reserva pode virar proposta"* sobre alguém que receberia 409 no envio
+            // para contrato. É exatamente a incoerência GET/POST que o comentário de `:1497` proíbe:
+            // *"Quem monta a proposta tem que LER isso agora, não descobrir num erro vermelho depois
+            // de confirmar o envio para contrato"*. Com este campo, inverter a constante CONTINUA
+            // sendo uma linha e a tela obedece junto.
+            contratoExigeCad: !A_CARTEIRA_VALE_PARA_O_CONTRATO,
             credenciado: credenciamento.credenciado,
             desde: credenciamento.desde,
             etapa: credenciamento.etapa,
             motivo: credenciamento.motivo,
+            // (26/09/2026) Por qual porta: "cad" ou "comprador_da_carteira". É o que troca o selo
+            // da modal para "Comprador da carteira". O GET só lê: a CAD da carteira nasce no POST.
+            origem: credenciamento.origem ?? null,
+            // ⚠️ DOIS CAMPOS PORQUE SÃO DUAS PERGUNTAS. `credenciado` é a verdade sobre a CAD (o que
+            // o selo escreve); `podeGerarProposta` é a porta (o que acende o botão). Com a CAD em
+            // andamento eles DISCORDAM de propósito: a tela mostra a frase da etapa em tom de aviso
+            // e libera o botão. Um campo só faria a tela mentir ou o coordenador travar. Para o
+            // COMPRADOR DA CARTEIRA os dois são `true`, e é o `origem` que troca o selo.
+            podeGerarProposta: credenciamento.podeGerarProposta,
           },
           entradaMinimaPercentual,
           faixasDePrazo: faixas[String(c2xId)] ?? [],
@@ -675,6 +745,21 @@ export async function POST(request: Request) {
     entradaVezes?: unknown;
     /** A tabela de reajuste entra na PA? Ausente = não entra (é o padrão novo). */
     incluirReajuste?: unknown;
+    /**
+     * O ÍNDICE que o corretor escolheu por cima da premissa. Ausente = não mexeu.
+     *
+     * ⚠️ O CÓDIGO, e não o rótulo: `POUPANCA`, e nunca "poupança anual". O rótulo é texto de tela e
+     * muda por decisão de produto (o POUPANCA virou "poupança anual" em 16/09/2026 sem migration);
+     * gravar a palavra faria a proposta guardar o nome velho para sempre.
+     */
+    indiceEscolhido?: unknown;
+    /**
+     * A TAXA que o corretor escreveu por cima, em % na periodicidade do plano. Ausente = não mexeu.
+     *
+     * ⚠️ ZERO É UM VALOR, e é justamente o cenário da 000038: "sem juros" escrito à mão. Ausência é
+     * outra coisa — ver `lerPremissaEscolhida`.
+     */
+    jurosEscolhido?: unknown;
     observacao?: unknown;
     parcelasMensais?: unknown;
     /**
@@ -703,6 +788,9 @@ export async function POST(request: Request) {
   const unidadeId = String(corpo.unidadeId ?? "").trim();
   const planoId = String(corpo.planoId ?? "").trim();
   const planoNome = String(corpo.planoNome ?? "").trim();
+  // A taxa e o índice que o corretor escolheu, já conferidos. Os erros entram na MESMA lista da
+  // régua, lá embaixo: a tela mostra tudo o que falta de uma vez, e não um problema por clique.
+  const escolhida = lerPremissaEscolhida(corpo);
 
   // ⚠️ O AJUSTE É LIDO AQUI E NÃO INFLUENCIA O PREÇO — `valorNegociado` já chega com ele
   // embutido, calculado por `aplicarAjuste` na mesma tela que o digitou. Recalcular aqui abriria
@@ -801,14 +889,22 @@ export async function POST(request: Request) {
     );
 
     // ── 4. A CAD do titular, credenciada NESTE empreendimento ──────────────
+    // ⚠️ O MESMO MODO DO GET, PELO MESMO BOOLEANO. O topo de `lib/hercules/cliente-credenciado.ts`
+    // existe para esta passagem não ficar mais frouxa que a primeira; desde 26/09/2026 ela também
+    // não pode ficar mais APERTADA — um GET que acende o botão e um POST que responde 403 é a modal
+    // recusando o clique que ela mesma ofereceu.
     const credenciamento = credenciamentoParaOPortal(
-      await credenciadoParaVender(admin, {
-        cpf: titular.cpf,
-        enterpriseIds: escopoDaEsteira,
-      }),
-      { comercial, cpf: titular.cpf },
+      await credenciadoParaVender(
+        admin,
+        { documento: titular.cpf, enterpriseIds: escopoDaEsteira },
+        { cadEmAndamentoLibera: comercial },
+      ),
+      { comercial, documento: titular.cpf },
     );
-    if (!credenciamento.credenciado) {
+    // ⚠️ O PORTÃO É `podeGerarProposta`, E NÃO `credenciado`. Com a CAD em andamento o coordenador
+    // passa aqui com `credenciado: false` — é o campo da PORTA que decide, e o outro só descreve a
+    // CAD para a tela.
+    if (!credenciamento.podeGerarProposta) {
       // A frase vem da lib: ela é quem sabe dizer "em análise de crédito desde 02/09", que é uma
       // conversa; "não credenciado" seria um muro.
       return NextResponse.json(
@@ -833,14 +929,23 @@ export async function POST(request: Request) {
       Array.isArray(corpo.compradores) ? corpo.compradores : []
     ).map((bruto) => {
       const c = (bruto ?? {}) as Record<string, unknown>;
-      const cpf = String(c.cpf ?? "");
+      // (26/09/2026) O documento do comprador pode chegar na chave nova ou na antiga: a forma da
+      // CARGA de `hercules_propostas.compradores` usa `documento` (medido: 4.889 itens, e as 137
+      // linhas de 14 dígitos), e a forma nativa usa `cpf` (23 itens).
+      const cpf = String(c.documento ?? c.cpf ?? "");
       const ehOTitular =
         !jaMarcouTitular &&
         soDigitos(cpf) === cpfDoTitular &&
         cpfDoTitular !== "";
       if (ehOTitular) jaMarcouTitular = true;
+      const documento = ehOTitular ? titular.cpf : cpf;
       return {
-        cpf: ehOTitular ? titular.cpf : cpf,
+        cpf: documento,
+        // (26/09/2026) A chave `documento` entra JUNTO com a `cpf`, aproximando a forma nativa
+        // da forma da carga, que já usa `documento` e é onde PJ existe. A `cpf` nativa continua
+        // gravada neste lote de propósito: quem lê `compradores` é o PDF, a Têmis e o painel, e
+        // essa varredura é frente própria.
+        documento,
         nome: ehOTitular ? titular.nome : String(c.nome ?? "").trim(),
         participacao: numeroDoCorpo(c.participacao),
         // ⚠️ O TELEFONE DO TITULAR É O DA RESERVA, pela mesma razão do nome e do CPF: ele não se
@@ -961,7 +1066,7 @@ export async function POST(request: Request) {
     const planos = await planosDaUnidade(
       admin,
       familia,
-      codigoDoEmpreendimento(catalogo, empreendimento, c2xId),
+      codigoDoEmpreendimento(catalogo, empreendimento, c2xId) ? c2xId : null,
     );
     // ⚠️ PELO ID DA LINHA, COM O NOME COMO RESERVA — ver `escolherPlanoDaProposta`. O `find` por
     // nome que morava aqui é o que fazia uma proposta de verdade nascer com o plano errado assim
@@ -970,7 +1075,96 @@ export async function POST(request: Request) {
       id: planoId,
       nome: planoNome,
     });
-    const plano = escolha.plano;
+
+    // ── 5½. A PREMISSA EFETIVA: CADASTRO → FAIXA DE PRAZO → CORRETOR ───────
+    //
+    // ⚠️ AFIRMAÇÃO EM CAIXA ALTA: ATÉ 25/09/2026 ESTA ROTA ENTREGAVA O PLANO DO CADASTRO CRU AOS
+    // QUATRO CONSUMIDORES, e por isso papel e conta não divergiam: os dois estavam errados juntos.
+    // Nívea (24/09/2026), sobre a proposta 000038 (VOC, Quadra 12 · Lote 22, TAISA FERNANDA
+    // BATISTA): *"Na proposta não está saindo o novo cenário de juros e correção."* Lucas, no mesmo
+    // dia: *"vamos corrigir isso ae"*.
+    //
+    // ⚠️ E O DINHEIRO ESTÁ GRAVADO, NÃO SÓ IMPRESSO. Medido em 25/09/2026 (`select plano_juros,
+    // plano_correcao, condicoes->'totais' from hercules_propostas where protocolo_numero = 38`):
+    // `plano_juros` 0,7207, `plano_correcao` "IPCA anual" e `totais.mensais` 138.130,32, onde o
+    // cenário que ela escolheu (juros 0) daria 48 × R$ 2.595,00 = R$ 124.560,00. São R$ 13.570,32
+    // numa venda de R$ 138.401,00.
+    //
+    // ⚠️ UMA COMPOSIÇÃO SÓ, E ELA VIVE AQUI. `planoEfetivo` é a MESMA função pura que o simulador
+    // chama na tela (`SimuladorDeProposta`) e que a modal usa para a tabela de reajuste. Trocar o
+    // OBJETO num ponto único conserta o cálculo, o congelamento, as colunas planas e o papel de uma
+    // vez, porque todos leem o mesmo `plano`. Recalcular conta aqui seria a segunda versão da mesma
+    // conta — o defeito de 04/09/2026, R$ 2.157,44 no cartão e R$ 1.500,00 no papel.
+    //
+    // ⚠️ E ELA PASSA A HONRAR A FAIXA DE PRAZO, que esta rota nunca leu no POST. A leitura é a MESMA
+    // do GET, e não uma segunda — e a TELA já honrava a faixa antes deste lote (o `useMemo` de `cru`
+    // em `SimuladorDeProposta`), então quem divergia era o papel.
+    //
+    // ⚠️ AFIRMAÇÃO EM CAIXA ALTA: ISTO MUDA PREÇO EM CINCO EMPREENDIMENTOS QUE ESTÃO VENDENDO, NO
+    // PRAZO PADRÃO DO PLANO, SEM NINGUÉM DIGITAR PRAZO NENHUM — e a primeira versão deste comentário
+    // dizia que só o VOC em prazo curto era atingido, o que está MEDIDO COMO FALSO. Medido em
+    // 25/09/2026 (`select p.enterprise_id, p.nome, p.parcelas, p.juros_taxa, p.indice_correcao,
+    // p.entrada_percentual, f.parcela_minima, f.parcela_maxima, f.define_juros, f.juros_taxa,
+    // f.indice_correcao, f.entrada_percentual from temis_planos p join temis_faixas_de_prazo f on
+    // f.enterprise_id = p.enterprise_id and f.ativo and p.parcelas between f.parcela_minima and
+    // f.parcela_maxima where p.ativo`), o de/para plano por plano:
+    //
+    //   LBF (33) INVESTIDOR 02, 48 parcelas: `juros_taxa` NULO no cadastro (SEM JUROS) contra
+    //     `define_juros = true` e 0,8000 na faixa de 37 a 60. É O CASO QUE DÓI: um plano cadastrado
+    //     sem juros passa a cobrar 0,8% ao mês. Num financiado de R$ 120.000 em 48 parcelas é da
+    //     ordem de R$ 23 mil que ninguém cobrava, gravados em `condicoes.totais.mensais`, impressos
+    //     na folha que circula por WhatsApp e reproduzidos no quadro NOMINAL do contrato.
+    //   VDO (19): IPCA_MENSAL do cadastro vira IPCA_ANUAL no CURTO 36 e nos dois NORMAL 168
+    //     (SACOC e PRICE).
+    //   VOC (37) CURTO 36: IPCA_ANUAL do cadastro (que vive no pai, 35, porque o 37 não tem plano
+    //     ativo próprio) vira SEM_CORRECAO pela faixa de 25 a 36 do 37.
+    //   LBR (27) INVESTIDOR 02 48: entrada 12% do cadastro contra 20% da faixa.
+    //   LBF (33) INVESTIDOR 02 48 e NORMAL 01 72: entrada 20% do cadastro contra 12% da faixa.
+    //
+    // ⚠️ E O JDG (40) NÃO ENTRA, ao contrário do que a revisão supôs: o NORMAL 120 do cadastro já
+    // está em POUPANCA, igual à faixa de 37 a 120 — não há de/para. O 9001 é o Villa Paris de teste.
+    //
+    // ⚠️ A ENTRADA DA FAIXA NÃO ENTRA NO MOLDE CONGELADO. Ver a nota de `condicoes.plano`: a régua
+    // que aprova a proposta mede pela entrada do CADASTRO, e gravar a da faixa ao lado de uma
+    // entrada aprovada com outra % é a contradição que a casa desfez em 22/09/2026.
+    let faixasDoPrazo: Record<string, FaixaDePrazo[]>;
+    try {
+      faixasDoPrazo = await lerFaixasDoPanteon(admin, [String(c2xId)]);
+    } catch (erro) {
+      // ⚠️ NA DÚVIDA SOBRE DINHEIRO, NÃO GRAVA — o mesmo princípio do 409 da trava do lote e da
+      // recusa da proposta com bem quando a coluna não existe. No GET a falha cai para "sem faixa"
+      // porque lá o custo é a tela abrir sem premissa preenchida; aqui o custo é gravar a venda com
+      // a premissa ERRADA, cobrando juros que a diretoria isentou, num cronograma que vira contrato.
+      //
+      // ⚠️ E A TABELA AUSENTE NÃO CHEGA AQUI: `lerFaixasDoPanteon` trata estrutura que não existe
+      // (migration pendente, coluna nova, cache do PostgREST) como "sem faixa", a mesma régua de
+      // `apolo_enterprise_settings`. O que sobra para este 503 é falha TRANSITÓRIA — timeout, RLS,
+      // conexão —, onde ninguém sabe se havia faixa.
+      //
+      // ⚠️ O `enterprise_id` VAI NO REGISTRO, e é o que permite dizer DEPOIS quantas vendas foram
+      // barradas e em qual produto. Sem ele o log responde "a Mesa parou" e nada mais.
+      console.error(
+        `[hercules][proposta] faixas de prazo enterprise=${c2xId}`,
+        erro,
+      );
+      return NextResponse.json(
+        {
+          error:
+            "Não foi possível conferir as premissas de prazo deste empreendimento agora. Tente de novo em instantes.",
+        },
+        { status: 503 },
+      );
+    }
+
+    const efetivo = planoEfetivo({
+      faixasDePrazo: faixasDoPrazo[String(c2xId)] ?? [],
+      indiceSobrescrito: escolhida.indice,
+      jurosSobrescrito: escolhida.juros,
+      // O prazo CONTRATADO, que é o mesmo que decide a faixa na tela (`prazoDaFaixa`).
+      parcelas: pedido.parcelas ?? 0,
+      plano: escolha.plano,
+    });
+    const plano = efetivo.plano;
 
     // ⚠️ A TABELA VAI JUNTO PARA A RÉGUA, e é o que faz a faixa do prazo VALER. Sem estes planos,
     // `conferirProposta` só conhece o piso da casa (10%) e uma proposta de 30 parcelas com entrada
@@ -991,6 +1185,27 @@ export async function POST(request: Request) {
       // reclicando no mesmo botão sem saber que o problema é o CADASTRO.
       erros.push({ campo: "plano", mensagem: escolha.motivo });
     }
+    // A taxa e o índice conferidos no topo: recusa com frase, e nunca palpite silencioso.
+    erros.push(...escolhida.erros);
+
+    // ⚠️ ALTERAR A PREMISSA **NÃO** EXIGE MOTIVO, E É DECISÃO DO LUCAS (25/09/2026).
+    //
+    // Lucas: *"acho que não tem necessidade de pedir justificativa"*, logo depois de explicar de
+    // quem é a autonomia: *"a ideia de ter planos prontos é para facilitar o trabalho do
+    // coordenador, corretor, mas o que vale é a configuração que ele fez no atendimento. O
+    // Coordenador tem autonomia de mudar o plano, ou seja, se o coordenador colocar taxa zero em um
+    // plano que tem juros, prevalece o que ele colocou."*
+    //
+    // ⚠️ EU TINHA POSTO A TRAVA AQUI E ELE MANDOU TIRAR. O argumento era a rescisão futura ("quem
+    // autorizou tirar os juros desta venda?"), e ele decidiu que o custo de travar a venda é maior
+    // que o de não ter a nota. O QUE FICA no lugar dela: `condicoes.premissa` grava
+    // `jurosDe`/`indiceDe` = `corretor`, `criado_por_nome` diz quem gerou e `hercules_proposta_etapas`
+    // guarda quando. Quem alterou e o quê ficam registrados; só o porquê é opcional.
+    //
+    // ⚠️ O QUE CONTINUA VALENDO: a taxa ainda precisa ser um número possível (`lerPremissaEscolhida`
+    // recusa negativo, lixo e a taxa acima do teto, que é o erro de digitar 7207 no lugar de
+    // 0,7207), e o DESCONTO no preço segue exigindo o motivo, que é outra régua e não foi tocada.
+
     if (erros.length > 0 || !plano) {
       return NextResponse.json({ erros }, { status: 422 });
     }
@@ -1219,7 +1434,23 @@ export async function POST(request: Request) {
             parcelasDoPlano: plano.parcelas,
             parcelasEfetivas: pedido.parcelas,
           }),
-          entradaPercentual: plano.entradaPercentual,
+          // ⚠️ A ENTRADA É A DO CADASTRO, E NÃO A DA FAIXA — e isto é a contradição que a casa
+          // desfez em 22/09/2026, escrita no cabeçalho de `lib/hercules/escolher-plano.ts`:
+          // *"gravava plano.entradaPercentual = 20 ao lado de uma entrada de 12%, no mesmo objeto"*.
+          // `aplicarPremissa` troca também `entradaPercentual`, então o plano EFETIVO carrega a
+          // entrada da faixa; só que a régua que ACEITOU esta proposta (`conferirProposta`, com
+          // `pedido.planosDaTabela`) mede pela do cadastro. Congelar a da faixa aqui faria o jsonb
+          // afirmar uma exigência que ninguém conferiu.
+          //
+          // ⚠️ E A DIVERGÊNCIA EXISTE NO BANCO HOJE. Medido em 25/09/2026 (join de `temis_planos`
+          // ativo com `temis_faixas_de_prazo` ativa pelo prazo do próprio plano): LBR (27)
+          // INVESTIDOR 02 de 48 parcelas tem cadastro 12% e faixa 20%; LBF (33) INVESTIDOR 02 e
+          // NORMAL 01 têm cadastro 20% e faixa 12%.
+          //
+          // ⚠️ A DA FAIXA NÃO SE PERDE: ela vai para `condicoes.premissa.daFaixa.entradaPercentual`,
+          // logo abaixo, que é o lugar de "o que a faixa mandava" ao lado de "o que o molde previa".
+          // Trocar a régua em vez disto mudaria a % de entrada exigida do LBR sem ninguém ter pedido.
+          entradaPercentual: efetivo.doCadastro?.entradaPercentual ?? plano.entradaPercentual,
           indiceCorrecao: plano.indiceCorrecao,
           jurosConvencao: plano.jurosConvencao,
           jurosPeriodicidade: plano.jurosPeriodicidade,
@@ -1228,6 +1459,51 @@ export async function POST(request: Request) {
           /** O prazo do MOLDE. O prazo contratado está em `contrato_parcelas`. */
           parcelas: plano.parcelas,
           sistemaAmortizacao: plano.sistemaAmortizacao,
+        },
+        // ⚠️ A ORIGEM DE CADA NÚMERO, CONGELADA JUNTO COM ELE (25/09/2026). O `plano` acima é o
+        // EFETIVO: ele diz quanto, e não de quem veio. Quando a Nívea apontou a 000038, a pergunta
+        // seguinte foi "e quantas outras propostas saíram assim?" — e ela NÃO TEVE RESPOSTA EM SQL,
+        // porque nada do cenário escolhido era persistido: não havia coluna nem chave no jsonb. Das
+        // 22 propostas nativas com cronograma (medido em 25/09/2026), só a 000038 está confirmada, e
+        // pelo print, não pelo banco.
+        //
+        // ⚠️ E ISTO NÃO ALCANÇA O PASSADO. As propostas já congeladas não serão reescritas: o
+        // cronograma gravado é a foto do que o cliente leu. A chave responde pelas NOVAS.
+        //
+        // ⚠️ DENTRO DO JSONB, sem coluna nova e sem migration — o mesmo motivo de `plano` estar
+        // aqui, e quem lê o jsonb já trata chave ausente (ver `comercial-da-analise.ts`, "ausente
+        // vale zero").
+        premissa: {
+          alteradaPeloCorretor: efetivo.alteradaPeloCorretor,
+          /**
+           * A faixa que governou este prazo, quando havia uma. Nulo = nenhuma continha o prazo.
+           *
+           * ⚠️ A ENTRADA DELA MORA AQUI, E NÃO EM `plano` (25/09/2026). `condicoes.plano` é o MOLDE
+           * que a régua mediu, e ele guarda a entrada do CADASTRO; a exigência da faixa é outro
+           * fato, e o lugar dela é este. Nulo quando a faixa não opina sobre entrada
+           * (`define_entrada = false`).
+           */
+          daFaixa: efetivo.premissaDaFaixa
+            ? {
+                entradaPercentual: efetivo.premissaDaFaixa.entradaPercentual,
+                parcelaMaxima: efetivo.premissaDaFaixa.faixa.parcelaMaxima,
+                parcelaMinima: efetivo.premissaDaFaixa.faixa.parcelaMinima,
+              }
+            : null,
+          /** O plano do CADASTRO, intacto — o molde, ao lado do efetivo, para a diferença ficar legível. */
+          doCadastro: efetivo.doCadastro
+            ? {
+                entradaPercentual: efetivo.doCadastro.entradaPercentual,
+                indiceCorrecao: efetivo.doCadastro.indiceCorrecao,
+                jurosConvencao: efetivo.doCadastro.jurosConvencao,
+                jurosPeriodicidade: efetivo.doCadastro.jurosPeriodicidade,
+                jurosTaxa: efetivo.doCadastro.jurosTaxa,
+                sistemaAmortizacao: efetivo.doCadastro.sistemaAmortizacao ?? null,
+              }
+            : null,
+          /** "cadastro", "faixa" ou "corretor" — quem decidiu ESTE campo. */
+          indiceDe: efetivo.indiceDe,
+          jurosDe: efetivo.jurosDe,
         },
       },
       // ⚠️ O PRAZO CONTRATADO É ESTE, e é ele que a tela mostra. `fluxoDoPlano`
@@ -1396,6 +1672,76 @@ export async function POST(request: Request) {
       );
     }
 
+    // ── 8½. A CAD do comprador da carteira ─────────────────────────────────
+    //
+    // Lucas (26/09/2026), "Nasce a CAD credenciada": quem passou pela porta da carteira (contrato
+    // ativo na família, nenhuma CAD no escopo) ganha a CAD credenciada AGORA, marcada
+    // 'comprador_da_carteira', com a imobiliária e o corretor desta reserva.
+    //
+    // ⚠️ AQUI, E NÃO ANTES. Depois do passo 8 a proposta existe e a reserva virou proposta: no 409 da
+    // corrida (a reserva saiu de 'ativa') a proposta é apagada e sobraria uma CAD órfã. A prévia
+    // (6½) já voltou lá em cima, e o GET não escreve. E ANTES do passo 9, para os avisos saírem com a
+    // CAD já no Board.
+    //
+    // ⚠️ NÃO DERRUBA A PROPOSTA. `garantirCadDoComprador` nunca lança; a falha fica no log e na
+    // resposta (`cadDoComprador`), e a venda segue gravada.
+    //
+    // (revisão de 26/09/2026) ⚠️ O CO-COMPRADOR QUE ENTROU PELA CARTEIRA TAMBÉM GANHA A CAD. A busca
+    // de proponentes o libera pela mesma régua do titular; sem isto ele entrava na proposta sem
+    // linha nenhuma em `apolo_esteira`, fora do Board e do CRM, e a esteira deixava de ser a fonte
+    // da decisão. A pergunta é a do titular (`credenciadoParaVender`, no mesmo escopo) e só escreve
+    // quando a porta foi a compra, sem CAD no escopo. Leitura que falha vira 'erro' aqui, nunca 503:
+    // a proposta já está gravada. E NÃO BARRA o co: o POST nunca o reconferiu (a busca é o portão
+    // da tela desde 05/09), e barrar aqui seria regra nova para toda proposta com co.
+    const enterpriseIdDaCadNova = enterpriseIdDaCad(cadastro, c2xId);
+    const baseDaCad: BaseDaCadDoComprador = {
+      agora,
+      atualizadoPor: sessao.usuarioId ?? null,
+      codigoDaVenda: codigo,
+      corretorEntityId: reserva.corretor_entity_id,
+      corretorNome: nomeDoCorretor,
+      empreendimentoNome:
+        empreendimentoDaUnidade(cadastro, enterpriseIdDaCadNova)?.nome ?? empreendimento.nome,
+      enterpriseId: enterpriseIdDaCadNova,
+      imobiliariaEntityId: reserva.imobiliaria_entity_id,
+      imobiliariaNome: nomeDaImobiliaria,
+    };
+    // (26/09/2026) CPF OU CNPJ, pela peça única (`tipoDePessoa`): a porta da carteira vale para os
+    // dois, como a régua do titular (ver `compra-ativa.ts`). Medido: nenhum co-comprador de 14
+    // dígitos nos faturados de hoje, então nada muda para quem já vendia.
+    const documentosDosCoCompradores = [
+      ...new Set(
+        compradores
+          .filter((c) => !c.titular)
+          .map((c) => soDigitos(c.cpf))
+          .filter((doc) => tipoDePessoa(doc) !== null && doc !== cpfDoTitular),
+      ),
+    ];
+    const [cadDoComprador, cadsDosCoCompradores] = await Promise.all([
+      credenciamento.compra
+        ? garantirCadDoComprador(admin, {
+            ...baseDaCad,
+            compra: credenciamento.compra,
+            entityId: credenciamento.entityId,
+          })
+        : Promise.resolve(null),
+      Promise.all(
+        documentosDosCoCompradores.map((documento) =>
+          cadDoCoComprador(admin, documento, escopoDaEsteira, baseDaCad),
+        ),
+      ).then((lista) => lista.filter((r): r is ResultadoDaCadDoComprador => r !== null)),
+    ]);
+    const falhasDaCad = [
+      ...(cadDoComprador?.estado === "erro" ? [{ motivo: cadDoComprador.motivo, quem: "titular" }] : []),
+      ...cadsDosCoCompradores.flatMap((r) => (r.estado === "erro" ? [{ motivo: r.motivo, quem: "co" }] : [])),
+    ];
+    for (const falha of falhasDaCad) {
+      console.error("[hercules][proposta] a CAD do comprador da carteira não nasceu", {
+        ...falha,
+        propostaId,
+      });
+    }
+
     // ── 9. O PDF e os três avisos ──────────────────────────────────────────
     //
     // ⚠️ DAQUI PARA BAIXO NADA DERRUBA A PROPOSTA, que já está gravada. Um WhatsApp que não sai
@@ -1410,7 +1756,13 @@ export async function POST(request: Request) {
       c2xId,
       // O elo do PDF com a ficha do cliente no Apolo — a mesma entidade que decidiu o
       // credenciamento, e o hash do CPF do titular. Ver a 0136.
-      clienteDocumentoHash: hashIdentifier("cpf", cpfDoTitular),
+      // ⚠️ O NAMESPACE SAI DO DOCUMENTO (26/09/2026). Até hoje esta linha era
+      // `hashIdentifier("cpf", cpfDoTitular)`, e é ELA que grava `cliente_documento_hash`: com um
+      // titular PJ, o RG, o comprovante e o contrato social anexados desapareceriam da ficha do
+      // cliente no CRM e na esteira, sem erro nenhum — `hashesDaPessoa`
+      // (lib/apolo/incorporador/documentos.ts) devolve os hashes REAIS da entidade, no namespace
+      // `cnpj` (medido em 11 de 11 CADs de PJ), e o `.in(...)` nunca casaria.
+      clienteDocumentoHash: hashIdentifier(namespaceDoHash(cpfDoTitular), cpfDoTitular),
       clienteEntityId: credenciamento.entityId,
       codigo,
       compradores,
@@ -1429,7 +1781,21 @@ export async function POST(request: Request) {
       unidadeEscrita,
     });
 
-    return NextResponse.json({ data: { avisos, codigo, id: propostaId } });
+    return NextResponse.json({
+      data: {
+        avisos,
+        // (26/09/2026) Só aparece na venda do comprador da carteira: "criada", "ja_existia" ou
+        // "erro". Campo próprio, e não uma linha em `avisos`: aquela lista diz QUEM FOI AVISADO, e
+        // "falhou para cad" seria lido como um WhatsApp que não saiu.
+        ...(cadDoComprador ? { cadDoComprador: { estado: cadDoComprador.estado } } : {}),
+        // Os co-compradores que entraram pela carteira, um estado por pessoa (sem nome nem CPF).
+        ...(cadsDosCoCompradores.length > 0
+          ? { cadsDosCoCompradores: cadsDosCoCompradores.map((r) => ({ estado: r.estado })) }
+          : {}),
+        codigo,
+        id: propostaId,
+      },
+    });
   } catch (erro) {
     if (erro instanceof FalhaAoLerCredenciamento) {
       console.error("[hercules][proposta] credenciamento ilegível", erro);
@@ -1446,6 +1812,31 @@ export async function POST(request: Request) {
       { error: "Não foi possível gerar a proposta agora." },
       { status: 503 },
     );
+  }
+}
+
+/** O que a CAD da carteira do titular e a dos co-compradores têm em comum: a venda que a abriu. */
+type BaseDaCadDoComprador = Omit<EntradaDaCadDoComprador, "compra" | "entityId">;
+
+/**
+ * A CAD de um co-comprador que entrou pela carteira, se for o caso. `null` quando ele não precisa
+ * de CAD nova (tem CAD no escopo, ou não é comprador da carteira).
+ *
+ * ⚠️ NUNCA LANÇA. Roda depois de a proposta estar gravada: a leitura que falha (inclusive a
+ * `FalhaAoLerCredenciamento`, que no titular vira 503) aqui vira `erro`, no log e na resposta.
+ */
+async function cadDoCoComprador(
+  admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  documento: string,
+  escopo: string[],
+  base: BaseDaCadDoComprador,
+): Promise<null | ResultadoDaCadDoComprador> {
+  try {
+    const dele = await credenciadoParaVender(admin, { documento, enterpriseIds: escopo });
+    if (!dele.credenciado || !dele.compra) return null;
+    return await garantirCadDoComprador(admin, { ...base, compra: dele.compra, entityId: dele.entityId });
+  } catch (erro) {
+    return { estado: "erro", motivo: erro instanceof Error ? erro.message : String(erro) };
   }
 }
 
@@ -1885,7 +2276,7 @@ async function logoDoEmpreendimento(
 // ⚠️ PATCH, E NÃO DELETE — a mesma razão da reserva. A proposta cancelada continua respondendo
 // "quem tinha este lote e por quê", e o histórico da unidade lê `cancelada_em` para montar o evento.
 const COLUNAS_DA_PROPOSTA_QUE_CAI =
-  "id, etapa, protocolo_numero, codigo, compradores, cliente_nome, reserva_id, imobiliaria_entity_id, corretor_entity_id, empreendimento_id, cancelada_em, cancelada_motivo, atualizado_em";
+  "id, etapa, protocolo_numero, codigo, compradores, cliente_nome, reserva_id, imobiliaria_entity_id, corretor_entity_id, empreendimento_id, cancelada_em, cancelada_motivo, atualizado_em, origem, origem_c2x_id";
 
 type PropostaQueCai = {
   atualizado_em: null | string;
@@ -1899,6 +2290,15 @@ type PropostaQueCai = {
   etapa: string;
   id: string;
   imobiliaria_entity_id: null | string;
+  origem: null | string;
+  /**
+   * A marca de que a linha veio da carga do C2X.
+   *
+   * ⚠️ É ELA QUE DECIDE DE ONDE O CADASTRO PODE SAIR. A carga marcou 2 das 13 herdadas com a unidade
+   * em `vendida` mesmo com a venda em etapa `proposta`; sem saber que a linha é herdada, o
+   * cancelamento derrubaria a venda e deixaria o lote preso em `vendida`.
+   */
+  origem_c2x_id: null | number;
   protocolo_numero: null | number;
   reserva_id: null | string;
 };
@@ -1982,11 +2382,43 @@ async function tomarAVezDeAvisar(
   return ((data ?? []) as unknown[]).length > 0 ? "minha" : "outra_tentativa";
 }
 
+/** A linha veio da carga do C2X? É `origem_c2x_id` que diz, e é ela que abre a saída de `vendida`. */
+const veioDaCargaDoC2x = (venda: { origem_c2x_id?: null | number }): boolean =>
+  venda.origem_c2x_id !== null && venda.origem_c2x_id !== undefined;
+
+/**
+ * DE ONDE ESTE CANCELAMENTO PODE TIRAR O CADASTRO DO LOTE.
+ *
+ * ⚠️ UMA FUNÇÃO PARA OS DOIS PONTOS, E É DE PROPÓSITO (revisão de 25/09/2026). A exceção do cadastro
+ * `vendida` entrou só na IDA (o `aceitos` da soltura) e o portão da RETOMADA continuou exigindo a
+ * literal `reservada`. Nas 2 herdadas que a carga deixou em `vendida` (CDJ0403 e MDB1306: cadastro
+ * `vendida`, `reserva_id` NULO e ZERO linhas em `hercules_reservas`, medido em 25/09/2026 no projeto
+ * bxgukywoxgivlrhjkwjx, só SELECT), `reservaLigadaViva` é sempre falso, então a primeira tentativa que
+ * parasse no 503 da soltura não tinha segunda: a retomada devolvia `null` e a rota respondia "Não há
+ * proposta aberta nesta unidade" sobre o lote que ela mesma acabou de deixar preso em `vendida`, sem
+ * botão nenhum para soltar. Era o meio caminho pior do que o botão apagado, deslocado para o segundo
+ * clique. Os dois pontos lendo a MESMA função nunca mais divergem.
+ *
+ * ⚠️ `bloqueada` E `disponivel` NUNCA ENTRAM, NEM PEDIDAS: quem as filtra é
+ * `devolverCadastroDaUnidade` (*"`bloqueada` E `disponivel` SAEM DOS ACEITOS MESMO PEDIDOS"*, em
+ * `cancelar-reserva-server.ts`), e nada aqui desbloqueia lote por engano.
+ */
+function cadastrosDeOndeOLoteVolta(herdadaDaCarga: boolean): readonly string[] {
+  return herdadaDaCarga ? ["reservada", "vendida"] : ["reservada"];
+}
+
 /**
  * O CANCELAMENTO DESTA ROTA QUE PAROU NO MEIO: a venda já está `cancelado`, mas a reserva ligada
- * continua viva ou o cadastro do lote continua `reservada`.
+ * continua viva ou o cadastro do lote continua num estado de onde este cancelamento tira o lote.
  *
- * ⚠️ SÓ O QUE ESTA ROTA CANCELOU. `origem = 'panteon'` (a mesma régua da busca da proposta aberta),
+ * ⚠️ SÓ O QUE ESTA ROTA CANCELOU, HERDADA OU NÃO (25/09/2026). O filtro `origem = 'panteon'` saiu
+ * junto com o da busca da proposta aberta: sem isso, um cancelamento de herdada que parasse no 503 da
+ * soltura ficaria sem retomada, e o lote ficaria preso sem botão nenhum.
+ *
+ * ⚠️ E QUEM SEPARA AS VELHAS DA CARGA É `cancelada_em`, MEDIDO. Há 2.071 herdadas em etapa `cancelado`
+ * sem marca de pedido, e `cancelada_em` é NULO em 2.071 delas (medido em 25/09/2026 no projeto
+ * bxgukywoxgivlrhjkwjx, só SELECT: a carga não preenche essa coluna). Nenhuma delas entra aqui; entra
+ * só a que ESTA rota cancelou, porque é ela que grava o carimbo. O que resta do recorte é
  * `cancelada_em` preenchido, `cancelamento_pedido_em` VAZIO e — o que decide de verdade — NENHUM card
  * de cancelamento ou distrato vivo na Têmis (`temCardDeDesfazerVivo`). A venda derrubada pelo motor
  * nasce de um pedido e tem dono próprio para a retomada, o botão Concluir do card; a marca do pedido
@@ -2008,7 +2440,6 @@ async function cancelamentoQueParouNoMeio(
     .select(COLUNAS_DA_PROPOSTA_QUE_CAI)
     .eq("workspace_id", WORKSPACE)
     .eq("unidade_id", unidade.id)
-    .eq("origem", "panteon")
     .eq("etapa", "cancelado")
     .is("cancelamento_pedido_em", null)
     .not("cancelada_em", "is", null)
@@ -2039,7 +2470,11 @@ async function cancelamentoQueParouNoMeio(
     reservaLigadaViva = Boolean(reserva);
   }
 
-  if (!reservaLigadaViva && String(unidade.situacao ?? "").trim() !== "reservada") return null;
+  // ⚠️ E O CADASTRO ACEITO AQUI É O MESMO DA IDA (revisão de 25/09/2026). Era a literal `reservada`, e
+  // com ela a retomada era IMPOSSÍVEL nas 2 herdadas que a carga deixou em `vendida` — exatamente as
+  // duas que a exceção do `aceitos` existe para salvar. Ver `cadastrosDeOndeOLoteVolta`.
+  const aceitos = cadastrosDeOndeOLoteVolta(veioDaCargaDoC2x(venda));
+  if (!reservaLigadaViva && !aceitos.includes(String(unidade.situacao ?? "").trim())) return null;
 
   const doJuridico = await temCardDeDesfazerVivo(admin, venda.id);
   if (doJuridico === "leitura_falhou") return "leitura_falhou";
@@ -2092,24 +2527,95 @@ export async function PATCH(request: Request) {
       );
     }
 
+    // ⚠️ A LINHA ESPELHO NÃO RESPONDE POR NADA, E CANCELAR NELA NÃO SOLTA O LOTE. É a MESMA recusa que
+    // o bloqueio já faz, com a mesma frase (*"Esta linha é o registro antigo do terreno"*, em
+    // `bloquear-unidade-server.ts`): o mesmo terreno tem DUAS linhas nos produtos divididos (Lagoa
+    // Bonita, Vale do Ouro), a do pai, que é história parada, e a da gleba que vende.
+    //
+    // ⚠️ E É ESTA LINHA QUE MANTÉM FORA AS 139 HERDADAS DA SOMBRA DO PAI (revisão de 25/09/2026).
+    // Medido em 25/09/2026 no projeto bxgukywoxgivlrhjkwjx (só SELECT): 135 herdadas em `reservado` e 4
+    // em `proposta` moram em unidade com `espelho_de` preenchido, 38 delas com o cadastro em `vendida`.
+    // A régua as ignora de propósito (`noPai`) e a trava também (`doPaiImportada`), então a tela nunca
+    // manda esse id — mas `idsDaSessao` INCLUI o id do grupo, o pai, e sem esta recusa um PATCH com o id
+    // da linha espelho cancelava uma das 139 e rodava a soltura sobre o cadastro do pai, com `vendida`
+    // nos aceitos por a linha ser herdada. O comentário que estava aqui prometia essa guarda sem
+    // implementá-la: quem as mantinha fora era só a TELA.
+    if (unidade.espelho_de) {
+      return NextResponse.json(
+        { error: "Esta linha é o registro antigo do terreno. Cancele pela gleba que vende." },
+        { status: 409 },
+      );
+    }
+
     // A mesma régua do POST: cancelar a proposta é escrita, e no produto só de consulta não se escreve.
     const escrita = await autorizarEscritaNoProduto(request, auth.sessao, [unidade.enterprise_id]);
     if (!escrita.ok) return escrita.response;
     const sessao = escrita.sessao;
 
-    // ⚠️ SÓ A PROPOSTA NATIVA E ABERTA. `origem = 'panteon'` mantém de fora as 4.857 importadas do
-    // C2X — cancelar por aqui uma venda que mora no legado escreveria no Panteon um cancelamento
-    // que o C2X nunca saberia, e os dois passariam a discordar sobre o mesmo lote.
-    const { data: linha } = await admin
+    // ⚠️ A PROPOSTA ABERTA DESTA UNIDADE, HERDADA OU NÃO (25/09/2026). Até aqui o recorte era
+    // `origem = 'panteon'` e `etapa = 'proposta'`, pela premissa de que "cancelar por aqui uma venda
+    // que mora no legado escreveria no Panteon um cancelamento que o C2X nunca saberia". A carga do
+    // C2X foi ENCERRADA em 21/09/2026: nada volta de lá, e o legado não tem mais o que discordar.
+    // Lucas, 25/09/2026: *"As reservas que foram herdadas do c2x, nao estamos conseguindo cancelar ou
+    // dar seguimento na proposta. Essas reservas tem que comportar iguais as outras"*. É a mesma
+    // revogação que ele já tinha feito para o contrato em 16/09/2026 (*"será feito aqui"*).
+    //
+    // ⚠️ E A ETAPA `reservado` ENTRA AQUI, porque é onde a carga deixou 11 das 13. Elas são linha de
+    // `hercules_propostas` com `reserva_id` NULO e ZERO linhas em `hercules_reservas` (medido em
+    // 25/09/2026, projeto bxgukywoxgivlrhjkwjx): a rota da reserva não tem o que cancelar nelas, e é
+    // esta que cancela. A rota da reserva continua exigindo linha viva em `hercules_reservas`, e está
+    // certa.
+    //
+    // ⚠️ O RECORTE É A UNIDADE EM FOCO, E A LINHA ESPELHO JÁ FOI RECUSADA ACIMA: é isso que mantém
+    // fora as 139 herdadas penduradas na sombra do pai (135 em `reservado` e 4 em `proposta`, medido em
+    // 25/09/2026 no projeto bxgukywoxgivlrhjkwjx). A régua na tela nunca mostra a linha do pai, mas a
+    // rota não pode depender disso: quem manda o id decide o que ela lê.
+    //
+    // ⚠️ E AQUI NÃO CABE `maybeSingle` (revisão de 25/09/2026). O recorte antigo era
+    // `origem = 'panteon'` + `etapa = 'proposta'`, exatamente as colunas do índice único
+    // `hercules_propostas_uma_viva_por_unidade` (UNIQUE em `unidade_id` WHERE `origem = 'panteon'` AND
+    // etapa em reservado/proposta/contrato/assinatura, definição medida em 25/09/2026 no mesmo projeto):
+    // o banco garantia uma linha só. Sem o filtro de origem o recorte sai de baixo do índice, e NADA
+    // impede duas herdadas vivas na mesma unidade. Hoje são ZERO unidades com mais de uma linha viva em
+    // ('proposta','reservado') (medido no mesmo dia), então isto é trava para o futuro, não defeito de
+    // hoje — mas o que segurava era um índice, e o índice saiu do caminho.
+    //
+    // ⚠️ E O ERRO DE LEITURA É 503 "TENTE DE NOVO", NUNCA 409 "NÃO HÁ PROPOSTA". Com `maybeSingle` e
+    // duas linhas o PostgREST devolve erro e `data` nulo; com o `error` descartado a rota caía na
+    // retomada e respondia "Não há proposta aberta nesta unidade" sobre uma ficha que acabou de acender
+    // o botão Cancelar, e sem uma linha de log. Banco que não respondeu não é unidade sem venda.
+    const { data: vivas, error: erroDasVivas } = await admin
       .from("hercules_propostas")
       .select(COLUNAS_DA_PROPOSTA_QUE_CAI)
       .eq("workspace_id", WORKSPACE)
       .eq("unidade_id", unidade.id)
-      .eq("origem", "panteon")
-      .eq("etapa", "proposta")
-      .maybeSingle();
+      .in("etapa", ["proposta", "reservado"])
+      // A mesma ordem da régua (`situacao-da-unidade.ts`): quem sustenta a cor é a de `etapa_desde`
+      // mais recente. Duas bastam para saber que há mais de uma.
+      .order("etapa_desde", { ascending: false })
+      .limit(2);
 
-    let proposta = linha as null | PropostaQueCai;
+    if (erroDasVivas) {
+      console.error("[hercules][proposta] não deu para ler a venda viva da unidade", erroDasVivas.message);
+      return NextResponse.json(
+        { error: "Não foi possível conferir a unidade agora. Tente de novo em instantes." },
+        { status: 503 },
+      );
+    }
+
+    const vivasDaUnidade = (vivas ?? []) as unknown as PropostaQueCai[];
+
+    // ⚠️ COM DUAS VENDAS VIVAS, NINGUÉM ESCOLHE POR ELE. É a mesma honestidade que a ficha já pratica
+    // para reserva mais proposta no mesmo lote (`FRASE_DOIS_PROCESSOS`, em `fluxo-de-venda.ts`):
+    // cancelar uma e deixar a outra viva é decisão de gente, não de rota.
+    if (vivasDaUnidade.length > 1) {
+      return NextResponse.json(
+        { error: "Esta unidade tem mais de uma venda viva ao mesmo tempo. Fale com a coordenação." },
+        { status: 409 },
+      );
+    }
+
+    let proposta: null | PropostaQueCai = vivasDaUnidade[0] ?? null;
 
     // ⚠️ A NOVA TENTATIVA COMPLETA A SOLTURA (revisão de 24/09/2026). Quando a venda já foi para
     // `cancelado` e a queda da reserva falhou, a resposta abaixo é 503 "tente de novo". Mas esta
@@ -2184,7 +2690,11 @@ export async function PATCH(request: Request) {
         .eq("id", proposta.id)
         // ⚠️ A CONDIÇÃO REPETIDA É A TRAVA DO CLIQUE DUPLO, igual à da reserva: sem ela, dois
         // coordenadores no mesmo lote cancelam duas vezes e saem dois WhatsApps de cancelamento.
-        .eq("etapa", "proposta")
+        //
+        // ⚠️ E ELA CONFERE A ETAPA DA LINHA LIDA, NÃO A PALAVRA "proposta" (25/09/2026). Com a
+        // literal, as 11 herdadas em `reservado` nunca casariam: a rota responderia "Esta proposta
+        // acabou de ser cancelada em outra tela" sobre o cancelamento que ela mesma acabou de fazer.
+        .eq("etapa", proposta.etapa)
         .select("id");
 
       if (error) throw new Error(error.message);
@@ -2222,8 +2732,19 @@ export async function PATCH(request: Request) {
     //
     // ⚠️ A UNIDADE VOLTA ANTES DO AVISO, como no cancelamento da reserva: se o WhatsApp falhar, o lote
     // já está livre para vender.
+    // ⚠️ A HERDADA SAI TAMBÉM DE `vendida`, E SÓ ELA (25/09/2026). A carga marcou 2 das 13 com a
+    // unidade em `vendida` enquanto a venda está em etapa `proposta` (CDJ0403 e MDB1306, medido em
+    // 25/09/2026 no projeto bxgukywoxgivlrhjkwjx). Sem esta exceção o botão entregaria o pior estado
+    // possível: proposta cancelada e lote preso em `vendida`, pior do que o botão apagado. É a MESMA
+    // exceção que a conclusão de um cancelamento na Têmis já usa, e pelo mesmo motivo escrito lá (ver
+    // `cancelar-reserva-server.ts`): *a venda importada do C2X chega com o cadastro `vendida` pela
+    // carga*. A venda NATIVA em cadastro `vendida` continua sendo do jurídico, e `bloqueada` e
+    // `disponivel` nunca saem, nem pedidas (a devolução as filtra).
+    //
+    // ⚠️ E A MESMA PERGUNTA VALE NA RETOMADA, por isso ela mora em `cadastrosDeOndeOLoteVolta` e não
+    // aqui: o portão de `cancelamentoQueParouNoMeio` lê a mesma função.
     const soltura = await soltarLoteDaVendaDesfeita(admin, {
-      aceitos: ["reservada"],
+      aceitos: cadastrosDeOndeOLoteVolta(veioDaCargaDoC2x(proposta)),
       agora,
       venda: { id: proposta.id, reserva_id: proposta.reserva_id ?? null, unidade_id: unidade.id },
     });

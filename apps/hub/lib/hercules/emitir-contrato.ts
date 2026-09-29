@@ -31,6 +31,19 @@ export type PodeEmitir = { ok: true } | { porque: string; ok: false };
  * venda, e quem clicou resolve na hora; minuta publicada e vínculo com o plano são configuração do
  * empreendimento, que depende de outra pessoa. Perguntar pela configuração antes faria o operador ir
  * atrás do jurídico para descobrir, no fim, que a venda estava cancelada.
+ *
+ * ⚠️ ESTA FUNÇÃO NÃO ESTÁ LIGADA A NADA, E ISSO IMPORTA PARA QUEM CHEGAR AQUI DEPOIS. Medido em
+ * 26/09/2026 (`grep -rn podeEmitirContrato` em app/, lib/ e modules/): a única referência viva é o
+ * próprio `emitir-contrato.test.ts`. Nenhuma rota passa por ela.
+ *
+ * ⚠️ E ELA NÃO PERGUNTA PELA CAD. Lucas (26/09/2026): *"faz uma barra, para enviar para contrato
+ * precisa da cad validada"*. A barra foi implementada nas portas que rodam de verdade
+ * (`app/api/incorporador/venda/contrato/route.ts`, `lib/temis/contrato-servico.ts`,
+ * `lib/assinatura/envio-db.ts` e `lib/temis/trabalhos-db.ts`), por `recusaDaCadParaContrato` /
+ * `recusaDaCadDaProposta` em `lib/hercules/cad-para-contrato.ts`. Quem for LIGAR esta régua a uma rota
+ * um dia tem que acrescentar a quinta pergunta aqui, ou a casa passa a ter uma segunda régua mais
+ * frouxa que o typecheck aprova, o teste cobre e a produção obedece — o padrão que a casa chama de
+ * "efeito colateral que não derruba e some".
  */
 export function podeEmitirContrato(venda: VendaParaEmitir): PodeEmitir {
   if (venda.situacao === "cancelada") {

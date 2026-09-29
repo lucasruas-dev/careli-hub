@@ -60,6 +60,7 @@ export {
   type SituacaoDaAssinatura,
 } from "@/lib/apolo/incorporador/contratos";
 
+import { idDoC2x } from "@/lib/apolo/c2x-pelo-id";
 import type {
   AssinanteDoQuadro,
   AssinaturaDoEsquema,
@@ -72,7 +73,7 @@ export const SQL_UNIDADE_ROTULO =
   "coalesce(nullif(trim(u.name), ''), concat(e.code, u.block, u.lot))";
 
 /**
- * A consulta das LINHAS de assinatura, escopada por CÓDIGO de empreendimento.
+ * A consulta das LINHAS de assinatura, escopada pelo ID do empreendimento no C2X (`enterprises.id`).
  *
  * É a consulta do painel interno com dois campos a mais (`ar_id` e `uuid_doc`, para escolher o
  * envio e ligar o PDF) e uma diferença deliberada: `contract_signature_signers` entra por LEFT
@@ -83,9 +84,16 @@ export const SQL_UNIDADE_ROTULO =
  * metades da lista precisam escrever o nome da unidade igual, senão a mesma unidade aparece com
  * dois nomes na mesma tela.
  *
- * @param placeholders Os `?` dos códigos, montados por quem chama (`codes.map(() => "?")`).
+ * ⚠️ PELO ID, E NÃO PELA SIGLA (PAN-124, 25/09/2026). Até aqui o filtro era `e.code in (...)`. A
+ * sigla muda quando alguém renomeia no C2X (em 24/09/2026 o 43 foi de RDV para PDI; o 30 foi de LAG
+ * para ADT e de ADT para ACT), e a lista do recorte fica 30 minutos em cache: no intervalo, a tela
+ * mandava a sigla velha, o `in` não casava com nada e o painel saía VAZIO, sem erro. O id não muda.
+ * Só o WHERE mudou: o SELECT continua devolvendo `e.code` (é o rótulo `emp` da tela) e o ORDER BY
+ * continua pela sigla, para a lista sair na MESMA ordem de antes.
+ *
+ * @param placeholders Os `?` dos ids, montados por quem chama (`ids.map(() => "?")`).
  */
-export const SQL_LINHAS_POR_CODE = (placeholders: string): string => `
+export const SQL_LINHAS_POR_ID = (placeholders: string): string => `
   select
     e.code as emp,
     ${SQL_UNIDADE_ROTULO} as unidade,
@@ -126,7 +134,7 @@ export const SQL_LINHAS_POR_CODE = (placeholders: string): string => `
   left join signers sg on sg.id = csg.signer_id
   left join users usr on usr.id = sg.user_id
   left join profiles pf on pf.id = usr.profile_id
-  where e.code in (${placeholders})
+  where e.id in (${placeholders})
     and cs.send_document_signature = 1
     and cs.contract_signature_status_id <> 6
   order by e.code, u.block, u.lot, ss.after_position, ss.id`;
@@ -171,20 +179,31 @@ export type EmpreendimentoDoFiltro = {
   code: string;
   /** Contratos que ele tem (enviados + vivos, sem contar duas vezes): dá peso ao item do seletor. */
   contratos: number;
+  /**
+   * O `enterprises.id` do C2X, lido NA MESMA consulta que trouxe a sigla (PAN-124). É por ele que o
+   * painel consulta: a tela continua mandando a sigla (`?emp=`), a sigla passa pela allowlist
+   * (`resolverCodes`) e vira id por ESTA lista (`idsDoRecorte`), no mesmo instante.
+   */
+  id: number;
   nome: string;
 };
 
 /**
- * O recorte PADRÃO da tela interna: exatamente o que `/apolo/assinaturas` mostra hoje.
+ * O recorte PADRÃO da tela interna: exatamente o que `/apolo/assinaturas` mostra hoje, o VOC (37) e
+ * o VOL (36). O VOR (41) fica de fora, como sempre ficou.
  *
  * ⚠️ VALE DO OURO SÃO QUATRO EMPREENDIMENTOS NO C2X, todos com o nome "VALE DO OURO": VLO (35, o
  * espelho histórico), VOL (36, do Lino), VOC (37, do Cecílio) e VOR (41, o novo). Há auditoria em
  * curso sobre o agrupamento, então esta tela NÃO agrupa por nome em lugar nenhum: o recorte é por
- * CÓDIGO, e o seletor mostra o código ao lado do nome. Somar dois "Vale do Ouro" diferentes é o
- * erro que isto previne — e o nome repete em mais quatro famílias (Lagoa Bonita tem três códigos,
- * Rio de Pedras, Portal dos Vales, Lavra do Ouro e Milenium têm dois cada).
+ * empreendimento, e o seletor mostra o código ao lado do nome. Somar dois "Vale do Ouro" diferentes
+ * é o erro que isto previne — e o nome repete em mais quatro famílias (Lagoa Bonita tem três
+ * códigos, Rio de Pedras, Portal dos Vales, Lavra do Ouro e Milenium têm dois cada).
+ *
+ * ⚠️ PELO ID, E NÃO PELA SIGLA (PAN-124, 25/09/2026). O padrão era `["VOC", "VOL"]`, escrito no
+ * código: um renome no C2X (a Nívea renomeou o 43 de RDV para PDI em 24/09) faria a tela abrir num
+ * padrão que não casa com nada e cair em "todos os empreendimentos", calada. O id não muda.
  */
-export const CODES_PADRAO_DO_PAINEL = ["VOC", "VOL"];
+export const IDS_PADRAO_DO_PAINEL: readonly number[] = [37, 36];
 
 /**
  * Resolve o que a tela pediu contra o que o C2X tem.
@@ -210,10 +229,39 @@ export function resolverCodes(
   if (validos.length > 0) return [...new Set(validos)].sort();
 
   // Sem pedido válido, o padrão — e só o que de fato existe (num banco sem Vale do Ouro, a tela
-  // abre no que houver em vez de consultar código ausente).
-  const padrao = CODES_PADRAO_DO_PAINEL.filter((code) => existentes.has(code));
+  // abre no que houver em vez de consultar código ausente). O padrão é por ID: a sigla que sai é a
+  // que a lista viva dá a ele HOJE, seja ela qual for.
+  const padrao = [
+    ...new Set(
+      disponiveis.filter((item) => IDS_PADRAO_DO_PAINEL.includes(item.id)).map((item) => item.code),
+    ),
+  ].sort();
 
   return padrao.length > 0 ? padrao : [...existentes].sort();
+}
+
+/**
+ * Os ids do C2X das siglas que `resolverCodes` deixou passar, pela MESMA lista que as validou.
+ *
+ * ⚠️ A MESMA LISTA, E NÃO O CATÁLOGO. A sigla e o id vieram da mesma linha da mesma consulta, no
+ * mesmo instante: não há janela em que um diga uma coisa e o outro outra. E, como nenhuma sigla se
+ * repete no C2X (medido em 25/09/2026), a sigla X traduzida aqui é exatamente o id que
+ * `e.code = X` acharia: o recorte sai IDÊNTICO ao de antes para quem não foi renomeado.
+ *
+ * O ganho é o renome: a lista fica 30 minutos em cache, e se alguém renomear no C2X nesse
+ * intervalo, a sigla velha (a que a tela e a lista conhecem) continua achando o id certo, e a
+ * consulta pelo id acha as linhas que a consulta pela sigla velha perderia.
+ *
+ * Vazio = nada a consultar (quem chama devolve o painel vazio, como já devolvia sem código válido).
+ */
+export function idsDoRecorte(codes: string[], disponiveis: EmpreendimentoDoFiltro[]): number[] {
+  const pedidos = new Set(codes.map((code) => code.trim().toUpperCase()).filter(Boolean));
+  const ids = disponiveis
+    .filter((item) => pedidos.has(item.code))
+    .map((item) => idDoC2x(item.id))
+    .filter((id): id is number => id !== null);
+
+  return [...new Set(ids)].sort((a, b) => a - b);
 }
 
 /**

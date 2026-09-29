@@ -24,7 +24,43 @@ export const STAGE = {
 
 // Empreendimentos que NÃO entram nas análises da CACÁ (teste + masterplan/aditivo da Lagoa
 // Bonita) — decisão do Lucas. Por código (sigla).
+//
+// ⚠️ LEGADO DESDE O PAN-124 (25/09/2026): CONSULTA NOVA AO C2X USA `EXCLUDED_ENTERPRISE_IDS`, logo
+// abaixo. A sigla é o que muda quando alguém renomeia no C2X, e esta lista já quebrou calada: o
+// "LAG" não casa com nada desde 16/07/2026. Nenhuma consulta ao C2X a usa mais. Ela continua
+// exportada para os dois leitores que comparam SIGLA, e não filtram consulta nenhuma:
+//   • a reserva de código de produto novo (lib/hercules/cadastrar-produto-server.ts), que é espaço de
+//     nomes do CADASTRO DO PANTEON;
+//   • `idsDosCodigos` (lib/hercules/estoque-da-situacao.ts), só para a sigla que o catálogo não
+//     traduz porque o próprio catálogo a tira (LAB, TSC, SDT) não contar como "faltando".
 export const EXCLUDED_ENTERPRISE_CODES = ["TSC", "SDT", "LAB", "LAG"];
+
+// A MESMA EXCLUSÃO, PELO ID DO C2X (`enterprises.id`), QUE NÃO MUDA QUANDO ALGUÉM RENOMEIA.
+//
+// ⚠️ POR QUE POR ID (PAN-124). Em 24/09/2026 a Nívea renomeou o 43 no C2X de RDV para PDI e a busca
+// do coordenador pela sigla voltou vazia sem erro nenhum. Esta lista já tinha quebrado do mesmo
+// jeito dois meses antes. Medido no C2X em 25/09/2026 (tabela `enterprises` e auditoria
+// `Enterprise`, só leitura, scratchpad/pan124-medir-1.ts e -2.ts):
+//   • 2  = SDT, "SERVIDOR DE TREINAMENTO". Nenhuma troca de sigla auditada;
+//   • 31 = LAB, "LAGOA BONITA - MASTERPLAN". Nenhuma troca de sigla auditada;
+//   • 34 = TSC, "TESTE SPLIT CARELI". Nasceu TSC em 15/04/2026 (auditoria 2423);
+//   • o LAG ERA O 30. LAG -> ADT em 16/07/2026 (auditoria 16039: "LAGOA BONITA - ADITIVO" virou
+//     "CARELI - ADITIVOS") e ADT -> ACT em 21/09/2026 (auditoria 33689). Hoje ele se chama "ALDEIA DA
+//     CACHOEIRA DAS PEDRAS - TERMO DE ADESAO E TRANSFERENCIA". A lista nasceu em 04/07/2026 (commit
+//     0613b562) com o 30 ainda LAG: de 04/07 a 16/07 ELE era o excluído; desde 16/07 nenhum id casa
+//     com "LAG" e o 30 entra em toda leitura.
+// No mesmo dia: nenhuma sigla se repete no C2X e nenhuma é nula ou vazia. Então `e.id not in (2, 31,
+// 34)` devolve exatamente as linhas que `e.code not in ('TSC', 'SDT', 'LAB', 'LAG')` devolve hoje.
+//
+// ⚠️ O 30 FICA DE FORA DESTA LISTA, e é decisão medida, não esquecimento:
+//   1. a regra do PAN-124 é resultado IDÊNTICO ao de hoje, e hoje o 30 aparece em tudo;
+//   2. ele deixou de ser o aditivo da Lagoa Bonita. Virou o termo de adesão da Aldeia: 41 unidades,
+//      33 pedidos em assinatura, 5 com contrato gerado, pedido criado no C2X em 25/09/2026 às 08:48.
+//      Excluí-lo agora tiraria esses contratos do painel de assinaturas e das vendas sem ninguém pedir;
+//   3. ele não tem nenhuma parcela (0 linhas em `payments`): carteira, cobrança e extrato não mudam
+//      por causa dele, entrando ou não.
+// Voltar a excluí-lo, ou fazê-lo filho da ACP (42), é a pergunta 5 do plano ao Lucas.
+export const EXCLUDED_ENTERPRISE_IDS: readonly number[] = [2, 31, 34];
 
 // ESPELHO = o registro HISTÓRICO de antes de uma divisão, cujos lotes existem DE NOVO nas
 // divisões vivas. Não é teste, não é lixo: é o mesmo loteamento gravado duas vezes no C2X.
@@ -49,7 +85,7 @@ export const EXCLUDED_ENTERPRISE_CODES = ["TSC", "SDT", "LAB", "LAG"];
 // do Apolo em 18/08/2026: 4.560 un / R$ 1.068.042.231,43 quando o certo é 4.262 un /
 // R$ 1.040.273.342,43. A diferença é o espelho inteiro.
 //
-// ⚠️ POR QUE O ESPELHO NÃO ENTRA EM `EXCLUDED_ENTERPRISE_CODES`: aquela lista tira o
+// ⚠️ POR QUE O ESPELHO NÃO ENTRA EM `EXCLUDED_ENTERPRISE_IDS` (antes, `..._CODES`): aquela lista tira o
 // empreendimento de TUDO (é usada em ~15 leituras — carteira, cobrança, extrato, credenciamento,
 // catálogo, ficha, grafo), e o VLO NÃO PODE SUMIR. Ele é, hoje:
 //   • a casa do MASTERPLAN do Vale do Ouro — `lib/apolo/espelho-masterplan.ts` usa MASTERPLAN=35
@@ -59,13 +95,20 @@ export const EXCLUDED_ENTERPRISE_CODES = ["TSC", "SDT", "LAB", "LAG"];
 // Botar o VLO em EXCLUDED quebraria masterplan, CADs e painel de uma vez.
 //
 // A regra do espelho é OUTRA: ele continua existindo e continua LISTADO — só não entra em SOMA
-// nenhuma. Quem soma usa `ANALYTICS_EXCLUDED_ENTERPRISE_CODES` (ou filtra por `isMirrorEnterprise`);
+// nenhuma. Quem soma usa `ANALYTICS_EXCLUDED_ENTERPRISE_IDS` (ou filtra por `isMirrorEnterprise`);
 // quem lista mostra a linha marcada como histórica.
 export type EnterpriseMirror = {
   /** Código (sigla) do registro histórico. */
   code: string;
+  /**
+   * Os `enterprises.id` das divisões vivas, na MESMA ordem de `divisions`. É por eles que a
+   * consulta ao C2X filtra (PAN-124): a sigla muda quando alguém renomeia, o id não.
+   */
+  divisionIds: number[];
   /** Códigos vivos que hoje contêm os MESMOS lotes. */
   divisions: string[];
+  /** O `enterprises.id` do registro histórico no C2X. */
+  id: number;
   /** Rótulo curto pra tela, ao lado do nome. */
   label: string;
   /** Por que a linha continua existindo (quem depende dela). */
@@ -75,10 +118,13 @@ export type EnterpriseMirror = {
 export const ENTERPRISE_MIRRORS: EnterpriseMirror[] = [
   {
     code: "VLO",
+    // Medido no C2X em 25/09/2026: VOC 37, VOL 36, VOR 41 (mesma ordem de `divisions`).
+    divisionIds: [37, 36, 41],
     // ⚠️ O VOR ENTROU EM 08/09/2026. A lista tinha sido escrita antes de a carteira de extras
     // existir, e `divisions` é quem responde "quem está vivo no lugar do espelho": sem o VOR, a
     // pergunta "quanto tem o VLO" devolvia 298 unidades de VOC + VOL e escondia as 3 do VOR.
     divisions: ["VOC", "VOL", "VOR"],
+    id: 35,
     label: "Histórico · mesmos lotes de VOC + VOL + VOR",
     note:
       "Registro do Vale do Ouro antes da divisão VLO → VOC + VOL, hoje com o VOR (extras) ao " +
@@ -92,12 +138,36 @@ export const MIRROR_ENTERPRISE_CODES: string[] = ENTERPRISE_MIRRORS.map(
   (mirror) => mirror.code,
 );
 
+/** Os `enterprises.id` dos espelhos (hoje só o 35, o VLO). */
+export const MIRROR_ENTERPRISE_IDS: readonly number[] = ENTERPRISE_MIRRORS.map(
+  (mirror) => mirror.id,
+);
+
 // Códigos que ficam de fora de QUALQUER conta: os excluídos de sempre + os espelhos.
 // É esta a lista que as agregações usam (motor da CACÁ, ranking, vendas por empreendimento).
+//
+// ⚠️ LEGADO DESDE O PAN-124: consulta nova usa `ANALYTICS_EXCLUDED_ENTERPRISE_IDS`.
 export const ANALYTICS_EXCLUDED_ENTERPRISE_CODES: string[] = [
   ...EXCLUDED_ENTERPRISE_CODES,
   ...MIRROR_ENTERPRISE_CODES,
 ];
+
+// A mesma lista, pelo id do C2X: [2, 31, 34, 35]. Os excluídos de sempre + os espelhos.
+export const ANALYTICS_EXCLUDED_ENTERPRISE_IDS: readonly number[] = [
+  ...EXCLUDED_ENTERPRISE_IDS,
+  ...MIRROR_ENTERPRISE_IDS,
+];
+
+// O pedaço de SQL que tira os empreendimentos de toda conta, pelo id (o alias `e` é `enterprises` em
+// todas as leituras deste arquivo). Os `?` recebem `...ANALYTICS_EXCLUDED_ENTERPRISE_IDS`, na mesma
+// posição em que as siglas iam.
+//
+// ⚠️ `e.id not in` NÃO É O MESMO QUE `e.code not in` PARA SIGLA NULA: a sigla nula caía fora (NULL não
+// passa em `not in`), e o id nunca é nulo. Medido em 25/09/2026: nenhum empreendimento tem sigla nula
+// ou vazia no C2X, então hoje as duas devolvem as mesmas linhas.
+function semExcluidosDaAnalise(): string {
+  return `e.id not in (${ANALYTICS_EXCLUDED_ENTERPRISE_IDS.map(() => "?").join(", ")})`;
+}
 
 export function findEnterpriseMirror(
   code: string | null,
@@ -117,11 +187,18 @@ export function isMirrorEnterprise(code: string | null): boolean {
 
 // Consolidação de empreendimentos com o mesmo produto (regras do diário/Lucas): soma etapas.
 // Fonte única — o displayEnterprise e o filtro por empreendimento do motor derivam daqui.
-export const ENTERPRISE_GROUPS: { display: string; codes: string[] }[] = [
-  { codes: ["LOS", "LOU"], display: "Lavra do Ouro" },
-  { codes: ["RDP", "RPC", "RPS"], display: "Rio de Pedras" },
-  { codes: ["PDV", "PVS"], display: "Portal dos Vales" },
-  { codes: ["LBF", "LBR", "LBP"], display: "Lagoa Bonita" },
+//
+// ⚠️ `ids` SÃO OS `enterprises.id` DE `codes`, NA MESMA ORDEM (PAN-124). Medidos no C2X em 25/09/2026 e
+// conferidos contra o cadastro do Panteon no mesmo dia: as divisões de cada pai em
+// `hercules_empreendimentos.pai_id` são exatamente estes ids (LOX -> 1, 4; RDX -> 13, 14, 15; PDX -> 7,
+// 10; LAB 31 -> 27, 32, 33; VLO 35 -> 36, 37, 41). Quem filtra o C2X por grupo usa os ids: se alguém
+// renomear uma divisão no legado, a sigla sai daqui calada, e o id continua casando. Divisão NOVA
+// entra nas duas listas (e no `pai_id` do cadastro), até o agrupamento passar a sair só do `pai_id`.
+export const ENTERPRISE_GROUPS: { codes: string[]; display: string; ids: number[] }[] = [
+  { codes: ["LOS", "LOU"], display: "Lavra do Ouro", ids: [4, 1] },
+  { codes: ["RDP", "RPC", "RPS"], display: "Rio de Pedras", ids: [13, 15, 14] },
+  { codes: ["PDV", "PVS"], display: "Portal dos Vales", ids: [7, 10] },
+  { codes: ["LBF", "LBR", "LBP"], display: "Lagoa Bonita", ids: [33, 27, 32] },
   // ⚠️ O ESPELHO (VLO) NÃO ENTRA AQUI, e é de propósito. O grupo é a SOMA das etapas: pôr o VLO
   // junto somaria o loteamento duas vezes em toda agregação — exatamente o que
   // `ANALYTICS_EXCLUDED_ENTERPRISE_CODES` existe para impedir. Ele continua linha própria, e o
@@ -131,20 +208,22 @@ export const ENTERPRISE_GROUPS: { display: string; codes: string[] }[] = [
   // agrupado, no apolo não"*. Sem esta entrada, a tela de Empreendimentos do Apolo mostrava
   // QUATRO linhas com o mesmo nome e a mesma cidade (VLO, VOC, VOL, VOR), porque a divisão
   // VLO → VOC + VOL foi feita depois de a lista ter sido escrita.
-  { codes: ["VOC", "VOL", "VOR"], display: "Vale do Ouro" },
+  { codes: ["VOC", "VOL", "VOR"], display: "Vale do Ouro", ids: [37, 36, 41] },
 ];
 
 // Sub-empreendimentos (GLEBAS) da Lagoa Bonita: cada código é a gleba de um responsável.
 // "Lagoa Bonita" (consolidado) = os 3 juntos; pra ver uma gleba individual, o filtro aceita
 // o apelido (Raposo/Paulo/Fernando) ou o código (LBR/LBP/LBF) e resolve pro código exato.
-export const ENTERPRISE_SUB_ALIASES: { alias: string; code: string; label: string }[] =
+//
+// `id` é o `enterprises.id` da gleba (medido em 25/09/2026): o filtro do motor passa a casar por ele.
+export const ENTERPRISE_SUB_ALIASES: { alias: string; code: string; id: number; label: string }[] =
   [
-    { alias: "raposo", code: "LBR", label: "Lagoa Bonita (Raposo)" },
-    { alias: "lbr", code: "LBR", label: "Lagoa Bonita (Raposo)" },
-    { alias: "paulo", code: "LBP", label: "Lagoa Bonita (Paulo)" },
-    { alias: "lbp", code: "LBP", label: "Lagoa Bonita (Paulo)" },
-    { alias: "fernando", code: "LBF", label: "Lagoa Bonita (Fernando)" },
-    { alias: "lbf", code: "LBF", label: "Lagoa Bonita (Fernando)" },
+    { alias: "raposo", code: "LBR", id: 27, label: "Lagoa Bonita (Raposo)" },
+    { alias: "lbr", code: "LBR", id: 27, label: "Lagoa Bonita (Raposo)" },
+    { alias: "paulo", code: "LBP", id: 32, label: "Lagoa Bonita (Paulo)" },
+    { alias: "lbp", code: "LBP", id: 32, label: "Lagoa Bonita (Paulo)" },
+    { alias: "fernando", code: "LBF", id: 33, label: "Lagoa Bonita (Fernando)" },
+    { alias: "lbf", code: "LBF", id: 33, label: "Lagoa Bonita (Fernando)" },
   ];
 
 export function displayEnterprise(
@@ -328,10 +407,10 @@ export async function loadC2xMovimentacaoResumo(
       join enterprise_unities eu on eu.id = ar.enterprise_unity_id
       join enterprises e on e.id = eu.enterprise_id
       where h.created_at >= ? and h.created_at < ?
-        and e.code not in (${ANALYTICS_EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})
+        and ${semExcluidosDaAnalise()}
       group by h.new_acquisition_request_stage_id
       `,
-      [from, to, ...ANALYTICS_EXCLUDED_ENTERPRISE_CODES],
+      [from, to, ...ANALYTICS_EXCLUDED_ENTERPRISE_IDS],
     );
 
     const byStage = new Map<number, number>();
@@ -452,11 +531,11 @@ export async function loadC2xMovimentacaoDetalhe(
       left join users imob on imob.id = cli.vinculed_by_id
       where h.created_at >= ? and h.created_at < ?
         and h.new_acquisition_request_stage_id in (${stages.map(() => "?").join(", ")})
-        and e.code not in (${ANALYTICS_EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})
+        and ${semExcluidosDaAnalise()}
       order by h.created_at desc
       limit ${safeLimit}
       `,
-      [from, to, ...stages, ...ANALYTICS_EXCLUDED_ENTERPRISE_CODES],
+      [from, to, ...stages, ...ANALYTICS_EXCLUDED_ENTERPRISE_IDS],
     );
 
     return rows.map((row) => ({
@@ -518,12 +597,12 @@ export async function loadC2xVendasPorImobiliaria(
       join users cli on cli.id = ar.client_id
       left join users imob on imob.id = cli.vinculed_by_id
       where ar.acquisition_request_stage_id = 4
-        and e.code not in (${ANALYTICS_EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})
+        and ${semExcluidosDaAnalise()}
       group by imobiliaria
       order by unidades desc
       limit ${safeLimit}
       `,
-      [...ANALYTICS_EXCLUDED_ENTERPRISE_CODES],
+      [...ANALYTICS_EXCLUDED_ENTERPRISE_IDS],
     );
 
     return rows.map((row) => ({
@@ -574,12 +653,14 @@ export async function loadC2xUnidade(filters: {
   }
 
   const where: string[] = [
-    `e.code not in (${ANALYTICS_EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})`,
+    semExcluidosDaAnalise(),
+    // ⚠️ ESTE CONTINUA PELA SIGLA, e é de propósito: é o TERMO que a pessoa digitou para a CACÁ
+    // ("unidade 5 do VOC"), e quem digita usa a sigla que vê hoje. Não é chave guardada.
     "(upper(e.code) = upper(?) or e.name like ? or e.divulgation_name like ?)",
     "(eu.lot = ? or eu.lot = lpad(?, 2, '0'))",
   ];
   const params: unknown[] = [
-    ...ANALYTICS_EXCLUDED_ENTERPRISE_CODES,
+    ...ANALYTICS_EXCLUDED_ENTERPRISE_IDS,
     emp,
     `%${emp}%`,
     `%${emp}%`,
@@ -775,11 +856,11 @@ export async function loadC2xClienteResumo(
       left join acquisition_request_stages s on s.id = ar.acquisition_request_stage_id
       where ar.client_id = ?
         and ar.acquisition_request_stage_id not in (7, 8, 10, 11)
-        and e.code not in (${ANALYTICS_EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})
+        and ${semExcluidosDaAnalise()}
       order by e.name, eu.block, eu.lot
       limit 50
       `,
-      [cliente.id, ...ANALYTICS_EXCLUDED_ENTERPRISE_CODES],
+      [cliente.id, ...ANALYTICS_EXCLUDED_ENTERPRISE_IDS],
     );
 
     const cidadeUf = [cliente.cidade, cliente.uf].filter(Boolean).join("/") || null;
@@ -851,14 +932,14 @@ export async function loadC2xVendasPorEmpreendimento(): Promise<
              sum(eu.sale_status_id = 1) as disponiveis
       from enterprise_unities eu
       join enterprises e on e.id = eu.enterprise_id
-      where e.code not in (${ANALYTICS_EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})
+      where ${semExcluidosDaAnalise()}
       group by e.code, e.name
       `,
-      [...ANALYTICS_EXCLUDED_ENTERPRISE_CODES],
+      [...ANALYTICS_EXCLUDED_ENTERPRISE_IDS],
     );
 
     // Consolida os que compartilham produto (Lavra do Ouro, Rio de Pedras, Portal, Lagoa Bonita).
-    // O ESPELHO já ficou fora no SQL (ANALYTICS_EXCLUDED_ENTERPRISE_CODES): os quatro
+    // O ESPELHO já ficou fora no SQL (ANALYTICS_EXCLUDED_ENTERPRISE_IDS): os quatro
     // "VALE DO OURO" têm o mesmo `name`, e sem isso o VLO caía na MESMA chave das divisões
     // vivas e o loteamento aparecia com o dobro das unidades.
     const byDisplay = new Map<string, C2xVendasEmpreendimento>();

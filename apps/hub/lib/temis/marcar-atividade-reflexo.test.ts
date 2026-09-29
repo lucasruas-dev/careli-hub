@@ -18,6 +18,15 @@ import { type Banco, criarBanco, type Linha } from "@/lib/hercules/banco-em-memo
 
 const estado = vi.hoisted(() => ({ banco: null as null | { cliente: unknown } }));
 
+// ⚠️ A BARRA DA CAD (26/09/2026) É DUBLADA AQUI COMO "APROVADA". Lucas: *"faz uma barra, para enviar
+// para contrato precisa da cad validada"*. Este arquivo mede o REFLEXO na venda, não o credenciamento;
+// sem o dublê, o fixture (que não tem esteira nenhuma) faria toda marcação de card de contrato recusar
+// e os testes passariam a medir a barra por acidente. Ela é provada em
+// `lib/temis/trabalhos-db-cad-aprovada.test.ts` e em `lib/hercules/cad-para-contrato.test.ts`.
+vi.mock("@/lib/hercules/cad-para-contrato", () => ({
+  recusaDaCadDaProposta: async () => null,
+}));
+
 vi.mock("@/lib/apolo/server", () => ({
   createApoloAdminClient: () => estado.banco?.cliente ?? null,
 }));

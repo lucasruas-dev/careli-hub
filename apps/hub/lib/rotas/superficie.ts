@@ -34,6 +34,9 @@
 export const RAIZES_EXTERNAS = [
   // O portal do coordenador: c2x.app.br/comercial/gurgel. Cookie próprio (`apolo_inc`).
   "comercial",
+  // A consultoria de reestruturação: c2x.app.br/consultoria/cr. Tela própria, fora do Panteon; o
+  // cliente lê por token no link, o consultor edita com a sessão do hub conferida na API.
+  "consultoria",
   // O espelho público no endereço curto: /e/vale-do-ouro-3f9c2a7b. Autoriza pelo selo na URL.
   "e",
   // A fila e o telão do lançamento. O operador do Prometeu tem conta própria, não é do hub.

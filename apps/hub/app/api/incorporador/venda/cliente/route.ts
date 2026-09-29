@@ -4,6 +4,8 @@ import { autorizarOperacaoDeVenda } from "@/lib/apolo/incorporador/board-do-port
 import { idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { formatarDocumento, soDigitos } from "@/lib/apolo/documento";
+import { rotuloDoDocumento } from "@/lib/hercules/documento-do-comprador";
+import { titularDosProponentes } from "@/lib/hercules/proponente";
 
 // OS DADOS DE CONTATO DO CLIENTE DE UMA UNIDADE.
 //
@@ -34,6 +36,8 @@ const WORKSPACE = "careli";
 
 type Contato = {
   documento: null | string;
+  /** "CPF", "CNPJ" ou "Documento": a tela nao pode escrever o rotulo na unha. */
+  documentoRotulo?: string;
   fonte: "apolo" | "reserva";
   nome: null | string;
   telefone: null | string;
@@ -78,17 +82,26 @@ export async function GET(request: Request) {
       .in("situacao", ["ativa", "proposta"])
       .maybeSingle();
 
-    const proponentes = (reserva as null | { proponentes: unknown })?.proponentes;
-    const titular = Array.isArray(proponentes) ? proponentes[0] : null;
-
-    if (titular && typeof titular === "object") {
-      const p = titular as { cpf?: unknown; nome?: unknown; telefone?: unknown };
+    // ⚠️ O LEITOR É O ÚNICO (`lib/hercules/proponente.ts`, 26/09/2026): era aqui a terceira leitura
+    // ad-hoc do jsonb, e ela não enxergava a chave `documento`. E o RÓTULO vai junto, porque a tela
+    // escrevia "CPF" na unha: um CNPJ aparecia como "CPF 12.345.678/0001-95" justamente na tela em
+    // que o coordenador confere se é a pessoa certa.
+    //
+    // ⚠️ NEM O `proponentes[0]` FICA AQUI. Quem ABRE o jsonb também é o leitor único: a varredura
+    // de `documento-do-comprador.varredura.test.ts` recusa qualquer outro `proponentes[0]` no
+    // caminho da venda, porque foi por aberturas soltas assim que as quatro leituras ad-hoc
+    // nasceram, cada uma com um nome diferente e nenhuma enxergando a chave `documento`.
+    const lido = titularDosProponentes(
+      (reserva as null | { proponentes: unknown })?.proponentes,
+    );
+    if (lido) {
       return NextResponse.json({
         data: {
-          documento: typeof p.cpf === "string" && p.cpf ? formatarDocumento(soDigitos(p.cpf)) : null,
+          documento: lido.documento ? formatarDocumento(soDigitos(lido.documento)) : null,
+          documentoRotulo: rotuloDoDocumento(lido.documento),
           fonte: "reserva",
-          nome: typeof p.nome === "string" ? p.nome : null,
-          telefone: typeof p.telefone === "string" ? p.telefone : null,
+          nome: lido.nome || null,
+          telefone: lido.telefone || null,
         } satisfies Contato,
       });
     }
@@ -143,6 +156,9 @@ export async function GET(request: Request) {
     return NextResponse.json({
       data: {
         documento: documento ? formatarDocumento(soDigitos(documento)) : null,
+        // O mesmo rotulo do caminho da reserva: as 136 propostas de 14 digitos vindas da carga do
+        // C2X (medido em 26/09/2026) sao empresas, e a tela nao pode chama-las de CPF.
+        documentoRotulo: rotuloDoDocumento(documento),
         fonte: "apolo",
         nome: doC2x.cliente_nome,
         telefone,

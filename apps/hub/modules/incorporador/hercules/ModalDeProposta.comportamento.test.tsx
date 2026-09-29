@@ -106,7 +106,7 @@ vi.mock("@/lib/hercules/cronograma", async (importOriginal) => ({
         de: fixo.daqui30Dias,
         parcelaFinal: 120,
         parcelaInicial: 1,
-        temIpca: false,
+        indiceCorrecao: null,
         valor: 1_000,
       },
     ],
@@ -126,11 +126,26 @@ const { ModalDeProposta } = await import("./ModalDeProposta");
 const CPF_DO_TITULAR = "52998224725";
 
 const portao = {
-  credenciamento: { credenciado: true, desde: "2026-01-10", etapa: null, motivo: null },
+  credenciamento: {
+    credenciado: true,
+    desde: "2026-01-10",
+    etapa: null,
+    motivo: null,
+    // (26/09/2026) A PORTA VIROU CAMPO PRÓPRIO: o botão segue `podeGerarProposta`, e não
+    // `credenciado` (o coordenador gera com a CAD EM ANDAMENTO). Aqui a CAD está credenciada,
+    // então os dois andam juntos; o terceiro estado da tela está em
+    // ModalDeProposta.cad-em-andamento.comportamento.test.tsx.
+    podeGerarProposta: true,
+  },
   entradaMinimaPercentual: 10,
   planos: [
     {
       entradaPercentual: 10,
+      // ⚠️ O ID DA LINHA VEM JUNTO DESDE 24/09/2026, e não é enfeite de fixture: desde que a modal
+      // passou a casar o plano por `planoId` (a mesma `escolherPlanoDaProposta` da rota), um id que
+      // não existe na lista do portão NÃO cai de volta no nome — ele vira "abra a proposta de novo
+      // e escolha o plano", que é a regra que impede a aba velha de gerar com o plano renomeado.
+      id: "plano-36x",
       indiceCorrecao: "IPCA",
       jurosConvencao: "nominal",
       jurosPeriodicidade: "mensal",

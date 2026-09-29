@@ -147,6 +147,39 @@ export function ModalDeContrato({
             e deixa de aceitar nova proposta.
           </p>
 
+          {/* ⚠️ A REGRA DA CAD SE LÊ AQUI, NA ÚLTIMA TELA ANTES DO ATO — e não só na modal de
+              proposta. Lucas (26/09/2026): *"faz uma barra, para enviar para contrato precisa da cad
+              validada"*, minutos depois de *"pode deixar os coordenadores emitirem proposta sem a cad
+              esta credenciada"*. O selo âmbar "CAD em andamento" nasceu em `ModalDeProposta.tsx`, e ele
+              só aparece para quem está montando a proposta NAQUELE instante: a proposta pode ter sido
+              montada dias antes, ou por outra pessoa da equipe, e quem clica "Enviar para contrato" na
+              quinta não viu nada do que foi escrito na segunda. Sem esta frase, a barra era surpresa no
+              fim do caminho — e uma barra que surpreende é a que a régua da casa proíbe.
+
+              ⚠️ ELA DIZ A REGRA, E NÃO A ETAPA DESTE CLIENTE — porque a etapa não está aqui. O payload
+              do GET de `/venda` carrega só o contador agregado do escopo (`CadsDoEscopo`,
+              `lib/hercules/fluxo-de-venda.ts:272` a `:278`), e nenhum veredito por LINHA VIVA. Levar o
+              veredito por linha (para escrever a etapa real aqui e marcar o botão "Enviar para
+              contrato", `TelaVenda.tsx:3465` a `:3472`, que hoje só olha `ativo: proposta`) é lote
+              próprio, relatado ao Lucas. Dizer a regra é o que dá para dizer com verdade hoje. */}
+          <p
+            style={{
+              background: T.soft,
+              border: `1px solid ${T.border}`,
+              borderRadius: 10,
+              color: T.sub,
+              fontSize: 12.5,
+              lineHeight: 1.5,
+              margin: 0,
+              padding: "10px 12px",
+            }}
+          >
+            <b style={{ color: T.gold }}>A CAD do titular precisa estar aprovada.</b> O contrato só
+            sai com a CAD na etapa Credenciado. Se ela ainda estiver em andamento (validação, revisão,
+            crédito ou correção), este envio é recusado e a proposta continua de pé: peça o
+            credenciamento à coordenação e envie para contrato depois.
+          </p>
+
           <section
             style={{
               background: T.card,

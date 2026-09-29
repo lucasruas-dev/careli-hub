@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { chaveDaClicksign } from "./congelar-signatarios";
 import {
   diarioDoEnvelope,
   type FatoDoEnvelope,
@@ -48,6 +49,23 @@ export type SignatarioDaProposta = SignatarioDoEnvelope & {
 export type EnvelopeDoDiario = {
   atualizadoEm: null | string;
   /**
+   * O NOSSO documento que ESTE envelope levou — a linha de `hercules_documentos` cujo arquivo foi
+   * baixado do Storage e mandado para a Clicksign (`lib/assinatura/envio-db.ts`).
+   *
+   * ⚠️ ELE NÃO É "O CONTRATO VIGENTE", e a diferença é o motivo de o campo existir. `contratoVigente`
+   * responde "qual a geração mais recente"; este campo responde "qual folha está na mão de quem
+   * assina". Gerar uma v2 depois do envio separa as duas respostas sem avisar ninguém, e conferir a
+   * folha errada é pior do que não conferir. Nívea (24/09/2026): *"Não consigo visualizar o contrato
+   * depois que enviamos para assinatura. Se precisamos validar alguma informação, não conseguimos
+   * ver."*
+   *
+   * ⚠️ MEDIDO EM 24/09/2026: nos 5 cards em "Em assinatura" os dois coincidem hoje — mas três deles
+   * têm 2, 3 e 6 versões guardadas, então a coincidência é sorte de calendário, não regra.
+   *
+   * `null` = envelope antigo, gravado antes de a coluna ser preenchida.
+   */
+  documentoId: null | string;
+  /**
    * O id do envelope NA CLICKSIGN — o número que se procura na conta deles.
    *
    * ⚠️ NÃO CONFUNDIR COM `id`, QUE É A NOSSA LINHA. É este que a tela escreve ao lado do log: quem
@@ -90,6 +108,7 @@ export type DiarioDaProposta = DiarioDaAssinatura;
 
 type LinhaDoEnvelope = {
   atualizado_em: null | string;
+  documento_id: null | string;
   envelope_id: null | string;
   estado: null | string;
   estado_cru: null | string;
@@ -165,6 +184,7 @@ async function diarioDaLinha(
     diario: payload === null ? [] : diarioDoEnvelope(payload),
     envelope: {
       atualizadoEm: envelope.atualizado_em,
+      documentoId: envelope.documento_id,
       envelopeId: envelope.envelope_id,
       estado: envelope.estado ?? "desconhecido",
       estadoCru: envelope.estado_cru,
@@ -183,6 +203,11 @@ async function diarioDaLinha(
  * ⚠️ MAIS RECENTE, E NÃO "O ENVELOPE". Uma proposta pode ter mais de um ao longo da vida — um
  * recusado e um reenviado —, e é a mesma razão pela qual `acharEnvelope` (em `estado-db.ts`) ordena
  * por `criado_em` decrescente. O diário do envelope velho contaria uma história que já não vale.
+ *
+ * ⚠️ E SÓ DA CLICKSIGN (0.15 do plano da fonte única). O diário é a narração do webhook DA CLICKSIGN
+ * (o payload, o bounce, o reenvio de convite). Desde a F3 a mesma tabela guarda os envelopes que o
+ * C2X mandou pela D4Sign, e o mais recente da proposta pode ser um deles: o diário diria "0 de 0"
+ * e o botão de reenviar mandaria à Clicksign um documento que ela não conhece.
  */
 async function envelopeMaisRecente(
   sb: SupabaseClient,
@@ -191,8 +216,9 @@ async function envelopeMaisRecente(
   const { data, error } = await sb
     .from("temis_envelopes")
     .select(
-      "id, provedor, envelope_id, provedor_documento_id, estado, estado_cru, atualizado_em, signatarios",
+      "id, provedor, envelope_id, provedor_documento_id, documento_id, estado, estado_cru, atualizado_em, signatarios",
     )
+    .eq("provedor", "clicksign")
     .eq("proposta_id", propostaId)
     .order("criado_em", { ascending: false })
     .limit(1)
@@ -220,8 +246,9 @@ async function envelopeMaisRecenteDoCompromisso(
   const { data, error } = await sb
     .from("temis_envelopes")
     .select(
-      "id, provedor, envelope_id, provedor_documento_id, estado, estado_cru, atualizado_em, signatarios",
+      "id, provedor, envelope_id, provedor_documento_id, documento_id, estado, estado_cru, atualizado_em, signatarios",
     )
+    .eq("provedor", "clicksign")
     .eq("compromisso_id", compromissoId)
     .order("criado_em", { ascending: false })
     .limit(1)
@@ -252,14 +279,18 @@ async function envelopeMaisRecenteDoCompromisso(
  * casar, casa sem ninguém mexer aqui — e a ordem "primeiro o preciso, depois o que salva" é a mesma
  * de `acharEnvelope`.
  *
- * ⚠️ SEM FILTRAR POR `assinatura_conferida`, DE PROPÓSITO. Aqui não se move contrato nenhum: é
- * narração. Um evento que chegou sem HMAC válido é registrado e não vira estado (`estado-db.ts` é
- * quem decide isso) — mas esconder do diário o fato de ele ter chegado tiraria justamente a pista
- * de quem estivesse investigando por que o contrato não anda.
+ * ⚠️ SÓ O CONFERIDO NARRA (revisão da F1, 28/09/2026). Antes daqui não se filtrava, para não
+ * esconder a pista do evento sem HMAC válido; mas desde a F1 o não conferido é gravado como
+ * ESQUELETO (sem pessoa nem fato), e um só deles como o mais recente deixava o diário em "0 de N
+ * assinaram" ao lado do "1/2" do card (que já filtra o conferido, `trabalhos-db.ts`). Bastava um POST
+ * forjado com a chave do documento, ou o segredo do HMAC faltar na Vercel (`sem-segredo`), para
+ * apagar a narração de todo envelope. A pista do não conferido continua na tabela; narração não é.
  */
-async function payloadMaisRecente(
+// ⚠️ EXPORTADA SÓ PARA O TESTE (`diario-do-envelope.test.ts`): o filtro do conferido só se prova
+// olhando o que ela pede ao banco.
+export async function payloadMaisRecente(
   sb: SupabaseClient,
-  envelope: LinhaDoEnvelope,
+  envelope: Pick<LinhaDoEnvelope, "envelope_id" | "provedor_documento_id">,
 ): Promise<unknown> {
   const tentativas: Array<[string, string]> = [];
   if (envelope.provedor_documento_id) {
@@ -272,6 +303,7 @@ async function payloadMaisRecente(
       .from("temis_assinatura_eventos")
       .select("payload")
       .eq(coluna, valor)
+      .eq("assinatura_conferida", true)
       .order("recebido_em", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -303,7 +335,9 @@ function signatariosCongelados(bruto: unknown): SignatarioCongelado[] {
     if (!item || typeof item !== "object" || Array.isArray(item)) continue;
     const pessoa = item as Record<string, unknown>;
     saida.push({
-      chave: typeof pessoa.chave === "string" && pessoa.chave.trim() ? pessoa.chave.trim() : null,
+      // ⚠️ `tmp:` (antes do carimbo) e `c2x:` (D4Sign) NÃO SÃO ID DA CLICKSIGN (a chave obrigatória
+      // da 0195): contá-los como chave liberaria o reenvio de convite com um id que leva 422.
+      chave: chaveDaClicksign(pessoa.chave),
       email: typeof pessoa.email === "string" ? pessoa.email.trim() : "",
       nome: typeof pessoa.nome === "string" ? pessoa.nome.trim() : "",
       papel: typeof pessoa.papel === "string" ? pessoa.papel : null,

@@ -14,7 +14,7 @@
 // e não existe template para cada etapa. Pela Meta os avisos falham em massa (`imob_pix_enviado`:
 // 178 falhas em 188). Pelo Relacionamento não há janela nem template — a mensagem chega.
 
-import { loadApoloEnterpriseCadastro } from "@/lib/apolo/empreendimentos";
+import { coordenadorParaAviso } from "@/lib/apolo/coordenador-do-empreendimento";
 import { telefoneParaEnvio } from "@/lib/apolo/disparo-credenciamento";
 import {
   type DadosDaCad,
@@ -161,12 +161,16 @@ async function lerCad(
   };
 }
 
-// O COORDENADOR do empreendimento desta CAD. Mesmo caminho já provado em produção (185 mensagens
-// lidas): enterprise_id -> `apolo_enterprise_settings.code` -> C2X `players.coordenador_vendas`.
+// O COORDENADOR do empreendimento desta CAD.
 //
-// ⚠️ DEPENDE DO C2X, que é read-only e às vezes não tem o dado. Quando não tem, devolve o MOTIVO
-// em vez de null puro: "sem coordenador" e "coordenador sem telefone" mandam o operador para
-// lugares diferentes, e o registro de falha precisa dizer qual dos dois foi.
+// ⚠️ PELO ID, NÃO PELA SIGLA (Lucas, 24/09/2026). Até aqui o caminho era enterprise_id ->
+// `apolo_enterprise_settings.code` -> C2X por sigla, e ele quebra calado quando alguém renomeia o
+// empreendimento no C2X (o 43, RDV -> PDI, em 24/09; o 30, ADT -> ACT, em 21/09): a sigla gravada no
+// Panteon deixa de existir no legado e a busca volta vazia. Agora vale o coordenador cadastrado no
+// Panteon e, sem ele, o C2X pelo id (lib/apolo/coordenador-do-empreendimento.ts).
+//
+// Quando não acha, devolve o MOTIVO em vez de null puro: "sem coordenador" e "coordenador sem
+// telefone" mandam o operador para lugares diferentes, e o registro de falha precisa dizer qual foi.
 async function coordenadorDaCad(
   client: Client,
   enterpriseId: null | string,
@@ -175,31 +179,16 @@ async function coordenadorDaCad(
     return { motivo: "CAD sem empreendimento: não dá para identificar o coordenador.", nome: null, telefone: null };
   }
 
-  const { data } = await client
-    .from("apolo_enterprise_settings")
-    .select("code")
-    .eq("enterprise_id", enterpriseId)
-    .maybeSingle<{ code: null | string }>();
-
-  const code = (data?.code ?? "").trim();
-  if (!code) {
-    return { motivo: "Empreendimento sem sigla cadastrada no Apolo.", nome: null, telefone: null };
-  }
-
-  const cadastro = await loadApoloEnterpriseCadastro([code]);
-  if (!cadastro.ok) {
-    return { motivo: "Não foi possível ler o cadastro do empreendimento no C2X.", nome: null, telefone: null };
-  }
-
-  const coordenador = cadastro.cadastros[0]?.players.find((p) => p.relation === "coordenador_vendas");
-  if (!coordenador) {
-    return { motivo: "Empreendimento sem coordenador de vendas no C2X.", nome: null, telefone: null };
-  }
-
-  const telefone = telefoneParaEnvio(coordenador.phone);
+  const coordenador = await coordenadorParaAviso(client, enterpriseId);
+  // O número vai ao gateway com DDI, como os do corretor e da imobiliária.
+  const telefone = telefoneParaEnvio(coordenador.telefone);
   return telefone
-    ? { nome: coordenador.name, telefone }
-    : { motivo: "Coordenador sem telefone no C2X.", nome: coordenador.name, telefone: null };
+    ? { nome: coordenador.nome, telefone }
+    : {
+        motivo: coordenador.motivo ?? "Coordenador sem telefone.",
+        nome: coordenador.nome,
+        telefone: null,
+      };
 }
 
 // ⚠️ REGISTRA A FALHA, NÃO PULA EM SILÊNCIO. O comportamento antigo marcava "pulado" quando não

@@ -140,7 +140,10 @@ describe("o bem e a permuta chegam ao contrato", () => {
     ))!;
 
     const quadro = html(dados.gerados?.tabela_geral_pagamentos ?? []);
-    expect(quadro).toContain("Ford Ka 2019 placa ABC1D23");
+    // ⚠️ EM CAIXA ALTA desde 25/09/2026: o quadro escreve as palavras dele em maiúsculo (Nívea,
+    // 24/09/2026: *"Precisamos ter padrão nas letras"*). Ver `palavraDoQuadro` em
+    // `lib/temis/tabela-de-pagamentos.ts`. A cláusula em texto corrido NÃO muda.
+    expect(quadro).toContain("FORD KA 2019 PLACA ABC1D23");
     expect(quadro).toContain(moeda("80.000,00"));
     // 20.000 de entrada + 80.000 de permuta + 100.000 de saldo = o 6.1 PREÇO DO LOTE.
     expect(quadro).toContain(moeda("200.000,00"));
@@ -163,7 +166,10 @@ describe("o bem e a permuta chegam ao contrato", () => {
     expect(dados.condicoes?.tem_bens_e_permutas).toBe(true);
 
     const quadro = html(dados.gerados?.tabela_geral_pagamentos ?? []);
-    expect(quadro).toContain("Ford Ka 2019 placa ABC1D23");
+    // ⚠️ EM CAIXA ALTA desde 25/09/2026: o quadro escreve as palavras dele em maiúsculo (Nívea,
+    // 24/09/2026: *"Precisamos ter padrão nas letras"*). Ver `palavraDoQuadro` em
+    // `lib/temis/tabela-de-pagamentos.ts`. A cláusula em texto corrido NÃO muda.
+    expect(quadro).toContain("FORD KA 2019 PLACA ABC1D23");
     expect(quadro).toContain(moeda("80.000,00"));
     // e o quadro continua fechando com o preço do lote, que é o que o 6.1 promete.
     expect(quadro).toContain(moeda("200.000,00"));
@@ -181,7 +187,7 @@ describe("o bem e a permuta chegam ao contrato", () => {
 
     expect(dados.condicoes?.tem_bens_e_permutas).toBe(false);
     const quadro = html(dados.gerados?.tabela_geral_pagamentos ?? []);
-    expect(quadro).not.toContain("Ford Ka 2019 placa ABC1D23");
+    expect(quadro).not.toContain("FORD KA 2019 PLACA ABC1D23");
   });
 
   it("liga o par [inicio_tem_bens_e_permutas] e escreve o que a cláusula precisa", async () => {

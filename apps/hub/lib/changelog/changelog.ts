@@ -36,6 +36,676 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-29-contrato-e-assinatura-moram-no-panteon",
+    deployedAt: "2026-09-29T13:33:34-03:00",
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**A aba Assinatura e o Resumo passam a ler so o Panteon.** Os contratos da Clicksign e os da D4Sign aparecem na mesma lista, com quem ja assinou e de quem e a vez.",
+              "**Os contratos que o time manda pela D4Sign do C2X aparecem ligados a venda do Panteon, em assinatura**, e nao mais como Aguardando emissao.",
+              "**A tela nao espera mais a D4Sign responder.** O status e conferido a cada 30 minutos e fica guardado no Panteon, e a faixa Estamos confirmando as assinaturas deixa de aparecer.",
+              "**Quando a mesma venda tem dois contratos em assinatura, os dois aparecem**, para ninguem deixar o comprador assinar dois contratos do mesmo negocio.",
+            ],
+            screen: "Contratos - Assinatura e Resumo",
+          },
+        ],
+      },
+      {
+        module: "Temis",
+        screens: [
+          {
+            items: [
+              "**Quem assinou fica gravado pessoa a pessoa**, venha a assinatura da Clicksign ou da D4Sign.",
+              "**O estado do contrato nao volta mais atras.** Um aviso da Clicksign que chegava fora de ordem levava o contrato de Parcialmente assinado para Aguardando.",
+            ],
+            screen: "Board e tela do card",
+          },
+        ],
+      },
+    ],
+    rollback: "52694d80",
+    technical: {
+      done:
+        "FONTE UNICA DO CONTRATO, F1 a F4 (plano em docs/assinatura/fonte-unica-do-contrato.md). F1: migration 0195 (aplicada em 29/09 com OK): temis_envelopes ganha origem, finalidade, trabalho_id, c2x_contract_signature_id, conferido_em e tentado_em; unicidade de (provedor, provedor_documento_id); a funcao temis_envelope_registrar_assinaturas e a unica escrita de quadro, marca por pessoa e estado (monotonica, atomica, casada pela chave, nunca inventa fechado_em, so service_role); o webhook da Clicksign le event.data.signer, grava o envelope_id no evento e deixa de regredir estado. F2: uma regua de envelope vigente para tela e trava de reenvio, e o caminho envelope -> card -> venda sem provedor (MOVER_VENDAS = false nesta versao: o card ainda nao anda pela D4Sign). F3: o espelho da D4Sign (cron /api/assinatura/d4sign/espelho a cada 30 min, so Bearer CRON_SECRET, C2X so SELECT em transacao READ ONLY, nada de CPF, IP ou geolocalizacao gravado), com a carga inicial feita em 29/09 com OK. F4: /api/incorporador/vendas/assinaturas e /vendas/contratos leem lerContratosDoPanteon (views temis_contratos_do_panteon e temis_envelopes_de_contrato), sem C2X nem D4Sign ao vivo e sem o aquecimento no after(); o payload do portal e uma allowlist sem e-mail, provedor ou nome de sistema. A F5 (Apolo e desligar os links publicos) e a F6 (contador no Board) ficaram fora desta subida.",
+      motivation:
+        "Lucas, 28/09/2026: ja cansei de falar que informacoes de venda, contrato, assinatura tem que morar em um local e ele alimentar tudo; Hoje estamos trabalhando com a click e d4sign; faz tudo morar no Panteon; C2X por enquanto cuida somente do financeiro, o resto tudo e o panteon.",
+    },
+    title: "Contrato e assinatura moram no Panteon: Clicksign e D4Sign na mesma lista",
+    type: "melhoria",
+    version: "1.392.0",
+  },
+  {
+    buildTag: "2026-09-29-consultoria-sem-login",
+    deployedAt: "2026-09-29T13:10:19-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Consultoria",
+        screens: [
+          {
+            items: [
+              "**A tela da consultoria abre sem login e sem o Panteon:** o consultor entra por um link de edição próprio, que fica guardado no navegador; depois disso o endereço c2x.app.br/consultoria/cr abre direto.",
+            ],
+            screen: "Consultoria - C&R",
+          },
+        ],
+      },
+    ],
+    rollback: "1948d38c",
+    technical: {
+      done:
+        "Edição passa a entrar por token_edicao (migration 0197) no cabeçalho x-consultoria-edicao, pela mesma porta pública da leitura (/api/publico/consultoria/[slug], GET e PUT). A rota /api/consultoria/[slug] com Bearer do hub foi removida. A tela guarda o código em localStorage e o tira da URL. Botão do link do cliente escondido por enquanto.",
+      motivation:
+        "Lucas, 29/09/2026, ao abrir a tela em produção e ver 'Sua sessão do Panteon expirou': não precisa ter esse acesso ao panteon; não precisa de login.",
+    },
+    title: "Consultoria sem login, por link de edição",
+    type: "correcao",
+    version: "1.391.1",
+  },
+  {
+    buildTag: "2026-09-29-consultoria-cr",
+    deployedAt: "2026-09-29T12:44:58-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Consultoria",
+        screens: [
+          {
+            items: [
+              "**Nova tela c2x.app.br/consultoria/cr, fora do Panteon, com a marca da C&R Construtora:** escopo, jornada de 12 meses, as 9 frentes com o painel de cada uma, plano de 30 dias, indicadores, entregas e o relatório mensal no modelo pedido pelo Vitor.",
+              "**O consultor edita na própria tela (modo edição) e tudo fica salvo no banco.** O cliente acompanha por um link de leitura, sem login.",
+              "**Fechar o mês congela o relatório daquele mês**, para comparar a evolução de um mês para o outro.",
+            ],
+            screen: "Consultoria - C&R",
+          },
+        ],
+      },
+    ],
+    rollback: "fac81adf",
+    technical: {
+      done:
+        "Rota app/consultoria/[slug]/route.ts entrega o mockup aprovado (consultoria-telas/projeto.html) lido do disco. Documento em consultoria_projetos (jsonb, migration 0196) com histórico em consultoria_projetos_historico; escrita em /api/consultoria/[slug] com Bearer do hub e dono por e-mail (CONSULTORIA_OWNER_EMAILS, padrão lucas.ruas@careli.adm.br), com conferência de versão (409). Leitura do cliente em /api/publico/consultoria/[slug] pelo token no cabeçalho x-consultoria-token, comparado em tempo constante. Raiz consultoria em RAIZES_EXTERNAS.",
+      motivation:
+        "Lucas, 29/09/2026: consultoria de reestruturação na C&R a partir de outubro, com uma apresentação que seja também o arquivo de trabalho do projeto, no domínio c2x.app.br/consultoria/cr.",
+    },
+    title: "Tela da consultoria de reestruturação da C&R",
+    type: "novidade",
+    version: "1.391.0",
+  },
+  {
+    buildTag: "2026-09-28-voltou-para-correcao-na-assinatura",
+    deployedAt: "2026-09-28T15:15:55-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**Contrato que voltou para correcao aparece assim na aba Assinatura:** Voltou para correcao em 26/09, aguardando um contrato novo. Antes a linha dizia gerado em 26/09, que era o dia da volta, e nao de um contrato.",
+              "**O gerado em das vendas do Panteon passa a ser a data do contrato de verdade**, e nao a da entrada na etapa.",
+            ],
+            screen: "Contratos - Assinatura",
+          },
+        ],
+      },
+    ],
+    rollback: "795e60c3",
+    technical: {
+      done:
+        "A volta para correcao (retorno-para-correcao.ts) cancela o envelope com estado_cru panteon:retorno_para_correcao e devolve a venda a etapa contrato, e a linha do Panteon usava etapa_desde como geradoEm: a VOC0306 dizia gerado em 26/09 (a volta), com o unico contrato sendo o de 23/09, cancelado. Agora lerAssinaturasDoPanteon le hercules_documentos (tipo contrato, nao removido, paginado com ordem, lotes de 100) e geradoEm e o contrato mais recente; quando o ultimo envelope e o cancelado pela volta e nenhum contrato foi gerado depois, DadosDoContrato.voltouParaCorrecaoEm (ISO curto, opcional, so nas linhas do Panteon) leva a linha a dizer Voltou para correcao, na lista e no popup, nas duas copias da tela (AssinaturasDoProduto e TelaVendas). Falha na leitura dos documentos devolve null e a linha cai na regra antiga, nunca em nenhum contrato gerado. Conferido so leitura contra producao: VOC0306 voltou=2026-09-26, gerado vazio; as 7 em assinatura com gerado = data do contrato. 3 testes novos.",
+      motivation:
+        "Lucas, 28/09/2026, print da VOC0306 aguardando emissao gerado em 26/09: verifica esse aqui; e, sobre ajustar o texto: pode corrigir.",
+    },
+    title: "A aba Assinatura diz quando o contrato voltou para correcao",
+    type: "correcao",
+    version: "1.390.0",
+  },
+  {
+    buildTag: "2026-09-28-assinatura-do-hercules-le-o-panteon",
+    deployedAt: "2026-09-28T14:43:00-03:00",
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**Os contratos que o Panteon mandou para a Clicksign aparecem na aba Assinatura, com quem ja assinou.** Antes eles apareciam como Aguardando emissao, ou nem apareciam (a VOL 11 06 nao era achada na busca).",
+              "**Cada pessoa aparece como assinou ou pendente, e a tela mostra de quem e a vez.** A ordem e a mesma que foi usada no envio: primeiro as coordenadoras, depois o comprador, as testemunhas e a vendedora.",
+              "**A venda redigitada no C2X para gerar boleto nao aparece mais duplicada** como Aguardando emissao ao lado do contrato de verdade. No Vale do Ouro, o Aguardando emissao cai de 6 para 1 (a VOC0306, que voltou para correcao).",
+              "**Quando a mesma venda tem dois contratos em assinatura, os dois aparecem.** Hoje isso acontece na VOC1102: um contrato na Clicksign e outro na D4Sign pelo C2X.",
+            ],
+            screen: "Contratos - Assinatura",
+          },
+          {
+            items: [
+              "**Na ficha da venda em assinatura, a data se chama Enviado para assinatura.** Antes ela aparecia como Data da assinatura, mas era o dia em que o contrato saiu, com a assinatura ainda pela metade.",
+            ],
+            screen: "Venda - ficha da unidade",
+          },
+        ],
+      },
+    ],
+    rollback: "37908445",
+    technical: {
+      done:
+        "CORRECAO RAPIDA, ANTES DA FONTE UNICA. A rota /api/incorporador/vendas/assinaturas escolhia a fonte POR PRODUTO (`lidosDoPanteon`: so o proprio e o que tem operado_por), e VOC, VOL e VOR iam so ao C2X + D4Sign: os 8 contratos nativos na Clicksign sumiam ou viravam a venda redigitada no C2X, que la e contrato gerado sem envio (aguardando emissao). Agora `lerAssinaturasDoPanteon` roda em TODO codigo do pedido (ela so le proposta origem='panteon', entao a carga do C2X nao entra duas vezes) e `unirComOPanteon` casa as duas listas por empreendimento + CODIGO da unidade (hercules_unidades.codigo, o mesmo texto da linha do legado; antes a linha do Panteon usava o rotulo 'Quadra 11 · Lote 06', que nunca casava): Panteon com envelope vivo tira a linha aguardando-emissao do legado e desconta o KPI; Panteon sem envelope perde para o legado com envio (os contratos que foram para a D4Sign pelo C2X: VAL, LBF, REP, ACP); os dois com envio ficam os dois (VOC1102 tem Clicksign 3/11 e D4Sign 1/12, o risco de dois contratos da mesma venda). QUEM ASSINOU: o ultimo payload CONFERIDO de temis_assinatura_eventos por provedor_documento_id (limit 1 por documento, 5 em paralelo, teto 80), lido pelo mesmo parser do diario da Temis (`quemAssinou`, document.events[]), casado por e-mail e pela chave congelada no envio; a vez e o menor degrau pendente, e envelope sem ordem poe todos no degrau 0. `perfilNaLista` alinha Coordenadora de venda e Corretor com o vocabulario do legado, para a mesma funcao nao abrir duas barras. O contador x/y no Board do comercial FICOU DE FORA de proposito: a revisao mediu que ligar `comAssinaturas` ali leria o historico inteiro dos envelopes (902 kB com 7 envelopes, 129 eventos) a cada minuto por aba aberta, contra o aviso escrito em trabalhos-db.ts; ele volta na F6 da fonte unica, pela marca gravada por pessoa, sem ler payload. `unirComOPanteon` tira no maximo UMA linha aguardando do legado por venda do Panteon (a redigitacao), para nao esconder um segundo contrato. fluxo-de-venda: em assinatura a data e etapa_desde (a entrada na etapa) com o rotulo Enviado para assinatura. Conferido contra producao, so leitura, no Vale do Ouro: lista 185 para 187, aguardando emissao 6 para 1, unidades com envio 179 para 186. Sem migration, sem env, sem cron. A fonte unica (tudo no Panteon, D4Sign espelhada, Faturado andando) segue no branch fix/assinatura-fonte-unica.",
+      motivation:
+        "Lucas, 28/09/2026, com os prints da aba Assinatura e do Board: olha por favor se foi enviado esses contratos; essas informacoes tem que alimentar tudo, esta muito picado; ta vendo que esta bem desatualizado?; mas estou achando lento essa correcao.",
+    },
+    title: "A aba Assinatura do Hercules mostra os contratos da Clicksign, com quem ja assinou",
+    type: "melhoria",
+    version: "1.389.0",
+  },
+  {
+    buildTag: "2026-09-28-corretor-autonomo-no-apolo",
+    deployedAt: "2026-09-28T09:31:15-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O Apolo passa a cadastrar corretor autonomo.** No botao de novo cadastro aparece o tipo Corretor: preenche os dados da pessoa, salva, e ele nasce como entidade propria, sem imobiliaria nenhuma.",
+              "**Ele ganha um codigo, tipo CA-0001,** gerado pelo sistema em sequencia, que identifica o autonomo e aparece na ficha dele no CRM.",
+              "**Ele nao e, e nunca aparece como, imobiliaria.** Nao entra em lista de imobiliaria, em seletor nem em coluna: e um tipo proprio.",
+              "**Antes nao havia por onde comecar**, e pior: abrir o endereco do cadastro de corretor abria calado o cadastro de cliente, como se tivesse funcionado.",
+            ],
+            screen: "CRM 360 - novo cadastro",
+          },
+        ],
+      },
+    ],
+    rollback: "528004db",
+    technical: {
+      done:
+        "FATIA 1 DE UMA FRENTE MAIOR: o cadastro. O papel `corretor` JA era aceito pela camada de baixo (`ApoloBirthRole`, o CHECK de apolo_entity_profiles, o rotulo do indice de busca) e NENHUMA coluna de apolo_entities e NOT NULL para imobiliaria: nao houve migration de papel. O que faltava era a PORTA e um FORMATO: o wizard so conhecia CAD de cliente (que exige imobiliaria na tela) e cadastro de imobiliaria (que forca PJ); corretor autonomo e PESSOA com papel proprio, e isso nao existia. Entraram o tipo em `CADASTRO_TIPOS` (o que tambem faz `findCadastroTipo` parar de devolver prospect calado para slug desconhecido), `corretor` em `ENABLED_ROLES`, e o terceiro formato do wizard, com persona PF TRAVADA mesmo se alguem anexar um cartao CNPJ: `conferirDocumento` so AVISA desde a v1.105.0, e sem a trava um CNPJ anexado por engano viraria pessoa juridica com papel de corretor, que e exatamente a pessoa fisica como imobiliaria que o Lucas nao quer. O CODIGO mora em COLUNA (`apolo_entities.broker_code`) e nao em metadata, pelo precedente escrito na 0183: o sync do C2X substitui o jsonb INTEIRO e ja apagou estado operacional assim antes; um codigo que some no proximo sync nao identifica ninguem. A unicidade e do BANCO (indice unico parcial), nao promessa de aplicacao. DOIS BLOQUEIOS QUE A REVISAO DO PLANO ACHOU E QUE TERIAM QUEBRADO NA PRIMEIRA TENTATIVA: (1) a trava de CAD duplicada, que sem empreendimento deixa de ser por produto e vira global, recusaria o cadastro de quem ja tem ficha (medido: 26 dos 131 corretores ja tem linha na esteira); agora o cadastro de corretor APROVEITA a ficha existente, uma ficha por pessoa, e o dedup de COMPRADOR continua intacto nos dois ramos; (2) a trava de e-mail unico barraria o autonomo pela ficha DELE MESMO, uma copia com o mesmo CPF (medido: 34 dos 131 tem mais de uma ficha com o mesmo document_hash, e todos os 131 tem e-mail); agora todas as fichas do MESMO documento entram no perdao, e a trava entre PESSOAS DIFERENTES continua de pe, que e a regra do D4Sign. ⚠️ FICA REGISTRADO NO CODIGO que o cadastro sozinho AINDA NAO FECHA VENDA: o cliente do autonomo nao consegue ter CAD, porque a esteira so grava com imobiliaria, e sem CAD a reserva nao vira proposta. E a fatia 2. MIGRATIONS 0193 e 0194, aplicadas em 28/09/2026 com OK do Lucas: a 0193 criou a sequencia, a funcao `next_apolo_codigo_do_corretor()` com `search_path` vazio, a coluna e o indice unico parcial. ⚠️ E A CONFERENCIA POR OBJETO PEGOU UM DEFEITO DA PROPRIA 0193: `revoke all from public` NAO alcanca `anon` nem `authenticated` no Supabase (eles tem grant proprio no schema), entao a funcao ficou chamavel pela chave que vai no bundle do site, e qualquer um poderia QUEIMAR numeros da sequencia; a 0193 voltou `success: true` com a funcao aberta. A 0194 revogou dos dois, e a conferencia depois mostrou `postgres, service_role`. Suite: 678 arquivos, 10.164 testes. Typecheck limpo.",
+      motivation:
+        "Lucas, 27/09/2026: Preciso cadastrar corretor autonomo, tipo, ele nao sera vinculado a uma imobiliaria, ele sera uma entidade. Quem fara esse cadastro e time nosso interno. precisa tudo no apolo para receber essa nova entidade. E, sobre o codigo: a minha ideia e gerar um codigo para esses corretores, assim saberemos que ele e autonomo, nao quero ter a informacao que pode ter pessoa fisica como imobiliaria, isso sera bem restrito.",
+    },
+    title: "O Apolo passa a cadastrar o corretor autonomo, com codigo proprio",
+    type: "novidade",
+    version: "1.388.0",
+  },
+  {
+    buildTag: "2026-09-27-nome-na-simulacao-do-espelho",
+    deployedAt: "2026-09-27T10:34:25-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O simulador do link do espelho ganhou um campo para o nome do cliente.** O PDF sai com a linha \"Simulacao para Fulano\" logo abaixo do nome do empreendimento.",
+              "**O campo e opcional.** Quem so quer ver o preco pula a linha: sem nome digitado, a folha sai exatamente como saia antes.",
+              "**O nome nao vira comprador.** A simulacao continua sem quadro de compradores, porque ninguem foi qualificado e nada foi assinado. E um rotulo de cortesia, nao uma qualificacao.",
+              "**Nada e guardado.** O nome nao e gravado, nao entra em registro nenhum e nao aparece no nome do arquivo do PDF, que continua saindo pelo lote.",
+            ],
+            screen: "Espelho publico - simulador",
+          },
+        ],
+      },
+    ],
+    rollback: "528004db",
+    technical: {
+      done:
+        "UM CAMPO NOVO NUMA PAGINA SEM LOGIN, E E ISSO QUE DECIDE O DESENHO. Nasceu `lib/hercules/espelho/simulacao-para-quem.ts` (regua pura: normaliza, sanitiza e limita) com teste proprio, e o campo entrou em `modules/publico/espelho/EspelhoPublico.tsx`, que ate aqui NAO TINHA UM UNICO input proprio (todos os campos vinham de dentro do SimuladorDeProposta, que e compartilhado com a Mesa de Venda). O nome NAO entrou em `CondicoesDaProposta` de proposito: esse tipo e lido pela ModalDeProposta, que grava proposta de verdade, e poluir o tipo faria texto digitado num link publico existir no caminho que gera documento. ⚠️ TETO DE 60 CARACTERES, MEDIDO NA LARGURA DO PAPEL, e nao chutado: a linha util tem 526,28pt, o rotulo ocupa ~62pt em Helvetica 8,6 e sobram ~464pt, cerca de 116 letras. Sem teto, a frase \"Lote garantido por 30 dias pela diretoria da Careli, assinado, com desconto aprovado de 40 por cento\" (116 caracteres) sairia impressa INTEIRA num PDF com a marca da casa, que o cliente recebe como documento nosso. Um nome completo de verdade tem ~62 caracteres. A constante e UNICA e compartilhada entre o `maxLength` da tela e a regua do servidor, o mesmo molde da descricao do bem (`TAMANHO_MAXIMO_DA_DESCRICAO`, teto 300 com recusa). Sanitizacao: NFC, corte de controle e de marcas de direcao. O QUE NAO RECEBEU O NOME, cada um por um motivo: `compradores` (a secao nao existe na simulacao, e o nome ali diria que alguem foi qualificado); a tarja do rodape (ela desenha um retangulo da largura medida do texto, sem guarda, e texto a mais sangra fora da folha); `ctx.topo`, a linha que se repete no pe de toda pagina (seria dado pessoal impresso pagina a pagina, e cortado no meio); e `doc.setTitle` mais o NOME DO ARQUIVO, que continua saindo pelo lote. Nada e gravado e nada e logado: a rota da simulacao nao escreve no banco. A fileira do campo ficou entre o header e a moldura do simulador, com `flexShrink: 0`, que e o que encolhe so a area de rolagem e nao quebra a cadeia de altura que custou o corte do iPad de 22/09; e com `data-esp-print=\"fora\"`, senao um Ctrl+P imprimiria uma caixa de input vazia na folha. O campo esta preso a `mostraSimulador`: em lote indisponivel, onde nenhum PDF sai, ele nao aparece. PROVA VIVA: o teste grava o PDF em .tmpr/simulacao-com-nome.pdf e mede que a linha fica entre o subtitulo e o primeiro cartao e que o nome comeca depois da largura do rotulo; e ha teste comparando o desenho SEM nome linha a linha e coordenada a coordenada com o de hoje. Vai junto um comentario em scripts/hercules/importar-fluxo-de-venda.mjs, que ficou de fora do commit da 1.386.0: ele registra que a carga do C2X contorna a barra da CAD por desenho, porque regra nova nao alcanca o passado (medido: 2.464 das 2.482 propostas vivas em contrato ou adiante sao origem c2x). Suite: 673 arquivos, 10.107 testes. Typecheck limpo.",
+      motivation:
+        "Lucas, 27/09/2026: faz uma coisa para mim, na parte do simulador do link do espelho, coloca a opcao de inserir um nome na proposta simulada.",
+    },
+    title: "O simulador do espelho publico aceita o nome do cliente na folha",
+    type: "melhoria",
+    version: "1.387.0",
+  },
+  {
+    buildTag: "2026-09-26-proposta-com-cad-em-andamento-e-barra-no-contrato",
+    deployedAt: "2026-09-26T21:14:25-03:00",
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**A proposta pode ser montada com a CAD ainda em andamento.** O coordenador nao precisa mais esperar a CAD ser aprovada para lancar a proposta financeira: ela sai com a CAD em validacao, em revisao, em analise de credito, em correcao ou em pre-venda.",
+              "**A tela continua dizendo a verdade sobre a CAD.** Um aviso ambar mostra em que etapa ela esta, com a data, e avisa que o contrato so sai depois da aprovacao. Antes a tela so sabia dizer credenciada ou nao credenciada.",
+              "**CAD indeferida continua barrando a proposta.** Indeferida nao e uma etapa em andamento: e a decisao de reprovar o cliente.",
+            ],
+            screen: "Venda - gerar proposta",
+          },
+          {
+            items: [
+              "**Enviar para contrato agora exige a CAD aprovada.** A trava nao sumiu, ela mudou de lugar: a proposta sai antes, o contrato so depois.",
+              "**A barra vale em todos os caminhos**, inclusive no envio para assinatura, que e onde o envelope custa e o cancelamento nao se desfaz.",
+              "**A modal de confirmacao avisa antes.** Quem clica em Enviar para contrato com a CAD em andamento le o motivo na hora, e nao depois de confirmar.",
+              "**Cancelar e distratar continuam funcionando** mesmo com a CAD irregular, que e justamente quando mais se precisa deles.",
+            ],
+            screen: "Venda - enviar para contrato",
+          },
+        ],
+      },
+    ],
+    rollback: "105a10b0",
+    technical: {
+      done:
+        "UMA REGUA, DOIS CAMPOS, E E ISSO QUE FAZ AS DUAS METADES CONVIVEREM. `credenciadoParaVender` responde `podeGerarProposta` (pode montar a proposta financeira) e `credenciado` (a CAD esta aprovada, a verdade sobre a etapa real). A porta da proposta le o primeiro; a barra do contrato le o segundo. Ler o segundo campo na barra a faria nascer ja aberta para exatamente quem o afrouxamento deixou passar. A PROPOSTA: modo novo com DEFAULT APERTADO (`ModoDaRegua`), liberando as etapas em ANDAMENTO e SO para o portal comercial da Careli (`ehPortalComercial`, o mesmo booleano que o codigo ja chamava de coordenador em `origemDaReserva`); o portal do Cecilio segue exigindo a CAD credenciada. O mapa e um `Record<EtapaEsteira, boolean>` e nao um Set: etapa nova quebra o TYPECHECK e exige decisao, em vez de nascer liberada. A BARRA: `lib/hercules/cad-para-contrato.ts`, uma peca para cinco portas (gerar contrato no Hercules, emitir contrato, o servico de contrato da Temis, o card da Temis e o ENVIO PARA ASSINATURA). DUAS ARMADILHAS MEDIDAS, as duas do mesmo tipo: (1) O ESCOPO E EXPANDIDO (familia + grupo), porque a CAD mora no pai ou no grupo e a venda mora no filho: dos 13 cards de contrato vivos, so 4 casam por id exato, entao comparar id com id barraria 9 clientes CREDENCIADOS; (2) O ESCOPO SAI DA UNIDADE e nao de `hercules_propostas.empreendimento_id`, porque 33 propostas vivas nao tem essa coluna e 100% delas tem unidade com `enterprise_id`. REVISAO ADVERSARIAL em duas rodadas: os tres revisores da barra REPROVARAM a primeira versao (2 altas, 9 medias), e a melhor falha foi a barra ter caido tambem sobre a SAIDA da venda (cancelamento e distrato), barrando o que mais se precisa fazer quando o cliente esta irregular; corrigido com `oAtoEDaCompraEVenda`. MERGE COM A 1.385.0: a outra sessao acrescentou a porta do COMPRADOR DA CARTEIRA na mesma regua, e foram SEIS arquivos em conflito. As duas portas nunca disputam a mesma linha (a carteira so e lida quando nao ha CAD nenhuma; o modo do coordenador so mexe em CAD que existe), e `decidirPelasLinhas` passou a receber um OBJETO no terceiro parametro porque um lado chegou com `modo` e o outro com `compra` na mesma posicao: dois posicionais compilariam com o significado TROCADO. O comprador da carteira PASSA na barra, decisao explicita em `A_CARTEIRA_VALE_PARA_O_CONTRATO`, porque a CAD dele NASCE credenciada na gravacao da proposta e recusar daria dois vereditos diferentes para o mesmo fato. ALCANCE MEDIDO: nenhuma proposta nativa viva e barrada (18 de 18 com CAD credenciada no escopo expandido); a barra alcanca 3 propostas em etapa `proposta`, duas herdadas do C2X sem CAD nenhuma (CDJ0403 e MDB1306, de novembro de 2025) e uma com CAD em revisao (VLO0524), e nao alcanca quem ja passou para contrato ou assinatura. Suite: 671 arquivos, 10.058 testes. Typecheck limpo.",
+      motivation:
+        "Lucas, 26/09/2026, duas frases no mesmo dia: pode deixar os coordenadores emitirem proposta sem a cad esta credenciada, ela pode estar em validacao ou em qualquer outro estagio; e depois, faz uma barra, para enviar para contrato precisa da cad validada. O caso: Mateus Cotta Sacchetto, lote EIRETAMA-14 da Aldeia, com CAD em validacao desde as 17:11 do mesmo dia, e a coordenadora perguntando no proprio card se so pode lancar a proposta financeira depois que a CAD for aprovada, quando normalmente ja tem essas informacoes junto com o cadastro. Lucas, sobre o print: essa devia passar.",
+    },
+    title: "A proposta sai com a CAD em andamento, e o contrato exige a CAD aprovada",
+    type: "melhoria",
+    version: "1.386.0",
+  },
+  {
+    buildTag: "2026-09-26-comprador-da-carteira-compra-de-novo",
+    deployedAt: "2026-09-26T19:38:13-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**Quem já comprou no empreendimento pode comprar de novo sem abrir CAD.** O cliente com contrato faturado no mesmo empreendimento (ou nas divisões dele) gera a proposta direto, com o selo \"Comprador da carteira\". Para outro empreendimento continua valendo a CAD, como antes.",
+              "**A CAD nasce sozinha, já credenciada, quando a proposta é gravada**, com a imobiliária e o corretor da reserva. Ela aparece no Board e no CRM do coordenador como qualquer outra.",
+              "**Na busca de co-proponente, o comprador da carteira aparece digitando o CPF ou o CNPJ inteiro.** Por nome continua aparecendo só quem tem CAD.",
+            ],
+            screen: "Venda · Gerar proposta",
+          },
+        ],
+      },
+    ],
+    rollback: "0f4768c9",
+    technical: {
+      done:
+        "Porta da carteira em credenciadoParaVender (lib/hercules/cliente-credenciado.ts + lib/hercules/compra-ativa.ts): sem CAD no escopo, o documento (CPF ou CNPJ, regra da 1.384.0) com proposta faturada ativa na família do empreendimento (pelo id da unidade) passa com origem comprador_da_carteira. CAD real continua decidindo (revisão e indeferida barram); 'em assinatura' não conta (Lucas, 26/09); atraso não é olhado; co-comprador conta. A leitura dos contratos só acontece quando não há CAD. No POST da proposta, a CAD nasce por insert on conflict do nothing (lib/hercules/cad-do-comprador.ts), nunca por atualizarEtapa: não dispara WhatsApp, não entra na fila do Prometeu e não sobe ao C2X; falha dela não derruba a proposta. Busca de proponente: comprador da carteira só com o documento inteiro. Têmis: a CAD da carteira não decide quem vendeu o contrato antigo, e ficha vazia não esconde a ficha de outra CAD. Selo na modal. Fonte medida: hercules_propostas faturadas batem com o C2X em 1.969 de 2.037 (os 68 restantes são PJ). Dos 4.242 compradores sem CAD, 1.481 passam. Merge com a 1.384.0 (reserva PJ) resolvido e revisado. Suíte 657 arquivos, 9.890 testes.",
+      motivation:
+        "Lucas, 26/09/2026, com print do Pedro no Veredas: tem um cliente que é comprador, mas não está dando para ele comprar mais uma unidade; temos que aproveitar esses cadastros de comprador. Decisões: só no mesmo empreendimento; passa mesmo em atraso; nasce a CAD credenciada; em assinatura não entra.",
+    },
+    title: "Comprador da carteira compra de novo no mesmo empreendimento, sem CAD nova",
+    type: "melhoria",
+    version: "1.385.0",
+  },
+  {
+    buildTag: "2026-09-26-reserva-aceita-pessoa-juridica",
+    deployedAt: "2026-09-26T14:24:21-03:00",
+    modules: [
+      {
+        module: "Hercules",
+        screens: [
+          {
+            items: [
+              "**A reserva passa a aceitar empresa.** O campo do titular aceita CPF ou CNPJ, sem seletor de tipo: o proprio documento diz se e pessoa ou empresa.",
+              "**Quando o documento e um CNPJ, o campo do nome pede razao social** e um icone explica que a reserva sai no nome da empresa.",
+              "**Antes, colar um CNPJ nao funcionava**: o campo cortava no 11 digito e o numero aparecia formatado como CPF.",
+              "**A proposta da reserva de empresa agora nasce.** Ela travava em tres lugares ao mesmo tempo, e o botao Gerar proposta nem acendia.",
+              "**A CAD que vale para a empresa e a da EMPRESA.** A do socio nao substitui: quem compra o lote e o CNPJ, e e ele que assina o contrato.",
+            ],
+            screen: "Venda - reserva e proposta",
+          },
+          {
+            items: [
+              "**Os avisos de reserva e de proposta no WhatsApp param de chamar CNPJ de CPF**, e o PDF da proposta tambem.",
+              "**O card Cliente da ficha mostra o rotulo certo** para empresa.",
+            ],
+            screen: "Venda - avisos e PDF",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O documento anexado numa venda de empresa deixa de sumir da ficha do cliente.** Ele era guardado com uma chave de pessoa fisica e nunca reencontrava a ficha da empresa, sem erro nenhum na tela.",
+            ],
+            screen: "CRM - documentos do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "ae78fc59",
+    technical: {
+      done:
+        "UMA PECA DECIDE PF OU PJ, E E O DOCUMENTO. Nasceram `lib/hercules/documento-do-comprador.ts` (tipo, validade, rotulo, mascara e o NOME do namespace do hash; sem banco, a tela importa daqui), `lib/hercules/hash-do-documento.ts` (a conta, separada porque `hashIdentifier` arrasta o mysql2 do legado para o bundle) e `lib/hercules/proponente.ts` (leitor unico do jsonb `hercules_reservas.proponentes`, conciliando a forma antiga `cpf` com a nova `documento`). O tipo sai do DOCUMENTO, nunca de um campo declarado, pelo mesmo motivo ja medido pelo contrato em 08/09/2026: SEIS entidades `entity_kind = pj` carregavam CPF. MEDIDO em 26/09/2026 (producao, so SELECT): a chave `documento` ja e usada em 4.889 itens de titular de `hercules_propostas.compradores` vindos da carga, e e ela que as 137 linhas de 14 digitos usam; as 30 reservas atuais tem so `cpf`, `nome` e `telefone`, todas com 11 digitos, e NENHUMA linha de dado antigo foi atualizada: quem concilia e o leitor. Existem 11 CADs de entidade `pj` na esteira, 9 credenciadas, e nas 11 o `value_hash` do identificador `cnpj` bate com o `document_hash` da entidade: o caminho da empresa ja existia no dado e so a regua recusava. TRES PAREDES INDEPENDENTES caiam na conversao em proposta e foram derrubadas juntas (o portao de 11 digitos de `cliente-credenciado.ts`, o hash no namespace `cpf` que nunca casaria com a CAD da empresa, e o `cpfValido` de todo comprador em `proposta.ts`); derrubar uma so nao resolveria. O `>= 11` de `hashDoCpf` estava repetido em `app/api/incorporador/venda/documentos/route.ts` e `lib/temis/contrato-guardado-db.ts`: deixava o CNPJ passar e gravava a chave no namespace errado, e o anexo sumia da ficha sem erro (latente, zero documentos hoje). A varredura `documento-do-comprador.varredura.test.ts` impede a nona casa do if de tamanho voltar. NA TELA: um campo so, sem seletor de tipo, corte em 14 digitos, placeholder Razao social e icone com tooltip quando o documento digitado e CNPJ. NADA FOI AFROUXADO NA PF: a reserva continua exigindo digito verificador na entrada, e a trava de venda dupla nao foi tocada (ela compara o TERRENO, nunca o documento). A revisao adversarial restaurou uma decisao de 04/09/2026 que a primeira versao tinha apagado por engano: o portao do credenciamento nao confere DV de proposito, porque `lib/prometeu/reservas-evento.ts` grava documento do salao sem validador e exigir DV ali barraria calado um lote que hoje anda. Suite: 650 arquivos, 9.733 testes. Typecheck limpo.",
+      motivation:
+        "Lucas, 26/09/2026: um outro problema que quero que vc resolva que na hora da reserva, dentro do hercules, temos que habilitar pessoa fisica e pessoa juridica, hoje so atende pessoa fisica, olha isso por favor tbm.",
+    },
+    title: "A reserva do Hercules passa a aceitar pessoa juridica, do campo ao contrato",
+    type: "melhoria",
+    version: "1.384.0",
+  },
+  {
+    buildTag: "2026-09-26-o-email-da-imobiliaria-nao-barra-o-dono",
+    deployedAt: "2026-09-26T14:01:04-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**O dono da imobiliaria volta a se cadastrar como corretor usando o e-mail da empresa.** A trava de e-mail unico lia a ficha da imobiliaria como se fosse outra pessoa com aquele endereco, e recusava o cadastro dele.",
+              "**O corretor passa a ler o motivo da recusa quando ele mesmo pode resolver.** A tela dizia so \"tente novamente em alguns instantes\" para qualquer problema, e quem batia no e-mail tentava de novo sem nunca saber o que corrigir.",
+              "**A trava entre pessoas diferentes continua inteira.** Duas pessoas com o mesmo e-mail seguem recusadas: e por ele que a assinatura eletronica identifica quem assinou.",
+            ],
+            screen: "CAD publico - cadastro do corretor",
+          },
+        ],
+      },
+    ],
+    rollback: "ae78fc59",
+    technical: {
+      done:
+        "DUAS CAUSAS, DUAS CORRECOES. (1) A trava de e-mail unico (lib/apolo/email-unico.ts, pedido do Lucas em 07/09/2026 por causa do D4Sign, onde o signatario E o e-mail) comparava a PF do corretor com a ficha da PROPRIA imobiliaria dele. `createApoloEntity` ganhou a opcao `fichaDoMesmoDono`, que entra no `ignorarEntityIds` do conflito; `criarCorretor` manda a imobiliaria da pre-sessao. Uma ficha SO, nomeada por quem chama: o e-mail que estiver em qualquer OUTRA ficha continua recusando. (2) A rota /api/publico/cad/corretor traduzia TODA recusa de `createApoloEntity` em 500 mudo (route.ts:43), e o log guardava so a mensagem generica; nem o log de runtime da Vercel tinha stack, porque o `catch` engole. Agora `recusaPublicaDoCorretor` (lib/publico/cad/regras.ts) decide: 409 com texto para `email-repetido`, generico para o resto, porque rotas.ts abre dizendo que tres mensagens diferentes sao tres bits para quem enumera. A mensagem publica NAO diz de quem e o e-mail nem repete o endereco, para nao virar oraculo de quem esta na base. MEDICAO: 8 tentativas do Israel entre 13:36 e 14:07 de 26/09/2026 em apolo_cad_log_erros, todas 500, todas na CASAVISTA; o e-mail israel@casavistaimoveis.com.br em apolo_contacts na ficha da PJ desde 11/09 12:30; nenhuma entidade com o CPF dele (conferido pelos dois hashes); e 26 dos 55 corretores declarados sem ficha propria batendo na mesma recusa, 17 pelo e-mail da propria imobiliaria. O empreendimento 42 (ACP) esta com credenciamento e recepcao de CAD ligados, entao ele entra e ve o produto. Suite: 642 arquivos, 9.611 testes. Typecheck limpo.",
+      motivation:
+        "Lucas, 26/09/2026, com tres prints do Israel Pereira, da CASAVISTA IMOVEIS LTDA: olha o porque desse erro. A tela dizia Nao conseguimos concluir agora, tente novamente em alguns instantes ou fale com a nossa central, e ele tentou oito vezes seguidas. A decisao de negocio e do mesmo dia: a ficha da propria imobiliaria nao conta contra o corretor dela.",
+    },
+    title: "O e-mail da imobiliaria deixa de barrar o dono dela no cadastro de corretor",
+    type: "correcao",
+    version: "1.383.0",
+  },
+  {
+    buildTag: "2026-09-26-pan-124-regua-e-trilha-do-cadastro",
+    deployedAt: "2026-09-26T14:23:33-03:00",
+    // A única coisa visível é a fila de atendimento sem sigla inventada; o resto é fundação do PAN-124.
+    internal: true,
+    modules: [
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "**A fila de atendimento para de inventar código de unidade.** Quando a matrícula não vem, a coluna mostra \"-\" em vez de um código que não existe (LDO, VOV, RPR). O código real continua aparecendo ao abrir a ficha.",
+            ],
+            screen: "Fila de atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "30aff2ea",
+    technical: {
+      done:
+        "PAN-124, F1 e F2. F1: lib/hercules/regua-do-cadastro.ts (pura) responde pelo c2x_enterprise_id nome de mercado, sigla, pai, filhos na ordem (ordem, codigo), papel (divisao, pai, simples), chave do grupo e entradas no molde do catálogo; VLO 35 segue simples ao lado de group:Vale do Ouro e o 31 fica fora. lib/hercules/cadastro-em-cache.ts: cache por instância que confere count e max(atualizado_em) no máximo a cada 30 s, devolve o guardado na hora e confere em segundo plano (after), prazo de 5 s com AbortSignal, mantém o anterior na falha. nome-de-mercado-por-id delega à régua. Nenhum leitor troca de fonte ainda. Fila de atendimento (modules/guardian/attendance/data.ts): matrícula nula sai '-' (antes 217 de 240 linhas ganhavam sigla inexistente). Paridade real: grupos idênticos a ENTERPRISE_GROUPS.ids, siglas 40/40 com settings.code, nome de mercado 39/39. F2: migration 0192 aplicada antes, com OK: trilha hercules_empreendimento_alteracoes (RLS sem policy, service_role só lê e acrescenta), view hercules_empreendimento_valores_antigos, atualizado_por, gatilhos de carimbo, guarda e trilha, hercules_movimento_do_empreendimento (security definer, só service_role), CHECK de formato da sigla e a 0123 travando o pai (FOR SHARE). Prova viva desfeita: 27 regras com o comportamento esperado. Suíte 9.716 verdes.",
+      motivation:
+        "Lucas, 24/09/2026: temos que ter capacidade de editar cadastros dos empreendimentos bem como criá-los dentro do panteon. Em 26/09: o Panteon manda na sigla. A régua e a trilha são a base das fatias seguintes (painel, catálogo, tela de editar e vigia).",
+    },
+    title: "PAN-124: régua do cadastro de empreendimentos e trilha no banco",
+    type: "correcao",
+    version: "1.382.0",
+  },
+  {
+    buildTag: "2026-09-25-quadro-de-assinatura-editavel",
+    deployedAt: "2026-09-25T21:09:28-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Toda pessoa do quadro de assinatura agora se edita e se exclui.** Cada linha ganhou um lápis para corrigir nome, CPF, e-mail, Linha e Assina em, e a lixeira. O cadeado saiu.",
+              "**O quadro mostra só quem está gravado nele, e é exatamente quem assina.** Antes a tela podia mostrar uma pessoa trazida do cadastro que o contrato não levava, como aconteceu com o Fabricio no VOR.",
+              "**O Fabricio assina pela coordenadora de vendas com contrato@fgurgel.com.br** em todos os empreendimentos, e não mais com o e-mail da diretoria.",
+            ],
+            screen: "Empreendimento · Quadro de assinatura",
+          },
+        ],
+      },
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Aviso na hora de enviar quando o contrato cita a coordenadora de vendas e ninguém assina por ela.**",
+            ],
+            screen: "Enviar para assinatura",
+          },
+        ],
+      },
+    ],
+    rollback: "4bf9d08a",
+    technical: {
+      done:
+        "O quadro (temis_assinantes) virou a única fonte de quem assina: saíram representanteDoCadastro (estrutura-servico.ts), representanteLegal e empresasDoEmpreendimento (quadro-db.ts) e o fallback gerais.vendedora_representante_* (signatarios.ts). A tela herdava com a linha 1 vazia e o envio só com o papel vazio: no VOR a tela mostrava o Fabricio e o contrato ia sem ele. PATCH novo nas duas portas (editarAssinante, mesmas checagens do incluir, papel dos termos fechado ao portal, CPF mascarado do portal só mantém o gravado se vier a máscara inteira, linha ocupada com 409 e o nome de quem ocupa, a própria linha não conta). removerAssinante responde 404 para id inexistente ou já excluído. Cartão com lápis e lixeira em toda linha, sem cadeado; nos termos a linha emprestada da Vendedora diz onde editar. Aviso de coordenadora sem assinante no envio, que trava só se a 0191 não estiver aplicada. Migration 0191 aplicada antes do deploy com OK do Lucas: coluna atualizado_por_nome e 13 linhas do Fabricio como coordenador, posição 1, contrato@fgurgel.com.br (19, 20, 27, 29, 31, 32, 33, 35, 38, 39, 40, 42, 9001), idempotente também depois de exclusão. Termo de acordo sem o terceiro degrau (nenhuma incorporadora tem representante legal). Revisão em 3 lentes, 6 achados corrigidos. Suíte inteira verde (643 arquivos, 9.639 testes); depois do merge com a 1.380.0, 189 arquivos e 3.644 testes da área.",
+      motivation:
+        "Lucas, 25/09/2026: todas assinaturas eu tenho que conseguir excluir e editar, esse cadeado está errado; não tem que ter mais sync com c2x referente a contrato; troca o e-mail da coordenadora de vendas em vez do diretoria, contrato; o fabricio não aparece para assinar.",
+    },
+    title: "Quadro de assinatura: toda linha se edita e se exclui, e é exatamente quem assina",
+    type: "melhoria",
+    version: "1.381.0",
+  },
+  {
+    buildTag: "2026-09-25-cancelar-o-documento-e-nao-o-envelope",
+    deployedAt: "2026-09-25T20:38:42-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Voltar o contrato para análise volta a funcionar.** O cancelamento do contrato na Clicksign estava sendo pedido no lugar errado, e ela recusava. O card ficava preso em assinatura com o contrato ainda na rua para todo mundo assinar.",
+              "**Cancelar o contrato pela Têmis e concluir um cancelamento ou distrato** usavam o mesmo caminho e estavam com o mesmo defeito. Os três foram corrigidos juntos.",
+              "**O contrato assinado por todos continua sem poder ser cancelado.** A conferência é feita na Clicksign na hora, e nenhuma linha dessa proteção foi afrouxada.",
+            ],
+            screen: "Quadro de trabalho",
+          },
+        ],
+      },
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "**Cancelar o termo de acordo também voltou a funcionar**, pelo mesmo conserto.",
+            ],
+            screen: "Cobrança · Acordos",
+          },
+        ],
+      },
+    ],
+    rollback: "1a30a316",
+    technical: {
+      done:
+        "⚠️ O CANCELAMENTO NA CLICKSIGN É NO DOCUMENTO, NÃO NO ENVELOPE, E AGORA ESTÁ LIDO NA DOC, NÃO INFERIDO. A casa mandava `PATCH /envelopes/{id}` com `status: \"canceled\"`, e essa rota é a que ATIVA o envelope: daí o 400 que a Nívea viu em 25/09/2026, *\"status deve estar em: draft, running\"* (envelope 3c277f58, request c788f87f, card da MAURA MARIA PASSOS em assinatura com 1 de 11 assinados). CITAÇÃO que fecha o diagnóstico, lida em developers.clicksign.com em 25/09/2026, página Campos e Regras de Negócio do DOCUMENTO: *\"status: A alteração desse campo determina se deseja cancelar ou finalizar o documento e está disponível apenas na atualização do documento com status em progresso (running)\"*; e a do ENVELOPE: *\"status: A alteração desse campo determina a ATIVAÇÃO do Envelope\"*. O DELETE não substitui: *\"Excluir Envelope\"* só vale em `draft`, e é o caminho do `desfazer`. ⚠️ ESTE ARQUIVO JÁ ERROU QUATRO VEZES POR INFERÊNCIA (o `Bearer` no token, o PDF em base64 cru, o CPF sem máscara e agora o cancelamento), e o próprio comentário avisava que a forma do PATCH não estava conferida e pedia a citação quando alguém confirmasse. Está trocada. MUDANÇAS: `cancelarEnvelope` passou a receber também o id do documento e faz `PATCH /envelopes/{id}/documents/{documento}` com `type: \"documents\"`; os TRÊS chamadores de produção passam o id (retorno para correção, conclusão de cancelamento e distrato, e o termo de acordo do Hades); os selects que cancelam passaram a pedir `provedor_documento_id`, que já era gravado no envio e não era lido. REVISÃO ADVERSARIAL (3 revisores): 17 achados, 9 médios ou piores, todos corrigidos. Os dois melhores: (a) o 200 do PATCH no DOCUMENTO estava sendo gravado como morte do ENVELOPE sem releitura, e a doc não garante isso; (b) a única linha que nasce com envelope ativo e SEM o id do documento é justamente a de um envio que falhou no meio, que é a que mais precisa ser cancelada, e as guardas novas a trancariam para sempre. Também saiu a recusa que vinha ANTES de ler o estado real e matava a saída desenhada para o webhook perdido. NADA FOI CHAMADO NA CLICKSIGN DE VERDADE: conta de produção, envelope tem custo e cancelamento é irreversível; tudo por porta dublada em teste. Suíte: 641 arquivos, 9.607 testes. Typecheck limpo.",
+      motivation:
+        "Nívea, 25/09/2026, com print da faixa vermelha no card da Maura Maria Passos: a Clicksign recusou o cancelamento do envelope e o card não voltou para a análise, as pessoas continuam com o contrato atual para assinar. Lucas: olha isso por favor, não resolveu o cancelamento de envelope.",
+    },
+    title: "O cancelamento do contrato na Clicksign volta a funcionar: é no documento, não no envelope",
+    type: "correcao",
+    version: "1.380.0",
+  },
+  {
+    buildTag: "2026-09-25-venda-herdada-se-comporta-como-a-nativa",
+    deployedAt: "2026-09-25T18:24:27-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**A reserva e a proposta que vieram do C2X podem ser canceladas pela tela de Venda**, como qualquer outra. Antes os botões apareciam apagados, com o aviso de falar com a coordenação, e não havia caminho nenhum.",
+              "**A proposta herdada também pode ser enviada para contrato.**",
+              "**A conversa e os documentos voltam a aparecer** nessas vendas.",
+              "**O lote continua protegido:** nada é solto se ainda houver outro dono. A única diferença é quem pode acionar a porta, nunca a trava que protege o lote.",
+            ],
+            screen: "Venda",
+          },
+        ],
+      },
+    ],
+    rollback: "09727ecf",
+    technical: {
+      done:
+        "⚠️ A RECUSA ERA DA TELA, E NÃO DA ROTA. Medido em 25/09/2026: nenhuma das 13 chegava a chamar a API. `processoDaFicha` (fluxo-de-venda.ts) apagava os CINCO botões da ficha quando a linha em `reservado` vinha do legado, com a frase \"Reserva importada do C2X: esta tela não gera proposta nem cancela sobre ela\"; nas 2 em `proposta`, `acaoDeCancelamento` devolvia tipo nulo. ⚠️ E A ROTA TAMBÉM RECUSARIA, por dois motivos diferentes: o PATCH da reserva exige linha viva em `hercules_reservas`, e a carga trouxe a PROPOSTA sem nunca criar a reserva (`reserva_id` nulo em 13/13, e ZERO linha em `hercules_reservas`, nem morta); o PATCH da proposta recortava por `.eq(\"origem\",\"panteon\")`. A REGRA QUE PASSA A VALER: a porta decide pelo ESTADO da venda (etapa, dono do lote pela trava, credenciamento), NUNCA pela coluna `origem`. Quem cancela a herdada é a rota da PROPOSTA, porque no Panteon ela É uma proposta viva: é ela que pinta a cor (`situacao-da-unidade.ts`) e que a trava conta como dono (`trava-do-lote.ts`). NÃO SE FABRICA RESERVA para dado antigo, que seria escrita em produção sem ganho. MUDANÇAS: o PATCH da proposta aceita `reservado` além de `proposta` e perdeu o filtro de origem, com a condição do comparar-e-trocar seguindo a etapa lida; `alvoDoCancelamento` (TelaVenda.tsx) pergunta à MESMA lib que acendeu o botão para onde mandar o clique, que era a armadilha capaz de trocar botão apagado por 409; as 2 com cadastro `vendida` (a carga marcou assim) soltam o lote, exceção SÓ para a herdada, com a nativa continuando a exigir `reservada`; conversa, documentos e envio para contrato deixaram de recortar por origem. ⚠️ NENHUMA EXCEÇÃO NA TRAVA: o lote sai pela ETAPA (a rota grava `cancelado` antes de soltar) e `soltarLoteDaVendaDesfeita` continua provando pela régua que ele saiu. ALCANCE MEDIDO: 13 vendas herdadas vivas em linha de unidade viva, das quais 5 em produto que ainda vende (VDO0305, VDO0706, VDO1224, VDO1225 do Veredas do Ouro e VOR1206 do Vale do Ouro); as outras 8 estão em Cidade Jardim, Haras do Passo, Morada da Brisa e SDT, parados. As 139 penduradas na sombra do pai (VLO e LAB) seguem de fora pela regra `noPai`, e um teste trava isso. Conferido no C2X (somente leitura): as 13 continuam vivas no legado, todas com ZERO parcela; o cancelamento de lá é do time (Lucas: *\"c2x o time faz\"*). REVISÃO ADVERSARIAL (3 revisores, 3 lentes): 12 achados, todos corrigidos, entre eles a exceção do cadastro `vendida` que tinha entrado só na ida e não na retomada, e a modal prometendo aviso de WhatsApp que não teria destinatário. FORA DESTE LOTE: gerar proposta sobre a reserva herdada, que mexe no caminho que calcula preço; Lucas (25/09/2026) resolveu pela operação: *\"vou pedir para cancelar depois subir real\"*. Suíte: 616 arquivos, 9.315 testes. Typecheck limpo.",
+      motivation:
+        "Lucas, 25/09/2026: agora precisamos atacar um bug. As reservas que foram herdadas do c2x, não estamos conseguindo cancelar ou dar seguimento na proposta. Essas reservas tem que comportar iguais as outras, acho que temos no Veredas, mas faz um analise geral para ver.",
+    },
+    title: "A venda que veio do C2X volta a ter porta: cancelar e seguir como qualquer outra",
+    type: "correcao",
+    version: "1.379.0",
+  },
+  {
+    buildTag: "2026-09-25-glotes-incremental-e-valor-pago",
+    deployedAt: "2026-09-25T18:20:11-03:00",
+    // Sem mudança de tela: é a API que o GLotes (sistema do Lavra do Ouro) consome. Por isso interno.
+    internal: true,
+    modules: [
+      {
+        module: "Integração GLotes",
+        screens: [
+          {
+            items: [
+              "**O GLotes deixa de ver como pago o que era só boleto emitido.** 761 parcelas em atraso (R$ 409.304,99) iam com o valor do boleto no campo de valor pago.",
+              "**A atualização diária do GLotes para de perder alterações.** O corte por data andava 3 horas no fuso e ignorava mudanças nas parcelas de cada venda.",
+              "**Recebimentos e vendas ganham a data de atualização**, como o GLotes pediu em 10/09.",
+            ],
+            screen: "API do GLotes",
+          },
+        ],
+      },
+    ],
+    rollback: "acf7e3e1",
+    technical: {
+      done:
+        "API /api/integrations/glotes, contrato 2.0.0 (docs/integrations/glotes-openapi.yaml, com x-historico) e levantamento seção 14. (1) FUSO: o C2X grava datetime no relógio de Brasília e a sessão do MySQL é UTC; vendas e recebimentos comparavam a marca UTC de alterado_desde direto com a coluna local e o corte andava 3h. marcaNoRelogioDoC2x converte nos três conjuntos. Desde 10/09, recebimentos ia de 534 para 1.705 linhas (1.564 do fuso mais 141 da troca de titular da VEN-223). (2) RELÓGIOS: vendas = maior entre contrato, parcelas de sinal e mensais (inclusive marcadas para apagar) e unidade (2 para 459 desde 10/09); recebimentos = parcela ou contrato (a troca de titular devolve as 144 parcelas com o codigo_cliente novo); clientes = cadastro, telefones, endereço, cônjuge e contrato de que é titular (o comprador novo com cadastro antigo agora volta). Todo argumento de GREATEST com coalesce e piso datetime. (3) atualizado_em em ISO com o fuso real do instante (-02:00 no antigo horário de verão), em clientes (quebra de formato, daí 2.0.0), vendas e recebimentos (novos); a porta aceita o valor de volta. (4) valor_pago só com payment_date ou status Pago: 761 atrasadas + 1 aguardando tinham paid_value igual ao valor da parcela e sem data (boleto emitido), que o contrato chamava de pagamento parcial. (5) Documentado: exclusão e cancelamento não aparecem no incremental (a origem não carimba), carga de referência com incluir_canceladas=true, borda >= como upsert, margem na marca, valor_parcela é o valor do cronograma. VALIDAÇÃO no C2X real, só SELECT: listagem completa igual à produção fora de atualizado_em e valor_pago; incremental bate com SQL independente (459 vendas, 1.705 recebimentos); VEN-223, VEN-81, ida e volta e horário de verão conferidos. Revisão em três lentes, 6 achados corrigidos. 24 testes novos em consultas.test.ts; typecheck limpo.",
+      motivation:
+        "Pedido do dev do GLotes em 10/09 (relatório de 3 clientes e data de atualização nos recebimentos). Lucas, 25/09/2026: pode fazer. A investigação mostrou que o incremental perdia dois terços das alterações e que o valor pago incluía boleto não pago. Depois da publicação, o GLotes precisa fazer uma carga completa com incluir_canceladas=true.",
+    },
+    title: "API do GLotes: valor pago sem boleto fantasma e atualização incremental no fuso certo",
+    type: "correcao",
+    version: "1.378.0",
+  },
+  {
+    buildTag: "2026-09-25-c2x-pelo-id-do-empreendimento",
+    deployedAt: "2026-09-25T14:24:10-03:00",
+    // Sem mudança de tela: as mesmas telas mostram os mesmos números. Por isso interno.
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Carteira, cobrança, vendas e portal buscam o empreendimento no C2X pelo número, e não pela sigla.** Renomear um empreendimento no C2X não faz mais a carteira dele sumir das telas.",
+            ],
+            screen: "Empreendimentos e portal do incorporador",
+          },
+        ],
+      },
+    ],
+    rollback: "607d4086",
+    technical: {
+      done:
+        "PAN-124, primeira etapa. O id do empreendimento no C2X nunca muda; a sigla muda (43 RDV para PDI em 24/09; 30 LAG para ADT em 16/07 e ADT para ACT em 21/09). Toda consulta de dados ao C2X que filtrava empreendimento por e.code in / not in / = passou a filtrar por e.id. Régua comum: lib/apolo/c2x-pelo-id.ts (pura: idDoC2x, filtroPorIds, filtroSemExcluidos, divisoesDoGrupo, idsDoC2xDosPedidos, idsDoC2xDasSiglas) e lib/apolo/c2x-pelo-id-servidor.ts (tradução ao vivo; catálogo fora do ar devolve erro e não carteira zerada; releitura forçada não apaga o cache e tem teto por sigla; a tela do Apolo confere a sigla no C2X no mesmo instante). Exclusão por id: EXCLUDED_ENTERPRISE_IDS = [2, 31, 34] (SDT, LAB, TSC), a lista por sigla estava quebrada desde 16/07 (LAG não existe mais); o 30 fica dentro, como hoje. Convertidos: carteira, cobrança, extrato, extrato do cliente, defasagem, Hades (fila e painel), grafo do CRM, vendas, unidades, cadastro, planos, política, catálogo, credenciamento, cupom do Prometeu, portal do incorporador (assinaturas, contratos, carteira líquida, Ato e Sinal, lotes, perfil, BI, ficha, histórico), painel de contratos, analytics da CACÁ e réguas da esteira e do Hércules. Rotas que já têm o id passaram a chamar as versões PorIds (proposta, políticas do produto, carteira e vendas do portal). Sobra por sigla, de propósito: a tradução da sigla lida ao vivo e o termo livre digitado na CACÁ. PARIDADE no C2X real, só SELECT (~6.900 consultas): 32 funções x 37 empreendimentos, resultado idêntico ao antigo onde não houve renome. REVISÃO: três lentes, 7 achados (2 major) corrigidos e reconferidos. Merge com a 1.376.0 resolveu o conflito de import na rota da proposta e a simulação do teste novo da premissa. Suíte inteira depois do merge com a 1.376.0: 638 arquivos, 9.520 testes passando; typecheck limpo.",
+      motivation:
+        "Lucas, 24/09/2026: temos que ter capacidade de editar cadastros dos empreendimentos bem como criá-los dentro do Panteon. E, em 25/09: pode seguir com o PAN-124. Esta etapa vem antes de o nome e a sigla passarem a sair do Panteon, senão a carteira de qualquer empreendimento com sigla divergente some em silêncio.",
+    },
+    title: "Consultas ao C2X pelo número do empreendimento, e não pela sigla",
+    type: "correcao",
+    version: "1.377.0",
+  },
+  {
+    buildTag: "2026-09-25-faixa-manda-e-coordenador-vence",
+    deployedAt: "2026-09-25T13:22:55-03:00",
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**A proposta sai com o cenário que o coordenador escolheu.** Se ele zera os juros ou troca a correção, é isso que vale no cálculo, no PDF e no que fica gravado. Antes a escolha ficava só na tela e o documento saía com o plano antigo.",
+              "**A faixa de prazo passa a valer também no papel.** Ela já mandava na tela, e agora manda na conta e no documento, que é como o cadastro foi desenhado: o plano não precisa informar juros e correção, busca da faixa que cobre o prazo dele.",
+              "**A tabela Reajuste da parcela passa a mostrar o cenário escolhido**, e não mais o do plano cadastrado.",
+              "**Alterar juros ou correção não pede mais justificativa.** A autonomia é do coordenador. Quem alterou e o que foi alterado continua registrado na proposta. O motivo do desconto e o do bem ou permuta seguem obrigatórios.",
+            ],
+            screen: "Venda · Proposta",
+          },
+        ],
+      },
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Os dados preenchidos no contrato saem em maiúsculo**, na qualificação e no quadro de pagamentos. O texto da minuta não muda. Ficam de fora e-mail, valores, datas e CPF, que em caixa alta atrapalham a leitura.",
+              "**O contrato pode ser aberto depois do envio para assinatura**, para conferir informação sem sair do card. Vale também para o card indeferido.",
+            ],
+            screen: "Quadro de trabalho",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**A ordem de assinatura do contrato fica salva.** O interruptor gravava e a lista não, então a ordem arrastada na tela se perdia.",
+              "**E a ordem salva passa a ser respeitada no envio.** Mesmo quando gravada, a tela de envio a sobrescrevia na hora de mandar para assinatura.",
+            ],
+            screen: "Empreendimento · Setup · Assinatura",
+          },
+        ],
+      },
+    ],
+    rollback: "6df0ca62",
+    technical: {
+      done:
+        "⚠️ O DEFEITO NÃO ERA DO PAPEL, ERA DA CONTA. Nívea (24/09/2026): *\"Na proposta não está saindo o novo cenário de juros e correção\"*. Medido na proposta 000038 (Taisa, VOC1222): `condicoes.totais.mensais` gravou R$ 138.130,32 onde juros zero daria 48 × R$ 2.595,00 = R$ 124.560,00, ou seja R$ 13.570,32 numa venda de R$ 138.401,00. ⚠️ E O R$ 2.595,00 DA TELA ENGANAVA: no SACOC o primeiro ciclo é amortização pura (`planos-comerciais.ts`), então 124.560 ÷ 48 dá 2.595,00 COM ou SEM juros, e os cenários só se separam do 13º mês. CAUSA: a composição CADASTRO → FAIXA DE PRAZO → CORRETOR vivia num `useMemo` dentro de `SimuladorDeProposta.tsx`; o objeto que subia levava só o booleano `premissaAlterada`, o corpo do POST não tinha campo para a condição, e a rota escolhia o plano do cadastro e o entregava cru ao cronograma, ao `condicoes`, ao PDF e à modal. PEÇA NOVA: `lib/hercules/premissa-efetiva.ts` (`planoEfetivo`), pura, chamada pelos TRÊS lados com os mesmos argumentos, para nenhum deles compor sozinho de novo. `condicoes.premissa` passa a gravar `jurosDe`/`indiceDe` (`cadastro` | `faixa` | `corretor`), a faixa aplicada e o plano do cadastro ao lado do efetivo, sem coluna nova. ⚠️ A ENTRADA DA FAIXA NÃO ENTRA NO MOLDE CONGELADO, que continua sendo a do cadastro (a régua de 22/09/2026). Lucas (25/09/2026) fechou a regra de negócio que faltava: *\"a faixa é a referência, por isso eu pedi que quando for montar um plano, não precisa informar o juros e a correção, isso tem que buscar das faixas\"* e *\"se o coordenador colocar taxa zero em um plano que tem juros, prevalece o que ele colocou\"*; e sobre a trava de nota que este lote tinha posto: *\"acho que não tem necessidade de pedir justificativa\"*, removida da tela e da rota, com o teste virado para ninguém repor. Continua valendo o teto de sanidade da taxa (recusa 7207 no lugar de 0,7207). MEDIDO ANTES DE SUBIR: das 22 propostas nativas de setembro, NENHUMA seria afetada pela faixa (a única do LBF usa plano cujo juros já bate com a faixa), então não há proposta emitida para refazer. MAIÚSCULO: ponto único pelo `tipo` do catálogo de variáveis, com exceções nominais (e-mail, descrição de bem e permuta, nome de anexo, sistema de amortização e taxa), e a caixa sobe ANTES do escape de HTML. ORDEM DE ASSINATURA: `assinaturaOrdem` passou a aceitar mapa OU lista na leitura (a armadilha registrada da casa: ler errado volta o padrão calado), e `organizacao-da-assinatura.tsx` parou de mandar a própria ordem por cima da salva. REVISÃO ADVERSARIAL (3 revisores, 3 lentes): 12 achados, 11 corrigidos no lote e 1 devolvido ao Lucas como decisão de produto, que virou a regra acima. Suíte: 591 arquivos, 8.991 testes. Typecheck limpo.",
+      motivation:
+        "Nívea, 24/09/2026, com print: Na proposta não está saindo o novo cenário de juros e correção. Precisamos ter padrão nas letras, escreve tudo em maiúsculo, por favor. Não consigo visualizar o contrato depois que enviamos para assinatura, se precisamos validar alguma informação não conseguimos ver. A ordem de assinatura não está ficando salva. Lucas repassou: vamos corrigir isso ae, sobre o contrato deixa as variaveis em maiusculo.",
+    },
+    title: "A proposta passa a valer o que o coordenador escolheu, e o contrato sai padronizado",
+    type: "correcao",
+    version: "1.376.0",
+  },
+  {
+    buildTag: "2026-09-25-coordenador-pelo-id-e-habilitacao-sem-fila",
+    deployedAt: "2026-09-25T08:26:22-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**As imobiliárias habilitadas sem fila agora aparecem no Board.** A que já era credenciada e pediu um empreendimento novo pela página pública, e a habilitada pelo cadastro interno, ficam 30 dias na coluna Habilitada, com um selo. Antes elas não apareciam em lugar nenhum.",
+            ],
+            screen: "Board de cadastro",
+          },
+          {
+            items: [
+              "**Habilitar uma imobiliária pelo cadastro interno ou pela ficha avisa o coordenador** do empreendimento e deixa registro, como já acontecia pela página pública.",
+            ],
+            screen: "Cadastro e ficha da imobiliária",
+          },
+          {
+            items: [
+              "**O aviso ao coordenador não depende mais da sigla do C2X.** Renomear um empreendimento no C2X não cala mais os avisos, e o coordenador cadastrado no Panteon vale primeiro. Os avisos do Lagoa Bonita voltam a encontrar o coordenador.",
+              "**Quando o coordenador não tem telefone, a falha fica registrada** no histórico de envios, em vez de sumir.",
+            ],
+            screen: "Avisos por WhatsApp",
+          },
+          {
+            items: [
+              "**O C2X não muda mais o cadastro do empreendimento no Panteon.** A sincronização usa o nome do Panteon, e o botão de credenciamento não troca mais a sigla.",
+            ],
+            screen: "Empreendimentos",
+          },
+        ],
+      },
+    ],
+    rollback: "3155cc9c",
+    technical: {
+      done:
+        "ORIGEM (24/09/2026): a Nívea renomeou no C2X o empreendimento 43 (RECANTO DO VALE / RDV para PORTAL DO IBITURUNA / PDI, mesmo id; auditoria 34214). O Panteon achava o coordenador NO C2X PELA SIGLA (settings.code, e.code in): com o renome a busca voltou vazia e a LUNA não foi avisada da auto-aprovação pública da CONECTTA IMÓVEIS, que é justamente a contenção dessa auto-aprovação. O mesmo já tinha quebrado no 30 (LAG, ADT, ACT) e no group:Lagoa Bonita (code LBF + LBR + LBP, 6 de 6 avisos falhando). O dado do 43 foi acertado no banco com OK do Lucas (cadastro Portal do Ibituruna / PDI, settings code PDI e coordenador_entity_id = LUNA, 36 vínculos relabelados). CÓDIGO: (1) lib/apolo/coordenador-do-empreendimento.ts: o coordenador_entity_id do Panteon prevalece (telefone por apolo_contacts, régua da casa); na falta, o C2X POR ID (loadApoloEnterpriseCadastroPorId, e.id in); group:<Nome> resolve pelas divisões em hercules_empreendimentos. Coordenador não achado ou sem telefone vira disparo falhou com o motivo (enviarPeloRelacionamento ganhou impedimento). Trocados: credenciamento público, aviso de etapa da CAD, reprovação, aviso da venda (Hércules), log de erros, lista de empreendimentos da Têmis. (2) Board: nova perna com as habilitações sem fila dos últimos 30 dias (vínculo de empreendimento verified, por produto, com a data e o selo do produto certo no portal), incluindo a promoção de pedido pendente pela página pública. (3) Cadastro interno (cadastro-persist) e modal da ficha (relationships/create): habilitar imobiliária grava auditoria credenciamento_habilitado e avisa o coordenador depois da resposta (depois-da-resposta.ts), sem segurar o salvamento; não duplica vínculo já coberto por equivalência. (4) Travas: semear-empreendimentos recusa gravar sem a autorização da carga e nunca reescreve linha existente; os setters de apolo_enterprise_settings não regravam nem zeram o code com o que a tela manda; o sync do Apolo grava em apolo_commercial_links o nome de mercado do Panteon pelo id (lido uma vez por rodada). REVISÃO: três lentes (regra e dados, regressão e custo, tela e texto), 9 achados (3 major) corrigidos e reconferidos. Pastas afetadas: 7.106 testes verdes. Suíte inteira depois do merge com a 1.374.0: 603 arquivos, 9.158 testes passando; typecheck limpo.",
+      motivation:
+        "Lucas, 24/09/2026: investiga por que a conecta não está aparecendo no board do apolo; a nivea alterou o nome do empreendimento no c2x e ele alterou o nome no panteon, isso está errado, temos que ter capacidade de editar cadastros dos empreendimentos bem como criá-los dentro do panteon. Decisões: tivemos que mudar de nome (Portal do Ibituruna); habilitação sem fila aparece no Board e o cadastro interno avisa o coordenador (isso aí); pode começar travando as portas do C2X e consultando o C2X pelo id.",
+    },
+    title: "Coordenador achado pelo empreendimento, habilitações sem fila no Board e o C2X sem mexer no cadastro",
+    type: "melhoria",
+    version: "1.375.0",
+  },
+  {
     buildTag: "2026-09-24-lsoft-todos-os-empreendimentos-e-patrimonio",
     deployedAt: "2026-09-24T18:40:33-03:00",
     modules: [

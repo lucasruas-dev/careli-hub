@@ -43,15 +43,18 @@ vi.mock("@/lib/apolo/empreendimento-de-mercado", () => ({
   nomeDeMercadoDoEmpreendimento: estado.mercado,
 }));
 
+import { MENSAGEM_SEM_SEQUENCIA_DO_CODIGO } from "@/lib/apolo/codigo-do-corretor";
 import { prefixoUploadDireto } from "@/lib/apolo/documentos";
 
 import { salvarCadastroDoApolo, type SalvarPayload } from "./cadastro-salvar";
 
 const IMOB = "11111111-2222-4333-8444-555555555555";
 
-function clienteFalso() {
+function clienteFalso(sequencia: { data?: unknown; error?: unknown } = { data: "CA-0007", error: null }) {
   const upserts: Array<{ linha: Record<string, unknown>; tabela: string }> = [];
+  const rpc = vi.fn(async (_nome: string) => sequencia);
   const client = {
+    rpc,
     from(tabela: string) {
       const builder = {
         eq: () => builder,
@@ -65,7 +68,7 @@ function clienteFalso() {
       return builder;
     },
   };
-  return { client: client as never, upserts };
+  return { client: client as never, rpc, upserts };
 }
 
 function autorDoHub() {
@@ -99,6 +102,9 @@ beforeEach(() => {
 });
 
 describe("salvarCadastroDoApolo", () => {
+  // (27/09/2026) O `corretor` SAIU desta lista: o processo do corretor autônomo existe agora (ver o
+  // bloco "corretor autônomo" no fim deste arquivo). Quem ainda não tem processo é fornecedor,
+  // parceiro, colaborador e incorporador — e a porta continua recusando antes de qualquer consulta.
   it("papel fora do processo: 400 antes de qualquer consulta, com a frase de sempre", async () => {
     const { client } = clienteFalso();
     const autor = autorDoHub();
@@ -107,7 +113,7 @@ describe("salvarCadastroDoApolo", () => {
       autor,
       origemDaEsteira: "cadastro-manual",
       origemPadrao: "cadastro-formulario",
-      payload: payload({ role: "corretor" }),
+      payload: payload({ role: "fornecedor" }),
     });
     expect(r).toEqual({
       error: "Processo de cadastro ainda nao disponivel para este papel.",
@@ -161,7 +167,12 @@ describe("salvarCadastroDoApolo", () => {
       origem: "cadastro-formulario",
       ownerUserId: "operador-1",
     });
-    expect(estado.criar.mock.calls[0]?.[2]).toEqual({ autor: null, fichaExistente: "anexar" });
+    // (24/09/2026) A porta do hub liga a habilitação interna: é o operador da Careli que salva.
+    expect(estado.criar.mock.calls[0]?.[2]).toEqual({
+      autor: null,
+      fichaExistente: "anexar",
+      habilitacaoInterna: true,
+    });
   });
 
   it("a porta do portal pede para ACRESCENTAR na ficha existente, e manda a autoria à parte", async () => {
@@ -175,7 +186,12 @@ describe("salvarCadastroDoApolo", () => {
       origemPadrao: "portal-incorporador",
       payload: payload(),
     });
-    expect(estado.criar.mock.calls[0]?.[2]).toEqual({ autor: registro, fichaExistente: "acrescentar" });
+    // O portal NUNCA liga a habilitação interna: autor de fora do hub não habilita imobiliária.
+    expect(estado.criar.mock.calls[0]?.[2]).toEqual({
+      autor: registro,
+      fichaExistente: "acrescentar",
+      habilitacaoInterna: false,
+    });
   });
 
   it("cliente que já é da Careli, cadastrado no Garden pelo portal: esteira NOVA no 39, na ficha dele", async () => {
@@ -382,5 +398,200 @@ describe("salvarCadastroDoApolo", () => {
       payload: payload({ vinculo: { enterpriseId: "37" } }),
     });
     expect(r).toEqual({ ok: false, recusa, tipo: "recusado" });
+  });
+});
+
+// O CORRETOR AUTÔNOMO PELA PORTA DO HUB (27/09/2026).
+//
+// Lucas: *"Preciso cadastrar corretor autonomo... ele nao sera vinculado a uma imobiliaria, ele sera
+// uma entidade. Quem fara esse cadastro e time nosso interno."*
+//
+// O que está travado aqui:
+//   • o papel passa (a porta estava fechada: `ENABLED_ROLES` recusava com 400 antes de gravar);
+//   • ele salva SEM imobiliária e NÃO entra na esteira (regra do Lucas de 05/08: a esteira valida
+//     documento de COMPRADOR, e o corretor não compra nada);
+//   • o CÓDIGO vem da sequência do BANCO e é entregue ao persist pela PORTA, nunca pelo corpo;
+//   • sem a sequência no banco o cadastro RECUSA com frase clara, e NADA é gravado.
+describe("corretor autônomo", () => {
+  const corretor = (extra: Partial<SalvarPayload> = {}): SalvarPayload =>
+    payload({ perfil: { email: "joao@corretor.com" }, role: "corretor", ...extra });
+
+  it("salva sem imobiliária e não entra na esteira", async () => {
+    const { client, upserts } = clienteFalso();
+    const r = await salvarCadastroDoApolo({
+      adminClient: client,
+      autor: autorDoHub(),
+      origemDaEsteira: "cadastro-manual",
+      origemPadrao: "cadastro-formulario",
+      payload: corretor(),
+    });
+
+    expect(r).toMatchObject({ esteira: "sem-vinculo", ok: true });
+    expect(upserts).toHaveLength(0);
+    expect(estado.criar).toHaveBeenCalledTimes(1);
+    expect(estado.criar.mock.calls[0]?.[1]).toMatchObject({ role: "corretor" });
+  });
+
+  it("o comprovante de renda do empreendimento nem é consultado (a etapa é do comprador)", async () => {
+    await salvarCadastroDoApolo({
+      adminClient: clienteFalso().client,
+      autor: autorDoHub(),
+      origemDaEsteira: "cadastro-manual",
+      origemPadrao: "cadastro-formulario",
+      payload: corretor(),
+    });
+    expect(estado.renda).not.toHaveBeenCalled();
+  });
+
+  // ⚠️ O AFROUXAMENTO DAS TRAVAS NASCE NA PORTA, NÃO NO `role` DO JSON (27/09/2026). Se o papel do
+  // corpo decidisse, o operador que tomasse "Este CPF já tem CAD cadastrada" trocaria
+  // `?tipo=prospect` por `?tipo=corretor` na URL e contornaria a recusa dos "dois Pedro Alexandro".
+  it("a porta liga `cadastroDeCorretorAutonomo`, e só para o corretor", async () => {
+    const { client } = clienteFalso();
+    await salvarCadastroDoApolo({
+      adminClient: client,
+      autor: autorDoHub(),
+      origemDaEsteira: "cadastro-manual",
+      origemPadrao: "cadastro-formulario",
+      payload: corretor(),
+    });
+    expect(estado.criar.mock.calls[0]?.[2]).toMatchObject({ cadastroDeCorretorAutonomo: true });
+
+    estado.criar.mockClear();
+    await salvarCadastroDoApolo({
+      adminClient: client,
+      autor: autorDoHub(),
+      origemDaEsteira: "cadastro-manual",
+      origemPadrao: "cadastro-formulario",
+      payload: payload(),
+    });
+    expect(estado.criar.mock.calls[0]?.[2]).not.toHaveProperty("cadastroDeCorretorAutonomo");
+  });
+
+  // ⚠️ A PORTA ENTREGA UMA FUNÇÃO, E NÃO O CÓDIGO PRONTO. `nextval` não volta atrás: pedido no começo
+  // da rota, cada recusa (e-mail, núcleo familiar, CAD duplicada) queimava um número e a numeração
+  // que o Lucas pediu (*"CA-0001, CA-0002"*) nascia salteada. Quem chama a função é a gravação, já
+  // passadas todas as travas (lib/apolo/cadastro-persist.ts, logo antes de montar a linha da ficha).
+  it("o código vem da sequência do banco e a porta entrega um GERADOR, não o número", async () => {
+    const { client, rpc } = clienteFalso({ data: "CA-0007", error: null });
+    await salvarCadastroDoApolo({
+      adminClient: client,
+      autor: autorDoHub(),
+      origemDaEsteira: "cadastro-manual",
+      origemPadrao: "cadastro-formulario",
+      payload: corretor(),
+    });
+
+    // Nada foi pedido ao banco só por salvar: o número é consumido quando a gravação pedir.
+    expect(rpc).not.toHaveBeenCalled();
+    const gerar = (estado.criar.mock.calls[0]?.[2] as { codigoDoCorretor: () => Promise<unknown> })
+      .codigoDoCorretor;
+    expect(typeof gerar).toBe("function");
+    await expect(gerar()).resolves.toEqual({ codigo: "CA-0007", ok: true });
+    expect(rpc).toHaveBeenCalledTimes(1);
+    // O corpo espalhado não carrega código nenhum: quem grava é a porta.
+    expect(JSON.stringify(estado.criar.mock.calls[0]?.[1])).not.toContain("CA-0007");
+  });
+
+  it("sem a sequência no banco: recusa 503 com frase clara e NADA é gravado", async () => {
+    const { client } = clienteFalso({
+      data: null,
+      error: { code: "42883", message: "function does not exist" },
+    });
+    // O persist de verdade pede o número e devolve `verificacao-indisponivel` sem gravar; aqui o
+    // dublê faz o mesmo, porque é a rota que traduz isso em 503 com a frase do operador.
+    estado.criar.mockImplementation(
+      async (
+        _client: unknown,
+        _input: unknown,
+        opcoes: { codigoDoCorretor: () => Promise<{ mensagem?: string; ok: boolean }> },
+      ) => {
+        const sequencia = await opcoes.codigoDoCorretor();
+        return { error: sequencia.mensagem, motivo: "verificacao-indisponivel", ok: false };
+      },
+    );
+
+    const r = await salvarCadastroDoApolo({
+      adminClient: client,
+      autor: autorDoHub(),
+      origemDaEsteira: "cadastro-manual",
+      origemPadrao: "cadastro-formulario",
+      payload: corretor(),
+    });
+
+    expect(r).toMatchObject({ ok: false, status: 503, tipo: "invalido" });
+    expect((r as { error: string }).error).toBe(MENSAGEM_SEM_SEQUENCIA_DO_CODIGO);
+  });
+
+  it("o prospect não pede código nenhum ao banco", async () => {
+    const { client, rpc } = clienteFalso();
+    await salvarCadastroDoApolo({
+      adminClient: client,
+      autor: autorDoHub(),
+      origemDaEsteira: "cadastro-manual",
+      origemPadrao: "cadastro-formulario",
+      payload: payload(),
+    });
+    expect(rpc).not.toHaveBeenCalled();
+    expect(estado.criar.mock.calls[0]?.[2]).not.toHaveProperty("codigoDoCorretor");
+  });
+
+  // ⚠️ "O AUTÔNOMO NUNCA APARECE COMO IMOBILIÁRIA" É REGRA DE SERVIDOR, NÃO DE TELA (27/09/2026).
+  //
+  // Lucas: *"NAO QUERO TER A INFORMACAO QUE PODE TER PESSOA FISICA COMO IMOBILIARIA, isso sera bem
+  // restrito"*. No persist o relacionamento de imobiliária nasce por PRESENÇA do campo, sem olhar o
+  // papel (`if (imobiliariaId || imobiliariaLabel)`), o `imobiliariaLabel` entra no índice de busca e
+  // o `imobiliariaId` no metadata da ficha. Um POST com `role: "corretor"` e `perfil.imobiliariaId`
+  // preenchido (aba velha reenviada, script interno, a próxima porta que reusar esta função) gravava
+  // justamente a informação proibida. É a doutrina deste arquivo: a validação de tela pode ser
+  // burlada, então a barra de verdade fica aqui.
+  it("imobiliária mandada junto com `role: corretor` é ZERADA pela porta", async () => {
+    const { client } = clienteFalso();
+    await salvarCadastroDoApolo({
+      adminClient: client,
+      autor: autorDoHub(),
+      origemDaEsteira: "cadastro-manual",
+      origemPadrao: "cadastro-formulario",
+      payload: corretor({
+        perfil: {
+          email: "joao@corretor.com",
+          imobiliariaId: IMOB,
+          imobiliariaLabel: "RR Soluções",
+        },
+        vinculo: { empreendimentoNome: "VOC", enterpriseId: "37" },
+      }),
+    });
+
+    const enviado = estado.criar.mock.calls[0]?.[1] as {
+      enterpriseId: null | string;
+      perfil: { imobiliariaId?: string; imobiliariaLabel?: string };
+    };
+    expect(enviado.perfil.imobiliariaId).toBe("");
+    expect(enviado.perfil.imobiliariaLabel).toBe("");
+    // E o vínculo também não vale para ele: nem empreendimento nem esteira.
+    expect(enviado.enterpriseId).toBeNull();
+    expect(JSON.stringify(enviado)).not.toContain("RR Soluções");
+    expect(JSON.stringify(enviado)).not.toContain(IMOB);
+  });
+
+  it("o prospect continua levando a imobiliária dele intacta", async () => {
+    const { client } = clienteFalso();
+    await salvarCadastroDoApolo({
+      adminClient: client,
+      autor: autorDoHub(),
+      origemDaEsteira: "cadastro-manual",
+      origemPadrao: "cadastro-formulario",
+      payload: payload({
+        perfil: { imobiliariaId: IMOB, imobiliariaLabel: "RR Soluções" },
+        vinculo: { empreendimentoNome: "VOC", enterpriseId: "37" },
+      }),
+    });
+
+    const enviado = estado.criar.mock.calls[0]?.[1] as {
+      enterpriseId: null | string;
+      perfil: { imobiliariaId?: string };
+    };
+    expect(enviado.perfil.imobiliariaId).toBe(IMOB);
+    expect(enviado.enterpriseId).toBe("37");
   });
 });

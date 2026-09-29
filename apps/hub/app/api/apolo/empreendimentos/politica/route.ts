@@ -91,7 +91,10 @@ export async function GET(request: Request) {
     ]),
   );
 
-  const resultado = await loadPoliticaComercial(codes, doApolo);
+  // ⚠️ `conferirNoC2x` (PAN-124): a sigla desta tela foi lida AO VIVO do C2X (`loadApoloEnterprises`),
+  // então é conferida no C2X no mesmo instante, e não só no catálogo em cache (até 10 minutos), que
+  // ainda pode não conhecer uma sigla nova ou dar uma sigla trocada ao outro empreendimento.
+  const resultado = await loadPoliticaComercial(codes, doApolo, { conferirNoC2x: true });
 
   if (!resultado.ok) {
     return NextResponse.json({ error: resultado.error }, { status: 502 });
@@ -164,6 +167,10 @@ export async function PATCH(request: Request) {
   }
 
   let corpo: {
+    // ⚠️ IGNORADO desde 24/09/2026 (Lucas: "pode" para travar as portas por onde o C2X mexe no
+    // Panteon). Era a sigla que o C2X mostrava na hora, e a tela manda a da PRIMEIRA divisão para
+    // todas as da chamada: a linha nova de uma gleba nascia com a sigla da outra. A sigla gravada sai
+    // do cadastro do Panteon pelo id de cada divisão.
     code?: null | string;
     // Rateio da corretagem (migration 0145). Mesma regra dos dois de baixo: ausente = não mexeu;
     // null = limpou ("não cadastrado", que é diferente de zero).
@@ -266,7 +273,6 @@ export async function PATCH(request: Request) {
     for (const enterpriseId of enterpriseIds) {
       const gravado = await setEnterpriseCoordenadora({
         adminClient,
-        code: corpo.code ?? null,
         enterpriseId,
         entityId,
         updatedBy: auth.userId,
@@ -311,7 +317,6 @@ export async function PATCH(request: Request) {
   for (const enterpriseId of enterpriseIds) {
     const gravado = await SETTER_DO_CAMPO[campo]({
       adminClient,
-      code: corpo.code ?? null,
       enterpriseId,
       percentual,
       updatedBy: auth.userId,

@@ -101,17 +101,6 @@ const VENDEDORA_DIGITADA: LinhaDaTela = {
   posicao: 1,
 };
 
-/** A linha que o servidor deriva do cadastro da PJ: sem id, marcada `representante`. */
-const REPRESENTANTE_NOS_TERMOS: LinhaDaTela = {
-  cpf: "999.888.777-66",
-  email: "representante@incorporadora.test",
-  id: null,
-  nome: "Representante Legal",
-  ordemAssinatura: null,
-  origem: "representante",
-  papel: "termos_vendedora",
-  posicao: 1,
-};
 
 function instalarFetch() {
   chamadas = [];
@@ -295,17 +284,32 @@ describe("salvar, apagar e trocar a pessoa", () => {
     );
   });
 
-  it("a linha herdada do cadastro não oferece lixeira (não se apaga por aqui)", async () => {
-    assinantes = [REPRESENTANTE_NOS_TERMOS];
+  // ⚠️ ESTE TESTE SE CHAMAVA "a linha herdada do cadastro não oferece lixeira" e travava o cadeado
+  // "do cadastro" na linha do representante legal. A linha herdada deixou de existir em 25/09/2026
+  // (Lucas: *"todas assinaturas eu tenho que conseguir excluir e editar, esse cadeado esta
+  // errado"*). O que continua sem lápis e sem lixeira NA CAIXA DOS TERMOS é a linha EMPRESTADA do
+  // bloco Vendedora: ela é gravada, se edita e se exclui lá em cima, e mexer nela por aqui mudaria
+  // quem assina a compra e venda a partir de uma caixa que diz não entrar no contrato.
+  it("a linha emprestada do bloco Vendedora aparece sem cadeado e diz onde editar", async () => {
+    assinantes = [VENDEDORA_DIGITADA];
     await montar(<QuadroDeAssinaturaCard comAssinantesDeTermos enterpriseId={EMPREENDIMENTO} />);
 
     const termos = secao(TERMOS);
-    expect(etiquetas(termos, "do cadastro")).toBe(1);
-    expect(
-      Array.from(termos.querySelectorAll("button")).some((b) =>
-        b.getAttribute("aria-label")?.startsWith("Remover"),
-      ),
-    ).toBe(false);
+    expect(etiquetas(termos, "edite no bloco Vendedora")).toBe(1);
+    expect(etiquetas(termos, "do cadastro")).toBe(0);
+    expect(termos.querySelector("svg.lucide-lock")).toBeNull();
+    const rotulos = Array.from(termos.querySelectorAll("button")).map(
+      (b) => b.getAttribute("aria-label") ?? "",
+    );
+    expect(rotulos.some((r) => r.startsWith("Remover") || r.startsWith("Editar"))).toBe(false);
+
+    // E no bloco Vendedora a mesma pessoa tem lápis e lixeira.
+    const vendedora = secao("Vendedora");
+    const rotulosDaVendedora = Array.from(vendedora.querySelectorAll("button")).map(
+      (b) => b.getAttribute("aria-label") ?? "",
+    );
+    expect(rotulosDaVendedora).toContain("Editar Socio Administrador");
+    expect(rotulosDaVendedora).toContain("Remover Socio Administrador");
   });
 
   // ⚠️ SÓ A PRIMEIRA ASSINA, E A TELA DIZ ISSO (corrigido em 20/09/2026). Quem quer TROCAR a pessoa
@@ -364,32 +368,37 @@ describe("o que a caixa promete quando ninguém foi apontado", () => {
     expect(termos.textContent).not.toContain("o envio fica bloqueado");
   });
 
-  // ⚠️ A LINHA HERDADA DO CADASTRO SÓ APARECE QUANDO É ELA QUE ASSINA (corrigido em 20/09/2026). O
-  // servidor manda o representante legal como linha sem id no papel dos termos, e ele só assina
-  // quando NINGUÉM ocupou o papel `vendedora` — que é a regra de `assinantesDoQuadro`. Antes a caixa
-  // mostrava o representante sob a etiqueta "assina os termos" com uma vendedora digitada ao lado, e
-  // o convite ia para a vendedora: o nome lido antes de clicar não era o nome que recebia o
-  // envelope.
-  it("com vendedora digitada, a caixa mostra ela, e não o representante herdado", async () => {
-    // Representante legal no cadastro da PJ E uma pessoa digitada no bloco Vendedora.
-    assinantes = [REPRESENTANTE_NOS_TERMOS, VENDEDORA_DIGITADA];
+  // ⚠️ ATÉ 25/09/2026 ESTE TESTE TINHA UM REPRESENTANTE HERDADO NA LISTA (linha sem id, mandada
+  // pelo servidor), e provava que a caixa o descartava quando havia vendedora digitada. A herança
+  // saiu das duas pontas: o servidor não manda mais essa linha e o envio não a leva. O que continua
+  // valendo é a caixa mostrar quem o envio leva, dizendo de onde a pessoa veio.
+  it("com vendedora digitada, a caixa mostra ela e diz onde editar", async () => {
+    assinantes = [VENDEDORA_DIGITADA];
     await montar(<QuadroDeAssinaturaCard comAssinantesDeTermos enterpriseId={EMPREENDIMENTO} />);
 
     const termos = secao(TERMOS);
     expect(etiquetas(termos, "assina os termos")).toBe(1);
 
-    // Quem o envio leva é a VENDEDORA digitada: `assinantesDoQuadro` só herda o representante
-    // quando ninguém ocupou o papel `vendedora`.
+    // Quem o envio leva é a VENDEDORA digitada, e só ela: o quadro não lê mais a ficha da PJ.
     const doQuadro = await assinantesDoQuadro(
       bancoDoQuadro([linhaDoBanco(VENDEDORA_DIGITADA)]),
-      { enterpriseId: EMPREENDIMENTO, vendedoraEntityId: "empresa-1" },
+      { enterpriseId: EMPREENDIMENTO },
     );
-    expect(doQuadro.find((p) => p.papel === "vendedora")?.nome).toBe("Socio Administrador");
+    expect(doQuadro.map((p) => [p.papel, p.nome])).toEqual([["vendedora", "Socio Administrador"]]);
 
-    // E é esse o nome que a caixa mostra, dizendo de onde ele veio.
+    // E é esse o nome que a caixa mostra, dizendo onde ele se edita.
     expect(termos.textContent).toContain("Socio Administrador");
-    expect(termos.textContent).toContain("do bloco Vendedora");
-    expect(termos.textContent).not.toContain("Representante Legal");
+    expect(termos.textContent).toContain("edite no bloco Vendedora");
+    expect(termos.textContent).not.toContain("representante legal cadastrado");
+  });
+
+  it("sem ninguém em lugar nenhum, a caixa diz que o envio fica bloqueado, sem citar a ficha", async () => {
+    await montar(<QuadroDeAssinaturaCard comAssinantesDeTermos enterpriseId={EMPREENDIMENTO} />);
+
+    const termos = secao(TERMOS);
+    expect(termos.textContent).toContain("o envio fica bloqueado");
+    expect(termos.textContent).not.toContain("representante legal da empresa");
+    expect(termos.textContent ?? "").not.toContain("—");
   });
 });
 

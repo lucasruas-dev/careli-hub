@@ -15,9 +15,17 @@
 // ⚠️ POR QUE NÃO REUSAR loadApoloEntityTimeline INTEIRO: as consultas de venda/pagamento de lá
 // filtram só por client_id, SEM empreendimento — a mesma pessoa pode ter lote de OUTRO loteador,
 // e a ficha corrida completa entregaria o nome do empreendimento alheio na tela deste cliente.
-// Aqui as duas consultas são refeitas com `e.code in (codes da sessão)`.
+// Aqui as duas consultas são refeitas com `e.id in (...)`: os codes da sessão, traduzidos no id do
+// empreendimento no C2X.
+//
+// ⚠️ PELO ID, NÃO PELA SIGLA (PAN-124). Até 25/09/2026 o filtro era `e.code in (codes da sessão)`, e
+// a sigla muda quando alguém renomeia no legado (o 43 foi de RDV para PDI em 24/09/2026): a ficha
+// corrida daquele empreendimento sumia sem erro. O id não muda; a tradução é pelo MESMO catálogo de
+// onde o escopo tirou as siglas, então o conjunto é o de hoje.
 import type { RowDataPacket } from "mysql2";
 
+import { filtroPorIds } from "@/lib/apolo/c2x-pelo-id";
+import { idsDoC2xDasSiglasAoVivo } from "@/lib/apolo/c2x-pelo-id-servidor";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import {
   loadChronos,
@@ -159,17 +167,37 @@ export function ordenarHistorico(
 type VendaRow = RowDataPacket & LinhaVendaHistorico;
 type PagamentoRow = RowDataPacket & LinhaPagamentoHistorico;
 
-async function lerVendasDoEscopo(
+/**
+ * Os ids do C2X dos codes da sessão, para as duas leituras abaixo. Vazio quando não há o que
+ * consultar: sigla sem id no C2X (produto nascido no Panteon, que é o esperado e não falha) ou
+ * catálogo indisponível (C2X fora). Nos dois casos a ficha corrida sai sem venda e sem pagamento,
+ * como já saía quando a consulta ao C2X caía.
+ */
+export async function idsDoEscopoNoC2x(codes: string[]): Promise<number[]> {
+  if (codes.length === 0) return [];
+  const traduzido = await idsDoC2xDasSiglasAoVivo(codes);
+  if (!traduzido.ok) {
+    console.error("[incorporador][historico] sem tradução de sigla para id", traduzido.erro);
+    return [];
+  }
+  return traduzido.ids;
+}
+
+/**
+ * Os marcos de venda da pessoa nos empreendimentos do escopo (`ids` = `enterprises.id` do C2X, já
+ * traduzidos por `idsDoEscopoNoC2x`). Lista vazia = nada a consultar.
+ */
+export async function lerVendasDoEscopo(
   c2xUserId: number,
-  codes: string[],
+  ids: readonly number[],
 ): Promise<LinhaVendaHistorico[]> {
+  const doEscopo = filtroPorIds("e.id", ids);
   const pool = getHadesDbPool();
-  if (!pool.ok || codes.length === 0) return [];
+  if (!pool.ok || !doEscopo) return [];
 
   try {
-    const placeholders = codes.map(() => "?").join(",");
     // Mesma consulta da timeline interna (lib/apolo/timeline.ts → loadVendas), com o filtro de
-    // empreendimento que lá não existe: `e.code in (codes)`.
+    // empreendimento que lá não existe: `e.id in (ids do escopo)`.
     const [linhas] = await pool.pool.query<VendaRow[]>(
       `select min(arh.id) as hist_id,
               date_format(min(arh.created_at), '%Y-%m-%dT%H:%i:%s-03:00') as occurred_at,
@@ -181,12 +209,12 @@ async function lerVendasDoEscopo(
          join enterprise_unities eu on eu.id = ar.enterprise_unity_id
          join enterprises e on e.id = eu.enterprise_id
          join acquisition_request_stages s on s.id = arh.new_acquisition_request_stage_id
-        where ar.client_id = ? and e.code in (${placeholders})
+        where ar.client_id = ? and ${doEscopo.sql}
         group by ar.id, arh.new_acquisition_request_stage_id, date(arh.created_at),
                  s.name, e.name, eu.block, eu.lot
         order by occurred_at desc
         limit 300`,
-      [c2xUserId, ...codes],
+      [c2xUserId, ...doEscopo.params],
     );
 
     return linhas;
@@ -195,15 +223,16 @@ async function lerVendasDoEscopo(
   }
 }
 
-async function lerPagamentosDoEscopo(
+/** Os pagamentos da pessoa nos empreendimentos do escopo (`ids` como em `lerVendasDoEscopo`). */
+export async function lerPagamentosDoEscopo(
   c2xUserId: number,
-  codes: string[],
+  ids: readonly number[],
 ): Promise<LinhaPagamentoHistorico[]> {
+  const doEscopo = filtroPorIds("e.id", ids);
   const pool = getHadesDbPool();
-  if (!pool.ok || codes.length === 0) return [];
+  if (!pool.ok || !doEscopo) return [];
 
   try {
-    const placeholders = codes.map(() => "?").join(",");
     // Só o PAGO (payment_status_id = 5): a régua do que venceu e não foi pago é assunto da aba
     // Financeiro; a ficha corrida do cliente externo registra o que aconteceu.
     const [linhas] = await pool.pool.query<PagamentoRow[]>(
@@ -224,12 +253,12 @@ async function lerPagamentosDoEscopo(
          join enterprise_unities eu on eu.id = ar.enterprise_unity_id
          join enterprises e on e.id = eu.enterprise_id
          join parcel_types pt on pt.id = p.parcel_type_id
-        where ar.client_id = ? and e.code in (${placeholders})
+        where ar.client_id = ? and ${doEscopo.sql}
           and (p.payment_to_delete is null or p.payment_to_delete = 0)
           and p.payment_status_id = 5
         order by p.payment_date desc
         limit 300`,
-      [c2xUserId, ...codes],
+      [c2xUserId, ...doEscopo.params],
     );
 
     return linhas;
@@ -268,9 +297,17 @@ export async function montarHistorico({
 
   const emails = somenteEmailsDeCliente(cadastro?.emails ?? []);
 
+  // A tradução sigla → id é UMA para as duas leituras, e só acontece quando há quem procurar no C2X.
+  // Encadeada (e não esperada antes) para não segurar a leitura das reuniões do Chronos.
+  const idsNoC2x = c2xUserId ? idsDoEscopoNoC2x(pessoa.codes) : Promise.resolve<number[]>([]);
+
   const [vendas, pagamentos, reunioes] = await Promise.all([
-    c2xUserId ? lerVendasDoEscopo(c2xUserId, pessoa.codes) : Promise.resolve([]),
-    c2xUserId ? lerPagamentosDoEscopo(c2xUserId, pessoa.codes) : Promise.resolve([]),
+    c2xUserId
+      ? idsNoC2x.then((ids) => lerVendasDoEscopo(c2xUserId, ids))
+      : Promise.resolve([]),
+    c2xUserId
+      ? idsNoC2x.then((ids) => lerPagamentosDoEscopo(c2xUserId, ids))
+      : Promise.resolve([]),
     admin && emails.length > 0
       ? loadChronos(admin, emails).catch(() => [] as ApoloTimelineEntry[])
       : Promise.resolve([] as ApoloTimelineEntry[]),

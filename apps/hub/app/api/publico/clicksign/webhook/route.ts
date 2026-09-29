@@ -37,30 +37,46 @@ import { ehFalhaDeAutenticacao } from "@/lib/assinatura/traduzir";
 // (migration 0147), no molde de `apolo_asaas_eventos` —, que é onde privacidade e retenção se
 // resolvem de uma vez. No console fica só o ESQUELETO.
 
+//
+// ⚠️ E NA TABELA TAMBÉM NÃO VAI TUDO (F1 da fonte única, 28/09/2026). Medido: 201 de 226 eventos
+// guardados traziam CPF e nascimento, e 39 traziam geolocalização. Desde então o conferido é
+// guardado REDUZIDO (`payloadReduzidoDaClicksign`, uma allowlist) e o não conferido só como
+// ESQUELETO. O que um POST forjado ainda deixa na tabela é pouco e tem teto: o esqueleto (~2 KB),
+// o nome do evento cortado em 80, os ids só se tiverem forma de id da Clicksign e os cabeçalhos da
+// lista de `cabecalhosParaGuardar` (com o `x-real-ip`, a pista de quem forjou). Quem recorta é
+// `registrarEventoDeAssinatura`.
+//
+// ⚠️ E OS CABEÇALHOS SÃO UMA LISTA DO QUE GUARDAR (revisão da F1). A lista do que omitir deixava
+// passar `x-vercel-oidc-token`, `x-vercel-sc-headers` (com Bearer) e `x-vercel-proxy-signature`,
+// gravados em 230 de 230 linhas até 28/09/2026.
+
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-// O trabalho roda em `after()`; o teto baixo continua sendo a garantia de que a rota nunca segura a
-// conexão do provedor.
-export const maxDuration = 15;
+// ⚠️ 60 E NÃO 15 (plano, seção 7). O trabalho roda em `after()`, depois da resposta, e agora ele
+// chama a função da 0195 e, no fechamento, move o card e a venda. Com 15 s a Vercel matava o
+// `after()` no meio e o card ficava parado com o contrato assinado; a resposta ao provedor continua
+// saindo antes de qualquer consulta.
+export const maxDuration = 60;
 
-/** Cabeçalhos que NÃO podem ser guardados — carregam credencial. */
-const SEGREDOS = new Set([
-  "authorization",
-  "cookie",
-  "x-api-key",
-  "asaas-access-token",
-  "clicksign-access-token",
-]);
+/**
+ * O teto do corpo: 128 KB. O maior payload legítimo medido tem 29 KB (28/09/2026).
+ *
+ * ⚠️ ACIMA DISTO É 413 E NADA É GRAVADO. A rota é pública; sem teto, qualquer um enchia
+ * `temis_assinatura_eventos` com o que quisesse, um POST de cada vez.
+ */
+const TETO_DO_CORPO_EM_BYTES = 128 * 1024;
 
-function headersSeguros(request: Request): Record<string, string> {
+/**
+ * Os cabeçalhos da chamada, CRUS: quem recorta o que vai para a tabela é `registrarEventoDeAssinatura`
+ * (`cabecalhosParaGuardar`, uma lista do que guardar). Aqui só se lê.
+ *
+ * ⚠️ A ASSINATURA DO CALLBACK FICA, e é o motivo de registrar headers: é assim que se descobre em
+ * QUE cabeçalho a Clicksign manda o HMAC. O valor de um HMAC não é segredo reutilizável (ele vale
+ * para um corpo só), então guardá-lo não abre porta nenhuma.
+ */
+function cabecalhosDaChamada(request: Request): Record<string, string> {
   const saida: Record<string, string> = {};
-  for (const [chave, valor] of request.headers.entries()) {
-    const nome = chave.toLowerCase();
-    // ⚠️ A ASSINATURA DO CALLBACK FICA, e é o motivo de registrar headers: é assim que se descobre
-    // em QUE cabeçalho a Clicksign manda o HMAC — a doc da v3 não diz. O valor de um HMAC não é
-    // segredo reutilizável (ele vale para um corpo só), então guardá-lo não abre porta nenhuma.
-    saida[nome] = SEGREDOS.has(nome) ? "(omitido)" : valor;
-  }
+  for (const [chave, valor] of request.headers.entries()) saida[chave.toLowerCase()] = valor;
   return saida;
 }
 
@@ -85,11 +101,24 @@ function chavesDePrimeiroNivel(cru: string): string[] {
 }
 
 export async function POST(request: Request) {
+  // ⚠️ O TAMANHO DECLARADO É CONFERIDO ANTES DE LER, e o lido de novo depois: o cabeçalho pode
+  // faltar ou mentir, e só o segundo teste mede o que chegou.
+  const declarado = Number(request.headers.get("content-length") ?? "");
+  if (Number.isFinite(declarado) && declarado > TETO_DO_CORPO_EM_BYTES) {
+    console.warn("[clicksign][webhook] corpo acima do teto, recusado sem gravar", { declarado });
+    return NextResponse.json({ ok: false, erro: "corpo grande demais" }, { status: 413 });
+  }
+
   // ⚠️ LÊ COMO TEXTO, E ISSO NÃO É SÓ PELA DESCOBERTA: o HMAC é calculado sobre o corpo CRU. Um
   // `request.json()` seguido de `JSON.stringify` mudaria espaços e ordem de chaves, e a conferência
   // falharia em todo evento legítimo.
   const cru = await request.text().catch(() => "");
-  const headers = headersSeguros(request);
+  const tamanho = Buffer.byteLength(cru, "utf8");
+  if (tamanho > TETO_DO_CORPO_EM_BYTES) {
+    console.warn("[clicksign][webhook] corpo acima do teto, recusado sem gravar", { tamanho });
+    return NextResponse.json({ ok: false, erro: "corpo grande demais" }, { status: 413 });
+  }
+  const headers = cabecalhosDaChamada(request);
 
   const verificacao = conferirAssinaturaDoWebhook({
     corpoCru: cru,
@@ -104,13 +133,16 @@ export async function POST(request: Request) {
     chavesDoCorpo: chavesDePrimeiroNivel(cru),
     // Só os NOMES dos cabeçalhos no console: é o que responde "em qual deles vem o HMAC?".
     cabecalhos: Object.keys(headers),
-    evento: evento.evento || "(não identificado)",
+    // O nome vem do corpo, conferido ou não: cortado, como na tabela.
+    evento: evento.evento.slice(0, 80) || "(não identificado)",
     falhaDeAutenticacaoDoSignatario: ehFalhaDeAutenticacao(evento.evento),
     // O carimbo é NOSSO: o horário do provedor pode vir sem fuso, ou não vir.
     recebidoEm: new Date().toISOString(),
-    tamanhoDoCorpo: cru.length,
+    tamanhoDoCorpo: tamanho,
   });
 
+  // ⚠️ O CORPO LIDO, E NÃO O QUE SE GUARDA: quem decide o recorte (reduzido ou esqueleto) é
+  // `registrarEventoDeAssinatura`, para nenhum caminho gravar o corpo cheio por esquecimento.
   const payload = payloadParaGuardar(cru);
 
   if (!verificacao.ok) {
@@ -126,6 +158,7 @@ export async function POST(request: Request) {
         evento,
         headers,
         payload,
+        tamanho,
       });
     });
 
@@ -144,6 +177,8 @@ export async function POST(request: Request) {
   }
 
   const cabecalho = verificacao.cabecalho;
+  // O carimbo é NOSSO: é a hora da conferência (`conferido_em` do envelope).
+  const recebidoEm = new Date().toISOString();
 
   after(async () => {
     const sb = createApoloAdminClient();
@@ -152,7 +187,7 @@ export async function POST(request: Request) {
       return;
     }
 
-    const aplicacao = await aplicarEventoDaClicksign(sb, evento);
+    const aplicacao = await aplicarEventoDaClicksign(sb, evento, payload, recebidoEm);
     console.info("[clicksign][webhook] evento aplicado?", {
       aplicado: aplicacao.aplicado,
       estado: aplicacao.estado,
@@ -164,9 +199,11 @@ export async function POST(request: Request) {
       aplicado: aplicacao.aplicado,
       assinaturaCabecalho: cabecalho,
       assinaturaConferida: true,
+      envelopeIdDoRegistro: aplicacao.envelopeIdDoRegistro,
       evento,
       headers,
       payload,
+      tamanho,
     });
   });
 
@@ -174,7 +211,7 @@ export async function POST(request: Request) {
 }
 
 /**
- * O corpo, pronto para a coluna `jsonb`.
+ * O corpo lido, para as marcas e para o recorte que `registrarEventoDeAssinatura` guarda.
  *
  * ⚠️ CORPO QUE NÃO É JSON NÃO PODE SER DESCARTADO. O webhook do D4Sign chega em form-data apesar de
  * a doc mostrar JSON, e o da Clicksign não tem exemplo documentado nenhum. Guardar o texto cru

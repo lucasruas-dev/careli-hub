@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { LoteDoEspelho } from "@/lib/hercules/espelho/estado-do-espelho";
 import type { PlanoPublico } from "@/lib/hercules/espelho/planos-publicos";
+import { TAMANHO_MAXIMO_DO_SIMULACAO_PARA } from "@/lib/hercules/espelho/simulacao-para-quem";
 
 import { EspelhoPublico } from "./EspelhoPublico";
 
@@ -136,6 +137,20 @@ function campoDaEntrada(): HTMLInputElement {
   const campo = camposDaEntrada()[0];
   if (!campo) throw new Error("campo da entrada ausente");
   return campo;
+}
+
+/** O campo "Simulação para" — o único campo de digitação que o espelho tem por conta própria. */
+function campoDoNome(): HTMLInputElement {
+  const campo = alvo.querySelector<HTMLInputElement>('input[data-esp-campo="simulacao-para"]');
+  if (!campo) throw new Error("campo do nome da simulação ausente na página pública");
+  return campo;
+}
+
+/** A frase de apoio embaixo do campo: ela troca de texto conforme o que foi digitado. */
+function apoioDoNome(): string {
+  const apoio = alvo.querySelector('[data-esp-campo="simulacao-para-apoio"]');
+  if (!apoio) throw new Error("frase de apoio do nome ausente");
+  return apoio.textContent ?? "";
 }
 
 async function salvarEmPdf() {
@@ -332,5 +347,93 @@ describe("EspelhoPublico: o corpo do PDF carrega o que a tela mostra", () => {
     await salvarEmPdf();
 
     expect(ultimoEnvio().bensEPermutas).toBeNull();
+  });
+  // O NOME DE PARA QUEM A SIMULAÇÃO FOI FEITA (27/09/2026).
+  //
+  // Lucas: *"faz uma coisa para mim, na parte do simulador do link do espelho, coloca a opção de
+  // inserir um nome na proposta simulada"*.
+  //
+  // ⚠️ O CAMPO É DO ESPELHO, E NÃO DO SIMULADOR. Ele não entra em `CondicoesDaProposta`: esse tipo é
+  // lido pela `ModalDeProposta` da Mesa de Venda, que GRAVA proposta de verdade e tira o comprador
+  // da ficha. Um nome digitado num link sem login não pode viajar pelo caminho que gera documento.
+  // Por isso ele é montado à mão no corpo do POST, e por isso o caso mora NESTE arquivo.
+  it("⚠️ o nome digitado no espelho sobe em `simulacaoPara`", async () => {
+    abrirOLote();
+
+    const campo = campoDoNome();
+    digitar(campo, "Maria Aparecida da Silva");
+
+    await salvarEmPdf();
+    expect(ultimoEnvio().simulacaoPara).toBe("Maria Aparecida da Silva");
+  });
+
+  it("⚠️ SEM NOME, O CORPO MANDA NULO: o campo é OPCIONAL e a folha sai como sai hoje", async () => {
+    abrirOLote();
+    await salvarEmPdf();
+
+    expect(ultimoEnvio().simulacaoPara).toBeNull();
+  });
+
+  it("nome só com espaços também sobe nulo", async () => {
+    abrirOLote();
+    digitar(campoDoNome(), "   ");
+
+    await salvarEmPdf();
+    expect(ultimoEnvio().simulacaoPara).toBeNull();
+  });
+
+  it("⚠️ o campo tem o MESMO teto do servidor, e não oferece o nome do dono do aparelho", async () => {
+    // O teto na tela é o que evita digitar 400 caracteres para receber o nome cortado no papel — o
+    // mesmo par da descrição do bem (`maxLength` na tela, régua no servidor, UMA constante).
+    // E `autoComplete="off"` é privacidade, não estilo: o link abre no aparelho de outra pessoa, e
+    // sem isso o navegador oferece o nome do dono do aparelho e guarda no cofre dele o nome de um
+    // terceiro.
+    abrirOLote();
+    const campo = campoDoNome();
+
+    expect(campo.maxLength).toBe(TAMANHO_MAXIMO_DO_SIMULACAO_PARA);
+    expect(campo.maxLength).toBe(80);
+    expect(campo.getAttribute("autocomplete")).toBe("off");
+    // A fileira não vai para a impressora: um Ctrl+P imprimiria uma caixa de texto vazia na folha.
+    expect(campo.closest("[data-esp-print]")?.getAttribute("data-esp-print")).toBe("fora");
+  });
+
+  it("⚠️ O TETO CABE UM NOME COMPLETO DE VERDADE, e é por isso que ele subiu de 60 para 80", async () => {
+    // ⚠️ MEDIDO COM pdf-lib EM 27/09/2026: "MARIA APARECIDA DA SILVA FERREIRA NOGUEIRA DOS SANTOS
+    // OLIVEIRA" tem 62 caracteres e mede 311,72pt dos 464,32pt que sobram na linha depois do rótulo
+    // "Simulação para ". Com o teto de 60 a tela recusava as duas últimas letras CALADA e o papel
+    // imprimia "...DOS SANTOS OLIVEI", com cara de nome digitado errado.
+    abrirOLote();
+    const nome = "MARIA APARECIDA DA SILVA FERREIRA NOGUEIRA DOS SANTOS OLIVEIRA";
+    expect(nome.length).toBe(62);
+
+    digitar(campoDoNome(), nome);
+    await salvarEmPdf();
+
+    expect(ultimoEnvio().simulacaoPara).toBe(nome);
+  });
+
+  it("⚠️ AO CHEGAR NO TETO A TELA DIZ O NÚMERO, porque `maxLength` sozinho não conta nada", async () => {
+    abrirOLote();
+
+    expect(apoioDoNome()).toContain("Sai só no papel");
+
+    digitar(campoDoNome(), "A".repeat(TAMANHO_MAXIMO_DO_SIMULACAO_PARA));
+
+    expect(apoioDoNome()).toBe(`Máximo de ${TAMANHO_MAXIMO_DO_SIMULACAO_PARA} caracteres.`);
+  });
+
+  it("⚠️ O QUE NÃO VAI SAIR NO PAPEL É AVISADO ANTES DO CLIQUE, e não depois do PDF em branco", async () => {
+    // O servidor devolve NULO para o que não tem forma de nome (dígito, %, telefone, parágrafo) e a
+    // folha sai sem a linha. Sem este aviso, quem digitou "RESERVADO E PAGO - DESCONTO 40% OK"
+    // clicaria em "Salvar em PDF" e receberia um papel sem nome nenhum sem entender por quê.
+    abrirOLote();
+
+    digitar(campoDoNome(), "RESERVADO E PAGO - CONTRATO ASSINADO - DESCONTO 40% OK");
+    expect(apoioDoNome()).toBe("A folha sai sem esta linha: escreva só o nome da pessoa.");
+
+    // E um nome de gente NÃO acende o aviso, inclusive com apóstrofo, hífen e ponto.
+    digitar(campoDoNome(), "Ana-Clara D'Ávila Jr.");
+    expect(apoioDoNome()).toContain("Sai só no papel");
   });
 });

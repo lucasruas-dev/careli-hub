@@ -1,11 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+// ⚠️ A PORTA DO ADMIN MORA EM lib/apolo/autorizar-sync.ts DESDE A F3 DA FONTE ÚNICA (o espelho da
+// D4Sign usa a mesma); o comportamento desta rota não mudou.
+import { authorizeApoloSyncRequest } from "@/lib/apolo/autorizar-sync";
 import {
   createApoloAdminClient,
   syncApoloFromC2x,
 } from "@/lib/apolo/server";
-
-type HubUserRole = "admin" | "leader" | "operator" | "viewer";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -75,63 +76,4 @@ function isAuthorizedApoloSyncCron(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET?.trim();
 
   return Boolean(cronSecret && token === cronSecret);
-}
-
-async function authorizeApoloSyncRequest(
-  request: NextRequest,
-  adminClient: NonNullable<ReturnType<typeof createApoloAdminClient>>,
-) {
-  const accessToken = getBearerToken(request);
-
-  if (!accessToken) {
-    return {
-      ok: false as const,
-      response: NextResponse.json(
-        { error: "Sessao administrativa ausente." },
-        { status: 401 },
-      ),
-    };
-  }
-
-  const { data: authData, error: authError } = await adminClient.auth.getUser(
-    accessToken,
-  );
-
-  if (authError || !authData.user) {
-    return {
-      ok: false as const,
-      response: NextResponse.json(
-        { error: "Sessao administrativa invalida." },
-        { status: 401 },
-      ),
-    };
-  }
-
-  const { data: user, error: userError } = await adminClient
-    .from("hub_users")
-    .select("id,role,status")
-    .eq("id", authData.user.id)
-    .maybeSingle<{ id: string; role: HubUserRole; status: string }>();
-
-  if (userError || !user || user.status !== "active" || user.role !== "admin") {
-    return {
-      ok: false as const,
-      response: NextResponse.json(
-        { error: "Usuario sem acesso a sincronizacao do Apolo." },
-        { status: 403 },
-      ),
-    };
-  }
-
-  return { ok: true as const };
-}
-
-function getBearerToken(request: NextRequest) {
-  const authorization = request.headers.get("authorization");
-
-  if (!authorization?.startsWith("Bearer ")) {
-    return null;
-  }
-
-  return authorization.slice("Bearer ".length).trim() || null;
 }

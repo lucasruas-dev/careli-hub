@@ -10,8 +10,9 @@ import { montarHistorico } from "@/lib/apolo/incorporador/historico";
 // cabeçalho de lib/apolo/incorporador/historico.ts).
 //
 // ⚠️ `montarHistorico` prova a pessoa no escopo (`pessoaNoEscopo`) ANTES de ler qualquer evento,
-// e as consultas de venda/pagamento levam `e.code in (codes da sessão)` — a mesma pessoa pode
-// ter lote de OUTRO loteador, e esse lote não existe para esta sessão.
+// e as consultas de venda/pagamento levam `e.id in (...)`, os codes da sessão traduzidos no id do
+// empreendimento no C2X (PAN-124: a sigla muda quando alguém renomeia no legado, o id não) — a
+// mesma pessoa pode ter lote de OUTRO loteador, e esse lote não existe para esta sessão.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 30;

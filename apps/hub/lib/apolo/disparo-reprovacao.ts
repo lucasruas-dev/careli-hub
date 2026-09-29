@@ -28,7 +28,8 @@
 //  - A devolutiva de entrega (enviado/entregue/lido) chega depois pelo webhook da Meta, que o
 //    meta-inbound-processor já casa por wa_message_id.
 
-import { loadApoloEnterpriseCadastro, loadApoloEnterprises } from "@/lib/apolo/empreendimentos";
+import { coordenadorParaAviso } from "@/lib/apolo/coordenador-do-empreendimento";
+import { loadApoloEnterprises } from "@/lib/apolo/empreendimentos";
 import { montarCadDeEntidade } from "@/lib/apolo/cad-de-entidade";
 import { lerCadDaEsteira } from "@/lib/apolo/esteira-cad";
 import { createApoloAdminClient } from "@/lib/apolo/server";
@@ -76,27 +77,30 @@ function normalizarNome(value: string): string {
   return value.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
 }
 
-// Resolve o CODE do empreendimento do cliente (ex.: "VLO") a partir da esteira: usa enterprise_id
-// (id do C2X) quando existe, senão mapeia o nome ("Vale do Ouro") pelo catálogo do C2X.
-async function resolverCodeEmpreendimento(
+// Resolve o ID do empreendimento do cliente a partir da esteira: o `enterprise_id` (id do C2X)
+// quando existe, senão o nome ("Vale do Ouro") pelo catálogo do C2X.
+//
+// ⚠️ DEVOLVE O ID, E NÃO MAIS A SIGLA (Lucas, 24/09/2026). A sigla era a chave da busca do
+// coordenador no C2X e quebra calada quando alguém renomeia o empreendimento lá (o 43, RDV -> PDI).
+// O id não muda. Ver lib/apolo/coordenador-do-empreendimento.ts.
+async function resolverIdEmpreendimento(
   esteira: { empreendimento: string | null; enterprise_id: string | null } | null,
 ): Promise<string | null> {
+  const idAlvo = (esteira?.enterprise_id ?? "").trim();
+  if (idAlvo) return idAlvo;
+
+  const nomeAlvo = esteira?.empreendimento ? normalizarNome(esteira.empreendimento) : "";
+  if (!nomeAlvo) return null;
+
   // Só a lista (nome, código, id): a situação das unidades não é usada aqui, e lê-la custaria
   // as propostas e reservas do banco inteiro a cada chamada.
   const c2x = await loadApoloEnterprises({ comSituacao: false });
   if (!c2x.ok) return null;
 
-  const idAlvo = (esteira?.enterprise_id ?? "").trim();
-  const nomeAlvo = esteira?.empreendimento ? normalizarNome(esteira.empreendimento) : "";
-
   for (const row of c2x.data.rows) {
     const candidatos = row.stages.length ? row.stages : [row];
-    const match = candidatos.find(
-      (c) =>
-        (idAlvo && String(c.id) === idAlvo) ||
-        (nomeAlvo && normalizarNome(c.name) === nomeAlvo),
-    );
-    if (match) return match.code;
+    const match = candidatos.find((c) => normalizarNome(c.name) === nomeAlvo);
+    if (match) return String(match.id);
   }
   return null;
 }
@@ -240,12 +244,11 @@ export async function dispararReprovacao(input: {
     const temEmpreendimento = Boolean(
       (esteira?.empreendimento ?? "").trim() || (esteira?.enterprise_id ?? "").trim(),
     );
-    const code = await resolverCodeEmpreendimento(esteira ?? null);
-    const cadastro = code ? await loadApoloEnterpriseCadastro([code]) : null;
-    const coordenador = cadastro?.ok
-      ? cadastro.cadastros[0]?.players.find((p) => p.relation === "coordenador_vendas")
-      : undefined;
-    const telCoord = normalizarTelefoneBr(coordenador?.phone);
+    const enterpriseId = await resolverIdEmpreendimento(esteira ?? null);
+    // O coordenador cadastrado no Panteon e, sem ele, o do C2X pelo id (nunca pela sigla).
+    const achado = enterpriseId ? await coordenadorParaAviso(adminClient, enterpriseId) : null;
+    const coordenador = achado?.nome ? { name: achado.nome } : undefined;
+    const telCoord = normalizarTelefoneBr(achado?.telefone);
 
     if (!telCoord) {
       // O coordenador DEVE sempre ser avisado — não avisar é uma FALHA, não um "pulo". Registra
@@ -253,12 +256,10 @@ export async function dispararReprovacao(input: {
       // é o telefone, é a FICHA SEM EMPREENDIMENTO (aí nem dá pra achar o coordenador). Culpar o
       // telefone nesse caso mandava o operador cadastrar telefone quando o buraco era outro.
       const msg = !temEmpreendimento
-        ? "Ficha sem empreendimento — não dá para identificar o coordenador."
-        : !code
-          ? "Empreendimento da ficha não foi encontrado no C2X."
-          : !coordenador
-            ? "Empreendimento sem coordenador de vendas cadastrado no C2X."
-            : "Coordenador do empreendimento sem telefone no C2X.";
+        ? "Ficha sem empreendimento: não dá para identificar o coordenador."
+        : !enterpriseId
+          ? "Empreendimento da ficha não foi encontrado no cadastro."
+          : (achado?.motivo ?? "Coordenador do empreendimento sem telefone.");
       resultado.coordenador = {
         destinatario: coordenador?.name ?? null,
         error: msg,

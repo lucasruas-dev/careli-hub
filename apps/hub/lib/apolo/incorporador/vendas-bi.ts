@@ -1,3 +1,5 @@
+import { type CatalogoParaId, filtroPorIds } from "@/lib/apolo/c2x-pelo-id";
+import { idsDoC2xDasSiglasAoVivo } from "@/lib/apolo/c2x-pelo-id-servidor";
 import { getHadesDbPool } from "@/lib/guardian/db";
 import type { ApoloVendaUnit } from "@/lib/apolo/vendas";
 
@@ -306,9 +308,17 @@ type LinhaDeEvento = {
  * Lê os eventos de estágio 9/4/7 do C2X (READ-ONLY) para os empreendimentos JÁ FILTRADOS pelo
  * escopo da sessão — esta função NÃO autoriza nada: quem chama tem que ter passado por
  * `codigosDaSessao`.
+ *
+ * ⚠️ PELO ID DO C2X, NÃO PELA SIGLA (PAN-124). Os codes viram `enterprises.id` pelo catálogo e o
+ * WHERE é `e.id in (...)`: um renome no legado (o 43, de RDV para PDI em 24/09/2026) sumia com o BI
+ * daquele empreendimento sem erro. Sigla sem id no C2X (produto nascido no Panteon) dá a mesma lista
+ * vazia de antes; catálogo indisponível é C2X fora, e vira o mesmo `ok: false`.
+ *
+ * @param opcoes.catalogo O catálogo, quando a rota já o tem (evita reler o cache).
  */
 export async function lerEventosDeVendas(
   codes: string[],
+  opcoes: { catalogo?: CatalogoParaId | null } = {},
 ): Promise<{ eventos: EventoDeVenda[]; ok: true; parcial: boolean } | { error: string; ok: false }> {
   const validos = [...new Set(codes.map((c) => c.trim().toUpperCase()).filter(Boolean))];
   if (validos.length === 0) return { eventos: [], ok: true, parcial: false };
@@ -318,7 +328,14 @@ export async function lerEventosDeVendas(
     return { error: `Configuracao C2X ausente: ${pool.missing.join(", ")}.`, ok: false };
   }
 
-  const marcadores = validos.map(() => "?").join(", ");
+  const traduzido = await idsDoC2xDasSiglasAoVivo(validos, { catalogo: opcoes.catalogo });
+  if (!traduzido.ok) {
+    console.error("[apolo][incorporador] historico de vendas sem tradução de sigla", traduzido.erro);
+    return { error: "Nao foi possivel ler o historico de vendas agora.", ok: false };
+  }
+
+  const doEscopo = filtroPorIds("e.id", traduzido.ids);
+  if (!doEscopo) return { eventos: [], ok: true, parcial: false };
 
   try {
     const [linhas] = await pool.pool.query(
@@ -332,11 +349,11 @@ export async function lerEventosDeVendas(
          join acquisition_requests ar on ar.id = h.acquisition_request_id
          join enterprise_unities u on u.id = ar.enterprise_unity_id
          join enterprises e on e.id = u.enterprise_id
-        where e.code in (${marcadores})
+        where ${doEscopo.sql}
           and h.new_acquisition_request_stage_id in (${ESTAGIO_FATURADO}, ${ESTAGIO_CANCELADO}, ${ESTAGIO_PROPOSTA})
         order by h.created_at asc, h.id asc
         limit ${TETO_DE_EVENTOS}`,
-      validos,
+      doEscopo.params,
     );
 
     const cruas = linhas as LinhaDeEvento[];

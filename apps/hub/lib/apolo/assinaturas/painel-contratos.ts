@@ -8,7 +8,9 @@
 //   1. O ESCOPO NÃO VEM DE SESSÃO DE CLIENTE. No portal, o recorte sai do token do incorporador;
 //      aqui quem autoriza é o papel no Hub (`authorizeApoloRead`, na rota) e o time escolhe o
 //      empreendimento na tela. O código pedido é confrontado com a lista que o próprio C2X
-//      devolve (`resolverCodes`), então `emp` da query string nunca vira filtro cru.
+//      devolve (`resolverCodes`), então `emp` da query string nunca vira filtro cru. E a
+//      consulta vai pelo ID que a MESMA lista dá à sigla (`idsDoRecorte`), nunca pela sigla
+//      (PAN-124: a sigla muda quando alguém renomeia no C2X; o id, não).
 //   2. O E-MAIL DO ASSINANTE ATRAVESSA (no quadro e no popup). O painel interno sempre mostrou o
 //      e-mail sob o nome, e é ele que separa três sócios da mesma razão social. No portal, não.
 //   3. O PDF SAI PELO CAMINHO INTERNO. A linha carrega o `uuidDoc` do envio escolhido, que a tela
@@ -40,8 +42,9 @@ import {
   ESTAGIOS_DE_GERACAO,
   montarQuadroDeAssinaturas,
   perfilDeTela,
+  idsDoRecorte,
   resolverCodes,
-  SQL_LINHAS_POR_CODE,
+  SQL_LINHAS_POR_ID,
   SQL_UNIDADE_ROTULO,
   type AssinanteInterno,
   type ContratoDoPainel,
@@ -140,6 +143,8 @@ type VivoRow = RowDataPacket & {
 type EmpreendimentoRow = RowDataPacket & {
   code: null | string;
   contratos: null | number;
+  /** `enterprises.id`: é por ele que o recorte consulta (PAN-124). */
+  id: null | number;
   nome: null | string;
 };
 
@@ -175,6 +180,11 @@ function isoOuNulo(valor: null | Date | string): null | string {
  * cinco famílias — QUATRO se chamam "VALE DO OURO" (VLO 15 contratos, VOL 93, VOC 93, VOR 2), três
  * são "LAGOA BONITA", e ainda há dois "RIO DE PEDRAS", dois "PORTAL DOS VALES", dois "LAVRA DO
  * OURO" e dois "MILENIUM". Um seletor por nome somaria carteiras de donos diferentes.
+ *
+ * ⚠️ E O ID JUNTO (PAN-124, 25/09/2026). A tela escolhe pela sigla, mas a consulta do recorte vai pelo
+ * `enterprises.id` que ESTA lista dá à sigla (`idsDoRecorte`). O id entra nos dois ramos do UNION e
+ * no GROUP BY sem mudar nada do resto: sigla e id são um para um no C2X (nenhuma sigla repetida,
+ * medido em 25/09/2026), então a deduplicação do par e os grupos saem os mesmos de antes.
  */
 async function listarEmpreendimentos(): Promise<EmpreendimentoDoFiltro[]> {
   if (empreendimentosEmCache && Date.now() - empreendimentosEmCache.em < TTL_EMPREENDIMENTOS_MS) {
@@ -189,8 +199,8 @@ async function listarEmpreendimentos(): Promise<EmpreendimentoDoFiltro[]> {
   // O UNION (sem ALL) deduplica o par (código, proposta): o contrato que está vivo E já saiu para
   // assinar é UM contrato, não dois. Contar as duas metades separadas dobraria o número.
   const [rows] = await pool.pool.query<EmpreendimentoRow[]>(
-    `select code, nome, count(distinct ar_id) as contratos from (
-       select e.code as code, e.name as nome, arc.acquisition_request_id as ar_id
+    `select id, code, nome, count(distinct ar_id) as contratos from (
+       select e.id as id, e.code as code, e.name as nome, arc.acquisition_request_id as ar_id
          from contract_signatures cs
          join acquisition_request_contracts arc on arc.id = cs.acquisition_request_contract_id
          join acquisition_requests ar on ar.id = arc.acquisition_request_id
@@ -199,7 +209,7 @@ async function listarEmpreendimentos(): Promise<EmpreendimentoDoFiltro[]> {
         where cs.send_document_signature = 1
           and cs.contract_signature_status_id <> 6
        union
-       select e.code, e.name, ar.id
+       select e.id, e.code, e.name, ar.id
          from enterprise_unities u
          join enterprises e on e.id = u.enterprise_id
          join acquisition_requests ar on ar.id = (
@@ -209,7 +219,7 @@ async function listarEmpreendimentos(): Promise<EmpreendimentoDoFiltro[]> {
                  limit 1)
         where ar.acquisition_request_stage_id in (${vivosPlaceholders})
      ) t
-     group by code, nome
+     group by id, code, nome
      order by nome, code`,
     ESTAGIOS_COM_CONTRATO,
   );
@@ -218,6 +228,7 @@ async function listarEmpreendimentos(): Promise<EmpreendimentoDoFiltro[]> {
     .map((row) => ({
       code: limpo(row.code).toUpperCase(),
       contratos: Number(row.contratos ?? 0),
+      id: Number(row.id ?? 0),
       nome: limpo(row.nome) || limpo(row.code).toUpperCase(),
     }))
     .filter((item) => item.code);
@@ -248,24 +259,32 @@ export async function carregarPainelDeContratos(
     console.error("[apolo][painel-contratos] falha ao listar empreendimentos", error);
   }
 
+  // A sigla da tela passa pela allowlist e vira id pela MESMA lista (PAN-124). O cache continua
+  // chaveado pelas siglas: é o recorte que a tela pediu, e sigla e id vieram da mesma lista.
   const codes = resolverCodes(pedidos, empreendimentos);
+  const ids = idsDoRecorte(codes, empreendimentos);
   const chave = codes.join(",");
   const guardado = cache.get(chave);
   if (guardado && Date.now() - guardado.em < TTL_MS) {
     return { dados: guardado.dados, ok: true };
   }
 
-  if (codes.length === 0) return { dados: vazio(codes, empreendimentos), ok: true };
+  // ⚠️ SEM ID, NÃO VAI AO C2X: `in ()` é erro de sintaxe no MySQL. É o mesmo vazio de quando não
+  // havia código válido (cada código da allowlist tem o id da própria linha, então hoje os dois
+  // vazios são o mesmo).
+  if (codes.length === 0 || ids.length === 0) {
+    return { dados: vazio(codes, empreendimentos), ok: true };
+  }
 
-  const placeholders = codes.map(() => "?").join(", ");
+  const placeholders = ids.map(() => "?").join(", ");
   const vivosPlaceholders = ESTAGIOS_COM_CONTRATO.map(() => "?").join(", ");
   const geracaoPlaceholders = ESTAGIOS_DE_GERACAO.map(() => "?").join(", ");
 
   try {
     // 1. AS LINHAS DE ASSINATURA do recorte (a consulta compartilhada com o portal).
     const [linhaRows] = await poolResult.pool.query<LinhaRow[]>(
-      SQL_LINHAS_POR_CODE(placeholders),
-      codes,
+      SQL_LINHAS_POR_ID(placeholders),
+      ids,
     );
 
     // Por contrato vale UM envio — o com uuidDoc, senão o de maior id. A média é de dois envios
@@ -348,7 +367,8 @@ export async function carregarPainelDeContratos(
 
     // 2. OS CONTRATOS VIVOS do recorte, com tudo o que a antiga aba Contratos mostrava. O rótulo
     // da unidade usa a MESMA expressão das linhas de assinatura, senão a unidade que ainda não
-    // saiu para assinar apareceria com outro nome na mesma lista.
+    // saiu para assinar apareceria com outro nome na mesma lista. E o recorte é pelo MESMO id das
+    // linhas de assinatura (PAN-124): as duas metades da lista não podem discordar do recorte.
     const [vivoRows] = await poolResult.pool.query<VivoRow[]>(
       `select ar.id as ar_id, u.id as unit_id, e.code as emp,
               ${SQL_UNIDADE_ROTULO} as unidade,
@@ -368,9 +388,9 @@ export async function carregarPainelDeContratos(
                  limit 1)
          left join users cli on cli.id = ar.client_id
          left join users imo on imo.id = cli.vinculed_by_id
-        where e.code in (${placeholders})
+        where e.id in (${placeholders})
           and ar.acquisition_request_stage_id in (${vivosPlaceholders})`,
-      [...ESTAGIOS_DE_GERACAO, ...codes, ...ESTAGIOS_COM_CONTRATO],
+      [...ESTAGIOS_DE_GERACAO, ...ids, ...ESTAGIOS_COM_CONTRATO],
     );
 
     // A FICHA VAI PREENCHIDA: é ela que vira `contrato` na linha (valor, imobiliária, geração,

@@ -26,7 +26,10 @@ export async function GET(request: Request) {
   }
 
   try {
-    const result = await loadApoloEnterpriseVendas(codes);
+    // ⚠️ `conferirNoC2x` (PAN-124): a sigla desta tela foi lida AO VIVO do C2X (`loadApoloEnterprises`),
+    // então é conferida no C2X no mesmo instante, e não só no catálogo em cache (até 10 minutos), que
+    // ainda pode não conhecer uma sigla nova ou dar uma sigla trocada ao outro empreendimento.
+    const result = await loadApoloEnterpriseVendas(codes, { conferirNoC2x: true });
 
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: 503 });

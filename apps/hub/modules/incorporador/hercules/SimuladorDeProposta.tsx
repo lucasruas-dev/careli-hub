@@ -34,11 +34,8 @@ import {
   redistribuirDemais,
 } from "@/lib/hercules/entrada-montada";
 import { pisoDaEntradaNoPrazo } from "@/lib/hercules/faixa-do-plano";
-import {
-  aplicarPremissa,
-  type FaixaDePrazo,
-  premissaDoPrazo,
-} from "@/lib/hercules/premissa-do-prazo";
+import type { FaixaDePrazo } from "@/lib/hercules/premissa-do-prazo";
+import { planoEfetivo } from "@/lib/hercules/premissa-efetiva";
 import type { PlanoDaVenda } from "@/lib/hercules/fluxo-de-venda";
 import { DIAS_DE_VENCIMENTO, ENTRADA_VEZES_MAXIMA } from "@/lib/hercules/proposta";
 import {
@@ -212,10 +209,37 @@ export type CondicoesDaProposta = {
    */
   entradaDatas: null | (null | string)[];
   /**
+   * O ÍNDICE que ele escolheu por cima. `null` = não mexeu, e o cadastro (ou a faixa) manda.
+   *
+   * ⚠️ O CÓDIGO, E NÃO O RÓTULO: `POUPANCA`, nunca "poupança anual". O rótulo é texto de tela e muda
+   * por decisão de produto; o código é FK do plano.
+   */
+  indiceEscolhido: null | string;
+  /**
+   * A TAXA que ele escreveu por cima, em % na periodicidade do plano. `null` = não mexeu.
+   *
+   * ⚠️ AFIRMAÇÃO EM CAIXA ALTA: ATÉ 25/09/2026 SÓ O BOOLEANO ABAIXO SUBIA, E OS VALORES MORRIAM AQUI
+   * DENTRO. A composição cadastro → faixa → corretor vivia em três `useMemo` deste componente, e por
+   * isso nem a modal, nem o corpo do pedido, nem a rota conseguiam alcançá-la: o servidor sabia que
+   * ALGUÉM mexeu e seguia calculando pelo cadastro. Nívea (24/09/2026), sobre a proposta 000038
+   * (TAISA FERNANDA BATISTA, VOC Quadra 12 · Lote 22): *"Na proposta não está saindo o novo cenário
+   * de juros e correção."* Ficaram gravados R$ 138.130,32 de mensais onde o cenário escolhido daria
+   * 48 × R$ 2.595,00 = R$ 124.560,00 — R$ 13.570,32 numa venda de R$ 138.401,00.
+   *
+   * ⚠️ ZERO É VALOR, NULO É AUSÊNCIA, e os dois não podem virar a mesma coisa: 0 é o "sem juros"
+   * escrito à mão (o caso da Nívea), e nulo é campo intocado. `Number("")` é 0 — ver `taxaEscrita`
+   * em `lib/hercules/premissa-efetiva.ts`.
+   */
+  jurosEscolhido: null | number;
+  /**
    * O corretor escreveu juros ou índice por cima do que o cadastro mandava?
    *
    * ⚠️ É O QUE ABRE A CAIXA DE NOTA na modal. Lucas (13/09/2026): *"ele altera abre uma caixa de
    * nota para ele registrar o que achar necessário"*.
+   *
+   * ⚠️ ELE CONTINUA EXISTINDO AO LADO DOS DOIS VALORES, e não é redundante: ele é `true` também
+   * quando a alteração é "por cima da FAIXA" e coincide com o cadastro, e é ele que a modal lê para
+   * exigir a nota. Os valores dizem O QUÊ; este diz QUE HOUVE.
    */
   premissaAlterada: boolean;
   entradaValor: number;
@@ -421,33 +445,6 @@ export function SimuladorDeProposta({
     valor: valorDaUnidade,
   });
 
-  // ── Os planos, já com a taxa mensal resolvida ────────────────────────────
-  //
-  // ⚠️ `PlanoDaVenda` é o mesmo `PlanoComercial` com as uniões alargadas para string — a rota
-  // serializa e JSON não carrega união. `taxaMensal` só lê juros, convenção e periodicidade, e
-  // compara com literais: o cast é de tipo, não de valor.
-  const planosDaConta: PlanoDaComposicao[] = useMemo(
-    () =>
-      planos.map((p) => ({
-        // ⚠️ AS ANUAIS E O DESCONTO DO PLANO ENTRAM NA CONTA (Lucas, 18/09/2026: *"esta faltando as
-        // anuais"* · *"tem que ser igual o mmendes"*). Até aqui eram descartados neste `map`, e o
-        // cartão do Garden anunciava o Investidor Parcelado pelo preço cheio e sem os reforços.
-        // Ausentes (o C2X e todo plano sem anual/desconto), a conta é exatamente a de antes.
-        anuaisQuantidade: p.anuaisQuantidade ?? null,
-        anuaisValor: p.anuaisValor ?? null,
-        descontoPercentual: p.descontoPercentual ?? null,
-        entradaPercentual: p.entradaPercentual,
-        nome: p.nome,
-        parcelas: p.parcelas,
-        // ⚠️ O SISTEMA VEM JUNTO DESDE 04/09/2026, e é o que impedia a tela e o PDF de contarem a
-        // mesma história: sem ele a conta era Price para todo mundo, e no SACOC (21 dos 24
-        // empreendimentos) o cartão anunciava R$ 2.157,44 onde o documento dizia R$ 1.500,00.
-        sistemaAmortizacao: sistemaDoCadastro(p.sistemaAmortizacao),
-        taxaAoMes: taxaMensal(p as unknown as PlanoComercial),
-      })),
-    [planos],
-  );
-
   /**
    * QUAL plano está escolhido — pela POSIÇÃO, e não pelo nome.
    *
@@ -462,14 +459,98 @@ export function SimuladorDeProposta({
    * aparece errado na tela; no dia em que o filho mudar o NORMAL dele, o cartão mostra uma parcela
    * e o contrato sai com o índice do outro, sem erro e sem log.
    *
-   * A posição resolve porque `planosDaConta` é um `map` 1:1 de `planos` — o mesmo índice é o mesmo
-   * plano nas duas listas, por construção.
+   * ⚠️ ELE SAI DE `planos`, E NÃO DE `planosDaConta` (25/09/2026). `planosDaConta` passou a compor a
+   * premissa por posição e precisa saber QUAL posição é a ativa: derivar o índice da lista composta
+   * seria uma dependência circular. As duas listas são `map` 1:1 de `planos`, então o índice é o
+   * mesmo nas três, por construção.
    */
   const indiceDoPlano = useMemo(() => {
-    const achado = planosDaConta.findIndex((p) => p.nome === planoAtivo);
+    const achado = planos.findIndex((p) => p.nome === planoAtivo);
     if (achado >= 0) return achado;
-    return planosDaConta.length > 0 ? 0 : -1;
-  }, [planoAtivo, planosDaConta]);
+    return planos.length > 0 ? 0 : -1;
+  }, [planoAtivo, planos]);
+
+  // ⚠️ O PLANO CRU FICA À MÃO. `PlanoDaComposicao` carrega só o que a conta usa; o índice de
+  // correção, o sistema de amortização e a convenção de juros são do CADASTRO, e a tela precisa
+  // deles para dizer o que o cliente vai assinar.
+  const cruBase = indiceDoPlano >= 0 ? planos[indiceDoPlano] : undefined;
+
+  /**
+   * ── A PREMISSA DE CADA PLANO DA LISTA, UMA COMPOSIÇÃO SÓ ─────────────────
+   *
+   * ⚠️ AFIRMAÇÃO EM CAIXA ALTA: ATÉ 25/09/2026 ESTA TELA TINHA DOIS NÚMEROS PARA A MESMA VENDA. A
+   * rota, a prévia da modal e o PDF passaram a usar o plano EFETIVO; `planosDaConta` continuou sendo
+   * um `map` dos planos CRUS, e é dele que saem os CARTÕES da tabela do lote e as COMPOSIÇÕES da
+   * busca por parcela. O número grande que o coordenador lê antes de clicar em Gerar discordava do
+   * papel que sai, dentro da MESMA modal — a classe exata do defeito de 04/09/2026, R$ 2.157,44 no
+   * cartão e R$ 1.500,00 no papel.
+   *
+   * ⚠️ E ISSO NÃO É TEÓRICO. Medido em 25/09/2026 (join de `temis_planos` ativo com
+   * `temis_faixas_de_prazo` ativa pelo prazo do próprio plano): no LBF (33) o INVESTIDOR 02 de 48
+   * parcelas tem `juros_taxa` NULO no cadastro e a faixa de 37 a 60 DEFINE 0,8% ao mês. Sem esta
+   * composição o cartão compunha sem juros e o PDF saía com 0,8%.
+   *
+   * ⚠️ A FAIXA VALE EM TODA POSIÇÃO; A SOBRESCRITA DO CORRETOR, SÓ NA ATIVA. O campo "Juros % a.m."
+   * e o seletor "Correção" são do plano que está na tela — carimbá-los nos outros cartões faria o
+   * coordenador ver a taxa que ele escreveu para o NORMAL aparecer no INVESTIDOR ao lado.
+   *
+   * ⚠️ E O PRAZO QUE DECIDE A FAIXA É O DA POSIÇÃO: o prazo efetivo da tela para o plano ATIVO (o
+   * campo, ou o do plano quando o campo está vazio) e o prazo do PRÓPRIO plano para os outros —
+   * porque é nesse prazo que cada cartão compõe e que a busca por parcela varre.
+   */
+  const planosEfetivos = useMemo(
+    () =>
+      planos.map((p, posicao) =>
+        planoEfetivo({
+          faixasDePrazo,
+          indiceSobrescrito: posicao === indiceDoPlano ? sobrescrito.indice : null,
+          jurosSobrescrito: posicao === indiceDoPlano ? sobrescrito.juros : null,
+          parcelas:
+            posicao === indiceDoPlano
+              ? cockpit.parcelas > 0
+                ? cockpit.parcelas
+                : p.parcelas
+              : p.parcelas,
+          plano: p,
+        }),
+      ),
+    [cockpit.parcelas, faixasDePrazo, indiceDoPlano, planos, sobrescrito],
+  );
+
+  // ── Os planos, já com a taxa mensal resolvida ────────────────────────────
+  //
+  // ⚠️ `PlanoDaVenda` é o mesmo `PlanoComercial` com as uniões alargadas para string — a rota
+  // serializa e JSON não carrega união. `taxaMensal` só lê juros, convenção e periodicidade, e
+  // compara com literais: o cast é de tipo, não de valor.
+  //
+  // ⚠️ A ENTRADA, A TAXA E O SISTEMA SAEM DO EFETIVO (ver `planosEfetivos`), e o resto do CADASTRO:
+  // nome, prazo, anuais e desconto são do molde e nenhuma faixa os toca.
+  const planosDaConta: PlanoDaComposicao[] = useMemo(
+    () =>
+      planos.map((p, posicao) => ({
+        // ⚠️ AS ANUAIS E O DESCONTO DO PLANO ENTRAM NA CONTA (Lucas, 18/09/2026: *"esta faltando as
+        // anuais"* · *"tem que ser igual o mmendes"*). Até aqui eram descartados neste `map`, e o
+        // cartão do Garden anunciava o Investidor Parcelado pelo preço cheio e sem os reforços.
+        // Ausentes (o C2X e todo plano sem anual/desconto), a conta é exatamente a de antes.
+        anuaisQuantidade: p.anuaisQuantidade ?? null,
+        anuaisValor: p.anuaisValor ?? null,
+        descontoPercentual: p.descontoPercentual ?? null,
+        entradaPercentual:
+          planosEfetivos[posicao]?.plano?.entradaPercentual ?? p.entradaPercentual,
+        nome: p.nome,
+        parcelas: p.parcelas,
+        // ⚠️ O SISTEMA VEM JUNTO DESDE 04/09/2026, e é o que impedia a tela e o PDF de contarem a
+        // mesma história: sem ele a conta era Price para todo mundo, e no SACOC (21 dos 24
+        // empreendimentos) o cartão anunciava R$ 2.157,44 onde o documento dizia R$ 1.500,00.
+        sistemaAmortizacao:
+          planosEfetivos[posicao]?.sistemaAmortizacao ??
+          sistemaDoCadastro(p.sistemaAmortizacao),
+        taxaAoMes:
+          planosEfetivos[posicao]?.taxaAoMes ??
+          taxaMensal(p as unknown as PlanoComercial),
+      })),
+    [planos, planosEfetivos],
+  );
 
   const planoBase = useMemo(
     () => (indiceDoPlano >= 0 ? (planosDaConta[indiceDoPlano] ?? null) : null),
@@ -481,11 +562,6 @@ export function SimuladorDeProposta({
    * plano é carregado, e é contra ele que a troca de plano decide o que fazer com o desconto.
    */
   const descontoDoAtivo = descontoDoPlano(planoBase?.descontoPercentual);
-
-  // ⚠️ O PLANO CRU FICA À MÃO. `PlanoDaComposicao` carrega só o que a conta usa; o índice de
-  // correção, o sistema de amortização e a convenção de juros são do CADASTRO, e a tela precisa
-  // deles para dizer o que o cliente vai assinar. Vem do MESMO índice do `planoBase`.
-  const cruBase = indiceDoPlano >= 0 ? planos[indiceDoPlano] : undefined;
 
   // (O mapa `crus`, por nome, servia só ao rótulo de correção dos cartões. Desde 18/09/2026 o cartão
   // lê o plano cru pela POSIÇÃO, como a ressalva, e o mapa saiu: pelo nome, o plano do pai e o do
@@ -512,9 +588,13 @@ export function SimuladorDeProposta({
    * ⚠️ E O PRAZO QUE DECIDE A FAIXA É O EFETIVO: o que o corretor digitou, ou o do plano quando ele
    * não digitou nada. É o mesmo fallback que `montada`, `aniversarios` e a régua da entrada já
    * usam — usar `cockpit.parcelas` cru faria a faixa sumir enquanto o campo estivesse em branco.
+   *
+   * ⚠️ É A MESMA CONTA DE `planosEfetivos` NA POSIÇÃO ATIVA, e sai do plano CRU pelo mesmo motivo que
+   * `indiceDoPlano`: `planoBase` já vem composto, e lê-lo aqui fecharia o ciclo. Nem a faixa nem o
+   * corretor mexem no PRAZO do plano, então os dois caminhos dão o mesmo número.
    */
   const prazoDaFaixa =
-    cockpit.parcelas > 0 ? cockpit.parcelas : (planoBase?.parcelas ?? 0);
+    cockpit.parcelas > 0 ? cockpit.parcelas : (cruBase?.parcelas ?? 0);
 
   /**
    * O desconto do plano escolhido, SE o prazo na tela é o do plano; zero quando não é.
@@ -581,63 +661,72 @@ export function SimuladorDeProposta({
     ajusteDoPlano(descontoDoAtivo),
   );
 
-  const premissaDaFaixa = useMemo(
-    () => premissaDoPrazo(faixasDePrazo ?? [], prazoDaFaixa),
-    [faixasDePrazo, prazoDaFaixa],
-  );
-
-  const daFaixa = useMemo(
-    () => aplicarPremissa(cruBase as never, premissaDaFaixa) as typeof cruBase,
-    [cruBase, premissaDaFaixa],
-  );
-
   /**
    * O plano que vale, na ordem: CADASTRO → FAIXA DE PRAZO → o que o corretor escreveu por cima.
    *
-   * ⚠️ O CORRETOR É O ÚLTIMO, e é assim que tem que ser: a faixa entrega a premissa "conforme
-   * cadastro e alinhamento", e a alteração dele é uma decisão comercial que vence o cadastro — com
-   * a nota obrigatória logo em seguida, que é o preço de poder fazer isso.
+   * ⚠️ A COMPOSIÇÃO MUDOU DE CASA EM 24/09/2026, E SÓ ISSO. Ela morava aqui dentro, em três
+   * `useMemo` seguidos, e por isso nem a modal, nem o corpo do pedido, nem a rota conseguiam
+   * alcançá-la — foi assim que a proposta 000038 gravou R$ 138.130,32 de mensais onde a corretora
+   * havia zerado os juros (seriam R$ 124.560,00). Nívea, no mesmo dia: *"Na proposta não está
+   * saindo o novo cenário de juros e correção."* A regra é a mesma, letra por letra; quem responde
+   * agora é `lib/hercules/premissa-efetiva.ts`, que tem teste próprio e pode ser chamado do
+   * servidor.
    *
-   * ⚠️ TAXA VAZIA VOLTA À PREMISSA, NÃO A ZERO. Apagar o campo é desfazer a alteração; para dizer
-   * "sem juros" ele escreve 0, e aí é uma alteração de verdade e a nota abre.
+   * ⚠️ E ELE É A POSIÇÃO ATIVA DE `planosEfetivos`, e não uma segunda chamada (25/09/2026). Compor
+   * aqui de novo daria duas respostas para o plano da tela no dia em que os argumentos divergissem —
+   * que é exatamente como o cartão e o papel passaram a discordar. `planosEfetivos` já aplica a
+   * sobrescrita do corretor só nesta posição e usa o mesmo prazo efetivo.
    */
-  const cru = useMemo(() => {
-    if (!daFaixa) return daFaixa;
-    const bruto = sobrescrito.juros;
-    const taxa =
-      bruto == null || bruto.trim() === ""
-        ? null
-        : Number(bruto.replace(",", "."));
-    const mexeuNaTaxa = taxa != null && Number.isFinite(taxa) && taxa >= 0;
-    const mexeuNoIndice =
-      sobrescrito.indice != null && sobrescrito.indice !== "";
-    if (!mexeuNaTaxa && !mexeuNoIndice) return daFaixa;
-    return {
-      ...daFaixa,
-      ...(mexeuNaTaxa ? { jurosTaxa: taxa } : {}),
-      ...(mexeuNoIndice ? { indiceCorrecao: sobrescrito.indice } : {}),
-    };
-  }, [daFaixa, sobrescrito]);
+  const efetivo = useMemo(
+    () =>
+      planosEfetivos[indiceDoPlano] ??
+      planoEfetivo({
+        faixasDePrazo,
+        indiceSobrescrito: sobrescrito.indice,
+        jurosSobrescrito: sobrescrito.juros,
+        parcelas: prazoDaFaixa,
+        plano: cruBase,
+      }),
+    [
+      cruBase,
+      faixasDePrazo,
+      indiceDoPlano,
+      planosEfetivos,
+      prazoDaFaixa,
+      sobrescrito,
+    ],
+  );
+
+  // (`efetivo.premissaDaFaixa` ficou sem leitor nesta tela quando a composição virou peça: quem
+  // precisa da faixa é o servidor, que a congela em `condicoes.premissa.daFaixa`. Um `const` sem
+  // leitor é warning de lint e, pior, promete à próxima pessoa que alguém aqui usa a faixa.)
+  const cru = efetivo.plano;
 
   /** O corretor mexeu na premissa? É o que abre a caixa de nota na modal. */
-  const premissaAlterada = cru !== daFaixa;
+  const premissaAlterada = efetivo.alteradaPeloCorretor;
 
   /**
-   * O plano da conta, já com a premissa da faixa.
+   * A TAXA e o ÍNDICE que ele escolheu, para subirem com as condições — nulos quando ele não mexeu.
    *
-   * ⚠️ A TAXA É RECALCULADA A PARTIR DO CRU EFETIVO, e não herdada do `planoBase`: trocar o índice
-   * e a taxa sem refazer `taxaMensal` deixaria o cartão mostrando a parcela da premissa ANTIGA
-   * enquanto o rodapé já anunciaria o índice novo.
+   * ⚠️ A ORIGEM É A RÉGUA, E NÃO O CAMPO DA TELA. `planoEfetivo` já responde quem decidiu cada um
+   * (`jurosDe` / `indiceDe`: cadastro, faixa ou corretor); ler o `sobrescrito` cru aqui repetiria a
+   * regra de "taxa vazia volta à premissa" numa segunda cópia, e as duas divergiriam no primeiro
+   * ajuste. "Escolhido" é só o que veio do CORRETOR.
    */
-  const plano = useMemo(() => {
-    if (!planoBase || !cru || cru === cruBase) return planoBase;
-    return {
-      ...planoBase,
-      entradaPercentual: cru.entradaPercentual,
-      sistemaAmortizacao: sistemaDoCadastro(cru.sistemaAmortizacao),
-      taxaAoMes: taxaMensal(cru as unknown as PlanoComercial),
-    };
-  }, [cru, cruBase, planoBase]);
+  const jurosEscolhido =
+    efetivo.jurosDe === "corretor" ? (efetivo.plano?.jurosTaxa ?? null) : null;
+  const indiceEscolhido =
+    efetivo.indiceDe === "corretor" ? (efetivo.plano?.indiceCorrecao ?? null) : null;
+
+  /**
+   * O plano da conta do plano ATIVO.
+   *
+   * ⚠️ ELE É O `planoBase` SEM RETOQUE DESDE 25/09/2026. A premissa já entrou em `planosDaConta`,
+   * posição por posição: a entrada, a taxa mensal e o sistema de amortização de LÁ já são os
+   * efetivos. O retoque que morava aqui recompunha só a posição ativa, e era isso que deixava os
+   * outros cartões e a busca por parcela contando a história do cadastro.
+   */
+  const plano = planoBase;
 
   // ── A TABELA: cada plano aplicado a ESTE lote ────────────────────────────
   //
@@ -1167,6 +1256,8 @@ export function SimuladorDeProposta({
             entradaVezes: cockpit.entradaVezes,
             entradaDatas: datasDaEntrada,
             entradaParcelas: parcelasDaEntrada,
+            indiceEscolhido,
+            jurosEscolhido,
             premissaAlterada,
             parcela: principal.parcela,
             parcelasMensais: principal.parcelas,
@@ -1196,6 +1287,12 @@ export function SimuladorDeProposta({
     // uma coisa e o que subia era outra — em silêncio, que é o pior jeito de errar aqui.
     datasDaEntrada,
     premissaAlterada,
+    // ⚠️ AS DUAS ENTRARAM EM 25/09/2026, E A NOTA ACIMA JÁ DIZ POR QUE ELAS SÃO OBRIGATÓRIAS: é a
+    // TERCEIRA vez que esta casa esquece uma dependência aqui e a tela passa a mostrar uma coisa
+    // enquanto sobe outra, em silêncio. Sem elas, zerar os juros mudaria a tela e o pedido continuaria
+    // saindo com a premissa do cadastro — que é exatamente o defeito da proposta 000038.
+    indiceEscolhido,
+    jurosEscolhido,
     diaDeVencimento,
     idDoPlanoNaTela,
     // ⚠️ A MONTAGEM ENTRA NAS DEPENDÊNCIAS. Sem ela, digitar um valor de parcela da entrada não
@@ -2119,7 +2216,12 @@ export function SimuladorDeProposta({
               // entrada · anuais · prazo, o valor do lote com a tabela e o desconto, a parcela com os
               // centavos e a correção. Quem escreve é `linhasDoCartao` (lib/hercules/cartao-do-plano),
               // conferida contra a conta extraída do `garden.html`.
-              const cru = planos[posicao];
+              // ⚠️ O PLANO EFETIVO DESTA POSIÇÃO, e não o do cadastro (25/09/2026). O cartão escreve
+              // "correção: IPCA anual + 0,7207% a.m." nesta linha, e a parcela logo acima já sai da
+              // premissa que vale: ler o cadastro aqui faria a MESMA célula anunciar a correção que a
+              // faixa substituiu e a parcela que a faixa calculou. `planosEfetivos` é `map` 1:1 de
+              // `planos`, como `tabela` — a posição é a mesma nas três.
+              const cru = planosEfetivos[posicao]?.plano ?? planos[posicao];
               const linhas = linhasDoCartao({
                 anuais: t.anuais,
                 entrada: t.entrada,

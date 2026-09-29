@@ -410,6 +410,48 @@ describe("quando dá errado", () => {
     expect(chamadas.some((c) => c.metodo === "DELETE")).toBe(false);
   });
 
+  // ⚠️ A FALHA DO `notificar` LEVA OS DOIS IDS, E O DO DOCUMENTO É O QUE PERMITE CANCELAR DEPOIS. Este
+  // é o pior desfecho da casa: envelope `running`, pago, permanente, com os convites NÃO enviados — e é
+  // justamente a linha que alguém vai querer cancelar. Cancelar na v3 é um PATCH no DOCUMENTO (doc lida
+  // 25/09/2026, ver `cancelarEnvelope`), então até 25/09/2026, com `FalhaNoEnvio` sem o id do
+  // documento, essa linha nascia sem ele e os três caminhos de cancelamento do Panteon a recusariam
+  // PARA SEMPRE: nenhum outro lugar do código preencheria a coluna depois.
+  it("a falha do notificar leva o id do ENVELOPE e o do DOCUMENTO, que é o que se cancela", async () => {
+    const { porta } = duplo({
+      "/notifications": new FalhaDaClicksign("Clicksign devolveu 500.", {
+        detalhes: [],
+        requestId: null,
+        status: 500,
+      }),
+    });
+
+    const r = await enviarParaAssinatura(pedido([pessoa("A Silva", "a@x.com", "comprador", 1)]), porta);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.envelopeId).toBe("env_1");
+    expect(r.documentoId).toBe("doc_1");
+  });
+
+  // ⚠️ E QUANDO O RASCUNHO FOI APAGADO OS DOIS VOLTAM `null`, na mesma régua: apagar o rascunho leva o
+  // documento junto, e gravar o id de um documento que não existe mais mandaria o cancelamento futuro
+  // tentar um PATCH no nada.
+  it("rascunho apagado devolve os dois ids nulos", async () => {
+    const { porta } = duplo({
+      "/signers": new FalhaDaClicksign("Clicksign devolveu 422.", {
+        detalhes: [],
+        requestId: null,
+        status: 422,
+      }),
+    });
+
+    const r = await enviarParaAssinatura(pedido([pessoa("A Silva", "a@x.com", "comprador", 1)]), porta);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.rascunhoApagado).toBe(true);
+    expect(r.envelopeId).toBeNull();
+    expect(r.documentoId).toBeNull();
+  });
+
   it("leva os detalhes do JSON:API na mensagem — é o que diz QUAL campo falhou", async () => {
     const { porta } = duplo({
       "/documents": new FalhaDaClicksign("Clicksign devolveu 415.", {
@@ -456,42 +498,152 @@ describe("o nome do envelope", () => {
 // volta — em nenhuma das três etapas que voltam, Contrato, Em assinatura e Pré-faturamento. Por isso
 // o que se testa aqui é a forma exata do pedido e o desfecho da falha — não a "mensagem bonita".
 describe("o cancelamento do envelope", () => {
-  it("faz um PATCH no envelope com status canceled", async () => {
-    const { chamadas, porta } = duplo();
-    const r = await cancelarEnvelope("env-7", porta);
+  /**
+   * O duplo deste bloco: o PATCH no documento e o GET que confere o envelope DEPOIS dele.
+   *
+   * ⚠️ SÃO DUAS RESPOSTAS SEPARADAS PORQUE O CANCELAMENTO FAZ DUAS CHAMADAS, e é justamente o que
+   * mudou em 25/09/2026: o 200 do PATCH não é a morte do envelope (nenhuma das duas páginas da doc
+   * liga uma coisa à outra), então `cancelarEnvelope` relê o envelope e só confirma com `canceled`.
+   * Um duplo que respondesse a mesma coisa para os dois métodos não saberia dizer qual dos dois
+   * passos o teste está medindo.
+   */
+  const duploDoCancelamento = (
+    respostas: { get?: Error | unknown; patch?: Error | unknown } = {},
+  ) => {
+    const chamadas: Chamada[] = [];
+
+    const porta = async <T = unknown>(caminho: string, opcoes: Opcoes = {}): Promise<T> => {
+      const metodo = opcoes.metodo ?? "GET";
+      chamadas.push({ caminho, corpo: opcoes.corpo, metodo });
+      const resposta = metodo === "GET" ? respostas.get : respostas.patch;
+      if (resposta instanceof Error) throw resposta;
+      return (resposta ?? {}) as T;
+    };
+
+    return { chamadas, porta };
+  };
+
+  /** A releitura confirmando a morte: é o único desfecho que devolve `ok: true`. */
+  const releituraCanceled = { data: { attributes: { status: "canceled" } } };
+
+  // ⚠️ O PATCH É NO DOCUMENTO, NÃO NO ENVELOPE — lido na doc em 25/09/2026. A página "Editar
+  // Documento" é `PATCH /envelopes/{envelope_id}/documents/{document_id}` e o exemplo dela traz
+  // `"status": "canceled"` com `"type": "documents"`; a página de regras do DOCUMENTO diz *"A
+  // alteração desse campo determina se deseja `cancelar` ou `finalizar` o documento"*. No ENVELOPE o
+  // mesmo campo só ATIVA, e foi assim que a Nívea levou 400 `status deve estar em: draft, running`.
+  it("faz um PATCH no DOCUMENTO com status canceled, e confere o envelope depois", async () => {
+    const { chamadas, porta } = duploDoCancelamento({ get: releituraCanceled });
+    const r = await cancelarEnvelope("env-7", "doc-7", porta);
 
     expect(r.ok).toBe(true);
     expect(chamadas).toEqual([
       {
-        caminho: "/envelopes/env-7",
-        // O mesmo formato do passo que ATIVA: JSON:API, com `id` e `type` no corpo. Ver a ressalva
-        // escrita em `cancelarEnvelope` — a forma é inferida do passo 5, não lida na doc.
-        corpo: { data: { attributes: { status: "canceled" }, id: "env-7", type: "envelopes" } },
+        caminho: "/envelopes/env-7/documents/doc-7",
+        // JSON:API, com o id DO DOCUMENTO e `type: "documents"` — o corpo do exemplo da doc.
+        corpo: { data: { attributes: { status: "canceled" }, id: "doc-7", type: "documents" } },
         metodo: "PATCH",
       },
+      // ⚠️ E A CONFIRMAÇÃO É UM GET NO ENVELOPE: `canceled` no documento não é `canceled` no
+      // envelope, e é o envelope que decide se alguém ainda pode assinar.
+      { caminho: "/envelopes/env-7", corpo: undefined, metodo: "GET" },
     ]);
+  });
+
+  // ⚠️ `PATCH /envelopes/{id}` (sem o documento) é a rota que ATIVA o envelope, e é exatamente o
+  // erro que esta correção desfaz: ela recusa `canceled` com 400. Um PATCH que caísse lá com
+  // `status: "running"` REATIVARIA o envelope em vez de matá-lo.
+  it("não manda PATCH na rota do envelope", async () => {
+    const { chamadas, porta } = duploDoCancelamento({ get: releituraCanceled });
+    await cancelarEnvelope("env-7", "doc-7", porta);
+
+    expect(chamadas.filter((c) => c.metodo === "PATCH").map((c) => c.caminho)).toEqual([
+      "/envelopes/env-7/documents/doc-7",
+    ]);
+  });
+
+  // ⚠️ ESTE É O TESTE DA QUINTA INFERÊNCIA DESTE ARQUIVO, E O PRIMEIRO QUE FICARIA ESCONDIDO. Até o
+  // conserto da rota, o PATCH devolvia 400 SEMPRE e este caminho era inalcançável; agora ele é
+  // alcançável, e o elo "documento cancelado logo envelope morto" NÃO está na doc (as duas páginas
+  // foram lidas em 25/09/2026 e nenhuma liga uma coisa à outra). Se a Clicksign deixar o envelope
+  // `running`, quem chama NÃO pode gravar `cancelado` nem soltar o card: `cancelado` é terminal (o
+  // `auto_close` seguinte seria descartado) e está em `ESTADOS_QUE_LIBERAM_REENVIO`, então um `ok`
+  // mentiroso aqui fura por dentro a guarda contra o segundo envelope pago.
+  it("PATCH aceito e envelope ainda running: NÃO é cancelamento, e a falha é duvidosa", async () => {
+    const { chamadas, porta } = duploDoCancelamento({
+      get: { data: { attributes: { status: "running" } } },
+    });
+    const r = await cancelarEnvelope("env-7", "doc-7", porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.duvidoso).toBe(true);
+    expect(r.erro).toContain("running");
+    expect(r.envelopeId).toBe("env-7");
+    // O PATCH saiu (não se desfaz), e a releitura é que recusou o `ok`.
+    expect(chamadas.map((c) => c.metodo)).toEqual(["PATCH", "GET"]);
+  });
+
+  // ⚠️ `closed` TAMBÉM NÃO CONTA COMO MORTE NOSSA: ele é tanto "todos assinaram" quanto "venceu o
+  // prazo e fechou com o que tinha" (ver `estadoDaClicksign`). Carimbar "cancelado" sobre um
+  // envelope que fechou ASSINADO apagaria do Panteon o registro da assinatura.
+  it("PATCH aceito e envelope closed: também não confirma o cancelamento", async () => {
+    const { porta } = duploDoCancelamento({ get: { data: { attributes: { status: "closed" } } } });
+    const r = await cancelarEnvelope("env-7", "doc-7", porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.duvidoso).toBe(true);
+    expect(r.erro).toContain("closed");
+  });
+
+  // ⚠️ RELEITURA QUE NÃO RESPONDE É DÚVIDA, NÃO CERTEZA: o PATCH chegou e foi aceito, e daqui não dá
+  // para dizer se o envelope morreu. Quem chama não solta o card e manda conferir.
+  it("PATCH aceito e releitura que falha: falha duvidosa, sem afirmar nada", async () => {
+    const { porta } = duploDoCancelamento({ get: new Error("timeout") });
+    const r = await cancelarEnvelope("env-7", "doc-7", porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.duvidoso).toBe(true);
+    expect(r.erro).toContain("aceito");
   });
 
   // ⚠️ `PATCH /envelopes/` (id vazio) bate em OUTRA rota da API, e um 200 dali seria lido como
   // "cancelado" — a mentira mais cara possível neste lugar, porque solta o card com o envelope vivo.
   it("não chama a Clicksign sem id", async () => {
     const { chamadas, porta } = duplo();
-    const r = await cancelarEnvelope("   ", porta);
+    const r = await cancelarEnvelope("   ", "doc-7", porta);
 
     expect(r.ok).toBe(false);
     expect(chamadas).toEqual([]);
   });
 
+  // ⚠️ SEM O ID DO DOCUMENTO NÃO SE CHAMA NADA, E NÃO SE FINGE QUE DEU CERTO. `PATCH
+  // /envelopes/{id}/documents/` (documento vazio) bate na COLEÇÃO de documentos do envelope, e uma
+  // resposta boa dali seria lida aqui como "cancelado" — soltando o card com o contrato na rua.
+  it("não chama a Clicksign sem o id do documento, e a falha diz isso", async () => {
+    const { chamadas, porta } = duplo();
+    const r = await cancelarEnvelope("env-7", "   ", porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(chamadas).toEqual([]);
+    expect(r.erro).toContain("documento");
+    // Nada foi mandado: não há dúvida nenhuma sobre ter chegado.
+    expect(r.duvidoso).toBe(false);
+    expect(r.envelopeId).toBe("env-7");
+  });
+
   it("devolve a falha com os detalhes e o request id, e não lança", async () => {
     const { porta } = duplo({
-      "/envelopes/env-8": new FalhaDaClicksign("Clicksign devolveu 422.", {
+      "/envelopes/env-8/documents/doc-8": new FalhaDaClicksign("Clicksign devolveu 422.", {
         detalhes: ["/data/attributes/status não permite a transição"],
         requestId: "req-9",
         status: 422,
       }),
     });
 
-    const r = await cancelarEnvelope("env-8", porta);
+    const r = await cancelarEnvelope("env-8", "doc-8", porta);
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.erro).toContain("não permite a transição");
@@ -502,14 +654,14 @@ describe("o cancelamento do envelope", () => {
   // que as pessoas seguem com o contrato na mão.
   it("recusa da API não é duvidosa: o envelope continua vivo", async () => {
     const { porta } = duplo({
-      "/envelopes/env-8": new FalhaDaClicksign("Clicksign devolveu 422.", {
+      "/envelopes/env-8/documents/doc-8": new FalhaDaClicksign("Clicksign devolveu 422.", {
         detalhes: [],
         requestId: null,
         status: 422,
       }),
     });
 
-    const r = await cancelarEnvelope("env-8", porta);
+    const r = await cancelarEnvelope("env-8", "doc-8", porta);
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.duvidoso).toBe(false);
@@ -521,14 +673,14 @@ describe("o cancelamento do envelope", () => {
   it("timeout e falha de rede são duvidosos: pode ter chegado", async () => {
     for (const mensagem of ["Clicksign não respondeu em 15s.", "Falha de rede ao chamar a Clicksign."]) {
       const { porta } = duplo({
-        "/envelopes/env-8": new FalhaDaClicksign(mensagem, {
+        "/envelopes/env-8/documents/doc-8": new FalhaDaClicksign(mensagem, {
           detalhes: [],
           requestId: null,
           status: 0,
         }),
       });
 
-      const r = await cancelarEnvelope("env-8", porta);
+      const r = await cancelarEnvelope("env-8", "doc-8", porta);
       expect(r.ok).toBe(false);
       if (r.ok) continue;
       expect(r.duvidoso).toBe(true);
@@ -538,7 +690,7 @@ describe("o cancelamento do envelope", () => {
   // Sem id nada foi chamado: não há dúvida nenhuma sobre ter chegado.
   it("sem id, a falha não é duvidosa", async () => {
     const { porta } = duplo();
-    const r = await cancelarEnvelope("", porta);
+    const r = await cancelarEnvelope("", "doc-8", porta);
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.duvidoso).toBe(false);

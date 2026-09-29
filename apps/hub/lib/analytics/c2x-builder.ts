@@ -1,5 +1,5 @@
 import {
-  ANALYTICS_EXCLUDED_ENTERPRISE_CODES,
+  ANALYTICS_EXCLUDED_ENTERPRISE_IDS,
   ENTERPRISE_GROUPS,
   findEnterpriseMirror,
   ENTERPRISE_SUB_ALIASES,
@@ -26,11 +26,18 @@ import type {
 //   lookups (sexes/civil_states/salary_ranges/schoolings) — dimensões pra cruzar quem compra/
 //   quem atrasa. Fill rate validado (compradores ~97%; sexo ~60% → bucket "(não informado)");
 // - exclui empreendimentos de teste/masterplan e os ESPELHOS históricos
-//   (ANALYTICS_EXCLUDED_ENTERPRISE_CODES = EXCLUDED + ENTERPRISE_MIRRORS) em TODAS as contas.
+//   (ANALYTICS_EXCLUDED_ENTERPRISE_IDS = EXCLUDED + ENTERPRISE_MIRRORS, pelo id) em TODAS as contas.
 //   ⚠️ O espelho (hoje o VLO, registro do Vale do Ouro antes da divisão em VOC + VOL) tem os
 //   MESMOS lotes das divisões vivas e o MESMO nome delas: sem esta linha, "quantas unidades tem o
 //   Vale do Ouro" responde o dobro, e o filtro por nome ("vale do ouro" casa e.name LIKE nos três)
 //   traz o loteamento duas vezes. Ver ENTERPRISE_MIRRORS em lib/guardian/c2x-analytics.ts.
+// - ⚠️ O EMPREENDIMENTO É FILTRADO PELO ID DO C2X (`e.id`), NUNCA PELA SIGLA (PAN-124, 25/09/2026): a
+//   exclusão, a gleba chamada por apelido, o espelho trocado pelas divisões e o grupo consolidado. A
+//   sigla muda quando alguém renomeia no C2X (o 43 foi de RDV para PDI em 24/09/2026; o 30 foi de LAG
+//   para ADT em 16/07, e a exclusão pelo "LAG" deixou de excluir quem devia) e a pergunta à CACÁ
+//   voltaria ZERO, calada. Os ids moram nas mesmas listas de lib/guardian/c2x-analytics.ts. A única
+//   comparação por sigla que FICA é o termo livre: é o que a pessoa DIGITOU ("quanto vendeu o VOC"),
+//   e quem digita usa a sigla que vê hoje.
 
 export type C2xBuilderInput = {
   metrica: C2xMetrica;
@@ -250,29 +257,32 @@ type FiltroSql = {
   needs: Partial<Needs>;
 };
 
+// O `in` pelo id do C2X, com um `?` por id. As listas vêm de c2x-analytics.ts (nunca da pessoa).
+function porIds(ids: readonly number[]): FiltroSql {
+  return { clause: `e.id in (${ids.map(() => "?").join(", ")})`, needs: {}, params: [...ids] };
+}
+
 // Filtro de empreendimento: casa primeiro com os GRUPOS consolidados (ex.: "Lavra do Ouro"
 // = LOS+LOU, pra fechar com o número do painel); senão, sigla exata ou nome LIKE.
 function filtroEmpreendimento(term: string): FiltroSql {
   const norm = normalizeTerm(term);
 
-  // Gleba individual da Lagoa Bonita (Raposo/Paulo/Fernando ou LBR/LBP/LBF) → código exato.
+  // Gleba individual da Lagoa Bonita (Raposo/Paulo/Fernando ou LBR/LBP/LBF) → o id exato dela.
+  // ⚠️ PELO ID (PAN-124): o apelido "raposo" continua casando o 27 mesmo que o LBR seja renomeado.
   const sub = ENTERPRISE_SUB_ALIASES.find((entry) => entry.alias === norm);
 
   if (sub) {
-    return { clause: "e.code = ?", needs: {}, params: [sub.code] };
+    return { clause: "e.id = ?", needs: {}, params: [sub.id] };
   }
 
   // Pediu o ESPELHO pelo código (ex.: "VLO")? Responde pelas DIVISÕES vivas. O espelho está fora
-  // de toda conta (ANALYTICS_EXCLUDED_ENTERPRISE_CODES), então sem este desvio a pergunta legítima
+  // de toda conta (ANALYTICS_EXCLUDED_ENTERPRISE_IDS), então sem este desvio a pergunta legítima
   // "quanto tem o VLO" voltaria ZERO — mentira por omissão. Ver ENTERPRISE_MIRRORS.
+  // ⚠️ AS DIVISÕES PELO ID (`divisionIds`: 37, 36, 41), na mesma ordem das siglas de antes.
   const mirror = findEnterpriseMirror(term);
 
   if (mirror) {
-    return {
-      clause: `e.code in (${mirror.divisions.map(() => "?").join(", ")})`,
-      needs: {},
-      params: [...mirror.divisions],
-    };
+    return porIds(mirror.divisionIds);
   }
 
   const group = ENTERPRISE_GROUPS.find((entry) => {
@@ -281,14 +291,12 @@ function filtroEmpreendimento(term: string): FiltroSql {
     return display === norm || (norm.length >= 4 && display.includes(norm));
   });
 
+  // ⚠️ O GRUPO PELOS IDS DAS DIVISÕES (`ids`, na mesma ordem de `codes`). "Lavra do Ouro" = 4 e 1.
   if (group) {
-    return {
-      clause: `e.code in (${group.codes.map(() => "?").join(", ")})`,
-      needs: {},
-      params: [...group.codes],
-    };
+    return porIds(group.ids);
   }
 
+  // ⚠️ O TERMO LIVRE FICA PELA SIGLA E PELO NOME, de propósito: é o texto que a pessoa digitou.
   return {
     clause:
       "(upper(e.code) = upper(?) or e.name like ? or e.divulgation_name like ?)",
@@ -427,10 +435,13 @@ export function buildC2xAnalyticsQuery(input: C2xBuilderInput): C2xQueryPlan {
   const filtros = buildFiltros(input.filtros);
   const needs = mergeNeeds(grupoResolved, filtros);
 
+  // ⚠️ A EXCLUSÃO PELO ID (PAN-124): [2, 31, 34, 35] = SDT, LAB, TSC e o espelho VLO. Pela sigla, o
+  // "LAG" não casava com nada desde 16/07/2026. `e.id not in` e `e.code not in` só diferem na sigla
+  // nula, e o C2X não tem nenhuma (medido em 25/09/2026): as contas saem as mesmas de antes.
   const where: string[] = [
-    `e.code not in (${ANALYTICS_EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})`,
+    `e.id not in (${ANALYTICS_EXCLUDED_ENTERPRISE_IDS.map(() => "?").join(", ")})`,
   ];
-  const whereParams: unknown[] = [...ANALYTICS_EXCLUDED_ENTERPRISE_CODES];
+  const whereParams: unknown[] = [...ANALYTICS_EXCLUDED_ENTERPRISE_IDS];
 
   for (const filtro of filtros) {
     where.push(filtro.clause);

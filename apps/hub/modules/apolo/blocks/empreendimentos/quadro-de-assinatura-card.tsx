@@ -1,7 +1,7 @@
 "use client";
 
-import { FileSignature, Loader2, Lock, Plus, Trash2, Users } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Check, FileSignature, Loader2, Pencil, Plus, Trash2, Users, X } from "lucide-react";
+import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import type {
   AssinanteDoQuadro,
@@ -28,13 +28,19 @@ import { useApiDaTemis } from "@/modules/temis/api-da-temis";
 // `ApiDaTemisProvider` do portal que confecciona (a aba Minutas do produto), saem por
 // `/api/incorporador/temis/assinantes` com o cookie do portal, e a rota de lá recorta pelo escopo e
 // pelo produto que o portal opera.
+//
+// ⚠️ SEM CADEADO, E TODA LINHA SE EDITA E SE EXCLUI (25/09/2026). Até esta data o cartão mostrava o
+// representante legal da empresa (lido da ficha, sem id) com um cadeado "do cadastro", e ele
+// aparecia na linha 1 do papel mesmo quando o envio não o levava: no VOR a tela mostrava o Fabricio
+// e o contrato saía sem ele. Lucas: *"todas assinaturas eu tenho que conseguir excluir e editar,
+// esse cadeado esta errado"*. O servidor passou a devolver só o que está gravado (a migration 0191
+// gravou quem era herdado), e cada linha ganhou lápis e lixeira.
 
 type Bloco = { ajuda: string; papel: PapelDoQuadro; titulo: string };
 
 const BLOCOS: Bloco[] = [
   {
-    ajuda:
-      "O representante legal cadastrado na empresa já vem preenchido. Acrescente quem mais assina por ela.",
+    ajuda: "Quem assina pela empresa vendedora. Pode ser mais de um, e todos assinam.",
     papel: "vendedora",
     titulo: "Vendedora",
   },
@@ -45,7 +51,8 @@ const BLOCOS: Bloco[] = [
     titulo: "Coordenador de Vendas",
   },
   {
-    ajuda: "Testemunham um documento já assinado pelas partes — por isso costumam assinar por último.",
+    ajuda:
+      "Testemunham um documento já assinado pelas partes, por isso costumam assinar por último.",
     papel: "testemunha",
     titulo: "Testemunhas",
   },
@@ -65,46 +72,40 @@ const BLOCO_DOS_TERMOS: Bloco = {
 
 const RASCUNHO = { cpf: "", email: "", nome: "", ordemAssinatura: "", posicao: "" };
 
+/** A linha aberta no lápis: os campos como texto, do jeito que a tela os edita. */
+type Edicao = typeof RASCUNHO & { id: string; papel: PapelDoQuadro };
+
 /** De onde veio a pessoa que a caixa dos termos mostra. Ver `filaDosTermos`. */
-type OrigemDosTermos = "apontado" | "cadastro" | "ninguem" | "vendedora";
+type OrigemDosTermos = "apontado" | "ninguem" | "vendedora";
 
 /**
  * QUEM ASSINA OS TERMOS HOJE, na MESMA ordem que o envio usa — e é por isso que ela existe.
  *
  * O envio do termo de acordo (`lib/hades/acordo/envio-db.ts`) escolhe assim:
  *
- *     apontado para TERMOS  →  quem está no bloco Vendedora  →  o representante legal da empresa
+ *     apontado para TERMOS  →  quem está no bloco Vendedora
  *
- * ⚠️ A CAIXA DESCREVIA OUTRA QUEDA, E ISSO É CARO (revisão de 20/09/2026). Ela dizia que sem ninguém
- * apontado o termo *"tenta o representante legal cadastrado na empresa e, se ela não tiver um, o
- * envio fica bloqueado"*, e mostrava a linha herdada do cadastro da PJ como quem assina. As duas
- * coisas viram mentira no instante em que alguém preenche o bloco Vendedora, que é o que aquele
- * bloco pede: quem recebe o convite passa a ser a pessoa do CONTRATO, e não a que a tela mostrou.
- * Medido em produção (20/09/2026): 35 das 40 configurações têm vendedora e ZERO das 23
- * incorporadoras tem representante legal cadastrado, ou seja, o caso do meio é o caso NORMAL.
+ * ⚠️ A CAIXA DESCREVIA OUTRA QUEDA, E ISSO É CARO (revisão de 20/09/2026). Ela prometia o
+ * representante legal da empresa e o bloqueio do envio, e as duas coisas viravam mentira no instante
+ * em que alguém preenchia o bloco Vendedora: quem recebe o convite passa a ser a pessoa do CONTRATO.
  * Envelope é pago, não se apaga e chega na caixa do cliente: o nome lido antes de clicar tem de ser
  * o nome que assina.
  *
- * ⚠️ E A LINHA HERDADA DOS TERMOS SÓ APARECE QUANDO É ELA MESMA. O servidor devolve o representante
- * legal como linha sem id no papel dos termos (`lerQuadroDeAssinatura`); ele só assina de verdade
- * quando ninguém ocupou o papel `vendedora`, que é a regra de `assinantesDoQuadro`. Com vendedora
- * digitada, a herdada é descartada aqui.
+ * ⚠️ ERAM TRÊS DEGRAUS ATÉ 25/09/2026. O terceiro era o representante legal herdado da ficha da
+ * empresa, que o servidor mandava como linha sem id. A herança saiu das duas pontas (o quadro é a
+ * única fonte de quem assina), e a fila ficou com os dois degraus que existem na tabela.
  */
 function filaDosTermos(lista: AssinanteDoQuadro[]): {
   linhas: AssinanteDoQuadro[];
   origem: OrigemDosTermos;
 } {
   const porPosicao = (a: AssinanteDoQuadro, b: AssinanteDoQuadro) => a.posicao - b.posicao;
-  const dosTermos = lista.filter((a) => a.papel === "termos_vendedora").sort(porPosicao);
 
-  const apontados = dosTermos.filter((a) => a.id);
+  const apontados = lista.filter((a) => a.papel === "termos_vendedora").sort(porPosicao);
   if (apontados.length > 0) return { linhas: apontados, origem: "apontado" };
 
   const doBlocoVendedora = lista.filter((a) => a.papel === "vendedora").sort(porPosicao)[0];
   if (doBlocoVendedora) return { linhas: [doBlocoVendedora], origem: "vendedora" };
-
-  const herdada = dosTermos[0];
-  if (herdada) return { linhas: [herdada], origem: "cadastro" };
 
   return { linhas: [], origem: "ninguem" };
 }
@@ -122,9 +123,10 @@ export function QuadroDeAssinaturaCard({
    * numa tela sobre confecção de contrato, um campo sobre um documento que aquela equipe não emite.
    *
    * ⚠️ E ESCONDER NÃO É FECHAR: QUEM FECHA É O SERVIDOR. As duas portas do quadro chamam as MESMAS
-   * `incluirAssinante` e `removerAssinante`, então esta propriedade só governa o que se VÊ. A recusa
-   * do papel `termos_vendedora` para o ator do portal mora em `PAPEL_SO_DA_CARELI`
-   * (`lib/temis/estrutura-servico.ts`); ligar o campo lá um dia é mudar as duas coisas, não uma.
+   * `incluirAssinante`, `editarAssinante` e `removerAssinante`, então esta propriedade só governa o
+   * que se VÊ. A recusa do papel `termos_vendedora` para o ator do portal mora em
+   * `PAPEL_SO_DA_CARELI` (`lib/temis/estrutura-servico.ts`); ligar o campo lá um dia é mudar as duas
+   * coisas, não uma.
    */
   comAssinantesDeTermos?: boolean;
   enterpriseId: string;
@@ -141,6 +143,17 @@ export function QuadroDeAssinaturaCard({
    */
   const [papelDoErro, setPapelDoErro] = useState<null | PapelDoQuadro>(null);
   const [rascunhos, setRascunhos] = useState<Record<string, typeof RASCUNHO>>({});
+  /**
+   * A linha aberta no lápis, ou `null`. UMA de cada vez: duas edições abertas no mesmo papel são
+   * duas gravações disputando a mesma trava de linha, e a segunda recusaria sem o operador entender.
+   */
+  const [edicao, setEdicao] = useState<Edicao | null>(null);
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+  // ⚠️ A TRAVA DO PATCH EM VOO É UMA REF, E NÃO SÓ O ESTADO (revisão de 25/09/2026). Enter chama
+  // `salvarEdicao` direto, sem passar pelo botão desligado, e dois Enter seguidos chegam antes de o
+  // `salvandoEdicao` novo render: o segundo PATCH saía, e a tela mostrava a recusa dele por cima de
+  // uma edição que tinha dado certo.
+  const edicaoEmVoo = useRef(false);
   const [recarregar, setRecarregar] = useState(0);
   const { temisFetch } = useApiDaTemis();
 
@@ -241,6 +254,7 @@ export function QuadroDeAssinaturaCard({
         const corpo = (await r.json()) as { error?: string };
         throw new Error(corpo.error ?? "Falha ao remover.");
       }
+      if (edicao?.id === id) setEdicao(null);
       setRecarregar((n) => n + 1);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao remover.");
@@ -248,19 +262,77 @@ export function QuadroDeAssinaturaCard({
     }
   }
 
+  function abrirEdicao(a: AssinanteDoQuadro) {
+    setErro(null);
+    setPapelDoErro(null);
+    setEdicao({
+      // ⚠️ O CPF VAI COMO A TELA O RECEBEU. No portal ele chega mascarado (`***.***.***-NN`), e o
+      // servidor lê a máscara INTEIRA como "manter o gravado": quem não mexe no campo não apaga o
+      // documento. Máscara mexida pela metade volta 400, e a frase aparece no bloco.
+      cpf: a.cpf ?? "",
+      email: a.email ?? "",
+      id: a.id,
+      nome: a.nome,
+      ordemAssinatura: a.ordemAssinatura == null ? "" : String(a.ordemAssinatura),
+      papel: a.papel,
+      posicao: String(a.posicao),
+    });
+  }
+
+  function mexerNaEdicao(campo: keyof typeof RASCUNHO, valor: string) {
+    setEdicao((atual) => (atual ? { ...atual, [campo]: valor } : atual));
+  }
+
   /**
-   * Uma seção do quadro: a lista de quem já está lá, e a linha para incluir mais um.
+   * Grava a linha aberta no lápis.
    *
-   * ⚠️ UMA FUNÇÃO, E NÃO O CORPO DO `map`, porque a seção dos TERMOS usa exatamente os mesmos campos
-   * dos três papéis do contrato. Lucas pediu *"mais um campo"* nesta tela, e um campo novo com outra
-   * cara é um campo que o operador aprende de novo. Copiar este JSX faria a cópia envelhecer calada
-   * no primeiro ajuste.
-   *
-   * ⚠️ E O QUE MUDA NOS TERMOS É SÓ O QUE SERIA MENTIRA. "Linha" é qual linha do CONTRATO é da
-   * pessoa e "Assina em" é a ordem dentro do papel: o termo de acordo não tem linhas de
-   * qualificação e tem fila fixa (comprador, incorporador, Careli). Oferecer os dois campos ali
-   * prometeria um controle que o envio ignora.
+   * ⚠️ OS TERMOS NÃO MANDAM LINHA NEM ASSINA EM, pelo mesmo motivo que não os oferecem (ver
+   * `secaoDoBloco`). O servidor mantém o que não vem, então a posição do apontado não muda por uma
+   * edição de e-mail.
    */
+  async function salvarEdicao() {
+    if (!edicao || edicaoEmVoo.current) return;
+    edicaoEmVoo.current = true;
+    const doContrato = edicao.papel !== "termos_vendedora";
+    setSalvandoEdicao(true);
+    setErro(null);
+    setPapelDoErro(null);
+    try {
+      const r = await temisFetch(`/assinantes?id=${encodeURIComponent(edicao.id)}`, {
+        body: JSON.stringify({
+          cpf: edicao.cpf,
+          email: edicao.email,
+          nome: edicao.nome,
+          ...(doContrato
+            ? { ordemAssinatura: edicao.ordemAssinatura, posicao: edicao.posicao }
+            : {}),
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      });
+      const corpo = (await r.json()) as { error?: string };
+      if (!r.ok) throw new Error(corpo.error ?? "Falha ao gravar a edição.");
+      setEdicao(null);
+      setRecarregar((n) => n + 1);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao gravar a edição.");
+      setPapelDoErro(edicao.papel);
+    } finally {
+      edicaoEmVoo.current = false;
+      setSalvandoEdicao(false);
+    }
+  }
+
+  function teclaDaEdicao(e: KeyboardEvent<HTMLDivElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      void salvarEdicao();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setEdicao(null);
+    }
+  }
+
   /**
    * A testemunha vai assinar ANTES de alguem que ela deveria testemunhar?
    *
@@ -285,6 +357,86 @@ export function QuadroDeAssinaturaCard({
     );
   }
 
+  /**
+   * Os campos da linha aberta no lápis, no lugar do nome e do e-mail.
+   *
+   * ⚠️ RÓTULO POR `aria-label`, E NÃO `<label><span>` COMO NO INCLUIR. O formulário de incluir do
+   * mesmo bloco continua na tela durante a edição, e dois "Nome completo" com a mesma forma no mesmo
+   * bloco fariam quem lê a tela (e quem a testa) digitar no campo errado.
+   */
+  function camposDaEdicao(e: Edicao, doContrato: boolean) {
+    const entrada = "h-8 min-w-0 rounded-lg border border-line bg-surface px-2 text-ink text-sm";
+    return (
+      <div
+        className="flex min-w-0 flex-1 basis-full flex-wrap items-center gap-1.5 sm:basis-auto"
+        onKeyDown={teclaDaEdicao}
+      >
+        <input
+          aria-label="Nome completo"
+          className={`${entrada} flex-1 basis-40`}
+          onChange={(ev) => mexerNaEdicao("nome", ev.target.value)}
+          placeholder="Nome completo"
+          value={e.nome}
+        />
+        {/* ⚠️ A MÁSCARA DO PORTAL NÃO SE CORRIGE POR PARTES: o servidor mantém o gravado só com a
+            máscara inteira, e recusa a mexida pela metade. O title diz isso antes do clique. */}
+        <input
+          aria-label="CPF"
+          className={`${entrada} w-32`}
+          onChange={(ev) => mexerNaEdicao("cpf", ev.target.value)}
+          placeholder="CPF"
+          title={
+            e.cpf.includes("*")
+              ? "CPF gravado, mostrado mascarado. Deixe como está para manter, ou apague e digite o CPF inteiro."
+              : undefined
+          }
+          value={e.cpf}
+        />
+        <input
+          aria-label="E-mail"
+          className={`${entrada} flex-1 basis-40`}
+          onChange={(ev) => mexerNaEdicao("email", ev.target.value)}
+          placeholder="E-mail"
+          value={e.email}
+        />
+        {doContrato ? (
+          <>
+            <input
+              aria-label="Linha"
+              className={`${entrada} w-14 text-center`}
+              inputMode="numeric"
+              onChange={(ev) => mexerNaEdicao("posicao", ev.target.value)}
+              title="A linha do contrato em que esta pessoa aparece."
+              value={e.posicao}
+            />
+            <input
+              aria-label="Assina em"
+              className={`${entrada} w-16 text-center`}
+              inputMode="numeric"
+              onChange={(ev) => mexerNaEdicao("ordemAssinatura", ev.target.value)}
+              placeholder="-"
+              title="Quando ela assina. Em branco, segue a ordem do papel."
+              value={e.ordemAssinatura}
+            />
+          </>
+        ) : null}
+      </div>
+    );
+  }
+
+  /**
+   * Uma seção do quadro: a lista de quem já está lá, e a linha para incluir mais um.
+   *
+   * ⚠️ UMA FUNÇÃO, E NÃO O CORPO DO `map`, porque a seção dos TERMOS usa exatamente os mesmos campos
+   * dos três papéis do contrato. Lucas pediu *"mais um campo"* nesta tela, e um campo novo com outra
+   * cara é um campo que o operador aprende de novo. Copiar este JSX faria a cópia envelhecer calada
+   * no primeiro ajuste.
+   *
+   * ⚠️ E O QUE MUDA NOS TERMOS É SÓ O QUE SERIA MENTIRA. "Linha" é qual linha do CONTRATO é da
+   * pessoa e "Assina em" é a ordem dentro do papel: o termo de acordo não tem linhas de
+   * qualificação e tem fila fixa (comprador, incorporador, Careli). Oferecer os dois campos ali
+   * prometeria um controle que o envio ignora.
+   */
   function secaoDoBloco(bloco: Bloco) {
     const gente = doPapel(bloco.papel);
     const r = rascunho(bloco.papel);
@@ -296,7 +448,9 @@ export function QuadroDeAssinaturaCard({
     const dosTermos = filaDosTermos(lista);
     const fila = doContrato ? gente : dosTermos.linhas;
     const origem: OrigemDosTermos = doContrato ? "apontado" : dosTermos.origem;
-    // A linha emprestada de outro bloco (ou herdada do cadastro) não se apaga por aqui.
+    // ⚠️ A LINHA EMPRESTADA DO BLOCO VENDEDORA SE MOSTRA, MAS NÃO SE MEXE AQUI. Ela está gravada (tem
+    // lápis e lixeira lá em cima); editar ou excluir pela caixa dos termos mudaria quem assina a
+    // COMPRA E VENDA a partir de uma caixa que diz não entrar no contrato.
     const emprestada = !doContrato && origem !== "apontado";
     return (
       <section key={bloco.papel}>
@@ -313,7 +467,7 @@ export function QuadroDeAssinaturaCard({
         ) : null}
 
         {/* ⚠️ A QUEDA INTEIRA, NA ORDEM DE VERDADE, sempre que ninguém foi apontado. Ver
-            `filaDosTermos`: a frase antiga citava dois degraus e o envio tem três. */}
+            `filaDosTermos`: são dois degraus, e a frase cita os dois. */}
         {doContrato ? null : origem === "apontado" ? null : (
           <p className="m-0 mb-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900 text-xs dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
             {origem === "vendedora" ? (
@@ -322,16 +476,10 @@ export function QuadroDeAssinaturaCard({
                 cadastrada como vendedora no quadro, mostrada abaixo. Aponte alguém para que o termo
                 deixe de ir para quem assina a compra e venda.
               </>
-            ) : origem === "cadastro" ? (
-              <>
-                Ninguém apontado. Como não há ninguém aqui nem no bloco Vendedora, quem assina o
-                termo é o representante legal cadastrado na empresa, mostrado abaixo.
-              </>
             ) : (
               <>
-                Ninguém apontado. Sem ninguém aqui, o termo tenta quem estiver cadastrado como
-                vendedora no quadro e, depois, o representante legal da empresa. Como não há nenhum
-                dos dois, o envio fica bloqueado.
+                Ninguém apontado. Sem ninguém aqui, o termo vai para quem estiver cadastrado como
+                vendedora no quadro. Como não há ninguém lá também, o envio fica bloqueado.
               </>
             )}
           </p>
@@ -346,60 +494,102 @@ export function QuadroDeAssinaturaCard({
           ) : null
         ) : (
           <div className="grid gap-1.5">
-            {fila.map((a, indice) => (
-              <div
-                className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-subtle/40 px-3 py-2"
-                key={a.id ?? `herdado-${a.papel}-${a.posicao}`}
-              >
-                <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-inverse font-semibold text-[11px] text-white">
-                  {a.posicao}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="m-0 truncate font-medium text-ink text-sm">{a.nome}</p>
-                  <p className="m-0 truncate text-ink-muted text-xs">
-                    {a.cpf ?? "sem CPF"} · {a.email ?? "sem e-mail"}
-                  </p>
-                </div>
-                {/* ⚠️ "ASSINA OS TERMOS" VALE PARA UMA PESSOA SÓ, E É A PRIMEIRA. O envio leva a de
-                    menor posição (`assinanteDeTermosDaVendedora`, `order("posicao").limit(1)`); a
-                    caixa não tem campo Linha, então quem quer TROCAR de pessoa inclui a nova e deixa
-                    a antiga — e era a antiga que continuava assinando, com as duas etiquetadas
-                    igual. */}
-                <span className="shrink-0 rounded-md bg-subtle px-1.5 py-0.5 text-[10px] text-ink-muted">
-                  {doContrato
-                    ? a.ordemAssinatura
-                      ? `assina em ${a.ordemAssinatura}`
-                      : "segue o papel"
-                    : indice === 0
-                      ? "assina os termos"
-                      : "não assina, remova ou reordene"}
-                </span>
-                {/* ⚠️ A LINHA HERDADA NÃO SE APAGA AQUI. Ela vem do cadastro da empresa, e
-                    um botão de lixeira prometeria desfazer algo que esta tela não decide. */}
-                {a.id && !emprestada ? (
-                  <button
-                    aria-label={`Remover ${a.nome}`}
-                    className="rounded-md border border-line p-1 text-ink-muted transition-colors hover:bg-subtle"
-                    onClick={() => void remover(a.id as string, bloco.papel)}
-                    type="button"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </button>
-                ) : (
-                  <span
-                    className="inline-flex items-center gap-1 rounded-md bg-subtle px-1.5 py-1 text-[10px] text-ink-muted"
-                    title={
-                      origem === "vendedora"
-                        ? "Vem do bloco Vendedora deste quadro. Aponte alguém aqui para trocar."
-                        : "Vem do representante legal cadastrado na empresa. Para trocar, mude no cadastro dela."
-                    }
-                  >
-                    <Lock className="size-3" />
-                    {origem === "vendedora" ? "do bloco Vendedora" : "do cadastro"}
+            {fila.map((a, indice) => {
+              const aberta = !emprestada && edicao?.id === a.id ? edicao : null;
+              return (
+                <div
+                  className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-subtle/40 px-3 py-2"
+                  data-assinante={a.id}
+                  key={a.id}
+                >
+                  <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-inverse font-semibold text-[11px] text-white">
+                    {a.posicao}
                   </span>
-                )}
-              </div>
-            ))}
+                  {aberta ? (
+                    camposDaEdicao(aberta, doContrato)
+                  ) : (
+                    <div className="min-w-0 flex-1">
+                      <p className="m-0 truncate font-medium text-ink text-sm">{a.nome}</p>
+                      <p className="m-0 truncate text-ink-muted text-xs">
+                        {a.cpf ?? "sem CPF"} · {a.email ?? "sem e-mail"}
+                      </p>
+                    </div>
+                  )}
+                  {/* ⚠️ "ASSINA OS TERMOS" VALE PARA UMA PESSOA SÓ, E É A PRIMEIRA. O envio leva a de
+                      menor posição (`assinanteDeTermosDaVendedora`, `order("posicao").limit(1)`); a
+                      caixa não tem campo Linha, então quem quer TROCAR de pessoa inclui a nova e deixa
+                      a antiga — e era a antiga que continuava assinando, com as duas etiquetadas
+                      igual. */}
+                  {aberta ? null : (
+                    <span className="shrink-0 rounded-md bg-subtle px-1.5 py-0.5 text-[10px] text-ink-muted">
+                      {doContrato
+                        ? a.ordemAssinatura
+                          ? `assina em ${a.ordemAssinatura}`
+                          : "segue o papel"
+                        : indice === 0
+                          ? "assina os termos"
+                          : "não assina, remova ou reordene"}
+                    </span>
+                  )}
+                  {emprestada ? (
+                    <span
+                      className="shrink-0 rounded-md bg-subtle px-1.5 py-1 text-[10px] text-ink-muted"
+                      title="Esta pessoa está no bloco Vendedora deste quadro e assina a compra e venda. Para mudar os dados dela, edite lá. Para outra pessoa assinar os termos, aponte alguém aqui."
+                    >
+                      edite no bloco Vendedora
+                    </span>
+                  ) : aberta ? (
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        aria-label={`Salvar ${a.nome}`}
+                        className="rounded-md bg-inverse p-1 text-brand-ink transition-opacity disabled:opacity-60"
+                        disabled={salvandoEdicao}
+                        onClick={() => void salvarEdicao()}
+                        title="Salvar"
+                        type="button"
+                      >
+                        {salvandoEdicao ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Check className="size-3.5" />
+                        )}
+                      </button>
+                      <button
+                        aria-label="Cancelar edição"
+                        className="rounded-md border border-line p-1 text-ink-muted transition-colors hover:bg-subtle"
+                        disabled={salvandoEdicao}
+                        onClick={() => setEdicao(null)}
+                        title="Cancelar"
+                        type="button"
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        aria-label={`Editar ${a.nome}`}
+                        className="rounded-md border border-line p-1 text-ink-muted transition-colors hover:bg-subtle"
+                        onClick={() => abrirEdicao(a)}
+                        title="Editar"
+                        type="button"
+                      >
+                        <Pencil className="size-3.5" />
+                      </button>
+                      <button
+                        aria-label={`Remover ${a.nome}`}
+                        className="rounded-md border border-line p-1 text-ink-muted transition-colors hover:bg-subtle"
+                        onClick={() => void remover(a.id, a.papel)}
+                        title="Excluir"
+                        type="button"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -464,7 +654,7 @@ export function QuadroDeAssinaturaCard({
                   className="h-8 rounded-lg border border-line bg-surface px-2 text-center text-ink text-sm"
                   inputMode="numeric"
                   onChange={(e) => mexer(bloco.papel, "ordemAssinatura", e.target.value)}
-                  placeholder="—"
+                  placeholder="-"
                   value={r.ordemAssinatura}
                 />
               </label>
@@ -536,8 +726,9 @@ export function QuadroDeAssinaturaCard({
 
       <p className="m-0 mt-3 border-line border-t pt-2 text-ink-muted text-xs">
         <strong>Linha</strong> é qual linha do contrato é da pessoa. <strong>Assina em</strong> é
-        quando ela recebe o convite — em branco, segue a ordem cadastrada para o papel. As duas são
-        independentes: quem assina primeiro pode ser quem aparece embaixo no papel.
+        quando ela recebe o convite; em branco, segue a ordem cadastrada para o papel. As duas são
+        independentes: quem assina primeiro pode ser quem aparece embaixo no papel. Toda pessoa do
+        quadro se corrige no lápis e sai na lixeira.
       </p>
     </div>
   );

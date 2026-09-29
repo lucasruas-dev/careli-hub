@@ -1,18 +1,24 @@
 "use client";
 
+import { UserCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   type DocumentoParaVer,
   VisualizadorDeDocumento,
 } from "@/components/documento/VisualizadorDeDocumento";
-import { cpfValido, formatarDocumento, soDigitos } from "@/lib/apolo/documento";
-import type { PlanoComercial } from "@/lib/apolo/planos-comerciais";
+import { formatarDocumento, soDigitos } from "@/lib/apolo/documento";
+import {
+  documentoDeCompradorValido,
+  rotuloDoDocumento,
+} from "@/lib/hercules/documento-do-comprador";
+import { INDICES, type PlanoComercial } from "@/lib/apolo/planos-comerciais";
 import { precoNoPlano } from "@/lib/hercules/ajuste-de-preco";
 // ⚠️ A MESMA RÉGUA DE "É DINHEIRO?" QUE A CONTA E O CONTRATO USAM. Escrever `bem.valor > 0` aqui
 // seria a quarta cópia da regra, e a primeira a aceitar `NaN` como bem de verdade.
 import { valeDinheiro } from "@/lib/hercules/bens-e-permutas";
 import { montarCronograma } from "@/lib/hercules/cronograma";
+import { escolherPlanoDaProposta } from "@/lib/hercules/escolher-plano";
 import type { PlanoDaVenda } from "@/lib/hercules/fluxo-de-venda";
 import {
   conferirProposta,
@@ -29,10 +35,12 @@ import {
   somaDasParticipacoes,
 } from "@/lib/hercules/proposta-na-tela";
 import {
+  ehDocumentoInteiro,
   type ProponenteEncontrado,
   termoDaBusca,
 } from "@/lib/hercules/busca-de-proponente";
 import type { FaixaDePrazo } from "@/lib/hercules/premissa-do-prazo";
+import { planoEfetivo } from "@/lib/hercules/premissa-efetiva";
 import { comoFoiOAviso, vencimentoEmDias } from "@/lib/hercules/reserva";
 import { ajusteFrenteAoPlano } from "@/lib/hercules/tabela-do-lote";
 
@@ -74,11 +82,46 @@ import { T } from "../tema";
 // com dinheiro e com prazo é escrever o que recebeu — duas contas para o mesmo boleto é como a PA
 // e o carnê passam a discordar.
 
+// ⚠️ DOIS CAMPOS PORQUE SÃO DUAS PERGUNTAS, e desde 26/09/2026 eles DISCORDAM num caso real.
+//
+// Lucas (26/09/2026): *"pode deixar os coordenadores emitirem proposta sem a cad esta credenciada.
+// ela pode estar em validacao ou em qualquer outro estagio"*. Sobre o print da CAD do MATEUS COTTA
+// SACCHETTO em `validacao` (lote EIRETAMA-14, Aldeia das Cachoeiras das Pedras, empreendimento 42,
+// `atualizado_em` 2026-09-26 17:11 medido em produção): *"essa devia passar"*.
+//
+// `credenciado` é a VERDADE SOBRE A CAD, e é ele que escreve o selo. `podeGerarProposta` é a
+// PORTA, e é ele que acende o botão. Com a CAD em andamento o primeiro é `false` e o segundo é
+// `true`, e o terceiro estado desta tela existe exatamente para isso: a frase da etapa em tom de
+// AVISO, com o botão liberado. Ler a porta em `credenciado` faria a tela escrever "CAD credenciada
+// neste empreendimento" em cima de uma CAD em validação, e aí a tela mentiria para o coordenador.
 type CredenciamentoNaTela = {
+  /**
+   * A porta da carteira foi o contrato lido AGORA (verdadeiro) ou a CAD que a carteira já abriu
+   * (falso). Só com ele a tela afirma "contrato ativo": a CAD da carteira continua valendo mesmo
+   * depois de um distrato, e aí a frase mentiria.
+   */
+  contratoAtivo?: boolean;
+  /**
+   * A BARRA DO CONTRATO recusa o comprador da carteira? (26/09/2026)
+   *
+   * ⚠️ VEM DO SERVIDOR, E É A DECISÃO DA BARRA, NÃO UMA REGRA RECALCULADA AQUI. É o espelho de
+   * `A_CARTEIRA_VALE_PARA_O_CONTRATO` (`lib/hercules/cad-para-contrato.ts`): hoje `false`, porque a
+   * carteira SUBSTITUI a CAD. Se o Lucas responder que não vale, ele vira `true` e a caixa do
+   * comprador da carteira passa a avisar que o contrato ainda espera a CAD — sem esse campo a tela
+   * prometeria um clique que a rota recusa com 409. Ausente = o comportamento de hoje.
+   */
+  contratoExigeCad?: boolean;
   credenciado: boolean;
   desde: null | string;
   etapa: null | string;
   motivo: null | string;
+  /**
+   * Por qual porta passou (26/09/2026). `comprador_da_carteira` = contrato ativo neste
+   * empreendimento, ou a CAD que nasceu dele; a tela troca o selo por "Comprador da carteira".
+   * Ausente = CAD.
+   */
+  origem?: null | "cad" | "comprador_da_carteira";
+  podeGerarProposta: boolean;
 };
 
 type ReservaNaTela = {
@@ -425,19 +468,90 @@ export function ModalDeProposta({
    * em 13/09/2026: das 431 propostas com plano personalizado, 31 (7,2%) têm observação — quem não
    * é obrigado, não escreve.
    *
-   * ⚠️ O QUE ELA NÃO FAZ É BLOQUEAR NO SERVIDOR. Como as outras duas, é trava de TELA: a rota
-   * aceita proposta sem observação porque as 4.857 linhas importadas do C2X vieram sem ela.
+   * ⚠️ A PREMISSA ALTERADA SAIU DOS GATILHOS (Lucas, 25/09/2026: *"acho que não tem necessidade de
+   * pedir justificativa"*). Mudar juros ou correção é a autonomia do coordenador, declarada por ele
+   * no mesmo dia: *"o que vale é a configuração que ele fez no atendimento (...) se o coordenador
+   * colocar taxa zero em um plano que tem juros, prevalece o que ele colocou"*. Eu tinha acabado de
+   * pôr a trava aqui e na rota, e ele mandou tirar dos dois. O que alterou e por quem continua
+   * gravado em `condicoes.premissa` e em `criado_por_nome`; só o porquê deixou de ser obrigatório.
+   *
+   * ⚠️ O DESCONTO E O BEM CONTINUAM EXIGINDO, e são outra régua: ali a nota responde "o que foi
+   * combinado, com quem", que é o que falta quando o carro precisar ser revendido.
    */
-  const precisaDeNota = ehDesconto || premissaAlterada || temBemOuPermuta;
+  const precisaDeNota = ehDesconto || temBemOuPermuta;
   const precisaDaNota = precisaDeNota && nota.trim().length === 0;
   const credenciado = portao?.credenciamento.credenciado === true;
+  // ⚠️ A PORTA VEM DO SERVIDOR, E NÃO É `credenciado`. Quem decide se o coordenador pode seguir é
+  // a rota (app/api/incorporador/venda/proposta/route.ts, no GET e no POST, pela MESMA régua): a tela
+  // só obedece. Recalcular a regra aqui, a partir da etapa, é como o botão passaria a oferecer um
+  // clique que o POST recusa.
+  const podeGerar = portao?.credenciamento.podeGerarProposta === true;
+  /** A CAD está EM ANDAMENTO: a porta abriu, mas ela ainda não está credenciada. O terceiro estado. */
+  const cadEmAndamento = podeGerar && !credenciado;
+  /**
+   * Passou pela porta da carteira (contrato ativo aqui), ou tem a CAD que nasceu dela.
+   *
+   * ⚠️ SEM O `credenciado &&` QUE ESTE CAMPO TINHA (junção de 26/09/2026): as duas frases da tela
+   * precisam CONVIVER. A CAD que nasceu da carteira e foi mexida no Board volta com
+   * `credenciado: false` e `origem: "comprador_da_carteira"`, e o coordenador tem de ler as DUAS
+   * coisas — o chip "Comprador da carteira" (que explica por que existe CAD sem esteira) e o selo
+   * âmbar "CAD em andamento" com o aviso de que o contrato só sai depois da aprovação. Quem escolhe
+   * qual CAIXA desenhar continua sendo `credenciado`, logo abaixo.
+   */
+  const compradorDaCarteira =
+    portao?.credenciamento.origem === "comprador_da_carteira";
   const podeMontar =
-    Boolean(portao) && credenciado && errosDoPortao.length === 0;
+    Boolean(portao) && podeGerar && errosDoPortao.length === 0;
 
-  const planoDaProposta = useMemo(
-    () => portao?.planos.find((p) => p.nome === condicoes?.planoNome) ?? null,
-    [condicoes?.planoNome, portao],
-  );
+  /**
+   * O plano desta proposta — PELO ID DA LINHA, com o nome como reserva.
+   *
+   * ⚠️ AFIRMAÇÃO EM CAIXA ALTA: ATÉ 24/09/2026 ESTA LINHA CASAVA POR NOME, E O NOME NÃO É CHAVE.
+   * Era `portao?.planos.find((p) => p.nome === condicoes?.planoNome)`, e é deste objeto que sai o
+   * cronograma que a tela desenha (a tabela "Reajuste da parcela"). A ROTA parou de fazer isso em
+   * 22/09/2026 e casa por `planoId` (`escolherPlanoDaProposta`); a modal ficou para trás, e as duas
+   * podiam escolher planos diferentes na mesma venda.
+   *
+   * ⚠️ E OS NOMES SE REPETEM EM PRODUÇÃO, medido em 24/09/2026: `select enterprise_id,
+   * upper(btrim(nome)), count(*) from temis_planos group by 1,2 having count(*) > 1` devolve três
+   * pares, e um deles é o Jardim das Gerais (enterprise 40) com DOIS planos chamados NORMAL, um
+   * IPCA_ANUAL e outro POUPANCA.
+   *
+   * É a MESMA função da rota, de propósito: duas cópias divergiriam no primeiro ajuste.
+   */
+  const planoDaProposta = useMemo(() => {
+    if (!portao) return null;
+    const doCadastro = escolherPlanoDaProposta(portao.planos, {
+      id: condicoes?.planoId ?? "",
+      nome: condicoes?.planoNome ?? "",
+    }).plano;
+    // ⚠️ E DEPOIS A PREMISSA: CADASTRO → FAIXA DE PRAZO → O QUE O CORRETOR ESCREVEU POR CIMA.
+    //
+    // ⚠️ AFIRMAÇÃO EM CAIXA ALTA: ATÉ 25/09/2026 ESTA TELA DESMENTIA A ESCOLHA DO OPERADOR. O
+    // cronograma daqui saía do plano do CADASTRO, e por isso a tabela "Reajuste da parcela" mostrava
+    // "13 a 24 R$ 2.719,84 + IPCA" embaixo de um resumo que dizia "sem juros, com poupança anual" —
+    // o print da Nívea em 24/09/2026, sobre a proposta 000038: *"Na proposta não está saindo o novo
+    // cenário de juros e correção."*
+    //
+    // ⚠️ OS MESMOS ARGUMENTOS DA ROTA, e é essa a regra: a rota chama `planoEfetivo` com as faixas do
+    // empreendimento, o prazo contratado e os dois valores escolhidos (ver
+    // `app/api/incorporador/venda/proposta/route.ts`, o passo 5½). Compor diferente aqui faria
+    // nascerem duas verdades para a mesma venda — que é exatamente como este defeito começou.
+    return planoEfetivo({
+      faixasDePrazo: portao.faixasDePrazo ?? [],
+      indiceSobrescrito: condicoes?.indiceEscolhido ?? null,
+      jurosSobrescrito: condicoes?.jurosEscolhido ?? null,
+      parcelas: condicoes?.parcelasMensais ?? 0,
+      plano: doCadastro,
+    }).plano;
+  }, [
+    condicoes?.indiceEscolhido,
+    condicoes?.jurosEscolhido,
+    condicoes?.parcelasMensais,
+    condicoes?.planoId,
+    condicoes?.planoNome,
+    portao,
+  ]);
 
   /**
    * O fluxo de pagamento que vai sair — datado.
@@ -517,15 +631,19 @@ export function ModalDeProposta({
     const cpf = novo.cpf.trim();
     const digitos = soDigitos(cpf);
     if (!nome || !cpf) {
-      setErroDoNovo("Informe o nome e o CPF do proponente.");
+      setErroDoNovo("Informe o nome e o documento do proponente.");
       return;
     }
-    if (!cpfValido(digitos)) {
-      setErroDoNovo("CPF inválido. Confira os números antes de adicionar.");
+    // ⚠️ CPF **OU** CNPJ (Lucas, 26/09/2026: *"temos que habilitar pessoa fisica e pessoa
+    // juridica"*): a empresa e o sócio podem estar na mesma proposta, cada um com o seu documento.
+    if (!documentoDeCompradorValido(digitos)) {
+      setErroDoNovo(
+        `${rotuloDoDocumento(digitos)} inválido. Confira os números antes de adicionar.`,
+      );
       return;
     }
     if (compradores.some((c) => soDigitos(c.cpf) === digitos)) {
-      setErroDoNovo("Este CPF já está entre os compradores.");
+      setErroDoNovo("Este documento já está entre os compradores.");
       return;
     }
     // ⚠️ A % NÃO É OPCIONAL (Lucas, 05/09/2026: *"% não é opcional, ela é uma informação que vai
@@ -725,6 +843,23 @@ export function ModalDeProposta({
       // usa o nome, como sempre usou.
       ...(condicoesAgora.planoId ? { planoId: condicoesAgora.planoId } : {}),
       planoNome: condicoesAgora.planoNome,
+      // ⚠️ A PREMISSA ESCOLHIDA VIAJA, E NÃO SÓ O AVISO DE QUE ALGUÉM MEXEU (25/09/2026). Até aqui o
+      // corpo levava apenas `observacao` e a bandeira de nota: o servidor sabia que houve alteração e
+      // não sabia QUAL, então calculava, gravava e imprimia pelo cadastro. Foi assim que a 000038
+      // (TAISA FERNANDA BATISTA, VOC Quadra 12 · Lote 22) gravou 0,7207% a.m. + IPCA anual e
+      // R$ 138.130,32 de mensais onde o cenário escolhido daria 48 × R$ 2.595,00 = R$ 124.560,00.
+      // Nívea: *"Na proposta não está saindo o novo cenário de juros e correção."*
+      //
+      // ⚠️ E CADA UM SÓ SAI QUANDO EXISTE, como o `planoId` acima: ausente quer dizer "não mexi
+      // nisso", e é o que o servidor lê como "use o cadastro e a faixa". Mandar `jurosEscolhido:
+      // null` em toda proposta obrigaria o servidor a distinguir nulo de ausente em cada leitura
+      // futura — e zero é um valor de verdade aqui, o "sem juros" escrito à mão.
+      ...(condicoesAgora.indiceEscolhido
+        ? { indiceEscolhido: condicoesAgora.indiceEscolhido }
+        : {}),
+      ...(condicoesAgora.jurosEscolhido != null
+        ? { jurosEscolhido: condicoesAgora.jurosEscolhido }
+        : {}),
       primeiraParcelaEm: condicoesAgora.primeiraParcelaEm,
       // ⚠️ VAI O NÚMERO DE DIAS, E NÃO A DATA. Quem transforma prazo em vencimento é o servidor,
       // com o relógio dele: a data pronta punha o relógio do navegador para decidir quando a
@@ -797,9 +932,14 @@ export function ModalDeProposta({
     if (!condicoes || !propostaInteira) return;
     // A trava do desconto sem motivo. `setTentou(true)` acima ja acendeu o recado na caixa.
     //
-    // ATENCAO: esta e uma trava de TELA. O servidor aceita a proposta sem observacao (a coluna e
-    // nula nas 4.857 linhas importadas do C2X e precisa continuar aceitando nulo). Fechar a porta
-    // no servidor exige distinguir proposta nativa de importada na rota, e isso e passo proprio.
+    // ATENCAO: para DESCONTO e para BEM esta e uma trava de TELA — o servidor aceita a proposta sem
+    // observacao (a coluna e nula nas 4.857 linhas importadas do C2X e precisa continuar aceitando
+    // nulo). Fechar aquelas duas no servidor exige distinguir proposta nativa de importada, e isso e
+    // passo proprio.
+    //
+    // ⚠️ PARA A PREMISSA ALTERADA O SERVIDOR TAMBEM COBRA, desde 25/09/2026: a rota devolve 422 no
+    // campo `observacao` quando `alteradaPeloCorretor` e verdadeiro e a nota vem vazia. Esta guarda
+    // continua existindo para o recado nascer na tela, e nao depois do POST.
     if (precisaDaNota) return;
 
     setEnviando(true);
@@ -814,6 +954,10 @@ export function ModalDeProposta({
         ? (JSON.parse(texto) as {
             data?: {
               avisos: Array<{ motivo?: string; ok: boolean; para: string }>;
+              /** Só na venda do comprador da carteira (26/09/2026). */
+              cadDoComprador?: { estado: "criada" | "erro" | "ja_existia" };
+              /** Os co-compradores que entraram pela carteira, um estado por pessoa. */
+              cadsDosCoCompradores?: Array<{ estado: "criada" | "erro" | "ja_existia" }>;
               codigo?: string;
             };
             erros?: ErroDaProposta[];
@@ -832,8 +976,15 @@ export function ModalDeProposta({
 
       // O COD na frente, como no recado da reserva: é o número que ele anota e repete no telefone.
       const cod = corpo.data?.codigo ? `${corpo.data.codigo} · ` : "";
+      // ⚠️ A PROPOSTA SAIU, MAS A CAD DA CARTEIRA NÃO: a frase diz, para alguém abrir a CAD à mão.
+      // Calar faria o comprador sumir do Board sem ninguém saber por quê.
+      const semCad =
+        corpo.data?.cadDoComprador?.estado === "erro" ||
+        (corpo.data?.cadsDosCoCompradores ?? []).some((c) => c.estado === "erro")
+          ? " A CAD de comprador da carteira não foi registrada; avise a coordenação."
+          : "";
       onGerada(
-        `${cod}Proposta de ${unidade.nome} gerada. ${comoFoiOAviso(corpo.data?.avisos ?? [])}`,
+        `${cod}Proposta de ${unidade.nome} gerada. ${comoFoiOAviso(corpo.data?.avisos ?? [])}${semCad}`,
       );
     } catch {
       setErroDoServidor("Não foi possível gerar a proposta agora.");
@@ -1254,35 +1405,126 @@ export function ModalDeProposta({
                       : ""}
                   </div>
 
-                  {/* ⚠️ O SELO É A DECISÃO, e vem inteiro do servidor. Verde: segue. Vermelho: a frase
-                      diz em que etapa a CAD está e desde quando — é com ela que o coordenador sabe a
-                      quem cobrar, em vez de ligar para descobrir o que a tela já sabia. */}
+                  {/* ⚠️ O SELO É A DECISÃO, e vem inteiro do servidor. São TRÊS CAIXAS, e a do meio
+                      nasceu em 26/09/2026:
+                        VERDE    — CAD credenciada: segue.
+                        ÂMBAR    — CAD EM ANDAMENTO (validação, revisão, crédito, correção,
+                                   pré-venda): o coordenador GERA, e continua LENDO em que etapa a
+                                   CAD está. É o caso do print do Mateus, sobre o qual o Lucas disse
+                                   *"essa devia passar"*.
+                        VERMELHO — barrado: CAD indeferida, sem CAD neste empreendimento, sem
+                                   cadastro no Apolo, ou o portal do Cecílio com a CAD não
+                                   credenciada.
+                      A frase do meio e a do vermelho são a MESMA (`motivo`, montada por
+                      `motivoDaEtapa` em lib/hercules/cliente-credenciado.ts): o que muda é o tom e o
+                      botão. É com ela que o coordenador sabe a quem cobrar.
+
+                      ⚠️ E A CAIXA GRAFITE DA CARTEIRA É UMA QUARTA, NÃO UM QUARTO TOM DA MESMA
+                      (junção de 26/09/2026): ali não há etapa nem frase de etapa para mostrar, porque
+                      não há CAD — a prova é o contrato antigo. "Contrato ativo" só quando o servidor
+                      leu o contrato agora; com a CAD que a carteira já abriu, a frase fala da CAD.
+
+                      ⚠️ OS DOIS TEXTOS CONVIVEM, e é a pergunta que a junção obrigou a responder: o
+                      chip "Comprador da carteira" aparece TAMBÉM dentro das caixas de CAD, porque a
+                      CAD que nasceu da carteira pode ser mexida no Board e cair em `revisao`. Nesse
+                      caso o coordenador lê as duas coisas ao mesmo tempo: que a pessoa é compradora
+                      da carteira e que o contrato só sai depois que a CAD for aprovada. */}
+                  {compradorDaCarteira && credenciado ? (
+                    <div
+                      style={{
+                        alignItems: "center",
+                        background: T.soft,
+                        border: `1px solid ${T.border}`,
+                        borderRadius: 10,
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 8,
+                        marginTop: 10,
+                        padding: "8px 11px",
+                      }}
+                    >
+                      <ChipCompradorDaCarteira />
+                      <span style={{ color: T.sub, fontSize: 11.5 }}>
+                        {portao?.credenciamento.contratoAtivo === true
+                          ? "Contrato ativo neste empreendimento. A reserva pode virar proposta."
+                          : "CAD aberta como comprador da carteira. A reserva pode virar proposta."}
+                        {/* ⚠️ A PAREDE DO CONTRATO TAMBÉM APARECE AQUI QUANDO A BARRA RECUSA A
+                            CARTEIRA. Hoje ela não recusa (`A_CARTEIRA_VALE_PARA_O_CONTRATO`), e por
+                            isso a frase não sai — mas no dia em que o Lucas responder o contrário,
+                            quem monta a proposta LÊ a parede agora, e não descobre num 409 depois de
+                            confirmar o envio para contrato. É a mesma disciplina do aviso da CAD em
+                            andamento, logo abaixo. */}
+                        {portao?.credenciamento.contratoExigeCad === true
+                          ? " O contrato, porém, só sai depois que a coordenação credenciar a CAD deste cliente: a carteira vale para a proposta, não para o contrato."
+                          : ""}
+                      </span>
+                    </div>
+                  ) : (
                   <div
                     style={{
-                      background: credenciado ? T.okBg : T.dangerBg,
-                      border: `1px solid ${credenciado ? T.ok : T.danger}`,
+                      background: credenciado
+                        ? T.okBg
+                        : cadEmAndamento
+                          ? T.soft
+                          : T.dangerBg,
+                      // O tom de AVISO é o `gold` do portal (modules/incorporador/tema.tsx:340).
+                      // Ele não é verde nem vermelho, que são as duas coisas que este estado não é.
+                      border: `1px solid ${credenciado ? T.ok : cadEmAndamento ? T.gold : T.danger}`,
                       borderRadius: 10,
                       marginTop: 10,
                       padding: "8px 11px",
                     }}
                   >
-                    <b
+                    {/* ⚠️ O CHIP E O TÍTULO DO SELO NA MESMA LINHA, e é aqui que as duas decisões de
+                        26/09/2026 se encontram na tela: "Comprador da carteira" (a CAD nasceu de um
+                        contrato antigo) ao lado de "CAD em andamento" (ela não está aprovada agora).
+                        Sem o chip, o coordenador veria uma CAD em revisão sem saber de onde ela veio;
+                        sem o título, ele acharia que a carteira resolve o contrato também. */}
+                    <span
                       style={{
-                        color: credenciado ? T.ok : T.danger,
-                        fontSize: 12,
+                        alignItems: "center",
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 8,
                       }}
                     >
-                      {credenciado
-                        ? "CAD credenciada neste empreendimento"
-                        : "CAD não credenciada"}
-                    </b>
+                      <b
+                        style={{
+                          color: credenciado
+                            ? T.ok
+                            : cadEmAndamento
+                              ? T.gold
+                              : T.danger,
+                          fontSize: 12,
+                        }}
+                      >
+                        {credenciado
+                          ? "CAD credenciada neste empreendimento"
+                          : cadEmAndamento
+                            ? "CAD em andamento"
+                            : "CAD não credenciada"}
+                      </b>
+                      {compradorDaCarteira ? <ChipCompradorDaCarteira pequeno /> : null}
+                    </span>
                     <div style={{ color: T.sub, fontSize: 11.5, marginTop: 2 }}>
                       {credenciado
                         ? "A reserva pode virar proposta."
                         : (portao.credenciamento.motivo ??
                           "A CAD deste cliente ainda não está credenciada neste empreendimento.")}
+                      {/* ⚠️ A PAREDE DO FIM DO CAMINHO, DITA AQUI NO COMEÇO. Lucas (26/09/2026), na
+                          mesma tarde em que liberou a proposta: *"faz uma barra, para enviar para
+                          contrato precisa da cad validada"*. Os dois pedidos juntos criam um caminho
+                          com parede no fim — a proposta nasce com a CAD em andamento e o contrato só
+                          sai com ela aprovada. Quem monta a proposta tem que LER isso agora, não
+                          descobrir num erro vermelho depois de confirmar o envio para contrato.
+                          ⚠️ E SÓ NESTE ESTADO: na CAD credenciada não há parede (o aviso seria ruído
+                          que ensina a ignorar avisos) e na barrada a proposta nem é gerada. */}
+                      {cadEmAndamento
+                        ? " A proposta pode ser gerada, e o credenciamento segue com a coordenação. O contrato só sai depois que a CAD for aprovada."
+                        : ""}
                     </div>
                   </div>
+                  )}
 
                   <p
                     style={{ color: T.muted, fontSize: 11, margin: "8px 0 0" }}
@@ -1473,7 +1715,7 @@ export function ModalDeProposta({
                             setListaFechada(false);
                           }}
                           onFocus={() => setListaFechada(false)}
-                          placeholder="Buscar por nome ou CPF na base"
+                          placeholder="Buscar por nome, CPF ou CNPJ na base"
                           style={campo}
                           value={novo.nome}
                         />
@@ -1535,15 +1777,34 @@ export function ModalDeProposta({
                                 CAD não encontrada neste empreendimento. Abra a
                                 CAD do proponente antes de incluí-lo na
                                 proposta.
+                                {/* (26/09/2026) O comprador da carteira só aparece pelo documento
+                                    inteiro, CPF ou CNPJ (a busca por nome não lista a carteira): a
+                                    dica diz como achá-lo. */}
+                                {ehDocumentoInteiro(termoDaBusca(novo.nome))
+                                  ? ""
+                                  : " Se ele já é comprador aqui, digite o CPF ou o CNPJ inteiro."}
                               </span>
                             ) : (
                               candidatos.map((c) => (
                                 <button
-                                  // ⚠️ SEM CPF NÃO DÁ PARA ESCOLHER. O campo ao lado é só leitura:
-                                  // escolher alguém cujo documento não veio deixaria o proponente
-                                  // sem CPF e sem como digitá-lo — um beco. A rota monta o CPF a
-                                  // partir do documento da entidade, que pode vir vazio.
-                                  disabled={!c.credenciado || !cpfValido(c.cpf)}
+                                  // ⚠️ SEM DOCUMENTO NÃO DÁ PARA ESCOLHER. O campo ao lado é só
+                                  // leitura: escolher alguém cujo documento não veio deixaria o
+                                  // proponente sem documento e sem como digitá-lo — um beco. A rota
+                                  // monta o documento a partir da entidade, que pode vir vazio.
+                                  //
+                                  // ⚠️ E O DOCUMENTO PODE SER CNPJ (26/09/2026). Até hoje a régua
+                                  // era `cpfValido`, então um candidato PJ credenciado aparecia
+                                  // CINZA, com a frase "sem CPF no cadastro" — que MENTIA: ele tem
+                                  // CNPJ.
+                                  // ⚠️ A PORTA É `podeGerarProposta`, E NÃO `credenciado`
+                                  // (26/09/2026). Ler `credenciado` aqui deixava o coordenador
+                                  // passar o titular e travar no cônjuge: com o casal em
+                                  // `validacao` ele ficava entre esperar a CAD e gravar 100% no
+                                  // titular, que muda quem assina o contrato. Medido em produção:
+                                  // 97 de 4.946 propostas têm dois ou mais compradores.
+                                  disabled={
+                                    !c.podeGerarProposta || !documentoDeCompradorValido(c.cpf)
+                                  }
                                   key={c.id}
                                   onClick={() => {
                                     setEscolhido(c);
@@ -1559,31 +1820,62 @@ export function ModalDeProposta({
                                     border: "none",
                                     borderBottom: `1px solid ${T.border}`,
                                     cursor:
-                                      c.credenciado && cpfValido(c.cpf)
+                                      c.podeGerarProposta && documentoDeCompradorValido(c.cpf)
                                         ? "pointer"
                                         : "default",
                                     display: "grid",
                                     font: "inherit",
                                     gap: 2,
-                                    opacity: c.credenciado ? 1 : 0.6,
+                                    opacity: c.podeGerarProposta ? 1 : 0.6,
                                     padding: "8px 12px",
                                     textAlign: "left",
                                   }}
                                   type="button"
                                 >
-                                  <b style={{ fontSize: 12.5 }}>{c.nome}</b>
+                                  <span
+                                    style={{
+                                      alignItems: "center",
+                                      display: "flex",
+                                      flexWrap: "wrap",
+                                      gap: 6,
+                                    }}
+                                  >
+                                    <b style={{ fontSize: 12.5 }}>{c.nome}</b>
+                                    {/* A mesma porta do titular: contrato ativo aqui, sem CAD — ou a
+                                        CAD que nasceu dela.
+                                        ⚠️ SEM O `c.credenciado &&` QUE ESTA LINHA TINHA (junção de
+                                        26/09/2026), pelo MESMO motivo do selo do titular lá em cima:
+                                        se a CAD que nasceu da carteira for mexida no Board e cair em
+                                        `revisao`, o chip é o único lugar da tela que explica por que
+                                        aquela pessoa tem CAD sem ter passado pela esteira. A frase da
+                                        etapa, na linha de baixo, continua dizendo que ela não está
+                                        credenciada — os dois convivem, e nenhum dos dois mente. */}
+                                    {c.origem === "comprador_da_carteira" ? (
+                                      <ChipCompradorDaCarteira pequeno />
+                                    ) : null}
+                                  </span>
                                   <span
                                     style={{ color: T.muted, fontSize: 11 }}
                                   >
                                     {c.cpf}
                                     {/* ⚠️ QUEM NÃO PASSA APARECE COM O MOTIVO, e não some da lista:
                                         sumir faria o coordenador concluir que a pessoa não tem
-                                        cadastro, quando ela tem e está em análise de crédito. */}
+                                        cadastro, quando ela tem e está em análise de crédito.
+                                        ⚠️ E A FRASE DA ETAPA CONTINUA APARECENDO QUANDO A PORTA
+                                        ABRE (26/09/2026): o candidato em `validacao` é escolhível
+                                        E lê "está em validação de cadastro desde …". É o terceiro
+                                        estado — o mesmo do selo do titular —, e sem ele a tela
+                                        mentiria por omissão sobre a CAD do cônjuge. */}
                                     {c.credenciado
-                                      ? cpfValido(c.cpf)
+                                      ? documentoDeCompradorValido(c.cpf)
                                         ? null
-                                        : " · sem CPF no cadastro"
-                                      : ` · ${c.motivo ?? "CAD não credenciada"}`}
+                                        : " · sem documento no cadastro"
+                                      : ` · ${c.motivo ?? "CAD não credenciada"}${
+                                          c.podeGerarProposta &&
+                                          !documentoDeCompradorValido(c.cpf)
+                                            ? " · sem documento no cadastro"
+                                            : ""
+                                        }`}
                                   </span>
                                 </button>
                               ))
@@ -1603,7 +1895,7 @@ export function ModalDeProposta({
                             seria a porta que a busca acabou de fechar. */}
                         <input
                           disabled
-                          placeholder="CPF (vem da CAD)"
+                          placeholder="CPF ou CNPJ (vem da CAD)"
                           style={{ ...campo, background: T.soft, color: T.sub }}
                           value={novo.cpf}
                         />
@@ -1655,8 +1947,12 @@ export function ModalDeProposta({
                   padding: "12px 16px",
                 }}
               >
+                {/* ⚠️ O RODAPÉ SEGUE A PORTA, NÃO O SELO. A frase "Sem a CAD credenciada neste
+                    empreendimento a proposta não pode ser gerada" só aparece para quem está DE FATO
+                    barrado: com a CAD em andamento ela apareceria por baixo de um botão aceso,
+                    dizendo ao coordenador o contrário do que a rota responde. */}
                 <span style={{ color: T.muted, fontSize: 11.5 }}>
-                  {credenciado
+                  {podeGerar
                     ? "Depois vem a montagem: plano, entrada, prazo e as datas de cobrança."
                     : "Sem a CAD credenciada neste empreendimento a proposta não pode ser gerada."}
                 </span>
@@ -1913,8 +2209,10 @@ function PreviaDaProposta({
                     style={{ ...celula, fontWeight: 650, textAlign: "right" }}
                   >
                     {dinheiro(f.valor)}
-                    {f.temIpca ? (
-                      <span style={{ color: T.muted }}> + IPCA</span>
+                    {/* ⚠️ O ÍNDICE DO PLANO, E NÃO A PALAVRA "IPCA": esta linha escrevia IPCA
+                        cravado, e no Jardim das Gerais o plano NORMAL corrige pela poupança. */}
+                    {f.indiceCorrecao ? (
+                      <span style={{ color: T.muted }}> + {INDICES[f.indiceCorrecao]}</span>
                     ) : null}
                   </td>
                 </tr>
@@ -2173,5 +2471,38 @@ function Erro({ texto }: { texto: string }) {
     <p style={{ color: T.danger, fontSize: 11.5, margin: "5px 0 0" }}>
       {texto}
     </p>
+  );
+}
+
+/**
+ * O selo "Comprador da carteira" (26/09/2026).
+ *
+ * ⚠️ GRAFITE E PRETO, E O ÍCONE NA FRENTE. É a mesma cor do botão principal do portal (`btnBg`), e
+ * não o verde do "CAD credenciada": o comprador da carteira passa, mas por outra porta, e o
+ * coordenador precisa ver a diferença sem ler a frase. `aria-label` porque o ícone sozinho não diz
+ * nada a quem lê a tela com leitor.
+ */
+function ChipCompradorDaCarteira({ pequeno = false }: { pequeno?: boolean }) {
+  return (
+    <span
+      aria-label="Comprador da carteira"
+      style={{
+        alignItems: "center",
+        background: T.btnBg,
+        borderRadius: 999,
+        color: T.btnFg,
+        display: "inline-flex",
+        fontSize: pequeno ? 10.5 : 11.5,
+        fontWeight: 700,
+        gap: 5,
+        lineHeight: 1,
+        padding: pequeno ? "3px 7px" : "5px 10px",
+        whiteSpace: "nowrap",
+      }}
+      title="Tem contrato ativo neste empreendimento"
+    >
+      <UserCheck aria-hidden size={pequeno ? 11 : 13} strokeWidth={2.4} />
+      Comprador da carteira
+    </span>
   );
 }

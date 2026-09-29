@@ -55,6 +55,11 @@ vi.mock("@/lib/serasa/consulta-servico", () => ({ consultaRecenteDoDocumento: m.
 
 import { avaliarCredito } from "@/lib/serasa/avaliacao";
 
+import {
+  MOTIVO_C2X_FORA_DO_AR,
+  MOTIVO_GRUPO_SEM_DIVISOES,
+  MOTIVO_SEM_COORDENADOR,
+} from "./coordenador-do-empreendimento";
 import { type EmpreendimentoDoCadastro, idDeMercado } from "./esteira-cad";
 import {
   avisoDoCoordenadorQueNaoSaiu,
@@ -1094,12 +1099,13 @@ describe("moverCadDeEmpreendimento", () => {
       );
     });
 
-    it("coordenador sem cadastro no C2X (o group:Lagoa Bonita): o aviso diz o que conferir, sem `incompleto`", async () => {
-      // Medido em 24/09/2026: o group:Lagoa Bonita tem code "LBF + LBR + LBP", o C2X não acha o
-      // coordenador e 6 de 6 avisos ao coordenador falharam com esta frase. Antes, todo Mover para lá
-      // voltava `incompleto` e mandava "Reenvie pelo Board", um reenvio que não existe e falharia igual.
+    it("coordenador não achado (nem no Panteon nem no C2X): o aviso diz o que conferir, sem `incompleto`", async () => {
+      // Medido em 24/09/2026: o group:Lagoa Bonita tem code "LBF + LBR + LBP", a busca pela sigla não
+      // achava o coordenador e 6 de 6 avisos falharam. Antes, todo Mover para lá voltava `incompleto` e
+      // mandava "Reenvie pelo Board", um reenvio que não existe e falharia igual. A frase é a constante
+      // de quem escreve o motivo, não uma cópia (revisão de 24/09/2026).
       m.avisar.mockImplementation(async (_c: unknown, input: { etapa: string }) => ({
-        coordenador: { destinatario: null, erro: "Empreendimento sem coordenador de vendas no C2X.", ok: false },
+        coordenador: { destinatario: null, erro: MOTIVO_SEM_COORDENADOR, ok: false },
         corretor: { destinatario: null, erro: "sem telefone", ok: false, papel: "imobiliaria" },
         etapa: input.etapa,
       }));
@@ -1107,7 +1113,7 @@ describe("moverCadDeEmpreendimento", () => {
       const r = await mover(banco);
       expect(dados(r).incompleto).toBe(false);
       expect(dados(r).avisos).toEqual([
-        "O aviso ao coordenador do novo empreendimento não saiu: Empreendimento sem coordenador de vendas no C2X. Confira o coordenador de vendas do empreendimento no C2X.",
+        "O aviso ao coordenador do novo empreendimento não saiu: Empreendimento sem coordenador de vendas no Panteon nem no C2X. Confira o coordenador de vendas no cadastro do empreendimento, no Panteon.",
       ]);
     });
 
@@ -1199,33 +1205,52 @@ describe("avisoDoCoordenadorQueNaoSaiu: diz o que aconteceu e, se for cadastro, 
     }
   });
 
-  it("motivo de CADASTRO: diz onde conferir (e não depende do ponto final)", () => {
-    for (const motivo of [
-      "Empreendimento sem coordenador de vendas no C2X.",
-      "Empreendimento sem coordenador de vendas no C2X",
-    ]) {
+  // ⚠️ AS FRASES VÊM DAS CONSTANTES DE QUEM ESCREVE (revisão de 24/09/2026). Estes testes usavam as
+  // frases da busca antiga pela sigla, escritas à mão, e continuaram verdes depois que o
+  // `coordenadorDaCad` passou a devolver outras: a tela perdeu a dica e nada acusou.
+  it("motivo de CADASTRO: diz onde conferir no Panteon (e não depende do ponto final)", () => {
+    for (const motivo of [MOTIVO_SEM_COORDENADOR, MOTIVO_SEM_COORDENADOR.replace(/\.$/, "")]) {
       expect(avisoDoCoordenadorQueNaoSaiu(motivo)).toBe(
-        `${BASE}: Empreendimento sem coordenador de vendas no C2X. Confira o coordenador de vendas do empreendimento no C2X.`,
+        `${BASE}: Empreendimento sem coordenador de vendas no Panteon nem no C2X. Confira o coordenador de vendas no cadastro do empreendimento, no Panteon.`,
       );
     }
-    expect(avisoDoCoordenadorQueNaoSaiu("Coordenador sem telefone no C2X.")).toBe(
-      `${BASE}: Coordenador sem telefone no C2X. Confira o telefone do coordenador de vendas do empreendimento no C2X.`,
-    );
-    expect(avisoDoCoordenadorQueNaoSaiu("Empreendimento sem sigla cadastrada no Apolo.")).toBe(
-      `${BASE}: Empreendimento sem sigla cadastrada no Apolo. Confira a sigla do empreendimento no Apolo.`,
+    expect(avisoDoCoordenadorQueNaoSaiu(MOTIVO_GRUPO_SEM_DIVISOES)).toMatch(
+      /Confira as divisões do empreendimento no cadastro do Panteon\.$/,
     );
   });
 
-  it("motivo de ENVIO: só o fato com o motivo, sem inventar conserto", () => {
+  it("⚠️ coordenador sem telefone, com o NOME no meio da frase: diz onde corrigir, conforme a fonte", () => {
+    // O Garden (39): a CARELI ACESSORIA está cadastrada no Panteon, sem telefone.
+    expect(avisoDoCoordenadorQueNaoSaiu("Coordenador CARELI ACESSORIA sem telefone no cadastro do Panteon.")).toBe(
+      `${BASE}: Coordenador CARELI ACESSORIA sem telefone no cadastro do Panteon. Confira o telefone na ficha do coordenador, no Panteon.`,
+    );
+    // LOU/LOS: o Panteon não tem coordenador cadastrado e o do C2X (GLENDER) está sem telefone.
+    expect(avisoDoCoordenadorQueNaoSaiu("Coordenador GLENDER sem telefone no C2X.")).toBe(
+      `${BASE}: Coordenador GLENDER sem telefone no C2X. Cadastre o coordenador de vendas do empreendimento no Panteon, com o telefone.`,
+    );
+    for (const motivo of [
+      "Coordenador LUNA com telefone que não serve para WhatsApp.",
+      "Coordenador sem telefone.",
+    ]) {
+      expect(avisoDoCoordenadorQueNaoSaiu(motivo)).toMatch(/Confira o telefone na ficha do coordenador, no Panteon\.$/);
+    }
+  });
+
+  it("motivo de ENVIO ou de leitura: só o fato com o motivo, sem inventar conserto", () => {
     expect(avisoDoCoordenadorQueNaoSaiu("Evolution — timeout.")).toBe(`${BASE}: Evolution, timeout.`);
+    expect(avisoDoCoordenadorQueNaoSaiu(MOTIVO_C2X_FORA_DO_AR)).toBe(
+      `${BASE}: Não foi possível ler o cadastro do empreendimento no C2X.`,
+    );
   });
 
   it("nunca manda reenviar (esse reenvio não existe para a CAD movida) e nunca leva travessão", () => {
     for (const motivo of [
       null,
-      "Empreendimento sem coordenador de vendas no C2X.",
-      "Coordenador sem telefone no C2X.",
-      "Não foi possível ler o cadastro do empreendimento no C2X.",
+      MOTIVO_SEM_COORDENADOR,
+      MOTIVO_GRUPO_SEM_DIVISOES,
+      MOTIVO_C2X_FORA_DO_AR,
+      "Coordenador CARELI ACESSORIA sem telefone no cadastro do Panteon.",
+      "Coordenador GLENDER sem telefone no C2X.",
       "Falhou — de novo",
     ]) {
       const frase = avisoDoCoordenadorQueNaoSaiu(motivo);

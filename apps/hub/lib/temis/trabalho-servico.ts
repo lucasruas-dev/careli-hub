@@ -41,6 +41,12 @@ import { comIdsDoGrupo } from "@/lib/apolo/incorporador/resumo-do-produto";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { diarioDaProposta } from "@/lib/assinatura/diario-do-envelope-db";
 import { type EnvelopeDaProposta, envelopeQueSegura } from "@/lib/assinatura/envio-db";
+import { envelopeVigente } from "@/lib/assinatura/envelope-vigente";
+import {
+  fraseParaOAtor,
+  INDEFERIMENTO_POR_OUTRO_CANAL,
+  RECUSA_POR_OUTRO_CANAL,
+} from "@/lib/assinatura/frase-para-o-portal";
 import type { EstadoDaAssinatura } from "@/lib/assinatura/tipos";
 import { rotuloDoEstado } from "@/lib/assinatura/traduzir";
 import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
@@ -459,7 +465,13 @@ export async function agirNosTrabalhos(
       quem: idDoAutor(ator),
       quemNome: nomeDoAutor(ator),
     });
-    if (!r.ok) return NextResponse.json({ error: r.erro }, { status: 400 });
+    // ⚠️ O `status` DA RECUSA MANDA, E 400 É SÓ O PADRÃO. Antes, todo `!ok` virava 400 — inclusive o
+    // 503 de fail-closed da barra da CAD, cuja frase é *"tente de novo em instantes"*. Um monitor que
+    // separa pedido inválido de falha temporária classificava PostgREST oscilando como pedido errado, e
+    // as outras três portas da mesma barra já respondem 409 e 503 corretamente
+    // (`app/api/incorporador/venda/contrato/route.ts:227`, `lib/temis/contrato-servico.ts:561`,
+    // `lib/assinatura/envio-db.ts:117`). Os erros que já existiam aqui não têm `status` e seguem 400.
+    if (!r.ok) return NextResponse.json({ error: r.erro }, { status: r.status ?? 400 });
     registrarAtoDoPortal(ator, "atividade marcada", { atividade, trabalhoId: id });
     return NextResponse.json({ andou: r.andou, estagio: r.estagio, ok: true });
   }
@@ -757,12 +769,21 @@ export async function listarEmpreendimentosDaTemis(ator: AtorDaTemis): Promise<N
     );
   }
 
-  // O NOME BONITO vem do cadastro do Panteon, casando pelo CÓDIGO. O portão guarda o código
-  // (inclusive "LBF + LBR + LBP" no consolidado), e código sozinho não é o que se lê numa lista.
+  // O NOME BONITO vem do cadastro do Panteon. O portão guarda o código (inclusive "LBF + LBR + LBP"
+  // no consolidado), e código sozinho não é o que se lê numa lista.
+  //
+  // ⚠️ CASA PELO ID ANTES DO CÓDIGO (Lucas, 24/09/2026). O código do portão é uma cópia que a tela do
+  // empreendimento regrava com a sigla que o C2X mostra na hora, e envelhece quando alguém renomeia
+  // no legado (o 43 ficou RDV depois de virar PDI; o 30, ADT depois de virar ACT). Casando só pelo
+  // código, o empreendimento renomeado perdia o nome e a lista mostrava a sigla velha. O id do C2X
+  // (`c2x_enterprise_id`) não muda; o código fica de segunda chave, para linha sem id no cadastro.
   const nomePorCodigo = new Map<string, string>();
+  const doCadastroPorId = new Map<string, { codigo: string; nome: string }>();
   try {
     for (const e of await carregarCadastroDeEmpreendimentos()) {
       if (e.codigo && e.nome) nomePorCodigo.set(e.codigo.toUpperCase(), e.nome);
+      const id = e.c2xEnterpriseId?.trim();
+      if (id && e.nome) doCadastroPorId.set(id, { codigo: e.codigo, nome: e.nome });
     }
   } catch (erro) {
     // Best-effort: sem o cadastro, a lista sai com o código no lugar do nome — feia, mas viva.
@@ -774,7 +795,8 @@ export async function listarEmpreendimentosDaTemis(ator: AtorDaTemis): Promise<N
     // A rede em memória, igual à do board: o `in` recorta, esta linha garante.
     .filter((l) => enterpriseNoAlcance(ator, l.enterprise_id))
     .map((l) => {
-      const codigo = (l.code ?? "").trim();
+      const doCadastro = doCadastroPorId.get(l.enterprise_id.trim());
+      const codigo = doCadastro?.codigo || (l.code ?? "").trim();
       // O consolidado guarda "LBF + LBR + LBP" no código: o nome dele está no id (`group:Nome`).
       const doGrupo = l.enterprise_id.startsWith("group:")
         ? l.enterprise_id.slice("group:".length)
@@ -782,7 +804,11 @@ export async function listarEmpreendimentosDaTemis(ator: AtorDaTemis): Promise<N
       return {
         code: codigo,
         id: l.enterprise_id,
-        name: doGrupo ?? nomePorCodigo.get(codigo.toUpperCase()) ?? (codigo || l.enterprise_id),
+        name:
+          doGrupo ??
+          doCadastro?.nome ??
+          nomePorCodigo.get(codigo.toUpperCase()) ??
+          (codigo || l.enterprise_id),
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
@@ -908,7 +934,11 @@ export async function abrirCardDoTrabalho(
         analise,
         assinatura,
         card: { ...card, contratos },
-        envelopeVivo,
+        // ⚠️ O PORTAL RECEBE O ENVELOPE SEM O VOCABULÁRIO INTERNO (plano, seções 4 e 5): o aviso de
+        // dois contratos é só da tela interna, e `provedor` e o id do documento da D4Sign (o uuid do
+        // C2X) nunca atravessam. A tela de trabalho é a MESMA função nos dois lados, então o corte é
+        // aqui, pelo ator, e não na tela.
+        envelopeVivo: ator.tipo === "hub" ? envelopeVivo : envelopeVivoParaOPortal(envelopeVivo),
         podeEmitir,
         situacaoDoPedido,
       },
@@ -983,25 +1013,64 @@ async function envelopeVivoDaProposta(
 ): Promise<EnvelopeVivoDoCard | null> {
   const { data, error } = await sb
     .from("temis_envelopes")
-    // As mesmas colunas que a guarda do envio e a volta leem — é a mesma régua.
-    .select("criado_em, envelope_id, estado, falha, id, provedor")
+    // As mesmas colunas que a guarda do envio e a volta leem — é a mesma régua. `enviado_em` e
+    // `finalidade` entram para a régua do contrato vigente (F2 da fonte única).
+    .select("criado_em, envelope_id, enviado_em, estado, falha, finalidade, id, provedor")
     .eq("proposta_id", propostaId)
     .order("criado_em", { ascending: false })
     .limit(50);
 
   if (error) {
-    console.error("[temis][trabalho] falha ao ler o envelope da proposta", error);
-    return { conferido: false, estado: "desconhecido", id: null, rotulo: "Não deu para conferir" };
+    console.error("[temis][trabalho] falha ao ler o envelope da proposta", {
+      code: error.code ?? null,
+      message: error.message ?? null,
+    });
+    return {
+      conferido: false,
+      doisContratosVivos: false,
+      estado: "desconhecido",
+      id: null,
+      provedor: null,
+      rotulo: "Não deu para conferir",
+    };
   }
 
-  const vivo = envelopeQueSegura((data ?? []) as EnvelopeDaProposta[]);
+  const linhas = (data ?? []) as Array<EnvelopeDaProposta & { finalidade: null | string }>;
+  const vivo = envelopeQueSegura(linhas);
   if (!vivo) return null;
+
+  // ⚠️ O AVISO DE DOIS CONTRATOS É SÓ ENTRE ENVELOPES DE CONTRATO (plano, seção 4): um distrato vivo
+  // na mesma venda não é "dois contratos". Quem segura a volta continua sendo QUALQUER envelope vivo
+  // (a guarda acima, sem filtro), porque é essa a pergunta que a tela faz antes de cancelar.
+  const doContrato = linhas.filter((l) => l.finalidade === "contrato");
 
   return {
     conferido: true,
+    doisContratosVivos: envelopeVigente(doContrato).doisContratosVivos,
     estado: vivo.estado,
     id: vivo.envelope_id,
+    provedor: vivo.provedor,
     rotulo: comoSeEscreveOEstado(vivo.estado),
+  };
+}
+
+/** O que o portal recebe do envelope vivo: sem provedor, sem o aviso interno. */
+type EnvelopeVivoDoPortal = Omit<EnvelopeVivoDoCard, "doisContratosVivos" | "provedor">;
+
+/**
+ * O envelope vivo cortado para o portal (ALLOWLIST, seção 5 do plano).
+ *
+ * ⚠️ O `id` SÓ VAI QUANDO É DA CLICKSIGN, como ia antes da F2 (é o envelope que a própria Têmis
+ * mandou). Na linha do espelho da D4Sign o id é o documento do C2X, e ele não atravessa; `null` já
+ * é um caso que a tela conhece (a linha viva sem id: avisa pelo pior caso).
+ */
+function envelopeVivoParaOPortal(vivo: EnvelopeVivoDoCard | null): EnvelopeVivoDoPortal | null {
+  if (!vivo) return null;
+  return {
+    conferido: vivo.conferido,
+    estado: vivo.estado,
+    id: vivo.provedor === "clicksign" ? vivo.id : null,
+    rotulo: vivo.rotulo,
   };
 }
 
@@ -1014,6 +1083,11 @@ type EnvelopeVivoDoCard = {
    * antecede o cancelamento de um envelope pago.
    */
   conferido: boolean;
+  /**
+   * Dois contratos em assinatura (ou um assinado e outro vivo) para a mesma venda, de qualquer
+   * provedor (F2 da fonte única). É o aviso interno da seção 4 do plano; a tela o desenha na F6.
+   */
+  doisContratosVivos: boolean;
   /** O estado CRU de `temis_envelopes` — é por ele que a tela decide qual frase mostrar. */
   estado: string;
   /**
@@ -1023,6 +1097,12 @@ type EnvelopeVivoDoCard = {
    * Panteon nunca soube como terminou. Ela SEGURA a volta, e a tela avisa pelo pior caso.
    */
   id: null | string;
+  /**
+   * De que provedor é o envelope vivo (`clicksign` ou `d4sign`). ⚠️ Com a D4Sign ligada à venda (o C2X
+   * mandou, F3), a volta não cancela daqui: a tela precisa saber para não prometer o que não faz.
+   * `null` só quando a leitura falhou.
+   */
+  provedor: null | string;
   /** O mesmo estado em palavra da casa, pronto para a tela ESCREVER. */
   rotulo: string;
 };
@@ -1134,7 +1214,11 @@ export async function decidirSobreOTrabalho(
     });
 
     if (!feito.ok) {
-      return NextResponse.json({ error: feito.erro }, { status: feito.status });
+      // ⚠️ A RECUSA DA D4SIGN NÃO ATRAVESSA PARA O PORTAL COMO ESTÁ (`frase-para-o-portal.ts`).
+      return NextResponse.json(
+        { error: fraseParaOAtor(ator.tipo === "hub", feito.erro, RECUSA_POR_OUTRO_CANAL) },
+        { status: feito.status },
+      );
     }
 
     registrarAtoDoPortal(ator, "voltou para análise", {
@@ -1172,7 +1256,10 @@ export async function decidirSobreOTrabalho(
     });
 
     if (!feito.ok) {
-      return NextResponse.json({ error: feito.erro }, { status: feito.status });
+      return NextResponse.json(
+        { error: fraseParaOAtor(ator.tipo === "hub", feito.erro, RECUSA_POR_OUTRO_CANAL) },
+        { status: feito.status },
+      );
     }
 
     registrarAtoDoPortal(ator, `${feito.tipo} concluído`, {
@@ -1366,12 +1453,13 @@ export async function decidirSobreOTrabalho(
     trabalhoId: card.id,
     venda: naVenda.feito,
   });
+  const avisoDaVenda = fraseParaOAtor(ator.tipo === "hub", naVenda.aviso, INDEFERIMENTO_POR_OUTRO_CANAL);
   return NextResponse.json(
     {
       // ⚠️ O AVISO VIAJA SEPARADO: é o que o quadro mostra em âmbar e só fecha no clique.
-      aviso: naVenda.aviso,
+      aviso: avisoDaVenda,
       ok: true,
-      recado: [naVenda.recado, naVenda.aviso].filter(Boolean).join(" ") || null,
+      recado: [naVenda.recado, avisoDaVenda].filter(Boolean).join(" ") || null,
       venda: naVenda.feito,
     },
     { headers: { "Cache-Control": "no-store" } },

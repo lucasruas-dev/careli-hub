@@ -197,7 +197,16 @@ function buildUnit(
     quadra: client.quadra,
     lote: client.lote,
     area: client.area,
-    matricula: client.matricula ?? buildUnitCode(client.empreendimento, client.quadra, client.lote),
+    // SEM MATRÍCULA DO SERVIDOR, NÃO SE INVENTA SIGLA (PAN-124, F1). Até 26/09/2026 o código saía de
+    // um mapa NOME -> SIGLA escrito à mão ("Lagoa Bonita" virava LAB, a sigla do 31, o masterplan
+    // excluído; "Recanto do Pará" virava RDP, a do Rio de Pedras) ou das iniciais do nome. A fila
+    // compacta (`loadHadesAttendanceQueueSummary`) nunca manda matrícula. Medido em 26/09/2026 (só
+    // SELECT, scratchpad/pan124-paridade-regua.ts): 240 linhas, todas sem matrícula; 217 recebiam uma
+    // sigla que não existe (LDO, RPR, VOV, PVP, LBL...) e 23 a do próprio empreendimento sem quadra e
+    // lote. O código aparecia como "Cod. unidade", entrava na busca e ia para a CACÁ. O de verdade vem
+    // com a unidade do C2X (`unity_name`, ou a sigla do C2X com quadra e lote:
+    // lib/guardian/attendance.ts, `unitCode`).
+    matricula: client.matricula ?? EMPTY_FIELD,
     signedContractDocumentId: client.signedContractDocumentId,
     signedContractStatus: client.signedContractStatus,
     signedContractUrl: client.signedContractUrl,
@@ -768,49 +777,6 @@ function nextActionForStatus(status: string, priority: QueueClient["prioridade"]
 
 function brokerForEnterprise(enterprise: string) {
   return EMPTY_FIELD;
-}
-
-function buildUnitCode(enterprise: string, quadra: string, lote: string) {
-  const enterpriseCode = enterpriseCodeFor(enterprise);
-  const blockCode = normalizeCodePart(quadra);
-  const lotCode = normalizeCodePart(lote).replace(/^L/, "");
-
-  return `${enterpriseCode}${blockCode}${lotCode}`;
-}
-
-function enterpriseCodeFor(enterprise: string) {
-  const codes: Record<string, string> = {
-    "Jardins do Vale": "JDV",
-    "Lagoa Bonita": "LAB",
-    "Lavra do Ouro": "LDO",
-    "Morada da Serra": "MDS",
-    "Recanto do Pará": "RDP",
-    "Reserva Alameda": "REA",
-    "Veredas do Ouro": "VDO",
-    "Vista Alegre": "VAL",
-  };
-
-  return codes[enterprise] ?? deriveEnterpriseCode(enterprise);
-}
-
-function deriveEnterpriseCode(enterprise: string) {
-  const words = enterprise
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .split(/\s+/)
-    .filter((word) => word && !["DA", "DE", "DO", "DAS", "DOS"].includes(word));
-  const initials = words.map((word) => word[0]).join("");
-
-  return (initials + words.join("")).replace(/[^A-Z0-9]/g, "").slice(0, 3).padEnd(3, "X");
-}
-
-function normalizeCodePart(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "");
 }
 
 function guardianProtocol(seed: number) {

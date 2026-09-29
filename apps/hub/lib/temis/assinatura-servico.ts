@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { conferirConfiguracao, pareceSandbox } from "@/lib/assinatura/clicksign/cliente";
 import { enviarContratoParaAssinatura, prepararEnvio } from "@/lib/assinatura/envio-db";
+import { ENVIO_POR_OUTRO_CANAL, fraseParaOAtor } from "@/lib/assinatura/frase-para-o-portal";
 import { descreverRegra, gruposDaRegra, lerRegraDeOrdem, type RegraDeOrdem } from "@/lib/assinatura/ordem";
 import type { AmbienteDoEnvio, RespostaDoEnvio, RespostaDoPreparo } from "@/lib/assinatura/preparo";
 import { rotuloDoPapel } from "@/lib/assinatura/tipos";
@@ -76,6 +77,9 @@ export async function alcanceDoEnvelope(
   const { data, error } = await sb
     .from("temis_envelopes")
     .select("proposta_id")
+    // ⚠️ SÓ A CLICKSIGN (0.15 do plano da fonte única): as ações que passam por aqui (reenviar e
+    // trocar signatário) são da Clicksign, e a mesma tabela passa a guardar os envelopes da D4Sign.
+    .eq("provedor", "clicksign")
     .eq("envelope_id", alvo)
     .limit(20);
 
@@ -121,7 +125,7 @@ export async function preparoDoEnvio(ator: AtorDaTemis, request: Request): Promi
   );
 }
 
-/** POST `{ propostaId, emails?, mensagem?, ordem?, prazoEmDias?, semCpf? }` — envia de verdade. */
+/** POST `{ propostaId, emails?, mensagem?, ordem?, prazoEmDias?, semCpf?, trabalhoId? }` — envia de verdade. */
 export async function enviarContratoDoAtor(
   ator: AtorDaTemis,
   request: Request,
@@ -133,9 +137,14 @@ export async function enviarContratoDoAtor(
     prazoEmDias?: unknown;
     propostaId?: unknown;
     semCpf?: unknown;
+    trabalhoId?: unknown;
   };
 
   const propostaId = typeof corpo.propostaId === "string" ? corpo.propostaId.trim() : "";
+  // ⚠️ O CARD QUE ESTÁ MANDANDO (F1 da fonte única): é ele que diz se o envelope é contrato,
+  // distrato, cessão ou cancelamento por correção (`temis_envelopes.finalidade`). Vem do navegador,
+  // e por isso `enviarContratoParaAssinatura` só o aceita se ele for DESTA proposta.
+  const trabalhoId = typeof corpo.trabalhoId === "string" ? corpo.trabalhoId.trim() : "";
   if (!propostaId) return NextResponse.json({ erro: "Sem proposta." }, { status: 400 });
 
   const sb = createApoloAdminClient();
@@ -187,6 +196,7 @@ export async function enviarContratoDoAtor(
     semCpf: corpo.semCpf === true,
     ordemEscolhida,
     propostaId,
+    trabalhoId: trabalhoId || null,
     usuarioId: autor.id,
     usuarioNome: autor.nome,
     ...(typeof corpo.mensagem === "string" && corpo.mensagem.trim()
@@ -207,7 +217,9 @@ export async function enviarContratoDoAtor(
     });
     return NextResponse.json(
       {
-        erro: enviado.erro,
+        // ⚠️ A RECUSA DA D4SIGN (o contrato já está lá, mandado pelo C2X) não atravessa para o portal
+        // como está: `frase-para-o-portal.ts`.
+        erro: fraseParaOAtor(ator.tipo === "hub", enviado.erro, ENVIO_POR_OUTRO_CANAL),
         ...(enviado.envelopeAtivo ? { envelopeAtivo: true } : {}),
       },
       { status: enviado.status },
@@ -360,6 +372,11 @@ function corpoDaResposta(
     ordem: {
       descricao: descreverRegra(preparo.regra, rotuloDoPapel),
       ordenada: preparo.regra.ordenada,
+      // ⚠️ O MAPA VAI INTEIRO, COM OS EMPATES (25/09/2026). Só a lista achatada abaixo chegava à
+      // tela, e a tela a devolvia em todo envio: o servidor a lia pelo ramo antigo de
+      // `lerRegraDeOrdem` e numerava 1..N, desmanchando "comprador 1, o resto 2" no envelope. Nívea
+      // (24/09/2026): *"A ordem de assinatura não está ficando salva."*
+      ordens: preparo.regra.ordens,
       origem: preparo.origemDaRegra,
       origemDescrita: preparo.origemDescrita,
       // A fila que a regra descreve, achatada: o corpo da resposta continua sendo uma LISTA de

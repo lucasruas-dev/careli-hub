@@ -134,7 +134,9 @@ export async function GET(request: Request) {
     const result = doPanteon
       ? // O código só rotula a unidade na tela; sem ele, o id segura o lugar.
         await unidadesDoPanteon(enterpriseId, (codes[0] ?? enterpriseId).toUpperCase())
-      : await loadApoloEnterpriseUnits(codes);
+      : // ⚠️ `conferirNoC2x` (PAN-124): a sigla desta tela foi lida AO VIVO do C2X, e é conferida lá
+        // no mesmo instante, e não só no catálogo em cache (ver `OrigemDaSigla`).
+        await loadApoloEnterpriseUnits(codes, { conferirNoC2x: true });
 
     // EM QUAL CANAL A TELA ESCUTA para saber que uma reserva aconteceu no salão.
     //

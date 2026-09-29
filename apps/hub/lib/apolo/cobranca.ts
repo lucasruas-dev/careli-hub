@@ -5,7 +5,8 @@
 // [[project-hades-cobranca-design]].
 import type { RowDataPacket } from "mysql2";
 
-import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
+import { filtroPorIds, semExcluidos } from "@/lib/apolo/c2x-pelo-id";
+import { idsDoC2xDasSiglasAoVivo, type OrigemDaSigla } from "@/lib/apolo/c2x-pelo-id-servidor";
 import {
   createGuardianMotorClient,
   listGuardianCompromissosByClient,
@@ -73,25 +74,57 @@ type ParcelaScopeRow = {
   status: string;
 };
 
+type ResultadoDaCobranca =
+  | { data: ApoloEnterpriseCobranca; ok: true }
+  | { error: string; ok: false };
+
+function cobrancaVazia(): ApoloEnterpriseCobranca {
+  return { byUnitId: {}, funnel: emptyFunnel() };
+}
+
 // Read-only e tolerante a falha: qualquer ausência (sem Supabase, sem C2X, sem
 // compromissos) devolve vazio — a carteira NUNCA quebra por causa da cobrança.
+//
+// ⚠️ PAN-124: A SIGLA NÃO VAI MAIS AO C2X COMO FILTRO. A tela manda `?codes=`; aqui a sigla vira o
+// `enterprises.id` (lib/apolo/c2x-pelo-id-servidor.ts) e a consulta filtra pelo id, que não muda
+// quando alguém renomeia no legado (o 43 foi de RDV para PDI em 24/09/2026). A exclusão por sigla
+// saiu: quem exclui é a tradução, pelo id. A única falha que NÃO vira vazio é o catálogo fora (C2X
+// fora do ar): vira `ok: false`, e a tela, que já trata a cobrança como enriquecimento, segue calada
+// como seguia quando a consulta caía.
+//
+// ⚠️ A SIGLA GUARDADA DE ANTES DE UM RENOME só é salva enquanto o catálogo em cache for de antes dele
+// (até 10 minutos); depois volta vazia, como `e.code in` voltava. Só a versão por id atravessa. A
+// tela do Apolo passa `conferirNoC2x` (ver `OrigemDaSigla`).
 export async function loadApoloEnterpriseCobranca(
   codes: string[],
-): Promise<
-  { data: ApoloEnterpriseCobranca; ok: true } | { error: string; ok: false }
-> {
-  const empty: ApoloEnterpriseCobranca = {
-    byUnitId: {},
-    funnel: emptyFunnel(),
-  };
+  origem: OrigemDaSigla = {},
+): Promise<ResultadoDaCobranca> {
+  const motor = createGuardianMotorClient();
+  const poolResult = getHadesDbPool();
 
-  const validCodes = codes
-    .map((code) => code.trim().toUpperCase())
-    .filter((code) => code && !EXCLUDED_ENTERPRISE_CODES.includes(code));
-
-  if (!validCodes.length) {
-    return { data: empty, ok: true };
+  if (!motor || !poolResult.ok) {
+    return { data: cobrancaVazia(), ok: true };
   }
+
+  const traduzido = await idsDoC2xDasSiglasAoVivo(codes, origem);
+  if (!traduzido.ok) return { error: traduzido.erro, ok: false };
+  if (traduzido.ids.length === 0) return { data: cobrancaVazia(), ok: true };
+
+  return loadApoloEnterpriseCobrancaPorIds(traduzido.ids);
+}
+
+/**
+ * A cobrança do empreendimento pelos `enterprises.id` do C2X (PAN-124). Só o WHERE do mapa
+ * unidade <-> pedido mudou, de `e.code in (...)` para `e.id in (...)`. Os excluídos nunca entram,
+ * como na versão por sigla.
+ */
+export async function loadApoloEnterpriseCobrancaPorIds(
+  ids: number[],
+): Promise<ResultadoDaCobranca> {
+  const empty = cobrancaVazia();
+
+  const filtro = filtroPorIds("e.id", semExcluidos(ids));
+  if (!filtro) return { data: empty, ok: true };
 
   const motor = createGuardianMotorClient();
   const poolResult = getHadesDbPool();
@@ -101,14 +134,13 @@ export async function loadApoloEnterpriseCobranca(
   }
 
   // 1) Mapa C2X: unidade <-> (acquisition_request, cliente) do empreendimento.
-  const inCodes = validCodes.map(() => "?").join(", ");
   const [rows] = await poolResult.pool.query<MapRow[]>(
     `select eu.id as unit_id, ar.id as ar_id, ar.client_id as client_id
        from acquisition_requests ar
        join enterprise_unities eu on eu.id = ar.enterprise_unity_id
        join enterprises e on e.id = eu.enterprise_id
-      where e.code in (${inCodes})`,
-    validCodes,
+      where ${filtro.sql}`,
+    filtro.params,
   );
 
   if (!rows.length) {

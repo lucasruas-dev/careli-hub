@@ -89,8 +89,14 @@ export type FaixaDeReajuste = {
   parcelas: string;
   /** "1º ano" */
   periodo: string;
-  /** ⚠️ `true` a partir do primeiro reajuste: é o que imprime "+ IPCA" ao lado do valor. */
-  temIpca: boolean;
+  /**
+   * O RÓTULO do índice que corrige esta faixa ("IPCA anual", "poupança anual"), ou nulo.
+   *
+   * ⚠️ ERA UM BOOLEANO `temIpca` ATÉ 24/09/2026, e o sufixo impresso era a palavra "IPCA" cravada
+   * no código — em qualquer plano, inclusive nos 11 SEM_CORRECAO e no POUPANCA do Jardim das
+   * Gerais. Quem traduz o código em rótulo é `proposta-para-pdf.ts`, com `INDICES`.
+   */
+  correcao: null | string;
   valor: string;
 };
 
@@ -178,6 +184,25 @@ export type PropostaParaPdf = {
    */
   incluirReajuste?: boolean;
   simulacao?: boolean;
+  /**
+   * PARA QUEM esta simulação foi feita, quando quem gerou o papel digitou um nome.
+   *
+   * Ausente, nulo ou em branco = a linha não existe, e a folha sai exatamente como saía. Só vale
+   * junto de `simulacao`: na proposta de verdade quem diz para quem ela é são os COMPRADORES.
+   *
+   * ⚠️ NÃO É COMPRADOR, E POR ISSO NÃO ENTRA EM `compradores`. Lucas (10/09/2026), vendo o primeiro
+   * PDF da simulação: *"isso é uma simulação, ou seja, não precisa nome"* — e a seção COMPRADORES
+   * saiu do papel por isso. Lucas (27/09/2026): *"coloca a opção de inserir um nome na proposta
+   * simulada"*. O que ele pediu é o RÓTULO de para quem a conta foi feita; esse nome no quadro dos
+   * compradores diria que alguém foi qualificado, com documento e participação, numa folha que não
+   * reserva nada e não vincula ninguém.
+   *
+   * ⚠️ CHEGA LIMPO E COM TETO. Quem apara, normaliza, exige FORMA de nome e corta em 80 (com
+   * reticências, no espaço) é `simulacaoParaAceito`
+   * (`lib/hercules/espelho/simulacao-para-quem.ts`), na entrada da rota pública; aqui o corte que
+   * resta é o da LARGURA da linha, e ele é a última defesa do papel.
+   */
+  simulacaoPara?: null | string;
   reajustes: FaixaDeReajuste[];
   /**
    * Se a parcela deste plano REALMENTE muda ao longo do contrato (degrau de juros ou índice).
@@ -441,7 +466,7 @@ function cabecalhoDaTabela(ctx: Ctx, colunas: Coluna[], xs: number[]): void {
 /**
  * Uma tabela do documento: cabeçalho espaçado, régua, linhas com fio fino embaixo.
  *
- * `sufixos` existe para o "+ IPCA" que o Lucas pediu ao lado do valor reajustado — ele vai em
+ * `sufixos` existe para o "+ IPCA anual" que o Lucas pediu ao lado do valor reajustado — ele vai em
  * corpo menor e cinza, colado no número, e não numa coluna própria: numa coluna, a tabela ganharia
  * uma divisão a mais para dizer uma palavra que só aparece em algumas linhas.
  *
@@ -638,6 +663,44 @@ export async function montarPropostaPdf(
   ctx.y -= 12;
   texto(ctx, dados.subtitulo, M, 8.6, { cor: SOFT });
 
+  // ── PARA QUEM É A SIMULAÇÃO ──────────────────────────────────────────────
+  //
+  // ⚠️ UMA LINHA DE RÓTULO, E NÃO UM QUADRO. A seção COMPRADORES não existe na simulação de
+  // propósito (mais abaixo, em `if (!dados.simulacao)`): ninguém foi qualificado. Uma tabela
+  // "Nome | Documento" aqui traria de volta exatamente o que foi tirado, agora preenchida, e a folha
+  // passaria a APRESENTAR UMA PARTE onde só existe um destinatário. O rótulo em cinza, no corpo do
+  // subtítulo e sem negrito, diz o que a linha é: negrito grafite é o tratamento do nome de quem
+  // COMPRA, na tabela dos compradores.
+  //
+  // ⚠️ MEDIDO EM 27/09/2026, RENDERIZANDO A FOLHA: a linha sai em y=716,89 (rótulo em x=34,5, nome
+  // em x=96,46) e empurra o resto 11pt para baixo. A simulação continua em UMA página — folga de
+  // 222,89pt até o piso no caso realista e de 28,89pt no pior caso que a tela permite (entrada em 12
+  // vezes com 7 anuais) —, e `garantirEspaco` quebra a página em vez de sobrepor se um dia encher.
+  // Campo ausente ou em branco desenha EXATAMENTE a folha de hoje.
+  //
+  // ⚠️ E O CORTE NÃO É ENFEITE: `texto()` desenha em x fixo, sem quebra e sem recorte. Em 8,6
+  // caberiam ~116 caracteres minúsculas; o teto da entrada é 80, mas 80 letras LARGAS ainda passariam
+  // da margem (medido: 80 "W" medem 649,47pt contra 464,32pt de linha útil) — e aí o nome sairia da
+  // folha sem erro nenhum, calado. Quem escreve as reticências é `encurtar`, logo abaixo.
+  //
+  // ⚠️ E EM BRANCO É NOME NENHUM, AQUI TAMBÉM. Quem chama a rota pública já recebe nulo de
+  // `simulacaoParaAceito`, mas o desenhista é usado por duas rotas e o tipo aceita texto: três
+  // espaços desenhariam o rótulo "Simulação para" pendurado no ar, sem nada depois.
+  const paraQuem = dados.simulacao ? (dados.simulacaoPara ?? "").trim() : "";
+  if (paraQuem) {
+    ctx.y -= 11;
+    const rotuloDoPara = "Simulação para ";
+    const larguraDoRotulo = font.widthOfTextAtSize(seguro(rotuloDoPara), 8.6);
+    texto(ctx, rotuloDoPara, M, 8.6, { cor: MUTE });
+    texto(
+      ctx,
+      encurtar(font, paraQuem, 8.6, LARGURA - larguraDoRotulo),
+      M + larguraDoRotulo,
+      8.6,
+      { cor: TEXT },
+    );
+  }
+
   // ── OS QUATRO NÚMEROS ────────────────────────────────────────────────────
   ctx.y -= 16;
   regua(ctx, ctx.y, LINE);
@@ -689,7 +752,10 @@ export async function montarPropostaPdf(
       [
         // O nome de quem compra é o dado mais consultado da folha: ele fica em negrito.
         { largura: LARGURA * 0.5, negrito: true, titulo: "Nome" },
-        { largura: LARGURA * 0.28, titulo: "CPF" },
+        // ⚠️ "Documento", E NÃO "CPF" (26/09/2026). É UM título para uma tabela que pode ter
+        // comprador PF e PJ na mesma folha — a empresa e o sócio, por exemplo. Os valores já
+        // saem certos: `proposta-para-pdf.ts` usa `formatarDocumento`, que formata 14 dígitos.
+        { largura: LARGURA * 0.28, titulo: "Documento" },
         {
           alinhamento: "direita",
           largura: LARGURA * 0.22,
@@ -859,7 +925,7 @@ export async function montarPropostaPdf(
         continuacao: dados.temReajuste
           ? "os reajustes seguintes seguem a mesma regra, sempre no aniversário"
           : undefined,
-        sufixos: dados.reajustes.map((r) => (r.temIpca ? "+ IPCA" : null)),
+        sufixos: dados.reajustes.map((r) => (r.correcao ? `+ ${r.correcao}` : null)),
       },
     );
   }

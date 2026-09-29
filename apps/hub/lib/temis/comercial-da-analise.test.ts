@@ -269,3 +269,146 @@ describe("a análise jurídica mostra entrada, bem, financiado e total coerentes
     expect(rotulos.indexOf("Bem e permuta")).toBeLessThan(rotulos.indexOf("Financiado"));
   });
 });
+
+// ── A CORREÇÃO DA PROPOSTA JÁ CONGELADA ──────────────────────────────────────
+//
+// ⚠️ AFIRMAÇÃO EM CAIXA ALTA: 20 PROPOSTAS GRAVADAS PASSARIAM A DIZER "SEM CORREÇÃO", CALADAS. A
+// faixa do cronograma trocou o booleano `temIpca` pelo código `indiceCorrecao` em 24/09/2026, e o
+// cronograma que ESTA tela lê vem do jsonb já congelado (`proposta.condicoes`, via
+// `cronogramaGravado`). Medido em 25/09/2026 (`select count(*) filter (where
+// jsonb_path_exists(condicoes, '$.reajustes[*].temIpca')), count(*) filter (where
+// jsonb_path_exists(condicoes, '$.reajustes[*].indiceCorrecao')), count(*) filter (where
+// condicoes->'reajustes' @> '[{"temIpca": true}]') from hercules_propostas where origem =
+// 'panteon'`): 22, 0 e 20. Ler só a grafia nova faria a análise jurídica escrever "sem correção"
+// num contrato que corrige — exatamente o erro que esta tela existe para impedir.
+
+/** A faixa como as 22 propostas já gravadas a guardam: com o booleano, sem código de índice. */
+const FAIXA_VELHA = (ciclo: number, temIpca: boolean) => ({
+  ate: "2027-10-10",
+  ciclo,
+  de: "2026-11-10",
+  parcelaFinal: ciclo * 12,
+  parcelaInicial: (ciclo - 1) * 12 + 1,
+  temIpca,
+  valor: 1_000 + ciclo * 100,
+});
+
+/** A MESMA faixa na grafia nova, com o código do índice. */
+const FAIXA_NOVA = (ciclo: number, indice: null | string) => ({
+  ate: "2027-10-10",
+  ciclo,
+  de: "2026-11-10",
+  indiceCorrecao: indice,
+  parcelaFinal: ciclo * 12,
+  parcelaInicial: (ciclo - 1) * 12 + 1,
+  valor: 1_000 + ciclo * 100,
+});
+
+const comReajustes = (reajustes: unknown[]) => ({
+  ...COM_PERMUTA,
+  condicoes: { ...COM_PERMUTA.condicoes, reajustes },
+  plano_correcao: "IPCA ANUAL",
+});
+
+const correcaoDe = async (proposta: unknown): Promise<string | undefined> => {
+  const c = await comercialDaProposta(clienteFalso(proposta), "p1");
+  return c?.condicoes.find((x) => x.rotulo === "Correção")?.valor;
+};
+
+describe("a correção sai do cronograma congelado, nas duas grafias", () => {
+  it("⚠️ a forma VELHA (temIpca) continua dizendo que corrige", async () => {
+    expect(await correcaoDe(comReajustes([FAIXA_VELHA(1, false), FAIXA_VELHA(2, true)]))).toBe(
+      "IPCA anual · 2 ciclos",
+    );
+  });
+
+  it("a forma NOVA (indiceCorrecao) diz o mesmo — a regressão a proteger", async () => {
+    expect(await correcaoDe(comReajustes([FAIXA_NOVA(1, null), FAIXA_NOVA(2, "IPCA_ANUAL")]))).toBe(
+      "IPCA anual · 2 ciclos",
+    );
+  });
+
+  it("sem índice e sem booleano, continua sendo 'sem correção'", async () => {
+    expect(await correcaoDe(comReajustes([FAIXA_VELHA(1, false)]))).toBe("sem correção");
+    expect(await correcaoDe(comReajustes([FAIXA_NOVA(1, null)]))).toBe("sem correção");
+  });
+});
+
+// ── "SEM JUROS POR DECISÃO" NÃO É "JUROS NÃO GRAVADOS" ───────────────────────
+//
+// ⚠️ AFIRMAÇÃO EM CAIXA ALTA: DESDE 25/09/2026 "JUROS ZERO" É UM ESTADO LEGÍTIMO E GRAVÁVEL, e esta
+// tela não sabia distinguí-lo de ausência. A linha "Juros" só era escrita quando `juros > 0`, e o
+// branco ali significa, pela nota do próprio arquivo, *"a tela diz que não sabe... marcado como
+// pendência, alguém confere"*. Nívea (24/09/2026), sobre a proposta 000038: ela escolheu juros 0 e
+// poupança anual; refeita a proposta, a análise mostraria a linha de juros VAZIA, como se a taxa não
+// tivesse sido gravada — e a tela que existe para impedir erro de dinheiro viraria a que gera
+// desconfiança.
+//
+// ⚠️ A RESPOSTA JÁ ESTÁ CONGELADA: `condicoes.premissa` guarda `jurosDe` ("cadastro", "faixa" ou
+// "corretor") e `alteradaPeloCorretor`. Faltava alguém ler.
+//
+// ⚠️ E O BRANCO CONTINUA EXISTINDO para quem não tem a chave: toda proposta antiga e toda importada
+// do C2X. Medido em 25/09/2026, as 22 propostas nativas com cronograma NÃO têm `condicoes.premissa` —
+// a chave nasceu neste lote e não alcança o passado.
+const comPremissa = (premissa: null | Record<string, unknown>, juros: null | number) => ({
+  ...COM_PERMUTA,
+  condicoes: {
+    ...COM_PERMUTA.condicoes,
+    ...(premissa === null ? {} : { premissa }),
+  },
+  plano_juros: juros,
+});
+
+const jurosDe = async (proposta: unknown): Promise<string | undefined> => {
+  const c = await comercialDaProposta(clienteFalso(proposta), "p1");
+  return c?.condicoes.find((x) => x.rotulo === "Juros")?.valor;
+};
+
+describe("a linha de juros diz de onde o zero veio", () => {
+  it("⚠️ juros 0 por decisão do CORRETOR escreve 'sem juros' com a origem", async () => {
+    expect(
+      await jurosDe(
+        comPremissa({ alteradaPeloCorretor: true, indiceDe: "corretor", jurosDe: "corretor" }, 0),
+      ),
+    ).toBe("sem juros, por decisão do corretor");
+  });
+
+  it("⚠️ juros 0 vindo da FAIXA DE PRAZO diz que foi a faixa", async () => {
+    expect(
+      await jurosDe(
+        comPremissa({ alteradaPeloCorretor: false, indiceDe: "faixa", jurosDe: "faixa" }, 0),
+      ),
+    ).toBe("sem juros, pela faixa de prazo");
+  });
+
+  it("juros 0 que é do CADASTRO diz que é do cadastro", async () => {
+    expect(
+      await jurosDe(
+        comPremissa({ alteradaPeloCorretor: false, indiceDe: "cadastro", jurosDe: "cadastro" }, 0),
+      ),
+    ).toBe("sem juros, pelo cadastro do plano");
+  });
+
+  // ⚠️ SEM A CHAVE, O BRANCO FICA — e é o que mantém a pendência de conferência para as antigas.
+  it("proposta SEM `condicoes.premissa` continua marcada como pendência", async () => {
+    // ⚠️ `condicao()` transforma o vazio em "não informado" e liga `faltando`: é a pendência que a
+    // Têmis usa para alguém conferir. É ela que tem de sobreviver para as antigas.
+    expect(await jurosDe(comPremissa(null, 0))).toBe("não informado");
+    expect(await jurosDe(comPremissa(null, null))).toBe("não informado");
+    const c = await comercialDaProposta(clienteFalso(comPremissa(null, 0)), "p1");
+    expect(c?.condicoes.find((x) => x.rotulo === "Juros")?.faltando).toBe(true);
+  });
+
+  // ⚠️ TAXA GRAVADA CONTINUA SENDO A TAXA. A chave nova não muda nada de quem tem juros.
+  it("com taxa gravada, a linha continua sendo a taxa e a periodicidade", async () => {
+    expect(
+      await jurosDe(
+        comPremissa(
+          { alteradaPeloCorretor: false, indiceDe: "cadastro", jurosDe: "cadastro" },
+          0.7207,
+        ),
+      ),
+      // A escrita da porcentagem é a da casa (`porcentagem`, 2 casas), e a chave nova não a muda.
+    ).toBe("0,72% a.m.");
+  });
+});

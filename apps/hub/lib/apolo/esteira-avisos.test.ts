@@ -24,19 +24,31 @@ vi.mock("@/lib/iris/evolution-api", () => ({
   }),
 }));
 
-// O coordenador mora no C2X. Aqui devolvemos um fixo para o teste falar de destinatários, não de
-// integração com o legado.
+// O coordenador sem cadastro no Panteon vem do C2X, PELO ID (Lucas, 24/09/2026). Aqui o legado é um
+// fixo por id, para o teste falar de destinatários e não de integração. A busca por SIGLA devolve
+// VAZIO de propósito: é o que o C2X respondeu com a sigla velha do 43 (RDV) depois do renome, e o
+// aviso não pode depender dela.
 vi.mock("@/lib/apolo/empreendimentos", () => ({
-  loadApoloEnterpriseCadastro: vi.fn(async () => ({
-    cadastros: [
-      {
-        code: "VOC",
-        players: [{ name: "Coordenador Teste", phone: "31988887777", relation: "coordenador_vendas" }],
-      },
-    ],
+  loadApoloEnterpriseCadastro: vi.fn(async () => ({ cadastros: [], ok: true })),
+  loadApoloEnterpriseCadastroPorId: vi.fn(async (ids: string[]) => ({
+    cadastros: ids
+      .filter((id) => id === "39" || id === "43")
+      .map((id) => ({
+        enterpriseId: id,
+        players: [
+          {
+            entityId: "coord-c2x",
+            name: "Coordenador Teste",
+            phone: "31988887777",
+            relation: "coordenador_vendas",
+          },
+        ],
+      })),
     ok: true,
   })),
 }));
+
+import { loadApoloEnterpriseCadastro, loadApoloEnterpriseCadastroPorId } from "./empreendimentos";
 
 const gravados: Record<string, unknown>[] = [];
 
@@ -50,9 +62,14 @@ type LinhaCad = {
   motivo: null | string;
 };
 
-// Client de mentira: responde as quatro tabelas que `avisarEtapa` toca.
+// Client de mentira: responde as tabelas que `avisarEtapa` toca, inclusive as da busca do
+// coordenador (settings, a entidade do coordenador e o telefone dela).
 function clienteFake(opts: {
   cad?: Partial<LinhaCad>;
+  /** Entidades além do cliente, lidas por `.in("id", ...)` (o coordenador do Panteon). */
+  entidades?: Array<{ display_name: string; id: string }>;
+  /** O que `apolo_enterprise_settings` guarda. Padrão: a sigla, sem coordenador cadastrado. */
+  settings?: Array<Record<string, unknown>>;
   telefonePorEntidade?: Record<string, string>;
 }) {
   const cad: LinhaCad = {
@@ -66,15 +83,25 @@ function clienteFake(opts: {
     ...opts.cad,
   };
   const telefones = opts.telefonePorEntidade ?? { "corretor-1": "31997250000", "imob-1": "31996660000" };
+  const settings = opts.settings ?? [{ code: "VOC", coordenador_entity_id: null, enterprise_id: "39" }];
 
-  const encadeavel = (linhas: unknown[]) => {
+  const encadeavel = (linhas: unknown[] | ((ids: string[]) => unknown[])) => {
+    const ids: string[] = [];
+    const dados = () => (typeof linhas === "function" ? linhas(ids) : linhas);
     const self: Record<string, unknown> = {};
-    for (const metodo of ["eq", "in", "order", "limit"]) {
-      self[metodo] = () => self;
+    for (const metodo of ["eq", "order"]) {
+      self[metodo] = (_coluna: string, valor: unknown) => {
+        if (metodo === "eq" && typeof valor === "string") ids.push(valor);
+        return self;
+      };
     }
-    self.limit = () => Promise.resolve({ data: linhas });
-    self.maybeSingle = () => Promise.resolve({ data: linhas[0] ?? null });
-    self.then = (r: (v: { data: unknown[] }) => unknown) => r({ data: linhas });
+    self.in = (_coluna: string, valores: unknown) => {
+      if (Array.isArray(valores)) ids.push(...valores.map(String));
+      return self;
+    };
+    self.limit = () => Promise.resolve({ data: dados() });
+    self.maybeSingle = () => Promise.resolve({ data: dados()[0] ?? null });
+    self.then = (r: (v: { data: unknown[]; error: null }) => unknown) => r({ data: dados(), error: null });
     return self;
   };
 
@@ -82,25 +109,24 @@ function clienteFake(opts: {
     from(tabela: string) {
       if (tabela === "apolo_esteira") return { select: () => encadeavel([cad]) };
       if (tabela === "apolo_entities") {
-        return { select: () => encadeavel([{ display_name: "JOAO BATISTA FRAGA", legal_name: null }]) };
+        return {
+          select: (colunas: string) =>
+            // A leitura do cliente (`maybeSingle`) pede display_name/legal_name; a do coordenador
+            // pede o `id` junto, por `.in`.
+            colunas.includes("metadata")
+              ? encadeavel((ids) => (opts.entidades ?? []).filter((e) => ids.includes(e.id)))
+              : encadeavel([{ display_name: "JOAO BATISTA FRAGA", legal_name: null }]),
+        };
       }
-      if (tabela === "apolo_enterprise_settings") return { select: () => encadeavel([{ code: "VOC" }]) };
+      if (tabela === "apolo_enterprise_settings") return { select: () => encadeavel(settings) };
       if (tabela === "apolo_contacts") {
         return {
-          select: () => ({
-            eq: (_c: string, id: string) => ({
-              in: () => ({
-                order: () => ({
-                  order: () => ({
-                    limit: () =>
-                      Promise.resolve({
-                        data: telefones[id] ? [{ value: telefones[id] }] : [],
-                      }),
-                  }),
-                }),
-              }),
-            }),
-          }),
+          select: () =>
+            encadeavel((ids) =>
+              ids
+                .filter((id) => telefones[id])
+                .map((id) => ({ contact_type: "whatsapp", entity_id: id, is_primary: true, value: telefones[id] })),
+            ),
         };
       }
       if (tabela === "apolo_disparos") {
@@ -180,6 +206,66 @@ describe("quem é avisado", () => {
     const falha = gravados.find((g) => String(g.tipo).includes("corretor") || String(g.tipo).includes("imobiliaria"));
     expect(falha?.status).toBe("falhou");
     expect(String(falha?.erro)).toContain("sem corretor vinculado");
+  });
+});
+
+describe("⚠️ o coordenador da CAD é achado pelo id (Lucas, 24/09/2026)", () => {
+  it("renome de sigla no C2X (RDV -> PDI) não quebra o aviso: a busca vai pelo id 43", async () => {
+    limpar();
+    vi.mocked(loadApoloEnterpriseCadastro).mockClear();
+    vi.mocked(loadApoloEnterpriseCadastroPorId).mockClear();
+    const { avisarEtapa } = await import("./esteira-avisos");
+    const r = await avisarEtapa(
+      clienteFake({
+        cad: { enterprise_id: "43" },
+        // A sigla velha, como o Panteon guardava às 16:55 de 24/09.
+        settings: [{ code: "RDV", coordenador_entity_id: null, enterprise_id: "43" }],
+      }) as never,
+      { enterpriseId: "43", entityId: "cliente-1", etapa: "correcao", etapaAnterior: "validacao" },
+    );
+
+    expect(r?.coordenador.ok).toBe(true);
+    expect(enviados.map((e) => e.telefone)).toContain("5531988887777");
+    expect(loadApoloEnterpriseCadastroPorId).toHaveBeenCalledWith(["43"]);
+    // A sigla não é mais perguntada ao legado.
+    expect(loadApoloEnterpriseCadastro).not.toHaveBeenCalled();
+  });
+
+  it("coordenador_entity_id do Panteon prevalece sobre o do C2X", async () => {
+    limpar();
+    const { avisarEtapa } = await import("./esteira-avisos");
+    const r = await avisarEtapa(
+      clienteFake({
+        entidades: [{ display_name: "LUNA NEGOCIOS IMOBILIARIOS", id: "luna" }],
+        settings: [{ code: "VOC", coordenador_entity_id: "luna", enterprise_id: "39" }],
+        telefonePorEntidade: { "corretor-1": "31997250000", luna: "31995968349" },
+      }) as never,
+      { enterpriseId: "39", entityId: "cliente-1", etapa: "correcao", etapaAnterior: "validacao" },
+    );
+
+    expect(r?.coordenador).toMatchObject({ destinatario: "LUNA NEGOCIOS IMOBILIARIOS", ok: true });
+    expect(enviados.map((e) => e.telefone)).toContain("5531995968349");
+    // O coordenador do C2X (31988887777) não recebe: o Panteon cadastrou outro.
+    expect(enviados.map((e) => e.telefone)).not.toContain("5531988887777");
+  });
+
+  it("sem coordenador em lugar nenhum, a falha fica registrada com o motivo", async () => {
+    limpar();
+    const { avisarEtapa } = await import("./esteira-avisos");
+    const r = await avisarEtapa(
+      clienteFake({
+        cad: { enterprise_id: "9001" },
+        settings: [{ code: "TST", coordenador_entity_id: null, enterprise_id: "9001" }],
+      }) as never,
+      { enterpriseId: "9001", entityId: "cliente-1", etapa: "correcao", etapaAnterior: "validacao" },
+    );
+
+    expect(r?.coordenador.ok).toBe(false);
+    const falha = gravados.find((g) => g.tipo === "etapa_correcao_coordenador");
+    expect(falha).toMatchObject({
+      erro: "Empreendimento sem coordenador de vendas no Panteon nem no C2X.",
+      status: "falhou",
+    });
   });
 });
 

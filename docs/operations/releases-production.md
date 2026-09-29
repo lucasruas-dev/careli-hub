@@ -95,6 +95,106 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Hercules] A aba Assinatura le as vendas do Panteon em todo produto, com quem assinou pessoa a pessoa (v1.389.0)`.
+- Squad/agente responsavel: `Zeus` (correcao rapida direta + revisao por subagente reviewer).
+- Data e hora local: `2026-09-28 14:43:00 -03:00` (changelog); push na main as ~14:44; no ar conferido as ~14:50 (`/api/version` = 1.389.0).
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK explicito do Lucas ("tem o meu ok, pode subir" e, depois do bloqueio do controle de permissoes, "pode subir de novo, tem o meu ok"). Pedido do dia: "olha por favor se foi enviado esses contratos", "essas informacoes tem que alimentar tudo", "estou achando lento essa correcao".`
+- Escopo publicado:
+  - `rota /api/incorporador/vendas/assinaturas: o Panteon (propostas origem panteon + temis_envelopes) e lido em TODO codigo, nao so nos proprios; unirComOPanteon casa com o legado por empreendimento + hercules_unidades.codigo e tira so a linha aguardando-emissao da redigitacao (uma por venda)`;
+  - `linha do Panteon com quem assinou pessoa a pessoa (ultimo payload CONFERIDO por documento, quemAssinou), vez pelo menor degrau pendente, perfis alinhados ao vocabulario do legado`;
+  - `ficha da venda: em assinatura a data e a do envio, rotulo "Enviado para assinatura"`;
+  - `teste de varredura do documento le CRLF (4 falsos alarmes que barravam o pre-push no Windows)`.
+- Commit publicado: `795e60c342f0cc44e124999eb216fc0684de77b9` (codigo em `4e3a847a`, teste em `3b1c04d1`).
+- Deployment anterior: `dpl_82VmKcXyKXQXGBUfDv5nFwR1XnkC` (commit `37908445`, v1.388.0) = rollback.
+- Deployment novo: `dpl_36JkswMCBoSmXDANuMSLAh66c2Jn` (READY).
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Arquivos/modulos incluidos: `apps/hub/app/api/incorporador/vendas/assinaturas/route.ts`, `lib/apolo/incorporador/assinaturas.ts`, `lib/hercules/fluxo-de-venda.ts`, `modules/incorporador/hercules/TelaVenda.tsx`, testes (`assinaturas-do-panteon.test.ts`, `so-do-panteon.test.ts`, `documento-do-comprador.varredura.test.ts`), changelog 1.389.0.
+- Arquivos/modulos excluidos: `NENHUMA MIGRATION, nenhuma env, nenhum cron. O contador x/y no Board do comercial saiu da entrega: a revisao mediu 902 kB por carga (7 envelopes, 129 eventos) a cada minuto por aba aberta; volta na F6 da fonte unica (branch fix/assinatura-fonte-unica), pela marca gravada por pessoa.`
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `npx vitest run`: `678 arquivos, 10.172 testes passando, sem Errors`; pre-push ok (typecheck, suite, lint dos 8 arquivos, changelog);
+  - `conferencia so leitura contra producao (Vale do Ouro)`: `lista 185 -> 187, aguardando emissao 6 -> 1, unidades com envio 179 -> 186; VOL1106 e VOL0710 passam a aparecer`;
+  - `revisao`: `reviewer aprovou com ressalvas; aceitas: custo do Board (retirado), casamento 1:1 (feito, com teste), efeito da falha do codigo da unidade (documentado)`.
+- Healthchecks pos-deploy: `/api/version` 1.389.0; runtime errors nas rotas mexidas nos ultimos 30 min: nenhum.
+- Riscos residuais: `VOC1102 tem DOIS contratos em assinatura (Clicksign 3/11 e D4Sign pelo C2X 1/12): a tela mostra os dois de proposito; um precisa ser cancelado. A Nivea (Careli) esta no papel coordenador do quadro de VOL/VOC/VOR e segura VOL0710 e VOL1106. As taxas, a fila e o quadro por assinante ainda contam so o legado; a leitura unica do Panteon (fonte unica, F1 a F9) segue no branch fix/assinatura-fonte-unica.`
+
+Registro de producao:
+
+- Assunto: `[Apolo] Coordenador achado pelo empreendimento, habilitacoes sem fila no Board e travas contra o C2X (v1.375.0)`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-09-25 08:26:22 -03:00` (changelog); push na main as ~08:33; no ar as 08:41:45.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK explicito do Lucas ("tem o meu ok, pode subir e arquivar"). Decisoes dele em 24/09: "Tivemos que mudar de nome" (Portal do Ibituruna); "Isso ae" (habilitacao sem fila aparece no Board e o cadastro interno avisa o coordenador); "pode" (travar as portas do C2X e consultar o C2X pelo id).`
+- Escopo publicado:
+  - `coordenador do empreendimento achado pelo Panteon (coordenador_entity_id) e, na falta, pelo C2X POR ID; group:<Nome> pelas divisoes; coordenador nao achado ou sem telefone vira disparo 'falhou' com o motivo`;
+  - `Board: habilitacoes sem fila (pagina publica e cadastro interno) na coluna Habilitada por 30 dias, com selo, por produto`;
+  - `cadastro interno e modal da ficha: habilitar imobiliaria grava auditoria e avisa o coordenador, sem segurar o salvamento`;
+  - `travas: semeador de empreendimentos, code do settings e nome gravado pelo sync do Apolo deixam de vir do C2X`.
+- Commit publicado: `6df0ca6261077418e73b669986504b51b97421e1` (codigo em `0c330778`, merge da 1.374.0 em `113c01a5`).
+- Deployment anterior: `dpl_BJRdsJ3WMRfYY9uRE7RCK1GSakTA` (commit `3155cc9c`, v1.374.0).
+- Deployment novo: `dpl_FRWJCzwDcM3W6zqnDMsZpW1E66uG`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Arquivos/modulos incluidos: `lib/apolo/coordenador-do-empreendimento.ts`, `habilitada-sem-fila.ts`, `habilitacao-pelo-cadastro.ts`, `nome-de-mercado-por-id.ts`, `depois-da-resposta.ts` (novos); `empreendimentos.ts` (loadApoloEnterpriseCadastroPorId), `disparo-credenciamento.ts`, `esteira-avisos.ts`, `disparo-reprovacao.ts`, `board-do-servidor.ts`, `cadastro-persist.ts`, `enterprise-settings.ts`, `server.ts` (so o nome do sync), `hercules/avisos-da-venda.ts`, `temis/trabalho-servico.ts`, rotas de credenciamento publico, relationships/create, settings, politica e log-erros; `scripts/hercules/semear-empreendimentos.mjs`. Changelog 1.375.0, roadmap PAN-123 e PAN-124.
+- Arquivos/modulos excluidos: `NENHUMA MIGRATION, nenhuma env. O sync do Guardian (c2x_guardian_attendance_queue) e as ~29 consultas do financeiro por sigla ficam para o PAN-124.`
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `npx vitest run` (ja com o merge da 1.374.0): `603 arquivos, 9.158 testes passando`; o pre-push falhou uma vez por teste intermitente e passou limpo na segunda (9.158);
+  - `revisao`: `investigacao (3 frentes + 3 verificadores) e lote de implementacao com 3 frentes, 3 lentes de revisao (9 achados, 3 major), correcao e verificador final sem bloqueio`.
+- Correcoes de dado (com OK do Lucas):
+  - `24/09: empreendimento 43 no Panteon = Portal do Ibituruna / PDI (hercules_empreendimentos e apolo_enterprise_settings), coordenador_entity_id do 43 = LUNA NEGOCIOS IMOBILIARIOS, 36 vinculos relabelados de RECANTO DO VALE para PORTAL DO IBITURUNA`;
+  - `25/09: arquivados 3 vinculos: as duplicatas do 43 gravadas pelo cadastro interno em 24/09 para SANTA FE (8def1a8e) e VINICIUS JOHNNY (81b24945), e o vinculo de teste da RAIANE no 9001 (fe8bc369)`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version = 1.375.0 (buildTag 2026-09-25-coordenador-pelo-id-e-habilitacao-sem-fila) as 08:41:45`;
+  - `rotas`: `GET /api/apolo/board e /api/apolo/log-erros 401 sem token; POST /api/publico/imobiliaria/credenciar vazio 400 (validacao viva)`.
+- Logs recentes: `sem erro de runtime nos 15 min depois do deploy`.
+- Rollback definido: `Instant Rollback para dpl_BJRdsJ3WMRfYY9uRE7RCK1GSakTA (commit 3155cc9c, v1.374.0)`.
+- Riscos conhecidos: `avisos que antes sumiam agora aparecem como 'falhou' no historico: Garden, Cidade Jardim, 30 e SDT (coordenador no Panteon = CARELI ACESSORIA, so e-mail) e os produtos do GLENDER (LOU, LOS, MLN) e do LUCAS HENRIQUE (MDS, PDV, PVS), sem telefone. O CRM interno passa a mostrar o nome de mercado sem a divisao (ex.: Lagoa Bonita).`
+- Pendencias: `avisos que ficaram para tras e precisam ir a mao: LUNA sobre a CONECTTA e a VIDA IMOVEIS (43), coordenador do 29 sobre a BILL. Tentativa de reenvio local da CONECTTA falhou (gateway Evolution so existe em producao) e ficou registrada. Decisoes abertas: regua de divisao parcial (VOL x VLO) para 'ja habilitada'; imobiliaria com papel em review habilitada pelo modal; o 30 segue fora do cadastro.`
+- Status: `EM PRODUCAO`.
+- Proxima acao: `PAN-124: consultas do financeiro ao C2X pelo id, depois nome e sigla do Panteon, tela de editar e criar empreendimento e vigia de divergencia.`
+
+Registro de producao:
+
+- Assunto: `[Apolo] Mover CAD de empreendimento, travas da troca e o empreendimento de volta no PDF da CAD (v1.372.0)`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-09-24 16:42:50 -03:00` (push na main); no ar as 16:50:46.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK explicito do Lucas ("tem o meu ok") depois de ele decidir a regra da troca: "Validacao nao precisa pois ja foi feita"; destino com analise e sem analise recente vai para analise; "se ja foi feito ... e so validar os valores e apontar se passou ou nao"; e "Pode ser daqui pra frente" para o PDF.`
+- Escopo publicado:
+  - `acao Mover CAD no Board (so admin/leader): move CAD, vinculos e documentos pessoais juntos, para o empreendimento de mercado (pai), com a regra de etapa do Lucas`;
+  - `travas: excluir o vinculo que e o da CAD da 409; o credito recusa CAD cujo vinculo foi arquivado depois de ela nascer`;
+  - `rotulo do card do Board sai da CAD, nao do vinculo`;
+  - `PDF da CAD: linha Empreendimento abaixo do Corretor (nome do pai, nunca a divisao) e Enviado em = data real do envio no fuso de Brasilia`.
+- Commit publicado: `012eace1255d5c6a894714d58b6717344f7e6e9a` (codigo em `87ddd227`, merge da 1.371.0 da sessao Plantao, changelog em `012eace1`).
+- Deployment anterior: `dpl_4pGYoyEcMsaz71c2ej76kvYeHxwH` (commit `fc91a75c`, v1.371.0, da sessao Plantao).
+- Deployment novo: `dpl_DN1AsUvnCS1Gbiivp9aeuoCAVPig`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Arquivos/modulos incluidos: `lib/apolo/mover-cad.ts` e a rota `app/api/apolo/board/[id]/mover-empreendimento` (novos), `lib/apolo/empreendimento-de-mercado.ts` (novo), `relationships/archive`, `lib/serasa/consulta-servico.ts` (so a trava), `lib/apolo/esteira-cad.ts`, `board-do-servidor.ts`, `board-view.tsx` e `mover-cad.tsx`, `relationships-panel.tsx`, `cad-pdf.ts`, `cad-de-entidade.ts`, `cadastro-salvar.ts`, `cadastro-persist.ts`, `cobranca-prevenda.ts`, `asaas/bancada`, rotas do CAD publico e da ficha de imobiliaria. Changelog 1.372.0 e roadmap PAN-121.
+- Arquivos/modulos excluidos: `NENHUMA MIGRATION, nenhuma env. Nenhuma coluna nova: o Mover usa apolo_esteira, apolo_relationships, apolo_documents e apolo_timeline_events como estao.`
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `npx vitest run` (ja com o merge da 1.371.0): `573 arquivos, 8.812 testes passando`; uma primeira rodada registrou 1 erro fora dos testes, intermitente, que nao se repetiu na segunda nem no pre-push;
+  - `revisao`: `investigacao com 3 investigadores + 3 verificadores (causa provada: a troca manual mexeu so no vinculo, a CAD ficou no Veredas; nao era pai/filho); implementacao em 3 frentes e tres rodadas de revisao adversarial (achados corrigidos e reconferidos, com testes de mutacao)`.
+- Correcao de dado anterior ao deploy (com OK do Lucas, "Sim, pode mover para o vale do ouro"): `CAD do Jonatas (c34d4b6c) de 19 VEREDAS DO OURO para 35 VALE DO OURO, etapa credito; 2 PDFs remarcados; evento cad_movida. Depois a Nivea rodou o Serasa as 15:28, aprovou pela regra do VLO, e o aviso de credenciado foi para HUBER NEGOCIOS IMOBILIARIOS e para o corretor.`
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version = 1.372.0 (buildTag 2026-09-24-mover-cad-de-empreendimento) as 16:50:46`;
+  - `rotas`: `POST mover-empreendimento, POST serasa/consultar e GET incorporador/crm respondem 401 sem token (publicadas e protegidas)`.
+- Logs recentes: `sem erro de runtime nos 15 min depois do deploy`.
+- Rollback definido: `Instant Rollback para dpl_4pGYoyEcMsaz71c2ej76kvYeHxwH (commit fc91a75c, v1.371.0)`.
+- Riscos conhecidos: `o Mover recusa CAD com cobranca de pre-venda (pagamento_ref ou pago_em): hoje isso barra 432 credenciados do VLO. E padrao do Zeus, a confirmar com o Lucas. Credenciado movido nao volta para a pre-venda do destino (tambem a confirmar).`
+- Pendencias: `aviso ao coordenador das CADs gravadas em group:Lagoa Bonita falha sempre (o C2X e consultado pelo code 'LBF + LBR + LBP'); tarefa separada sugerida. Pergunta aberta ao Lucas: caixa do nome do empreendimento no PDF ('Vale do Ouro' x 'VALE DO OURO') e imprimir o corretor no PDF do cadastro interno.`
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas ou a coordenacao testarem o Mover CAD num caso real e conferirem o PDF de uma CAD nova com a linha Empreendimento.`
+
+Registro de producao:
+
 - Assunto: `[Portal do incorporador/LSoft] Todos os empreendimentos e a marca de patrimonio no LSoft Integracao (v1.374.0)`.
 - Squad/agente responsavel: `Zeus (sessao do portal da Cecilio Rocha)`.
 - Data e hora local: `2026-09-24 18:50:26 -03:00` (deployment READY); carga do LSoft `18:50:49` a `18:50:54`.
@@ -2437,6 +2537,25 @@ Atualizacao pos-deploy:
 - Rollback imediato: dpl_69GhASBvtfMagPehERvLMBcneKcT.
 - Validacoes finais: diff check OK; eslint escopado OK; check-types direto apps/hub OK; lint direto apps/hub OK; build hub OK; Vercel Production READY; healthchecks 200/401 esperado; logs error sem ocorrencia.
 - Observacao: producao foi publicada a partir do pacote limpo .codex-deploy/zeus-helpdesk-kanban-prod-20260526-1215/workspace, sem root misto e sem env/secret/migration/banco.
+
+## 2026-09-26 14:28:00 -03:00 - Zeus - Producao reserva PJ no Hercules e e-mail da imobiliaria no CAD (v1.383.0 + v1.384.0)
+
+- Assunto: duas entregas no mesmo push. (1) a trava de e-mail unico deixa de barrar o dono da imobiliaria que se cadastra como corretor, e a recusa que ele consegue consertar para de sair como 500 mudo; (2) a reserva do Hercules passa a aceitar pessoa juridica, do campo da tela ate o contrato.
+- Squad/agente responsavel: Zeus de plantao (workflow multi-agente com revisao adversarial na frente da PJ; a do e-mail foi investigacao direta).
+- Data e hora local: 2026-09-26 14:28 -03:00.
+- Ambiente: producao `https://c2x.app.br` via push na `main` (git automatico).
+- Origem/homologacao de referencia: nenhuma. Bug de plantao medido direto no dado de producao (so SELECT) e coberto por teste; sem validacao visual previa.
+- Escopo publicado: v1.383.0 `createApoloEntity` ganhou `fichaDoMesmoDono` (a ficha da propria imobiliaria nao conta contra o e-mail do corretor dela) e `recusaPublicaDoCorretor` (409 com texto para `email-repetido`, generico para o resto, sem dizer de quem e o e-mail); v1.384.0 pecas novas `lib/hercules/documento-do-comprador.ts`, `lib/hercules/hash-do-documento.ts` e `lib/hercules/proponente.ts`, as tres paredes da conversao em proposta derrubadas (portao de 11 digitos do credenciamento, hash no namespace `cpf`, `cpfValido` de todo comprador), o `>= 11` do hash corrigido em `venda/documentos/route.ts` e `temis/contrato-guardado-db.ts`, e a tela com um campo so para CPF ou CNPJ.
+- Commit publicado: `0f4768c9` (merge que renumerou as duas entradas).
+- Deployment anterior: v1.382.0 `2026-09-26-pan-124-regua-e-trilha-do-cadastro`, commit `ae78fc59` (candidato de Instant Rollback).
+- Deployment novo: v1.384.0 `2026-09-26-reserva-aceita-pessoa-juridica`, deployment `dpl_FP5Xynhi8LCpULYacQ1afejEaxbR`.
+- Dominio alvo autorizado: `https://c2x.app.br` (OK explicito do Lucas em 26/09: "pode subir agora e depois acaba com o group" e, para a PJ, "pode subir a correcao da reserva por pj").
+- Aliases/dominios afetados: somente `c2x.app.br`.
+- Arquivos/modulos incluidos: apps/hub (lib/hercules/{documento-do-comprador,hash-do-documento,proponente,cliente-credenciado,proposta,proposta-pdf,reserva,busca-de-proponente,historico-da-unidade}, lib/publico/cad/{dados,regras}, lib/apolo/cadastro-persist, lib/temis/contrato-guardado-db, lib/prometeu/reservas-evento, app/api/publico/cad/corretor, app/api/incorporador/venda/{reserva,proposta,proponentes,cliente,documentos}, modules/incorporador/hercules/{ModalDeReserva,ModalDeProposta,TelaVenda}, changelog).
+- Arquivos/modulos excluidos: nenhuma migration (as duas entregas rodam no schema atual; `hercules_reservas.proponentes` e jsonb sem CHECK de forma, medido). O `group:` NAO entrou nem no codigo nem no dado: a limpeza do dado feita mais cedo neste dia derrubou o credenciamento de 10 imobiliarias da Lagoa Bonita e foi REVERTIDA (ver o diario).
+- Validacoes executadas: `tsc --noEmit` limpo; vitest 653 arquivos / 9.790 testes verdes depois do merge; revisao adversarial em tres lentes na frente da PJ (venda dupla, caminho inteiro, cobertura), que restaurou uma decisao de 04/09/2026 apagada por engano na primeira versao; medicoes em producao so com SELECT.
+- Healthchecks pos-deploy: `c2x.app.br` 200 apos o push; deployment de producao conferido pelo commit (`0f4768c9`), e nao pelo push.
+- Riscos residuais: NENHUMA reserva PJ foi criada de ponta a ponta em producao ate este registro, entao o caminho esta provado por teste e por medicao do dado, nao por uso real; o mesmo vale para o cadastro do Israel, que precisa de uma nova tentativa dele para confirmar. O defeito do hash em venda de PJ era latente (zero documentos afetados hoje), entao a correcao nao tem como ser confirmada por dado existente. O `group:Lagoa Bonita` segue sendo o id do conjunto, e deve seguir: o pai 31 esta em EXCLUDED_ENTERPRISE_IDS e a vitrine descarta id fora do catalogo. Tirar o sintetico e trabalho de CODIGO, no molde do que ja existe para o Vale do Ouro.
 
 ## 2026-08-18 02:40:00 -03:00 - Zeus - Producao portal do incorporador padrao (v1.151.0)
 
@@ -7073,3 +7192,28 @@ sem aviso novo. ⚠️ Nao verificado em tela — o hub exige login.
   recusado não devolve a venda sozinho; faturar não grava `data_faturamento` nem `vendida`; nenhuma
   tela leva o card de contrato a Faturado (a regra dos 7 dias mais entrada paga está em
   `temis-redesenho-decisoes.md` e ainda não tem porta).
+
+## v1.373.0 · 24/09/2026 · Promessa vencida volta para A acionar, e o convite de assinatura volta a ser reenviado
+
+- **Commit:** 85b8d613 · **Rollback:** 012eace1 (a 1.372.0 da outra sessão)
+- **Autorização:** Lucas, 24/09/2026, *"pode"*, sobre os quatro apontamentos da Nívea
+- **Origem:** Nívea, 24/09/2026, com print: *"Erro no processo. O comprador fez promessa e não
+  pagou. Deve voltar para o status de acionar"* e *"Deu erro no envio dos acordos. Não recebi e não
+  consigo reenviar"*.
+- **O que vai:** `etapaDoCompromisso` (peça pura e única, que a fila e o detalhe passam a
+  compartilhar) deriva a etapa na leitura e devolve promessa vencida a `A acionar`, com frase que
+  manda conferir o pagamento; `hoje-na-casa.ts` resolve o dia no fuso de Brasília;
+  `mudanca-da-etapa.ts` leva a frase nova à fila e ao copiloto; a data de pagamento gravada passa a
+  ser a do C2X (ao meio-dia UTC, para o dia exibido não andar para trás); `congelar-signatarios.ts`
+  guarda o id que a Clicksign devolve e o reenvio passa a usá-lo, com `recusa-de-reenvio.ts` dando o
+  motivo quando não é possível.
+- **Causa medida:** nunca existiu peça que quebrasse promessa. 59 compromissos, `broken_at` nulo em
+  59, `status='quebrado'` em 0, zero lembretes entregues na história da tabela, e `promised_date`
+  fora do SELECT que calcula a etapa.
+- **Verificação:** 565 arquivos e 8.646 testes verdes, typecheck limpo, revisão adversarial com 3
+  revisores (1 bloqueante e 5 altas, todas corrigidas).
+- **Sem migration.**
+- **Fora deste lote, à espera do Lucas:** filtro de Promessa e Acordo na Central de Propostas;
+  barrar segundo acordo vivo na mesma unidade (o Iago tem dois envelopes abertos); a promessa de
+  mais de uma parcela amarrada às parcelas do C2X (394 de 397 parcelas em aberto sem
+  `payment_c2x_id`); e o acerto dos 3 `paid_at` gravados com a hora do robô.

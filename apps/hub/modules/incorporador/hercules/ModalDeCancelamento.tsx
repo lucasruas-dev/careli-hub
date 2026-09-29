@@ -89,6 +89,42 @@ const ALVOS = {
     titulo: "Cancelar a proposta de",
     verbo: "Cancelar proposta",
   },
+  // ⚠️ FALA DE RESERVA, ESCREVE NA PROPOSTA — e as duas coisas são de propósito (25/09/2026).
+  //
+  // A reserva herdada do C2X é linha de `hercules_propostas`: a carga trouxe a proposta e nunca criou a
+  // reserva (ZERO linhas em `hercules_reservas` para as 13, medido em 25/09/2026 no projeto
+  // bxgukywoxgivlrhjkwjx). O coordenador lê "Cancelar reserva" na grade, e é esse o verbo aqui; o PATCH,
+  // porém, vai para `/api/incorporador/venda/proposta`, que é onde a linha mora. Mandar este clique para
+  // a rota da reserva trocaria botão apagado por 409. Lucas, 25/09/2026: *"essas reservas tem que
+  // comportar iguais as outras"*.
+  //
+  // ⚠️ E OS MOTIVOS SÃO OS QUE A ROTA ACEITA, não os da reserva. `conferirCancelamentoDaProposta` recusa
+  // motivo fora de `MOTIVOS_DE_CANCELAMENTO_DA_PROPOSTA`, e a lista da reserva tem três que não estão
+  // nela ("Cliente não retornou", "Reserva feita por engano", "Prazo esgotado"): oferecer os da reserva
+  // aqui daria 422 depois do clique, que é o beco que este lote veio fechar.
+  //
+  // ⚠️ E AQUI NÃO SE PROMETE AVISO A NINGUÉM (revisão de 25/09/2026). As duas frases eram cópia das da
+  // reserva nativa (*"Corretor, imobiliária e coordenador recebem o aviso com o motivo"* e *"O motivo
+  // vai na mensagem do WhatsApp"*), e mentiam em 13 de 13: medido em 25/09/2026 no projeto
+  // bxgukywoxgivlrhjkwjx (só SELECT), `imobiliaria_entity_id` é NULO em 13/13 das herdadas vivas e
+  // `corretor_entity_id` também em 13/13. O portão do aviso na rota é `if (imobiliariaId && ...)`, então
+  // não há destinatário, não sai WhatsApp e nem o registro de "não enviado" é gravado. É a MESMA
+  // armadilha que o alvo `bloqueio` já corrigiu, e o comentário dele está trinta linhas acima: *prometer
+  // aviso que não sai é pior do que não prometer nada*.
+  reserva_do_legado: {
+    aviso: "A unidade volta para a disponibilidade na hora e pode ser reservada por outra pessoa.",
+    conferir: conferirCancelamentoDaProposta,
+    quemRecebe: "Ninguém é avisado: a venda herdada do C2X não tem imobiliária nem corretor gravados.",
+    rodape: "O motivo fica gravado na venda, com o seu nome e a data, e entra no histórico da unidade.",
+    feito: "Reserva",
+    metodo: "PATCH",
+    motivos: MOTIVOS_DE_CANCELAMENTO_DA_PROPOSTA as readonly string[],
+    rota: "/api/incorporador/venda/proposta",
+    sucesso: (unidade: string, extra: string) =>
+      `Reserva de ${unidade} cancelada. A unidade voltou para a disponibilidade. ${extra}`,
+    titulo: "Cancelar a reserva de",
+    verbo: "Cancelar reserva",
+  },
   reserva: {
     aviso: "A unidade volta para a disponibilidade na hora e pode ser reservada por outra pessoa.",
     conferir: conferirCancelamento,
@@ -112,8 +148,13 @@ export function ModalDeCancelamento({
   propostaId,
   unidade,
 }: {
-  /** `reserva` (o padrão, que já estava no ar), `proposta` ou `bloqueio`. */
-  alvo?: "bloqueio" | "proposta" | "reserva";
+  /**
+   * `reserva` (o padrão, que já estava no ar), `proposta`, `bloqueio` ou `reserva_do_legado`.
+   *
+   * ⚠️ `reserva_do_legado` É A RESERVA HERDADA DO C2X: fala de reserva e escreve na proposta. Ver o
+   * registro `ALVOS`.
+   */
+  alvo?: "bloqueio" | "proposta" | "reserva" | "reserva_do_legado";
   onCancelada: (mensagem: string) => void;
   onFechar: () => void;
   /**
@@ -146,10 +187,14 @@ export function ModalDeCancelamento({
     };
   }, [onFechar]);
 
+  // ⚠️ QUEM MANDA `propostaId` É QUEM BATE NA ROTA DA PROPOSTA, e não só o alvo `proposta`
+  // (25/09/2026). A reserva herdada do C2X também vai para lá, e sem o id a rota perde a trava da aba
+  // velha: a busca é por unidade, e a unidade pode ter ganhado outra venda desde que esta tela abriu.
+  const naRotaDaProposta = alvo === "proposta" || alvo === "reserva_do_legado";
   const pedido = {
     detalhe,
     motivo,
-    ...(alvo === "proposta" && propostaId ? { propostaId } : {}),
+    ...(naRotaDaProposta && propostaId ? { propostaId } : {}),
     unidadeId: unidade.id,
   };
   const erros = oQue.conferir(pedido);
@@ -202,18 +247,30 @@ export function ModalDeCancelamento({
       // depois de uma falha parcial, os WhatsApps já saíram na primeira: `comoFoiOAviso([])` escreve
       // "O aviso não chegou a ser enviado", e quem lê isso avisa o cliente uma segunda vez sobre o
       // mesmo cancelamento. O servidor manda o fato em `avisosJaSairam`, e a frase o repete.
+      // ⚠️ E NA HERDADA DO C2X A LISTA VAZIA É "NÃO HAVIA A QUEM AVISAR", NÃO "FALHOU" (revisão de
+      // 25/09/2026). `comoFoiOAviso([])` escreve *"O aviso não chegou a ser enviado"*, que relata como
+      // FALHA um aviso que nunca podia existir: `imobiliaria_entity_id` e `corretor_entity_id` são NULOS
+      // em 13/13 das herdadas vivas (medido em 25/09/2026 no projeto bxgukywoxgivlrhjkwjx, só SELECT), e
+      // sem imobiliária a rota nem entra no bloco do aviso. Quem lê "não chegou a ser enviado" manda um
+      // WhatsApp na mão sobre uma reserva que não tem destinatário. Se a herdada TIVER imobiliária
+      // gravada um dia, a lista volta cheia e a frase da casa conta o que aconteceu de verdade.
+      const avisosDaResposta = corpo.data?.avisos ?? [];
       const extra = corpo.data?.avisosJaSairam
         ? "Corretor, imobiliária e coordenador já tinham sido avisados na primeira tentativa."
-        : comoFoiOAviso(corpo.data?.avisos ?? []);
+        : alvo === "reserva_do_legado" && avisosDaResposta.length === 0
+          ? "Não havia a quem avisar: esta reserva veio do C2X sem imobiliária nem corretor."
+          : comoFoiOAviso(avisosDaResposta);
       // ⚠️ O LOTE PODE NÃO TER VOLTADO, E A FRASE NÃO PODE DIZER QUE VOLTOU (revisão de 24/09/2026).
       // O PATCH da proposta devolve `loteVoltou` e `porque` desde que a soltura passou pela trava
       // (outro dono, irmã com dono, bloqueio seguram o lote). A frase fixa "A unidade voltou para a
       // disponibilidade" mentia justamente quando quem cancelou precisava saber. Sem o campo
       // (servidor antigo), fica a frase de sempre.
-      const loteFicou = alvo === "proposta" && corpo.data?.loteVoltou === false;
+      // ⚠️ E A FRASE USA O NOME DO ATO, não a palavra "Proposta" cravada: na reserva herdada do C2X quem
+      // clicou cancelou uma RESERVA, mesmo que a linha more em `hercules_propostas`.
+      const loteFicou = naRotaDaProposta && corpo.data?.loteVoltou === false;
       onCancelada(
         loteFicou
-          ? `${cod}Proposta de ${unidade.nome} cancelada, mas ${corpo.data?.porque ?? "a unidade NÃO voltou para a disponibilidade"}. ${extra}`
+          ? `${cod}${oQue.feito} de ${unidade.nome} cancelada, mas ${corpo.data?.porque ?? "a unidade NÃO voltou para a disponibilidade"}. ${extra}`
           : `${cod}${oQue.sucesso(unidade.nome, extra)}`,
       );
     } catch {

@@ -141,9 +141,15 @@ vi.mock("@/lib/hercules/quem-pode-vender", () => ({ familiaDoEmpreendimento: () 
 
 vi.mock("@/lib/apolo/planos-comerciais-c2x", () => ({
   lerPlanosDoC2x: async () => ({ ok: false }) as const,
+  lerPlanosDoC2xPorIds: async () => ({ ok: false }) as const,
 }));
 
 vi.mock("@/lib/hercules/planos-do-panteon", () => ({
+  // ⚠️ A ROTA PASSOU A LER AS FAIXAS DE PRAZO NO POST (25/09/2026), e o dublê precisa exportar tudo o
+  // que ela importa: sem esta linha a função chega `undefined`, a chamada quebra e a rota devolve
+  // 503 — um erro que parece da proposta e é do mock. Vazio = empreendimento sem faixa cadastrada,
+  // que é o caso destes testes.
+  lerFaixasDoPanteon: async () => ({}),
   lerPlanosDoPanteon: async () => [],
   planosPreferindoOPanteon: () => [{ planos: GARDEN(estado.comDesconto) }],
 }));
@@ -155,6 +161,12 @@ vi.mock("@/lib/hercules/cliente-credenciado", () => ({
     entityId: "ent-cliente",
     etapa: "credenciado",
     motivo: null,
+    // (26/09/2026) A PORTA VIROU CAMPO PRÓPRIO. O POST passou a conferir `podeGerarProposta`, e não
+    // `credenciado`, porque o coordenador gera com a CAD EM ANDAMENTO (Lucas: *"pode deixar os
+    // coordenadores emitirem proposta sem a cad esta credenciada"*). Aqui o dublê é do caso
+    // credenciado, então os dois campos andam juntos; o portão de verdade está em
+    // route.cad-em-andamento.test.ts, que NÃO mocka esta lib.
+    podeGerarProposta: estado.credenciado,
   }),
   FalhaAoLerCredenciamento: class extends Error {},
 }));

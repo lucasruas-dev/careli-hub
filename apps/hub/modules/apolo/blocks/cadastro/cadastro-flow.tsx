@@ -57,6 +57,12 @@ import {
   documentosFaltandoCurto,
   juntarPtBr,
 } from "@/lib/apolo/cadastro-obrigatorios";
+import {
+  documentoDaIdentificacao,
+  faltaNoVinculo,
+  formatoDoCadastro,
+  type FormatoDoCadastro,
+} from "@/lib/apolo/cadastro-tipos";
 import { cpfValido } from "@/lib/apolo/documento";
 import {
   casarProfissaoNaLista,
@@ -1278,6 +1284,14 @@ export function CadastroFlow({
   // duas peças a mais que o PJ do prospect: CRECI + vínculo de empreendimentos (na Identificação)
   // e uma etapa de Corretores.
   const isImobiliaria = tipo === "imobiliaria";
+  // O FORMATO DO CADASTRO (persona, Vínculo, esteira, rótulos) mora em lib/apolo/cadastro-tipos.ts.
+  //
+  // ⚠️ O CORRETOR AUTÔNOMO É UM TERCEIRO FORMATO, e não um `if` a mais na tela (27/09/2026). Lucas:
+  // *"ele nao sera vinculado a uma imobiliaria, ele sera uma entidade"* — PF, sem o bloco Vínculo,
+  // fora da esteira, e NUNCA como imobiliária: *"NAO QUERO TER A INFORMACAO QUE PODE TER PESSOA FISICA
+  // COMO IMOBILIARIA"*. A mesma regra serve a tela e os testes.
+  const formato = formatoDoCadastro(tipo);
+  const isCorretor = formato.papel === "corretor";
   // Adapter de I/O do wizard. No interno é `undefined` → os 4 helpers de hoje; no público troca a
   // origem sem tocar em mais nada. Vai por contexto porque os fetches moram nos steps-filhos.
   // O PORTAL anda como o público (vínculo pronto de fora: sem seletor, imobiliária não exigida no
@@ -1302,7 +1316,7 @@ export function CadastroFlow({
   const [endereco, setEndereco] = useState<Endereco | null>(null);
   const [conjuge, setConjuge] = useState<Conjuge>(CONJUGE_VAZIO);
   // Persona definida pelo documento (RG/CNH -> pf, cartão CNPJ -> pj). Imobiliária já nasce PJ.
-  const [persona, setPersona] = useState<Persona>(isImobiliaria ? "pj" : "pf");
+  const [persona, setPersona] = useState<Persona>(formato.persona === "pj" ? "pj" : "pf");
   const [empresa, setEmpresa] = useState<Empresa>(EMPRESA_VAZIA);
   // Originais anexados em cada etapa; vao pro drive da entidade no envio.
   const [documentos, setDocumentos] = useState<DocumentosAnexados>({});
@@ -1337,7 +1351,7 @@ export function CadastroFlow({
   // fica vazio -- nunca placeholder, pra não vincular a CAD a uma imobiliária inexistente.
   useEffect(() => {
     // No público a imobiliária vem FIXA do token (antessala): não há seletor nem rota para listar.
-    if (modoPublico) return;
+    if (modoPublico || isCorretor) return;
     let alive = true;
     void (async () => {
       try {
@@ -1350,7 +1364,7 @@ export function CadastroFlow({
     return () => {
       alive = false;
     };
-  }, [api, modoPublico]);
+  }, [api, isCorretor, modoPublico]);
 
   // Empreendimentos ativos pro vínculo de trabalho da imobiliária. Interno lê o C2X read-only;
   // na imobiliária PÚBLICA o adapter devolve a vitrine que veio do token/prop (sem rede). Só a
@@ -1376,7 +1390,8 @@ export function CadastroFlow({
   // imobiliária de verdade (UUID) — o mesmo seletor casa corretores avulsos, cujo id não é UUID.
   // Trocar de imobiliária zera as seleções; 1 empreendimento já seleciona; 0 ou vários = operador.
   useEffect(() => {
-    if (isImobiliaria || modoPublico) return;
+    // Nem para o corretor autônomo: ele não tem imobiliária de onde tirar empreendimento e corretor.
+    if (isImobiliaria || isCorretor || modoPublico) return;
     const imobId = perfil.imobiliariaId;
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(imobId);
     if (!isUuid) {
@@ -1404,7 +1419,7 @@ export function CadastroFlow({
     return () => {
       alive = false;
     };
-  }, [isImobiliaria, modoPublico, perfil.imobiliariaId]);
+  }, [isCorretor, isImobiliaria, modoPublico, perfil.imobiliariaId]);
 
   // Etapas extras do EMPREENDIMENTO (hoje só o comprovante de renda). No público o empreendimento
   // vem do token e a leitura acontece uma vez; no interno ela reage à escolha do Vínculo, porque é
@@ -1413,7 +1428,9 @@ export function CadastroFlow({
   // A IMOBILIÁRIA FICA DE FORA: o auto-cadastro dela roda neste mesmo wizard, mas a etapa fala do
   // COMPRADOR da CAD, não do parceiro — e o token dela nem abre a rota pública de exigências.
   useEffect(() => {
-    if (isImobiliaria) {
+    // O CORRETOR AUTÔNOMO TAMBÉM FICA DE FORA (27/09/2026): a etapa fala do COMPRADOR, e ele não tem
+    // empreendimento nenhum de onde a exigência viria.
+    if (isImobiliaria || isCorretor) {
       setExigencias(SEM_EXIGENCIAS);
       return;
     }
@@ -1430,7 +1447,7 @@ export function CadastroFlow({
     return () => {
       alive = false;
     };
-  }, [api, empImobSel, isImobiliaria, modoPublico]);
+  }, [api, empImobSel, isCorretor, isImobiliaria, modoPublico]);
 
   // PJ não tem certidão/cônjuge. PF: Casado(2), Divorciado(3), Separado(4) e
   // União Estável(6) exigem certidão (o MOST valida a autenticidade).
@@ -1446,7 +1463,7 @@ export function CadastroFlow({
   // (`exigencias.comprovanteRenda`). Vai no fim de propósito: é a única etapa que não depende do
   // que foi lido antes, então acrescentá-la ali não reordena nada que o corretor já conhece — e a
   // numeração dos cartões sai da posição no array, não de número fixo.
-  const exigeRenda = !isImobiliaria && exigencias.comprovanteRenda;
+  const exigeRenda = !isImobiliaria && !isCorretor && exigencias.comprovanteRenda;
   const steps = isImobiliaria
     ? ["Identificação", "Contrato social", "Sócios", "Corretores", "Revisão"]
     : [
@@ -1493,7 +1510,7 @@ export function CadastroFlow({
     setEnrich(null);
     setEndereco(null);
     setConjuge(CONJUGE_VAZIO);
-    setPersona(isImobiliaria ? "pj" : "pf");
+    setPersona(formato.persona === "pj" ? "pj" : "pf");
     setEmpresa(EMPRESA_VAZIA);
     setDocumentos({});
     setSocios([]);
@@ -1511,7 +1528,7 @@ export function CadastroFlow({
   const empImobSelObj = empImobLista.find((e) => e.enterpriseId === empImobSel);
   const corretorImobSelObj = corretorImobLista.find((c) => c.entityId === corretorImobSel);
   const vinculoProspect =
-    !isImobiliaria && !modoPublico && empImobSel
+    formato.exigeVinculo && !modoPublico && empImobSel
       ? {
           corretorEmail: corretorImobSelObj?.email ?? undefined,
           corretorEntityId: corretorImobSel || undefined,
@@ -1536,11 +1553,7 @@ export function CadastroFlow({
         <div className="rounded-2xl border border-line bg-surface px-6 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] print:hidden">
           <div className="flex items-center justify-between gap-4">
             <h1 className="text-lg font-semibold tracking-tight text-ink">
-              {isImobiliaria
-                ? "Cadastro de Imobiliária"
-                : modoPublico
-                  ? "Cadastro do cliente"
-                  : "Cadastro de CAD"}
+              {modoPublico && !isImobiliaria ? "Cadastro do cliente" : formato.titulo}
             </h1>
             <div className="flex items-center gap-2">
               <span className="hidden items-center gap-1.5 rounded-full border border-line bg-subtle px-3 py-1.5 text-xs font-medium text-ink-soft sm:inline-flex">
@@ -1613,6 +1626,7 @@ export function CadastroFlow({
             empreendimentosSel={empreendimentosSel}
             empresa={empresa}
             enrich={enrich}
+            formato={formato}
             identidade={identidade}
             imobiliarias={imobiliarias}
             isImobiliaria={isImobiliaria}
@@ -1807,6 +1821,7 @@ export function CadastroFlow({
             empreendimentosSel={empreendimentosSel}
             empresa={empresa}
             endereco={endereco}
+            formato={formato}
             identidade={identidade}
             imobiliarias={imobiliarias}
             isImobiliaria={isImobiliaria}
@@ -2244,6 +2259,7 @@ function StepIdentificacao({
   empreendimentosSel,
   empresa,
   enrich,
+  formato,
   identidade,
   imobiliarias,
   isImobiliaria,
@@ -2273,6 +2289,7 @@ function StepIdentificacao({
   empreendimentosSel: string[];
   empresa: Empresa;
   enrich: Enrichment | null;
+  formato: FormatoDoCadastro;
   identidade: Identidade | null;
   imobiliarias: SelectOption[];
   isImobiliaria: boolean;
@@ -2406,8 +2423,10 @@ function StepIdentificacao({
   // Prospect INTERNO: escolhida a imobiliária, exige o EMPREENDIMENTO (senão a ficha nasceria sem
   // empreendimento — o bug das órfãs) e o CORRETOR quando a imobiliária tem corretores cadastrados.
   // No público a imobiliária/empreendimento vêm do token; na imobiliária este vínculo não existe.
+  // ⚠️ QUEM NÃO TEM BLOCO VÍNCULO NÃO TEM VÍNCULO A CONFERIR: a imobiliária (que não se vincula a
+  // outra) e o corretor autônomo (que não se vincula a nenhuma, decisão do Lucas de 27/09/2026).
   const vinculoProspectOk =
-    isImobiliaria ||
+    !formato.exigeVinculo ||
     modoPublico ||
     (Boolean(empImobSel) && (corretorImobLista.length === 0 || Boolean(corretorImobSel)));
 
@@ -2487,8 +2506,12 @@ function StepIdentificacao({
         // Profissão DIGITADA também vale para avançar — é o ponto do pedido: o corretor não pode
         // mais travar por não achar a dele na lista. A padronização acontece depois, na validação.
         temProfissao(perfil.profissaoId, perfil.profissaoOutro) ? null : "profissão",
-        modoPublico || perfil.imobiliariaId ? null : "imobiliária",
-        vinculoProspectOk ? null : "empreendimento e corretor",
+        ...faltaNoVinculo({
+          formato,
+          imobiliariaId: perfil.imobiliariaId,
+          modoPublico,
+          vinculoOk: vinculoProspectOk,
+        }),
         emailValido ? null : "e-mail válido",
         conjugeOk ? null : "dados do cônjuge",
       ].filter((item): item is string => item !== null)
@@ -2508,8 +2531,12 @@ function StepIdentificacao({
       ].filter((item): item is string => item !== null)
     : [
         empresa.documentoLido ? null : "o cartão CNPJ",
-        modoPublico || perfil.imobiliariaId ? null : "imobiliária",
-        vinculoProspectOk ? null : "empreendimento e corretor",
+        ...faltaNoVinculo({
+          formato,
+          imobiliariaId: perfil.imobiliariaId,
+          modoPublico,
+          vinculoOk: vinculoProspectOk,
+        }),
         emailRegex.test(empresa.email) ? null : "e-mail válido",
       ].filter((item): item is string => item !== null);
 
@@ -2519,7 +2546,7 @@ function StepIdentificacao({
 
   return (
     <StepCard title="1. Identificação">
-      {isImobiliaria || modoPublico ? null : (
+      {!formato.exigeVinculo || modoPublico ? null : (
         <Secao title="Vínculo">
           <SearchableSelect
             label="Imobiliária / corretor"
@@ -2563,10 +2590,16 @@ function StepIdentificacao({
       )}
 
       <p className="m-0 mb-3 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-3 py-2 text-xs text-[#7a5e2c] print:hidden dark:text-[#d9b877]">
-        {isImobiliaria ? (
+        {formato.persona === "pj" ? (
           <>
             Anexe o <span className="font-semibold">cartão CNPJ</span> da imobiliária. Os dados são
             lidos do próprio documento.
+          </>
+        ) : formato.persona === "pf" ? (
+          <>
+            Anexe o documento de identificação do corretor:{" "}
+            <span className="font-semibold">RG, CNH ou passaporte</span>. Os dados são lidos do
+            próprio documento.
           </>
         ) : (
           <>
@@ -2580,23 +2613,28 @@ function StepIdentificacao({
       <div className="print:hidden">
         <DocUploader
           busy={enriching}
-          label={isImobiliaria ? "Adicionar cartão CNPJ da imobiliária" : "Adicionar documento do cliente"}
+          label={
+            formato.persona === "pj"
+              ? "Adicionar cartão CNPJ da imobiliária"
+              : formato.persona === "pf"
+                ? "Adicionar documento do corretor"
+                : "Adicionar documento do cliente"
+          }
           hint={
-            isImobiliaria
+            formato.persona === "pj"
               ? "Cartão CNPJ · foto ou PDF"
               : "Foto ou PDF. Se o documento tiver frente e verso, anexe os dois."
           }
           onFile={onDocumento}
           onExtracted={async (ext) => {
             // No prospect entra identidade (PF) ou cartão CNPJ (PJ); na imobiliária, só o cartão.
-            conferirDocumento(
-              ext,
-              isImobiliaria ? ["cnpj"] : ["identidade", "cnpj"],
-              isImobiliaria
-                ? "o cartão CNPJ da imobiliária"
-                : "o documento de identificação (RG, CNH ou passaporte) ou o cartão CNPJ",
-            );
-            if (isCnpjDoc(ext.documentType)) {
+            const aceito = documentoDaIdentificacao(formato);
+            conferirDocumento(ext, aceito.aceitos, aceito.frase);
+            // ⚠️ O CORRETOR AUTÔNOMO CONTINUA PF MESMO SE ALGUÉM ANEXAR UM CARTÃO CNPJ (27/09/2026).
+            // `conferirDocumento` só AVISA (regra do OCR, v1.105.0), então sem esta trava um CNPJ
+            // anexado por engano viraria uma pessoa jurídica com papel de corretor — a "pessoa física
+            // como imobiliária" que o Lucas não quer na base.
+            if (formato.persona !== "pf" && isCnpjDoc(ext.documentType)) {
               onPersona("pj");
               await lerEmpresa(ext);
               return;
@@ -3980,6 +4018,7 @@ function StepRevisao({
   empresa,
   endereco,
   exigeComprovanteRenda,
+  formato,
   identidade,
   imobiliarias,
   isImobiliaria,
@@ -4005,6 +4044,7 @@ function StepRevisao({
   // Etapa "Comprovante de renda" ligada no empreendimento desta CAD: entra na lista do que falta e
   // no `disabled` do Enviar, igual aos demais obrigatórios.
   exigeComprovanteRenda: boolean;
+  formato: FormatoDoCadastro;
   identidade: Identidade | null;
   imobiliarias: SelectOption[];
   isImobiliaria: boolean;
@@ -4045,8 +4085,9 @@ function StepRevisao({
     ? titleCase(empresa.razaoSocial || "Empresa")
     : titleCase(identidade?.nome ?? "Cliente");
   const registro = formatRegistro(new Date());
-  // O documento da imobiliária é "Imobiliaria - ...", não CAD (a CAD é do prospect).
-  const rotuloDoc = isImobiliaria ? "Imobiliaria" : "CAD";
+  // O documento da imobiliária é "Imobiliaria - ..." e o do autônomo "Corretor - ...", não CAD (a CAD
+  // é do prospect). O prefixo vem do formato, num lugar só.
+  const rotuloDoc = formato.rotuloDoDocumento;
   const cadTitulo = `${rotuloDoc} - ${nomeCliente} - ${registro.completo}`;
   const [enviado, setEnviado] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -4462,11 +4503,12 @@ function StepRevisao({
       data: registro.data,
       hora: registro.hora,
       nome: nomeCliente,
-      papel: isImobiliaria ? "Imobiliária" : isPj ? "Pessoa jurídica" : "Prospect",
+      papel: isImobiliaria ? "Imobiliária" : isPj ? "Pessoa jurídica" : formato.papelLabel,
       secoes,
-      // A imobiliária não se vincula a outra imobiliária: o campo sai do topo da ficha dela.
-      titulo: isImobiliaria ? "Cadastro de Imobiliária" : "Cadastro de CAD",
-      vinculo: isImobiliaria ? "" : label(imobiliarias, perfil.imobiliariaId),
+      // A imobiliária não se vincula a outra imobiliária, e o autônomo não se vincula a nenhuma: o
+      // campo sai do topo da ficha dos dois.
+      titulo: formato.titulo,
+      vinculo: formato.exigeVinculo ? label(imobiliarias, perfil.imobiliariaId) : "",
     };
   }
 
@@ -4481,11 +4523,7 @@ function StepRevisao({
           </span>
           <div>
             <h2 className="text-lg font-semibold text-ink">
-              {isImobiliaria
-                ? "Cadastro de Imobiliária"
-                : modoPublico
-                  ? "Confira antes de enviar"
-                  : "Cadastro de CAD"}
+              {modoPublico && !isImobiliaria ? "Confira antes de enviar" : formato.titulo}
             </h2>
             <p className="text-xs text-ink-muted">
               {nomeCliente} · registro {registro.completo}
@@ -4637,14 +4675,19 @@ function StepRevisao({
             <ReadField label="UF" value={endereco?.uf ?? ""} />
           </Secao>
 
-          <Secao title="Contato e vínculo">
+          {/* ⚠️ O CORRETOR AUTÔNOMO NÃO TEM LINHA DE IMOBILIÁRIA, NEM VAZIA (27/09/2026). Um campo
+              "Imobiliária" em branco na revisão dele já é a informação que o Lucas não quer na casa:
+              *"NAO QUERO TER A INFORMACAO QUE PODE TER PESSOA FISICA COMO IMOBILIARIA"*. */}
+          <Secao title={formato.exigeVinculo ? "Contato e vínculo" : "Contato"}>
             <ReadField label="Telefone" value={perfil.telefone} />
             <ReadField label="E-mail" value={perfil.email} span2 />
             {/* No público o rótulo vem do token (o portão repassa); no interno, da lista. */}
-            <ReadField
-              label="Imobiliária"
-              value={publico?.imobiliariaNome || label(imobiliarias, perfil.imobiliariaId)}
-            />
+            {formato.exigeVinculo ? (
+              <ReadField
+                label="Imobiliária"
+                value={publico?.imobiliariaNome || label(imobiliarias, perfil.imobiliariaId)}
+              />
+            ) : null}
             {publico?.corretorNome ? (
               <ReadField label="Corretor" value={publico.corretorNome} />
             ) : null}
@@ -4692,7 +4735,7 @@ function StepRevisao({
                 </span>
                 <div className="min-w-0">
                   <h2 className="m-0 text-base font-semibold text-ink">
-                    {isImobiliaria
+                    {isImobiliaria || !formato.entraNaEsteira
                       ? "Cadastro enviado com sucesso"
                       : modoPublico
                         ? "Cadastro do cliente enviado"
@@ -4700,7 +4743,7 @@ function StepRevisao({
                   </h2>
                   <p className="m-0 mt-0.5 text-xs text-ink-muted">
                     {nomeCliente} ·{" "}
-                    {isImobiliaria ? "Imobiliária" : modoPublico ? "Cliente" : "Prospect"}
+                    {isImobiliaria ? "Imobiliária" : modoPublico ? "Cliente" : formato.papelLabel}
                   </p>
                   <p className="m-0 text-xs text-ink-muted">
                     Enviado em {registro.data} às {registro.hora}
@@ -4786,7 +4829,11 @@ function StepRevisao({
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:opacity-50"
                 >
                   <Download className="size-4" aria-hidden="true" />
-                  {isImobiliaria ? "Baixar cadastro" : modoPublico ? "Baixar em PDF" : "Baixar CAD"}
+                  {isImobiliaria || !formato.entraNaEsteira
+                    ? "Baixar cadastro"
+                    : modoPublico
+                      ? "Baixar em PDF"
+                      : "Baixar CAD"}
                 </button>
               )}
               <a

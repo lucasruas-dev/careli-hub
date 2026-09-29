@@ -1,3 +1,13 @@
+import {
+  documentoDoPayload,
+  type EventoDoDocumento,
+  eventosDoDocumento,
+  lista,
+  objeto,
+  pessoasDoEvento,
+  situacaoDoConvite,
+  texto,
+} from "./marcas";
 import { ehFalhaDeAutenticacao, estadoDoEventoClicksign } from "./traduzir";
 
 // O DIÁRIO DO ENVELOPE — o que aconteceu com o contrato depois que ele saiu daqui.
@@ -188,19 +198,13 @@ function noticiaDoConvite(
   nomeDoEvento: string,
   dados: Record<string, unknown>,
 ): null | { convite: ConviteDoSignatario; detalhe: null | string } {
-  const notificacao = objeto(dados.notification);
-  if (Object.keys(notificacao).length === 0) return null;
-  if (texto(notificacao.kind) !== "signature_request") return null;
-
-  const status = texto(notificacao.last_status).toLowerCase();
-  if (status === "delivered") return { convite: "entregue", detalhe: null };
-
-  const deuErrado =
-    nomeDoEvento === "tracking_notification_error" ||
-    ["blocked", "bounce", "dropped", "failed", "spam", "spamcomplaint"].includes(status);
-  if (!deuErrado) return null;
-
-  return { convite: "nao_entregue", detalhe: motivoDaFalhaDeEnvio(notificacao) };
+  // ⚠️ A RÉGUA (o que é convite, o que é entregue, o que deu errado) MORA EM `marcas.ts`, que é de
+  // onde a marca `convite_falhou_em` do quadro também sai: duas réguas dariam "não entregue" no
+  // diário e "sem notícia" no quadro para o mesmo evento. Aqui fica só a FRASE do motivo.
+  const situacao = situacaoDoConvite(nomeDoEvento, dados);
+  if (situacao === null) return null;
+  if (situacao === "entregue") return { convite: "entregue", detalhe: null };
+  return { convite: "nao_entregue", detalhe: motivoDaFalhaDeEnvio(objeto(dados.notification)) };
 }
 
 /**
@@ -274,11 +278,8 @@ function fechouComTodasAsAssinaturas(payload: unknown): boolean | null {
   return pessoas.every((p) => p.assinouEm !== null);
 }
 
-type EventoCru = {
-  dados: Record<string, unknown>;
-  nome: string;
-  quando: string;
-};
+/** O evento de `document.events[]` como `marcas.ts` o lê (o parser é um só). */
+type EventoCru = EventoDoDocumento;
 
 function traduzirFato(evento: EventoCru, todosAssinaram: boolean | null): FatoDoEnvelope {
   const { dados, nome, quando } = evento;
@@ -388,89 +389,11 @@ function fato(
 }
 
 // ── A LEITURA DO PAYLOAD ────────────────────────────────────────────────────
-
-/**
- * Os eventos que a Clicksign mandou dentro do documento.
- *
- * ⚠️ SÓ `document.events[]`, E O `event` DA RAIZ FICA DE FORA DE PROPÓSITO. Medido no payload real
- * de 12/09/2026: o evento que disparou o webhook é sempre o PRIMEIRO item do array (o `sign` da
- * raiz, às 23:24:44.972-03:00, é o mesmo `sign` de `events[0]`, 02:24:44.972Z). Somar os dois
- * duplicaria toda última linha do diário.
- *
- * ⚠️ E PAYLOAD TORTO DEVOLVE VAZIO, NUNCA LANÇA. Isto é enfeite de tela: derrubar a etapa do
- * contrato porque um webhook veio num formato novo seria trocar uma informação a mais por uma tela
- * a menos.
- */
-/**
- * O `document` do payload, ACEITANDO AS TRES FORMAS que a Clicksign usa.
- *
- * ⚠️ LER SÓ A RAIZ ZERA A TELA SEM ERRO NENHUM. O card do quadro já procurava nos três lugares
- * (`lerEventosDoPayload`, em `lib/temis/trabalhos-db.ts`) e esta lib procurava em um só — então um
- * payload no formato JSON:API (`data.document`) fazia o painel dizer "0 de 2 assinaram" ao lado de
- * um card dizendo "1/2". Duas telas, duas verdades, sobre o mesmo envelope.
- *
- * ⚠️ E ISSO NÃO É HIPÓTESE: a Clicksign reenvia o webhook que não recebeu 200, e todo POST grava
- * linha nova — basta uma retentativa do `upload` chegar depois do `sign` para a linha mais recente
- * ser a mais pobre.
- */
-function documentoDoPayload(payload: unknown): Record<string, unknown> {
-  const raiz = objeto(payload);
-  for (const candidato of [raiz.document, objeto(raiz.data).document, objeto(raiz.event).document]) {
-    const achado = objeto(candidato);
-    if (Object.keys(achado).length > 0) return achado;
-  }
-  return {};
-}
-
-function eventosDoDocumento(payload: unknown): EventoCru[] {
-  const documento = documentoDoPayload(payload);
-  const saida: EventoCru[] = [];
-  for (const bruto of lista(documento.events)) {
-    const evento = objeto(bruto);
-    // ⚠️ ITEM QUE NÃO É OBJETO NÃO É "EVENTO DESCONHECIDO": é lixo, e não carrega fato nenhum. A
-    // regra de nunca sumir com evento vale para o que a Clicksign afirmou e nós não entendemos —
-    // um `null` no meio do array não afirma nada, e virar linha no diário seria inventar uma.
-    if (Object.keys(evento).length === 0) continue;
-    const nome = texto(evento.name) || texto(evento.type);
-    saida.push({
-      dados: objeto(evento.data),
-      nome: nome.toLowerCase(),
-      quando: emIso(evento.occurred_at),
-    });
-  }
-  return saida;
-}
-
-/**
- * As pessoas de um evento.
- *
- * ⚠️ A CLICKSIGN USA OS DOIS FORMATOS NO MESMO PAYLOAD: `add_signer` traz `data.signers[]` (array,
- * mesmo com uma pessoa só) e `sign` / `signature_started` / `tracking_notification_error` trazem
- * `data.signer` (objeto). Ler só um dos dois perde metade dos nomes do diário.
- */
-function pessoasDoEvento(dados: Record<string, unknown>): unknown[] {
-  const doArray = lista(dados.signers);
-  if (doArray.length > 0) return doArray;
-  const unico = objeto(dados.signer);
-  return Object.keys(unico).length > 0 ? [unico] : [];
-}
-
-/**
- * A data em ISO, normalizada.
- *
- * ⚠️ OS DOIS FUSOS CONVIVEM NO MESMO PAYLOAD: o `event.occurred_at` da raiz chega em `-03:00` e os
- * de `document.events[]` chegam em `Z`. Sem normalizar, ordenar como texto misturaria a linha do
- * tempo — e é a linha do tempo de um contrato.
- *
- * ⚠️ O QUE NÃO DÁ PARA LER FICA COMO VEIO. Devolver vazio apagaria a única pista de quando o fato
- * aconteceu; a ordenação já sabe jogar o ilegível para o fim.
- */
-function emIso(bruto: unknown): string {
-  const cru = texto(bruto);
-  if (!cru) return "";
-  const instanteLido = Date.parse(cru);
-  return Number.isNaN(instanteLido) ? cru : new Date(instanteLido).toISOString();
-}
+//
+// ⚠️ OS LEITORES (`documentoDoPayload`, `eventosDoDocumento`, `pessoasDoEvento`, `emIso`, e os
+// ajudantes `objeto`/`lista`/`texto`) FORAM PARA `marcas.ts` NA F1 DA FONTE ÚNICA (28/09/2026). O
+// webhook passou a gravar no quadro do envelope o que estes leitores contam, e o diário e o quadro
+// não podem ler o mesmo payload de dois jeitos. Aqui ficam só a ordenação e a frase.
 
 function instante(quando: string): number {
   const lido = Date.parse(quando);
@@ -480,22 +403,4 @@ function instante(quando: string): number {
 
 function porQuandoCrescente(a: EventoCru, b: EventoCru): number {
   return instante(a.quando) - instante(b.quando);
-}
-
-// ⚠️ ESTES TRÊS AJUDANTES SÃO GÊMEOS DOS DE `clicksign/webhook.ts`, e não dá para reusar aqueles:
-// lá eles são privados do módulo, e exportá-los mudaria um arquivo que outra frente está editando.
-// São quatro linhas cada e não guardam conhecimento nenhum sobre a Clicksign — o catálogo de
-// eventos, que é o que não pode ter duas cópias, mora em `traduzir.ts` e é lido de lá.
-function objeto(bruto: unknown): Record<string, unknown> {
-  return bruto && typeof bruto === "object" && !Array.isArray(bruto)
-    ? (bruto as Record<string, unknown>)
-    : {};
-}
-
-function lista(bruto: unknown): unknown[] {
-  return Array.isArray(bruto) ? bruto : [];
-}
-
-function texto(bruto: unknown): string {
-  return typeof bruto === "string" ? bruto.trim() : "";
 }

@@ -47,11 +47,16 @@ export type PropriosDoPortal = {
  * O núcleo PURO: o que dá para testar sem banco.
  *
  * ⚠️ A TRAVA DO LAB (revisão de 16/09/2026). Os próprios saem de `linhasSoDoPanteon`, a MESMA régua
- * do escopo, e não de `soDoPanteon` cru: o catálogo do C2X esconde de propósito as siglas de
- * `EXCLUDED_ENTERPRISE_CODES` (LAB, espelho da Lagoa Bonita; TSC, SDT, LAG), e `soDoPanteon` lia
- * "não está no catálogo" como "só existe no Panteon". Uma sessão com o 31 ganhava o LAB como produto
- * próprio (código autorizado, unidades lidas duas vezes). A régua do escopo só deixa passar essas
- * siglas quando o id é de fato do Panteon (>= 100000), e tira linha repetida e linha sem código.
+ * do escopo, e não de `soDoPanteon` cru: o catálogo do C2X esconde de propósito os empreendimentos de
+ * `EXCLUDED_ENTERPRISE_IDS` (2 = SDT, 31 = LAB, o espelho da Lagoa Bonita, 34 = TSC), e `soDoPanteon`
+ * lia "não está no catálogo" como "só existe no Panteon". Uma sessão com o 31 ganhava o LAB como
+ * produto próprio (código autorizado, unidades lidas duas vezes). A régua do escopo barra a linha
+ * cujo ID está nessa lista, e deixa passar o produto nascido no Panteon (>= 100000); tira também
+ * linha repetida e linha sem código.
+ *
+ * ⚠️ A TRAVA É PELO ID, NÃO PELA SIGLA DO CADASTRO (PAN-124, 25/09/2026). Até o PAN-124 ela comparava
+ * o `codigo` com `EXCLUDED_ENTERPRISE_CODES`. Hoje uma linha com sigla LAB, TSC ou SDT e um id do C2X
+ * FORA de {2, 31, 34} passa; uma com o 31 e qualquer sigla, não.
  */
 export function montarPropriosDoPortal(entrada: {
   cadastro: LinhaDoCadastro[] | null;

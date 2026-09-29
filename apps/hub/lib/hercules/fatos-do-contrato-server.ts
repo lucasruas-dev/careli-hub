@@ -43,7 +43,8 @@ export async function lerFatosDoContrato(
 
   // ⚠️ O ENVELOPE DA TÊMIS PRECISA ENTRAR AQUI, SENÃO A APURAÇÃO É CEGA PARA A ASSINATURA DO
   // PANTEON — e este era o defeito, não a função. As duas fontes acima são do C2X
-  // (`hercules_proposta_eventos` e `data_assinatura` só são escritas pela carga do legado): uma
+  // (`hercules_proposta_eventos` só é escrita pela carga do legado, e `data_assinatura` também só
+  // era, até a F2 da fonte única passar a gravá-la na venda NATIVA pelo `aplicarEnvelopeNaVenda`): uma
   // venda que nasceu aqui, cujo contrato a Têmis mandou para a Clicksign e cujos compradores
   // assinaram, respondia "nenhuma assinatura registrada" e o pedido saía classificado como
   // CANCELAMENTO SIMPLES — sem distrato, sem apuração do que devolver e sem devolução ao cliente.
@@ -52,10 +53,17 @@ export async function lerFatosDoContrato(
   // ⚠️ SÓ `assinado`, e o filtro é da própria consulta: `parcial` é meio contrato assinado, e pela
   // regra do Lucas (12/09/2026) esse ainda VOLTA para a análise — tratá-lo como completo empurraria
   // para o distrato uma venda que só precisava de correção.
+  //
+  // ⚠️ E SÓ ENVELOPE DE CONTRATO (`finalidade = 'contrato'`, 0195; 0.13 do plano da fonte única).
+  // Distrato, cessão e cancelamento por correção também vão para assinatura com o `proposta_id` da
+  // venda: sem o filtro, um DISTRATO assinado respondia "contrato assinado por todos" e o próximo
+  // pedido era classificado em cima do documento errado. O provedor vem junto para a frase dizer
+  // onde conferir (a D4Sign do C2X ou a Clicksign da Têmis).
   const { data: envelopes, error: erroDoEnvelope } = await admin
     .from("temis_envelopes")
-    .select("estado, fechado_em")
+    .select("estado, fechado_em, finalidade, provedor")
     .eq("proposta_id", proposta.id)
+    .eq("finalidade", "contrato")
     .eq("estado", "assinado")
     .order("criado_em", { ascending: false })
     .limit(1);

@@ -194,7 +194,15 @@ export function lerEventoDoWebhook(corpoCru: string): EventoDaClicksign {
   // "aguardando" para sempre. E calado: a rota responde 200, então a Clicksign não reenvia.
   const documento = primeiroObjeto(raiz.document, evento.document, dados.document);
   const envelope = primeiroObjeto(raiz.envelope, evento.envelope, dados.envelope);
-  const signatario = primeiroObjeto(raiz.signer, evento.signer, dados.signer);
+  // ⚠️ `event.data.signer` É ONDE O SIGNATÁRIO VEM DE VERDADE (bug 8.4, medido em 28/09/2026): 0 de
+  // 226 payloads o traziam em `raiz.signer`, `event.signer` ou `data.signer`, e 55 o traziam em
+  // `event.data.signer`. Sem este candidato, `signatarioEmail` voltava nulo em todo evento de pessoa.
+  const signatario = primeiroObjeto(
+    raiz.signer,
+    evento.signer,
+    objeto(evento.data).signer,
+    dados.signer,
+  );
 
   return {
     // ⚠️ `key` VEM ANTES DE `id`, E É ASSIM QUE A CLICKSIGN MANDA DE VERDADE. Medido no primeiro

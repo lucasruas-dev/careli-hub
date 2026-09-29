@@ -9,9 +9,11 @@ import type { Signatario } from "@/lib/assinatura/tipos";
 //
 //     comprador      hercules_propostas.compradores → `dadosDaProposta` → `signatariosDoContrato`
 //     incorporador   temis_assinantes `termos_vendedora` → `assinanteDeTermosDaVendedora`
-//                    ↘ sem ninguém apontado → a vendedora do quadro → o representante legal da PJ
-//                    ↘ e os três degraus são procurados na divisão da unidade, no empreendimento da
+//                    ↘ sem ninguém apontado → a vendedora do quadro
+//                    ↘ e os dois degraus são procurados na divisão da unidade, no empreendimento da
 //                      proposta e no pai dele, nessa ordem (`incorporadorDoAcordo`, em envio-db.ts)
+//                    ↘ até 25/09/2026 havia um terceiro, o representante legal herdado da ficha da
+//                      PJ; ele saiu quando o quadro virou a única fonte de quem assina (0191)
 //     Careli         lib/hades/acordo/assinante-da-careli.ts
 //
 // ⚠️ O PRIMEIRO DEGRAU DO INCORPORADOR NASCEU EM 20/09/2026, e ele é o campo que o Lucas pediu:
@@ -147,7 +149,7 @@ function faltaAlgumaParte(partes: {
   if (!partes.incorporador) {
     return (
       "Falta apontar quem assina os TERMOS pelo INCORPORADOR deste empreendimento: ninguém foi apontado em Assinatura de termos (vendedora), " +
-      "nenhuma pessoa está cadastrada como vendedora e a empresa não tem representante legal. " +
+      "e nenhuma pessoa está cadastrada como vendedora no quadro. " +
       "Aponte a pessoa no Quadro de assinatura do empreendimento, na aba Setup, sub-aba Assinatura, da tela do empreendimento (Apolo). " +
       "Pode ser alguém do jurídico ou um analista, não precisa ser o representante legal. Depois mande de novo."
     );

@@ -22,7 +22,11 @@
 // que ele continua na lista, não que ele foi escolhido. Aceitar um titular novo transformaria
 // "gerar proposta" numa segunda porta de entrada de cliente, sem a trava da reserva por unidade.
 
-import { cpfValido } from "@/lib/apolo/documento";
+import {
+  documentoDeCompradorValido,
+  mascararDocumento,
+  rotuloDoDocumento,
+} from "./documento-do-comprador";
 
 import {
   type BemOuPermuta,
@@ -31,7 +35,6 @@ import {
 } from "./bens-e-permutas";
 import { entradaMinima } from "./composicoes";
 import { type PlanoDaFaixa, pisoDaEntradaNoPrazo } from "./faixa-do-plano";
-import { mascararCpf } from "./reserva";
 
 /**
  * Quem compra, e com quanto.
@@ -309,12 +312,21 @@ export function conferirProposta(
 
     for (const comprador of compradores) {
       const nome = String(comprador.nome ?? "").trim();
-      if (!cpfValido(comprador.cpf)) {
+      // ⚠️ CPF **OU** CNPJ, E A FRASE NOMEIA O DOCUMENTO CERTO (Lucas, 26/09/2026: *"temos que
+      // habilitar pessoa fisica e pessoa juridica, hoje só atende pessoa fisica"*). Até 26/09/2026
+      // a régua era `cpfValido` em TODOS os compradores: uma proposta de empresa era recusada com
+      // "CPF inválido em ACME Construtora", e a reserva de PJ travava aqui.
+      //
+      // ⚠️ A MISTURA VALE: a empresa titular e o sócio co-comprador entram na mesma proposta, cada
+      // um com o seu documento. O que NÃO afrouxou é o dígito verificador, nem o titular único, nem
+      // a soma de 100%.
+      if (!documentoDeCompradorValido(comprador.cpf)) {
+        const rotulo = rotuloDoDocumento(comprador.cpf);
         erros.push({
           campo: "cpf",
           mensagem: nome
-            ? `CPF inválido em ${nome}.`
-            : "CPF inválido em um dos compradores.",
+            ? `${rotulo} inválido em ${nome}.`
+            : `${rotulo} inválido em um dos compradores.`,
         });
       }
       if (!(comprador.participacao > 0)) {
@@ -714,7 +726,9 @@ export function avisosDaProposta(
   dados: DadosDoAvisoDaProposta,
 ): AvisoDaProposta[] {
   const lote = `*${dados.unidade}* (${dados.empreendimento})`;
-  const cliente = `*${dados.cliente}* (CPF ${mascararCpf(dados.cpf)})`;
+  // ⚠️ O RÓTULO SAI DO DOCUMENTO (26/09/2026), pelo mesmo motivo da reserva: as três mensagens
+  // saem do número do Relacionamento e mensagem enviada não volta.
+  const cliente = `*${dados.cliente}* (${rotuloDoDocumento(dados.cpf)} ${mascararDocumento(dados.cpf)})`;
   const cod = dados.codigo ? `COD *${dados.codigo}*.` : "";
   const desde = dataEscrita(dados.primeiraParcelaEm);
 

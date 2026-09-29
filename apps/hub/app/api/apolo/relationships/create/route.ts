@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 
+import { depoisDaResposta } from "@/lib/apolo/depois-da-resposta";
+import {
+  habilitacaoPeloVinculo,
+  registrarHabilitacaoPeloCadastro,
+} from "@/lib/apolo/habilitacao-pelo-cadastro";
 import {
   createApoloAdminClient,
   createApoloUserClient,
@@ -96,7 +101,17 @@ export async function POST(request: Request) {
     // (lib/publico/cad/dados.ts) leem exatamente esta chave.
     const enterpriseId = asText(payload.enterpriseId);
     if (enterpriseId) {
-      return insertRelationship(adminClient, {
+      // ⚠️ PARA A IMOBILIÁRIA CREDENCIADA, ISTO É HABILITAÇÃO PELO CADASTRO INTERNO (revisão de
+      // 24/09/2026). O vínculo nasce `verified` e vale na hora no portal do corretor; o Board mostra o
+      // selo "cadastro interno". A decisão do Lucas ("3 - Isso ae") é que essa habilitação avisa o
+      // coordenador, e até aqui só o wizard avisava. A régua de "já habilitada" é a do wizard: o que
+      // ela já tem (com o pai e o grupo expandidos) não é gravado de novo nem avisado.
+      const habilitacao = await habilitacaoPeloVinculo(adminClient, { enterpriseId, entityId, label });
+      if (habilitacao.tipo === "ja-habilitada") {
+        return NextResponse.json({ id: null, jaHabilitada: true, ok: true });
+      }
+
+      const resposta = await insertRelationship(adminClient, {
         entityId,
         // Fixo: os leitores filtram por este valor exato, não pelo rótulo digitado.
         relationshipType: "empreendimento",
@@ -109,6 +124,16 @@ export async function POST(request: Request) {
           enterpriseLabel: label,
         },
       });
+
+      // Auditoria e aviso DEPOIS da resposta, e só se o vínculo entrou: o modal não espera o WhatsApp.
+      if (habilitacao.tipo === "nova" && resposta.ok) {
+        const aviso = { ...habilitacao.aviso, autorUserId: authorization.userId };
+        await depoisDaResposta(
+          () => registrarHabilitacaoPeloCadastro(adminClient, aviso),
+          "[relacionamento] falha no aviso da habilitacao",
+        );
+      }
+      return resposta;
     }
 
     const relatedEntityId = asText(payload.relatedEntityId);

@@ -207,6 +207,29 @@ export function businessRoleProfiles(entity: ApoloEntity): ApoloProfile[] {
   return entity.profiles.filter((profile) => !NON_ROLE_PROFILES.has(profile));
 }
 
+/** Rótulo do código do corretor autônomo na ficha. Diz o que o número é, sem abreviar. */
+export const ROTULO_DO_CODIGO_DO_CORRETOR = "Corretor autônomo";
+
+/**
+ * O CÓDIGO DO CORRETOR AUTÔNOMO, para a ficha do CRM — e só para ela.
+ *
+ * Lucas (27/09/2026): *"a minha ideia e gerar um codigo para esses corretores, assim saberemos que ele
+ * e autonomo"* e, sobre onde ele aparece, corrigindo a si mesmo: *"minto, somente no CRM"*. Não entra
+ * na reserva, na proposta, no contrato nem no BI.
+ *
+ * ⚠️ SÓ COM O PAPEL DE CORRETOR. Se um dia a ficha perder o papel (o time reclassificou a pessoa), o
+ * número na coluna não vira crachá de autônomo numa ficha que não é mais de autônomo.
+ *
+ * ⚠️ NULO É O CASO COMUM, E NÃO UM ERRO. Medido em 27/09/2026: os 131 corretores que já existem vieram
+ * do C2X e não têm código — são resíduo do legado (Lucas: *"pode ignorar"*, sem backfill).
+ */
+export function codigoDoCorretorDaFicha(entity: ApoloEntity): null | string {
+  const codigo = entity.codigoCorretor?.trim();
+  if (!codigo) return null;
+  if (!entity.profiles.includes("corretor")) return null;
+  return codigo;
+}
+
 export function primaryBusinessProfile(entity: ApoloEntity): ApoloProfile {
   const profilePriority = [
     "usuario",

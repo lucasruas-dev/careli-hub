@@ -251,4 +251,22 @@ describe("a leitura do evento", () => {
     );
     expect(lido.envelopeId).toBe("env_5");
   });
+
+  // ⚠️ BUG 8.4 DO PLANO DA FONTE ÚNICA (medido em 28/09/2026): 0 de 226 payloads traziam o
+  // signatário em `raiz.signer`, `event.signer` ou `data.signer`; 55 o traziam em
+  // `event.data.signer`, que é o formato v1 de verdade (o do payload real da fixture).
+  it("v1 com event.data.signer.email preenche signatarioEmail", () => {
+    const lido = lerEventoDoWebhook(
+      JSON.stringify({
+        document: { key: "doc-1" },
+        event: {
+          data: { signer: { email: "mariana.bandeira@exemplo.test", key: "k-1" } },
+          name: "sign",
+          occurred_at: "2026-09-11T23:24:44.972-03:00",
+        },
+      }),
+    );
+    expect(lido.evento).toBe("sign");
+    expect(lido.signatarioEmail).toBe("mariana.bandeira@exemplo.test");
+  });
 });

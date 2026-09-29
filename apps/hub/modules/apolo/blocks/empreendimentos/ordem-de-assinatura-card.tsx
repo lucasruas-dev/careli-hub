@@ -4,6 +4,10 @@ import { PenLine, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { lerRegraDeOrdem, ORDEM_MAXIMA, ORDEM_PADRAO } from "@/lib/assinatura/ordem";
+// ⚠️ A FRASE DA ORIGEM SAI DE `ordem-db`, que é quem o ENVIO usa. Reescrevê-la aqui faria a tela
+// dizer uma coisa e o contrato obedecer a outra na primeira vez que a cadeia mudasse. O módulo só
+// importa o Supabase como TIPO, então nada de servidor vem junto para o navegador.
+import { descreverOrigem, foiCadastrada, type OrigemDaRegra } from "@/lib/assinatura/ordem-db";
 import { PAPEIS, PAPEIS_DO_CONTRATO, type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 
@@ -43,6 +47,18 @@ export function OrdemDeAssinaturaCard({ code, enterpriseId }: Props) {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<null | string>(null);
   const [salvo, setSalvo] = useState(false);
+  /** O servidor respondeu 200 e devolveu outra coisa. Ver `salvar`. */
+  const [aviso, setAviso] = useState<null | string>(null);
+  /** De onde vem a REGRA que o envio vai usar hoje. */
+  const [origem, setOrigem] = useState<OrigemDaRegra>("padrao");
+  /**
+   * A LISTA deste empreendimento está gravada?
+   *
+   * ⚠️ ELA É SEPARADA DA ORIGEM DE PROPÓSITO. A chave ligada com a coluna nula é cadastro
+   * (`foiCadastrada`) e o envio o trata assim — só que a fila que sai é a ORDEM CANÔNICA da casa, e
+   * não a que este cartão desenha. Sem os dois fatos a frase mente de um jeito ou do outro.
+   */
+  const [listaSalva, setListaSalva] = useState(false);
 
   useEffect(() => {
     let vivo = true;
@@ -50,6 +66,8 @@ export function OrdemDeAssinaturaCard({ code, enterpriseId }: Props) {
       if (!vivo) return;
       setOrdenada(valor.ordenada);
       setOrdens(valor.ordens);
+      setOrigem(valor.cadastrada ? "empreendimento" : "padrao");
+      setListaSalva(valor.listaSalva);
       setCarregando(false);
     });
     return () => {
@@ -59,25 +77,60 @@ export function OrdemDeAssinaturaCard({ code, enterpriseId }: Props) {
 
   function definir(papel: PapelNoContrato, bruto: string) {
     setSalvo(false);
+    setAviso(null);
     const n = Math.trunc(Number(bruto));
     // Campo vazio ou fora do teto não mexe em nada: o operador está no meio de digitar.
     if (!Number.isFinite(n) || n < 1 || n > ORDEM_MAXIMA) return;
     setOrdens((atual) => ({ ...atual, [papel]: n }));
   }
 
+  /**
+   * Salva e CONFERE, relendo o servidor.
+   *
+   * ⚠️ AFIRMAÇÃO EM CAIXA ALTA: ESTE CARTÃO ESCREVEU "SALVO" POR DEZ DIAS EM CIMA DE UMA COLUNA QUE
+   * GRAVAVA NULO. Entre 13/09 e 23/09/2026 ele fazia `setSalvo(true)` a partir do 200 da rota e
+   * nunca relia o servidor; a rota aceitava o mapa `{papel: número}` e o repasse o jogava fora
+   * (`Array.isArray(bruta) ? bruta : null`, consertado no commit b108e654). Nívea, 24/09/2026:
+   * *"A ordem de assinatura não está ficando salva."* — e ela só descobriu ao REABRIR a tela,
+   * porque aqui estava escrito que tinha dado certo.
+   *
+   * ⚠️ A CONFERÊNCIA É SOBRE A COLUNA, E NÃO SOBRE A REGRA LIDA. Ler a regra passaria pelo saneador,
+   * e uma coluna NULA devolve exatamente os números canônicos — que é o que a tela costuma mandar.
+   * Os dois seriam iguais e o defeito voltaria a passar despercebido. O que se pergunta aqui é
+   * "o que eu mandei chegou lá?".
+   *
+   * ⚠️ E ISTO VALE PARA O PRÓXIMO DEFEITO DESTA CLASSE, não só para este: tela que anuncia
+   * salvamento a partir do próprio clique não sabe de nada.
+   */
   async function salvar() {
     setErro(null);
+    setAviso(null);
     setSalvando(true);
     // ⚠️ MANDA A LISTA MESMO COM A ORDEM DESLIGADA. Se ela só fosse gravada quando ligada, desligar
     // e religar perderia a ordem que alguém montou — e o operador religaria achando que voltou ao
     // que era.
+    const mandado = { ...ordens };
     const resultado = await gravarSettings(enterpriseId, code, {
-      assinaturaOrdem: ordens,
+      assinaturaOrdem: mandado,
       assinaturaOrdenada: ordenada,
     });
-    setSalvando(false);
     if (!resultado.ok) {
+      setSalvando(false);
       setErro(resultado.error ?? "Falha ao salvar.");
+      return;
+    }
+
+    const devolta = await lerSettings(enterpriseId);
+    setSalvando(false);
+    setOrdens(devolta.ordens);
+    setOrdenada(devolta.ordenada);
+    setOrigem(devolta.cadastrada ? "empreendimento" : "padrao");
+    setListaSalva(devolta.listaSalva);
+
+    if (!guardouOQueFoiMandado(devolta.bruto, mandado)) {
+      setAviso(
+        "A ordem não voltou do servidor como foi enviada. O que está na tela agora é o que está gravado. Tente de novo e, se repetir, avise a engenharia.",
+      );
       return;
     }
     setSalvo(true);
@@ -85,6 +138,7 @@ export function OrdemDeAssinaturaCard({ code, enterpriseId }: Props) {
 
   function voltarAoPadrao() {
     setSalvo(false);
+    setAviso(null);
     setOrdens({ ...ORDEM_PADRAO.ordens });
   }
 
@@ -112,6 +166,7 @@ export function OrdemDeAssinaturaCard({ code, enterpriseId }: Props) {
           disabled={carregando || salvando}
           onClick={() => {
             setSalvo(false);
+            setAviso(null);
             setOrdenada((v) => !v);
           }}
           role="switch"
@@ -210,6 +265,26 @@ export function OrdemDeAssinaturaCard({ code, enterpriseId }: Props) {
         ) : null}
       </div>
 
+      {/* ⚠️ DE ONDE VEM A REGRA QUE O ENVIO VAI USAR HOJE. É o que faz o caso do VOL (36) e do VOC
+          (37) aparecer sem ninguém precisar abrir o banco: chave ligada e lista NULA.
+          ⚠️ E A FRASE DIZ O FATO INTEIRO, em vez de "nada cadastrado". Medido em 24/09/2026 nas duas
+          linhas: `assinatura_ordenada = true`, `assinatura_ordem = NULL`. Para o envio isso É
+          cadastro (`foiCadastrada`), e o envelope sai EM FILA pela ordem canônica da casa; dizer "do
+          padrão da casa" aqui faria a Nívea concluir que o contrato sai com todos ao mesmo tempo,
+          porque `ORDEM_PADRAO` tem `ordenada: false`. Nívea (24/09/2026): *"A ordem de assinatura não
+          está ficando salva."* */}
+      {carregando ? null : (
+        <p className="m-0 mt-2 text-xs text-ink-muted">
+          {origem === "empreendimento" && !listaSalva
+            ? "Este empreendimento assina em ordem, pela ordem canônica da casa; a lista dele ainda não foi salva."
+            : `A ordem que vale agora vem ${descreverOrigem(origem)}.`}
+        </p>
+      )}
+
+      {aviso ? (
+        <p className="m-0 mt-2 text-xs font-medium text-amber-600 dark:text-amber-300">{aviso}</p>
+      ) : null}
+
       {erro ? (
         <p className="m-0 mt-2 text-xs font-medium text-rose-600 dark:text-rose-300">{erro}</p>
       ) : null}
@@ -227,9 +302,37 @@ export function OrdemDeAssinaturaCard({ code, enterpriseId }: Props) {
  * que o envio vai usar. Duas versões dessa limpeza divergiriam no dia da primeira renomeação — e a
  * divergência seria a tela mostrando uma ordem e o contrato saindo em outra.
  */
-async function lerSettings(
-  enterpriseId: string,
-): Promise<{ ordenada: boolean; ordens: Record<PapelNoContrato, number> }> {
+/**
+ * O servidor guardou o que foi mandado?
+ *
+ * ⚠️ A PERGUNTA É SOBRE A COLUNA CRUA. Uma coluna NULA, lida pelo saneador, devolve os números
+ * canônicos — que é exatamente o que a tela manda na maioria das vezes. Comparar regra com regra
+ * daria "igual" em cima de um nulo, que é o defeito que esta conferência existe para pegar.
+ *
+ * A LISTA ANTIGA (um array de papéis) também conta como "não é o que eu mandei": a tela manda mapa
+ * desde 13/09/2026, e receber a fila de volta é sinal de que alguém no caminho converteu.
+ */
+function guardouOQueFoiMandado(
+  bruto: null | Record<string, number> | string[],
+  mandado: Record<PapelNoContrato, number>,
+): boolean {
+  if (bruto == null || Array.isArray(bruto)) return false;
+  return PAPEIS_DO_CONTRATO.every((p) => Number(bruto[p]) === mandado[p]);
+}
+
+async function lerSettings(enterpriseId: string): Promise<{
+  /** A coluna como ela está, sem saneador nenhum. Ver `guardouOQueFoiMandado`. */
+  bruto: null | Record<string, number> | string[];
+  /**
+   * O empreendimento tem regra própria? É a MESMA pergunta que o envio faz (`foiCadastrada`): a
+   * chave ligada JÁ é cadastro, mesmo sem lista.
+   */
+  cadastrada: boolean;
+  /** A LISTA de papéis está gravada na coluna? Nula com a chave ligada é o caso do VOL e do VOC. */
+  listaSalva: boolean;
+  ordenada: boolean;
+  ordens: Record<PapelNoContrato, number>;
+}> {
   try {
     const accessToken = await getApoloAccessToken();
     const resposta = await fetch("/api/apolo/empreendimentos/settings", {
@@ -257,10 +360,33 @@ async function lerSettings(
         ? { ordenada: setting?.assinaturaOrdenada === true, papeis: guardado }
         : { ordenada: setting?.assinaturaOrdenada === true, ordens: guardado },
     );
-    return { ordenada: regra.ordenada, ordens: regra.ordens };
+    return {
+      bruto: guardado,
+      // ⚠️ A MESMA RÉGUA DO ENVIO, E NÃO UM SEGUNDO PREDICADO (25/09/2026). Quem decide a origem no
+      // envelope é `foiCadastrada` (`lib/assinatura/ordem-db.ts`), que também é `true` quando só
+      // `assinatura_ordenada` está ligada. Aqui estava `guardado != null`, e para o VOL (36) e o VOC
+      // (37) — `ordenada = true` com `assinatura_ordem` NULA, medido em 24/09/2026 — o envio dizia
+      // "Veio do Setup do empreendimento" enquanto esta tela diria "do padrão da casa". Reescrever o
+      // predicado é como as duas divergiram.
+      cadastrada: foiCadastrada({
+        assinatura_ordem: guardado,
+        assinatura_ordenada: setting?.assinaturaOrdenada === true,
+      }),
+      // ⚠️ E A LISTA É OUTRO FATO: é ela que falta no VOL e no VOC, e é isso que a frase tem de
+      // dizer, em vez de "nada cadastrado".
+      listaSalva: guardado != null,
+      ordenada: regra.ordenada,
+      ordens: regra.ordens,
+    };
   } catch {
     // Falha de leitura mostra o padrão da casa — e o operador só grava se clicar em Salvar.
-    return { ordenada: false, ordens: { ...ORDEM_PADRAO.ordens } };
+    return {
+      bruto: null,
+      cadastrada: false,
+      listaSalva: false,
+      ordenada: false,
+      ordens: { ...ORDEM_PADRAO.ordens },
+    };
   }
 }
 

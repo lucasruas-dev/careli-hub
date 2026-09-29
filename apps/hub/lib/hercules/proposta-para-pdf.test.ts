@@ -212,10 +212,27 @@ describe("⚠️ o que a folha promete tem que ser o que o contrato cumpre", () 
     expect(folha.reajustes[0]?.parcelas).toBe("1 a 12");
     // ⚠️ O primeiro ciclo começa hoje, com o valor de hoje: marcar "+ IPCA" nele seria corrigir
     // duas vezes o mesmo ano.
-    expect(folha.reajustes[0]?.temIpca).toBe(false);
-    expect(folha.reajustes[1]?.temIpca).toBe(true);
+    expect(folha.reajustes[0]?.correcao).toBe(null);
+    expect(folha.reajustes[1]?.correcao).toBe("IPCA anual");
     expect(folha.observacoes[0]?.texto).toContain("8% a.a.");
     expect(folha.observacoes[0]?.texto).toContain("IPCA anual");
+  });
+
+  // ⚠️ O CASO REAL: o plano NORMAL do Jardim das Gerais (enterprise 40) é o único POUPANCA do
+  // cadastro, medido em 24/09/2026 (`select indice_correcao, count(*) from temis_planos group by
+  // 1` → 1 POUPANCA). Até aqui a tabela do reajuste dele escrevia "+ IPCA" no papel do comprador.
+  it("plano com POUPANCA escreve + poupança na tabela de reajuste, e não + IPCA", () => {
+    const plano: PlanoComercial = { ...SACOC_COM_JUROS, indiceCorrecao: "POUPANCA" };
+    const folha = montarFolhaDaProposta({
+      ...BASE,
+      cronograma: montarCronograma({ ...CONDICOES, plano }),
+      incluirReajuste: true,
+      plano,
+    });
+
+    expect(folha.reajustes[0]?.correcao).toBe(null);
+    expect(folha.reajustes[1]?.correcao).toBe("poupança anual");
+    expect(folha.reajustes.some((r) => r.correcao === "IPCA anual")).toBe(false);
   });
 
   it("⚠️ sem pedir, a tabela de reajuste NÃO leva a observação junto", () => {

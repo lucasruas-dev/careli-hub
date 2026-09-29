@@ -10,6 +10,7 @@ import { abrirEspelho, ERRO_GENERICO } from "@/lib/hercules/espelho/abrir-espelh
 import { estadoDoEspelho } from "@/lib/hercules/espelho/estado-do-espelho";
 import { pisoDeEntradaPublico, planosPublicos } from "@/lib/hercules/espelho/planos-publicos";
 import { SEM_CACHE } from "@/lib/hercules/espelho/pecas-do-espelho";
+import { simulacaoParaAceito } from "@/lib/hercules/espelho/simulacao-para-quem";
 import { valoresDaSimulacaoPublica } from "@/lib/hercules/espelho/simulacao-publica";
 import {
   lerComColunasDoApartamento,
@@ -81,6 +82,16 @@ type Corpo = {
   entradaVezes?: number;
   parcelas?: number;
   plano?: string;
+  /**
+   * PARA QUEM esta simulação foi feita — o nome opcional que o corretor digitou no espelho.
+   *
+   * ⚠️ `unknown` DE PROPÓSITO, como `bensEPermutas`: é texto livre entrando por uma página SEM
+   * LOGIN, e declarar `string` aqui só faria o typecheck ACREDITAR nele. Quem confere é
+   * `simulacaoParaAceito` (normaliza, tira controle e invisível, colapsa espaço, EXIGE forma de nome
+   * de pessoa e corta em 80 marcando o corte). O que não tem forma de nome volta NULO, e a folha sai
+   * sem a linha: o PDF não é derrubado por causa de um rótulo de cortesia.
+   */
+  simulacaoPara?: unknown;
   /** O valor negociado na tela (o de tabela, com o ajuste que o corretor aplicou). */
   valor?: number;
 };
@@ -266,6 +277,12 @@ export async function POST(request: Request) {
       // não fecha com o valor da unidade.
       bensEPermutas: bens,
       // Simulação não tem comprador: ninguém foi qualificado, nada foi assinado.
+      //
+      // ⚠️ E O NOME DE `simulacaoPara` NÃO MUDA ISSO, POR MAIS CONVIDATIVO QUE PAREÇA (27/09/2026).
+      // Lucas: *"coloca a opção de inserir um nome na proposta simulada"* — o que ele pediu é um
+      // RÓTULO de para quem a conta foi feita, e ele sai numa LINHA do alto da folha. Aproveitá-lo
+      // aqui faria o papel apresentar uma parte qualificada, com documento e participação, montada
+      // a partir de um texto digitado numa página sem login.
       compradores: [],
       cronograma,
       diaDeVencimento: 10,
@@ -284,6 +301,11 @@ export async function POST(request: Request) {
       // OBSERVAÇÕES do rodapé, e sem a bandeira elas continuavam falando em reajuste e proposta
       // numa folha que não tem nem um nem outro.
       simulacao: true,
+      // ⚠️ E NADA DISTO É GRAVADO NEM LOGADO. A rota não escreve no banco (zero `insert`/`upsert`
+      // aqui e em `lib/hercules/espelho/`) e os `console.error` registram o OBJETO DE ERRO, nunca o
+      // corpo: o nome de uma pessoa digitado por um terceiro numa página sem login não abre essa
+      // porta, e também não entra no nome do arquivo (ver `nomeDoArquivo`, no fim deste arquivo).
+      simulacaoPara: simulacaoParaAceito(corpo.simulacaoPara),
       // O tipo decide só palavra na folha (tarja "a unidade", área privativa); a conta é a mesma.
       tipoProduto: tipoDaUnidade(unidade),
       unidade: {

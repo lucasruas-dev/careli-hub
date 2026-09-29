@@ -21,17 +21,55 @@
 
 import { soDigitos } from "@/lib/apolo/documento";
 
+import { tipoDePessoa } from "./documento-do-comprador";
+
 /** Como cada candidato volta para a tela. */
 export type ProponenteEncontrado = {
-  /** `true` quando a CAD dele está credenciada — só então a tela deixa adicionar. */
+  /**
+   * `true` quando a CAD dele está credenciada. A VERDADE SOBRE A CAD, e só ela.
+   *
+   * ⚠️ NÃO É MAIS A PORTA — ver `podeGerarProposta`. Desde 26/09/2026 o coordenador monta a proposta
+   * com a CAD EM ANDAMENTO, e este campo continua `false` nesse caso de propósito: é ele que diz à
+   * tela se a frase da etapa é um MURO ou um AVISO.
+   */
   credenciado: boolean;
   cpf: string;
   /** A etapa da CAD, quando ela não libera. */
   etapa: null | string;
   id: string;
-  /** A frase que explica por que ele não pode entrar. `null` quando pode. */
+  /** A frase que explica em que etapa a CAD está. `null` só quando ela está credenciada. */
   motivo: null | string;
   nome: string;
+  /**
+   * A PORTA: este candidato pode entrar na proposta?
+   *
+   * Lucas (26/09/2026): *"pode deixar os coordenadores emitirem proposta sem a cad esta credenciada.
+   * ela pode estar em validacao ou em qualquer outro estagio"*. A proposta do casal é a proposta de
+   * VERDADE: sem este campo o coordenador passava o titular e travava na esposa, e sobravam duas
+   * saídas erradas — esperar a CAD (o que o pedido do Lucas queria destravar) ou gravar 100% no
+   * titular, que muda quem assina o contrato e quem responde pela dívida.
+   *
+   * ⚠️ MEDIDO EM PRODUÇÃO (`bxgukywoxgivlrhjkwjx`, só SELECT, 26/09/2026):
+   *   select count(*) as propostas,
+   *          count(*) filter (where jsonb_array_length(compradores) > 1) as com_dois
+   *     from hercules_propostas where compradores is not null;
+   *     → 97 de 4.946 propostas têm dois ou mais compradores.
+   *   select etapa, count(*) from apolo_esteira group by 1;
+   *     → credenciado 662 · revisao 173 · correcao 6 · validacao 1 (ZERO em `indeferido`).
+   * Com 173 CADs em `revisao` hoje, "casal com as duas CADs em andamento" é o caso que sobraria de
+   * fora.
+   *
+   * ⚠️ E ELE NÃO MUDA QUEM APARECE NA LISTA. O filtro de quem entra na resposta é "tem CAD neste
+   * escopo OU contrato ativo na família" (`porEntidade.has(c.id) || carteira.has(c.id)` em
+   * `app/api/incorporador/venda/proponentes/route.ts`), não o credenciamento: a privacidade da busca
+   * é o ESCOPO mais o documento inteiro, e ela não foi tocada por nenhum dos dois lotes de 26/09/2026.
+   */
+  podeGerarProposta: boolean;
+  /**
+   * Por qual porta a decisão saiu (26/09/2026): `cad` ou `comprador_da_carteira`. Opcional para a
+   * tela aberta antes da subida continuar lendo a resposta; ausente = CAD.
+   */
+  origem?: null | "cad" | "comprador_da_carteira";
 };
 
 /** O mínimo que a busca precisa saber de uma pessoa da base. */
@@ -59,8 +97,10 @@ export const MAXIMO_DE_CANDIDATOS = 8;
  */
 export const MINIMO_DE_LETRAS = 3;
 
+// (26/09/2026) O termo de DOCUMENTO cobre CPF e CNPJ: Lucas, *"temos que habilitar pessoa fisica e
+// pessoa juridica"*. Chamava-se "cpf" e levava onze dígitos.
 export type TermoDaBusca =
-  | { digitos: string; tipo: "cpf" }
+  | { digitos: string; tipo: "documento" }
   | { texto: string; tipo: "nome" }
   | { tipo: "curto" };
 
@@ -86,11 +126,32 @@ export function termoDaBusca(cru: string): TermoDaBusca {
     // ⚠️ DÍGITO DE MENOS NÃO VIRA BUSCA POR NOME. "058" tem três caracteres e passaria na régua de
     // letras, indo procurar "058" dentro dos nomes — nenhum resultado, e o corretor concluindo que
     // o cliente não tem cadastro quando ele só não terminou de digitar o CPF.
-    return digitos.length >= 4 ? { digitos: digitos.slice(0, 11), tipo: "cpf" } : { tipo: "curto" };
+    // ⚠️ CATORZE, E NÃO ONZE. Cortado em onze, um CNPJ colado casava por ACIDENTE pelos onze
+    // primeiros dígitos (`startsWith` em `casa`), e as filiais 0001 e 0002 do mesmo CNPJ raiz
+    // viravam o mesmo resultado — comprador trocado no PDF e no contrato.
+    return digitos.length >= 4
+      ? { digitos: digitos.slice(0, 14), tipo: "documento" }
+      : { tipo: "curto" };
   }
 
   if (texto.length < MINIMO_DE_LETRAS) return { tipo: "curto" };
   return { texto, tipo: "nome" };
+}
+
+/**
+ * O termo é o documento INTEIRO (onze dígitos de CPF ou catorze de CNPJ)? É a chave que abre o
+ * espelho do pai e o comprador da carteira na busca (26/09/2026): confirmação do que o corretor já
+ * tem na mão, e não lista. A tela usa a mesma função para dizer quando vale digitar o documento
+ * inteiro, e a rota a usa para as duas portas: uma pergunta, uma resposta.
+ *
+ * ⚠️ SEM DÍGITO VERIFICADOR, de propósito: a base tem documento torto vindo da carga do C2X, e quem
+ * digitou o documento inteiro de um cliente que existe tem de achá-lo. O tamanho é de
+ * `tipoDePessoa`, a peça única (a varredura de `documento-do-comprador.varredura.test.ts` cobra).
+ */
+export function ehDocumentoInteiro(
+  termo: TermoDaBusca,
+): termo is { digitos: string; tipo: "documento" } {
+  return termo.tipo === "documento" && tipoDePessoa(termo.digitos) !== null;
 }
 
 /**
@@ -121,7 +182,7 @@ export function comparavel(valor: null | string): string {
 export function casa(candidato: CandidatoDaBase, termo: TermoDaBusca): boolean {
   if (termo.tipo === "curto") return false;
 
-  if (termo.tipo === "cpf") {
+  if (termo.tipo === "documento") {
     return soDigitos(candidato.documento ?? "").startsWith(termo.digitos);
   }
 
@@ -135,11 +196,16 @@ export function casa(candidato: CandidatoDaBase, termo: TermoDaBusca): boolean {
 /**
  * A ordem em que os candidatos aparecem.
  *
- * ⚠️ CREDENCIADO PRIMEIRO, e não alfabético puro: são os únicos que a tela deixa adicionar, e
- * enterrá-los no meio de homônimos sem CAD faz o corretor concluir que "não tem". Depois, nome.
+ * ⚠️ QUEM PODE ENTRAR VEM PRIMEIRO, e não alfabético puro: enterrá-los no meio de homônimos que a
+ * tela não deixa escolher faz o corretor concluir que "não tem". Depois, nome.
+ *
+ * ⚠️ A ORDEM SEGUE A PORTA, E NÃO `credenciado`, desde 26/09/2026. Ordenar pela verdade sobre a CAD
+ * mandaria para o fim da lista exatamente quem o coordenador ACABOU de ser liberado a escolher (a
+ * CAD em validação), e a lista tem teto de 8 candidatos: o afrouxamento existiria e ficaria
+ * escondido abaixo do corte.
  */
 export function ordenar(a: ProponenteEncontrado, b: ProponenteEncontrado): number {
-  if (a.credenciado !== b.credenciado) return a.credenciado ? -1 : 1;
+  if (a.podeGerarProposta !== b.podeGerarProposta) return a.podeGerarProposta ? -1 : 1;
   return comparavel(a.nome).localeCompare(comparavel(b.nome), "pt-BR");
 }
 

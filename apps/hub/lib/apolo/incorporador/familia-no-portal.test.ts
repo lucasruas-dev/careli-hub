@@ -113,12 +113,12 @@ describe("credenciamentoParaOPortal", () => {
 
   it("fora do comercial, 'não tem cadastro no Apolo' vira a mesma frase de 'sem CAD aqui'", () => {
     expect(
-      credenciamentoParaOPortal(semCadastro, { comercial: false, cpf: "529.982.247-25" }).motivo,
+      credenciamentoParaOPortal(semCadastro, { comercial: false, documento: "529.982.247-25" }).motivo,
     ).toBe(SEM_CAD_NO_EMPREENDIMENTO);
   });
 
   it("o comercial continua recebendo a frase original", () => {
-    expect(credenciamentoParaOPortal(semCadastro, { comercial: true, cpf: "52998224725" })).toBe(
+    expect(credenciamentoParaOPortal(semCadastro, { comercial: true, documento: "52998224725" })).toBe(
       semCadastro,
     );
   });
@@ -131,14 +131,14 @@ describe("credenciamentoParaOPortal", () => {
       etapa: "credito",
       motivo: "em análise de crédito desde 02/09/2026",
     };
-    expect(credenciamentoParaOPortal(emCredito, { comercial: false, cpf: "52998224725" })).toBe(
+    expect(credenciamentoParaOPortal(emCredito, { comercial: false, documento: "52998224725" })).toBe(
       emCredito,
     );
   });
 
   it("CPF incompleto mantém a frase que pede o CPF", () => {
     const incompleto = { ...semCadastro, motivo: "Informe o CPF do titular para conferir o credenciamento." };
-    expect(credenciamentoParaOPortal(incompleto, { comercial: false, cpf: "5299" }).motivo).toBe(
+    expect(credenciamentoParaOPortal(incompleto, { comercial: false, documento: "5299" }).motivo).toBe(
       incompleto.motivo,
     );
   });

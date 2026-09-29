@@ -30,6 +30,10 @@ import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 import { cancelarReservaNoHercules } from "@/lib/hercules/cancelar-reserva-server";
 import { criarReservaNoHercules } from "@/lib/hercules/criar-reserva";
 import {
+  soDigitosDoDocumento,
+  tipoDePessoa,
+} from "@/lib/hercules/documento-do-comprador";
+import {
   acharUnidade,
   estaLivre,
   lerSituacaoDasUnidades,
@@ -260,22 +264,42 @@ export function empreendimentoDaReserva(
 }
 
 /**
- * Os proponentes do cupom no formato da reserva do Hércules: `[{ nome, cpf, telefone, entity_id }]`
- * (0125). É o `cpf` que a proposta do Hércules usa para achar a CAD do titular; sem ele a reserva
- * do salão nunca viraria proposta. O resto do cupom (participação, origem) vai junto: a coluna é
- * jsonb e quem lê ignora o que não conhece.
+ * Os proponentes do cupom no formato da reserva do Hércules. É o documento que a proposta do
+ * Hércules usa para achar a CAD do titular; sem ele a reserva do salão nunca viraria proposta. O
+ * resto do cupom (participação, origem, credenciado, entidade) vai junto: a coluna é jsonb e quem
+ * lê ignora o que não conhece.
+ *
+ * ⚠️ A FORMA CANÔNICA É A MESMA DA ROTA DA VENDA (26/09/2026): `documento`, `nome`, `telefone`,
+ * `tipoPessoa`, e a chave `cpf` ESPELHADA SÓ QUANDO O DOCUMENTO É UM CPF — exatamente o que
+ * `proponenteParaGravar` faz em `app/api/incorporador/venda/reserva/route.ts`. Esta é a SEGUNDA
+ * porta de escrita de `hercules_reservas.proponentes`, e até hoje ela gravava
+ * `cpf: String(p.documento ?? "")` sem olhar o tipo: MEDIDO em 26/09/2026 (produção, só SELECT)
+ * existem 7 linhas de `prometeu_credenciados` com documento de 14 dígitos, ou seja, o salão
+ * conseguia gravar um CNPJ numa chave chamada `cpf`. Nada quebrava por sorte (quem lê decide pelo
+ * VALOR, em `lib/hercules/proponente.ts`), mas a invariante escrita na rota da venda — "nenhum
+ * código consegue ler um CNPJ de uma chave chamada `cpf`" — era falsa por esta porta, e é ela que
+ * autoriza o próximo leitor a confiar na chave.
+ *
+ * ⚠️ O `tipoPessoa` SAI DO DOCUMENTO, NUNCA DE UM CAMPO DECLARADO — o mesmo motivo do contrato
+ * (`lib/temis/dados-do-contrato.ts`): seis entidades `entity_kind = 'pj'` carregavam CPF.
  */
 export function proponentesParaOHercules(proponentes: ProponenteDaReserva[]): unknown[] {
-  return proponentes.map((p) => ({
-    cpf: String(p.documento ?? "").replace(/\D/g, ""),
-    credenciadoId: p.credenciadoId,
-    entity_id: p.entityId ?? null,
-    nome: p.nome,
-    origem: p.origem ?? null,
-    percentual: p.percentual,
-    // O telefone mora na ficha do Apolo, não no credenciado; a Venda completa quando precisar.
-    telefone: "",
-  }));
+  return proponentes.map((p) => {
+    const documento = soDigitosDoDocumento(p.documento);
+    const tipoPessoa = tipoDePessoa(documento) ?? "pf";
+    return {
+      credenciadoId: p.credenciadoId,
+      documento,
+      entity_id: p.entityId ?? null,
+      nome: p.nome,
+      origem: p.origem ?? null,
+      percentual: p.percentual,
+      // O telefone mora na ficha do Apolo, não no credenciado; a Venda completa quando precisar.
+      telefone: "",
+      tipoPessoa,
+      ...(tipoPessoa === "pf" ? { cpf: documento } : {}),
+    };
+  });
 }
 
 type ReservaCriada = { codigo: string; linhaId: string; reservaId: string };

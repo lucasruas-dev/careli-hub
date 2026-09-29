@@ -2,7 +2,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { PortaDaClicksign } from "@/lib/assinatura/clicksign/cliente";
 import { cancelarEnvelope, consultarEnvelope } from "@/lib/assinatura/clicksign/envelope";
-import { type EnvelopeDaProposta, envelopeQueSegura } from "@/lib/assinatura/envio-db";
+import {
+  COLUNAS_PARA_CANCELAR,
+  type EnvelopeParaCancelar,
+  envelopeQueSegura,
+} from "@/lib/assinatura/envio-db";
 import { classificarCancelamento } from "@/lib/temis/cancelamento";
 import { cardsAbertosDaProposta } from "@/lib/temis/cards-abertos-db";
 import {
@@ -615,8 +619,12 @@ export async function concluirCancelamentoDoCard(
  * envelope de outro provedor, envio sem id e cancelamento recusado ou duvidoso RECUSAM a conclusão
  * sem gravar nada no Panteon.
  *
- * ⚠️ O ENVELOPE É LIDO POR PROPOSTA, E AQUI ISSO É CERTO: só o card de contrato produz envelope
- * (`conferirEMatarOEnvelope`), então o envelope desta proposta É o do contrato da venda.
+ * ⚠️ O ENVELOPE É LIDO POR PROPOSTA, MAS SÓ O DE CONTRATO CONTA (F2 da fonte única, 0.22 do plano).
+ * Até a 0195 só o card de contrato produzia envelope; hoje distrato, cessão e cancelamento por
+ * correção também vão para assinatura com o `proposta_id` da venda, e um DISTRATO assinado lido aqui
+ * recusava o cancelamento com "agora exige distrato" (a revisão da F2 pegou pelo teste). A finalidade
+ * NULA continua contando: é "não se sabe o que foi assinado", e na dúvida a conclusão recusa, que é o
+ * lado que não derruba uma venda com contrato vivo (a mesma regra do indeferimento).
  */
 async function cancelarEnvelopeVivoDoContrato(
   sb: SupabaseClient,
@@ -626,7 +634,9 @@ async function cancelarEnvelopeVivoDoContrato(
 ): Promise<{ contratoAssinado: boolean; envelopeCancelado: null | string; ok: true } | FalhaNaConclusao> {
   const { data, error } = await sb
     .from("temis_envelopes")
-    .select("criado_em, envelope_id, estado, falha, id, provedor")
+    // ⚠️ `COLUNAS_PARA_CANCELAR` traz `provedor_documento_id` junto: cancelar na v3 é um PATCH no
+    // DOCUMENTO (doc lida 25/09/2026, ver `cancelarEnvelope`), e o id dele vem desta linha.
+    .select(`${COLUNAS_PARA_CANCELAR}, finalidade`)
     .eq("proposta_id", propostaId)
     .order("criado_em", { ascending: false })
     .limit(50);
@@ -640,7 +650,10 @@ async function cancelarEnvelopeVivoDoContrato(
     };
   }
 
-  const vivo = envelopeQueSegura((data ?? []) as EnvelopeDaProposta[]);
+  const doContrato = ((data ?? []) as unknown as Array<EnvelopeParaCancelar & { finalidade?: null | string }>).filter(
+    (e) => !e.finalidade || e.finalidade === "contrato",
+  );
+  const vivo = envelopeQueSegura(doContrato);
   if (!vivo) return { contratoAssinado: false, envelopeCancelado: null, ok: true };
 
   // No distrato, o contrato assinado por todos é o documento que ele desfaz: fica como está.
@@ -655,6 +668,15 @@ async function cancelarEnvelopeVivoDoContrato(
     };
   }
 
+  // ⚠️ A D4SIGN VEM DO ESPELHO (o C2X mandou o contrato, F2 da fonte única): quem cancela é o C2X, e
+  // quem encerra a linha aqui é a próxima rodada do espelho, a cada 30 minutos.
+  if (vivo.provedor === "d4sign") {
+    return {
+      erro: `O contrato desta venda está em assinatura na D4Sign, enviado pelo C2X (registro ${vivo.id}), e daqui só se cancela envelope da Clicksign. Nada foi gravado. Cancele na D4Sign pelo C2X; o Panteon libera em até 30 minutos, e aí a conclusão pode ser feita.`,
+      ok: false,
+      status: 409,
+    };
+  }
   if (vivo.provedor !== "clicksign") {
     return {
       erro: `O envelope vivo do contrato desta venda não é da Clicksign (registro ${vivo.id}), e daqui só se cancela envelope da Clicksign. Nada foi gravado. Cancele o envelope no provedor dele antes de concluir.`,
@@ -701,12 +723,36 @@ async function cancelarEnvelopeVivoDoContrato(
       break;
   }
 
-  const cancelamento = await cancelarEnvelope(vivo.envelope_id, porta);
+  // ⚠️ SEM O ID DO DOCUMENTO NÃO DÁ PARA CANCELAR, e a venda NÃO cai. É a mesma recusa da volta para a
+  // análise (`conferirEMatarOEnvelope`, em `lib/temis/retorno-para-correcao.ts`), pelo mesmo motivo:
+  // cancelar na Clicksign v3 é `PATCH /envelopes/{envelope_id}/documents/{document_id}` (doc lida
+  // 25/09/2026, ver `cancelarEnvelope`). Concluir aqui derrubaria a venda com o contrato ainda na rua.
+  //
+  // ⚠️ E ELA VEM DEPOIS DA LEITURA, NÃO ANTES — foi assim que nasceu em 25/09/2026 e é o que estava
+  // errado. Chegar até aqui significa que `decisaoDoEstadoReal` acabou de dizer "cancelar" sobre o
+  // estado LIDO na Clicksign: o envelope está correndo AGORA, medido. Recusar antes da leitura mandava
+  // o operador cancelar à mão um envelope cujo estado ninguém havia lido — inclusive um assinado por
+  // todos cujo webhook ainda estava a caminho — e prendia a venda também quando o envelope já estava
+  // morto lá fora (o `ja_morreu` acima, que solta a conclusão sem PATCH nenhum).
+  if (!vivo.provedor_documento_id) {
+    return {
+      erro: `O Panteon não guardou qual documento do envelope ${vivo.envelope_id} cancelar na Clicksign (registro ${vivo.id}), e o cancelamento é feito no documento, não no envelope. Nada foi gravado. Cancele o envelope ${vivo.envelope_id} na Clicksign antes de concluir.`,
+      ok: false,
+      status: 409,
+    };
+  }
+
+  const cancelamento = await cancelarEnvelope(vivo.envelope_id, vivo.provedor_documento_id, porta);
+  // ⚠️ AS DUAS FRASES PARARAM DE AFIRMAR O QUE O CÓDIGO NÃO SABE, e é a mesma correção da volta para a
+  // análise. A duvidosa cobre dois fatos desde 25/09/2026 (o timeout e a releitura que não confirmou a
+  // morte do envelope), então ela não diz mais "não respondeu". A da recusa não diz mais "ele continua
+  // valendo": o documento só aceita `canceled` enquanto está `running` ("Editar Documento", doc lida
+  // 25/09/2026), então um 4xx é tanto "recusou" quanto "já está cancelado".
   if (!cancelamento.ok) {
     return {
       erro: cancelamento.duvidoso
-        ? `A Clicksign não respondeu ao cancelamento do envelope ${cancelamento.envelopeId}, e não dá para saber se ele chegou. A venda NÃO foi cancelada. Confira o envelope na Clicksign antes de concluir. (${cancelamento.erro})`
-        : `A Clicksign recusou o cancelamento do envelope ${cancelamento.envelopeId}: ele continua valendo. A venda NÃO foi cancelada. Cancele o envelope na Clicksign antes de concluir. (${cancelamento.erro})`,
+        ? `O Panteon não conseguiu confirmar na Clicksign que o envelope ${cancelamento.envelopeId} morreu. A venda NÃO foi cancelada. Confira o envelope na Clicksign antes de concluir. (${cancelamento.erro})`
+        : `A Clicksign recusou o cancelamento do contrato do envelope ${cancelamento.envelopeId} — pode ser que ele já esteja cancelado ou fechado. A venda NÃO foi cancelada. Confira o envelope na Clicksign e, se ainda estiver correndo, cancele por lá antes de concluir. (${cancelamento.erro})`,
       ok: false,
       status: 502,
     };

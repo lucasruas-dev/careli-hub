@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { loadApoloEnterpriseCarteira, type ApoloCarteiraUnit } from "@/lib/apolo/carteira";
+import { loadApoloEnterpriseCarteiraPorIds, type ApoloCarteiraUnit } from "@/lib/apolo/carteira";
 import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
+import { type CatalogoParaId, filtroPorIds } from "@/lib/apolo/c2x-pelo-id";
+import { idsDoC2xDasSiglasAoVivo } from "@/lib/apolo/c2x-pelo-id-servidor";
 import {
   agruparAtoESinalPorPedido,
   type LinhaDeAtoESinal,
@@ -25,7 +27,7 @@ import { empreendimentosDoPortal } from "@/lib/apolo/incorporador/empreendimento
 import { autorizar, codigosDaSessao, idsDaSessao } from "@/lib/apolo/incorporador/escopo";
 import { ehPortalComercial } from "@/lib/apolo/incorporador/perfis-de-portal";
 import { produtosDoPortal } from "@/lib/apolo/incorporador/produtos-do-portal";
-import { type DadosDoApolo, loadPoliticaComercial } from "@/lib/apolo/politica-comercial";
+import { type DadosDoApolo, loadPoliticaComercialPorIds } from "@/lib/apolo/politica-comercial";
 import { type PoliticaDoEmpreendimento } from "@/lib/apolo/liquido-incorporador";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { getHadesDbPool } from "@/lib/guardian/db";
@@ -164,16 +166,28 @@ type UnidadeDoPortal = {
  * incorporador vê como "Ato" é o que o coordenador vê como "Ato".
  *
  * Leitura READ-ONLY do C2X. O link é o mesmo par de campos de `loadApoloUnitInstallments`.
+ *
+ * ⚠️ PELO ID DO C2X, NÃO PELA SIGLA (PAN-124). As siglas da sessão viram `enterprises.id` pelo
+ * catálogo desta rota (o mesmo de onde o escopo as tirou) e o WHERE é `e.id in (...)`: um renome no
+ * legado (o 43, de RDV para PDI em 24/09/2026) deixava a lista de Ato e Sinal vazia sem erro. Sigla
+ * sem id no C2X (produto nascido no Panteon) não vai ao legado e dá a mesma lista vazia de antes;
+ * catálogo indisponível é C2X fora, e cai no 503 de sempre.
  */
 async function parcelasDeAtoESinal(
   codes: string[],
+  catalogo: CatalogoParaId,
 ): Promise<{ parcial: boolean; porPedido: Map<string, ParcelaDeAtoESinal[]> } | { erro: string }> {
   const pool = getHadesDbPool();
   if (!pool.ok) {
     return { erro: `Configuracao C2X ausente: ${pool.missing.join(", ")}.` };
   }
 
-  const marcadores = codes.map(() => "?").join(", ");
+  const traduzido = await idsDoC2xDasSiglasAoVivo(codes, { catalogo });
+  if (!traduzido.ok) return { erro: traduzido.erro };
+
+  const doEscopo = filtroPorIds("e.id", traduzido.ids);
+  if (!doEscopo) return agruparAtoESinalPorPedido([]);
+
   const ativa = "(p.payment_to_delete is null or p.payment_to_delete = 0)";
   const vencida = `((p.payment_status_id = 7 or (p.due_date < curdate() and p.payment_status_id not in (1,2,5))) and ${ativa})`;
   const emAberto = `greatest(coalesce(p.initial_value,0)+coalesce(p.interest_value,0)+coalesce(p.mulct_value,0)-(case when p.payment_date is not null then coalesce(p.paid_value,0) else 0 end), 0)`;
@@ -209,13 +223,13 @@ async function parcelasDeAtoESinal(
      join enterprise_unities eu on eu.id = ar.enterprise_unity_id
      join enterprises e on e.id = eu.enterprise_id
      left join parcel_types pt on pt.id = p.parcel_type_id
-    where e.code in (${marcadores})
+    where ${doEscopo.sql}
       and p.payment_status_id in (5, 6, 7)
       and ${ativa}
       and (lower(coalesce(pt.name, '')) like '%ato%' or lower(coalesce(pt.name, '')) like '%sinal%')
     order by eu.id asc, p.due_date asc, p.id asc
     limit ${TETO_ATO_E_SINAL + 1}`,
-    codes,
+    doEscopo.params,
   );
 
   // A régua PURA agrupa e decide o perfil (lib/apolo/incorporador/ato-e-sinal.ts), e é ela que
@@ -387,6 +401,15 @@ export async function GET(request: Request) {
     );
   }
 
+  // ⚠️ AS SIGLAS DO ESCOPO VIRAM `enterprises.id` UMA VEZ SÓ, AQUI, PELO CATÁLOGO DESTA ROTA (PAN-124),
+  // o mesmo de onde `codigosDaSessao` as tirou, e o bruto e a política vão ao C2X pelas versões por
+  // id. Antes cada loader traduzia de novo pelo catálogo do cache: se ele fosse relido entre o escopo
+  // e o loader, logo depois de um renome, a sigla do escopo (a velha) não achava mais o id e a
+  // carteira saía vazia, sem erro. Sem a exclusão aqui (`excluir: []`): a política nunca excluiu, e
+  // `loadApoloEnterpriseCarteiraPorIds` exclui por conta própria, como a versão pela sigla excluía.
+  // Catálogo ilegível é o C2X fora: o bruto responde o 503 de sempre, e a política fica sem dado.
+  const idsDoEscopo = await idsDoC2xDasSiglasAoVivo(codes, { catalogo, excluir: [] });
+
   // A % de gestão de carteira mora no Apolo e muda POR EMPREENDIMENTO, mesmo para o mesmo
   // incorporador (regra do Lucas). Ela alimenta a fórmula de fallback do líquido.
   const adminClient = createApoloAdminClient();
@@ -421,7 +444,9 @@ export async function GET(request: Request) {
       ]),
     );
 
-    const politicas = await loadPoliticaComercial(codes, doApolo);
+    const politicas = idsDoEscopo.ok
+      ? await loadPoliticaComercialPorIds(idsDoEscopo.ids, doApolo)
+      : ({ error: idsDoEscopo.erro, ok: false } as const);
     if (politicas.ok) {
       for (const p of politicas.politicas) {
         politicaPorCode.set(p.code, {
@@ -442,11 +467,16 @@ export async function GET(request: Request) {
     // catálogo do C2X vazio, os códigos passaram a sair do cadastro do Panteon, e a guarda antiga
     // ("zero código = C2X fora = 503") não segura mais: sem isto a rota respondia 500 sem corpo e a
     // tela quebrava no `res.json()`. A queda vira `ok: false` e cai no 503 de sempre, logo abaixo.
-    loadApoloEnterpriseCarteira(codes).catch((erro: unknown) => ({
+    (idsDoEscopo.ok
+      ? loadApoloEnterpriseCarteiraPorIds(idsDoEscopo.ids)
+      : Promise.resolve({ error: idsDoEscopo.erro, ok: false as const })
+    ).catch((erro: unknown) => ({
       error: erro instanceof Error ? erro.message : String(erro),
       ok: false as const,
     })),
     carteiraLiquidaDoIncorporador({
+      // O MESMO catálogo de onde o escopo tirou as siglas: é ele que as traduz no id do C2X.
+      catalogo,
       codes,
       // Os KPIs do BI só quando a tela pede: a leitura ampliada (parcelas em aberto) custa mais.
       indicadores: comIndicadores
@@ -465,7 +495,7 @@ export async function GET(request: Request) {
       nomeDoIncorporador: auth.sessao.incorporadorNome,
       politicaPorCode,
     }),
-    comercial ? parcelasDeAtoESinal(codes) : Promise.resolve(null),
+    comercial ? parcelasDeAtoESinal(codes, catalogo) : Promise.resolve(null),
   ]);
 
   if (atoESinal && "erro" in atoESinal) {

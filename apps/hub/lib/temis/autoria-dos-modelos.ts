@@ -23,6 +23,18 @@ export const COLUNAS_DA_0173 = {
   temis_minutas: ["publicada_por_nome", "arquivada_por_nome"],
 } as const;
 
+/**
+ * As colunas que a 0191 cria, por tabela: o nome de quem EDITOU uma linha do quadro de assinatura.
+ *
+ * ⚠️ MESMA DISCIPLINA DA 0173: enriquecimento, não trava. Lucas (25/09/2026) pediu editar toda linha
+ * do quadro (*"todas assinaturas eu tenho que conseguir excluir e editar"*), e até então a linha só
+ * nascia e era desativada. Sem a coluna, `gravarComAutoria` refaz a edição sem ela e o ato do portal
+ * fica no log.
+ */
+export const COLUNAS_DA_0191 = {
+  temis_assinantes: ["atualizado_por_nome"],
+} as const;
+
 /** O sufixo que diz "foi o portal". O mesmo texto de `autorDoAto` (contrato-servico.ts). */
 export const SUFIXO_DO_PORTAL = " (portal do incorporador)";
 
@@ -69,7 +81,9 @@ export async function gravarComAutoria<R extends { error: unknown }>(
   const primeira = await gravar(true);
   if (!primeira.error || !ehColunaDeAutoriaAusente(primeira.error, colunas)) return primeira;
 
-  console.info("[temis][autoria] migration 0173 pendente: gravação sem o nome do ato");
+  console.info(
+    `[temis][autoria] migration pendente (${colunas.join(", ")}): gravação sem o nome do ato`,
+  );
   return gravar(false);
 }
 

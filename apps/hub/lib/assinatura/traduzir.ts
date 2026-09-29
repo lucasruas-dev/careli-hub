@@ -1,5 +1,6 @@
 import { interpretarStatusD4Sign, type SituacaoD4Sign } from "@/lib/guardian/d4sign-consulta";
 
+import { ESTADO_POR_EVENTO_DA_CLICKSIGN } from "./marcas";
 import type { EstadoDaAssinatura } from "./tipos";
 
 // A TRADUÇÃO — onde as duas línguas viram uma só.
@@ -100,22 +101,16 @@ export function estadoDaClicksign(
 // ⚠️ E `sign` NÃO VIRA `assinado`: um `sign` é UMA pessoa. O contrato só fecha no `auto_close` /
 // `close` / `document_closed`. Tratar `sign` como conclusão daria contrato por concluído no primeiro
 // dos quatro compradores.
-const ESTADO_POR_EVENTO: Record<string, EstadoDaAssinatura> = {
-  auto_close: "assinado",
-  cancel: "cancelado",
-  close: "assinado",
-  deadline: "expirado",
-  document_closed: "assinado",
-  refusal: "recusado",
-  sign: "parcial",
-  signature_started: "aguardando",
-  upload: "rascunho",
-};
+//
+// ⚠️ O CATÁLOGO MORA EM `marcas.ts` DESDE A F1 DA FONTE ÚNICA (28/09/2026), e esta função o lê de
+// lá: aquela folha não pode importar este arquivo (o script do reprocessamento a carrega pelo
+// `jiti`), e o catálogo continua tendo UMA cópia só. Quem decide o estado do webhook de verdade é
+// `estadoPropostoPeloEvento`, que antes olha se o documento fechou com todos (bug 8.7).
 
 /** O evento move o card? Devolve o estado novo, ou null quando é evento de bastidor. */
 export function estadoDoEventoClicksign(evento: unknown): EstadoDaAssinatura | null {
   const nome = typeof evento === "string" ? evento.trim().toLowerCase() : "";
-  return ESTADO_POR_EVENTO[nome] ?? null;
+  return ESTADO_POR_EVENTO_DA_CLICKSIGN[nome] ?? null;
 }
 
 /**

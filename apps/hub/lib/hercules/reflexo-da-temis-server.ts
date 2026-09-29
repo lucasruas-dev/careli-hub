@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import type { OrigemDaPassagem } from "@/lib/temis/passagem-de-etapa-db";
 import type { EstagioDoTrabalho } from "@/lib/temis/trabalhos";
 
 import { VENDA_DESFEITA } from "./acao-de-cancelamento";
@@ -23,8 +24,14 @@ import { etapaDaVendaParaOCard, type ReflexoNaVenda } from "./reflexo-da-temis";
 // ⚠️ NUNCA ESCREVE `hercules_unidades`, `data_assinatura` NEM `data_faturamento`. Faturar não vira
 // cadastro `vendida` (a retomada da conclusão de um distrato só solta `reservada`,
 // concluir-cancelamento-server.ts, e `vendida` prenderia o lote num distrato futuro) e
-// `data_faturamento` é a data PREVISTA do legado, que muda a classificação do cancelamento. As duas
-// são decisão pendente do Lucas.
+// `data_faturamento` é a data PREVISTA do legado, que muda a classificação do cancelamento, e segue
+// decisão pendente do Lucas.
+//
+// ⚠️ `data_assinatura` TEM DONO DESDE 28/09/2026, E NÃO É ESTE ARQUIVO. Lucas decidiu que o contrato
+// que fecha grava a data na venda nativa (plano da fonte única, seção 7): quem grava é
+// `aplicarEnvelopeNaVenda` (`lib/assinatura/envelope-na-venda.ts`), só se nula, só na nativa, com o
+// dia em Brasília do instante REAL do provedor. O reflexo continua cuidando só da etapa: duas
+// escritas da mesma coluna em dois lugares divergiriam no primeiro conserto.
 
 const WORKSPACE = "careli";
 
@@ -180,8 +187,20 @@ export function registrarReflexoQueNaoAndou(
   );
 }
 
-/** O motivo gravado no histórico da venda, por destino do card. */
-export function motivoDoReflexo(de: string, para: EstagioDoTrabalho): string {
+/**
+ * O motivo gravado no histórico da venda, por destino do card.
+ *
+ * ⚠️ `origem` DIZ QUEM FEZ O CARD ANDAR, e muda a frase quando o fato não é da Têmis (F2 da fonte
+ * única). O espelho da D4Sign leva o card a "Em assinatura" pelo contrato que o C2X mandou: gravar
+ * "Envio para assinatura na Têmis" diria que a Têmis enviou um contrato que ela nunca viu. A frase não
+ * cita provedor nem sistema antigo: o histórico da venda aparece no portal, e o vocabulário de lá não
+ * tem essas palavras (Lucas, 18/08).
+ */
+export function motivoDoReflexo(de: string, para: EstagioDoTrabalho, origem?: null | OrigemDaPassagem): string {
+  if (origem === "espelho_d4sign") {
+    if (para === "assinatura") return "Contrato enviado para assinatura";
+    if (para === "prazo_legal") return "Contrato assinado por todos";
+  }
   if (para === "assinatura") return "Envio para assinatura na Têmis";
   if (para === "analise") return "Contrato voltou para correção na Têmis";
   if (para === "faturado") return "Contrato faturado na Têmis";

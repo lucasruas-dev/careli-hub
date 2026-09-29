@@ -33,7 +33,7 @@ import type { RowDataPacket } from "mysql2/promise";
 
 import { queryPanteon } from "@/lib/analytics/query-panteon";
 import {
-  ANALYTICS_EXCLUDED_ENTERPRISE_CODES,
+  ANALYTICS_EXCLUDED_ENTERPRISE_IDS,
   displayEnterprise,
   loadC2xClienteResumo,
   resolvePeriodoRange,
@@ -45,7 +45,12 @@ import { getHadesDbPool } from "@/lib/guardian/db";
 // ESPELHOS (o VLO, registro do Vale do Ouro antes da divisão, cujos lotes são os de VOC + VOL).
 // Se a referência somasse o espelho, todo cross-check do Vale do Ouro acusaria diferença — e a
 // diferença seria do validador, não do motor. Ver ENTERPRISE_MIRRORS.
-const EXCL = ANALYTICS_EXCLUDED_ENTERPRISE_CODES;
+//
+// ⚠️ PELO ID DO C2X, COMO O MOTOR (PAN-124, 25/09/2026): [2, 31, 34, 35] = SDT, LAB, TSC e o espelho
+// VLO. A referência excluía pela sigla; a sigla muda quando alguém renomeia no C2X (o "LAG" não casa
+// com nada desde 16/07/2026, quando o 30 virou ADT), e uma referência pela sigla contra um motor pelo
+// id acusaria diferença no dia do próximo renome, de novo do validador e não do motor.
+const EXCL = ANALYTICS_EXCLUDED_ENTERPRISE_IDS;
 const EXCL_IN = EXCL.map(() => "?").join(", ");
 
 let pass = 0;
@@ -147,7 +152,7 @@ async function main() {
        join acquisition_requests ar on ar.id = h.acquisition_request_id
        join enterprise_unities eu on eu.id = ar.enterprise_unity_id
        join enterprises e on e.id = eu.enterprise_id
-       where h.created_at >= ? and h.created_at < ? and e.code not in (${EXCL_IN})
+       where h.created_at >= ? and h.created_at < ? and e.id not in (${EXCL_IN})
        group by h.new_acquisition_request_stage_id`,
       [from, to, ...EXCL],
     );
@@ -191,7 +196,7 @@ async function main() {
             sum(eu.sale_status_id = 1) as disponiveis
      from enterprise_unities eu
      join enterprises e on e.id = eu.enterprise_id
-     where e.code not in (${EXCL_IN})
+     where e.id not in (${EXCL_IN})
      group by e.code, e.name`,
     [...EXCL],
   );
@@ -262,7 +267,7 @@ async function main() {
      join enterprises e on e.id = eu.enterprise_id
      join users cli on cli.id = ar.client_id
      left join users imob on imob.id = cli.vinculed_by_id
-     where ar.acquisition_request_stage_id = 4 and e.code not in (${EXCL_IN})
+     where ar.acquisition_request_stage_id = 4 and e.id not in (${EXCL_IN})
      group by imobiliaria order by unidades desc limit 30`,
     [...EXCL],
   );
@@ -295,7 +300,7 @@ async function main() {
      from acquisition_requests ar
      join enterprise_unities eu on eu.id = ar.enterprise_unity_id
      join enterprises e on e.id = eu.enterprise_id
-     where ar.acquisition_request_stage_id = 4 and e.code not in (${EXCL_IN})`,
+     where ar.acquisition_request_stage_id = 4 and e.id not in (${EXCL_IN})`,
     [...EXCL],
   );
 
@@ -412,7 +417,7 @@ async function main() {
      join enterprise_unities eu on eu.id = ar.enterprise_unity_id
      join enterprises e on e.id = eu.enterprise_id
      where h.created_at >= ? and h.created_at < ?
-       and h.new_acquisition_request_stage_id = 4 and e.code not in (${EXCL_IN})`,
+       and h.new_acquisition_request_stage_id = 4 and e.id not in (${EXCL_IN})`,
     [anoFrom, anoTo, ...EXCL],
   );
   const cliMotor = await motorTotal({
@@ -433,7 +438,7 @@ async function main() {
      join enterprise_unities eu on eu.id = ar.enterprise_unity_id
      join enterprises e on e.id = eu.enterprise_id
      where h.created_at >= ? and h.created_at < ?
-       and h.new_acquisition_request_stage_id = 4 and e.code not in (${EXCL_IN})`,
+       and h.new_acquisition_request_stage_id = 4 and e.id not in (${EXCL_IN})`,
     [anoFrom, anoTo, ...EXCL],
   );
   const valMotor = await motorTotal({
@@ -621,7 +626,7 @@ async function main() {
     join enterprises e on e.id = eu.enterprise_id
     join users cli on cli.id = ar.client_id
     where p.payment_status_id = 7 and (p.payment_to_delete is null or p.payment_to_delete = 0)
-      and e.code not in (${EXCL_IN})`;
+      and e.id not in (${EXCL_IN})`;
 
   const [inadRef] = await ref<RowDataPacket & { n: unknown }>(
     `select count(distinct cli.id) as n ${overdueFrom}`,
@@ -659,7 +664,7 @@ async function main() {
      join users cli on cli.id = ar.client_id
      left join salary_ranges sal on sal.id = cli.salary_range_id
      where p.payment_status_id = 7 and (p.payment_to_delete is null or p.payment_to_delete = 0)
-       and e.code not in (${EXCL_IN})
+       and e.id not in (${EXCL_IN})
      group by 1`,
     [...EXCL],
   );

@@ -36,8 +36,8 @@ const CONSULTA = {
   vendas: listarVendas,
 } as const;
 
-/** Só `vendas` e `recebimentos` aceitam carga incremental — os outros três mudam pouco e o
- *  contrato manda recarregar por inteiro. */
+/** `clientes`, `vendas` e `recebimentos` aceitam carga incremental; `loteamentos` e `lotes` mudam
+ *  pouco e o contrato manda recarregar por inteiro. */
 // Clientes entrou em 24/08 (pedido do Lucas): o GLOTES precisa puxar as atualizações de
 // cadastro — e-mail e telefone — sem varrer a base inteira.
 const ACEITA_ALTERADO_DESDE = new Set<Conjunto>(["clientes", "recebimentos", "vendas"]);

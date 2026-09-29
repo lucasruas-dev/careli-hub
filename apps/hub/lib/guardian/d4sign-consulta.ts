@@ -445,7 +445,13 @@ export type ConsultaD4Sign =
       signatarios: null | SignatarioD4Sign[];
     }
   | {
-      motivo: "credencial-ausente" | "documento-desconhecido" | "indisponivel";
+      /**
+       * ⚠️ `cota` = HTTP 429 (plano da fonte única, 0.27). NÃO É QUEDA: a D4Sign respondeu que a conta
+       * passou do limite. Não conta para o disjuntor (abri-lo por 60 s não adianta nada contra uma cota
+       * por hora) e quem varre o acervo (o espelho, F3) PARA a rodada e pausa 1 h. Para a tela ela é
+       * igual a `indisponivel` (o fallback honesto de sempre).
+       */
+      motivo: "cota" | "credencial-ausente" | "documento-desconhecido" | "indisponivel";
       ok: false;
     };
 
@@ -466,6 +472,20 @@ let catalogoEmVoo: null | Promise<null | Map<string, DocumentoD4Sign>> = null;
 
 let falhasSeguidas = 0;
 let disjuntorAbertoAte = 0;
+/** Quando a D4Sign respondeu 429 pela última vez (0 = nunca, neste processo). */
+let cotaRecusadaEm = 0;
+
+/** HTTP 429: a conta passou da cota. */
+const HTTP_DA_COTA = 429;
+/**
+ * Depois de um 429, ninguém NESTE PROCESSO chama a D4Sign por 10 min (o recuo da cota).
+ *
+ * ⚠️ O 429 NÃO ABRE O DISJUNTOR (60 s não adianta contra uma cota por hora), MAS PRECISA DE FREIO
+ * PRÓPRIO: sem ele, cada carga do portal e do painel de contratos (que ainda chamam a D4Sign ao vivo
+ * até a F4) voltaria a disparar o catálogo e até 20 `/list`, todos recusados, na MESMA conta que o
+ * C2X usa para mandar contrato (risco 2 do plano da fonte única).
+ */
+const RECUO_DA_COTA_MS = 10 * 60 * 1000;
 
 /** Zera cache, catálogo, chamadas em voo e disjuntor. Existe para os testes; não use em runtime. */
 export function limparCacheD4Sign(): void {
@@ -475,6 +495,35 @@ export function limparCacheD4Sign(): void {
   catalogoEmVoo = null;
   falhasSeguidas = 0;
   disjuntorAbertoAte = 0;
+  cotaRecusadaEm = 0;
+}
+
+/**
+ * O disjuntor está aberto AGORA? (3 falhas seguidas → 60 s sem chamar a D4Sign.)
+ *
+ * ⚠️ EXPORTADO PARA O ESPELHO (F3 da fonte única): com ele aberto, o passo do `/list` da rodada para
+ * no lugar, em vez de gastar o orçamento colecionando "indisponível" um documento por vez.
+ */
+export function disjuntorD4SignAberto(): boolean {
+  return Date.now() < disjuntorAbertoAte;
+}
+
+/**
+ * A D4Sign recusou por COTA (HTTP 429) a partir de `desde` (ms)?
+ *
+ * ⚠️ É O ÚNICO JEITO DE O CATÁLOGO DIZER "cota": ele devolve `null` em qualquer tropeço (é atalho de
+ * custo), e o espelho precisa separar "caiu uma página" de "a conta estourou" para pausar 1 h.
+ */
+export function d4signRecusouPorCotaDesde(desde: number): boolean {
+  return cotaRecusadaEm > 0 && cotaRecusadaEm >= desde;
+}
+
+/**
+ * O recuo da cota está valendo AGORA? (um 429 há menos de 10 min.) Com ele, o catálogo devolve `null`
+ * e o `/list` devolve `motivo: "cota"` SEM sair para a rede.
+ */
+export function d4signEmRecuoPorCota(): boolean {
+  return cotaRecusadaEm > 0 && Date.now() - cotaRecusadaEm < RECUO_DA_COTA_MS;
 }
 
 /** Números do cache para diagnóstico. Não expõe conteúdo de documento nenhum. */
@@ -551,6 +600,12 @@ async function buscar(uuid: string): Promise<ConsultaD4Sign> {
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
 
+    if (resposta.status === HTTP_DA_COTA) {
+      // ⚠️ 429 NÃO CONTA PARA O DISJUNTOR (0.27 do plano da fonte única): é a conta dizendo "chega por
+      // agora", e quem varre o acervo precisa parar e pausar, não tentar de novo em 60 s.
+      cotaRecusadaEm = Date.now();
+      return { motivo: "cota", ok: false };
+    }
     if (!resposta.ok) {
       registrarFalha();
       return { motivo: "indisponivel", ok: false };
@@ -598,6 +653,11 @@ async function buscarPaginaDoCatalogo(pg: number): Promise<null | PaginaDoCatalo
       // A página é maior que um documento (500 itens, ~125 KB): 6 s seria apertado. Medido: 1,5 s.
       signal: AbortSignal.timeout(TIMEOUT_MS * 2),
     });
+    if (resposta.status === HTTP_DA_COTA) {
+      // Mesma régua do `/list`: cota não é queda, e o espelho lê isto por `d4signRecusouPorCotaDesde`.
+      cotaRecusadaEm = Date.now();
+      return null;
+    }
     if (!resposta.ok) {
       registrarFalha();
       return null;
@@ -632,6 +692,8 @@ async function buscarPaginaDoCatalogo(pg: number): Promise<null | PaginaDoCatalo
 export async function carregarCatalogoD4Sign(): Promise<null | Map<string, DocumentoD4Sign>> {
   if (catalogo && Date.now() - catalogo.em < TTL_CATALOGO_MS) return catalogo.mapa;
   if (Date.now() < disjuntorAbertoAte) return null;
+  // ⚠️ RECUO DA COTA: a conta disse "chega" há pouco; bater de novo só gasta o que não há.
+  if (d4signEmRecuoPorCota()) return null;
   if (catalogoEmVoo) return catalogoEmVoo;
 
   const montar = async (): Promise<null | Map<string, DocumentoD4Sign>> => {
@@ -651,6 +713,8 @@ export async function carregarCatalogoD4Sign(): Promise<null | Map<string, Docum
           const pg = restantes[proxima];
           proxima += 1;
           if (pg === undefined) return;
+          // Uma página levou 429: as outras nem saem (a conta é a mesma).
+          if (d4signEmRecuoPorCota()) return;
           const pagina = await buscarPaginaDoCatalogo(pg);
           if (!pagina) continue;
           for (const documento of pagina.documentos) mapa.set(documento.uuidDoc, documento);
@@ -695,7 +759,7 @@ export function catalogoEstaQuente(): boolean {
  * sobre uma requisição que deu certo.
  */
 export function aquecerD4SignEmSegundoPlano(uuids: string[] = []): void {
-  if (catalogoEstaQuente() || Date.now() < disjuntorAbertoAte) return;
+  if (catalogoEstaQuente() || Date.now() < disjuntorAbertoAte || d4signEmRecuoPorCota()) return;
 
   void carregarCatalogoD4Sign()
     .then(async (mapa) => {
@@ -734,6 +798,7 @@ export async function consultarDocumentoD4Sign(uuidDoc: string): Promise<Consult
   if (guardado) return guardado;
 
   if (Date.now() < disjuntorAbertoAte) return { motivo: "indisponivel", ok: false };
+  if (d4signEmRecuoPorCota()) return { motivo: "cota", ok: false };
 
   const correndo = emVoo.get(uuid);
   if (correndo) return correndo;

@@ -11,8 +11,11 @@ import {
   type AutorDeForaDoHub,
   type CreateApoloEntityInput,
   type CreateApoloEntityResult,
+  type GeradorDoCodigoDoCorretor,
   type OpcoesDoCadastro,
 } from "@/lib/apolo/cadastro-persist";
+import { formatoDoCadastro } from "@/lib/apolo/cadastro-tipos";
+import { proximoCodigoDoCorretor } from "@/lib/apolo/codigo-do-corretor";
 import {
   APOLO_DOC_MAX_BYTES,
   MENSAGEM_DOCUMENTO_GRANDE,
@@ -65,7 +68,21 @@ type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
 // Uma revisão automática já apontou isto como defeito ("nasce credenciada sem validação"). Não é:
 // a diferença entre os dois caminhos é QUEM preencheu. (O portal do incorporador só cadastra
 // PROSPECT: a imobiliária credenciada fica fora do alcance dele, ver `cadastro-do-portal.ts`.)
-const ENABLED_ROLES: ApoloBirthRole[] = ["prospect", "imobiliaria"];
+//
+// ⚠️ O CORRETOR AUTÔNOMO ENTROU EM 27/09/2026. Decisão do Lucas: *"Preciso cadastrar corretor
+// autonomo, tipo, ele nao sera vinculado a uma imobiliaria, ele sera uma entidade. Quem fara esse
+// cadastro e time nosso interno. precisa tudo no apolo para receber essa nova entidade"*.
+//
+// A camada de baixo já aceitava o papel (`ApoloBirthRole` e o CHECK de `apolo_entity_profiles` têm
+// `corretor`, e nenhuma coluna de `apolo_entities` é NOT NULL para imobiliária — medido em
+// 27/09/2026: 9 colunas NOT NULL, nenhuma delas de vínculo). O que não existia era a PORTA: esta
+// lista recusava com 400 antes de gravar, e `CADASTRO_TIPOS` não tinha o tipo, então
+// `/apolo/cadastro?tipo=corretor` abria o cadastro de CLIENTE em silêncio.
+//
+// ⚠️ ELE NASCE COM CÓDIGO PRÓPRIO E SEM IMOBILIÁRIA. O código vem da sequência do banco (ver
+// `proximoCodigoDoCorretor` mais abaixo) e é o que diz que a pessoa é autônoma — Lucas: *"assim
+// saberemos que ele e autonomo"*, e ele aparece *"somente no CRM"*.
+const ENABLED_ROLES: ApoloBirthRole[] = ["prospect", "imobiliaria", "corretor"];
 
 // Um documento pode ter varios arquivos (RG frente+verso, contrato social com N paginas) e o PJ
 // ainda soma 2 documentos por socio -- uma empresa com 4 socios ja passa de 20.
@@ -275,8 +292,54 @@ export async function salvarCadastroDoApolo(
     return invalido(obrigatorios.mensagem, 400);
   }
 
+  // O CÓDIGO DO CORRETOR AUTÔNOMO (27/09/2026).
+  //
+  // ⚠️ QUEM PEDE O NÚMERO É A GRAVAÇÃO, DEPOIS DAS TRAVAS. A porta entrega uma FUNÇÃO, e
+  // `createApoloEntity` a chama já passadas a recusa de CAD duplicada, a de núcleo familiar e a de
+  // e-mail único, imediatamente antes de montar a linha da ficha. `nextval` não volta atrás: pedido
+  // aqui em cima, cada recusa queimava um número, e a numeração que o Lucas pediu (*"CA-0001,
+  // CA-0002"*) nascia salteada sem nada que explicasse os buracos — bastava o operador errar o e-mail
+  // uma vez para o primeiro autônomo da casa nascer CA-0002.
+  //
+  // ⚠️ E NUNCA UM NÚMERO INVENTADO: enquanto a migration 0193 não rodar, isto RECUSA com frase clara
+  // (ver lib/apolo/codigo-do-corretor.ts). Contar quantos existem e somar um repetiria código em dois
+  // cadastros simultâneos.
+  let falhaDoCodigoDoCorretor: null | string = null;
+  const gerarCodigoDoCorretor: GeradorDoCodigoDoCorretor = async () => {
+    const sequencia = await proximoCodigoDoCorretor(adminClient);
+    if (!sequencia.ok) {
+      // Guardado para a resposta sair 503 (indisponível), e não 500: o cadastro está certo, o que
+      // falta é a sequência no banco.
+      falhaDoCodigoDoCorretor = sequencia.mensagem;
+    }
+    return sequencia;
+  };
+
   // Autor do cadastro (nome de quem preencheu).
   const uploadedByName = await autor.nome();
+
+  // QUEM NÃO TEM BLOCO VÍNCULO NÃO GRAVA IMOBILIÁRIA, E A BARRA É AQUI (27/09/2026).
+  //
+  // ⚠️ Lucas: *"NAO QUERO TER A INFORMACAO QUE PODE TER PESSOA FISICA COMO IMOBILIARIA, isso sera bem
+  // restrito"*. Até agora essa regra morava SÓ NA TELA: `formatoDoCadastro().exigeVinculo` era lido
+  // pelo wizard, e esta função repassava `payload.perfil` inteiro. No persist o relacionamento de
+  // imobiliária nasce por PRESENÇA do campo, sem olhar o papel (`if (imobiliariaId ||
+  // imobiliariaLabel)`), o `imobiliariaLabel` entra no índice de busca e o `imobiliariaId` no metadata
+  // da ficha. Um POST com `role: "corretor"` e `perfil.imobiliariaId` preenchido (aba velha
+  // reenviada, script interno, a próxima porta que reusar esta função) gravava justamente a
+  // informação proibida. É a doutrina que este arquivo já escreve: *"a validação de cliente pode ser
+  // burlada, então a barra de verdade fica aqui"*.
+  //
+  // ⚠️ MEDIDO ANTES DE MEXER: hoje isto não muda nada nas duas telas que existem. O wizard só mostra
+  // o seletor de imobiliária quando o formato pede vínculo, e `payload.vinculo` só é montado nesse
+  // caso (modules/apolo/blocks/cadastro/cadastro-flow.tsx, o `vinculoProspect`); a imobiliária e o
+  // corretor chegam com os dois campos vazios. O que muda é a porta deixar de ACEITAR o que a tela
+  // não manda. O portal do incorporador só cadastra prospect, que exige vínculo, e passa intacto.
+  const formato = formatoDoCadastro(role);
+  const perfilDoPapel = formato.exigeVinculo
+    ? payload.perfil
+    : { ...payload.perfil, imobiliariaId: "", imobiliariaLabel: "" };
+  const vinculoDoPapel = formato.exigeVinculo ? payload.vinculo : undefined;
 
   // 1) Cria a entidade coordenadamente — com DEDUP por documento (não cria 2ª ficha do mesmo CPF).
   const result = await createApoloEntity(
@@ -284,18 +347,43 @@ export async function salvarCadastroDoApolo(
     {
       ...payload,
       dedupPorDocumento: true,
+      perfil: perfilDoPapel,
       // A duplicidade é POR EMPREENDIMENTO: quem já tem CAD no Vale do Ouro pode abrir CAD em
       // outro loteamento. Sem este campo o dedup barra tudo (era o 409 que travava o time).
-      enterpriseId: payload.vinculo?.enterpriseId ?? null,
+      enterpriseId: vinculoDoPapel?.enterpriseId ?? null,
       origem: payload.origem || input.origemPadrao,
       ownerUserId: autor.ownerUserId,
     },
     // A autoria e a regra da ficha existente vêm da PORTA, num argumento à parte: o `payload` é o
     // corpo espalhado, e nada que o JSON mande chega a este terceiro argumento.
-    { autor: autor.registro ?? null, fichaExistente: input.fichaExistente ?? "anexar" },
+    {
+      autor: autor.registro ?? null,
+      // ⚠️ O AFROUXAMENTO DAS DUAS TRAVAS DO AUTÔNOMO NASCE AQUI, NA PORTA, e não do `role` do JSON:
+      // senão o operador que tomasse "Este CPF já tem CAD cadastrada" trocaria `?tipo=prospect` por
+      // `?tipo=corretor` na URL e passaria. Esta rota é a do HUB (Bearer do operador da Careli).
+      ...(role === "corretor"
+        ? {
+            cadastroDeCorretorAutonomo: true,
+            // O código do autônomo viaja PELA PORTA, junto da autoria e pelo mesmo motivo: no
+            // `payload` ele seria escolhido por quem manda o JSON. É uma FUNÇÃO porque o número só
+            // pode ser consumido depois das travas (ver `GeradorDoCodigoDoCorretor`).
+            codigoDoCorretor: gerarCodigoDoCorretor,
+          }
+        : {}),
+      fichaExistente: input.fichaExistente ?? "anexar",
+      // (24/09/2026) Quem salva pelo HUB é o operador da Careli: a imobiliária que ele habilita no
+      // cadastro grava auditoria e avisa o coordenador (Lucas, "3 - Isso ae"). O portal (autor de fora
+      // do hub) não liga: ele só cadastra prospect, e habilitação não é dele.
+      habilitacaoInterna: !autor.registro,
+    },
   );
 
   if (!result.ok) {
+    // A sequência do código não respondeu (migration 0193 não aplicada, por exemplo): a resposta é
+    // 503 com a frase do operador, e não o 500 genérico da recusa. Nada foi gravado.
+    if (falhaDoCodigoDoCorretor) {
+      return invalido(falhaDoCodigoDoCorretor, 503);
+    }
     return { ok: false, recusa: result, tipo: "recusado" };
   }
 

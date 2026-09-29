@@ -27,7 +27,6 @@ vi.mock("@/lib/assinatura/quadro-db", () => ({
   // `assinante-de-termos-no-envio.test.ts`.
   assinanteDeTermosDaVendedora: async () => null,
   assinantesDoQuadro: (...args: unknown[]) => quadroDoEmpreendimento(...args),
-  empresasDoEmpreendimento: async () => ({ coordenador: null, vendedora: "ent-vendedora" }),
 }));
 
 const { cancelarAssinaturaDoAcordo, enviarAcordoParaAssinatura, prepararEnvioDoAcordo } =
@@ -109,6 +108,34 @@ function bancoComMemoria(opcoes: { falharNoUpdate?: boolean } = {}) {
   const linhas: LinhaGravada[] = [];
   let proximo = 1;
 
+  // ⚠️ A FUNÇÃO DA 0195 (F1 da fonte única), NO RECORTE QUE ESTES TESTES USAM: o carimbo manda
+  // `aguardando` por ela. Só anda para a frente a partir de rascunho/desconhecido (a regra inteira é
+  // do banco, provada no ensaio SQL da 0195), e o quadro mandado substitui a lista.
+  const rpc = (_nome: string, args: Record<string, unknown>) => {
+    const alvo = linhas.find((l) => l.id === args.p_envelope);
+    if (!alvo) return Promise.resolve({ data: [], error: null });
+    const antes = alvo.estado;
+    if (typeof args.p_estado === "string" && ["rascunho", "desconhecido"].includes(antes)) {
+      alvo.estado = args.p_estado;
+    }
+    if (Array.isArray(args.p_quadro)) Object.assign(alvo, { signatarios: args.p_quadro });
+    return Promise.resolve({
+      data: [
+        {
+          assinaram: 0,
+          estado_antes: antes,
+          estado_depois: alvo.estado,
+          fechado: null,
+          mudou_estado: antes !== alvo.estado,
+          quadro: args.p_quadro ?? [],
+          recusa: null,
+          total: 0,
+        },
+      ],
+      error: null,
+    });
+  };
+
   const from = (tabela: string) => {
     const estado: { filtros: Record<string, unknown>; op: string; patch: Record<string, unknown> } =
       { filtros: {}, op: "select", patch: {} };
@@ -122,6 +149,9 @@ function bancoComMemoria(opcoes: { falharNoUpdate?: boolean } = {}) {
 
     const builder: Record<string, unknown> = {};
     Object.assign(builder, {
+      in: () => builder,
+      is: () => builder,
+      not: () => builder,
       eq: (coluna: string, valor: unknown) => {
         estado.filtros[coluna] = valor;
         if (estado.op === "update") {
@@ -166,7 +196,7 @@ function bancoComMemoria(opcoes: { falharNoUpdate?: boolean } = {}) {
     return builder;
   };
 
-  return { linhas, sb: { from } as unknown as SupabaseClient };
+  return { linhas, sb: { from, rpc } as unknown as SupabaseClient };
 }
 
 /** O duplo da porta HTTP, guardando o CORPO de cada chamada. */

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
-import { contratoDaUnidade } from "@/lib/apolo/incorporador/contrato";
+import { contratoDaUnidade, contratoDoEnvelope } from "@/lib/apolo/incorporador/contrato";
 import { autorizar, foraDoEscopo, unidadeNoEscopo } from "@/lib/apolo/incorporador/escopo";
+import { createApoloAdminClient } from "@/lib/apolo/server";
 import { fetchD4SignContract } from "@/lib/guardian/d4sign";
 
 // O CONTRATO ASSINADO DE UMA UNIDADE — o PDF do D4Sign, proxiado, para a Carteira do portal.
@@ -20,6 +21,11 @@ import { fetchD4SignContract } from "@/lib/guardian/d4sign";
 //   4. `fetchD4SignContract` — o token D4Sign fica no servidor, NUNCA chega ao navegador (mesmo
 //      desenho de /api/incorporador/crm/documentos/abrir e /api/hades/d4sign/contracts).
 //
+// ⚠️ A SEGUNDA PORTA, `?contratoId=<uuid>` (F4 da fonte única, 28/09/2026): o id do ENVELOPE do Panteon
+// que a leitura única mandou na linha. A rota lê do envelope só a UNIDADE e o documento (sem devolver
+// nada), confere `unidadeNoEscopo` pela unidade e só então baixa EXATAMENTE aquele documento. Nenhuma
+// consulta ao C2X. O `unitId` continua valendo para a Carteira, que ainda lê o C2X.
+//
 // Unidade fora do escopo, inexistente OU sem contrato assinado = 404 igualzinho (`foraDoEscopo`):
 // para quem pergunta, os três casos são "não existe" — 403 ou mensagens diferentes confirmariam
 // que o id é de alguém.
@@ -31,22 +37,38 @@ export async function GET(request: Request) {
   const auth = autorizar(request);
   if (!auth.ok) return auth.response;
 
-  const cru = new URL(request.url).searchParams.get("unitId")?.trim() ?? "";
-  const unitId = Number(cru);
+  const parametros = new URL(request.url).searchParams;
+  const contratoId = parametros.get("contratoId")?.trim() ?? "";
 
-  // Id que nem é um id responde como unidade que não existe.
-  if (!Number.isInteger(unitId) || unitId <= 0) {
-    return foraDoEscopo();
+  let contrato: null | { unidade: string; uuidDoc: string };
+  if (contratoId) {
+    // A unidade do envelope, para conferir o escopo. Nada do envelope sai daqui antes disso.
+    const admin = createApoloAdminClient();
+    const doEnvelope = admin ? await contratoDoEnvelope(admin, contratoId) : null;
+    if (!doEnvelope) return foraDoEscopo();
+
+    // Escopo pela UNIDADE do envelope, antes de baixar. Fail-closed.
+    const pertence = await unidadeNoEscopo(doEnvelope.unidadeId, auth.sessao);
+    if (!pertence) return foraDoEscopo();
+    contrato = doEnvelope;
+  } else {
+    const cru = parametros.get("unitId")?.trim() ?? "";
+    const unitId = Number(cru);
+
+    // Id que nem é um id responde como unidade que não existe.
+    if (!Number.isInteger(unitId) || unitId <= 0) {
+      return foraDoEscopo();
+    }
+
+    // Escopo ANTES de qualquer leitura de dado. Fail-closed.
+    const pertence = await unidadeNoEscopo(unitId, auth.sessao);
+    if (!pertence) {
+      return foraDoEscopo();
+    }
+
+    // O documento DESTA unidade, resolvido no C2X — nunca um uuid do cliente.
+    contrato = await contratoDaUnidade(unitId);
   }
-
-  // Escopo ANTES de qualquer leitura de dado. Fail-closed.
-  const pertence = await unidadeNoEscopo(unitId, auth.sessao);
-  if (!pertence) {
-    return foraDoEscopo();
-  }
-
-  // O documento DESTA unidade, resolvido no C2X — nunca um uuid do cliente.
-  const contrato = await contratoDaUnidade(unitId);
   if (!contrato) {
     return foraDoEscopo();
   }

@@ -28,7 +28,8 @@ const COLUNAS: Record<string, readonly string[]> = {
     "cancelamento_pedido_tipo", "codigo", "data_faturamento", "etapa", "etapa_desde", "etapa_por", "id", "origem_c2x_id", "protocolo_numero",
     "workspace_id",
   ],
-  temis_envelopes: ["criado_em", "envelope_id", "estado", "falha", "id", "proposta_id", "provedor"],
+  // `finalidade` é da 0195 (aplicada antes do deploy da F1): o indeferimento só olha o contrato (F2).
+  temis_envelopes: ["criado_em", "envelope_id", "estado", "falha", "finalidade", "id", "proposta_id", "provedor"],
   // As três do indeferimento conferidas no schema de produção em 18/09/2026 (information_schema).
   temis_trabalhos: [
     "criado_em",
@@ -420,6 +421,53 @@ describe("C: o contrato indeferido volta a quem vendeu", () => {
     expect(r.aviso).toContain("existe envelope vivo deste contrato na Clicksign (env-vivo)");
     expect(b.linha("hercules_propostas", "venda-21")?.etapa).toBe("contrato");
     expect(aviso).toHaveBeenCalled();
+  });
+
+  // ⚠️ F2 DA FONTE ÚNICA: a frase é por provedor, e só o envelope do CONTRATO segura a venda.
+  it("contrato vivo na D4Sign (o C2X mandou): a frase manda cancelar pelo C2X", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const b = semPedido({
+      envelopes: [
+        {
+          criado_em: "2026-09-13T12:00:00.000Z",
+          envelope_id: "uuid-d4",
+          estado: "aguardando",
+          falha: null,
+          finalidade: "contrato",
+          id: "reg-d4",
+          proposta_id: "venda-21",
+          provedor: "d4sign",
+        },
+      ],
+    });
+
+    const r = await devolverVendaNoIndeferimento(b.cliente, { id: "card-contrato", proposta_id: "venda-21", tipo: "contrato" }, quem);
+
+    expect(r.feito).toBe("nada");
+    expect(r.aviso).toContain("Cancele na D4Sign pelo C2X; o Panteon libera em até 30 minutos.");
+    expect(r.aviso).not.toContain("Clicksign");
+    expect(b.linha("hercules_propostas", "venda-21")?.etapa).toBe("contrato");
+  });
+
+  it("envelope vivo de DISTRATO não é o contrato: não segura a venda do contrato indeferido", async () => {
+    const b = semPedido({
+      envelopes: [
+        {
+          criado_em: "2026-09-13T12:00:00.000Z",
+          envelope_id: "env-distrato",
+          estado: "aguardando",
+          falha: null,
+          finalidade: "distrato",
+          id: "reg-distrato",
+          proposta_id: "venda-21",
+          provedor: "clicksign",
+        },
+      ],
+    });
+
+    const r = await devolverVendaNoIndeferimento(b.cliente, { id: "card-contrato", proposta_id: "venda-21", tipo: "contrato" }, quem);
+
+    expect(r.feito).toBe("voltou_para_proposta");
   });
 
   it("envelope já morto (cancelado) não segura", async () => {

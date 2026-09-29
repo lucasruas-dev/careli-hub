@@ -170,8 +170,9 @@ async function runC2xModule(
     // Agrupa pelo RÓTULO — e é por isso que o espelho não pode chegar aqui: os quatro
     // "VALE DO OURO" do C2X têm o mesmo `name`, então o VLO (registro histórico, mesmos lotes de
     // VOC + VOL) caía na MESMA chave das divisões vivas e o loteamento entrava duas vezes no
-    // grupo E no total. Ele já sai fora no SQL (ANALYTICS_EXCLUDED_ENTERPRISE_CODES, aplicado em
-    // buildC2xAnalyticsQuery) e o `displayEnterprise` marca "(histórico)" se algum dia escapar.
+    // grupo E no total. Ele já sai fora no SQL (ANALYTICS_EXCLUDED_ENTERPRISE_IDS, pelo id desde o
+    // PAN-124, aplicado em buildC2xAnalyticsQuery) e o `displayEnterprise` marca "(histórico)" se
+    // algum dia escapar.
     // Ver ENTERPRISE_MIRRORS em lib/guardian/c2x-analytics.ts.
     const byDisplay = new Map<string, number>();
 

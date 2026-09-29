@@ -5,7 +5,8 @@
 // Ver [[project-apolo-empreendimento-tela]] e [[project-apolo-acessos-externos]].
 import type { RowDataPacket } from "mysql2";
 
-import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
+import { filtroPorIds, filtroSemExcluidos } from "@/lib/apolo/c2x-pelo-id";
+import { idsDoC2xDasSiglasAoVivo } from "@/lib/apolo/c2x-pelo-id-servidor";
 import { getHadesDbPool } from "@/lib/guardian/db";
 
 export type ApoloStatementRow = {
@@ -107,7 +108,15 @@ export async function loadApoloParticipantStatement(
     };
   }
 
-  const excluded = EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ");
+  // ⚠️ PAN-124: a exclusão é pelo id (`e.id not in (2, 31, 34)`), e não mais pela sigla, que muda
+  // quando alguém renomeia no C2X (o "LAG" da lista antiga não casa com nada desde 16/07/2026).
+  //
+  // Medido em 25/09/2026 (só SELECT, apps/hub/scratchpad/pan124-lote1-medir.ts, a consulta antiga e
+  // a nova lado a lado): 17 participantes e 137 filtros por empreendimento, as mesmas linhas com os
+  // mesmos valores. Em 5 deles a ordem entre linhas do MESMO pagamento (um split por perfil, que
+  // empatam no ORDER BY inteiro: data, sigla e `p.id`) saiu trocada; o MySQL não define a ordem de
+  // empate, e a antiga também não seguia coluna nenhuma.
+  const semExcluidosDoC2x = filtroSemExcluidos();
 
   // O participante é a entidade em qualquer papel do split: OU um papel FIXO (o split aponta
   // segv.user_id = ele — incorporador, captador, gerente, coordenação, gestora), OU a
@@ -119,16 +128,34 @@ export async function loadApoloParticipantStatement(
   const params: Array<number | string> = [
     scope.start,
     scope.end,
-    ...EXCLUDED_ENTERPRISE_CODES,
+    ...semExcluidosDoC2x.params,
     scope.c2xId,
     scope.c2xId,
   ];
 
-  const enterpriseFilter = scope.enterpriseCode
-    ? "and e.code = ?"
-    : "";
+  // ⚠️ PAN-124: O FILTRO DO EMPREENDIMENTO VAI PELO ID. A tela (e a rota, `?enterprise=`) continuam
+  // mandando a SIGLA, a que veio nas próprias linhas do extrato; aqui ela vira o `enterprises.id` e a
+  // consulta filtra `e.id in (...)`.
+  //
+  // ⚠️ CONFERIDA NO C2X (`conferirNoC2x`): a sigla foi lida AO VIVO nas linhas, então a de hoje acha o
+  // mesmo que `e.code = ?` achava, mesmo que o catálogo em cache (até 10 minutos) ainda não a conheça
+  // ou a dê a outro empreendimento. A sigla que o C2X não conhece mais (a tela aberta antes de um
+  // renome) cai no catálogo em cache, que só a salva se for de antes do renome; depois disso, e para
+  // o empreendimento excluído, volta o extrato vazio, que é o que `e.code = ?` devolvia para sigla que
+  // não existe. C2X e catálogo fora é o C2X fora: o mesmo erro de quando a consulta caía.
+  let enterpriseFilter = "";
   if (scope.enterpriseCode) {
-    params.push(scope.enterpriseCode);
+    const traduzido = await idsDoC2xDasSiglasAoVivo([scope.enterpriseCode], {
+      conferirNoC2x: true,
+    });
+    if (!traduzido.ok) {
+      console.error("[apolo][extrato] catálogo do C2X indisponível", traduzido.erro);
+      return { error: "Nao foi possivel carregar o extrato.", ok: false };
+    }
+    const doEmpreendimento = filtroPorIds("e.id", traduzido.ids);
+    if (!doEmpreendimento) return { data: emptyData(), ok: true };
+    enterpriseFilter = `and ${doEmpreendimento.sql}`;
+    params.push(...doEmpreendimento.params);
   }
 
   const fromWhere = `
@@ -145,7 +172,7 @@ export async function loadApoloParticipantStatement(
     join split_profiles sp on sp.id = segv.split_profile_id
     where p.payment_status_id = 5
       and p.payment_date >= ? and p.payment_date < date_add(?, interval 1 day)
-      and e.code not in (${excluded})
+      and ${semExcluidosDoC2x.sql}
       and ${GROUP_BY_PARCEL}
       and ${participantWhere}
       ${enterpriseFilter}`;

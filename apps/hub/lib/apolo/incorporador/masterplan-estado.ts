@@ -1,5 +1,7 @@
 import type { RowDataPacket } from "mysql2/promise";
 
+import { type CatalogoParaId, filtroPorIds } from "@/lib/apolo/c2x-pelo-id";
+import { idsDoC2xDasSiglasAoVivo } from "@/lib/apolo/c2x-pelo-id-servidor";
 import { getHadesDbPool } from "@/lib/guardian/db";
 import {
   baldeDaSituacao,
@@ -89,14 +91,33 @@ type LinhaDoC2x = RowDataPacket & {
  *
  * Devolve `null` quando o C2X não responde ou não há lote nenhum — e quem chama trata isso como
  * "não sei de quem é este mapa", que é o fail-closed do escopo.
+ *
+ * ⚠️ PELO ID DO C2X, NÃO PELA SIGLA (PAN-124). Os codes viram `enterprises.id` pelo catálogo e o WHERE
+ * é `e.id in (...)`. Com `e.code in (...)`, um renome no legado (o 43, de RDV para PDI em 24/09/2026)
+ * deixava o mapa sem escopo e a tela no 503, sem ninguém saber por quê. Catálogo indisponível (C2X
+ * fora) e sigla sem id no C2X continuam sendo `null`: o mesmo fail-closed.
+ *
+ * @param opcoes.catalogo O catálogo, quando quem chama já o tem (evita reler o cache).
  */
-export async function lerLotesDoEscopo(codes: string[]): Promise<LoteDoC2x[] | null> {
+export async function lerLotesDoEscopo(
+  codes: string[],
+  opcoes: { catalogo?: CatalogoParaId | null } = {},
+): Promise<LoteDoC2x[] | null> {
   if (codes.length === 0) return null;
 
   const pool = getHadesDbPool();
   if (!pool.ok) return null;
 
   try {
+    const traduzido = await idsDoC2xDasSiglasAoVivo(codes, { catalogo: opcoes.catalogo });
+    if (!traduzido.ok) {
+      console.error("[incorporador][masterplan] sem tradução de sigla para id", traduzido.erro);
+      return null;
+    }
+
+    const doEscopo = filtroPorIds("e.id", traduzido.ids);
+    if (!doEscopo) return null;
+
     const [linhas] = await pool.pool.query<LinhaDoC2x[]>(
       `select u.id, u.name, u.enterprise_id, u.block, u.lot, u.price, u.updated_at,
               cli.name as comprador
@@ -110,8 +131,8 @@ export async function lerLotesDoEscopo(codes: string[]): Promise<LoteDoC2x[] | n
             order by a2.created_at desc, a2.id desc
             limit 1)
          left join users cli on cli.id = ar.client_id
-        where e.code in (${codes.map(() => "?").join(", ")})`,
-      codes,
+        where ${doEscopo.sql}`,
+      doEscopo.params,
     );
 
     const lotes: LoteDoC2x[] = [];

@@ -5,6 +5,9 @@ import {
   catalogoEstaQuente,
   consultarDocumentoD4Sign,
   consultarDocumentosD4Sign,
+  d4signEmRecuoPorCota,
+  d4signRecusouPorCotaDesde,
+  disjuntorD4SignAberto,
   documentoParaTela,
   estadoDoCacheD4Sign,
   interpretarStatusD4Sign,
@@ -309,6 +312,8 @@ describe("cache, deduplicação e disjuntor", () => {
 
     expect(espiao).toHaveBeenCalledTimes(3);
     expect(estadoDoCacheD4Sign().disjuntorAberto).toBe(true);
+    // O que o espelho lê para parar o passo do `/list` (F3 da fonte única).
+    expect(disjuntorD4SignAberto()).toBe(true);
     expect([...resultado.values()].every((r) => !r.ok)).toBe(true);
   });
 
@@ -421,5 +426,73 @@ describe("semEsperar: a carga de tela não bloqueia", () => {
     await carregarCatalogoD4Sign();
 
     expect(catalogoEstaQuente()).toBe(true);
+  });
+});
+
+// ⚠️ HTTP 429 É COTA, NÃO QUEDA (F3 da fonte única, 0.27): não abre o disjuntor e é dito com o motivo
+// próprio, para o espelho parar e pausar 1 h.
+describe("429: a cota da conta", () => {
+  const fetchOriginal = globalThis.fetch;
+
+  beforeEach(() => {
+    limparCacheD4Sign();
+    process.env.D4SIGN_TOKEN_API = "token-de-teste";
+    process.env.D4SIGN_CRYPT_KEY = "chave-de-teste";
+  });
+
+  afterEach(() => {
+    globalThis.fetch = fetchOriginal;
+    limparCacheD4Sign();
+    vi.restoreAllMocks();
+  });
+
+  it("o /list com 429 devolve motivo cota, não conta para o disjuntor e não entra no cache", async () => {
+    const espiao = vi.fn(async () => ({ json: async () => ({}), ok: false, status: 429 }));
+    globalThis.fetch = espiao as unknown as typeof fetch;
+    const antes = Date.now();
+
+    expect(await consultarDocumentoD4Sign("a")).toEqual({ motivo: "cota", ok: false });
+    expect(disjuntorD4SignAberto()).toBe(false);
+    expect(d4signRecusouPorCotaDesde(antes)).toBe(true);
+    expect(d4signEmRecuoPorCota()).toBe(true);
+  });
+
+  it("depois do 429, o recuo: ninguém sai para a rede por 10 min, e depois volta", async () => {
+    // ⚠️ É O FREIO DAS TELAS QUE AINDA CHAMAM A D4SIGN AO VIVO (até a F4): sem ele, cada carga
+    // voltaria a bater numa conta estourada, a mesma que o C2X usa para mandar contrato.
+    const inicio = Date.parse("2026-09-28T12:00:00Z");
+    vi.useFakeTimers({ now: inicio, toFake: ["Date"] });
+    try {
+      const espiao = vi.fn(async () => ({ json: async () => ({}), ok: false, status: 429 }));
+      globalThis.fetch = espiao as unknown as typeof fetch;
+
+      expect(await consultarDocumentoD4Sign("a")).toEqual({ motivo: "cota", ok: false });
+      for (const uuid of ["b", "c", "d", "a"]) {
+        expect(await consultarDocumentoD4Sign(uuid)).toEqual({ motivo: "cota", ok: false });
+      }
+      expect(await carregarCatalogoD4Sign()).toBeNull();
+      expect(espiao).toHaveBeenCalledTimes(1);
+
+      vi.setSystemTime(inicio + 10 * 60 * 1000 + 1);
+      globalThis.fetch = vi.fn(async () => respostaOk(RESPOSTA_FINALIZADO)) as unknown as typeof fetch;
+      expect(d4signEmRecuoPorCota()).toBe(false);
+      expect((await consultarDocumentoD4Sign("b")).ok).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("o catálogo com 429 devolve nulo, deixa a cota registrada e não pede as outras páginas", async () => {
+    const espiao = vi.fn(async () => ({ json: async () => [], ok: false, status: 429 }));
+    globalThis.fetch = espiao as unknown as typeof fetch;
+    const antes = Date.now();
+    expect(await carregarCatalogoD4Sign()).toBeNull();
+    expect(d4signRecusouPorCotaDesde(antes)).toBe(true);
+    expect(disjuntorD4SignAberto()).toBe(false);
+    expect(espiao).toHaveBeenCalledTimes(1);
+  });
+
+  it("sem 429 a cota não é dita", () => {
+    expect(d4signRecusouPorCotaDesde(0)).toBe(false);
   });
 });

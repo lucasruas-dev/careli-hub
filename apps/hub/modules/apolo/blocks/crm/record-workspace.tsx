@@ -22,8 +22,10 @@ import type { ApoloEntity } from "@/lib/apolo/types";
 
 import { InfoTile, PanelTitle } from "../shared/apolo-ui";
 import {
+  ROTULO_DO_CODIGO_DO_CORRETOR,
   activeRegistrationLabel,
   businessRoleProfiles,
+  codigoDoCorretorDaFicha,
   buyerFinancialBadge,
   buyerStatusLabel,
   canUseHadesWorkspace,
@@ -432,8 +434,13 @@ function DisabledOperationCard({
   );
 }
 
-function RecordHeader({ entity }: { entity: ApoloEntity }) {
+// Exportado para o teste de comportamento: é a peça que imprime o código do corretor autônomo, e ela
+// serve os três estados da ficha (carregando, com carteira e sem carteira).
+export function RecordHeader({ entity }: { entity: ApoloEntity }) {
   const registrationLabel = activeRegistrationLabel(entity);
+  // O CÓDIGO DO CORRETOR AUTÔNOMO (27/09/2026). Lucas: *"assim saberemos que ele e autonomo"*, e
+  // *"somente no CRM"* — esta é a única tela que mostra o número.
+  const codigoDoCorretor = codigoDoCorretorDaFicha(entity);
   const headerName = displayHeaderName(entity);
   // Papéis reais (não o PF/PJ nem o genérico "usuario"). Comprador/Prospect é derivado
   // da carteira e vira o primeiro chip quando a entidade é cliente.
@@ -483,6 +490,14 @@ function RecordHeader({ entity }: { entity: ApoloEntity }) {
                     {apoloProfileLabels[role] ?? role}
                   </span>
                 ))}
+                {codigoDoCorretor ? (
+                  <span
+                    className="inline-flex shrink-0 rounded-full bg-[#A07C3B]/8 px-2 py-1 text-[11px] font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15"
+                    title={`${ROTULO_DO_CODIGO_DO_CORRETOR} · código ${codigoDoCorretor}`}
+                  >
+                    {codigoDoCorretor}
+                  </span>
+                ) : null}
                 <span className="inline-flex shrink-0 rounded-full bg-subtle px-2 py-1 text-[11px] font-semibold text-ink-soft ring-1 ring-line">
                   {registrationLabel}
                 </span>

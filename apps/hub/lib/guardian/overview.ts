@@ -1,6 +1,6 @@
 import type { RowDataPacket } from "mysql2/promise";
 
-import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
+import { EXCLUDED_ENTERPRISE_IDS } from "@/lib/guardian/c2x-analytics";
 import { getHadesDbPool } from "@/lib/guardian/db";
 
 export type HadesOverviewSummary = {
@@ -327,12 +327,18 @@ const enterpriseDisplayExpression = `
 //
 // Decisão do Lucas (25/08): *"O dash tem que sair os empreendimentos testes, é para seguir o que
 // está hoje habilitado no Hades"*. Ou seja: mesmo universo da fila, menos o que é teste. Trocamos
-// a allowlist (que envelhece a cada empreendimento novo) pela DENYLIST que o projeto já mantém —
-// `EXCLUDED_ENTERPRISE_CODES` (TSC, SDT, LAB, LAG), usada em ~15 leituras do sistema.
-const codigosExcluidos = EXCLUDED_ENTERPRISE_CODES.map((code) => `'${code}'`).join(", ");
+// a allowlist (que envelhece a cada empreendimento novo) pela DENYLIST que o projeto já mantém,
+// usada em ~15 leituras do sistema: hoje `EXCLUDED_ENTERPRISE_IDS` (2, 31, 34); até o PAN-124,
+// `EXCLUDED_ENTERPRISE_CODES` (TSC, SDT, LAB, LAG), pela sigla.
+//
+// ⚠️ PAN-124 (25/09/2026): A DENYLIST AGORA É PELO ID DO C2X (`EXCLUDED_ENTERPRISE_IDS`: 2 = SDT,
+// 31 = LAB, 34 = TSC), e não mais pela sigla. A sigla muda quando alguém renomeia no legado, e a
+// lista por sigla já tinha quebrado calada: o "LAG" não casa com nada desde que o 30 foi renomeado
+// em 16/07/2026. Medido no C2X no mesmo dia, as duas devolvem as mesmas linhas. São números da
+// constante, sem entrada de fora: por isso vão escritos no SQL, como as siglas iam.
 const validEnterpriseWhere = `
   e.id is not null
-  and upper(trim(coalesce(e.code, ''))) not in (${codigosExcluidos})
+  and e.id not in (${EXCLUDED_ENTERPRISE_IDS.join(", ")})
 `;
 
 const overdueAgingLabels = [

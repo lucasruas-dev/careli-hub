@@ -411,6 +411,126 @@ describe("QUADRO DE ASSINATURA pelo portal", () => {
     expect((await portalAssinantes.DELETE(pedir("assinantes", `?id=${ASSINANTE_VOC}`, "DELETE"))).status).toBe(200);
     expect(linha("temis_assinantes", ASSINANTE_VOC)).toMatchObject({ ativo: false, desativado_por_nome: AUTOR_DO_PORTAL });
   });
+
+  // ── EDITAR (PATCH), nascido em 25/09/2026. Lucas: *"todas assinaturas eu tenho que conseguir
+  // excluir e editar"*. As mesmas réguas do incluir e do remover, pela mesma função dos dois lados.
+
+  it("PATCH de outro dono: 404 e nada gravado", async () => {
+    const r = await portalAssinantes.PATCH(
+      pedir("assinantes", `?id=${ASSINANTE_VOL}`, "PATCH", { nome: "Beto Testemunha Editado" }),
+    );
+    expect(r.status).toBe(404);
+    expect(gravacoesEm(banco(), "temis_assinantes")).toHaveLength(0);
+  });
+
+  it("PATCH do VOC: edita com o autor do portal, e o CPF mascarado que a tela devolve não apaga o gravado", async () => {
+    const r = await portalAssinantes.PATCH(
+      pedir("assinantes", `?id=${ASSINANTE_VOC}`, "PATCH", {
+        cpf: "***.***.***-25",
+        email: "ana.nova@careli.adm.br",
+        nome: "Ana Testemunha Silva",
+      }),
+    );
+
+    expect(r.status).toBe(200);
+    expect(linha("temis_assinantes", ASSINANTE_VOC)).toMatchObject({
+      atualizado_por_nome: AUTOR_DO_PORTAL,
+      cpf: "529.982.247-25",
+      email: "ana.nova@careli.adm.br",
+      nome: "Ana Testemunha Silva",
+    });
+    // A resposta devolve o CPF como o GET do portal entrega: mascarado.
+    const corpo = (await r.json()) as { assinante: { cpf: null | string } };
+    expect(corpo.assinante.cpf).toBe("***.***.***-25");
+  });
+
+  // ⚠️ A MÁSCARA SÓ QUER DIZER "MANTER" QUANDO É A MÁSCARA INTEIRA (revisão de 25/09/2026). Quem
+  // corrigia só os dois últimos dígitos recebia 200, a linha seguia com o CPF antigo e a tela relia o
+  // mesmo número: uma edição oferecida e ignorada calada.
+  it("PATCH do VOC com a máscara mexida pela metade: 400 dizendo o que fazer, e nada gravado", async () => {
+    const r = await portalAssinantes.PATCH(
+      pedir("assinantes", `?id=${ASSINANTE_VOC}`, "PATCH", {
+        cpf: "***.***.***-26",
+        nome: "Ana Testemunha Silva",
+      }),
+    );
+
+    expect(r.status).toBe(400);
+    expect(((await r.json()) as { error: string }).error).toContain("digite o CPF inteiro");
+    expect(linha("temis_assinantes", ASSINANTE_VOC)).toMatchObject({
+      cpf: "529.982.247-25",
+      nome: "Ana Testemunha",
+    });
+    expect(gravacoesEm(banco(), "temis_assinantes")).toHaveLength(0);
+  });
+
+  it("PATCH do VOC com o CPF inteiro digitado de novo: grava o novo, e a resposta volta mascarada", async () => {
+    const r = await portalAssinantes.PATCH(
+      pedir("assinantes", `?id=${ASSINANTE_VOC}`, "PATCH", { cpf: "111.444.777-35" }),
+    );
+
+    expect(r.status).toBe(200);
+    expect(linha("temis_assinantes", ASSINANTE_VOC)?.cpf).toBe("111.444.777-35");
+    const corpo = (await r.json()) as { assinante: { cpf: null | string } };
+    expect(corpo.assinante.cpf).toBe("***.***.***-35");
+  });
+
+  /** A linha dos TERMOS que a Careli apontou no VOC: um empreendimento que É do incorporador. */
+  const TERMOS_VOC = "97979797-9797-4797-8797-979797979797";
+  function comLinhaDosTermosNoVoc() {
+    banco().tabelas.temis_assinantes?.push({
+      ativo: true,
+      email: "juridico@careli.adm.br",
+      enterprise_id: "37",
+      id: TERMOS_VOC,
+      nome: "Analista Do Juridico",
+      papel: "termos_vendedora",
+      posicao: 1,
+      workspace_id: "careli",
+    });
+  }
+
+  // ⚠️ O GET NÃO ENTREGA AO PORTAL O QUE O PATCH E O DELETE DIZEM NÃO EXISTIR (revisão de
+  // 25/09/2026). Antes a resposta trazia id, nome e e-mail do apontado pela Careli, e um PATCH com
+  // aquele id recebia 404: a leitura contradizia a recusa.
+  it("GET do VOC com uma linha dos termos: o portal não a recebe, o hub recebe", async () => {
+    comLinhaDosTermosNoVoc();
+
+    const r = await portalAssinantes.GET(pedir("assinantes", "?enterpriseId=37"));
+    expect(r.status).toBe(200);
+    const corpo = (await r.json()) as { assinantes: Array<{ id: string; papel: string }> };
+    expect(corpo.assinantes.map((a) => a.id)).toEqual([ASSINANTE_VOC]);
+    expect(JSON.stringify(corpo)).not.toContain("juridico@careli.adm.br");
+
+    const doHub = await hubAssinantes.GET(hub("assinantes", "?enterpriseId=37"));
+    const corpoDoHub = (await doHub.json()) as { assinantes: Array<{ id: string }> };
+    expect(corpoDoHub.assinantes.map((a) => a.id).sort()).toEqual([TERMOS_VOC, ASSINANTE_VOC].sort());
+  });
+
+  // ⚠️ O PAPEL DOS TERMOS É DA CARELI TAMBÉM NO EDITAR. A linha está num empreendimento que É do
+  // incorporador, então o alcance diria sim: a recusa é pelo papel DA LINHA, como no remover.
+  it("PATCH na linha dos termos (apontada pela Careli): 404 e nada gravado", async () => {
+    comLinhaDosTermosNoVoc();
+
+    const r = await portalAssinantes.PATCH(
+      pedir("assinantes", `?id=${TERMOS_VOC}`, "PATCH", { email: "outra@cecilio.test" }),
+    );
+
+    expect(r.status).toBe(404);
+    expect(linha("temis_assinantes", TERMOS_VOC)?.email).toBe("juridico@careli.adm.br");
+    expect(gravacoesEm(banco(), "temis_assinantes")).toHaveLength(0);
+  });
+
+  // E pelo corpo: mover uma linha do contrato para o papel dos termos é recusado antes de ir ao banco.
+  it("PATCH com o papel dos termos no corpo: 404 sem consulta nenhuma", async () => {
+    const r = await portalAssinantes.PATCH(
+      pedir("assinantes", `?id=${ASSINANTE_VOC}`, "PATCH", { papel: "termos_vendedora" }),
+    );
+
+    expect(r.status).toBe(404);
+    expect(banco().consultas).toHaveLength(0);
+    expect(linha("temis_assinantes", ASSINANTE_VOC)?.papel).toBe("testemunha");
+  });
 });
 
 describe("FAIXAS pelo portal (somente leitura)", () => {
@@ -524,6 +644,26 @@ describe("O HUB NÃO MUDA", () => {
     expect(banco().consultas.map((c) => `${c.tabela}:${c.tipo}`)).toEqual(["temis_assinantes:update"]);
   });
 
+  it("assinantes: edita em qualquer empreendimento, sem consulta de alcance", async () => {
+    const r = await hubAssinantes.PATCH(
+      hub("assinantes", `?id=${ASSINANTE_VOL}`, "PATCH", {
+        email: "beto@exemplo.com",
+        nome: "Beto Testemunha Souza",
+      }),
+    );
+    expect(r.status).toBe(200);
+    // Lê a linha e grava: nada de cadastro, settings ou escopo.
+    expect(banco().consultas.map((c) => `${c.tabela}:${c.tipo}`)).toEqual([
+      "temis_assinantes:select",
+      "temis_assinantes:update",
+    ]);
+    expect(linha("temis_assinantes", ASSINANTE_VOL)).toMatchObject({
+      atualizado_por_nome: "Jurídico Careli",
+      email: "beto@exemplo.com",
+    });
+    expect(estado.leiturasDoCadastro).toBe(0);
+  });
+
   it("faixas: grava", async () => {
     const r = await hubFaixas.POST(
       hub("faixas", "?enterpriseId=36", "POST", {
@@ -619,6 +759,14 @@ describe("escrita só no produto que o portal opera (decisão do Lucas, 16/09/20
     expect(banco().storage.info).toHaveLength(0);
     expect(gravacoesEm(banco(), "temis_anexos")).toHaveLength(0);
     expect(gravacoesEm(banco(), "temis_minutas")).toHaveLength(0);
+  });
+
+  it("quadro de assinatura do VOC: editar responde 403 sem gravar", async () => {
+    const editar = await portalAssinantes.PATCH(
+      pedir("assinantes", `?id=${ASSINANTE_VOC}`, "PATCH", { email: "outra@exemplo.com" }),
+    );
+    expect(editar.status).toBe(403);
+    expect(gravacoesEm(banco(), "temis_assinantes")).toHaveLength(0);
   });
 
   it("quadro de assinatura do VOC: incluir e remover respondem 403 sem gravar", async () => {

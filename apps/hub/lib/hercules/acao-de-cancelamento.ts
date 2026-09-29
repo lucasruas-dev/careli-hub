@@ -32,7 +32,20 @@ export const DEPOIS_DO_CONTRATO: ReadonlySet<string> = new Set(["assinatura", "c
  */
 export const VENDA_DESFEITA: ReadonlySet<string> = new Set(["cancelado", "distrato"]);
 
-export type TipoDaAcaoDeCancelamento = "pedido" | "proposta" | "reserva";
+// ⚠️ A AÇÃO VEM DA ETAPA E DE ONDE A LINHA MORA, NUNCA DA COLUNA `origem` (Lucas, 25/09/2026:
+// *"essas reservas tem que comportar iguais as outras"*). Até 25/09/2026 esta função apagava o botão
+// da proposta importada do C2X ("o cancelamento dela é feito lá"), pela premissa de que o Panteon não
+// escreveria a mudança de volta no legado. A carga do C2X foi ENCERRADA em 21/09/2026 e nada volta de
+// lá, e o Lucas já tinha revogado a mesma premissa para o contrato em 16/09/2026 (*"será feito
+// aqui"*, o comentário mais abaixo). O que pode recusar é o ESTADO: etapa viva, dono do lote pela
+// trava, credenciamento do cliente. A procedência do registro não.
+//
+// ⚠️ E A ETAPA `reservado` TEM DOIS CAMINHOS, porque a linha mora em lugares diferentes. Quando existe
+// reserva do Hércules, quem cancela é a rota da RESERVA. Quando não existe (as 11 herdadas: a carga
+// trouxe a proposta e nunca criou a reserva, ZERO linhas em `hercules_reservas`, medido em
+// 25/09/2026 no projeto bxgukywoxgivlrhjkwjx), a linha é de `hercules_propostas` e quem cancela é a
+// rota da PROPOSTA. O RÓTULO continua "Cancelar reserva": é o que o coordenador lê na grade.
+export type TipoDaAcaoDeCancelamento = "pedido" | "proposta" | "reserva" | "reserva_do_legado";
 
 export type AcaoDeCancelamento = {
   /** `null` quando não há nada a cancelar — o botão fica apagado com o motivo no `title`. */
@@ -49,8 +62,15 @@ export type SituacaoDaUnidade = {
   pedidoAberto?: boolean;
   /** Proposta viva nascida no Panteon. */
   propostaNativa: boolean;
-  /** Proposta viva que veio da carga do C2X: o cancelamento dela é no legado. */
+  /** A linha viva que sustenta a cor veio da carga do C2X. */
   propostaDoLegado: boolean;
+  /**
+   * Existe RESERVA do Hércules (linha de `hercules_reservas`) sustentando a etapa `reservado`?
+   *
+   * ⚠️ É ISTO QUE DECIDE PARA QUAL ROTA O CLIQUE VAI, e não a origem. Sem reserva do Hércules a linha
+   * mora em `hercules_propostas`, e a rota da reserva não teria o que cancelar.
+   */
+  reservaDoHercules?: boolean;
 };
 
 export function acaoDeCancelamento(u: SituacaoDaUnidade): AcaoDeCancelamento {
@@ -60,26 +80,18 @@ export function acaoDeCancelamento(u: SituacaoDaUnidade): AcaoDeCancelamento {
     return {
       motivo: "Cancela a reserva; a unidade volta para a disponibilidade e os três são avisados.",
       rotulo: "Cancelar reserva",
-      tipo: "reserva",
+      // A herdada em `reservado` não tem reserva do Hércules: o mesmo rótulo, outra rota.
+      tipo: u.propostaDoLegado && u.reservaDoHercules !== true ? "reserva_do_legado" : "reserva",
     };
   }
 
-  if (etapa === "proposta") {
-    if (u.propostaNativa) {
-      return {
-        motivo:
-          "Cancela a proposta; a unidade volta para a disponibilidade, os três são avisados e o PDF deixa de valer.",
-        rotulo: "Cancelar proposta",
-        tipo: "proposta",
-      };
-    }
-    if (u.propostaDoLegado) {
-      return {
-        motivo: "Esta proposta veio do C2X: o cancelamento dela é feito lá.",
-        rotulo: "Cancelar proposta",
-        tipo: null,
-      };
-    }
+  if (etapa === "proposta" && (u.propostaNativa || u.propostaDoLegado)) {
+    return {
+      motivo:
+        "Cancela a proposta; a unidade volta para a disponibilidade, os três são avisados e o PDF deixa de valer.",
+      rotulo: "Cancelar proposta",
+      tipo: "proposta",
+    };
   }
 
   // ⚠️ A RÉGUA JÁ DIZ QUE O PEDIDO EXISTE (21/09/2026). A situação `em_cancelamento` é a marca já

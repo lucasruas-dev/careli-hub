@@ -68,6 +68,39 @@ describe("descrição do disparo", () => {
     expect(d.contato).toBeNull();
   });
 
+  it("⚠️ coordenador sem telefone NÃO vira 'a ficha não tem telefone' (revisão de 24/09/2026)", () => {
+    // As frases que `coordenadoresDosPedidos` grava desde a busca pelo id: o problema está no cadastro
+    // do coordenador, e não na ficha da imobiliária que o painel está mostrando.
+    const doPanteon = descreverDisparo(
+      linha({
+        destinatario: "coordenador:CARELI ACESSORIA",
+        erro: "Coordenador CARELI ACESSORIA sem telefone no cadastro do Panteon.",
+        status: "falhou",
+        telefone: null,
+      }),
+    );
+    expect(doPanteon.motivo).toBe("Coordenador sem telefone: corrija na ficha dele, no Panteon");
+    expect(doPanteon.motivoTecnico).toBe("Coordenador CARELI ACESSORIA sem telefone no cadastro do Panteon.");
+
+    expect(explicarErroDoDisparo("Coordenador GLENDER sem telefone no C2X.")).toBe(
+      "Coordenador sem telefone no C2X: cadastre o coordenador do empreendimento no Panteon",
+    );
+    expect(explicarErroDoDisparo("Coordenador do empreendimento sem telefone.")).toBe(
+      "Coordenador sem telefone: confira o cadastro do empreendimento",
+    );
+    for (const erro of [
+      "Coordenador CARELI ACESSORIA sem telefone no cadastro do Panteon.",
+      "Coordenador GLENDER sem telefone no C2X.",
+    ]) {
+      expect(explicarErroDoDisparo(erro)).not.toMatch(/ficha não tem telefone/);
+      expect(explicarErroDoDisparo(erro)).not.toMatch(/[—–]/);
+    }
+    // E a ficha sem telefone continua dizendo o que sempre disse.
+    expect(explicarErroDoDisparo("erro: imobiliária sem telefone")).toBe(
+      "A ficha não tem telefone para receber a mensagem",
+    );
+  });
+
   it("status 'enviado' com erro gravado ainda é FALHA (o registro sem telefone chega assim)", () => {
     expect(descreverDisparo(linha({ erro: "sem telefone", status: "enviado" })).resultado).toBe(
       "falhou",

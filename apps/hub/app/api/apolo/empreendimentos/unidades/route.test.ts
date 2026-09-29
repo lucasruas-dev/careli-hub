@@ -228,7 +228,8 @@ describe("GET /api/apolo/empreendimentos/unidades, produto do C2X", () => {
     const resposta = await GET(pedido("codes=LBP"));
 
     expect(resposta.status).toBe(503);
-    expect(loadApoloEnterpriseUnits).toHaveBeenCalledWith(["LBP"]);
+    // A sigla desta tela foi lida ao vivo: é conferida no C2X (PAN-124, `OrigemDaSigla`).
+    expect(loadApoloEnterpriseUnits).toHaveBeenCalledWith(["LBP"], { conferirNoC2x: true });
     expect(lerLinhas).not.toHaveBeenCalled();
   });
 });

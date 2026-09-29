@@ -29,7 +29,6 @@ vi.mock("@/lib/assinatura/quadro-db", () => ({
   // `assinante-de-termos-no-envio.test.ts`.
   assinanteDeTermosDaVendedora: async () => null,
   assinantesDoQuadro: (...args: unknown[]) => quadroDoEmpreendimento(...args),
-  empresasDoEmpreendimento: async () => ({ coordenador: null, vendedora: "ent-vendedora" }),
 }));
 
 const { enviarAcordoParaAssinatura } = await import("./envio-db");
@@ -89,10 +88,34 @@ function bancoComMemoria() {
   const envelopes: Record<string, unknown>[] = [];
   const escritas: { patch: Record<string, unknown>; tabela: string }[] = [];
 
+  // ⚠️ A FUNÇÃO DA 0195 (F1 da fonte única) ENTRA COMO ESCRITA DE TABELA PRÓPRIA: os carimbos
+  // mandam o estado por ela, e o teste confere o que foi pedido. O quadro volta como veio.
+  const rpc = (nome: string, args: Record<string, unknown>) => {
+    escritas.push({ patch: args, tabela: `rpc:${nome}` });
+    return Promise.resolve({
+      data: [
+        {
+          assinaram: 0,
+          estado_antes: "rascunho",
+          estado_depois: args.p_estado ?? "rascunho",
+          fechado: null,
+          mudou_estado: Boolean(args.p_estado),
+          quadro: args.p_quadro ?? [],
+          recusa: null,
+          total: 0,
+        },
+      ],
+      error: null,
+    });
+  };
+
   const from = (tabela: string) => {
     const builder: Record<string, unknown> = {};
     Object.assign(builder, {
       eq: () => builder,
+      in: () => builder,
+      is: () => builder,
+      not: () => builder,
       insert: (patch: Record<string, unknown>) => {
         escritas.push({ patch, tabela });
         if (tabela === "temis_envelopes") {
@@ -131,7 +154,7 @@ function bancoComMemoria() {
     return builder;
   };
 
-  return { envelopes, escritas, sb: { from } as unknown as SupabaseClient };
+  return { envelopes, escritas, sb: { from, rpc } as unknown as SupabaseClient };
 }
 
 /** O duplo da porta HTTP da Clicksign. */
@@ -513,5 +536,88 @@ describe("a lixeira do card e o envelope", () => {
     expect(bloco.toLowerCase()).toContain("assinatura");
     // E a recusa do servidor (409) deixou de ser silêncio: até hoje o botão só voltava ao normal.
     expect(bloco).toContain("window.alert(");
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
+// 25/09/2026 — A LINHA QUE NASCE DE UMA FALHA TAMBÉM PRECISA PODER SER CANCELADA
+// ────────────────────────────────────────────────────────────────────────────────────────────
+//
+// ⚠️ CANCELAR NA CLICKSIGN V3 É UM PATCH NO DOCUMENTO, não no envelope: a doc, lida em 25/09/2026,
+// diz na página "Editar Documento" `PATCH /envelopes/{envelope_id}/documents/{document_id}` e, nas
+// regras do DOCUMENTO, *"A alteração desse campo determina se deseja cancelar ou finalizar o
+// documento"* — no ENVELOPE o mesmo campo só ATIVA (foi de lá que veio o 400 `status deve estar em:
+// draft, running` que a Nívea recebeu).
+//
+// ⚠️ E É POR ISSO QUE `carimbarFalha` PASSOU A GRAVAR O `provedor_documento_id`. O envio que falha no
+// passo `notificar` deixa o envelope `running` — pago, permanente, com os convites NÃO enviados —, e é
+// justamente a linha que alguém vai querer cancelar depois. Até 25/09/2026 ela nascia com
+// `envelope_id` e a coluna do documento NULA, e nenhum outro caminho do código a preencheria: com a
+// exigência nova, `cancelarAssinaturaDoAcordo` recusaria essa linha para sempre.
+describe("a falha do notificar deixa a linha CANCELÁVEL", () => {
+  it("grava o id do documento ao lado do id do envelope", async () => {
+    const { escritas, sb } = bancoComMemoria();
+    const chamadas: { caminho: string; metodo: string }[] = [];
+
+    // O pior desfecho da casa, e o mais provável: tudo deu certo até ativar, e o convite não saiu.
+    const porta = async <T = unknown>(
+      caminho: string,
+      opcoes: { metodo?: string } = {},
+    ): Promise<T> => {
+      const metodo = opcoes.metodo ?? "GET";
+      chamadas.push({ caminho, metodo });
+      if (caminho.endsWith("/notifications")) throw new Error("Clicksign devolveu 500.");
+      if (metodo === "POST" && caminho === "/envelopes") return { data: { id: "env-9" } } as T;
+      if (caminho.endsWith("/documents")) return { data: { id: "doc-9" } } as T;
+      if (caminho.endsWith("/signers")) return { data: { id: "sig-1" } } as T;
+      return {} as T;
+    };
+
+    const saida = await enviarAcordoParaAssinatura(sb, acordo(), {}, { montarPdf: PDF_PRONTO, porta });
+
+    expect(saida.ok).toBe(false);
+    // Nada foi apagado: depois de ativado o envelope é permanente.
+    expect(chamadas.some((c) => c.metodo === "DELETE")).toBe(false);
+
+    const carimbo = escritas.filter((e) => e.tabela === "temis_envelopes" && "falha" in e.patch);
+    expect(carimbo).toHaveLength(1);
+    expect(carimbo[0]?.patch).toMatchObject({
+      envelope_id: "env-9",
+      // ⚠️ SEM ESTA COLUNA A LINHA FICA PRESA PARA SEMPRE: o cancelamento do acordo recusa quando ela
+      // é nula, e nenhum outro caminho do código a preenche depois.
+      provedor_documento_id: "doc-9",
+    });
+    // O estado só vira `aguardando` no `notificar`, que é o único desfecho em que se SABE que o
+    // envelope está ativo. E vai pela função da 0195 (F1 da fonte única), nunca por update direto.
+    expect(carimbo[0]?.patch).not.toHaveProperty("estado");
+    expect(escritas.filter((e) => e.tabela.startsWith("rpc:")).map((e) => e.patch)).toEqual([
+      expect.objectContaining({ p_estado: "aguardando", p_estado_cru: "clicksign:running" }),
+    ]);
+  });
+
+  // ⚠️ E QUANDO O RASCUNHO FOI APAGADO A COLUNA NÃO É ESCRITA, na mesma régua do `envelope_id`:
+  // apagar o rascunho leva o documento junto, e gravar o id de um documento que não existe mais
+  // mandaria o cancelamento futuro tentar um PATCH no nada.
+  it("rascunho apagado não grava id de documento nenhum", async () => {
+    const { escritas, sb } = bancoComMemoria();
+
+    const porta = async <T = unknown>(
+      caminho: string,
+      opcoes: { metodo?: string } = {},
+    ): Promise<T> => {
+      const metodo = opcoes.metodo ?? "GET";
+      if (caminho.endsWith("/signers") && metodo === "POST") throw new Error("Clicksign devolveu 422.");
+      if (metodo === "POST" && caminho === "/envelopes") return { data: { id: "env-9" } } as T;
+      if (caminho.endsWith("/documents")) return { data: { id: "doc-9" } } as T;
+      return {} as T;
+    };
+
+    const saida = await enviarAcordoParaAssinatura(sb, acordo(), {}, { montarPdf: PDF_PRONTO, porta });
+
+    expect(saida.ok).toBe(false);
+    const carimbo = escritas.filter((e) => e.tabela === "temis_envelopes" && "falha" in e.patch);
+    expect(carimbo).toHaveLength(1);
+    expect(carimbo[0]?.patch).not.toHaveProperty("provedor_documento_id");
+    expect(carimbo[0]?.patch).not.toHaveProperty("envelope_id");
   });
 });

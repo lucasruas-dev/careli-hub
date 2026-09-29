@@ -6,7 +6,7 @@ import {
 } from "@/lib/apolo/catalogo-empreendimentos";
 import { idsDoEmpreendimento } from "@/lib/apolo/empreendimento-equivalencia";
 import { createApoloAdminClient } from "@/lib/apolo/server";
-import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
+import { EXCLUDED_ENTERPRISE_IDS } from "@/lib/guardian/c2x-analytics";
 import { getHadesDbPool } from "@/lib/guardian/db";
 import {
   carregarCadastroDeEmpreendimentos,
@@ -142,12 +142,18 @@ export function codigosDoEscopo(entrada: {
  * C2X), com DUAS travas a mais (o LAB 31 no cadastro é o da leitura de 08/09/2026 registrada em
  * produtos-do-portal.test.ts; não medi o banco de novo em 16/09):
  *
- *   • ⚠️ O CÓDIGO EXCLUÍDO DO CATÁLOGO NÃO VOLTA PELA PORTA DOS FUNDOS. O LAB (31, o espelho da
- *     Lagoa Bonita) está no cadastro e em `EXCLUDED_ENTERPRISE_CODES`: o catálogo o tira de
+ *   • ⚠️ O EMPREENDIMENTO EXCLUÍDO DO CATÁLOGO NÃO VOLTA PELA PORTA DOS FUNDOS. O LAB (31, o espelho
+ *     da Lagoa Bonita) está no cadastro e em `EXCLUDED_ENTERPRISE_IDS`: o catálogo o tira de
  *     propósito, e por isso ele "não existe no C2X" para `soDoPanteon`. A sessão do /gurgel carrega
  *     o 31; sem esta trava o LAB viraria código em toda rota e o consolidado contaria a Lagoa Bonita
  *     duas vezes (espelho + glebas). Produto nascido no Panteon (id >= 100000) não cai nesta trava,
  *     mesmo que alguém o batize com uma dessas siglas.
+ *
+ *     ⚠️ A TRAVA É PELO ID, NÃO PELA SIGLA DO CADASTRO (PAN-124, 25/09/2026). Até aqui ela comparava o
+ *     `codigo` do cadastro com `EXCLUDED_ENTERPRISE_CODES` (TSC, SDT, LAB, LAG), e a sigla é o que muda
+ *     num renome: o "LAG" já não casa com nada desde 16/07/2026. O resultado é o mesmo de antes,
+ *     medido no cadastro de produção em 25/09/2026: o LAB é o 31 (e é a única linha com uma dessas
+ *     siglas), e não há linha para o 2 (SDT) nem para o 34 (TSC).
  *   • ⚠️ C2X FORA DO AR (catálogo vazio, sem cache): não há como saber quem é do legado, e o
  *     cadastro responde por TODOS os ids da sessão. Não amplia: o id continua saindo da sessão, e o
  *     código do cadastro é o mesmo do C2X para o mesmo id (o semeador copiou do legado; produto novo
@@ -166,11 +172,13 @@ export function linhasSoDoPanteon(entrada: {
   if (!cadastro || cadastro.length === 0) return [];
 
   const idsNoC2x = new Set(catalogo.flatMap((emp) => emp.stageIds.map((id) => String(id).trim())));
-  const excluidos = new Set(EXCLUDED_ENTERPRISE_CODES.map((code) => code.toUpperCase()));
 
   const ids = new Set(
     soDoPanteon(cadastro, [...entrada.permitidos], idsNoC2x)
-      .filter((p) => ehIdDoPanteon(p.enterpriseId) || !excluidos.has(p.codigo.toUpperCase()))
+      .filter(
+        (p) =>
+          ehIdDoPanteon(p.enterpriseId) || !EXCLUDED_ENTERPRISE_IDS.includes(Number(p.enterpriseId)),
+      )
       .map((p) => p.enterpriseId),
   );
 
@@ -394,6 +402,68 @@ async function donoNoPanteon(id: string): Promise<null | string> {
 
   const dono = String(data?.enterprise_id ?? "").trim();
   return dono || null;
+}
+
+/** O que `idsDosCodigosNoCadastro` responde. */
+export type IdsDosCodigos = {
+  /** Os ids (do C2X, como `hercules_unidades.enterprise_id` guarda) dos códigos pedidos. */
+  ids: string[];
+  /** Os códigos que ficaram sem id (sem linha no cadastro e sem catálogo para a reserva). Aviso interno. */
+  semId: string[];
+};
+
+/**
+ * Os IDS dos CÓDIGOS já autorizados, para a leitura única do contrato (F4 da fonte única), que filtra
+ * `hercules_unidades.enterprise_id` e não sigla.
+ *
+ * ⚠️ O CADASTRO DO PANTEON PRIMEIRO, O CATÁLOGO DO C2X SÓ DE RESERVA. A leitura única não fala com o C2X;
+ * o catálogo só entra para os códigos que o cadastro não tem com id (medido em 28/09/2026: ACT, SDT e
+ * TSC, plano 0.17). ⚠️ CATÁLOGO FORA DO AR NÃO DERRUBA A TELA: segue com o cadastro, e esses códigos
+ * ficam de fora com o aviso interno (`semId`), em vez de 503 para o recorte inteiro.
+ *
+ * ⚠️ É TRADUÇÃO, NÃO PERMISSÃO. Os `codes` já saíram do escopo da sessão; o id ainda precisa estar entre
+ * os que a sessão alcança (`idsDaSessao`), a mesma trava de `soDoPanteon`. `null` = sem trava (só o
+ * script de paridade, que compara o acervo inteiro e não tem sessão).
+ */
+export function idsDosCodigosNoCadastro(
+  cadastro: readonly Pick<LinhaDoCadastro, "c2xEnterpriseId" | "codigo">[] | null,
+  catalogo: readonly Pick<EmpreendimentoDoCatalogo, "codes" | "stageIds">[],
+  codes: readonly string[],
+  idsDaSessao: readonly string[] | null,
+): IdsDosCodigos {
+  const alcance = idsDaSessao ? new Set(idsDaSessao.map((id) => String(id).trim())) : null;
+  const pedidos = [...new Set(codes.map((code) => String(code ?? "").trim().toUpperCase()).filter(Boolean))];
+
+  const doCadastro = new Map<string, string[]>();
+  for (const linha of cadastro ?? []) {
+    const codigo = String(linha.codigo ?? "").trim().toUpperCase();
+    const id = String(linha.c2xEnterpriseId ?? "").trim();
+    if (!codigo || !id) continue;
+    doCadastro.set(codigo, [...(doCadastro.get(codigo) ?? []), id]);
+  }
+  const doCatalogo = new Map<string, string[]>();
+  for (const emp of catalogo) {
+    emp.codes.forEach((code, i) => {
+      const codigo = String(code ?? "").trim().toUpperCase();
+      const id = String(emp.stageIds[i] ?? "").trim();
+      if (!codigo || !id) return;
+      doCatalogo.set(codigo, [...(doCatalogo.get(codigo) ?? []), id]);
+    });
+  }
+
+  const ids = new Set<string>();
+  const semId: string[] = [];
+  for (const codigo of pedidos) {
+    const candidatos = (doCadastro.get(codigo) ?? doCatalogo.get(codigo) ?? []).filter(
+      (id) => !alcance || alcance.has(id),
+    );
+    if (candidatos.length === 0) {
+      semId.push(codigo);
+      continue;
+    }
+    for (const id of candidatos) ids.add(id);
+  }
+  return { ids: [...ids], semId };
 }
 
 /** Para quem não tem o empreendimento, ele não existe. 404, nunca 403. */

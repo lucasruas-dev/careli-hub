@@ -78,7 +78,11 @@ describe("o dado que falta vira FRASE, e o envio não sai", () => {
 
     expect(impedimento).toContain("INCORPORADOR");
     expect(impedimento).toContain("Quadro de assinatura do empreendimento");
-    expect(impedimento).toContain("representante legal");
+    // ⚠️ ATÉ 25/09/2026 A FRASE DIZIA "e a empresa não tem representante legal", porque o envio
+    // ainda herdava o representante da ficha da PJ. A herança saiu: mandar o operador ao cadastro da
+    // empresa seria mandá-lo a um lugar que o envio não lê mais.
+    expect(impedimento).toContain("cadastrada como vendedora no quadro");
+    expect(impedimento).not.toContain("a empresa não tem representante legal");
   });
 
   // ⚠️ A FRASE TEM DE NOMEAR O CAMPO NOVO, E DIZER QUE ELE NÃO EXIGE PROCURAÇÃO. Lucas

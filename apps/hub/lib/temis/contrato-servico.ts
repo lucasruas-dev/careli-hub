@@ -6,6 +6,7 @@ import { foraDoEscopo } from "@/lib/apolo/incorporador/escopo";
 import { MENSAGEM_PRODUTO_SO_CONSULTA } from "@/lib/apolo/incorporador/operacao-do-produto";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { moverCardDaTemis } from "@/lib/assinatura/estado-db";
+import { recusaDaCadDoAtoDoContrato } from "@/lib/hercules/cad-para-contrato";
 
 import {
   alcanceDaMinuta,
@@ -538,6 +539,34 @@ export async function gerarContratoDaProposta(
   // produto que o portal opera: gerar é escrita.
   const recusa = await recusaDaPropostaEMinuta(sb, ator, { minutaId, propostaId }, "escrever");
   if (recusa) return recusa;
+
+  // ── A CAD DO TITULAR TEM QUE ESTAR APROVADA ─────────────────────────────
+  //
+  // Lucas (26/09/2026): *"faz uma barra, para enviar para contrato precisa da cad validada"*.
+  //
+  // ⚠️ AQUI FECHA AS DUAS ROTAS DE UMA VEZ: esta função é chamada por
+  // `app/api/temis/contrato/gerar/route.ts` (hub, coordenação) e pela espelho
+  // `app/api/incorporador/temis/contrato/gerar/route.ts` (portal, cookie `apolo_inc`), e a do portal
+  // é a mais exposta, porque o cabeçalho dela declara que NÃO HÁ RÉGUA DE PAPEL no portal.
+  //
+  // ⚠️ MEDIDO EM 26/09/2026: `grep -rln credenciad` em `lib/temis` e `lib/assinatura` devolvia UM
+  // arquivo só, `dados-do-contrato.ts`, e ali a esteira é lida apenas para NOMEAR o corretor no
+  // contrato de corretagem. Nenhuma porta da Têmis conferia CAD.
+  //
+  // ⚠️ ANTES DE MONTAR, e não depois: antes do Chromium, do bucket e de `moverCardDaTemis`. Um PDF
+  // guardado sobre uma CAD não aprovada é papel com o nome da Careli em cima de uma venda que a
+  // coordenação não liberou — e ele sobrevive à recusa, porque a gaveta não se desfaz.
+  // ⚠️ E SÓ QUANDO O ATO É DA COMPRA E VENDA. `recusaDaCadDoAtoDoContrato` confere o TIPO do card
+  // antes de barrar, e isso não é zelo: `cancelamento`, `cancelamento_correcao`, `cessao` e `distrato`
+  // nascem com o `propostaId` DA VENDA (`lib/temis/cancelar-contrato-servico.ts:685`), então uma CAD em
+  // revisão barraria a geração do TERMO que DESFAZ a venda — o oposto do que o Lucas pediu, e trava
+  // retroativa na saída, que a regra da casa proíbe sem decisão dele. É o mesmo recorte que
+  // `marcarAtividade` já tinha (`lib/temis/trabalhos-db.ts:1050`), e que faltava nesta porta e na do
+  // envio.
+  const recusaDaCad = await recusaDaCadDoAtoDoContrato(sb, propostaId, "gerar_contrato");
+  if (recusaDaCad) {
+    return NextResponse.json({ erro: recusaDaCad.erro }, { status: recusaDaCad.status });
+  }
 
   const montado = await montarContratoDaProposta(sb, { minutaId, propostaId });
   if (!montado.ok) {

@@ -13,8 +13,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { type EnvelopeDaProposta, envelopeQueSegura } from "@/lib/assinatura/envio-db";
+import { lerQuadro } from "@/lib/assinatura/registro-db";
 // A régua de "esta venda está morta" mora num lugar só, e é pura — ver `VENDA_DESFEITA`.
 import { VENDA_DESFEITA } from "@/lib/hercules/acao-de-cancelamento";
+import {
+  recusaDaCadDaProposta,
+  recusaDaCadParaContrato,
+} from "@/lib/hercules/cad-para-contrato";
 import {
   motivoDoReflexo,
   refletirCardNaVenda,
@@ -453,6 +458,8 @@ function cardEsperaAssinatura(trabalho: TrabalhoDoBoard): boolean {
 
 /** O envelope, do jeito que o contador precisa dele: a régua do reenvio mais quem foi convidado. */
 type EnvelopeParaContar = EnvelopeDaProposta & {
+  /** A finalidade (0195). Só filtra a D4Sign; a Clicksign continua como estava. */
+  finalidade?: null | string;
   proposta_id: null | string;
   /** O `document.key` da Clicksign — o elo que casa com os eventos. Ver `historicoDosEnvelopes`. */
   provedor_documento_id: null | string;
@@ -486,7 +493,8 @@ type EnvelopeParaContar = EnvelopeDaProposta & {
  * ontem, e um quadro em branco por causa de um selo seria uma troca ruim — a mesma lição de
  * `contratosDasPropostas`.
  */
-async function contarAssinaturasDasPropostas(
+// (Exportada só para o teste dos filtros do selo, `selo-de-assinatura.test.ts`; quem chama é o Board.)
+export async function contarAssinaturasDasPropostas(
   sb: SupabaseClient,
   propostaIds: readonly string[],
 ): Promise<Map<string, ContagemDeAssinaturas>> {
@@ -497,31 +505,67 @@ async function contarAssinaturasDasPropostas(
   const envelopes = await envelopesDasPropostas(sb, ids);
   if (envelopes.size === 0) return porProposta;
 
-  const historicos = await historicoDosEnvelopes(sb, [...envelopes.values()]);
+  // ⚠️ OS EVENTOS SÓ EXISTEM NA CLICKSIGN (o webhook é dela). O envelope da D4Sign conta só pelas marcas
+  // do quadro, que o espelho grava pelo `/list` (F3 da fonte única).
+  const historicos = await historicoDosEnvelopes(
+    sb,
+    [...envelopes.values()].filter((e) => e.provedor !== "d4sign"),
+  );
 
   for (const [propostaId, envelope] of envelopes) {
-    const total = Array.isArray(envelope.signatarios) ? envelope.signatarios.length : 0;
-    // ⚠️ "0/0" NÃO É CONTADOR, É RUÍDO. Envelope sem signatários congelados é envio que não chegou
-    // a montar a lista; o card fica sem selo, que é a frase certa para "não sei de quantos".
-    if (total === 0) continue;
-
-    const historico = historicos.get(envelope.id);
-    // ⚠️ `assinado` MANDA NA CONTAGEM. Ele é a palavra da casa para "todos assinaram" (a tradução
-    // cuida de `closed`, que NÃO é sinônimo — ATENÇÃO 3 da 0149), e um evento perdido no caminho
-    // faria o card dizer "4/5" embaixo de um contrato fechado. Para menos, o estado não sabe nada:
-    // `parcial` não diz quantos, e por isso não corrige nada aqui.
-    const assinaram =
-      envelope.estado === "assinado" ? total : Math.min(historico?.assinaram ?? 0, total);
-
-    porProposta.set(propostaId, {
-      assinaram,
-      conviteNaoEntregue: historico?.conviteNaoEntregue ?? false,
-      estado: envelope.estado,
-      total,
-    });
+    const contagem = contagemDoSelo(envelope, historicos.get(envelope.id));
+    if (contagem) porProposta.set(propostaId, contagem);
   }
 
   return porProposta;
+}
+
+/**
+ * O SELO "x/y" DE UM ENVELOPE. Puro.
+ *
+ * ⚠️ DESDE A F3 DA FONTE ÚNICA O NÚMERO SAI DAS MARCAS DO QUADRO (`assinado_em` de cada pessoa, escrito só
+ * pela função da 0195), DOS DOIS PROVEDORES. Sem isso o card da D4Sign levado a "Em assinatura" pelo
+ * espelho mostraria "0/N" até a F6: a D4Sign não tem evento guardado para o histórico contar.
+ *
+ * ⚠️ O HISTÓRICO DOS PAYLOADS (Clicksign) FICA COMO PISO ATÉ A F6 ("Board sem payload"): nos quadros
+ * gravados antes do reprocessamento da F1 as marcas ainda não existem, e o selo não pode cair de "2/3"
+ * para "0/3" na virada. Vale o MAIOR dos dois, nunca a soma (são as mesmas pessoas).
+ *
+ * ⚠️ O CONVITE QUE VOLTOU também vem das marcas (`convite_falhou_em` sem assinatura e sem entrega
+ * posterior), além do histórico.
+ */
+export function contagemDoSelo(
+  envelope: { estado: string; signatarios: unknown },
+  historico: undefined | { assinaram: number; conviteNaoEntregue: boolean },
+): ContagemDeAssinaturas | null {
+  const quadro = lerQuadro(envelope.signatarios);
+  const total = quadro.length;
+  // ⚠️ "0/0" NÃO É CONTADOR, É RUÍDO. Envelope sem signatários congelados é envio que não chegou
+  // a montar a lista; o card fica sem selo, que é a frase certa para "não sei de quantos".
+  if (total === 0) return null;
+
+  const pelasMarcas = quadro.filter((item) => Boolean(item.assinado_em)).length;
+  const conviteVoltou = quadro.some((item) => {
+    if (!item.convite_falhou_em || item.assinado_em) return false;
+    const falhou = Date.parse(item.convite_falhou_em);
+    const entregue = item.convite_entregue_em ? Date.parse(item.convite_entregue_em) : Number.NaN;
+    return Number.isNaN(entregue) || entregue < falhou;
+  });
+
+  // ⚠️ `assinado` MANDA NA CONTAGEM. Ele é a palavra da casa para "todos assinaram" (a tradução
+  // cuida de `closed`, que NÃO é sinônimo — ATENÇÃO 3 da 0149), e um evento perdido no caminho
+  // faria o card dizer "4/5" embaixo de um contrato fechado.
+  const assinaram =
+    envelope.estado === "assinado"
+      ? total
+      : Math.min(Math.max(pelasMarcas, historico?.assinaram ?? 0), total);
+
+  return {
+    assinaram,
+    conviteNaoEntregue: (historico?.conviteNaoEntregue ?? false) || conviteVoltou,
+    estado: envelope.estado,
+    total,
+  };
 }
 
 /**
@@ -551,7 +595,7 @@ async function envelopesDasPropostas(
       // As mesmas colunas da guarda do envio, mais `signatarios` (o total), `proposta_id` (o elo
       // com o card) e `provedor_documento_id` (o elo com os eventos — ver `historicoDosEnvelopes`).
       .select(
-        "criado_em, envelope_id, estado, falha, id, proposta_id, provedor, provedor_documento_id, signatarios",
+        "criado_em, envelope_id, estado, falha, finalidade, id, proposta_id, provedor, provedor_documento_id, signatarios",
       )
       .eq("workspace_id", "careli")
       .in("proposta_id", lote)
@@ -568,6 +612,9 @@ async function envelopesDasPropostas(
 
     for (const linha of (data ?? []) as EnvelopeParaContar[]) {
       if (!linha.proposta_id) continue;
+      // ⚠️ DA D4SIGN, SÓ O ENVELOPE DE CONTRATO (F3 da fonte única): o espelho grava também o que o C2X
+      // mandou com tipo não mapeado (`finalidade` nula), e ele não é o contrato deste card.
+      if (linha.provedor === "d4sign" && linha.finalidade !== "contrato") continue;
       const lista = porProposta.get(linha.proposta_id) ?? [];
       lista.push(linha);
       porProposta.set(linha.proposta_id, lista);
@@ -958,6 +1005,39 @@ export async function abrirTrabalho(
 }
 
 /**
+ * A CAD do card ABERTO À MÃO, conferido pelos campos dele.
+ *
+ * ⚠️ O CAMINHO QUE A BARRA TINHA DEIXADO INERTE. A abertura livre de `POST /api/temis/trabalhos`
+ * (`lib/temis/trabalho-servico.ts:524` a `:540`) grava `cliente_cpf` e `enterprise_id` e NÃO grava
+ * `proposta_id`; `recusaDaCadDaProposta` devolve `null` sem proposta, então um card de `tipo: contrato`
+ * aberto pelo quadro atravessava Contrato e Em assinatura sem que a CAD fosse perguntada uma vez. E
+ * `contrato` está entre os tipos abríveis, por uma rota guardada por `authorizeApoloRead` — que inclui
+ * `operator` e `viewer` (`lib/apolo/auth.ts:24`).
+ *
+ * ⚠️ SEM CPF, PASSA COM LOG: não há pessoa para conferir. É a mesma disciplina de
+ * `recusaPorVendaDesfeita` com o elo quebrado — deixa passar e grita, em vez de congelar um card sem
+ * ter medido nada.
+ */
+async function recusaDaCadDoCardSemProposta(
+  supabase: SupabaseClient,
+  linha: LinhaCrua,
+): Promise<null | { erro: string; status: 409 | 503 }> {
+  const documento = String(linha.cliente_cpf ?? "").trim();
+  if (!documento) {
+    console.error("[temis][cad] card de contrato sem proposta E sem CPF: a CAD não foi conferida", {
+      empreendimento: linha.enterprise_id ?? null,
+      trabalho: linha.id,
+    });
+    return null;
+  }
+  return recusaDaCadParaContrato(
+    supabase,
+    { documento, enterpriseId: linha.enterprise_id ?? null },
+    "marcar_atividade",
+  );
+}
+
+/**
  * Marca (ou desmarca) uma atividade — e faz o card andar quando o estágio acaba.
  *
  * ⚠️ DESMARCAR NÃO FAZ O CARD VOLTAR. Quem já passou de estágio e desmarca uma atividade está
@@ -976,7 +1056,22 @@ export async function marcarAtividade(input: {
   quem?: null | string;
   /** O nome de quem marcou (`nomeDoAutor`). Nulo quando não há nome: não se inventa autor. */
   quemNome?: null | string;
-}): Promise<{ erro: string; ok: false } | { andou: boolean; estagio: EstagioDoTrabalho; ok: true }> {
+}): Promise<
+  | { andou: boolean; estagio: EstagioDoTrabalho; ok: true }
+  /**
+   * ⚠️ O `status` VIAJA PORQUE A BARRA DA CAD DISTINGUE 409 DE 503, E ESTA PORTA JOGAVA A DISTINÇÃO
+   * FORA. `lib/temis/trabalho-servico.ts` traduzia todo `!ok` para HTTP 400, então a frase de
+   * fail-closed (*"Não foi possível conferir agora se a CAD do titular está aprovada. Nada foi movido;
+   * tente de novo em instantes"*) saía com código de erro DO CLIENTE: qualquer retry ou monitor que
+   * separa pedido inválido de falha temporária classificava um PostgREST oscilando como pedido errado,
+   * e quem lê o log concluía que a tela mandou algo inválido. As outras três portas já honram a
+   * diferença (`app/api/incorporador/venda/contrato/route.ts:227`, `lib/temis/contrato-servico.ts:561`,
+   * `lib/assinatura/envio-db.ts:117`), e a mesma barra respondia de dois jeitos dependendo da porta.
+   *
+   * Ausente = 400, que é o que todos os erros desta função sempre foram.
+   */
+  | { erro: string; ok: false; status?: 400 | 409 | 503 }
+> {
   const supabase = createApoloAdminClient();
   if (!supabase) return { erro: "sem acesso ao banco", ok: false };
 
@@ -1014,6 +1109,62 @@ export async function marcarAtividade(input: {
       erro: `esta é a última atividade antes de Concluído, e quem conclui o ${depois.tipo === "distrato" ? "distrato" : "cancelamento"} é o botão Concluir, que derruba a venda e solta o lote. Use Concluir no card; nada foi marcado.`,
       ok: false,
     };
+  }
+
+  // ── O CARD NÃO ENTRA EM CONTRATO NEM EM ASSINATURA SEM A CAD APROVADA ──
+  //
+  // Lucas (26/09/2026): *"faz uma barra, para enviar para contrato precisa da cad validada"*.
+  //
+  // ⚠️ ESTA É A PORTA QUE FOGE DE `moverCardDaTemis`, E ELA É A MAIS BARATA DE ABRIR. Barrar só o
+  // Gerar e o Enviar deixaria o card entrar em `contrato` por MARCAÇÃO: `proximoEstagio` leva
+  // `analise` → `contrato` e `refletirCardNaVenda` leva a VENDA junto, na mesma chamada, sem passar
+  // por `moverCardDaTemis`. E a rota dela, `POST /api/temis/trabalhos`, é guardada por
+  // `authorizeApoloRead`, o papel MAIS BAIXO da casa (admin, leader, operator E viewer): quem só tem
+  // direito de CONFERIR fazia o card entrar em Contrato. Em 08/09/2026 a casa tirou o Gerar desse
+  // portão depois do Lucas dizer *"estou como coordenador, nao pode ter esse botao de gerar
+  // contrato"*; esta porta ficou para trás.
+  //
+  // ⚠️ UMA BARRA QUE COBRE UMA PORTA E DEIXA OUTRA ABERTA É PIOR QUE NENHUMA, porque dá a impressão
+  // de estar resolvido: o quadro mostraria o card em Contrato e a venda em contrato sem que ninguém
+  // tivesse passado por barra alguma.
+  //
+  // ⚠️ SÓ QUANDO O CARD ANDA, E SÓ PARA ESSES DOIS DESTINOS. Marcar ou desmarcar sem fechar o estágio
+  // é correção de registro, e travá-la tiraria de quem arruma card antigo a correção que nunca fez
+  // mal a ninguém — a mesma disciplina de `recusaPorVendaDesfeita` com os cards encerrados. E os
+  // destinos depois da assinatura (`prazo_legal`, `faturado`) não são barrados: ali o contrato já foi
+  // assinado, o fato já aconteceu, e a regra nova não alcança o passado.
+  //
+  // ⚠️ E SÓ NO CARD DE `contrato`, QUE É A COMPRA E VENDA. Isto não é detalhe: `estagiosDoTipo`
+  // (`lib/temis/trabalhos.ts:164`) dá um estágio chamado `contrato` TAMBÉM ao cancelamento, ao
+  // distrato, à cessão e à correção de cancelamento — lá ele quer dizer "gerar o termo"
+  // (`trabalhos.ts:243`), e não "vender". Sem este recorte, uma CAD em revisão travaria o
+  // CANCELAMENTO de uma venda, que é o oposto do que o Lucas pediu: ele barrou a venda nascer, não a
+  // venda ser desfeita. Dois testes da casa que já existiam pegaram exatamente este excesso antes de
+  // ele sair daqui (`lib/temis/marcar-atividade-reflexo.test.ts`).
+  //
+  // ⚠️ E O CARD SEM PROPOSTA É CONFERIDO PELOS CAMPOS DELE MESMO. `recusaDaCadDaProposta` devolve
+  // `null` quando o `propostaId` é vazio (`cad-para-contrato.ts`), e a abertura livre de
+  // `POST /api/temis/trabalhos` NÃO passa `propostaId` (`lib/temis/trabalho-servico.ts:524` a `:540`)
+  // embora passe `clienteCpf` e `empreendimentoId` — que é exatamente o par que
+  // `recusaDaCadParaContrato` sabe conferir. E `contrato` está na lista de tipos abríveis
+  // (`trabalho-servico.ts:412` a `:418`), guardada por `authorizeApoloRead` (admin, leader, operator E
+  // viewer). Ou seja: a barra ficava INERTE no único caminho em que ela tinha os dados na mão. Não sai
+  // PDF nem envelope por ali (os dois exigem proposta), mas o quadro do jurídico passava a mostrar um
+  // contrato em assinatura de um cliente que ninguém credenciou — e a impressão de estar resolvido é
+  // exatamente o que esta régua diz ser pior que não ter barra.
+  //
+  // ⚠️ SEM CPF NO CARD, PASSA COM LOG. Aí não há pessoa para conferir, e inventar uma recusa travaria
+  // os quatro cards antigos do Garden e da Lavra que nasceram antes de qualquer elo.
+  const entraNoContratoDaVenda =
+    depois.tipo === "contrato" && (seguinte === "contrato" || seguinte === "assinatura");
+  if (entraNoContratoDaVenda) {
+    const linha = atual as LinhaCrua;
+    const recusaDaCad = trabalho.propostaId
+      ? await recusaDaCadDaProposta(supabase, trabalho.propostaId, "marcar_atividade")
+      : await recusaDaCadDoCardSemProposta(supabase, linha);
+    if (recusaDaCad) {
+      return { erro: recusaDaCad.erro, ok: false, status: recusaDaCad.status };
+    }
   }
 
   const mudanca: Record<string, unknown> = {

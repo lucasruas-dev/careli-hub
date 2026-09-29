@@ -3,8 +3,14 @@
 // corretor, fornecedor...) reusam esta camada depois. Escreve coordenadamente nas tabelas
 // apolo_* (via service role; RLS so libera SELECT), espelhando o que o sync do C2X ja faz.
 // Ver [[project_apolo_cadastro_prospect]], [[project_apolo_crm_grafo]].
+import { depoisDaResposta } from "@/lib/apolo/depois-da-resposta";
 import { conflitoDeEmailRepetido } from "@/lib/apolo/email-unico";
 import { lerCadsDaEsteira, normalizarEnterpriseId } from "@/lib/apolo/esteira-cad";
+import {
+  expansorDeEmpreendimentos,
+  registrarHabilitacaoPeloCadastro,
+  separarVinculosNovos,
+} from "@/lib/apolo/habilitacao-pelo-cadastro";
 import { conflitoDeNucleoFamiliar, mensagemDeConflito } from "@/lib/apolo/nucleo-familiar";
 import { normalizarProfissaoLivre } from "@/lib/apolo/profissao";
 import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
@@ -188,9 +194,75 @@ export type AutorDeForaDoHub = {
  * (Até 16/09/2026 existia `recusar`, que respondia 409 "fale com a central" para quem já tinha
  * ficha. Saiu com a decisão acima: o portal passou a aproveitar a ficha.)
  */
+/**
+ * Quem entrega o próximo código do corretor autônomo (a sequência do banco, migration 0193).
+ *
+ * ⚠️ É UMA FUNÇÃO, E NÃO O CÓDIGO PRONTO, para o número ser consumido DEPOIS das travas. O `nextval`
+ * é irreversível: pedido antes, todo cadastro que as travas recusam (e-mail de outra pessoa, núcleo
+ * familiar, CAD duplicada) queima um número, e a numeração que o Lucas pediu (*"CA-0001, CA-0002"*)
+ * nasce salteada sem nada que explique os buracos. Aqui o código é pedido uma vez, já passadas todas
+ * as recusas e imediatamente antes de montar a linha da ficha.
+ */
+export type GeradorDoCodigoDoCorretor = () => Promise<
+  { codigo: string; ok: true } | { mensagem: string; ok: false }
+>;
+
 export type OpcoesDoCadastro = {
   autor?: AutorDeForaDoHub | null;
+  /**
+   * ESTE É O CADASTRO INTERNO DO CORRETOR AUTÔNOMO (27/09/2026). Lucas: *"Quem fara esse cadastro e
+   * time nosso interno"*.
+   *
+   * ⚠️ A DECISÃO VEM DA PORTA, NUNCA DO CORPO. É esta opção (e não `input.role`) que solta as duas
+   * travas do autônomo, porque `role` é `payload.role` — o JSON de quem manda o pedido. Se o papel
+   * decidisse, qualquer operador com sessão de leitura do Apolo trocaria `?tipo=prospect` por
+   * `?tipo=corretor` e contornaria pela URL a recusa de CAD duplicada, que foi comprada com o
+   * incidente dos "dois Pedro Alexandro". O papel ainda tem de ser `corretor`: porta e papel
+   * precisam concordar.
+   */
+  cadastroDeCorretorAutonomo?: boolean;
+  /**
+   * A ficha que é do MESMO DONO desta que está nascendo: o e-mail dela não conta contra ela.
+   *
+   * ⚠️ EXISTE PARA O DONO DA IMOBILIÁRIA. A trava de e-mail único guarda a regra do Lucas
+   * (07/09/2026) *"não podemos ter o mesmo e-mail para duas pessoas"*, e o risco que ela evita é o
+   * do D4Sign, onde o signatário É o e-mail. Só que o dono que se cadastra como corretor usando o
+   * endereço da própria empresa NÃO é duas pessoas, e a trava o lia assim: em 26/09/2026 o Israel,
+   * da CASAVISTA, tentou entrar oito vezes no CAD público e tomou 500 em todas. Medido no mesmo
+   * dia: 17 dos 55 corretores declarados sem ficha própria estavam presos por este mesmo caminho.
+   *
+   * ⚠️ É UMA FICHA SÓ, e nomeada por quem chama. Não afrouxa nada entre pessoas diferentes: o
+   * e-mail que estiver em QUALQUER outra ficha continua recusando. Lucas (26/09/2026), ao decidir:
+   * a ficha da própria imobiliária não conta contra o corretor dela.
+   */
+  fichaDoMesmoDono?: null | string;
   fichaExistente?: "acrescentar" | "anexar";
+  /**
+   * O CÓDIGO DO CORRETOR AUTÔNOMO, gerado pela sequência do banco (lib/apolo/codigo-do-corretor.ts).
+   *
+   * ⚠️ VEM DA PORTA, NUNCA DO CORPO, pelo mesmo motivo do `autor`: as rotas espalham o JSON da
+   * requisição em `input`, e um código dentro dele seria escolhido por quem manda o pedido — dois
+   * autônomos com o mesmo código, ou o código de outro. Só o servidor escreve aqui.
+   *
+   * ⚠️ SÓ VALE COM `cadastroDeCorretorAutonomo` E `role: "corretor"`. Lucas (27/09/2026): o código é
+   * o que diz que a pessoa é autônoma; num prospect ele não significaria nada e a ficha passaria a
+   * mentir.
+   *
+   * A ficha que JÁ tem código guarda o dela: a CAD antiga dele já circulou com aquele número.
+   */
+  codigoDoCorretor?: GeradorDoCodigoDoCorretor | null;
+  /**
+   * (24/09/2026) O cadastro é do OPERADOR DA CARELI (o wizard do hub), e a imobiliária que ele grava
+   * nasce habilitada (regra de 17/08). Ligado: o vínculo de empreendimento `verified` NOVO grava a
+   * auditoria `credenciamento_habilitado` e avisa o coordenador do empreendimento; o que a ficha já
+   * tinha habilitado não é gravado nem avisado de novo. Ver lib/apolo/habilitacao-pelo-cadastro.ts.
+   *
+   * ⚠️ AS PORTAS PÚBLICAS NÃO LIGAM, e não podem ligar: elas também passam por aqui com o papel
+   * `imobiliaria`, mas REBAIXAM o papel para `review` e o vínculo para `pending` logo depois
+   * (/api/publico/imobiliaria/cadastro e /credenciar). Avisar ali diria ao coordenador que uma
+   * imobiliária que ninguém validou está habilitada. Ausente = desligado.
+   */
+  habilitacaoInterna?: boolean;
 };
 
 /**
@@ -413,6 +485,31 @@ export async function createApoloEntity(
   // A porta de fora (portal do incorporador): aproveita a ficha existente sem trocar nada dela, e
   // nenhuma recusa devolve o id de ficha da Careli (ver `OpcoesDoCadastro.fichaExistente`).
   const acrescentar = opcoes.fichaExistente === "acrescentar";
+  // O CADASTRO DO CORRETOR AUTÔNOMO NÃO É UMA CAD (27/09/2026).
+  //
+  // Lucas: *"ele nao sera vinculado a uma imobiliaria, ele sera uma entidade"*. Ele não tem
+  // empreendimento, não entra na esteira (regra de 05/08: a esteira valida documento de COMPRADOR) e
+  // não disputa vaga em loteamento nenhum. As duas travas abaixo tratam disso, e só disso.
+  //
+  // ⚠️ REGISTRADO PARA QUEM VIER DEPOIS (fatia 2): o CLIENTE deste autônomo ainda NÃO consegue ter
+  // CAD. A esteira só é gravada com imobiliária (lib/apolo/cadastro-salvar.ts, o `if` do vínculo), e
+  // sem CAD a reserva não vira proposta. Cadastrar o autônomo, portanto, ainda não fecha venda: falta
+  // habilitá-lo empreendimento a empreendimento e deixar a esteira aceitar corretor autônomo no lugar
+  // da imobiliária. Decisão do Lucas de 27/09/2026 para DEPOIS desta fatia.
+  //
+  // ⚠️ QUEM MAIS PASSA AQUI COM ESTE PAPEL: o corretor DA IMOBILIÁRIA, pelo CAD público
+  // (`criarCorretor` em lib/publico/cad/dados.ts). Ele não liga esta opção nem manda gerador de
+  // código, então nada abaixo muda o comportamento dele.
+  //
+  // ⚠️ A PORTA DECIDE, E O PAPEL CONFIRMA. `input.role` é `payload.role`, o corpo do pedido: se ele
+  // soltasse as travas sozinho, o operador que tomasse "Este CPF já tem CAD cadastrada" trocaria
+  // `?tipo=prospect` por `?tipo=corretor`, reenviaria e passaria — contornando pela URL a recusa que
+  // impediu os "dois Pedro Alexandro". A opção é escrita só pela rota do hub (lib/apolo/
+  // cadastro-salvar.ts), junto do `autor` e pelo mesmo motivo. O portal do incorporador não chega
+  // aqui com papel nenhum além de prospect (lib/apolo/incorporador/cadastro-do-portal.ts, o `if` do
+  // `payload?.role !== "prospect"`).
+  const cadastroDeCorretor =
+    opcoes.cadastroDeCorretorAutonomo === true && input.role === "corretor";
   const isPj = input.persona === "pj";
   const identidade = input.identidade ?? {};
   const empresa = input.empresa ?? {};
@@ -546,7 +643,18 @@ export async function createApoloEntity(
           // token) e o wizard interno só grava esteira quando o operador escolheu um.
           (cadsExistentes[0] ?? null);
 
-      if (jaTemNesteEmpreendimento) {
+      // ⚠️ CAD DE COMPRADOR NÃO RECUSA O CADASTRO DO CORRETOR AUTÔNOMO (27/09/2026). Ele não tem
+      // empreendimento, então cairia sempre no ramo conservador acima: a primeira CAD que a pessoa
+      // tenha em QUALQUER loteamento barraria o cadastro dela como corretor. Medido em 27/09/2026:
+      // dos 131 corretores que já existem, 26 têm linha em `apolo_esteira` — eles tomariam a recusa
+      // na primeira tentativa, e a frase falaria de "CAD já cadastrada", que não é o que ele está
+      // fazendo. O que ele faz é APROVEITAR a ficha dela (uma ficha por pessoa, o `anexarEm` logo
+      // abaixo), e é isso que o `createApoloEntity` já sabe fazer.
+      //
+      // ⚠️ ISTO NÃO AFROUXA O DEDUP DE COMPRADOR: o ramo global do prospect continua igual (foi ele
+      // que impediu os "dois Pedro Alexandro"), e a CAD no MESMO empreendimento segue recusada. A
+      // diferença é o PAPEL de quem está nascendo, não o empreendimento.
+      if (jaTemNesteEmpreendimento && !cadastroDeCorretor) {
         const onde = jaTemNesteEmpreendimento.empreendimento?.trim();
         return recusaDaPorta(
           {
@@ -627,11 +735,35 @@ export async function createApoloEntity(
     // mesma pessoa tem ficha duplicada em 516 casos (a cópia do Asana), e o e-mail dela na cópia
     // barrava o cadastro da própria pessoa com "este e-mail já está em outro cadastro", confirmando
     // ainda que o e-mail existe na base da Careli. O hub e o link público seguem como eram.
-    ignorarEntityIds: anexarEm
-      ? acrescentar
-        ? [...new Set([anexarEm, ...fichasDoMesmoDocumento])]
-        : [anexarEm]
-      : [],
+    //
+    // A `fichaDoMesmoDono` entra SEMPRE que vier: ela não depende de haver ficha para anexar (o
+    // corretor do CAD público nasce do zero, e é justamente o caso em que a empresa dele barrava).
+    //
+    // ⚠️ O CADASTRO DO CORRETOR AUTÔNOMO IGNORA TODAS AS FICHAS DO MESMO CPF (27/09/2026), pela mesma
+    // razão que a porta que ACRESCENTA já ignorava: são fichas da MESMA PESSOA, e o e-mail dela na
+    // cópia do Asana barrava o cadastro dela própria com "este e-mail já está em outro cadastro".
+    // Medido em 27/09/2026: 34 dos 131 corretores têm mais de uma ficha com o mesmo CPF, e todos os
+    // 131 têm e-mail cadastrado. `fichaDoMesmoDono` (nascida hoje na v1.383.0, para o Israel) NÃO
+    // resolve este caso: ela é UMA ficha NOMEADA PELA PORTA, e serve quando a outra ficha é de outra
+    // pessoa jurídica (a imobiliária do corretor). Aqui a outra ficha é dele mesmo, achada por
+    // documento pelo próprio dedup — a porta não tem como nomeá-la, e nem deve.
+    //
+    // ⚠️ ENTRE PESSOAS DIFERENTES NADA AFROUXA: o e-mail que estiver em ficha de OUTRO documento
+    // continua recusando. No D4Sign o signatário É o e-mail (lib/apolo/email-unico.ts).
+    ignorarEntityIds: [
+      ...new Set(
+        [
+          ...(anexarEm
+            ? acrescentar || cadastroDeCorretor
+              ? [anexarEm, ...fichasDoMesmoDocumento]
+              : [anexarEm]
+            : cadastroDeCorretor
+              ? fichasDoMesmoDocumento
+              : []),
+          ...(opcoes.fichaDoMesmoDono ? [opcoes.fichaDoMesmoDono] : []),
+        ].filter(Boolean),
+      ),
+    ],
   });
 
   if (conflitoEmail) {
@@ -730,7 +862,28 @@ export async function createApoloEntity(
         }
       : {};
 
+  // O CÓDIGO DO AUTÔNOMO, quando a porta trouxe um gerador e o papel é o dele. Vai na MESMA gravação
+  // da ficha: se fosse um update depois, uma falha ali deixaria o autônomo sem código com o cadastro
+  // já salvo — e o código é o que diz que ele é autônomo. O índice único da 0193 é a última palavra:
+  // código repetido faz a gravação falhar, nunca passa.
+  //
+  // ⚠️ O NÚMERO É PEDIDO AQUI, DEPOIS DE TODAS AS TRAVAS E ANTES DE QUALQUER GRAVAÇÃO. `nextval` não
+  // volta atrás: pedido no começo da rota, cada recusa de e-mail, de núcleo familiar ou de CAD
+  // duplicada queimava um número em silêncio, e a numeração do Lucas (*"CA-0001, CA-0002"*) nascia
+  // salteada sem nada que explicasse os buracos. Daqui para baixo não há mais recusa de regra: só a
+  // gravação, e o buraco fica sendo o que ela de fato falhar.
+  let codigoDoCorretor = "";
+  if (cadastroDeCorretor && opcoes.codigoDoCorretor) {
+    const sequencia = await opcoes.codigoDoCorretor();
+    if (!sequencia.ok) {
+      // A frase é a da porta (sem jargão de banco) e nada foi gravado ainda.
+      return { error: sequencia.mensagem, motivo: "verificacao-indisponivel", ok: false };
+    }
+    codigoDoCorretor = text(sequencia.codigo);
+  }
+
   const entityRow = {
+    ...(codigoDoCorretor ? { broker_code: codigoDoCorretor } : {}),
     display_name: displayName,
     document_hash: hashIdentifier(docKind, digits),
     document_kind: docKind,
@@ -825,25 +978,85 @@ export async function createApoloEntity(
     // substitui o jsonb INTEIRO): preserva `source`, `c2xSynced`, `c2xUserId` e tudo que a
     // ficha já carregava; só o `cadastro` novo entra por cima (é mais completo) e a origem
     // pública fica registrada.
-    const { data: atual } = await adminClient
+    // ⚠️ O ERRO DESTA LEITURA É CONFERIDO, E FALHA FECHA A PORTA. Ler-antes-de-gravar que engole erro
+    // de leitura não preserva nada: o update substitui o jsonb INTEIRO, então com `atual` nulo o
+    // `metadata` da ficha era REESCRITO do zero e iam embora `source`, `c2xSynced`, `c2xUserId`, o
+    // código de autenticação da CAD que já circulou, `imobiliariaId`, `bornRole` e `cadastroEditado`
+    // (a correção humana do caso Geraldo/Rosângela) — em silêncio, com resposta de sucesso. É o mesmo
+    // estrago do "sync apaga metadata", e este caminho é o COMUM: 3.920 CPFs vivem na base vindos do
+    // sync do C2X sem CAD. "Não sei o que a ficha tem" é tratado como "não grave", igual ao dedup.
+    const { data: atual, error: leituraDaFicha } = await adminClient
       .from("apolo_entities")
       .select("display_name, metadata")
       .eq("id", anexarEm)
-      .maybeSingle<{ display_name: string | null; metadata: Record<string, unknown> | null }>();
+      .maybeSingle<{
+        display_name: string | null;
+        metadata: Record<string, unknown> | null;
+      }>();
+    if (leituraDaFicha) {
+      return {
+        error:
+          "Não foi possível ler o cadastro existente agora, e sem ele a CAD não pode ser gravada. " +
+          "Tente novamente em instantes.",
+        motivo: "verificacao-indisponivel",
+        ok: false,
+      };
+    }
+    // O código que a ficha JÁ tem, numa consulta PRÓPRIA e só quando há código para gravar. Fora
+    // disso o caminho do prospect não encosta na coluna da 0193: era ela, dentro do select acima, que
+    // fazia esta leitura falhar sempre enquanto a migration não roda.
+    let codigoQueAFichaJaTem = "";
+    if (codigoDoCorretor) {
+      const { data: comCodigo, error: erroDoCodigo } = await adminClient
+        .from("apolo_entities")
+        .select("broker_code")
+        .eq("id", anexarEm)
+        .maybeSingle<{ broker_code: string | null }>();
+      if (erroDoCodigo) {
+        return {
+          error:
+            "O código do corretor autônomo ainda não está liberado neste ambiente, e sem ele o " +
+            "cadastro não pode ser salvo (o código precisa ser único). Fale com a equipe do Panteon.",
+          motivo: "verificacao-indisponivel",
+          ok: false,
+        };
+      }
+      codigoQueAFichaJaTem = text(comCodigo?.broker_code);
+    }
     const metaAtual = atual?.metadata ?? {};
     const cadastroAtual =
       typeof metaAtual.cadastro === "object" && metaAtual.cadastro !== null
         ? (metaAtual.cadastro as Record<string, unknown>)
         : {};
-    const metadataMesclado: Record<string, unknown> = {
-      ...metaAtual,
-      cadastro: { ...cadastroAtual, ...cadastro },
-      origemCadPublica: input.origem || "cadastro",
-      ...cadastradoPor,
-    };
+    // ⚠️ O CADASTRO DO CORRETOR AUTÔNOMO NÃO MEXE NA CAD QUE A FICHA JÁ TEM (27/09/2026). Ele anexa
+    // justamente na ficha COM esteira (o `anexarEm` escolhe a que tem CAD, de propósito), e medido em
+    // 27/09/2026: 26 dos 131 corretores têm linha em `apolo_esteira`. Com a precedência de sempre, o
+    // que fosse digitado no wizard do corretor venceria estado civil, regime de bens, profissão,
+    // renda, patrimônio, escolaridade, endereço e cônjuge de um COMPRADOR que o analista está
+    // validando no Board, e `origemCadPublica` trocaria de valor — sem versão anterior em lugar
+    // nenhum. Antes esse caso era RECUSADO, e é por isso que a recusa existia. Aqui a precedência
+    // inverte: o que a ficha já tem vence, e o cadastro de corretor só preenche o que falta. E
+    // `origemCadPublica` não é tocado: quem o escreveu foi a CAD, não este cadastro.
+    const metadataMesclado: Record<string, unknown> = cadastroDeCorretor
+      ? {
+          ...metaAtual,
+          cadastro: { ...cadastro, ...cadastroAtual },
+          ...cadastradoPor,
+        }
+      : {
+          ...metaAtual,
+          cadastro: { ...cadastroAtual, ...cadastro },
+          origemCadPublica: input.origem || "cadastro",
+          ...cadastradoPor,
+        };
     const { error: anexoError } = await adminClient
       .from("apolo_entities")
       .update({
+        // ⚠️ O CÓDIGO QUE A FICHA JÁ TEM VENCE, como o código de autenticação da CAD: o número dela já
+        // circulou. O da sequência que sobrou vira buraco na numeração, e buraco é barato.
+        ...(codigoDoCorretor && !codigoQueAFichaJaTem
+          ? { broker_code: codigoDoCorretor }
+          : {}),
         display_name: atual?.display_name?.trim() ? atual.display_name : displayName,
         metadata: metadataMesclado,
       })
@@ -1145,6 +1358,66 @@ export async function createApoloEntity(
     });
   }
 
+  // (24/09/2026) A HABILITAÇÃO PELO CADASTRO INTERNO. Só com a porta do hub ligando e só para a
+  // imobiliária (ver `OpcoesDoCadastro.habilitacaoInterna`). Aqui se decide, ANTES de gravar, o que é
+  // habilitação nova: na ficha que já existia, o vínculo que ela já tem `verified` sai das linhas
+  // (nem é gravado de novo nem avisado) e o papel dela diz se é a primeira vez.
+  let habilitacaoNova: null | {
+    empreendimentos: Array<{ enterpriseId: string; label: string }>;
+    primeiraVez: boolean;
+  } = null;
+  const vinculosDeEmpreendimento = linhas.relacionamentos.filter(
+    (linha) => linha.relationship_type === "empreendimento",
+  );
+  if (
+    opcoes.habilitacaoInterna === true &&
+    input.role === "imobiliaria" &&
+    vinculosDeEmpreendimento.length > 0
+  ) {
+    let jaHabilitados: string[] = [];
+    // Ficha nova não tinha papel nenhum: é a primeira vez dela com a Careli.
+    let primeiraVez = !anexarEm;
+    if (anexarEm) {
+      const [vinculosDaFicha, papelDaFicha] = await Promise.all([
+        adminClient
+          .from("apolo_relationships")
+          .select("metadata")
+          .eq("entity_id", entityId)
+          .eq("relationship_type", "empreendimento")
+          .eq("status", "verified")
+          .limit(1000),
+        adminClient
+          .from("apolo_entity_profiles")
+          .select("status")
+          .eq("entity_id", entityId)
+          .eq("profile", "imobiliaria")
+          .maybeSingle<{ status: null | string }>(),
+      ]);
+      // ⚠️ LEITURA QUE FALHA NÃO CALA O AVISO. Sem saber o que a ficha tinha, tudo é tratado como novo
+      // (gravado como sempre foi, e avisado): o pior caso é um aviso repetido ao coordenador, que se
+      // vê, contra uma habilitação que ninguém fica sabendo, que não se vê.
+      warn("vinculos da ficha", vinculosDaFicha.error);
+      jaHabilitados = vinculosDaFicha.error
+        ? []
+        : ((vinculosDaFicha.data ?? []) as Array<{ metadata: { enterpriseId?: unknown } | null }>)
+            .map((linha) => String(linha.metadata?.enterpriseId ?? "").trim())
+            .filter(Boolean);
+      // Papel ilegível numa ficha que já existia: "já trabalha com a gente" é o palpite menos errado
+      // (as fichas que o wizard reaproveita vêm quase todas do C2X, com o papel ativo).
+      primeiraVez = !papelDaFicha.error && papelDaFicha.data?.status !== "active";
+    }
+
+    const expandir = await expansorDeEmpreendimentos([
+      ...jaHabilitados,
+      ...vinculosDeEmpreendimento.map((linha) =>
+        String((linha.metadata as { enterpriseId?: unknown } | undefined)?.enterpriseId ?? ""),
+      ),
+    ]);
+    const separados = separarVinculosNovos(linhas.relacionamentos, jaHabilitados, expandir);
+    linhas = { ...linhas, relacionamentos: separados.relacionamentos };
+    habilitacaoNova = { empreendimentos: separados.novos, primeiraVez };
+  }
+
   // Secundarios: best-effort (a entidade ja existe em status 'review'; falhas viram warning pra
   // o operador revisar, sem perder o cadastro). Espelha o estilo best-effort do sync.
   //
@@ -1180,6 +1453,30 @@ export async function createApoloEntity(
   warn("endereco", addressRes.error);
   warn("relacionamentos", relationshipRes.error);
   warn("indice de busca", searchRes.error);
+
+  // AUDITA E AVISA O COORDENADOR da habilitação nova, DEPOIS de gravar e só se os vínculos entraram:
+  // vínculo recusado pelo banco não habilitou nada. Best-effort: `registrarHabilitacaoPeloCadastro`
+  // não lança, e `depoisDaResposta` é a segunda trava, porque o cadastro já está gravado e não pode
+  // virar erro.
+  //
+  // ⚠️ DEPOIS DA RESPOSTA, NÃO ANTES (revisão de 24/09/2026). O aviso lê o coordenador (às vezes no
+  // C2X) e manda pelo Evolution, que tem teto de 30 s: dentro do salvamento, o gateway lento segurava o
+  // operador na tela sem nada para mostrar, porque o resultado do aviso não volta para ela. O disparo
+  // fica registrado em `apolo_disparos`, que é onde a tela de status lê.
+  if (habilitacaoNova && habilitacaoNova.empreendimentos.length > 0 && !relationshipRes.error) {
+    const avisoDaHabilitacao = {
+      autorUserId: ownerUserId,
+      cnpj: docKind === "cnpj" ? formatDocument(digits) : null,
+      empreendimentos: habilitacaoNova.empreendimentos,
+      entityId,
+      imobiliaria: displayName,
+      primeiraVez: habilitacaoNova.primeiraVez,
+    };
+    await depoisDaResposta(
+      () => registrarHabilitacaoPeloCadastro(adminClient, avisoDaHabilitacao),
+      "[cadastro] falha no aviso da habilitacao",
+    );
+  }
 
   // Registra o codigo na entidade: e o que permite conferir a CAD depois.
   //

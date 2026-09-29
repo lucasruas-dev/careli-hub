@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   casa,
   comparavel,
+  ehDocumentoInteiro,
   jaEstaNaLista,
   ordenar,
   type ProponenteEncontrado,
@@ -16,13 +17,13 @@ describe("termoDaBusca", () => {
     // Do WhatsApp, do teclado numérico e da planilha — a mesma pergunta.
     for (const cru of ["058.183.866-19", "05818386619", "058 183 866 19"]) {
       const t = termoDaBusca(cru);
-      expect(t.tipo, cru).toBe("cpf");
-      if (t.tipo === "cpf") expect(t.digitos).toBe("05818386619");
+      expect(t.tipo, cru).toBe("documento");
+      if (t.tipo === "documento") expect(t.digitos).toBe("05818386619");
     }
   });
 
   it("CPF parcial já busca, a partir de 4 dígitos", () => {
-    expect(termoDaBusca("0581").tipo).toBe("cpf");
+    expect(termoDaBusca("0581").tipo).toBe("documento");
     // Três dígitos ainda é gente demais.
     expect(termoDaBusca("058").tipo).toBe("curto");
   });
@@ -37,6 +38,25 @@ describe("termoDaBusca", () => {
     expect(termoDaBusca("ma").tipo).toBe("curto");
     expect(termoDaBusca("  ").tipo).toBe("curto");
     expect(termoDaBusca("").tipo).toBe("curto");
+  });
+});
+
+describe("termoDaBusca com CNPJ", () => {
+  // Lucas (26/09/2026): *"temos que habilitar pessoa fisica e pessoa juridica"*.
+  it("⚠️ o CNPJ colado inteiro leva os 14 dígitos, e não os 11 primeiros", () => {
+    const t = termoDaBusca("12.345.678/0001-95");
+    expect(t.tipo).toBe("documento");
+    if (t.tipo === "documento") expect(t.digitos).toBe("12345678000195");
+  });
+
+  it("⚠️ duas filiais do mesmo CNPJ raiz NÃO são a mesma empresa", () => {
+    // Cortado em 11 dígitos, "12345678000195" e "12345678000276" viravam o mesmo prefixo
+    // "12345678000" e a matriz casava com a filial: um comprador trocado no contrato.
+    const matriz = pessoa("ACME MATRIZ", "12.345.678/0001-95");
+    const filial = pessoa("ACME FILIAL", "12.345.678/0002-76");
+    const termo = termoDaBusca("12.345.678/0001-95");
+    expect(casa(matriz, termo)).toBe(true);
+    expect(casa(filial, termo)).toBe(false);
   });
 });
 
@@ -76,17 +96,21 @@ describe("casa", () => {
 });
 
 describe("ordenar", () => {
-  const p = (nome: string, credenciado: boolean): ProponenteEncontrado => ({
+  const p = (
+    nome: string,
+    credenciado: boolean,
+    podeGerarProposta = credenciado,
+  ): ProponenteEncontrado => ({
     cpf: "000",
     credenciado,
     etapa: null,
     id: nome,
     motivo: null,
     nome,
+    podeGerarProposta,
   });
 
-  it("⚠️ credenciado primeiro — é o único que a tela deixa adicionar", () => {
-    // Enterrado no meio de homônimos sem CAD, o corretor conclui que "não tem".
+  it("⚠️ quem pode entrar primeiro — enterrado no meio de homônimos, o corretor conclui que 'não tem'", () => {
     const lista = [p("Ana", false), p("Zeca", true), p("Bruno", false)].sort(ordenar);
     expect(lista.map((x) => x.nome)).toEqual(["Zeca", "Ana", "Bruno"]);
   });
@@ -94,6 +118,18 @@ describe("ordenar", () => {
   it("dentro do mesmo grupo, por nome", () => {
     const lista = [p("Zeca", true), p("Ana", true)].sort(ordenar);
     expect(lista.map((x) => x.nome)).toEqual(["Ana", "Zeca"]);
+  });
+
+  it("⚠️ a ORDEM SEGUE A PORTA, e não `credenciado`: a CAD em andamento não afunda na lista", () => {
+    // Lucas (26/09/2026): *"pode deixar os coordenadores emitirem proposta sem a cad esta
+    // credenciada"*. Uma CAD em `validacao` volta `credenciado: false` de propósito (é a verdade
+    // sobre a CAD) e `podeGerarProposta: true`. Ordenando por `credenciado`, o cônjuge que o
+    // coordenador ACABOU de ser liberado a escolher ia para o fim de uma lista com teto de 8
+    // candidatos (`MAXIMO_DE_CANDIDATOS`) — o afrouxamento existiria escondido abaixo do corte.
+    const emValidacao = p("Zilda", false, true);
+    const semCad = p("Ana", false, false);
+    const lista = [semCad, emValidacao].sort(ordenar);
+    expect(lista.map((x) => x.nome)).toEqual(["Zilda", "Ana"]);
   });
 });
 
@@ -117,5 +153,26 @@ describe("comparavel", () => {
 
   it("nulo vira string vazia, sem quebrar", () => {
     expect(comparavel(null)).toBe("");
+  });
+});
+
+describe("ehDocumentoInteiro", () => {
+  // (26/09/2026, junção da carteira com a v1.384.0) A chave do espelho do pai E do comprador da
+  // carteira na busca: o documento INTEIRO, CPF ou CNPJ. Antes era `ehCpfInteiro`, só onze dígitos.
+  it("CPF inteiro e CNPJ inteiro abrem, em qualquer formato", () => {
+    for (const cru of ["529.982.247-25", "52998224725", "12.345.678/0001-95", "12345678000195"]) {
+      expect(ehDocumentoInteiro(termoDaBusca(cru)), cru).toBe(true);
+    }
+  });
+
+  it("⚠️ prefixo, documento de tamanho estranho e nome NÃO abrem: não se enumera a carteira", () => {
+    for (const cru of ["5299", "5299822472", "123456789012", "1234567800019", "Maria", "ab"]) {
+      expect(ehDocumentoInteiro(termoDaBusca(cru)), cru).toBe(false);
+    }
+  });
+
+  it("sem dígito verificador, de propósito: o documento torto da carga também é inteiro", () => {
+    expect(ehDocumentoInteiro(termoDaBusca("333.333.333-33"))).toBe(true);
+    expect(ehDocumentoInteiro(termoDaBusca("12.345.678/0001-00"))).toBe(true);
   });
 });

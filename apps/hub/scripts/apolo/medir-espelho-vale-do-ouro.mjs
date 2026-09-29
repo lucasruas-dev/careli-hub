@@ -36,8 +36,16 @@ for (const line of readFileSync(path.join(here, "..", "..", ".env.local"), "utf8
 
 // Mesmas constantes do código de produção (lib/guardian/c2x-analytics.ts). Copiadas de propósito:
 // o script é .mjs e não importa TypeScript — se divergirem, a checagem final abaixo acusa.
-const EXCLUDED_ENTERPRISE_CODES = ["TSC", "SDT", "LAB", "LAG"];
-const MIRROR_ENTERPRISE_CODES = ["VLO"];
+//
+// ⚠️ PELO ID DO C2X, E NÃO PELA SIGLA (PAN-124, 25/09/2026). A sigla muda quando alguém renomeia no
+// legado: a cópia antiga (`["TSC", "SDT", "LAB", "LAG"]`) já não excluía o 30 desde que o LAG virou
+// ADT (16/07/2026), e um renome do 34 (TSC) faria esta medição contar o teste como vivo, divergindo
+// do app, que exclui pelo id. Os mesmos empreendimentos, pelo id: 2 = SDT, 31 = LAB, 34 = TSC; o
+// espelho do Vale do Ouro é o 35 (VLO).
+const EXCLUDED_ENTERPRISE_IDS = [2, 31, 34];
+const MIRROR_ENTERPRISE_IDS = [35];
+const ehEspelho = (row) => MIRROR_ENTERPRISE_IDS.includes(Number(row.id));
+const ehExcluido = (row) => EXCLUDED_ENTERPRISE_IDS.includes(Number(row.id));
 
 // O que a auditoria de 18/08/2026 mediu na tela "todos os empreendimentos" do Apolo.
 const ESPERADO = {
@@ -61,17 +69,17 @@ async function main() {
   try {
     // A MESMA leitura de `loadApoloEnterprises` (lib/apolo/empreendimentos.ts), reduzida ao que
     // interessa aqui: uma linha por empreendimento, com unidades e valor da carteira.
-    const placeholders = EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ");
+    const placeholders = EXCLUDED_ENTERPRISE_IDS.map(() => "?").join(", ");
     const [linhas] = await pool.query(
       `select e.id, e.code, e.name,
               count(u.id) as total_units,
               coalesce(sum(u.price), 0) as total_value
          from enterprises e
          left join enterprise_unities u on u.enterprise_id = e.id
-        where e.code not in (${placeholders})
+        where e.id not in (${placeholders})
         group by e.id, e.code, e.name
         order by e.code`,
-      EXCLUDED_ENTERPRISE_CODES,
+      EXCLUDED_ENTERPRISE_IDS,
     );
 
     const somar = (rows) =>
@@ -83,12 +91,8 @@ async function main() {
         { unidades: 0, valor: 0 },
       );
 
-    const espelhos = linhas.filter((row) =>
-      MIRROR_ENTERPRISE_CODES.includes(String(row.code ?? "").toUpperCase()),
-    );
-    const vivos = linhas.filter(
-      (row) => !MIRROR_ENTERPRISE_CODES.includes(String(row.code ?? "").toUpperCase()),
-    );
+    const espelhos = linhas.filter(ehEspelho);
+    const vivos = linhas.filter((row) => !ehEspelho(row));
 
     const antes = somar(linhas);
     const depois = somar(vivos);
@@ -112,10 +116,10 @@ async function main() {
     );
 
     for (const row of vale) {
-      const marca = MIRROR_ENTERPRISE_CODES.includes(String(row.code ?? "").toUpperCase())
+      const marca = ehEspelho(row)
         ? "  ← ESPELHO (histórico, fora das somas)"
-        : EXCLUDED_ENTERPRISE_CODES.includes(String(row.code ?? "").toUpperCase())
-          ? "  ← excluído (EXCLUDED_ENTERPRISE_CODES)"
+        : ehExcluido(row)
+          ? "  ← excluído (EXCLUDED_ENTERPRISE_IDS)"
           : "";
       console.log(
         `  ${String(row.id).padStart(3)} ${String(row.code ?? "-").padEnd(4)} ${String(row.name ?? "-").padEnd(24)}` +
@@ -123,11 +127,7 @@ async function main() {
       );
     }
 
-    const vivosDoVale = vale.filter(
-      (row) =>
-        !MIRROR_ENTERPRISE_CODES.includes(String(row.code ?? "").toUpperCase()) &&
-        !EXCLUDED_ENTERPRISE_CODES.includes(String(row.code ?? "").toUpperCase()),
-    );
+    const vivosDoVale = vale.filter((row) => !ehEspelho(row) && !ehExcluido(row));
     const somaVivos = somar(vivosDoVale);
     console.log(
       `  divisões vivas somadas:  ${somaVivos.unidades} un · ${brl(somaVivos.valor)}` +

@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { RowDataPacket } from "mysql2";
 
 import { getHadesDbPool } from "@/lib/guardian/db";
@@ -89,4 +90,61 @@ function rotuloDaUnidade(row: ContratoRow): string {
     .toUpperCase();
 
   return `${prefix}${block}${lot}`;
+}
+
+/** O documento de um ENVELOPE do Panteon, para o botão de PDF da leitura única. */
+export type ContratoDoEnvelope = {
+  /** Código da unidade no Panteon ("VOC0306"), para o nome do arquivo baixado. */
+  unidade: string;
+  /** `hercules_unidades.id`: é por ele que a rota confere o escopo ANTES de baixar. */
+  unidadeId: string;
+  /** O documento na D4Sign (`provedor_documento_id`). Nunca sai da rota. */
+  uuidDoc: string;
+};
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * O documento do ENVELOPE `contratoId` da leitura única (F4 da fonte única).
+ *
+ * ⚠️ SEM C2X: o envelope da D4Sign que o espelho gravou já tem o documento (`provedor_documento_id`) e
+ * a unidade. A rota confere o escopo pela UNIDADE do envelope (`unidadeNoEscopo`) antes de baixar, e
+ * baixa exatamente aquele documento; o navegador só manda o id do envelope, nunca o do documento.
+ *
+ * ⚠️ SÓ D4SIGN, E SÓ CONTRATO (a view `temis_envelopes_de_contrato`). O PDF da Clicksign não é
+ * guardado (plano, "Fora"); envelope sem documento ou sem unidade devolve `null` (a rota responde o
+ * mesmo 404 de "não existe").
+ */
+export async function contratoDoEnvelope(
+  admin: SupabaseClient,
+  contratoId: string,
+): Promise<ContratoDoEnvelope | null> {
+  const id = String(contratoId ?? "").trim();
+  if (!UUID.test(id)) return null;
+
+  try {
+    const { data, error } = await admin
+      .from("temis_envelopes_de_contrato")
+      .select("id,provedor,provedor_documento_id,unidade_id")
+      .eq("id", id)
+      .eq("provedor", "d4sign")
+      .maybeSingle();
+    if (error || !data) return null;
+    const linha = data as { provedor_documento_id: null | string; unidade_id: null | string };
+    const uuidDoc = String(linha.provedor_documento_id ?? "").trim();
+    const unidadeId = String(linha.unidade_id ?? "").trim();
+    if (!uuidDoc || !unidadeId) return null;
+
+    const unidade = await admin
+      .from("hercules_unidades")
+      .select("codigo")
+      .eq("id", unidadeId)
+      .eq("workspace_id", "careli")
+      .maybeSingle();
+    const codigo = String((unidade.data as null | { codigo: null | string })?.codigo ?? "").trim();
+    return { unidade: codigo || "contrato", unidadeId, uuidDoc };
+  } catch {
+    // Falha de leitura vira "sem contrato": fail-closed.
+    return null;
+  }
 }

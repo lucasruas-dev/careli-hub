@@ -113,9 +113,10 @@ describe("de onde saem os signatários", () => {
     expect(pessoas.find((p) => p.papel === "testemunha")?.ordemPropria).toBe(4);
   });
 
-  // ⚠️ O QUADRO VENCE A VARIÁVEL DO CONTRATO, e isso precisa de teste: as duas vias podem existir
-  // ao mesmo tempo, e mandar na que o operador ENXERGA é o único comportamento explicável.
-  it("a vendedora do quadro vence a do contrato, sem duplicar", () => {
+  // ⚠️ O QUADRO É A ÚNICA VIA (25/09/2026). Este teste se chamava "a vendedora do quadro vence a do
+  // contrato", quando as variáveis `vendedora_representante_*` ainda eram uma segunda via (morta:
+  // ninguém as preenche). A segunda via saiu; com as duas presentes, continua indo só a do quadro.
+  it("com as variáveis antigas presentes, vai só a vendedora do quadro", () => {
     const { pessoas } = signatariosDoContrato(
       contrato([comprador({ email_cliente: "a@b.com", nome_cliente: "João Silva" })], {
         vendedora_representante_email: "antigo@spe.com.br",
@@ -139,17 +140,57 @@ describe("de onde saem os signatários", () => {
     expect(avisos.join(" ")).toContain("TESTEMUNHA");
   });
 
-  it("inclui a vendedora quando o representante dela está cadastrado", () => {
+  // ⚠️ ESTE TESTE SE CHAMAVA "inclui a vendedora quando o representante dela está cadastrado" e
+  // travava a segunda via: as variáveis `vendedora_representante_*` do contrato ("representante
+  // legal da ficha") punham a vendedora no envelope sem linha no quadro. Lucas, 25/09/2026: *"nao tem
+  // que ter mais sync com c2x referente a contrato"*. A via saiu; sem linha no quadro, ninguém assina
+  // pela vendedora, e o aviso diz onde cadastrar.
+  it("as variáveis do representante da ficha não põem a vendedora no envelope", () => {
     const { avisos, pessoas } = signatariosDoContrato(
       contrato([comprador({ email_cliente: "a@b.com", nome_cliente: "João Silva" })], {
         vendedora_representante_email: "diretor@spe.com.br",
         vendedora_representante_nome: "Carlos Gurgel Neto",
       }),
     );
-    expect(pessoas.map((p) => p.papel)).toEqual(["comprador", "vendedora"]);
-    // ⚠️ NÃO É MAIS "ZERO AVISOS": desde 13/09/2026 a falta de TESTEMUNHA também avisa, e este
-    // contrato não tem nenhuma. O que este teste guarda é que o aviso da VENDEDORA sumiu.
-    expect(avisos.join(" ")).not.toContain("VENDEDORA");
+    expect(pessoas.map((p) => p.papel)).toEqual(["comprador"]);
+    expect(avisos.join(" ")).toContain("VENDEDORA");
+    expect(avisos.join(" ")).toContain("Quadro de assinatura do empreendimento");
+    expect(avisos.join(" ")).not.toContain("representante legal");
+  });
+
+  // ⚠️ A COORDENADORA IMPRESSA SEM NINGUÉM PARA ASSINAR POR ELA (25/09/2026). É o defeito do VOR
+  // (*"o fabricio não aparece para assinar"*): sem a herança da ficha, papel vazio é envelope sem a
+  // coordenação, e o operador tem de ler isso ANTES de clicar.
+  it("avisa quando o contrato qualifica a coordenadora e ninguém assina por ela", () => {
+    const { avisos } = signatariosDoContrato(
+      contrato([comprador({ email_cliente: "a@b.com", nome_cliente: "João Silva" })], {
+        razao_social_coordenadora_vendas: "COORDENADORA EXEMPLO LTDA",
+      }),
+      [{ email: "rep@spe.com.br", nome: "Marcos Andrade", papel: "vendedora" }],
+    );
+    expect(avisos.join(" ")).toContain("COORDENADORA DE VENDAS (COORDENADORA EXEMPLO LTDA)");
+    expect(avisos.join(" ")).toContain("Coordenador de Vendas");
+  });
+
+  it("com alguém no bloco Coordenador de Vendas, o aviso da coordenadora não sai", () => {
+    const { avisos } = signatariosDoContrato(
+      contrato([comprador({ email_cliente: "a@b.com", nome_cliente: "João Silva" })], {
+        razao_social_coordenadora_vendas: "COORDENADORA EXEMPLO LTDA",
+      }),
+      [
+        { email: "rep@spe.com.br", nome: "Marcos Andrade", papel: "vendedora" },
+        { email: "contrato@coordenadora.test", nome: "Fabio Exemplo", papel: "coordenadora" },
+      ],
+    );
+    expect(avisos.join(" ")).not.toContain("COORDENADORA");
+  });
+
+  it("contrato sem coordenadora qualificada não avisa sobre ela", () => {
+    const { avisos } = signatariosDoContrato(
+      contrato([comprador({ email_cliente: "a@b.com", nome_cliente: "João Silva" })]),
+      [{ email: "rep@spe.com.br", nome: "Marcos Andrade", papel: "vendedora" }],
+    );
+    expect(avisos.join(" ")).not.toContain("COORDENADORA");
   });
 });
 

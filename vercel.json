@@ -46,6 +46,10 @@
     {
       "path": "/api/boletos/pagamentos/sincronizar",
       "schedule": "10 * * * *"
+    },
+    {
+      "path": "/api/assinatura/d4sign/espelho",
+      "schedule": "7,37 * * * *"
     }
   ]
 }

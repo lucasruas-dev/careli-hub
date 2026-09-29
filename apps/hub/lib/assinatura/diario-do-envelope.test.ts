@@ -1,6 +1,7 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
 
-import { juntarComOsCongelados } from "./diario-do-envelope-db";
+import { juntarComOsCongelados, payloadMaisRecente } from "./diario-do-envelope-db";
 import {
   diarioDoEnvelope,
   quemAssinou,
@@ -359,5 +360,35 @@ describe("juntarComOsCongelados: quem pode ser reenviado", () => {
 
     expect(juntos[0]?.chave).toBe("sig-clicksign-9");
     expect(juntos[0]?.reenvioIndisponivel).toBe(false);
+  });
+});
+
+// ── O PAYLOAD QUE NARRA (revisão da F1, 28/09/2026) ─────────────────────────
+//
+// ⚠️ O QUE ERA: o diário lia o evento mais recente do documento sem olhar a conferência. Desde a F1
+// o não conferido é gravado como ESQUELETO, e um só deles como o mais recente (um POST forjado com a
+// chave do documento, ou o segredo do HMAC faltando na Vercel) deixava o diário em "0 de N" ao lado
+// do "1/2" do card, que já filtra o conferido.
+describe("payloadMaisRecente lê só o evento conferido", () => {
+  it("pede assinatura_conferida = true, pelo documento", async () => {
+    const filtros: Array<[string, unknown]> = [];
+    const builder: Record<string, unknown> = {};
+    Object.assign(builder, {
+      eq: (coluna: string, valor: unknown) => {
+        filtros.push([coluna, valor]);
+        return builder;
+      },
+      limit: () => builder,
+      maybeSingle: () => Promise.resolve({ data: { payload: { document: { key: "doc-1" } } }, error: null }),
+      order: () => builder,
+      select: () => builder,
+    });
+    const sb = { from: () => builder } as unknown as SupabaseClient;
+
+    const payload = await payloadMaisRecente(sb, { envelope_id: "env-1", provedor_documento_id: "doc-1" });
+
+    expect(payload).toEqual({ document: { key: "doc-1" } });
+    expect(filtros).toContainEqual(["provedor_documento_id", "doc-1"]);
+    expect(filtros).toContainEqual(["assinatura_conferida", true]);
   });
 });

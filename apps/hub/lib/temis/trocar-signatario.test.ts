@@ -179,20 +179,69 @@ describe("a frase de quando falha DEPOIS da remoção", () => {
 
 // ── O CAMINHO INTEIRO ───────────────────────────────────────────────────────
 
-/** O duplo do Supabase: a linha do envelope, o payload do webhook e o que foi escrito. */
-function bancoDeTeste(dados: { envelope: null | Record<string, unknown>; payload?: unknown }) {
+/** Uma resposta da função da 0195: o que ela devolve numa linha. */
+type RespostaDaFuncao = { data: unknown; error: null | { code: string; message: string } };
+
+/**
+ * O duplo do Supabase: a linha do envelope, o payload do webhook, o que foi escrito e o que foi
+ * pedido à função da 0195 (`temis_envelope_registrar_assinaturas`).
+ *
+ * ⚠️ A FUNÇÃO É UMA FILA DE RESPOSTAS (`funcao`), e sem fila ela devolve o quadro que recebeu, com as
+ * marcas de quem já tinha: é o recorte da regra de verdade (a chave casa, a marca não se perde) que
+ * basta para provar que a troca MANDA o que a função precisa. A regra inteira é do banco, provada no
+ * ensaio SQL da 0195.
+ */
+function bancoDeTeste(dados: {
+  envelope: null | Record<string, unknown>;
+  funcao?: RespostaDaFuncao[];
+  payload?: unknown;
+}) {
   const atualizacoes: Record<string, unknown>[] = [];
+  const chamadasDaFuncao: Record<string, unknown>[] = [];
+  const filtros: Array<[string, unknown]> = [];
+  let leiturasDoEnvelope = 0;
+
+  const rpc = (_nome: string, args: Record<string, unknown>) => {
+    chamadasDaFuncao.push(args);
+    const daFila = dados.funcao?.shift();
+    if (daFila) return Promise.resolve(daFila);
+    const antigo = (dados.envelope?.signatarios ?? []) as Array<Record<string, unknown>>;
+    const quadro = ((args.p_quadro ?? []) as Array<Record<string, unknown>>).map((novo) => {
+      const velho = antigo.find((a) => a.chave === novo.chave);
+      return velho?.assinado_em ? { ...novo, assinado_em: velho.assinado_em } : novo;
+    });
+    return Promise.resolve({
+      data: [
+        {
+          assinaram: 0,
+          estado_antes: "parcial",
+          estado_depois: "parcial",
+          fechado: null,
+          mudou_estado: false,
+          quadro,
+          recusa: null,
+          total: quadro.length,
+        },
+      ],
+      error: null,
+    });
+  };
 
   const from = (tabela: string) => {
     const builder = {
-      eq: () => builder,
+      eq: (coluna: string, valor: unknown) => {
+        filtros.push([coluna, valor]);
+        return builder;
+      },
       limit: () => builder,
-      maybeSingle: () =>
-        Promise.resolve(
+      maybeSingle: () => {
+        if (tabela === "temis_envelopes") leiturasDoEnvelope += 1;
+        return Promise.resolve(
           tabela === "temis_envelopes"
             ? { data: dados.envelope, error: null }
             : { data: dados.payload === undefined ? null : { payload: dados.payload }, error: null },
-        ),
+        );
+      },
       order: () => builder,
       select: () => builder,
       // O builder do Supabase é um `PromiseLike`: `update().eq()` é aguardado direto.
@@ -205,7 +254,13 @@ function bancoDeTeste(dados: { envelope: null | Record<string, unknown>; payload
     return builder;
   };
 
-  return { atualizacoes, sb: { from } as unknown as SupabaseClient };
+  return {
+    atualizacoes,
+    chamadasDaFuncao,
+    filtros,
+    leituras: () => leiturasDoEnvelope,
+    sb: { from, rpc } as unknown as SupabaseClient,
+  };
 }
 
 /** O duplo da porta HTTP. Ver a nota de `PortaDaClicksign`. */
@@ -235,6 +290,7 @@ function portaDeTeste(respostas: Record<string, unknown> = {}) {
 
 /** A linha de `temis_envelopes` do envio que já rodou — com as duas pessoas do caso real. */
 const envelopeGravado = {
+  atualizado_em: "2026-09-28T12:00:00.000Z",
   envelope_id: "env-30",
   id: "reg-1",
   proposta_id: "prop-1",
@@ -249,7 +305,7 @@ const pedidoDaTroca = { email: "maria@x.com", envelopeId: "env-30", signerId: "s
 
 describe("a troca de e-mail, do começo ao fim", () => {
   it("remove, cria com o MESMO nome, faz os dois requisitos e convida só ele", async () => {
-    const { atualizacoes, sb } = bancoDeTeste({ envelope: envelopeGravado });
+    const { atualizacoes, chamadasDaFuncao, sb } = bancoDeTeste({ envelope: envelopeGravado });
     const { chamadas, porta } = portaDeTeste();
 
     const r = await trocarEmailDoSignatario(sb, pedidoDaTroca, porta);
@@ -270,12 +326,19 @@ describe("a troca de e-mail, do começo ao fim", () => {
     ]);
 
     // ⚠️ MESCLADO, NUNCA SUBSTITUÍDO: o titular continua na lista, intacto. A casa já perdeu a
-    // esteira de 122 CADs com um update que trocou o jsonb inteiro (20/07/2026).
-    expect(atualizacoes).toHaveLength(1);
-    expect(atualizacoes[0]?.signatarios).toEqual([
-      { chave: "sig-titular", email: "titular@x.com", nome: "Henrique Sales do Vale", ordem: 1, papel: "comprador" },
-      { chave: "sig-novo", email: "maria@x.com", nome: "Maria Souza Lima", ordem: 1, papel: "conjuge" },
-    ]);
+    // esteira de 122 CADs com um update que trocou o jsonb inteiro (20/07/2026). E desde a F1 da
+    // fonte única quem grava é a função da 0195, com a VERSÃO lida (`p_quadro_de`): nada de update
+    // direto no jsonb.
+    expect(atualizacoes).toEqual([]);
+    expect(chamadasDaFuncao).toHaveLength(1);
+    expect(chamadasDaFuncao[0]).toMatchObject({
+      p_envelope: "reg-1",
+      p_quadro: [
+        { chave: "sig-titular", email: "titular@x.com", nome: "Henrique Sales do Vale", ordem: 1, papel: "comprador" },
+        { chave: "sig-novo", email: "maria@x.com", nome: "Maria Souza Lima", ordem: 1, papel: "conjuge" },
+      ],
+      p_quadro_de: "2026-09-28T12:00:00.000Z",
+    });
   });
 
   // ⚠️ A TRAVA PRINCIPAL É DA CLICKSIGN, E CHEGA COMO 403. A tela tem de ler português, e o caminho
@@ -423,7 +486,7 @@ describe("a troca de e-mail, do começo ao fim", () => {
       ...envelopeGravado,
       signatarios: envelopeGravado.signatarios.map((s) => ({ ...s, chave: undefined })),
     };
-    const { atualizacoes, sb } = bancoDeTeste({
+    const { chamadasDaFuncao, sb } = bancoDeTeste({
       envelope: semChave,
       payload: {
         document: {
@@ -443,10 +506,136 @@ describe("a troca de e-mail, do começo ao fim", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.nome).toBe("Maria Souza Lima");
-    expect(atualizacoes[0]?.signatarios).toEqual([
-      { email: "titular@x.com", nome: "Henrique Sales do Vale", ordem: 1, papel: "comprador" },
+    // ⚠️ QUEM NÃO TEM ID DA CLICKSIGN SAI COM A CHAVE PROVISÓRIA DA POSIÇÃO: a 0195 exige `chave` em
+    // todo item, e é por ela que a marca de quem assinou continua na pessoa certa.
+    expect(chamadasDaFuncao[0]?.p_quadro).toEqual([
+      { chave: "tmp:1", email: "titular@x.com", nome: "Henrique Sales do Vale", ordem: 1, papel: "comprador" },
       { chave: "sig-novo", email: "maria@x.com", nome: "Maria Souza Lima", ordem: 1, papel: "conjuge" },
     ]);
+  });
+});
+
+// ── A TROCA PELA FUNÇÃO DA 0195 (F1 da fonte única, bug 8.6) ────────────────
+//
+// ⚠️ O QUE ERA: `gravarTrocaNoRegistro` reescrevia o jsonb inteiro, sem trava. Um webhook que
+// gravasse a assinatura do titular entre a leitura do envelope e esta escrita perdia a marca, e o
+// contador do card voltava para "0/2" com o titular já assinado.
+describe("a troca grava pela função, com a versão lida", () => {
+  it("preserva o assinado_em de quem continua no quadro (a chave casa)", async () => {
+    const comAssinatura = {
+      ...envelopeGravado,
+      signatarios: [
+        { ...envelopeGravado.signatarios[0], assinado_em: "2026-09-27T10:00:00.000-03:00" },
+        envelopeGravado.signatarios[1],
+      ],
+    };
+    const { chamadasDaFuncao, sb } = bancoDeTeste({ envelope: comAssinatura });
+    const { porta } = portaDeTeste();
+
+    const r = await trocarEmailDoSignatario(sb, pedidoDaTroca, porta);
+
+    expect(r.ok).toBe(true);
+    // A troca manda a CHAVE de quem continua, e é por ela que a função leva a marca junto.
+    const mandado = chamadasDaFuncao[0]?.p_quadro as Array<{ chave: string }>;
+    expect(mandado.map((p) => p.chave)).toEqual(["sig-titular", "sig-novo"]);
+    expect(chamadasDaFuncao[0]?.p_quadro_de).toBe(comAssinatura.atualizado_em);
+  });
+
+  it("quadro_mudou: relê o envelope e tenta UMA vez", async () => {
+    const { chamadasDaFuncao, leituras, sb } = bancoDeTeste({
+      envelope: envelopeGravado,
+      funcao: [
+        {
+          data: [
+            {
+              assinaram: null,
+              estado_antes: "parcial",
+              estado_depois: "parcial",
+              fechado: null,
+              mudou_estado: false,
+              quadro: null,
+              recusa: "quadro_mudou",
+              total: null,
+            },
+          ],
+          error: null,
+        },
+      ],
+    });
+    const { porta } = portaDeTeste();
+
+    const r = await trocarEmailDoSignatario(sb, pedidoDaTroca, porta);
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.aviso).toBeNull();
+    expect(chamadasDaFuncao).toHaveLength(2);
+    // Uma leitura antes da troca e a releitura depois da recusa.
+    expect(leituras()).toBe(2);
+  });
+
+  it("quadro_mudou duas vezes: não insiste, e vira aviso (a troca na Clicksign está feita)", async () => {
+    const recusa: RespostaDaFuncao = {
+      data: [
+        {
+          assinaram: null,
+          estado_antes: "parcial",
+          estado_depois: "parcial",
+          fechado: null,
+          mudou_estado: false,
+          quadro: null,
+          recusa: "quadro_mudou",
+          total: null,
+        },
+      ],
+      error: null,
+    };
+    const { chamadasDaFuncao, sb } = bancoDeTeste({
+      envelope: envelopeGravado,
+      funcao: [recusa, { ...recusa }],
+    });
+    const { porta } = portaDeTeste();
+
+    const r = await trocarEmailDoSignatario(sb, pedidoDaTroca, porta);
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(chamadasDaFuncao).toHaveLength(2);
+    expect(r.aviso).toContain("não conseguiu atualizar o registro");
+  });
+
+  // ⚠️ SEM CAMINHO DE RESERVA (plano, F1). O update antigo do jsonb inteiro é o próprio bug 8.6; a
+  // F1 só sobe com a 0195 aplicada, e se ela faltar a troca vira aviso, sem gesto por fora.
+  it("sem a 0195 no banco, NÃO grava por update direto: vira aviso", async () => {
+    const { atualizacoes, sb } = bancoDeTeste({
+      envelope: envelopeGravado,
+      funcao: [
+        {
+          data: null,
+          error: { code: "PGRST202", message: "Could not find the function public.temis_envelope_registrar_assinaturas" },
+        },
+      ],
+    });
+    const { porta } = portaDeTeste();
+
+    const r = await trocarEmailDoSignatario(sb, pedidoDaTroca, porta);
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(atualizacoes).toEqual([]);
+    expect(r.aviso).toContain("não conseguiu atualizar o registro");
+  });
+
+  // ⚠️ SÓ A CLICKSIGN (0.15 do plano). A mesma tabela passa a guardar os envelopes da D4Sign (F3), e
+  // trocar signatário é ação da Clicksign: a leitura do envelope filtra pelo provedor.
+  it("lerEnvelope filtra provedor = clicksign", async () => {
+    const { filtros, sb } = bancoDeTeste({ envelope: envelopeGravado });
+    const { porta } = portaDeTeste();
+
+    await reenviarConvite(sb, { envelopeId: "env-30", signerId: "sig-titular" }, porta);
+
+    expect(filtros).toContainEqual(["provedor", "clicksign"]);
+    expect(filtros).toContainEqual(["envelope_id", "env-30"]);
   });
 });
 

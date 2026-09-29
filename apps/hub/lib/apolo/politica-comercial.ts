@@ -1,5 +1,7 @@
 import type { RowDataPacket } from "mysql2";
 
+import { filtroPorIds, idDoC2x } from "@/lib/apolo/c2x-pelo-id";
+import { idsDoC2xDasSiglasAoVivo, type OrigemDaSigla } from "@/lib/apolo/c2x-pelo-id-servidor";
 import { getHadesDbPool } from "@/lib/guardian/db";
 
 // A POLÍTICA COMERCIAL DO EMPREENDIMENTO, juntando as DUAS fontes com a precedência que o Lucas
@@ -267,13 +269,24 @@ type LinhaSplitC2x = RowDataPacket & {
  *
  * Só o split ATIVO (`currently_active = 1`): o C2X guarda histórico, e mostrar um cadastro que não
  * está valendo seria pior que não mostrar nada.
+ *
+ * ⚠️ FILTRA PELO ID (PAN-124), e o mapa continua pela SIGLA que o C2X devolve na linha: é a mesma
+ * sigla da linha da política, lida no mesmo instante, então o casamento das duas não depende de nome
+ * guardado em lugar nenhum.
+ *
+ * ⚠️ O ORDER BY NÃO DESEMPATA, e ficou assim de propósito. O split tem 15 empates de percentual no
+ * mesmo grupo (o LOS e o LOU têm duas linhas de 2% em cada grupo, o LBP três de 5,7143%; medido em
+ * 25/09/2026), e a ordem delas é a que o plano do MySQL der. Pela sigla ela já variava com o pedido
+ * (no Ato do LOS pedido sozinho, o Captador sem nome vinha antes do FABRICIO; pedido junto com o
+ * LOU, depois).
+ * Medido linha a linha: pelo id, a ordem é a mesma de antes em 39 dos 40 pedidos; só a Lavra do Ouro
+ * inteira (LOS + LOU) troca de lugar as linhas empatadas. Um `v.id` no fim fixaria a ordem, mas
+ * mudaria 3 dos 40 pedidos em vez de 1.
  */
 async function lerSplitCadastrado(
   pool: PoolDoC2x,
-  codes: string[],
+  filtro: { params: number[]; sql: string },
 ): Promise<Map<string, { grupos: GrupoDeSplit[]; nome: null | string }>> {
-  const marcadores = codes.map(() => "?").join(", ");
-
   const [rows] = await pool.query<LinhaSplitC2x[]>(
     `select e.code,
             se.name as split_nome,
@@ -288,9 +301,9 @@ async function lerSplitCadastrado(
        join split_enterprise_group_values v on v.split_enterprise_group_id = sg.id
        join split_profiles pr on pr.id = v.split_profile_id
        left join users u on u.id = v.user_id
-      where e.code in (${marcadores}) and se.currently_active = 1
+      where ${filtro.sql} and se.currently_active = 1
       order by e.code, gn.id, v.percent desc`,
-    codes,
+    filtro.params,
   );
 
   const porCode = new Map<string, { grupos: GrupoDeSplit[]; nome: null | string }>();
@@ -355,13 +368,32 @@ function gestaoDoSplit(grupos: GrupoDeSplit[]): null | number {
   return incorporador?.percentual ?? null;
 }
 
+/** O erro de sempre quando o C2X não responde: a tela e o portal já mostram esta frase. */
+const ERRO_DO_C2X = "Nao foi possivel ler a politica comercial no C2X.";
+
 /**
- * Lê a política dos empreendimentos pedidos. O que é do Apolo entra por quem chama (o Apolo é o
- * dono desses campos), para esta função ficar restrita ao legado e continuar testável.
+ * Lê a política dos empreendimentos pedidos, pelas SIGLAS (a tela do Apolo e o portal mandam a
+ * sigla). O que é do Apolo entra por quem chama (o Apolo é o dono desses campos), para esta função
+ * ficar restrita ao legado e continuar testável.
+ *
+ * ⚠️ PAN-124: A SIGLA NÃO VAI MAIS AO C2X COMO FILTRO. Ela era o `e.code in (...)`, e a sigla muda
+ * quando alguém renomeia no legado (o 43 de RDV para PDI em 24/09/2026). Agora a sigla é traduzida num
+ * lugar só (`idsDoC2xDasSiglasAoVivo`) e as duas consultas filtram pelo `enterprises.id`, em
+ * `loadPoliticaComercialPorIds`. Quem tem o id chama a versão por id. A sigla guardada de antes de um
+ * renome só é salva enquanto o catálogo em cache for de antes dele (até 10 minutos).
+ *
+ * ⚠️ SEM A EXCLUSÃO PADRÃO (`excluir: []`), como sempre foi: esta leitura nunca excluiu ninguém. Pelo
+ * catálogo, a sigla de TSC, SDT e LAB não se traduz (ele não os lista) e sai sem política; nenhum
+ * chamador do portal os pede. A tela do Apolo passa `conferirNoC2x` (ver `OrigemDaSigla`), e aí a
+ * sigla viva deles acha a política, como `e.code in` achava.
+ *
+ * ⚠️ CATÁLOGO ILEGÍVEL É O C2X FORA: devolve o mesmo erro de quando a consulta caía, e não uma
+ * política vazia com cara de "não cadastrada".
  */
 export async function loadPoliticaComercial(
   codes: string[],
   doApolo: Map<string, DadosDoApolo> = new Map(),
+  origem: OrigemDaSigla = {},
 ): Promise<
   { error: string; ok: false } | { ok: true; politicas: PoliticaComercialDoEmpreendimento[] }
 > {
@@ -373,7 +405,38 @@ export async function loadPoliticaComercial(
     return { error: `Configuracao C2X ausente: ${poolResult.missing.join(", ")}.`, ok: false };
   }
 
-  const marcadores = alvos.map(() => "?").join(", ");
+  const traduzido = await idsDoC2xDasSiglasAoVivo(alvos, { ...origem, excluir: [] });
+  if (!traduzido.ok) return { error: ERRO_DO_C2X, ok: false };
+
+  return loadPoliticaComercialPorIds(traduzido.ids, doApolo);
+}
+
+/**
+ * A política pelos ids do C2X (`enterprises.id`), que não mudam num renome.
+ *
+ * Só aceita id do C2X: o nascido no Panteon (>= 100000), `group:` e uuid ficam de fora (`idDoC2x`), e
+ * sem id nenhum não há consulta. Não exclui ninguém, como a busca pela sigla nunca excluiu.
+ *
+ * ⚠️ SÓ O WHERE MUDOU: o SELECT continua devolvendo `e.code`, o split continua casado pela sigla da
+ * linha (`splitPorCode`), e a resposta sai idêntica à da busca pela sigla para quem não foi
+ * renomeado (medido linha a linha em 25/09/2026, scratchpad/pan124-lote2-identidade.ts).
+ */
+export async function loadPoliticaComercialPorIds(
+  idsPedidos: ReadonlyArray<number | string>,
+  doApolo: Map<string, DadosDoApolo> = new Map(),
+): Promise<
+  { error: string; ok: false } | { ok: true; politicas: PoliticaComercialDoEmpreendimento[] }
+> {
+  const filtro = filtroPorIds(
+    "e.id",
+    idsPedidos.map(idDoC2x).filter((id): id is number => id !== null),
+  );
+  if (!filtro) return { ok: true, politicas: [] };
+
+  const poolResult = getHadesDbPool();
+  if (!poolResult.ok) {
+    return { error: `Configuracao C2X ausente: ${poolResult.missing.join(", ")}.`, ok: false };
+  }
 
   try {
     const [rows] = await poolResult.pool.query<LinhaC2x[]>(
@@ -388,11 +451,11 @@ export async function loadPoliticaComercial(
               p.award_gerente, p.award_captador
          from enterprises e
          left join commercial_policies p on p.enterprise_id = e.id
-        where e.code in (${marcadores})`,
-      alvos,
+        where ${filtro.sql}`,
+      filtro.params,
     );
 
-    const splitPorCode = await lerSplitCadastrado(poolResult.pool, alvos);
+    const splitPorCode = await lerSplitCadastrado(poolResult.pool, filtro);
 
     const politicas = rows.map((linha) => {
       const enterpriseId = String(linha.enterprise_id);
@@ -438,6 +501,6 @@ export async function loadPoliticaComercial(
 
     return { ok: true, politicas };
   } catch {
-    return { error: "Nao foi possivel ler a politica comercial no C2X.", ok: false };
+    return { error: ERRO_DO_C2X, ok: false };
   }
 }

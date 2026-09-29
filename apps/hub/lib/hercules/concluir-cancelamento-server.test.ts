@@ -85,8 +85,9 @@ const COLUNAS: Record<string, readonly string[]> = {
   ],
   prometeu_reservas: ["codigo", "evento_id", "id", "lote", "quadra", "situacao", "unidade_c2x_id"],
   temis_envelopes: [
-    "atualizado_em", "criado_em", "envelope_id", "estado", "estado_cru", "falha", "fechado_em", "id",
-    "proposta_id", "provedor", "workspace_id",
+    // `finalidade` é da 0195 (aplicada antes do deploy da F1): os fatos do contrato só leem o contrato (F2).
+    "atualizado_em", "criado_em", "envelope_id", "estado", "estado_cru", "falha", "fechado_em", "finalidade", "id",
+    "proposta_id", "provedor", "provedor_documento_id", "workspace_id",
   ],
   temis_trabalho_etapas: [
     "de", "id", "motivo", "observacao", "origem", "para", "proposta_id", "quem", "quem_nome",
@@ -548,26 +549,49 @@ function escritas(banco: Banco): string[] {
 }
 
 /** O duplo da porta HTTP da Clicksign: registra o que foi pedido. */
-function portaDeTeste(respostas: { get?: Error | unknown; patch?: Error | unknown } = {}) {
+/**
+ * ⚠️ O `get` ACEITA UMA LISTA porque o cancelamento faz DUAS leituras do envelope desde 25/09/2026: a
+ * de antes, que decide se pode cancelar, e a de DEPOIS do PATCH, que confirma que o envelope morreu —
+ * o 200 do PATCH no documento não prova isso, e a doc não diz que prova (ver `cancelarEnvelope`). A
+ * última resposta da lista repete.
+ */
+function portaDeTeste(
+  respostas: { get?: Error | unknown | (Error | unknown)[]; patch?: Error | unknown } = {},
+) {
   const chamadas: { caminho: string; metodo: string }[] = [];
+  const gets = Array.isArray(respostas.get) ? [...respostas.get] : [respostas.get];
+  let lidos = 0;
+
   const porta = async <T = unknown>(caminho: string, opcoes: Opcoes = {}): Promise<T> => {
     const metodo = opcoes.metodo ?? "GET";
     chamadas.push({ caminho, metodo });
-    const resposta = metodo === "GET" ? respostas.get : respostas.patch;
+    if (metodo !== "GET") {
+      if (respostas.patch instanceof Error) throw respostas.patch;
+      return (respostas.patch ?? {}) as T;
+    }
+    const resposta = gets[Math.min(lidos, gets.length - 1)];
+    lidos += 1;
     if (resposta instanceof Error) throw resposta;
     return (resposta ?? {}) as T;
   };
   return { chamadas, porta };
 }
 
+/** A releitura que CONFIRMA a morte do envelope — é o único desfecho que solta a conclusão. */
+const RELEITURA_CANCELED = { data: { attributes: { status: "canceled" } } };
+
 const envelope = (extra: Linha = {}): Linha => ({
   criado_em: "2026-09-13T12:00:00.000Z",
   envelope_id: "env-vivo",
   estado: "aguardando",
   falha: null,
+  // ⚠️ 0195: só envelope de CONTRATO conta como "contrato assinado" nos fatos (a F2 filtra por ela).
+  finalidade: "contrato",
   id: "reg-env",
   proposta_id: "venda-21",
   provedor: "clicksign",
+  // ⚠️ O ID DO DOCUMENTO É O QUE SE CANCELA na v3 — ver `cancelarEnvelope` (doc lida 25/09/2026).
+  provedor_documento_id: "doc-vivo",
   ...extra,
 });
 
@@ -774,8 +798,26 @@ describe("os fatos são reapurados no clique", () => {
     const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), portaDeTeste().porta);
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(r.erro).toContain("agora exige distrato");
+    // ⚠️ A FRASE DOS FATOS, E NÃO A DA GUARDA DO ENVELOPE: prende QUAL guarda disparou (as duas dizem
+    // "agora exige distrato"). Sem `finalidade` na fábrica, os fatos deixavam de ver o envelope e o
+    // teste continuava verde pela outra porta.
+    expect(r.erro).toContain("A situação mudou: agora exige distrato (");
     expect(escritas(banco)).toEqual([]);
+  });
+
+  it("⚠️ envelope de DISTRATO assinado não reclassifica a venda: o cancelamento segue como cancelamento", async () => {
+    silenciar();
+    const banco = cenario({
+      envelopes: [envelope({ estado: "assinado", fechado_em: "2026-09-15T12:00:00.000Z", finalidade: "distrato" })],
+    });
+    const { chamadas, porta } = portaDeTeste();
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), porta);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.tipo).toBe("cancelamento");
+    // O envelope do distrato não é o contrato: nem recusa, nem é cancelado na Clicksign.
+    expect(r.envelopeCancelado).toBeNull();
+    expect(chamadas).toEqual([]);
   });
 
   it("leitura dos fatos que falha é recusa, e não 'não pagou'", async () => {
@@ -793,17 +835,36 @@ describe("os fatos são reapurados no clique", () => {
 // ── O ENVELOPE DO CONTRATO NA CLICKSIGN ─────────────────────────────────────────
 
 describe("o envelope do contrato ainda vivo", () => {
+  it("⚠️ envelope vivo da D4SIGN (o C2X mandou): 409 com o caminho pelo C2X, nada gravado e nenhuma chamada à Clicksign", async () => {
+    const banco = cenario({ envelopes: [envelope({ envelope_id: "uuid-d4", provedor: "d4sign", provedor_documento_id: "uuid-d4" })] });
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(409);
+    expect(r.erro).toContain("Cancele na D4Sign pelo C2X");
+    expect(escritas(banco)).toEqual([]);
+    expect(chamadas).toEqual([]);
+  });
+
   it("a Clicksign diz running: o envelope morre ANTES de a venda cair, e o registro diz quem cancelou", async () => {
     const banco = cenario({ envelopes: [envelope()] });
-    const { chamadas, porta } = portaDeTeste({ get: { data: { attributes: { status: "running" } } } });
+    const { chamadas, porta } = portaDeTeste({
+      get: [{ data: { attributes: { status: "running" } } }, RELEITURA_CANCELED],
+    });
 
     const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), porta);
 
     expect(r.ok).toBe(true);
     if (!r.ok) return;
+    // O GET é no ENVELOPE; o PATCH que cancela é no DOCUMENTO dentro dele (doc lida 25/09/2026). E o
+    // segundo GET é o que CONFIRMA a morte: o 200 do PATCH fala só do documento.
     expect(chamadas).toEqual([
       { caminho: "/envelopes/env-vivo", metodo: "GET" },
-      { caminho: "/envelopes/env-vivo", metodo: "PATCH" },
+      { caminho: "/envelopes/env-vivo/documents/doc-vivo", metodo: "PATCH" },
+      { caminho: "/envelopes/env-vivo", metodo: "GET" },
     ]);
     expect(r.envelopeCancelado).toBe("env-vivo");
     expect(banco.linha("temis_envelopes", "reg-env")).toMatchObject({
@@ -857,6 +918,54 @@ describe("o envelope do contrato ainda vivo", () => {
     const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), porta);
     expect(r.ok).toBe(false);
     expect(chamadas).toEqual([]);
+    expect(escritas(banco)).toEqual([]);
+  });
+
+  // ⚠️ SEM O ID DO DOCUMENTO NÃO HÁ O QUE CANCELAR na v3, e a conclusão NÃO pode derrubar a venda
+  // achando que o contrato saiu da rua. Mas a recusa vem DEPOIS da leitura, nunca antes: chegar até
+  // ela significa que a Clicksign acabou de dizer que o envelope está correndo, e é só com esse fato
+  // medido que a frase pode mandar cancelar por lá.
+  it("linha viva sem o id do documento: LÊ o estado e então RECUSA, sem gravar nada", async () => {
+    const banco = cenario({ envelopes: [envelope({ provedor_documento_id: null })] });
+    const { chamadas, porta } = portaDeTeste({ get: { data: { attributes: { status: "running" } } } });
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), porta);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.erro).toContain("env-vivo");
+    // Leu, e não mandou PATCH nenhum.
+    expect(chamadas).toEqual([{ caminho: "/envelopes/env-vivo", metodo: "GET" }]);
+    expect(escritas(banco)).toEqual([]);
+  });
+
+  // ⚠️ E ESSA LINHA DEIXOU DE FICAR PRESA QUANDO NÃO HAVIA NADA A CANCELAR: a Clicksign já cancelou, o
+  // webhook não chegou, e a conclusão segue sem PATCH. Com a recusa antes da leitura, a venda não caía
+  // nem nesse caso.
+  it("linha sem o id do documento e envelope já canceled: conclui sem PATCH nenhum", async () => {
+    const banco = cenario({ envelopes: [envelope({ provedor_documento_id: null })] });
+    const { chamadas, porta } = portaDeTeste({ get: RELEITURA_CANCELED });
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), porta);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.envelopeCancelado).toBeNull();
+    expect(chamadas.some((c) => c.metodo === "PATCH")).toBe(false);
+  });
+
+  // ⚠️ O 200 DO PATCH NO DOCUMENTO NÃO É A MORTE DO ENVELOPE, e nenhuma das duas páginas da doc diz
+  // que é (lidas em 25/09/2026). Se a releitura ainda disser `running`, a venda NÃO cai e nada é
+  // gravado: carimbar `cancelado` (terminal) aqui derrubaria a venda com o contrato vivo na rua.
+  it("PATCH 200 e o envelope ainda running: a venda NÃO cai e nada é gravado", async () => {
+    silenciar();
+    const banco = cenario({ envelopes: [envelope()] });
+    const rodando = { data: { attributes: { status: "running" } } };
+    const { chamadas, porta } = portaDeTeste({ get: [rodando, rodando] });
+
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido(), porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(502);
+    expect(r.erro).toContain("não conseguiu confirmar");
+    expect(chamadas.map((c) => c.metodo)).toEqual(["GET", "PATCH", "GET"]);
     expect(escritas(banco)).toEqual([]);
   });
 });
@@ -921,13 +1030,15 @@ describe("concluir o distrato", () => {
   it("envelope ainda assinável: morre na Clicksign antes de a venda cair, e o histórico do card conta", async () => {
     silenciar();
     const banco = distratoImportado({ envelopes: [envelope({ estado: "parcial" })] });
-    const { chamadas, porta } = portaDeTeste({ get: { data: { attributes: { status: "running" } } } });
+    const { chamadas, porta } = portaDeTeste({
+      get: [{ data: { attributes: { status: "running" } } }, RELEITURA_CANCELED],
+    });
 
     const r = await concluirCancelamentoDoCard(banco.cliente, pedido({ declaracoes: DECLAROU_TUDO }), porta);
 
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(chamadas.map((c) => c.metodo)).toEqual(["GET", "PATCH"]);
+    expect(chamadas.map((c) => c.metodo)).toEqual(["GET", "PATCH", "GET"]);
     expect(r.envelopeCancelado).toBe("env-vivo");
     expect(banco.linha("temis_envelopes", "reg-env")?.estado).toBe("cancelado");
     const passagem = banco.linhas("temis_trabalho_etapas").find((p) => p.trabalho_id === "card-pedido");

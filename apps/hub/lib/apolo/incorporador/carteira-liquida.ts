@@ -1,4 +1,6 @@
 import { soDigitos } from "@/lib/apolo/c2x-integracao";
+import { type CatalogoParaId, filtroPorIds } from "@/lib/apolo/c2x-pelo-id";
+import { idsDoC2xDasSiglasAoVivo } from "@/lib/apolo/c2x-pelo-id-servidor";
 import { numeroDaParcela } from "@/lib/apolo/numero-da-parcela";
 import { getHadesDbPool } from "@/lib/guardian/db";
 import {
@@ -793,17 +795,35 @@ function ordenarExtrato(extrato: ExtratoParcela[], filtro: FiltroDoExtrato | und
  * `true` amplia para as parcelas em aberto da carteira ativa (status 6 e 7, sem as apagadas), que
  * os indicadores precisam para previsto e inadimplente. O subconjunto PAGO é idêntico nos dois
  * modos, de propósito: é a garantia de que a soma da carteira e os KPIs saem da mesma fonte.
+ *
+ * ⚠️ PELO ID DO C2X, NÃO PELA SIGLA (PAN-124). As siglas viram `enterprises.id` pelo MESMO catálogo
+ * de onde o escopo as tirou, e o WHERE é `e.id in (...)`. Com `e.code in (...)`, um renome no legado
+ * (o 43 foi de RDV para PDI em 24/09/2026) fazia a carteira daquele empreendimento sumir da tela sem
+ * erro nenhum. O SELECT continua devolvendo `e.code`: é por ele que a política, o nome e o extrato
+ * se casam, e isso não muda.
+ *
+ * Sigla sem id no C2X (produto nascido no Panteon) não vai ao legado e dá a mesma leitura vazia que
+ * a consulta dela dava. Catálogo indisponível é C2X fora: erro, e nunca carteira zerada.
  */
 async function lerLinhasDaCarteira(
   codes: string[],
   incluirNaoPagas: boolean,
+  catalogo?: CatalogoParaId | null,
 ): Promise<{ linhas: LinhaCruaDaCarteira[]; parcial: boolean } | { erro: string }> {
   const pool = getHadesDbPool();
   if (!pool.ok) {
     return { erro: `Configuracao C2X ausente: ${pool.missing.join(", ")}.` };
   }
 
-  const marcadores = codes.map(() => "?").join(", ");
+  const traduzido = await idsDoC2xDasSiglasAoVivo(codes, { catalogo });
+  if (!traduzido.ok) {
+    console.error("[apolo][incorporador] carteira sem tradução de sigla para id", traduzido.erro);
+    return { erro: traduzido.erro };
+  }
+
+  const doEscopo = filtroPorIds("e.id", traduzido.ids);
+  if (!doEscopo) return { linhas: [], parcial: false };
+
   const filtroPagas = "(p.paid_value > 0 and p.payment_date is not null)";
   const filtro = incluirNaoPagas
     ? `(${filtroPagas} or (p.payment_status_id in (6, 7)
@@ -852,12 +872,12 @@ async function lerLinhasDaCarteira(
        left join commercial_plans cps on cps.id = ar.commercial_plan_id
        left join users cli on cli.id = ar.client_id
        left join users imo on imo.id = cli.vinculed_by_id
-      where e.code in (${marcadores})
+      where ${doEscopo.sql}
         and ${filtro}
         and p.id > ?
       order by p.id asc
       limit ${LOTE}`,
-      [...codes, cursor],
+      [...doEscopo.params, cursor],
     );
 
     const cruas = lote as LinhaCruaDaCarteira[];
@@ -902,6 +922,8 @@ async function lerLinhasDaCarteira(
  *   chama tem que ter passado por `codigosDaSessao`.
  */
 export async function carteiraLiquidaDoIncorporador(input: {
+  /** O catálogo do C2X, quando a rota já o tem: traduz as siglas em id sem reler o cache. */
+  catalogo?: CatalogoParaId | null;
   codes: string[];
   /** Quando presente, a leitura amplia para as parcelas em aberto e calcula os KPIs do BI. */
   indicadores?: {
@@ -935,7 +957,7 @@ export async function carteiraLiquidaDoIncorporador(input: {
   }
 
   try {
-    const leitura = await lerLinhasDaCarteira(codes, Boolean(input.indicadores));
+    const leitura = await lerLinhasDaCarteira(codes, Boolean(input.indicadores), input.catalogo);
     if ("erro" in leitura) return { error: leitura.erro, ok: false };
 
     const hoje = isoDia(input.indicadores?.agoraMs ?? Date.now());
