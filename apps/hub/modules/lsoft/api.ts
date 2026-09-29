@@ -14,6 +14,7 @@ import type {
   ResumoDoSubsidio,
 } from "@/lib/lsoft/classificacao";
 import type { DocumentoDoLsoft } from "@/lib/lsoft/documentos-tipos";
+import { type FiltroDaExportacao, parametrosDaExportacao } from "@/lib/lsoft/filtro-da-tela";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 
@@ -41,6 +42,13 @@ export type ApiDoLsoft = {
     rodarLote: () => Promise<null | { enriquecidos: number; falhas: number; restam: number; terminou: boolean }>;
     situacao: () => Promise<null | { custoEstimado: number; pendentes: number }>;
   };
+  /**
+   * O botão "Excel": clientes e parcelas do recorte da tela, montados no servidor.
+   *
+   * ⚠️ O FILTRO É O DA TELA, INTEIRO: a busca APLICADA, o empreendimento e os dois checkboxes. As
+   * parcelas não vêm na lista (só na ficha), então o arquivo não sai do que o navegador já tem.
+   */
+  exportarCarteira: (filtro: FiltroDaExportacao) => Promise<ArquivoExportado | { erro: string }>;
   historico: (codigo: string) => Promise<EdicaoDoLsoft[]>;
   lerCarteira: (filtro: { busca: string; empreendimento: string }) => Promise<CarteiraCarregada | null>;
   lerFicha: (codigo: string) => Promise<FichaCarregada | null>;
@@ -83,6 +91,25 @@ export type SubsidioCarregado = {
 
 const json = async (resposta: Response) =>
   (await resposta.json().catch(() => null)) as null | { data?: unknown; error?: string };
+
+export type ArquivoExportado = { arquivo: Blob; nome: string };
+
+/**
+ * A resposta da exportação, nas duas portas de entrada.
+ *
+ * ⚠️ O ERRO PODE NÃO SER JSON. Quando a Vercel mata a função, o gateway responde em TEXTO ("An
+ * error occurred..."), e um `r.json()` direto mostraria na tela a mensagem do parser em vez do
+ * problema. Por isso o corpo de erro é lido com `json()` tolerante e, sem mensagem, cai no status.
+ */
+async function arquivoDaResposta(r: Response): Promise<ArquivoExportado | { erro: string }> {
+  if (!r.ok) {
+    const corpo = await json(r);
+    return { erro: corpo?.error ?? `Não consegui gerar a planilha (${r.status}).` };
+  }
+  const nome =
+    /filename="([^"]+)"/.exec(r.headers.get("Content-Disposition") ?? "")?.[1] ?? "lsoft.xlsx";
+  return { arquivo: await r.blob(), nome };
+}
 
 /**
  * O envio de UM documento, nas duas etapas, comum às duas portas de entrada.
@@ -218,6 +245,15 @@ export const apiInterna: ApiDoLsoft = {
       const corpo = await json(r);
       return r.ok ? (corpo?.data as never) : null;
     },
+  },
+
+  async exportarCarteira(filtro) {
+    const token = await getApoloAccessToken();
+    const r = await fetch(`/api/lsoft/carteira?${parametrosDaExportacao(filtro)}`, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return arquivoDaResposta(r);
   },
 
   async historico(codigo) {
@@ -368,6 +404,13 @@ export const apiDoPortal: ApiDoLsoft = {
   },
 
   enriquecer: null,
+
+  async exportarCarteira(filtro) {
+    const r = await fetch(`/api/incorporador/lsoft?${parametrosDaExportacao(filtro)}`, {
+      cache: "no-store",
+    });
+    return arquivoDaResposta(r);
+  },
 
   async historico() {
     // O histórico é ferramenta de auditoria interna; no portal a aba nem aparece.

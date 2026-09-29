@@ -28,6 +28,7 @@ import { autorizar, codigosDaSessao, idsDaSessao } from "@/lib/apolo/incorporado
 import { ehPortalComercial } from "@/lib/apolo/incorporador/perfis-de-portal";
 import { produtosDoPortal } from "@/lib/apolo/incorporador/produtos-do-portal";
 import { type DadosDoApolo, loadPoliticaComercialPorIds } from "@/lib/apolo/politica-comercial";
+import { hojeNaCasa } from "@/lib/guardian/hoje-na-casa";
 import { type PoliticaDoEmpreendimento } from "@/lib/apolo/liquido-incorporador";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { getHadesDbPool } from "@/lib/guardian/db";
@@ -556,7 +557,9 @@ export async function GET(request: Request) {
     return new NextResponse(arquivo, {
       headers: {
         "Cache-Control": "no-store",
-        "Content-Disposition": `attachment; filename="${nomeDoArquivo(escolhido, new Date().toISOString())}"`,
+        // ⚠️ O DIA DO NOME É O DE SÃO PAULO (29/09/2026). Com `toISOString()` era o de UTC: das
+        // 21h à meia-noite o arquivo saía datado de amanhã. A régua é a de `hojeNaCasa`.
+        "Content-Disposition": `attachment; filename="${nomeDoArquivo(escolhido, hojeNaCasa())}"`,
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         // `true` = falta linha no arquivo, por qualquer um dos dois cortes (o do filtro ou o da
         // leitura). A tela lê isto para avisar quem clicou.

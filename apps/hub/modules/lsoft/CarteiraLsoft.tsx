@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Landmark, Loader2, Pencil, RefreshCw, Search, Sparkles, X } from "lucide-react";
+import { Check, Download, Landmark, Loader2, Pencil, RefreshCw, Search, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { type ApiDoLsoft, apiInterna } from "./api";
@@ -15,6 +15,7 @@ import type {
   StatusDaValidacao,
 } from "@/lib/lsoft/carteira";
 import { EMPREENDIMENTOS_DO_ESPELHO } from "@/lib/lsoft/categorias";
+import { clientesDaTela } from "@/lib/lsoft/filtro-da-tela";
 import { unidadeParaExibir } from "@/lib/lsoft/unidade";
 
 import { SubsidioDaCaixa } from "./SubsidioDaCaixa";
@@ -90,6 +91,7 @@ export function CarteiraLsoft({ api = apiInterna }: { api?: ApiDoLsoft }) {
   // A VISAO: carteira (o que o cliente deve) x subsidio (o que a Caixa tem para pagar).
   // Pedido do Lucas (25/08): "eu queria uma tela diferente para os subsidio... parcela por parcela".
   const [visao, setVisao] = useState<"carteira" | "subsidio">("carteira");
+  const [exportando, setExportando] = useState(false);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -119,11 +121,52 @@ export function CarteiraLsoft({ api = apiInterna }: { api?: ApiDoLsoft }) {
       })
     : null;
 
-  const lista = (carteira?.clientes ?? []).filter(
-    (cliente) =>
-      (!somentePendentes || cliente.statusValidacao !== "validado") &&
-      (!somentePatrimonio || cliente.patrimonioParcelasAbertas > 0),
-  );
+  // ⚠️ A MESMA FUNÇÃO QUE A PLANILHA USA NO SERVIDOR: o arquivo do botão "Excel" tem de trazer
+  // exatamente estes clientes, e uma segunda cópia da regra um dia descolaria da primeira.
+  const lista = clientesDaTela(carteira?.clientes ?? [], { somentePatrimonio, somentePendentes });
+
+  /**
+   * Baixa em Excel os clientes e as parcelas deste recorte (Lucas, 29/09/2026: *"coloca exportação
+   * para xlsx por favor nessa tela"*).
+   *
+   * ⚠️ O ARQUIVO SAI DO SERVIDOR, e não da lista que a tela já tem: as parcelas só chegam na ficha
+   * de cada cliente. A rota refaz a leitura com o MESMO filtro: a busca APLICADA (`buscaAtiva`, a
+   * do botão Buscar, e não a que está digitada), o empreendimento e os dois checkboxes.
+   */
+  async function exportar() {
+    setExportando(true);
+    try {
+      const resposta = await api.exportarCarteira({
+        busca: buscaAtiva,
+        empreendimento,
+        somentePatrimonio,
+        somentePendentes,
+      });
+      if ("erro" in resposta) {
+        setErro(resposta.erro);
+        return;
+      }
+      setErro(null);
+      // ⚠️ O LINK ENTRA NO DOCUMENTO E A URL SÓ É REVOGADA DEPOIS. Link solto (fora do documento) o
+      // Firefox ignora, e revogar na mesma volta do clique é uma corrida com o navegador: em alguns
+      // ele ainda não começou a ler o blob, e o download morre SEM LANÇAR (changelog v1.298.1, o
+      // extrato do Isac em 08/09/2026). Aqui seria pior: a pessoa clicaria de novo e esperaria mais
+      // uns 10 s de leitura da carteira inteira. Mesmo cuidado de `baixarModelo` (CadastroDeUnidades).
+      const endereco = URL.createObjectURL(resposta.arquivo);
+      const link = document.createElement("a");
+      link.download = resposta.nome;
+      link.href = endereco;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(endereco), 1000);
+    } catch (falha) {
+      setErro(falha instanceof Error ? falha.message : "Não consegui gerar a planilha.");
+    } finally {
+      setExportando(false);
+    }
+  }
+
   const temPatrimonio = (carteira?.resumo.patrimonioParcelasAbertas ?? 0) > 0;
 
   const carteiraTotal = (carteira?.resumo.saldoAberto ?? 0) + (carteira?.resumo.totalRecebido ?? 0);
@@ -240,6 +283,20 @@ export function CarteiraLsoft({ api = apiInterna }: { api?: ApiDoLsoft }) {
 
         {api.enriquecer ? (
           <BotaoDeEnriquecimento aoTerminar={() => void carregar()} enriquecer={api.enriquecer} />
+        ) : null}
+
+        {/* Só na visão da carteira: a do subsídio é outra tabela, com outro recorte. */}
+        {visao === "carteira" ? (
+          <button
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-black/10 px-3 text-sm font-semibold text-ink-soft disabled:opacity-50 dark:border-white/10"
+            disabled={exportando || lista.length === 0}
+            onClick={() => void exportar()}
+            title="Baixa em Excel os clientes e as parcelas deste recorte, com os filtros da tela"
+            type="button"
+          >
+            {exportando ? <Loader2 className="animate-spin" size={15} /> : <Download size={15} />}
+            Excel
+          </button>
         ) : null}
 
         <button

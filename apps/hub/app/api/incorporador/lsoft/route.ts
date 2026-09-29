@@ -20,6 +20,8 @@ import {
   registrarDocumentoDoLsoft,
   removerDocumentoDoLsoft,
 } from "@/lib/lsoft/documentos";
+import { filtroDaExportacao } from "@/lib/lsoft/filtro-da-tela";
+import { exportarCarteiraDoLsoft } from "@/lib/lsoft/planilha-da-carteira";
 import { portalVeBaseLsoft } from "@/lib/lsoft/portais";
 
 // A BASE DO LSOFT DENTRO DO PORTAL DO INCORPORADOR.
@@ -38,6 +40,11 @@ import { portalVeBaseLsoft } from "@/lib/lsoft/portais";
 // separa uma operação da outra aqui é o verbo de negócio, não o recurso.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+// ⚠️ 60 s DE TETO por causa da exportação para Excel: medido em 29/09/2026, da máquina do Lucas,
+// a carteira inteira (475 clientes, 32.660 parcelas) leva ~10 s entre ler e montar o arquivo, e a
+// lista sozinha 1,4 s. Sem valor explícito vale o padrão do projeto na Vercel, que não está escrito
+// no repositório (sem Fluid, o Pro corta em 15 s); 60 s dá folga sem abrir espaço para laço longo.
+export const maxDuration = 60;
 
 function fora(): NextResponse {
   // 404, não 403: para quem não tem a aba, esta rota simplesmente não existe.
@@ -96,6 +103,30 @@ export async function GET(request: Request) {
       { data: { cadastro: ficha.cadastro, parcelas: ficha.parcelas } },
       { headers: { "Cache-Control": "no-store" } },
     );
+  }
+
+  // A EXPORTAÇÃO PARA EXCEL (Lucas, 29/09/2026, olhando esta tela no portal da Cecílio Rocha:
+  // *"coloca exportação para xlsx por favor nessa tela"*). Só no ramo da LISTA: o subsídio e a ficha
+  // acima continuam com precedência. A porta é a mesma da lista (`autorizar` + `portalVeBaseLsoft`,
+  // no topo desta função, antes de qualquer leitura).
+  if (url.searchParams.get("formato") === "xlsx") {
+    const exportacao = await exportarCarteiraDoLsoft(filtroDaExportacao(url.searchParams));
+    if (!exportacao.ok) {
+      // O detalhe NÃO atravessa para o cliente externo (pode citar tabela ou coluna interna): fica
+      // no log do servidor, e o portal recebe o genérico. Mesma regra da carteira do incorporador.
+      console.error("[incorporador/lsoft] exportação falhou:", exportacao.erro);
+      return NextResponse.json(
+        { error: "Não foi possível gerar a planilha agora. Tente de novo em instantes." },
+        { status: 503 },
+      );
+    }
+    return new NextResponse(exportacao.arquivo, {
+      headers: {
+        "Cache-Control": "no-store",
+        "Content-Disposition": `attachment; filename="${exportacao.nome}"`,
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      },
+    });
   }
 
   const carteira = await lerCarteiraDoLsoft({

@@ -1,6 +1,6 @@
 "use client";
 
-import { type MouseEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUpDown,
   ChevronDown,
@@ -17,6 +17,12 @@ import {
 
 import { formatarDocumento } from "@/lib/apolo/documento";
 import { diaNaTela, mesNaTela } from "@/lib/apolo/incorporador/dia-na-tela";
+import {
+  nomeDoArquivo as nomeDoArquivoDaCarteira,
+  planilhaDaCarteiraPorUnidade,
+  recorteDaConsulta,
+} from "@/lib/apolo/incorporador/planilha-da-carteira-por-unidade";
+import { hojeNaCasa } from "@/lib/guardian/hoje-na-casa";
 import { fonte } from "@/modules/publico/ui/tokens";
 import type {
   ExtratoParcela,
@@ -464,6 +470,14 @@ export function TelaCarteira({
   const alvo = recorteSelecionado ?? empSelecionado;
   const [aba, setAba] = useState<"carteira" | "indicadores">("carteira");
   const [consultadoEm, setConsultadoEm] = useState<Date | null>(null);
+  // ⚠️ A HORA DA LISTA DE UNIDADES, SEPARADA DO "Consultado às" DO CABEÇALHO. O cabeçalho diz a
+  // última consulta de qualquer aba, e abrir Indicadores (ou mexer no filtro do extrato) o empurra
+  // para a frente sem reler as unidades. O Excel da aba Carteira precisa da hora em que AS UNIDADES
+  // foram lidas: com a do cabeçalho, a planilha lida às 14:32 saía carimbada 15:10, e o pagamento
+  // baixado nesse meio tempo parecia estar nela (achado da revisão de 29/09/2026).
+  const [carteiraConsultadaEm, setCarteiraConsultadaEm] = useState<Date | null>(null);
+  // O número da última leitura da carteira pedida. Ver `carregar`.
+  const ultimaLeitura = useRef(0);
 
   // A aba Indicadores tem estado próprio: a leitura ampliada (?indicadores=1) custa mais no C2X e
   // só roda quando o cliente ABRE a aba. `indicadoresDe` guarda de qual recorte o dado é, para o
@@ -479,7 +493,13 @@ export function TelaCarteira({
   const [indicadoresErro, setIndicadoresErro] = useState<null | string>(null);
   const [indicadoresCarregando, setIndicadoresCarregando] = useState(false);
 
+  // ⚠️ SÓ A ÚLTIMA LEITURA PEDIDA ESCREVE NA TELA. A consulta ao C2X leva segundos; quem clica em
+  // Alfa e logo em Beta dispara duas, e se a de Alfa voltar por último ela ficava na tela debaixo
+  // do chip de Beta, sem prazo para acabar (e o Excel baixava Alfa). Cada leitura leva um número;
+  // a que volta depois de uma mais nova é descartada inteira: dado, erro e o "carregando".
   const carregar = useCallback(async (emp: null | string) => {
+    const estaLeitura = ++ultimaLeitura.current;
+    const aindaVale = () => estaLeitura === ultimaLeitura.current;
     setCarregando(true);
     setErro(null);
     try {
@@ -488,16 +508,20 @@ export function TelaCarteira({
         : "/api/incorporador/carteira";
       const r = await fetch(endereco, { cache: "no-store" });
       const corpo = (await r.json().catch(() => null)) as { data?: Dados; error?: string } | null;
+      if (!aindaVale()) return;
       if (!r.ok || !corpo?.data) {
         setErro(corpo?.error ?? "Não foi possível carregar a carteira.");
         return;
       }
+      const agora = new Date();
       setDados(corpo.data);
-      setConsultadoEm(new Date());
+      setConsultadoEm(agora);
+      setCarteiraConsultadaEm(agora);
     } catch {
+      if (!aindaVale()) return;
       setErro("Não foi possível carregar a carteira.");
     } finally {
-      setCarregando(false);
+      if (aindaVale()) setCarregando(false);
     }
   }, []);
 
@@ -597,6 +621,12 @@ export function TelaCarteira({
       : empreendimentos.length === 1
         ? empreendimentos[0]
         : undefined) ?? null;
+  // O nome do recorte para o Excel da aba Carteira.
+  //
+  // ⚠️ SAI DO DADO, E NÃO DOS CHIPS. `dados.filtro` é o `?code` que gerou ESTAS unidades (a rota o
+  // devolve junto); o chip pode já estar em outro recorte, ainda carregando, com a tabela antiga na
+  // tela. Ver `recorteDaConsulta`.
+  const recorteDoArquivo = recorteDaConsulta(dados.filtro, empreendimentos);
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -710,7 +740,14 @@ export function TelaCarteira({
       {coordenador && recorte ? (
         <AbaParcelasDoCoordenador parcial={dados.atoESinalParcial === true} resumo={recorte} />
       ) : aba === "carteira" ? (
-        <AbaCarteira bruto={dados.bruto} liquido={dados.liquido} units={dados.units ?? []} />
+        <AbaCarteira
+          atualizando={carregando}
+          bruto={dados.bruto}
+          consultadoEm={carteiraConsultadaEm}
+          liquido={dados.liquido}
+          recorte={recorteDoArquivo}
+          units={dados.units ?? []}
+        />
       ) : (
         <AbaIndicadores
           carregando={indicadoresCarregando}
@@ -729,23 +766,90 @@ export function TelaCarteira({
 // ── ABA CARTEIRA (a réplica da CarteiraTab interna) ─────────────────────────
 
 function AbaCarteira({
+  atualizando,
   bruto,
+  consultadoEm,
   liquido,
+  recorte,
   units,
 }: {
+  /**
+   * `true` = a carteira de outro recorte está sendo lida e a tabela ainda mostra a anterior. O Excel
+   * fica travado até a leitura voltar: baixar agora daria o recorte de antes para quem acabou de
+   * escolher outro.
+   */
+  atualizando: boolean;
   bruto: Resumo;
+  /** A hora em que ESTAS unidades foram lidas (não a do cabeçalho): vai para a aba "Sobre" do Excel. */
+  consultadoEm: Date | null;
   liquido: Liquido | null;
+  /** O nome do recorte escolhido (produto e filho), para o Excel. `null` = "Todos". */
+  recorte: null | string;
   units: UnidadeDaTela[];
 }) {
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<FiltroDaCarteira>("todos");
   const [ordem, setOrdem] = useState<OrdemDaCarteira>({ coluna: "vencido", direcao: "desc" });
   const [unidadeAberta, setUnidadeAberta] = useState<UnidadeDaTela | null>(null);
+  const [exportando, setExportando] = useState(false);
+  const [erroDaExportacao, setErroDaExportacao] = useState<null | string>(null);
 
   const visiveis = useMemo(
     () => ordenarUnidades(filtrarUnidades(units, busca, filtro), ordem),
     [busca, filtro, ordem, units],
   );
+
+  /**
+   * Baixa em Excel a tabela "Carteira por unidade" (Lucas, 29/09/2026: *"na tela do financeiro
+   * tbm"*, logo depois de pedir o Excel na LSoft Integração).
+   *
+   * ⚠️ O ARQUIVO É EXATAMENTE `visiveis`, NA ORDEM DA TELA, E NASCE AQUI NO NAVEGADOR. É o oposto
+   * do Excel do extrato (aba Indicadores), que pede o arquivo ao servidor porque o extrato chega
+   * cortado em 2.000 linhas. Aqui não há corte: a rota manda TODAS as unidades do recorte e a
+   * busca, o filtro e a ordem já rodam sobre a lista inteira. Pedir de novo ao servidor repetiria a
+   * leitura do C2X (a consulta cara desta tela) para devolver o mesmo dado.
+   */
+  const exportar = useCallback(async () => {
+    setExportando(true);
+    setErroDaExportacao(null);
+    try {
+      const arquivo = await planilhaDaCarteiraPorUnidade({
+        busca,
+        consultadoEm,
+        filtro,
+        liquido,
+        ordem,
+        recorte,
+        unidades: visiveis,
+      });
+
+      const endereco = URL.createObjectURL(
+        new Blob([arquivo], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
+      );
+      const link = document.createElement("a");
+      link.download = nomeDoArquivoDaCarteira(recorte, hojeNaCasa());
+      link.href = endereco;
+      // ⚠️ O LINK ENTRA NO DOCUMENTO E O ENDEREÇO SÓ SAI DEPOIS. Link solto (fora do documento) o
+      // Firefox ignora, e revogar na mesma volta do clique cancela o download em alguns
+      // navegadores, sem erro nenhum (foi o PDF do extrato do CRM 360, changelog v1.298.1). É o
+      // mesmo cuidado de `baixarModelo` (CadastroDeUnidades.tsx) e do Excel do extrato, abaixo.
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(endereco), 1000);
+    } catch (e) {
+      // ⚠️ SEM A MENSAGEM TÉCNICA NA TELA, e com o "recarregue". A falha mais provável aqui não é
+      // do dado: é a biblioteca do Excel (que só baixa no clique) não vir, porque a página ficou
+      // aberta de antes de um deploy e pede um pedaço de código que não existe mais. Recarregar
+      // resolve; o detalhe fica no console para quem for investigar.
+      console.error("[carteira] falha ao gerar o Excel da carteira por unidade:", e);
+      setErroDaExportacao("Não consegui gerar a planilha. Recarregue a página e tente de novo.");
+    } finally {
+      setExportando(false);
+    }
+  }, [busca, consultadoEm, filtro, liquido, ordem, recorte, visiveis]);
 
   const parteRecebida = bruto.totalPortfolio
     ? (bruto.paidAmount / bruto.totalPortfolio) * 100
@@ -869,6 +973,8 @@ function AbaCarteira({
             Carteira por unidade{" "}
             <span style={{ color: T.muted, fontSize: 12, fontWeight: 500 }}>
               ({inteiro(visiveis.length)})
+              {/* O mesmo aviso do extrato: a tabela de baixo ainda é a do recorte anterior. */}
+              {atualizando ? <span style={{ marginLeft: 6 }}>atualizando…</span> : null}
             </span>
           </h2>
           <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -911,8 +1017,58 @@ function AbaCarteira({
               <option value="inadimplente">Inadimplentes</option>
               <option value="em_dia">Em dia</option>
             </select>
+
+            {/* O MESMO BOTÃO do Excel do extrato (aba Indicadores). ⚠️ ELE LEVA A TELA JUNTO, e o
+                título diz isso: quem buscou "Silva" e escolheu Inadimplentes baixa essas unidades,
+                nessa ordem, e não a carteira inteira. */}
+            <button
+              disabled={exportando || atualizando || visiveis.length === 0}
+              onClick={() => void exportar()}
+              style={{
+                alignItems: "center",
+                background: "transparent",
+                border: `1px solid ${T.border}`,
+                borderRadius: 10,
+                color: atualizando || visiveis.length === 0 ? T.sub : T.text,
+                cursor:
+                  exportando || atualizando || visiveis.length === 0 ? "default" : "pointer",
+                display: "inline-flex",
+                fontFamily: fonte,
+                fontSize: 13,
+                fontWeight: 600,
+                gap: 6,
+                padding: "8px 14px",
+              }}
+              title={
+                atualizando
+                  ? "Aguarde a carteira do empreendimento escolhido terminar de carregar"
+                  : "Baixa em Excel as unidades desta lista, com a busca, o filtro e a ordem da tela"
+              }
+              type="button"
+            >
+              {exportando ? (
+                <Loader2 className="inc-girando" size={14} />
+              ) : (
+                <Download size={14} />
+              )}
+              Excel
+            </button>
           </div>
         </div>
+
+        {erroDaExportacao ? (
+          <p
+            style={{
+              borderBottom: `1px solid ${T.border}`,
+              color: T.danger,
+              fontSize: 12.5,
+              margin: 0,
+              padding: "8px 16px",
+            }}
+          >
+            {erroDaExportacao}
+          </p>
+        ) : null}
 
         {/* ⚠️ A ALTURA SEGUE A TELA, E NÃO UMA FRAÇÃO FIXA (Lucas, 21/09/2026: *"corrige esse
             painel, comeu um pedaço da tela"*). Com `58vh` a tabela usava pouco mais da metade da
@@ -2008,6 +2164,12 @@ function ExtratoAnalitico({
       setExportouParcial(r.headers.get("X-Parcial") === "true");
 
       // O download acontece no navegador: o arquivo vem no corpo e o link some logo depois.
+      //
+      // ⚠️ O LINK ENTRA NO DOCUMENTO E O ENDEREÇO SÓ É REVOGADO 1 s DEPOIS (29/09/2026). Antes o link
+      // ficava solto e a revogação vinha na mesma volta do clique: é a corrida que fazia o PDF do
+      // extrato do CRM 360 morrer calado em alguns navegadores (changelog v1.298.1). Ninguém
+      // reclamou deste botão ainda, mas o defeito é o mesmo, e o Excel da aba Carteira, ao lado,
+      // já nasceu com o cuidado.
       const arquivo = await r.blob();
       const endereco = URL.createObjectURL(arquivo);
       const link = document.createElement("a");
@@ -2015,8 +2177,10 @@ function ExtratoAnalitico({
         /filename="([^"]+)"/.exec(r.headers.get("Content-Disposition") ?? "")?.[1] ??
         "extrato.xlsx";
       link.href = endereco;
+      document.body.appendChild(link);
       link.click();
-      URL.revokeObjectURL(endereco);
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(endereco), 1000);
     } catch (e) {
       setErroDaExportacao(e instanceof Error ? e.message : "Não consegui gerar a planilha.");
     } finally {
