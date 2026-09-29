@@ -11,7 +11,7 @@
 <style>
 :root{
   --navy:#10222c; --navy2:#163d57; --blue:#2d84b8; --blue2:#1b6391; --sky:#89bcca; --gray:#49464e;
-  --bg:#f4f6f8; --card:#ffffff; --ink:#1c2328; --muted:#6b7680; --line:#e2e7ec; --soft:#e8f2f8;
+  --bg:#f6f8fa; --card:#ffffff; --ink:#1c2328; --muted:#6b7680; --line:#e2e7ec; --soft:#e8f2f8;
   --ok:#1f9d55; --doing:#e8912d; --todo:#2d84b8; --late:#d64545;
 }
 *{box-sizing:border-box}
@@ -19,24 +19,24 @@
 html,body{margin:0}
 body{font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5}
 .app{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
-aside{background:var(--navy);color:#dfe8ee;padding:22px 14px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:18px}
-aside .brand{display:flex;align-items:center;gap:10px;padding:0 8px}
-aside .brand .selo{padding:5px;border-radius:10px}aside .brand img{width:40px;display:block}
-aside .brand b{font-family:Marcellus,serif;font-weight:400;font-size:15px;letter-spacing:.06em;color:#fff;display:block}
-aside .brand span{font-size:11px;color:var(--sky);letter-spacing:.08em;text-transform:uppercase}
+aside{background:#fff;color:var(--ink);border-right:1px solid var(--line);padding:22px 14px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:18px}
+aside .brand{display:flex;flex-direction:column;align-items:center;gap:8px;padding:4px 8px 14px;border-bottom:1px solid var(--line)}
+aside .brand .selo{box-shadow:none;padding:0}aside .brand img{width:64px;display:block}aside .brand > div{text-align:center}
+aside .brand b{font-family:Marcellus,serif;font-weight:400;font-size:15px;letter-spacing:.06em;color:var(--navy2);display:block}
+aside .brand span{font-size:11px;color:var(--blue);letter-spacing:.08em;text-transform:uppercase}
 nav{display:flex;flex-direction:column;gap:2px}
-nav button{all:unset;cursor:pointer;display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:#c4d3dd;font-size:13.5px}
+nav button{all:unset;cursor:pointer;display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;color:#3a4650;font-size:14.5px;font-weight:500}
 nav button svg{width:17px;height:17px}
-nav button:hover{background:rgba(255,255,255,.06);color:#fff}
-nav button.on{background:var(--blue);color:#fff}
-aside .foot{margin-top:auto;font-size:11.5px;color:#8fa6b5;padding:0 8px}
-aside .foot b{color:#fff;font-weight:600}
+nav button:hover{background:#f1f5f8;color:var(--navy2)}
+nav button.on{background:#e6f1f8;color:var(--blue2);font-weight:600}
+aside .foot{margin-top:auto;font-size:11.5px;color:var(--muted);padding:12px 8px 0;border-top:1px solid var(--line)}
+aside .foot b{color:var(--navy2);font-weight:600}
 main{padding:28px 34px 60px;max-width:1360px;width:100%}
 .top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px}
 .top h1{margin:0;font-size:22px}
 .top p{margin:2px 0 0;color:var(--muted)}
-.btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:8px;background:var(--navy2);color:#fff;font-weight:500;font-size:13px}
-.btn.ghost{background:transparent;color:var(--navy2);border:1px solid var(--line)}
+.btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:8px;background:var(--blue);color:#fff;font-weight:600;font-size:13px;border-radius:99px;padding:8px 16px}
+.btn.ghost{background:#fff;color:var(--navy2);border:1px solid var(--line)}
 .btn svg{width:16px;height:16px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px}
 .grid{display:grid;gap:16px}
@@ -119,7 +119,7 @@ tr:last-child td{border-bottom:0}
 
 .tabs{display:flex;gap:6px;border-bottom:1px solid var(--line);margin:22px 0 16px}
 .tabs button{all:unset;cursor:pointer;padding:10px 14px;font-weight:500;color:var(--muted);border-bottom:2px solid transparent}
-.tabs button.on{color:var(--navy2);border-color:var(--navy2)}
+.tabs button.on{color:var(--blue2);border-color:var(--blue)}
 
 .crumb{all:unset;cursor:pointer;color:var(--blue2);font-size:13px;display:inline-flex;align-items:center;gap:6px;margin-bottom:12px}
 .crumb svg{width:15px;height:15px}
@@ -173,13 +173,13 @@ body.editando .lapis{display:inline-flex}
 body.editando .dot.clica{cursor:pointer;outline:2px solid transparent;transition:.1s}
 body.editando .dot.clica:hover{outline-color:#b8d4e6;outline-offset:2px}
 .slide .band .lapis{color:#fff;background:transparent;border-color:rgba(255,255,255,.5)}
-aside .modo{display:flex;flex-direction:column;gap:6px;padding:10px 8px;border-top:1px solid rgba(255,255,255,.08)}
-aside .modo button{all:unset;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:12.5px;color:#c4d3dd;padding:6px 8px;border-radius:7px}
-aside .modo button:hover{background:rgba(255,255,255,.06)}
-aside .modo button.on{background:rgba(45,132,184,.25);color:#fff}
+aside .modo{display:flex;flex-direction:column;gap:6px;padding:10px 8px;border-top:1px solid var(--line)}
+aside .modo button{all:unset;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:12.5px;color:#3a4650;padding:7px 10px;border-radius:99px;border:1px solid var(--line)}
+aside .modo button:hover{background:#f1f5f8}
+aside .modo button.on{background:var(--blue);border-color:var(--blue);color:#fff}
 aside .modo svg{width:15px;height:15px}
-.salvo{font-size:11.5px;color:#8fa6b5;padding:0 8px;min-height:16px}
-.salvo.erro{color:#ffb3b3}
+.salvo{font-size:11.5px;color:var(--muted);padding:0 8px;min-height:16px}
+.salvo.erro{color:var(--late)}
 .faixa{position:sticky;top:0;z-index:20;margin:-28px -34px 18px;padding:10px 34px;background:#fff4e5;border-bottom:1px solid #f3dcb3;color:#6b4a14;font-size:13px;display:none;align-items:center;gap:10px}
 .faixa.on{display:flex}
 .faixa button{all:unset;cursor:pointer;font-weight:600;text-decoration:underline}
@@ -203,6 +203,114 @@ aside .modo svg{width:15px;height:15px}
 .fechado{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--ok);background:#e7f6ee;border-radius:99px;padding:3px 10px}
 .fechado svg{width:14px;height:14px}
 @media print{.faixa,.lapis,.modal-fundo{display:none!important}}
+
+/* =================== APRESENTAÇÃO (deck 16:9, base 1600x900) =================== */
+.deck-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.deck-bar .ctl{display:flex;align-items:center;gap:8px}
+.deck-bar .num{font-size:13px;color:var(--muted);min-width:70px;text-align:center}
+.palco{position:relative;width:100%;aspect-ratio:16/9;background:#0b1a22;border-radius:14px;overflow:hidden;box-shadow:0 10px 40px rgba(16,34,44,.18)}
+.palco .sl{position:absolute;left:0;top:0;width:1600px;height:900px;transform-origin:0 0}
+.miniaturas{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:16px}
+.miniaturas button{all:unset;cursor:pointer;position:relative;aspect-ratio:16/9;border-radius:8px;overflow:hidden;border:2px solid transparent;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.miniaturas button.on{border-color:var(--blue)}
+.miniaturas .sl{position:absolute;left:0;top:0;width:1600px;height:900px;transform-origin:0 0;pointer-events:none}
+.miniaturas i.n{position:absolute;right:6px;bottom:4px;font-style:normal;font-size:11px;font-weight:700;color:var(--muted);background:rgba(255,255,255,.9);padding:0 5px;border-radius:4px;z-index:2}
+.palco:fullscreen{border-radius:0;background:#000;display:flex;align-items:center;justify-content:center}
+.palco:fullscreen .sl{position:relative}
+.palco .seta{position:absolute;top:0;bottom:0;width:18%;cursor:pointer;z-index:5}
+.palco .seta.esq{left:0}.palco .seta.dir{right:0}
+#impressao{display:none}
+
+/* ---- o slide ---- */
+.sl{position:relative;width:1600px;height:900px;flex:none;font-family:Inter,system-ui,sans-serif;color:#1c2328;background:#fff;overflow:hidden}
+.sl h1,.sl h2,.sl h3{margin:0;text-transform:none;letter-spacing:normal;color:inherit}
+.sl .serif{font-family:Marcellus,serif;font-weight:400}
+.sl .olho{font-size:17px;letter-spacing:.28em;text-transform:uppercase;color:var(--blue);font-weight:600}
+.sl .titulo{font-family:Marcellus,serif;font-weight:400;font-size:54px;color:var(--navy2);line-height:1.1;margin-top:10px}
+.sl .conteudo{position:absolute;left:90px;right:90px;top:200px;bottom:104px}
+.sl .topo{position:absolute;left:90px;right:90px;top:70px;display:flex;justify-content:space-between;align-items:flex-start}
+.sl .topo img{height:74px}
+.sl .rodape{position:absolute;left:90px;right:90px;bottom:40px;display:flex;justify-content:space-between;align-items:center;font-size:15px;color:#8a96a0;border-top:2px solid #e6edf2;padding-top:16px}
+.sl .rodape b{color:var(--navy2);font-weight:600}
+.sl .faixa-lat{position:absolute;left:0;top:0;bottom:0;width:14px;background:linear-gradient(180deg,var(--blue),var(--navy2))}
+.sl svg.lucide{stroke-width:1.7}
+
+/* capa */
+.sl.capa{background:radial-gradient(1100px 700px at 88% -10%,rgba(45,132,184,.55),transparent 60%),linear-gradient(135deg,#0c1b24 0%,var(--navy2) 65%,var(--blue2) 100%);color:#fff}
+.sl.capa .marca-dagua{position:absolute;right:-120px;bottom:-160px;width:820px;height:820px;background:url(/marcas/cecilio-rocha.svg) no-repeat center/contain;opacity:.07;filter:grayscale(1) brightness(3)}
+.sl.capa .linhas{position:absolute;inset:0;background:repeating-linear-gradient(115deg,transparent 0 120px,rgba(255,255,255,.035) 120px 122px)}
+.sl.capa .selo-g{position:absolute;left:110px;top:100px;background:#fff;border-radius:22px;padding:18px 22px;box-shadow:0 20px 50px rgba(0,0,0,.35)}
+.sl.capa .selo-g img{width:170px;display:block}
+.sl.capa .miolo{position:absolute;left:110px;right:110px;top:390px}
+.sl.capa .miolo .olho{color:var(--sky)}
+.sl.capa h1{font-family:Marcellus,serif;font-weight:400;font-size:98px;line-height:1.02;margin-top:18px;letter-spacing:-.01em}
+.sl.capa .sub{font-size:26px;color:#cfe0ea;margin-top:22px;max-width:1100px;line-height:1.45}
+.sl.capa .meta{position:absolute;left:110px;right:110px;bottom:80px;display:flex;gap:80px;font-size:16px;color:#9fc0d3;border-top:1px solid rgba(255,255,255,.15);padding-top:26px}
+.sl.capa .meta b{display:block;color:#fff;font-size:22px;font-weight:600;margin-top:6px}
+
+/* divisor de seção */
+.sl.divisor{background:linear-gradient(120deg,#0c1b24 0%,var(--navy2) 60%,var(--blue2) 100%);color:#fff}
+.sl.divisor .grande{position:absolute;left:100px;top:120px;font-family:Marcellus,serif;font-size:300px;line-height:1;color:rgba(255,255,255,.08)}
+.sl.divisor .bloco{position:absolute;left:110px;right:110px;top:380px}
+.sl.divisor .olho{color:var(--sky)}
+.sl.divisor h2{font-family:Marcellus,serif;font-weight:400;font-size:84px;line-height:1.05;margin-top:16px}
+.sl.divisor .per{font-size:26px;color:#cfe0ea;margin-top:20px}
+.sl.divisor .chips{display:flex;flex-wrap:wrap;gap:14px;margin-top:40px}
+.sl.divisor .chips span{display:flex;align-items:center;gap:10px;font-size:22px;padding:12px 22px;border-radius:99px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2)}
+.sl.divisor .chips svg{width:24px;height:24px}
+.sl.divisor .selo-p{position:absolute;right:100px;top:90px;background:#fff;border-radius:16px;padding:10px 12px}
+.sl.divisor .selo-p img{width:96px;display:block}
+
+/* blocos de conteúdo */
+.sl .cards{display:grid;gap:26px;height:100%}
+.sl .card-s{background:#f5f8fa;border-radius:20px;padding:28px 30px;display:flex;flex-direction:column;gap:12px;border:1px solid #e6edf2;min-height:0}
+.sl .card-s .ico{width:62px;height:62px;border-radius:16px;background:#fff;display:grid;place-items:center;color:var(--blue);box-shadow:0 4px 14px rgba(22,61,87,.08)}
+.sl .card-s .ico svg{width:32px;height:32px}
+.sl .card-s h3{font-size:27px;color:var(--navy2);font-weight:700}
+.sl .card-s p{margin:0;font-size:20px;line-height:1.5;color:#46525c}
+.sl .card-s ul{margin:0;padding-left:22px;font-size:18px;line-height:1.45;color:#46525c}
+.sl .card-s ul li{margin:3px 0}
+.sl .tagz{display:flex;flex-wrap:wrap;gap:8px;margin-top:auto}
+.sl .tagz span{font-size:15px;font-weight:600;color:var(--blue2);background:#e3f0f8;border-radius:99px;padding:6px 14px}
+.sl .compacto h3{font-size:23px}.sl .compacto ul{font-size:16px;line-height:1.4}.sl .compacto .tagz span{font-size:14px}
+.sl .n-fase{font-family:Marcellus,serif;font-size:58px;color:var(--blue);line-height:1}
+.sl .citacao{font-family:Marcellus,serif;font-size:44px;line-height:1.3;color:var(--navy2)}
+.sl .tabela{width:100%;border-collapse:collapse;font-size:19px}
+.sl .tabela th{text-align:left;font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:#8a96a0;padding:0 18px 14px;border-bottom:2px solid #e6edf2}
+.sl .tabela td{padding:11px 18px;border-bottom:1px solid #eef2f5;vertical-align:top}
+.sl .tabela td b{color:var(--navy2)}
+.sl .fluxo{display:grid;grid-template-columns:1fr 60px 1fr 60px 1fr;align-items:stretch;height:100%}
+.sl .fluxo .seta-f{display:grid;place-items:center;color:var(--sky)}
+.sl .fluxo .seta-f svg{width:46px;height:46px}
+.sl .onda-c{border-radius:22px;padding:32px;display:flex;flex-direction:column;gap:14px;color:#fff;min-height:0}
+.sl .onda-c .q{font-size:17px;letter-spacing:.2em;text-transform:uppercase;opacity:.8;font-weight:600}
+.sl .onda-c h3{font-family:Marcellus,serif;font-weight:400;font-size:42px;line-height:1.1}
+.sl .onda-c .per{font-size:21px;opacity:.85}
+.sl .onda-c .itens{display:grid;gap:10px;margin-top:6px}.sl .onda-c .itens.duas{grid-template-columns:1fr 1fr}
+.sl .onda-c .it{display:flex;align-items:center;gap:12px;font-size:20px;padding:11px 14px;background:rgba(255,255,255,.12);border-radius:12px}
+.sl .onda-c .it svg{width:26px;height:26px}
+.sl .gantt-s{display:grid;grid-template-columns:330px repeat(12,1fr);font-size:17px}
+.sl .gantt-s .h{text-align:center;color:#8a96a0;font-weight:600;padding-bottom:12px;border-bottom:2px solid #e6edf2}
+.sl .gantt-s .l{padding:3px 12px 3px 0;font-size:15.5px;font-weight:600;color:var(--navy2);border-bottom:1px solid #f0f3f5;display:flex;align-items:center}
+.sl .gantt-s .l.sub{font-weight:500;color:#5b6772;padding-left:18px}
+.sl .gantt-s .c{position:relative;border-bottom:1px solid #f0f3f5;border-left:1px dashed #eef1f4;min-height:27px}
+.sl .gantt-s .b{position:absolute;top:7px;height:13px;border-radius:5px}
+.sl .gantt-s .sep{grid-column:1/-1;padding:8px 0 2px;font-size:15px;letter-spacing:.14em;text-transform:uppercase;color:var(--blue);font-weight:700}
+.sl .legenda-s{display:flex;gap:30px;font-size:16px;color:#5b6772;margin-top:16px}
+.sl .legenda-s span{display:flex;align-items:center;gap:8px}
+.sl .legenda-s i{width:22px;height:12px;border-radius:4px;display:inline-block}
+.sl .num-big{font-family:Marcellus,serif;font-size:80px;color:var(--blue);line-height:1}
+.sl .fecho{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#fff}
+
+/* O PDF do deck só quando o botão do deck pediu (a classe some no afterprint); o relatório mensal
+   continua imprimindo do jeito dele. */
+@media print{
+  body.imprimindo-deck .app,body.imprimindo-deck .modal-fundo{display:none!important}
+  body.imprimindo-deck #impressao{display:block!important}
+  body.imprimindo-deck #impressao .sl{position:relative!important;transform:none!important;page-break-after:always;break-after:page}
+  body.imprimindo-deck{background:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+
 </style>
 </head>
 <body>
@@ -230,7 +338,39 @@ let PROJETO,MESES,FASES,ONDAS,FRENTES,INDICADORES,PLANO30,GOVERNANCA;
 let MES_ATUAL=0;
 let estado = {secao:'geral',frente:null,aba:'painel',mesRel:0,mesReg:0};
 
+// ATUALIZAÇÕES DO DOCUMENTO. O projeto mora no banco e é editado pela tela; quando o PLANO muda
+// (não a tela), a mudança entra aqui, numerada, e é aplicada uma única vez na abertura do
+// consultor, que salva. Para o cliente ela vale só na memória.
+function atualizarDocumento(){
+  let mudou_=false;
+  const v=DOC.versao||1;
+  if(v<2){
+    // Lucas, 29/09/2026: "primeiro, vamos atacar o administrativo (financeiro, RH, Contratos)
+    // Comercial - Depois obras suprimentos depois tecnologia".
+    if(!DOC.frentes.some(f=>f.id==='contratos')){
+      const i=DOC.frentes.findIndex(f=>f.id==='financeiro');
+      DOC.frentes.splice(i<0?DOC.frentes.length:i+1,0,{id:'contratos',grupo:'Setor',setor:'ADMINISTRATIVO / PROCESSOS',nome:'Contratos',icone:'file-pen-line',
+        objetivo:'Contrato redondo do fechamento ao arquivo: minutas padrão, aprovação por alçada, assinatura e controle de vigência e obrigações.',
+        escopo:['Contratos com clientes (compra e venda)','Contratos com fornecedores e empreiteiros','Minutas padrão e cláusulas aprovadas','Fluxo de aprovação e assinatura','Controle de vigência, aditivos e obrigações'],
+        entregas:[{nome:'Fluxo de contratos',tipo:'Processo',status:'todo',link:''},{nome:'Biblioteca de minutas padrão',tipo:'Documento',status:'todo',link:''},{nome:'Controle de contratos e vencimentos',tipo:'Ferramenta',status:'todo',link:''}],
+        atividades:[{nome:'Acompanhamento do dia a dia (processo real)',status:'todo',prazo:'30/10'},{nome:'Levantamento dos contratos vigentes e modelos em uso',status:'todo',prazo:'30/10'},{nome:'Mapa do processo atual (as-is)',status:'todo',prazo:'13/11'}],
+        janela:{redesenho:[2,3],implantacao:[4,6]},kpis:[],principais:[],proximos:[],pontos:[],registros:[],implantados:[]});
+    }
+    const J={financeiro:[[2,3],[4,6]],rh:[[2,3],[4,6]],contratos:[[2,3],[4,6]],comercial:[[2,4],[5,7]],organograma:[[2,3],[4,5]],papeis:[[2,4],[4,6]],indicadores:[[1,3],[3,11]],obras:[[4,6],[7,9]],suprimentos:[[4,6],[7,9]],tecnologia:[[7,8],[9,11]]};
+    DOC.frentes.forEach(f=>{if(J[f.id]){f.janela={redesenho:J[f.id][0],implantacao:J[f.id][1]};
+      if(f.principais&&f.principais[2]&&/^Redesenho em /.test(f.principais[2]))f.principais[2]=`Redesenho em ${DOC.meses[J[f.id][0][0]]} a ${DOC.meses[J[f.id][0][1]]}`;}});
+    DOC.ondas=[
+      {nome:'Onda 1',titulo:'Administrativo e Comercial',descricao:'A base da gestão: caixa, pessoas, contratos e a venda, com a estrutura e os papéis que sustentam tudo.',meses:[2,7],frentes:['financeiro','rh','contratos','comercial','organograma','papeis','indicadores']},
+      {nome:'Onda 2',titulo:'Obras e Suprimentos',descricao:'A obra planejada e a compra puxada pelo cronograma.',meses:[4,9],frentes:['obras','suprimentos']},
+      {nome:'Onda 3',titulo:'Tecnologia',descricao:'Sistemas a serviço dos processos já redesenhados.',meses:[7,11],frentes:['tecnologia']},
+    ];
+    DOC.versao=2; mudou_=true;
+  }
+  return mudou_;
+}
+
 function vincular(){
+  vincular.atualizou=atualizarDocumento();
   ({projeto:PROJETO,meses:MESES,fases:FASES,ondas:ONDAS,frentes:FRENTES,indicadores:INDICADORES,plano30:PLANO30,governanca:GOVERNANCA}=DOC);
   DOC.pendencias = DOC.pendencias || {consultoria:[],gestores:[],diretoria:[],decisoes:[]};
   DOC.relatorios = DOC.relatorios || {};
@@ -267,6 +407,7 @@ async function carregar(){
   vincular();
   estado.mesRel=MES_ATUAL; estado.mesReg=MES_ATUAL;
   montarApp(); render();
+  if(vincular.atualizou) mudou();
 }
 function porta(msg){
   document.getElementById('raiz').innerHTML=`<div class="porta"><div><span class="selo"><img src="/marcas/cecilio-rocha.svg" alt="Cecílio Rocha Construtora"></span><h2 style="font-family:Marcellus,serif;font-weight:400;font-size:26px;margin:0 0 8px;color:#fff">Reestruturação de Processos</h2>${msg?`<p>${msg}</p>`:''}</div></div>`;
@@ -348,6 +489,7 @@ const OP_FRENTES=()=>[['','Geral'],...FRENTES.map(f=>[f.id,f.nome])];
 // ---------------------------------------------------------------- navegação
 const SECOES = [
   {id:'geral',nome:'Visão geral',icone:'layout-dashboard',render:rGeral},
+  {id:'apresentacao',nome:'Apresentação',icone:'presentation',render:rApresentacao},
   {id:'escopo',nome:'Escopo',icone:'file-text',render:rEscopo},
   {id:'jornada',nome:'Jornada',icone:'calendar-range',render:rJornada},
   {id:'frentes',nome:'Frentes',icone:'layers',render:rFrentes},
@@ -434,7 +576,7 @@ function editarFases(){
     linhas:FASES.map(f=>({nome:f.nome,ini:f.meses[0],fim:f.meses[1],entrega:f.entrega,itens:f.itens})),nova:()=>({nome:'',ini:MES_ATUAL,fim:MES_ATUAL,entrega:'',itens:[]}),
     aoSalvar:ls=>FASES.splice(0,FASES.length,...ls.map((l,i)=>({n:i+1,nome:l.nome,meses:[Math.min(l.ini,l.fim),Math.max(l.ini,l.fim)],entrega:l.entrega,itens:l.itens||[]})))});
 }
-const ICONES=[['network','Organograma'],['users','Pessoas'],['gauge','Indicador'],['hard-hat','Obra'],['package','Suprimentos'],['landmark','Financeiro'],['handshake','Comercial'],['id-card','RH'],['monitor-smartphone','Tecnologia'],['clipboard-check','Qualidade'],['shield-check','Segurança'],['briefcase','Geral']];
+const ICONES=[['network','Organograma'],['users','Pessoas'],['gauge','Indicador'],['hard-hat','Obra'],['package','Suprimentos'],['landmark','Financeiro'],['handshake','Comercial'],['id-card','RH'],['monitor-smartphone','Tecnologia'],['clipboard-check','Qualidade'],['shield-check','Segurança'],['file-pen-line','Contratos'],['briefcase','Geral']];
 const SETORES=['ENGENHARIA / OBRAS','COMPRAS / SUPRIMENTOS','FINANCEIRO','COMERCIAL / VENDAS','RH / GESTÃO DE PESSOAS','ADMINISTRATIVO / PROCESSOS','TECNOLOGIA'];
 function editarFrentes(){
   editarTabela({titulo:'Frentes de trabalho',dica:'Nome, grupo e o setor em que a frente aparece no relatório do Vitor. Remover uma frente apaga tudo dela (atividades, entregas e registros).',
@@ -468,15 +610,15 @@ function rJornada(){
   g+='</div>';
   return topo('Jornada · 12 meses','Fases do método e ondas de redesenho e implantação por frente',lapis(editarOndas,'Ondas'))+`<div class="card">${g}
     <div class="legend"><span><i class="dot" style="background:var(--navy2)"></i>Fase</span><span><i class="dot" style="background:var(--sky)"></i>Redesenho</span><span><i class="dot" style="background:var(--blue)"></i>Implantação</span></div></div>
-    <div class="grid g3" style="margin-top:16px">${ONDAS.map(o=>`<div class="card"><h2>${esc(o.nome)} · ${MESES[o.meses[0]]} a ${MESES[o.meses[1]]}</h2>${lista(o.frentes.map(id=>FRENTES.find(f=>f.id===id)?.nome).filter(Boolean))}</div>`).join('')}</div>
+    <div class="grid g3" style="margin-top:16px">${ONDAS.map(o=>`<div class="card"><h2>${esc(o.nome)}${o.titulo?`: ${esc(o.titulo)}`:''} · ${MESES[o.meses[0]]} a ${MESES[o.meses[1]]}</h2>${lista(o.frentes.map(id=>FRENTES.find(f=>f.id===id)?.nome).filter(Boolean))}</div>`).join('')}</div>
     <p class="muted" style="font-size:12.5px">A ordem das ondas é confirmada na Fase 2, depois da priorização das dores (impacto x urgência). O redesenho e a implantação de cada frente se ajustam no painel da frente.</p>`;
 }
 function editarOndas(){
   const nomes=id=>FRENTES.find(f=>f.id===id)?.nome||'';
   editarTabela({titulo:'Ondas',dica:'Frentes da onda separadas por vírgula, com o nome como aparece na tela.',
-    colunas:[{k:'nome',rotulo:'Onda',largura:'120px'},{k:'ini',rotulo:'Início',tipo:'mes',largura:'110px'},{k:'fim',rotulo:'Fim',tipo:'mes',largura:'110px'},{k:'fr',rotulo:'Frentes'}],
-    linhas:ONDAS.map(o=>({nome:o.nome,ini:o.meses[0],fim:o.meses[1],fr:o.frentes.map(nomes).join(', ')})),nova:()=>({nome:`Onda ${ONDAS.length+1}`,ini:MES_ATUAL,fim:MES_ATUAL,fr:''}),
-    aoSalvar:ls=>ONDAS.splice(0,ONDAS.length,...ls.map(l=>({nome:l.nome,meses:[Math.min(l.ini,l.fim),Math.max(l.ini,l.fim)],frentes:String(l.fr||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean).map(n=>FRENTES.find(f=>f.nome.toLowerCase()===n)?.id).filter(Boolean)})))});
+    colunas:[{k:'nome',rotulo:'Onda',largura:'110px'},{k:'titulo',rotulo:'Título'},{k:'ini',rotulo:'Início',tipo:'mes',largura:'110px'},{k:'fim',rotulo:'Fim',tipo:'mes',largura:'110px'},{k:'fr',rotulo:'Frentes'}],
+    linhas:ONDAS.map(o=>({nome:o.nome,titulo:o.titulo||'',descricao:o.descricao||'',ini:o.meses[0],fim:o.meses[1],fr:o.frentes.map(nomes).join(', ')})),nova:()=>({nome:`Onda ${ONDAS.length+1}`,ini:MES_ATUAL,fim:MES_ATUAL,fr:''}),
+    aoSalvar:ls=>ONDAS.splice(0,ONDAS.length,...ls.map(l=>({nome:l.nome,titulo:l.titulo||'',descricao:l.descricao||'',meses:[Math.min(l.ini,l.fim),Math.max(l.ini,l.fim)],frentes:String(l.fr||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean).map(n=>FRENTES.find(f=>f.nome.toLowerCase()===n)?.id).filter(Boolean)})))});
 }
 
 function rFrentes(){
@@ -610,18 +752,138 @@ function render(){
   render._ultima=estado.secao+(estado.frente||'')+estado.aba;
   window.scrollTo(0,mesma?y:0);
 }
-// modo apresentação: uma seção por tela, setas navegam (frentes entram uma a uma)
-let passo=0;
-const roteiro=()=>[{s:'geral'},{s:'escopo'},{s:'jornada'},...FRENTES.map(f=>({s:'frentes',f:f.id})),{s:'plano'},{s:'indicadores'}];
-function apresentar(){document.body.classList.add('present');passo=0;irPasso();document.documentElement.requestFullscreen?.().catch(()=>{});}
-function irPasso(){const p=roteiro()[passo];estado.secao=p.s;estado.frente=p.f||null;estado.aba='painel';render();}
+// =====================================================================================
+// APRESENTAÇÃO · o deck do projeto (Lucas, 29/09/2026: "uma apresentação de verdade, bem
+// profissional e bonita", no molde da que ele usou na Gurgel). Os slides são MONTADOS a partir do
+// documento: mudou uma frente, uma onda ou o plano, o deck acompanha sem ninguém redesenhar.
+// Base 1600x900 (16:9), escalada para caber no palco, na tela cheia e na miniatura.
+// =====================================================================================
+const LOGO='/marcas/cecilio-rocha.svg';
+let slideAtual=0;
+const nomeCurto=()=>PROJETO.consultor.split('·')[0].trim();
+const rodapeS=(n,total)=>`<div class="rodape"><span><b>${esc(PROJETO.empresa)}</b> · Reestruturação de Processos</span><span>${esc(PROJETO.consultor)} · ${String(n).padStart(2,'0')}/${String(total).padStart(2,'0')}</span></div>`;
+const topoS=(olho,titulo)=>`<div class="faixa-lat"></div><div class="topo"><div><div class="olho">${olho}</div><h2 class="titulo">${titulo}</h2></div><img src="${LOGO}" alt=""></div>`;
+const icS=n=>`<i data-lucide="${n}"></i>`;
+const ondaDe=id=>ONDAS.find(o=>o.frentes.includes(id));
+const mesesDe=r=>`${MESES[r[0]]} a ${MESES[r[1]]}`;
+
+function montarSlides(){
+  const S=[]; // cada item: (n,total)=>html
+  // 1. CAPA
+  S.push(()=>`<div class="sl capa"><div class="linhas"></div><div class="marca-dagua"></div>
+    <div class="selo-g"><img src="${LOGO}" alt="Cecílio Rocha Construtora"></div>
+    <div class="miolo"><div class="olho">Consultoria · ${esc(PROJETO.empresa)}</div><h1>Reestruturação<br>de Processos</h1>
+      <div class="sub">Plano de trabalho: o que vamos fazer, em que ordem, o que será entregue e como a diretoria acompanha a evolução.</div></div>
+    <div class="meta"><div>Consultoria<b>${esc(PROJETO.consultor)}</b></div><div>Duração<b>12 meses · Out/2026 a Set/2027</b></div><div>Patrocínio<b>${esc(PROJETO.patrocinador)}</b></div><div>Local<b>${esc(PROJETO.cidade||'')}</b></div></div></div>`);
+  // 2. OBJETIVO
+  const icRes=['hard-hat','package','user-check','gauge'];
+  S.push((n,t)=>`<div class="sl">${topoS('O propósito','Por que este projeto')}<div class="conteudo" style="display:grid;grid-template-columns:1.05fr 1fr;gap:70px;align-items:start">
+    <div><div class="citacao">“${esc(PROJETO.objetivo)}”</div></div>
+    <div class="cards" style="grid-template-columns:1fr 1fr;height:auto">${PROJETO.resultados.slice(0,4).map((r,i)=>`<div class="card-s" style="padding:26px"><div class="ico">${icS(icRes[i%4])}</div><p style="font-size:19px">${esc(r)}</p></div>`).join('')}</div>
+  </div>${rodapeS(n,t)}</div>`);
+  // 3. O QUE A DIRETORIA ENXERGA (a expectativa do Vitor)
+  const enx=[['alert-triangle','Problemas e gargalos','identificados em cada setor'],['list-checks','Ações do mês','o que foi feito, setor a setor'],['settings','Processos implantados','só o que está funcionando, com evidência'],['trending-up','Resultados em números','indicadores com antes, atual e meta'],['git-compare','Antes e depois','comparação sempre que for mensurável'],['calendar-check','Plano de 30 dias','cada ação com responsável e prazo']];
+  S.push((n,t)=>`<div class="sl">${topoS('Acompanhamento','O que a diretoria vai enxergar todo mês')}<div class="conteudo"><div class="cards" style="grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr">${enx.map(([i,h,p])=>`<div class="card-s"><div class="ico">${icS(i)}</div><h3>${h}</h3><p>${p}</p></div>`).join('')}</div></div>${rodapeS(n,t)}</div>`);
+  // 4. MÉTODO
+  S.push((n,t)=>`<div class="sl">${topoS('O método','Quatro fases, do raio-X à implantação')}<div class="conteudo"><div class="cards compacto" style="grid-template-columns:repeat(${FASES.length},1fr)">${FASES.map(f=>`<div class="card-s"><div class="n-fase">${String(f.n).padStart(2,'0')}</div><h3>${esc(f.nome)}</h3><div style="font-size:16px;color:var(--blue);font-weight:600">${mesesDe(f.meses)}</div><ul>${f.itens.slice(0,4).map(x=>`<li>${esc(x)}</li>`).join('')}</ul><div class="tagz"><span>Entrega: ${esc(f.entrega)}</span></div></div>`).join('')}</div></div>${rodapeS(n,t)}</div>`);
+  // 5. ORDEM DE ATAQUE
+  const cores=['linear-gradient(160deg,var(--navy2),var(--blue2))','linear-gradient(160deg,var(--blue2),var(--blue))','linear-gradient(160deg,#3f8fb9,#6aaccb)'];
+  const partes=ONDAS.map((o,i)=>`<div class="onda-c" style="background:${cores[i%3]}"><div class="q">${esc(o.nome)}</div><h3>${esc(o.titulo||o.nome)}</h3><div class="per">${mesesDe(o.meses)}</div><div class="itens${o.frentes.length>4?' duas':''}">${o.frentes.map(id=>FRENTES.find(f=>f.id===id)).filter(Boolean).map(f=>`<div class="it">${icS(f.icone)}${esc(f.nome)}</div>`).join('')}</div></div>`);
+  S.push((n,t)=>`<div class="sl">${topoS('A ordem de ataque','Três ondas, uma base de cada vez')}<div class="conteudo"><div class="fluxo" style="grid-template-columns:${partes.map(()=>'1fr').join(' 60px ')}">${partes.join(`<div class="seta-f">${icS('chevron-right')}</div>`)}</div></div>${rodapeS(n,t)}</div>`);
+  // 6. JORNADA
+  S.push((n,t)=>{
+    const linha=(label,ranges,sub)=>{let h=`<div class="l${sub?' sub':''}">${label}</div>`;for(let m=0;m<12;m++){let b='';ranges.forEach(r=>{if(m===r.m[0]){b+=`<div class="b" style="left:4px;width:calc(${(r.m[1]-r.m[0]+1)*100}% - 8px);background:${r.cor}"></div>`;}});h+=`<div class="c">${b}</div>`;}return h;};
+    let g=`<div class="gantt-s"><div class="h"></div>${MESES.map(m=>`<div class="h">${m}</div>`).join('')}`;
+    FASES.forEach(f=>g+=linha(`${f.n}. ${esc(f.nome)}`,[{m:f.meses,cor:'var(--navy2)'}]));
+    ONDAS.forEach(o=>{g+=`<div class="sep">${esc(o.nome)}${o.titulo?` · ${esc(o.titulo)}`:''}</div>`;o.frentes.map(id=>FRENTES.find(f=>f.id===id)).filter(Boolean).forEach(f=>g+=linha(esc(f.nome),faixasDaFrente(f),true));});
+    g+='</div>';
+    return `<div class="sl">${topoS('A jornada','Doze meses de trabalho')}<div class="conteudo" style="top:190px;bottom:100px;font-size:15px">${g}<div class="legenda-s"><span><i style="background:var(--navy2)"></i>Fase</span><span><i style="background:var(--sky)"></i>Redesenho</span><span><i style="background:var(--blue)"></i>Implantação</span></div></div>${rodapeS(n,t)}</div>`;
+  });
+  // 7+. UMA SEÇÃO POR ONDA: divisor + as frentes em grupos de 3
+  ONDAS.forEach((o,i)=>{
+    const fs=o.frentes.map(id=>FRENTES.find(f=>f.id===id)).filter(Boolean);
+    S.push(()=>`<div class="sl divisor"><div class="grande">${String(i+1).padStart(2,'0')}</div><div class="selo-p"><img src="${LOGO}" alt=""></div><div class="bloco"><div class="olho">${esc(o.nome)} · ${mesesDe(o.meses)}</div><h2>${esc(o.titulo||o.nome)}</h2><div class="per">${esc(o.descricao||'')}</div><div class="chips">${fs.map(f=>`<span>${icS(f.icone)}${esc(f.nome)}</span>`).join('')}</div></div></div>`);
+    for(let k=0;k<fs.length;k+=3){
+      const grupo=fs.slice(k,k+3);
+      S.push((n,t)=>`<div class="sl">${topoS(`${esc(o.nome)} · o que vamos fazer`,grupo.map(f=>esc(f.nome)).join(', '))}<div class="conteudo"><div class="cards" style="grid-template-columns:repeat(${grupo.length},1fr)">${grupo.map(f=>`<div class="card-s"><div style="display:flex;align-items:center;gap:16px"><div class="ico">${icS(f.icone)}</div><h3>${esc(f.nome)}</h3></div><p style="font-size:18px;color:var(--blue2);font-weight:500">${esc(f.objetivo)}</p><ul>${f.escopo.slice(0,4).map(x=>`<li>${esc(x)}</li>`).join('')}</ul><div class="tagz">${f.entregas.slice(0,3).map(e=>`<span>${esc(e.nome)}</span>`).join('')}</div></div>`).join('')}</div></div>${rodapeS(n,t)}</div>`);
+    }
+  });
+  // ENTREGAS
+  const porTipo={}; FRENTES.forEach(f=>f.entregas.forEach(e=>{porTipo[e.tipo]=(porTipo[e.tipo]||0)+1;}));
+  const icTipo={Processo:'workflow',Ferramenta:'wrench',Documento:'file-text',Desenho:'pen-tool',Planilha:'sheet',Ritual:'repeat',Treinamento:'graduation-cap'};
+  const totalEnt=Object.values(porTipo).reduce((a,b)=>a+b,0);
+  S.push((n,t)=>`<div class="sl">${topoS('A formalização','O que fica na empresa')}<div class="conteudo" style="display:grid;grid-template-columns:420px 1fr;gap:60px;align-items:center">
+    <div><div class="num-big">${totalEnt}</div><div style="font-size:26px;color:var(--navy2);margin-top:10px;font-weight:600">entregas formais</div><p style="font-size:20px;color:#5b6772;line-height:1.5;margin-top:18px">Processos desenhados, ferramentas, documentos e rituais, cada um com responsável, guardados e prontos para a equipe usar depois da consultoria.</p></div>
+    <div class="cards" style="grid-template-columns:repeat(3,1fr);height:auto">${Object.entries(porTipo).sort((a,b)=>b[1]-a[1]).map(([tp,q])=>`<div class="card-s" style="padding:26px"><div class="ico">${icS(icTipo[tp]||'file')}</div><h3>${q} · ${esc(tp)}${q>1&&!tp.endsWith('s')?'s':''}</h3></div>`).join('')}</div>
+  </div>${rodapeS(n,t)}</div>`);
+  // INDICADORES
+  S.push((n,t)=>`<div class="sl">${topoS('A medição','Indicadores de resultado')}<div class="conteudo"><table class="tabela"><tr><th>Indicador</th><th>Frente</th><th>Melhor quando</th><th>Meta</th></tr>${INDICADORES.slice(0,9).map(k=>`<tr><td><b>${esc(k.nome)}</b></td><td>${esc(FRENTES.find(f=>f.id===k.frente)?.nome||'Geral')}</td><td>${k.melhor==='menor'?'Menor':'Maior'}</td><td>${k.meta!=null&&k.meta!==''?esc(k.meta)+(k.unidade==='%'?'%':''):'<span style="color:#8a96a0">definida na Fase 2</span>'}</td></tr>`).join('')}</table><p style="font-size:17px;color:#8a96a0;margin-top:18px">A linha de base (o “antes”) é medida na Fase 2, antes de qualquer mudança.</p></div>${rodapeS(n,t)}</div>`);
+  // GOVERNANÇA
+  const icGov=['calendar-days','users','compass'];
+  S.push((n,t)=>`<div class="sl">${topoS('A governança','Como o projeto é conduzido')}<div class="conteudo"><div class="cards" style="grid-template-columns:repeat(${GOVERNANCA.length},1fr)">${GOVERNANCA.map((g,i)=>`<div class="card-s"><div class="ico">${icS(icGov[i%3])}</div><h3>${esc(g.nome)}</h3><p><b style="color:var(--navy2)">Quem:</b> ${esc(g.quem)}</p><p><b style="color:var(--navy2)">Quando:</b> ${esc(g.quando)}</p><p><b style="color:var(--navy2)">Resultado:</b> ${esc(g.saida)}</p></div>`).join('')}</div></div>${rodapeS(n,t)}</div>`);
+  // REGRAS DO JOGO
+  S.push((n,t)=>`<div class="sl">${topoS('As regras do jogo','Critérios, premissas e limites')}<div class="conteudo"><div class="cards" style="grid-template-columns:1.2fr 1fr 1fr">
+    <div class="card-s" style="background:linear-gradient(160deg,var(--navy2),var(--blue2));color:#fff;border:0"><div class="ico">${icS('shield-check')}</div><h3 style="color:#fff">Processo implantado é processo funcionando</h3><p style="color:#d6e6ef">Sugestão ou reunião não conta. Só entra como implantado o que está na rotina, com responsável e com evidência do antes e do depois.</p></div>
+    <div class="card-s"><div class="ico">${icS('handshake')}</div><h3>Premissas</h3><ul>${(PROJETO.premissas||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>
+    <div class="card-s"><div class="ico">${icS('circle-slash')}</div><h3>Fora do escopo</h3><ul>${(PROJETO.foraDoEscopo||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>
+  </div></div>${rodapeS(n,t)}</div>`);
+  // PRÓXIMOS 30 DIAS
+  S.push((n,t)=>`<div class="sl">${topoS('Os primeiros passos','Próximos 30 dias')}<div class="conteudo"><table class="tabela"><tr><th>Ação</th><th>Responsável</th><th>Prazo</th></tr>${PLANO30.slice(0,8).map(p=>`<tr><td><b>${esc(p.acao)}</b><div style="font-size:15px;color:#8a96a0;margin-top:2px">${esc(p.esperado)}</div></td><td>${esc(p.resp)}</td><td>${esc(p.prazo)}</td></tr>`).join('')}</table></div>${rodapeS(n,t)}</div>`);
+  // ENCERRAMENTO
+  S.push(()=>`<div class="sl capa"><div class="linhas"></div><div class="marca-dagua"></div><div class="fecho"><div style="background:#fff;border-radius:22px;padding:18px 22px;box-shadow:0 20px 50px rgba(0,0,0,.35)"><img src="${LOGO}" style="width:170px;display:block" alt=""></div><div class="olho" style="color:var(--sky);margin-top:60px">Vamos começar</div><h1 style="font-family:Marcellus,serif;font-weight:400;font-size:84px;margin-top:14px">Obrigado</h1><div style="font-size:26px;color:#cfe0ea;margin-top:18px">${esc(nomeCurto())} · C2X</div></div></div>`);
+  return S;
+}
+
+function htmlDosSlides(){const S=montarSlides();return S.map((f,i)=>f(i+1,S.length));}
+
+function rApresentacao(){
+  const sl=htmlDosSlides(); slideAtual=Math.min(slideAtual,sl.length-1);
+  setTimeout(ajustarPalco,0);
+  return topo('Apresentação','O plano do projeto em slides. Montado a partir dos dados do projeto: o que muda nas frentes aparece aqui',`<button class="btn ghost" onclick="imprimirDeck()">${ic('file-down')}PDF</button><button class="btn" onclick="telaCheia()">${ic('maximize')}Tela cheia</button>`)+`
+  <div class="deck-bar"><div class="ctl"><button class="btn ghost" onclick="irSlide(-1)">${ic('chevron-left')}</button><span class="num" id="num-slide">${slideAtual+1} / ${sl.length}</span><button class="btn ghost" onclick="irSlide(1)">${ic('chevron-right')}</button></div><span class="muted" style="font-size:12.5px">Setas do teclado navegam · F para tela cheia</span></div>
+  <div class="palco" id="palco">${sl[slideAtual]}<div class="seta esq" onclick="irSlide(-1)"></div><div class="seta dir" onclick="irSlide(1)"></div></div>
+  <div class="miniaturas">${sl.map((h,i)=>`<button class="${i===slideAtual?'on':''}" onclick="slideAtual=${i};render()">${h}<i class="n">${i+1}</i></button>`).join('')}</div>`;
+}
+function ajustarPalco(){
+  const p=document.getElementById('palco'); if(!p)return;
+  const cheio=document.fullscreenElement===p;
+  const w=cheio?innerWidth:p.clientWidth, h=cheio?innerHeight:p.clientHeight;
+  const s=Math.min(w/1600,h/900);
+  const el=p.querySelector('.sl'); if(el){el.style.transform=`scale(${s})`; if(cheio){el.style.margin=`0`;}}
+  if(cheio&&el){p.style.width='100vw';p.style.height='100vh';el.style.position='absolute';el.style.left=`${(w-1600*s)/2}px`;el.style.top=`${(h-900*s)/2}px`;}
+  else if(el){p.style.width='';p.style.height='';el.style.left='0';el.style.top='0';}
+  document.querySelectorAll('.miniaturas button').forEach(b=>{const x=b.querySelector('.sl');if(x)x.style.transform=`scale(${b.clientWidth/1600})`;});
+}
+function irSlide(d){const total=htmlDosSlides().length;slideAtual=Math.max(0,Math.min(total-1,slideAtual+d));trocarSlide();}
+function trocarSlide(){
+  const p=document.getElementById('palco'); if(!p){render();return;}
+  const sl=htmlDosSlides();
+  const velho=p.querySelector('.sl'); const tmp=document.createElement('div'); tmp.innerHTML=sl[slideAtual]; velho.replaceWith(tmp.firstElementChild);
+  const n=document.getElementById('num-slide'); if(n)n.textContent=`${slideAtual+1} / ${sl.length}`;
+  document.querySelectorAll('.miniaturas button').forEach((b,i)=>b.classList.toggle('on',i===slideAtual));
+  lucide.createIcons(); ajustarPalco();
+}
+function telaCheia(){const p=document.getElementById('palco');if(!p)return;(document.fullscreenElement?document.exitFullscreen():p.requestFullscreen()).catch(()=>{});}
+function apresentar(){ir('apresentacao');slideAtual=0;render();setTimeout(telaCheia,50);}
+function imprimirDeck(){
+  let box=document.getElementById('impressao'); if(!box){box=document.createElement('div');box.id='impressao';document.body.appendChild(box);}
+  box.innerHTML=htmlDosSlides().join(''); lucide.createIcons();
+  let pg=document.getElementById('pagina-deck'); if(!pg){pg=document.createElement('style');pg.id='pagina-deck';document.head.appendChild(pg);}
+  pg.textContent='@page{size:1600px 900px;margin:0}';
+  document.body.classList.add('imprimindo-deck');
+  setTimeout(()=>window.print(),300);
+}
+window.addEventListener('afterprint',()=>{document.body.classList.remove('imprimindo-deck');const pg=document.getElementById('pagina-deck');if(pg)pg.textContent='';});
+window.addEventListener('resize',ajustarPalco);
+document.addEventListener('fullscreenchange',ajustarPalco);
 document.addEventListener('keydown',e=>{
-  if(!document.body.classList.contains('present'))return;
-  if(e.key==='ArrowRight'||e.key===' '){passo=Math.min(roteiro().length-1,passo+1);irPasso();}
-  if(e.key==='ArrowLeft'){passo=Math.max(0,passo-1);irPasso();}
-  if(e.key==='Escape'){document.body.classList.remove('present');render();}
+  if(estado.secao!=='apresentacao'||document.querySelector('.modal-fundo.on'))return;
+  if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName))return;
+  if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){e.preventDefault();irSlide(1);}
+  if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();irSlide(-1);}
+  if(e.key==='f'||e.key==='F')telaCheia();
 });
-document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&document.body.classList.contains('present')){document.body.classList.remove('present');render();}});
+
 carregar();
 </script>
 </body>

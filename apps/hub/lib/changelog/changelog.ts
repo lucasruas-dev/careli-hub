@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-29-consultoria-apresentacao",
+    deployedAt: "2026-09-29T15:04:49-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Consultoria",
+        screens: [
+          {
+            items: [
+              "**Aba Apresentação: o plano do projeto em 20 slides 16:9**, com a marca da C&R: capa, propósito, o que a diretoria acompanha, método, ordem de ataque, jornada de 12 meses, uma seção por onda com o que será feito em cada frente, entregas, indicadores, governança, regras do jogo e próximos 30 dias. Tela cheia, setas do teclado e PDF.",
+              "**Nova ordem das ondas:** primeiro Administrativo (Financeiro, RH e a nova frente Contratos) e Comercial, depois Obras e Suprimentos, e por último Tecnologia.",
+              "**Paleta clara, com o azul da C&R nos destaques**, no lugar do menu escuro.",
+            ],
+            screen: "Consultoria - C&R",
+          },
+        ],
+      },
+    ],
+    rollback: "26d62344",
+    technical: {
+      done:
+        "consultoria-telas/projeto.html: seção apresentacao (slides montados do documento, base 1600x900 escalada; PDF por @page 1600x900 só quando o deck imprime), atualizarDocumento() v2 (frente contratos, janelas e ondas novas, aplicada uma vez na abertura do consultor e salva), paleta clara.",
+      motivation:
+        "Lucas, 29/09/2026: primeiro, vamos atacar o administrativo (financeiro, RH, Contratos) Comercial - Depois obras suprimentos depois tecnologia; eu preciso apresentar o trabalho, criar uma aba apresentação e monta uma apresentação de verdade bem profissional e bonita; e, sobre a paleta do portal: em vez do preto, o azul deles.",
+    },
+    title: "Consultoria: aba Apresentação e nova ordem das ondas",
+    type: "novidade",
+    version: "1.396.0",
+  },
+  {
     buildTag: "2026-09-29-exportar-excel-lsoft-e-financeiro",
     deployedAt: "2026-09-29T15:01:00-03:00",
     modules: [
