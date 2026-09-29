@@ -34,9 +34,11 @@ import type { EstadoDaAssinatura, FinalidadeDoEnvelope, Provedor } from "./tipos
 /**
  * A CHAVE DO ESPELHO DA D4SIGN: o contrato que o C2X mandou move a venda nativa?
  *
- * ⚠️ NASCE `false`, E SÓ VIRA `true` NUM DEPLOY, COM OK DO LUCAS, DEPOIS DA PROVA DA F3 (plano, F3,
- * "Ordem": ensaio → `--gravar` sem mover → prova → cron → prova → `--mover-vendas`). Ligar antes
- * moveria cards e vendas a partir de um casamento envelope → venda que ninguém conferiu ainda.
+ * ⚠️ LIGADA EM 29/09/2026, com OK do Lucas (*"pode ligar o card andar pela D4Sign"*), depois da prova
+ * da F3: a carga gravou 2.231 contratos, a paridade da aba Assinatura não perdeu nenhum, e os 4
+ * casamentos com venda nativa (ACP, REP, VAL×2) foram conferidos pelo mesmo comprador. Nasceu `false`
+ * (plano, F3, "Ordem": ensaio → `--gravar` sem mover → prova → cron → prova → ligar): ligar antes
+ * moveria cards e vendas a partir de um casamento envelope → venda que ninguém tinha conferido.
  *
  * ⚠️ ELA NÃO DESLIGA A CLICKSIGN. O envelope da Clicksign é mandado pela própria Têmis e sempre
  * concluiu o card no assinado: o webhook o trata com `moverVendas: true`, e a reconciliação o refaz
@@ -46,7 +48,7 @@ import type { EstadoDaAssinatura, FinalidadeDoEnvelope, Provedor } from "./tipos
  * desligada já passou e não se repete: quem leva esses cards a "Em assinatura" é a reconciliação
  * (alvo `entrada`), na primeira rodada com a chave ligada.
  */
-export const MOVER_VENDAS = false;
+export const MOVER_VENDAS = true;
 
 /** O fato: o envelope, o estado de antes e o de depois. */
 export type MudancaDoEnvelope = {

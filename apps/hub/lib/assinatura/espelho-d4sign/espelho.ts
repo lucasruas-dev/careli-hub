@@ -134,7 +134,7 @@ export type OpcoesDoEspelho = {
   concorrencia: number; // cron 3; script 1 (vazão fixa)
   intervaloMs: number; // cron 0; script 2_000 entre chamadas à D4Sign
   gravar: boolean; // cron true; script só com --gravar; POST só com ?gravar=1
-  moverVendas: boolean; // cron: MOVER_VENDAS (false até a prova da F3); script: --mover-vendas
+  moverVendas: boolean; // cron: MOVER_VENDAS (ligada em 29/09/2026, depois da prova da F3); script: --mover-vendas
   orcamentoMs: number; // cron 240_000 (maxDuration 300); script Infinity
   tetoDeListas: number; // cron 20; script: o recorte da carga inicial (seção 6)
   refazer?: boolean; // só script: refaz o /list de quem já tem conferido_em

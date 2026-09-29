@@ -180,8 +180,8 @@ describe("aplicarEnvelopeNaVenda: as guardas (qualquer 'não' devolve nada, com 
     expect(b.consultas).toEqual([]);
   });
 
-  it("⚠️ a chave do espelho nasce desligada", () => {
-    expect(MOVER_VENDAS).toBe(false);
+  it("⚠️ a chave do espelho está LIGADA desde 29/09/2026 (OK do Lucas, depois da prova da F3)", () => {
+    expect(MOVER_VENDAS).toBe(true);
   });
 
   it("finalidade distrato: nada (só o contrato move a venda)", async () => {

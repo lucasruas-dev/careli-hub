@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-29-card-anda-pela-d4sign",
+    deployedAt: "2026-09-29T13:49:45-03:00",
+    modules: [
+      {
+        module: "Temis",
+        screens: [
+          {
+            items: [
+              "**O card da venda anda sozinho quando o contrato e assinado pela D4Sign**, como ja acontecia com a Clicksign: enviado, vai para Em assinatura; todos assinaram, vai para Pre-faturamento, com os 7 dias contados do fechamento.",
+              "**A data de assinatura passa a ficar gravada na venda** quando o contrato da D4Sign fecha.",
+              "**As vendas que ja estavam em assinatura na D4Sign** (ACP, REP e duas da VAL) saem da Analise e vao para Em assinatura na primeira conferencia depois desta versao.",
+            ],
+            screen: "Board e venda",
+          },
+        ],
+      },
+    ],
+    rollback: "253f1af3",
+    technical: {
+      done:
+        "MOVER_VENDAS = true (lib/assinatura/envelope-na-venda.ts), com OK do Lucas em 29/09/2026, depois da prova da F3 (carga de 2.231 contratos, paridade sem contrato perdido, 4 casamentos com venda nativa pelo mesmo comprador). O cron do espelho (7,37) passa a chamar aplicarEnvelopeNaVenda nas bordas da D4Sign (entrada em assinatura e assinado com fechado_em real) e a reconciliacao com o alvo entrada leva a Em assinatura os cards cuja borda passou com a chave desligada (ACP, REP, VAL x2), com comparar-e-trocar por card e passagem de origem espelho_d4sign. So venda nativa viva, sem pedido de cancelamento, finalidade contrato. Efeito so no banco: sem WhatsApp, notificacao ou fila do C2X (medido na 0.11 do plano).",
+      motivation:
+        "Lucas, 28/09/2026, escolhendo que o card anda sozinho tambem pela D4Sign; e em 29/09: pode ligar o card andar pela D4Sign.",
+    },
+    title: "O card da Temis anda sozinho tambem pela D4Sign",
+    type: "melhoria",
+    version: "1.393.0",
+  },
+  {
     buildTag: "2026-09-29-contrato-e-assinatura-moram-no-panteon",
     deployedAt: "2026-09-29T13:33:34-03:00",
     modules: [
