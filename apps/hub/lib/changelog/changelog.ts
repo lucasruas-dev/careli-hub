@@ -36,6 +36,64 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-29-consultoria-sem-login",
+    deployedAt: "2026-09-29T13:10:19-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Consultoria",
+        screens: [
+          {
+            items: [
+              "**A tela da consultoria abre sem login e sem o Panteon:** o consultor entra por um link de edição próprio, que fica guardado no navegador; depois disso o endereço c2x.app.br/consultoria/cr abre direto.",
+            ],
+            screen: "Consultoria - C&R",
+          },
+        ],
+      },
+    ],
+    rollback: "1948d38c",
+    technical: {
+      done:
+        "Edição passa a entrar por token_edicao (migration 0197) no cabeçalho x-consultoria-edicao, pela mesma porta pública da leitura (/api/publico/consultoria/[slug], GET e PUT). A rota /api/consultoria/[slug] com Bearer do hub foi removida. A tela guarda o código em localStorage e o tira da URL. Botão do link do cliente escondido por enquanto.",
+      motivation:
+        "Lucas, 29/09/2026, ao abrir a tela em produção e ver 'Sua sessão do Panteon expirou': não precisa ter esse acesso ao panteon; não precisa de login.",
+    },
+    title: "Consultoria sem login, por link de edição",
+    type: "correcao",
+    version: "1.391.1",
+  },
+  {
+    buildTag: "2026-09-29-consultoria-cr",
+    deployedAt: "2026-09-29T12:44:58-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Consultoria",
+        screens: [
+          {
+            items: [
+              "**Nova tela c2x.app.br/consultoria/cr, fora do Panteon, com a marca da C&R Construtora:** escopo, jornada de 12 meses, as 9 frentes com o painel de cada uma, plano de 30 dias, indicadores, entregas e o relatório mensal no modelo pedido pelo Vitor.",
+              "**O consultor edita na própria tela (modo edição) e tudo fica salvo no banco.** O cliente acompanha por um link de leitura, sem login.",
+              "**Fechar o mês congela o relatório daquele mês**, para comparar a evolução de um mês para o outro.",
+            ],
+            screen: "Consultoria - C&R",
+          },
+        ],
+      },
+    ],
+    rollback: "fac81adf",
+    technical: {
+      done:
+        "Rota app/consultoria/[slug]/route.ts entrega o mockup aprovado (consultoria-telas/projeto.html) lido do disco. Documento em consultoria_projetos (jsonb, migration 0196) com histórico em consultoria_projetos_historico; escrita em /api/consultoria/[slug] com Bearer do hub e dono por e-mail (CONSULTORIA_OWNER_EMAILS, padrão lucas.ruas@careli.adm.br), com conferência de versão (409). Leitura do cliente em /api/publico/consultoria/[slug] pelo token no cabeçalho x-consultoria-token, comparado em tempo constante. Raiz consultoria em RAIZES_EXTERNAS.",
+      motivation:
+        "Lucas, 29/09/2026: consultoria de reestruturação na C&R a partir de outubro, com uma apresentação que seja também o arquivo de trabalho do projeto, no domínio c2x.app.br/consultoria/cr.",
+    },
+    title: "Tela da consultoria de reestruturação da C&R",
+    type: "novidade",
+    version: "1.391.0",
+  },
+  {
     buildTag: "2026-09-28-voltou-para-correcao-na-assinatura",
     deployedAt: "2026-09-28T15:15:55-03:00",
     internal: true,

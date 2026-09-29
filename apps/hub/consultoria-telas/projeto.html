@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reestruturação C&amp;R</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Marcellus&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<style>
+:root{
+  --navy:#10222c; --navy2:#163d57; --blue:#2d84b8; --blue2:#1b6391; --sky:#89bcca; --gray:#49464e;
+  --bg:#f4f6f8; --card:#ffffff; --ink:#1c2328; --muted:#6b7680; --line:#e2e7ec; --soft:#e8f2f8;
+  --ok:#1f9d55; --doing:#e8912d; --todo:#2d84b8; --late:#d64545;
+}
+*{box-sizing:border-box}
+.selo{display:inline-block;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.18)}
+html,body{margin:0}
+body{font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5}
+.app{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+aside{background:var(--navy);color:#dfe8ee;padding:22px 14px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:18px}
+aside .brand{display:flex;align-items:center;gap:10px;padding:0 8px}
+aside .brand .selo{padding:5px;border-radius:10px}aside .brand img{width:40px;display:block}
+aside .brand b{font-family:Marcellus,serif;font-weight:400;font-size:15px;letter-spacing:.06em;color:#fff;display:block}
+aside .brand span{font-size:11px;color:var(--sky);letter-spacing:.08em;text-transform:uppercase}
+nav{display:flex;flex-direction:column;gap:2px}
+nav button{all:unset;cursor:pointer;display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:#c4d3dd;font-size:13.5px}
+nav button svg{width:17px;height:17px}
+nav button:hover{background:rgba(255,255,255,.06);color:#fff}
+nav button.on{background:var(--blue);color:#fff}
+aside .foot{margin-top:auto;font-size:11.5px;color:#8fa6b5;padding:0 8px}
+aside .foot b{color:#fff;font-weight:600}
+main{padding:28px 34px 60px;max-width:1360px;width:100%}
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px}
+.top h1{margin:0;font-size:22px}
+.top p{margin:2px 0 0;color:var(--muted)}
+.btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:8px;background:var(--navy2);color:#fff;font-weight:500;font-size:13px}
+.btn.ghost{background:transparent;color:var(--navy2);border:1px solid var(--line)}
+.btn svg{width:16px;height:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px}
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(2,1fr)} .g3{grid-template-columns:repeat(3,1fr)} .g4{grid-template-columns:repeat(4,1fr)}
+h2{font-size:15px;margin:0 0 12px;color:var(--navy2)}
+h3{font-size:13px;margin:0 0 8px;color:var(--blue2);text-transform:uppercase;letter-spacing:.05em}
+ul.clean{margin:0;padding-left:18px} ul.clean li{margin:4px 0}
+.muted{color:var(--muted)}
+.tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:99px;background:var(--soft);color:var(--blue2);font-weight:600}
+.dot{display:inline-block;width:11px;height:11px;border-radius:50%;vertical-align:middle}
+.s-todo{background:var(--todo)} .s-doing{background:var(--doing)} .s-ok{background:var(--ok)} .s-late{background:var(--late)}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--muted);margin-top:10px}
+.legend span{display:flex;align-items:center;gap:6px}
+table{width:100%;border-collapse:collapse}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);text-align:left;font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line)}
+td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+.empty{color:#9aa5ae;font-style:italic}
+
+/* capa */
+.cover{position:relative;border-radius:18px;overflow:hidden;background:
+  radial-gradient(1200px 500px at 85% -10%, rgba(45,132,184,.55), transparent 60%),
+  linear-gradient(135deg,var(--navy) 0%,var(--navy2) 70%,var(--blue2) 100%);color:#fff;padding:44px 48px;min-height:300px;display:flex;flex-direction:column;justify-content:space-between}
+.cover:after{content:"";position:absolute;right:-60px;bottom:-80px;width:420px;height:420px;background:url(/marcas/cecilio-rocha.svg) no-repeat center/contain;opacity:.10}
+.cover .logo{display:flex;align-items:center;gap:16px}
+.cover .logo .selo{padding:12px 14px;border-radius:14px}.cover .logo img{width:104px;display:block}
+.cover .logo{justify-content:space-between;align-items:flex-start}.cover .logo > div{text-align:right}.cover .logo b{font-weight:600;font-size:15px;display:block}
+.cover .logo span{font-size:12px;letter-spacing:.3em;color:var(--sky)}
+.cover h1{font-family:Marcellus,serif;font-weight:400;font-size:40px;margin:34px 0 6px;letter-spacing:.01em}
+.cover p{margin:0;color:#cfe0ea;font-size:15px;max-width:720px}
+.cover .meta{display:flex;gap:34px;margin-top:30px;font-size:12.5px;color:#a9c4d4}
+.cover .meta b{display:block;color:#fff;font-size:14px;font-weight:600}
+
+.kpi{display:flex;flex-direction:column;gap:4px}
+.kpi b{font-size:26px;color:var(--navy2)}
+.kpi span{font-size:12px;color:var(--muted)}
+
+/* fases */
+.fase{border-left:4px solid var(--blue);padding-left:14px}
+.fase .n{font-size:12px;color:var(--blue);font-weight:700;letter-spacing:.06em}
+.fase h4{margin:2px 0 8px;font-size:15px}
+
+/* frentes grid */
+.frente{cursor:pointer;transition:.15s;display:flex;flex-direction:column;gap:10px}
+.frente:hover{border-color:var(--blue);box-shadow:0 6px 18px rgba(22,61,87,.08)}
+.frente .hd{display:flex;align-items:center;gap:10px}
+.frente .ic{width:36px;height:36px;border-radius:10px;background:var(--soft);display:grid;place-items:center;color:var(--blue2)}
+.frente .ic svg{width:19px;height:19px}
+.frente b{font-size:15px}
+.bar{height:6px;border-radius:99px;background:var(--line);overflow:hidden;display:flex}
+.bar i{display:block;height:100%}
+
+/* painel da frente: o slide */
+.slide{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.slide .band{background:linear-gradient(90deg,var(--blue2),var(--blue));color:#fff;padding:14px 26px;display:flex;align-items:center;justify-content:space-between;border-radius:0 0 22px 0}
+.slide .band h2{color:#fff;font-size:26px;margin:0;font-weight:600}
+.slide .band .selo{padding:4px 6px;border-radius:8px}.slide .band img{height:44px;display:block}
+.slide .body{padding:22px 26px 26px;display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:0}
+.slide .col{padding:0 22px;border-left:1px solid var(--line)}
+.slide .col:first-child{padding-left:0;border-left:0}
+.slide .col h3{text-transform:none;letter-spacing:0;font-size:16px;color:var(--blue2)}
+.farol td{padding:8px 10px}
+.farol tr:nth-child(odd) td{background:#e9f6fc}
+.farol td:last-child{text-align:center;width:60px}
+.pf{display:flex;gap:12px;align-items:flex-start;margin:10px 0}
+.pf .ci{flex:none;width:30px;height:30px;border-radius:50%;background:var(--soft);display:grid;place-items:center;color:var(--blue)}
+.pf .ci svg{width:16px;height:16px}
+.slide .lower{display:grid;grid-template-columns:1fr 1.3fr;border-top:1px solid var(--line);margin:0 26px;padding:18px 0 22px}
+.slide .lower > div:last-child{border-left:1px solid var(--line);padding-left:22px}
+.slide .rule{height:5px;background:var(--blue);margin:0 26px 18px;border-radius:3px}
+
+/* gantt */
+.gantt{display:grid;grid-template-columns:220px repeat(12,1fr);font-size:12px}
+.gantt .h{padding:6px 4px;color:var(--muted);font-weight:600;text-align:center;border-bottom:1px solid var(--line)}
+.gantt .l{padding:8px 8px 8px 0;border-bottom:1px solid #f0f3f5;font-weight:500}
+.gantt .l.sub{padding-left:14px;font-weight:400;color:var(--muted)}
+.gantt .c{border-bottom:1px solid #f0f3f5;border-left:1px dashed #eef1f4;position:relative;min-height:34px}
+.gantt .b{position:absolute;top:9px;height:16px;border-radius:5px}
+.gantt .now{background:rgba(45,132,184,.06)}
+
+.tabs{display:flex;gap:6px;border-bottom:1px solid var(--line);margin:22px 0 16px}
+.tabs button{all:unset;cursor:pointer;padding:10px 14px;font-weight:500;color:var(--muted);border-bottom:2px solid transparent}
+.tabs button.on{color:var(--navy2);border-color:var(--navy2)}
+
+.crumb{all:unset;cursor:pointer;color:var(--blue2);font-size:13px;display:inline-flex;align-items:center;gap:6px;margin-bottom:12px}
+.crumb svg{width:15px;height:15px}
+.rule-box{background:#fff8ec;border:1px solid #f3dcb3;border-radius:12px;padding:14px 16px;color:#6b4a14;display:flex;gap:10px}
+.rule-box svg{flex:none;width:18px;height:18px;margin-top:2px}
+
+/* relatório */
+.report{background:#fff;border:1px solid var(--line);border-radius:14px;padding:40px 48px;max-width:980px}
+.report header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid var(--blue);padding-bottom:18px;margin-bottom:22px}
+.report header h1{font-family:Marcellus,serif;font-weight:400;font-size:24px;margin:0;color:var(--navy2)}
+.report header img{height:70px}
+.report .ident{display:grid;grid-template-columns:repeat(2,1fr);gap:4px 30px;font-size:13px}
+.report h2{margin:28px 0 10px;font-size:15px;border-left:4px solid var(--blue);padding-left:10px}
+.report .setor{border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:10px 0}
+.report .setor h4{margin:0 0 8px;color:var(--blue2);font-size:13px;letter-spacing:.05em}
+.report .setor .row{display:grid;grid-template-columns:170px 1fr;gap:10px;padding:5px 0;border-top:1px dashed var(--line);font-size:13px}
+.report .setor .row:first-of-type{border-top:0}
+.report .setor .row b{color:var(--gray);font-weight:600}
+.sign{display:grid;grid-template-columns:1fr 1fr;gap:60px;margin-top:50px;text-align:center;font-size:12.5px;color:var(--muted)}
+.sign div{border-top:1px solid var(--ink);padding-top:6px}
+.check{display:flex;gap:22px;font-size:13px}
+select{font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:#fff}
+
+/* modo apresentação */
+body.present aside, body.present .top .actions{display:none}
+body.present .app{grid-template-columns:1fr}
+body.present main{max-width:none;padding:26px 48px}
+.present-hint{display:none;position:fixed;bottom:14px;right:18px;background:var(--navy);color:#fff;padding:6px 12px;border-radius:8px;font-size:12px;opacity:.85}
+body.present .present-hint{display:block}
+
+@media print{
+  aside,.top,.noprint{display:none!important}
+  .app{display:block} main{padding:0;max-width:none}
+  body{background:#fff}
+  .report{border:0;padding:0;max-width:none}
+  .report .setor{break-inside:avoid}
+}
+@media (max-width:900px){
+  .app{grid-template-columns:1fr} aside{position:static;height:auto}
+  .g2,.g3,.g4,.slide .body,.slide .lower{grid-template-columns:1fr}
+  .slide .col,.slide .lower > div:last-child{border-left:0;padding:12px 0}
+  main{padding:18px 16px}
+  .gantt{overflow-x:auto}
+}
+</style>
+<style>
+/* ---- edição (só aparece para o consultor, com o modo edição ligado) ---- */
+.lapis{all:unset;cursor:pointer;display:none;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:var(--blue);padding:2px 8px;border-radius:6px;border:1px dashed #b8d4e6;margin-left:8px;vertical-align:middle;background:#fff}
+.lapis svg{width:13px;height:13px}
+body.editando .lapis{display:inline-flex}
+body.editando .dot.clica{cursor:pointer;outline:2px solid transparent;transition:.1s}
+body.editando .dot.clica:hover{outline-color:#b8d4e6;outline-offset:2px}
+.slide .band .lapis{color:#fff;background:transparent;border-color:rgba(255,255,255,.5)}
+aside .modo{display:flex;flex-direction:column;gap:6px;padding:10px 8px;border-top:1px solid rgba(255,255,255,.08)}
+aside .modo button{all:unset;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:12.5px;color:#c4d3dd;padding:6px 8px;border-radius:7px}
+aside .modo button:hover{background:rgba(255,255,255,.06)}
+aside .modo button.on{background:rgba(45,132,184,.25);color:#fff}
+aside .modo svg{width:15px;height:15px}
+.salvo{font-size:11.5px;color:#8fa6b5;padding:0 8px;min-height:16px}
+.salvo.erro{color:#ffb3b3}
+.faixa{position:sticky;top:0;z-index:20;margin:-28px -34px 18px;padding:10px 34px;background:#fff4e5;border-bottom:1px solid #f3dcb3;color:#6b4a14;font-size:13px;display:none;align-items:center;gap:10px}
+.faixa.on{display:flex}
+.faixa button{all:unset;cursor:pointer;font-weight:600;text-decoration:underline}
+.modal-fundo{position:fixed;inset:0;background:rgba(16,34,44,.45);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:40px 16px;overflow:auto}
+.modal-fundo.on{display:flex}
+.modal{background:#fff;border-radius:14px;width:min(980px,100%);padding:22px 24px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.modal h2{margin:0 0 4px}
+.modal .dica{color:var(--muted);font-size:12.5px;margin:0 0 14px}
+.modal table td{padding:4px 4px;border-bottom:0}
+.modal input,.modal select,.modal textarea{font:inherit;width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:#fff}
+.modal textarea{min-height:64px;resize:vertical}
+.modal .rodape{display:flex;justify-content:space-between;gap:10px;margin-top:16px}
+.modal .icone-btn{all:unset;cursor:pointer;color:var(--muted);padding:4px;border-radius:6px;display:inline-grid;place-items:center}
+.modal .icone-btn:hover{background:var(--bg);color:var(--late)}
+.modal .icone-btn svg{width:16px;height:16px}
+.porta{min-height:100vh;display:grid;place-items:center;background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;text-align:center;padding:24px}
+.porta .selo{padding:14px;border-radius:16px;margin-bottom:20px}
+.porta img{width:110px;display:block}
+.porta p{color:#cfe0ea;max-width:420px}
+.porta a{color:#fff;font-weight:600}
+.fechado{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--ok);background:#e7f6ee;border-radius:99px;padding:3px 10px}
+.fechado svg{width:14px;height:14px}
+@media print{.faixa,.lapis,.modal-fundo{display:none!important}}
+</style>
+</head>
+<body>
+<div id="raiz"><div class="porta"><div><span class="selo"><img src="/marcas/cecilio-rocha.svg" alt=""></span><p>Carregando…</p></div></div></div>
+<div class="modal-fundo" id="modal"></div>
+<div class="present-hint">← → navegar · Esc sair</div>
+
+<script>
+// =====================================================================================
+// A CONSULTORIA · tela de trabalho e de apresentação (c2x.app.br/consultoria/<slug>)
+// O desenho é o mockup aprovado pelo Lucas em 29/09/2026. Os dados vêm da API:
+//   • ?e=<código> (guardado no navegador) → consultor, lê e salva
+//   • ?t=<código>                         → cliente, só leitura
+// Os dois pela mesma porta, /api/publico/consultoria/<slug>, com o código no cabeçalho.
+// =====================================================================================
+const SLUG = location.pathname.split('/').filter(Boolean).pop();
+const TOKEN_DO_LINK = new URLSearchParams(location.search).get('t') || '';
+const STATUS = {todo:'A iniciar', doing:'Em desenvolvimento', ok:'Concluído', late:'Atrasado'};
+const CICLO = {todo:'doing', doing:'ok', ok:'late', late:'todo'};
+const MESES_LONGOS = ['Outubro/2026','Novembro/2026','Dezembro/2026','Janeiro/2027','Fevereiro/2027','Março/2027','Abril/2027','Maio/2027','Junho/2027','Julho/2027','Agosto/2027','Setembro/2027'];
+const TIPOS_DE_REGISTRO = [['problema','Problemas e gargalos identificados'],['acao','Ações realizadas'],['resultado','Resultados obtidos']];
+
+let DOC=null, ATUALIZADO=null, PODE_EDITAR=false, LINK_DE_LEITURA='';
+let PROJETO,MESES,FASES,ONDAS,FRENTES,INDICADORES,PLANO30,GOVERNANCA;
+let MES_ATUAL=0;
+let estado = {secao:'geral',frente:null,aba:'painel',mesRel:0,mesReg:0};
+
+function vincular(){
+  ({projeto:PROJETO,meses:MESES,fases:FASES,ondas:ONDAS,frentes:FRENTES,indicadores:INDICADORES,plano30:PLANO30,governanca:GOVERNANCA}=DOC);
+  DOC.pendencias = DOC.pendencias || {consultoria:[],gestores:[],diretoria:[],decisoes:[]};
+  DOC.relatorios = DOC.relatorios || {};
+  FRENTES.forEach(f=>{f.registros=f.registros||[];f.implantados=f.implantados||[];f.pontos=f.pontos||[];f.principais=f.principais||[];f.proximos=f.proximos||[];});
+  const [ano,mes]=(PROJETO.inicioMes||'2026-10').split('-').map(Number);
+  const hoje=new Date();
+  MES_ATUAL=Math.max(0,Math.min(11,(hoje.getFullYear()-ano)*12+(hoje.getMonth()+1-mes)));
+}
+
+// ---------------------------------------------------------------- acesso por link (sem login)
+// Link do consultor: /consultoria/<slug>?e=<código>. Na primeira abertura o código vai para o
+// localStorage deste navegador e sai da barra de endereço; daí em diante o endereço limpo abre
+// direto em modo edição. Link do cliente: ?t=<código>, só leitura.
+const CHAVE_EDICAO = `consultoria-edicao-${SLUG}`;
+function lerEdicao(){ try{return localStorage.getItem(CHAVE_EDICAO)||'';}catch{return '';} }
+function guardarEdicao(v){ try{ v?localStorage.setItem(CHAVE_EDICAO,v):localStorage.removeItem(CHAVE_EDICAO); }catch{} }
+let CODIGO_EDICAO='';
+(function(){
+  const q=new URLSearchParams(location.search), e=q.get('e');
+  if(e){ guardarEdicao(e); q.delete('e'); history.replaceState(null,'',location.pathname+(q.toString()?`?${q}`:'')); }
+  CODIGO_EDICAO=lerEdicao();
+})();
+const cabecalhos=()=>CODIGO_EDICAO?{'x-consultoria-edicao':CODIGO_EDICAO}:{'x-consultoria-token':TOKEN_DO_LINK};
+
+async function carregar(){
+  if(!CODIGO_EDICAO && !TOKEN_DO_LINK) return porta('Esta página é acessada pelo link enviado pelo consultor.');
+  let r;
+  try{ r=await fetch(`/api/publico/consultoria/${SLUG}`,{headers:cabecalhos(),cache:'no-store'}); }
+  catch{return porta('Não foi possível conectar. Verifique a internet e recarregue a página.');}
+  if(r.status===404){ if(CODIGO_EDICAO) guardarEdicao(''); return porta('Link inválido ou expirado. Peça um novo link ao consultor.'); }
+  if(!r.ok) return porta('Não foi possível abrir o projeto agora. Tente de novo em instantes.');
+  const j=await r.json();
+  DOC=j.dados; ATUALIZADO=j.atualizadoEm; PODE_EDITAR=!!j.podeEditar; LINK_DE_LEITURA=j.linkDeLeitura||'';
+  vincular();
+  estado.mesRel=MES_ATUAL; estado.mesReg=MES_ATUAL;
+  montarApp(); render();
+}
+function porta(msg){
+  document.getElementById('raiz').innerHTML=`<div class="porta"><div><span class="selo"><img src="/marcas/cecilio-rocha.svg" alt="Cecílio Rocha Construtora"></span><h2 style="font-family:Marcellus,serif;font-weight:400;font-size:26px;margin:0 0 8px;color:#fff">Reestruturação de Processos</h2><p>${msg}</p></div></div>`;
+}
+
+// ---------------------------------------------------------------- salvamento
+let timerSalvar=null, salvando=false, pendente=false, travado=false;
+function mudou(){ if(!PODE_EDITAR||travado)return; pendente=true; marcaSalvo('Alterações não salvas…'); clearTimeout(timerSalvar); timerSalvar=setTimeout(salvar,900); }
+async function salvar(){
+  if(salvando){timerSalvar=setTimeout(salvar,500);return;}
+  if(!pendente)return;
+  salvando=true; pendente=false; marcaSalvo('Salvando…');
+  try{
+    const r=await fetch(`/api/publico/consultoria/${SLUG}`,{method:'PUT',headers:{...cabecalhos(),'content-type':'application/json'},body:JSON.stringify({dados:DOC,base:ATUALIZADO})});
+    if(r.status===409){travado=true;faixa('Este projeto foi alterado em outra janela. Para não apagar aquele trabalho, esta aba parou de salvar.','Recarregar',()=>location.reload());marcaSalvo('Não salvo',true);return;}
+    if(r.status===404){travado=true;faixa('O link de edição deste navegador não vale mais. A última alteração NÃO foi salva.');marcaSalvo('Não salvo',true);return;}
+    if(!r.ok){pendente=true;marcaSalvo('Erro ao salvar · tentando de novo',true);timerSalvar=setTimeout(salvar,5000);return;}
+    ATUALIZADO=(await r.json()).atualizadoEm; marcaSalvo('Salvo');
+  }catch{pendente=true;marcaSalvo('Sem conexão · tentando de novo',true);timerSalvar=setTimeout(salvar,5000);}
+  finally{salvando=false;}
+}
+function marcaSalvo(t,erro=false){const el=document.getElementById('salvo');if(el){el.textContent=t;el.className='salvo'+(erro?' erro':'');}}
+function faixa(msg,botao,acao){const el=document.getElementById('faixa');if(!el)return;if(!msg){el.className='faixa';return;}el.innerHTML=`${ic('alert-triangle')}<span>${msg}</span>${botao?`<button id="faixa-btn">${botao}</button>`:''}`;el.className='faixa on';if(botao)document.getElementById('faixa-btn').onclick=acao;lucide.createIcons();}
+window.addEventListener('beforeunload',e=>{if(pendente||salvando){e.preventDefault();e.returnValue='';}});
+
+// ---------------------------------------------------------------- utilitários de tela
+const $ = s=>document.querySelector(s);
+const ic = (n,cls='')=>`<i data-lucide="${n}" class="${cls}"></i>`;
+const esc = s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const vazio = (t='Sem registro no período')=>`<span class="empty">${t}</span>`;
+const lista = arr=>arr&&arr.length?`<ul class="clean">${arr.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:vazio();
+// Ações de edição registradas por render: o botão guarda só o índice, a função fica aqui.
+let ACOES=[];
+const acao = fn=>{ACOES.push(fn);return ACOES.length-1;};
+const lapis = (fn,rot='Editar')=>PODE_EDITAR?`<button class="lapis noprint" onclick="event.stopPropagation();ACOES[${acao(fn)}]()">${ic('pencil')}${rot}</button>`:'';
+// Bolinha de status: no modo edição, clicar avança o status (A iniciar → Em desenvolvimento → Concluído → Atrasado).
+const dot = (s,obj)=>obj&&PODE_EDITAR?`<span class="dot s-${s} clica" title="${STATUS[s]} · clique para mudar" onclick="if(document.body.classList.contains('editando')){event.stopPropagation();ACOES[${acao(()=>{obj.status=CICLO[obj.status]||'todo';mudou();render();})}]()}"></span>`:`<span class="dot s-${s}" title="${STATUS[s]}"></span>`;
+
+// ---------------------------------------------------------------- editor genérico (tabela)
+// colunas: {k, rotulo, tipo:'texto'|'longo'|'status'|'mes'|'numero'|'opcoes', opcoes:[[valor,rotulo]], largura}
+function editarTabela({titulo,dica,colunas,linhas,nova,aoSalvar}){
+  const copia=linhas.map(l=>({...l}));
+  const fundo=$('#modal');
+  const campo=(c,v,i)=>{
+    const at=`data-i="${i}" data-k="${c.k}"`;
+    if(c.tipo==='longo')return `<textarea ${at}>${esc(v)}</textarea>`;
+    if(c.tipo==='status')return `<select ${at}>${Object.entries(STATUS).map(([k,n])=>`<option value="${k}" ${v===k?'selected':''}>${n}</option>`).join('')}</select>`;
+    if(c.tipo==='mes')return `<select ${at}>${MESES.map((m,j)=>`<option value="${j}" ${+v===j?'selected':''}>${m}</option>`).join('')}</select>`;
+    if(c.tipo==='opcoes')return `<select ${at}>${c.opcoes.map(([k,n])=>`<option value="${esc(k)}" ${String(v)===String(k)?'selected':''}>${esc(n)}</option>`).join('')}</select>`;
+    return `<input ${at} ${c.tipo==='numero'?'type="number" step="any"':''} value="${esc(v??'')}">`;
+  };
+  const desenhar=()=>{
+    fundo.innerHTML=`<div class="modal"><h2>${titulo}</h2><p class="dica">${dica||'Edite, acrescente ou remova linhas. A ordem da lista é a ordem da tela.'}</p>
+      <table><tr>${colunas.map(c=>`<th style="${c.largura?`width:${c.largura}`:''}">${c.rotulo}</th>`).join('')}<th style="width:92px"></th></tr>
+      ${copia.map((l,i)=>`<tr>${colunas.map(c=>`<td>${campo(c,l[c.k],i)}</td>`).join('')}<td style="white-space:nowrap">
+        <button class="icone-btn" title="Subir" data-sobe="${i}">${ic('arrow-up')}</button><button class="icone-btn" title="Remover" data-tira="${i}">${ic('trash-2')}</button></td></tr>`).join('')}</table>
+      <div class="rodape"><button class="btn ghost" id="m-add">${ic('plus')}Acrescentar linha</button><div style="display:flex;gap:8px"><button class="btn ghost" id="m-cancela">Cancelar</button><button class="btn" id="m-ok">${ic('check')}Aplicar</button></div></div></div>`;
+    fundo.className='modal-fundo on'; lucide.createIcons();
+    fundo.querySelectorAll('[data-k]').forEach(el=>el.oninput=el.onchange=()=>{const c=colunas.find(x=>x.k===el.dataset.k);let v=el.value;if(c.tipo==='mes')v=+v;if(c.tipo==='numero')v=v===''?null:+v;copia[+el.dataset.i][el.dataset.k]=v;});
+    fundo.querySelectorAll('[data-tira]').forEach(b=>b.onclick=()=>{copia.splice(+b.dataset.tira,1);desenhar();});
+    fundo.querySelectorAll('[data-sobe]').forEach(b=>b.onclick=()=>{const i=+b.dataset.sobe;if(i>0){[copia[i-1],copia[i]]=[copia[i],copia[i-1]];desenhar();}});
+    $('#m-add').onclick=()=>{copia.push(nova());desenhar();};
+    $('#m-cancela').onclick=fechar;
+    $('#m-ok').onclick=()=>{aoSalvar(copia);fechar();mudou();render();};
+  };
+  const fechar=()=>{fundo.className='modal-fundo';fundo.innerHTML='';};
+  desenhar();
+}
+// Lista de textos (bullets) usa o mesmo editor com uma coluna.
+function editarLista(titulo,arr,dica){
+  editarTabela({titulo,dica,colunas:[{k:'t',rotulo:'Item',tipo:'longo'}],linhas:arr.map(t=>({t})),nova:()=>({t:''}),
+    aoSalvar:ls=>{arr.splice(0,arr.length,...ls.map(l=>String(l.t||'').trim()).filter(Boolean));}});
+}
+function editarTexto(titulo,obj,k){
+  editarTabela({titulo,dica:'Texto corrido.',colunas:[{k:'t',rotulo:'Texto',tipo:'longo'}],linhas:[{t:obj[k]}],nova:()=>({t:''}),aoSalvar:ls=>{obj[k]=String(ls[0]?.t||'').trim();}});
+}
+const OP_FRENTES=()=>[['','Geral'],...FRENTES.map(f=>[f.id,f.nome])];
+
+// ---------------------------------------------------------------- navegação
+const SECOES = [
+  {id:'geral',nome:'Visão geral',icone:'layout-dashboard',render:rGeral},
+  {id:'escopo',nome:'Escopo',icone:'file-text',render:rEscopo},
+  {id:'jornada',nome:'Jornada',icone:'calendar-range',render:rJornada},
+  {id:'frentes',nome:'Frentes',icone:'layers',render:rFrentes},
+  {id:'plano',nome:'Plano de ação',icone:'list-checks',render:rPlano},
+  {id:'indicadores',nome:'Indicadores',icone:'trending-up',render:rIndicadores},
+  {id:'entregas',nome:'Entregas',icone:'folder-open',render:rEntregas},
+  {id:'relatorio',nome:'Relatório mensal',icone:'clipboard-list',render:rRelatorio},
+];
+
+function montarApp(){
+  document.title = `Reestruturação ${PROJETO.empresa.split(' ')[0]}`;
+  $('#raiz').innerHTML=`<div class="app">
+  <aside>
+    <div class="brand"><span class="selo"><img src="/marcas/cecilio-rocha.svg" alt=""></span><div><b>C&amp;R</b><span>Reestruturação</span></div></div>
+    <nav id="nav"></nav>
+    ${PODE_EDITAR?`<div class="modo"><button id="b-editar">${ic('pencil-line')}Modo edição</button><div class="salvo" id="salvo"></div></div>`:''}
+    <div class="foot">Consultoria <b>${esc(PROJETO.consultor)}</b><br>Out/2026 a Set/2027</div>
+  </aside>
+  <main><div class="faixa" id="faixa"></div><div id="main"></div></main></div>`;
+  if(PODE_EDITAR){
+    let ligado=false; try{ligado=localStorage.getItem('consultoria-editando')==='1';}catch{}
+    document.body.classList.toggle('editando',ligado);
+    const b=$('#b-editar'); b.classList.toggle('on',ligado);
+    b.onclick=()=>{const on=document.body.classList.toggle('editando');b.classList.toggle('on',on);try{localStorage.setItem('consultoria-editando',on?'1':'0');}catch{}};
+    marcaSalvo('Salvo');
+  }
+}
+
+// ================================================================== TELAS
+function contaStatus(arr){const c={todo:0,doing:0,ok:0,late:0};arr.forEach(a=>c[a.status]=(c[a.status]||0)+1);return c;}
+function barra(arr){const c=contaStatus(arr),t=arr.length||1;return `<div class="bar">${['ok','doing','late','todo'].map(s=>`<i class="s-${s}" style="width:${c[s]/t*100}%"></i>`).join('')}</div>`;}
+function topo(t,sub,acoes=''){return `<div class="top"><div><h1>${t}</h1>${sub?`<p>${sub}</p>`:''}</div><div class="actions" style="display:flex;gap:8px;align-items:center">${acoes}<button class="btn ghost" onclick="apresentar()">${ic('presentation')}Apresentar</button></div></div>`;}
+const legenda=`<div class="legend"><span><span class="dot s-todo"></span>A iniciar</span><span><span class="dot s-doing"></span>Em desenvolvimento</span><span><span class="dot s-ok"></span>Concluído</span><span><span class="dot s-late"></span>Atrasado</span></div>`;
+
+function rGeral(){
+  const ativs = FRENTES.flatMap(f=>f.atividades), c=contaStatus(ativs);
+  const entregas = FRENTES.flatMap(f=>f.entregas);
+  const faseAtual = [...FASES].reverse().find(f=>MES_ATUAL>=f.meses[0]&&MES_ATUAL<=f.meses[1]) || FASES[0];
+  return `
+  <div class="cover">
+    <div class="logo"><span class="selo"><img src="/marcas/cecilio-rocha.svg" alt="Cecílio Rocha Construtora"></span><div><span>CONSULTORIA</span><b>${esc(PROJETO.consultor)}</b></div></div>
+    <div><h1>Reestruturação de Processos</h1><p>${esc(PROJETO.objetivo)}</p></div>
+    <div class="meta"><div>Empresa<b>${esc(PROJETO.empresa)}</b></div><div>Consultoria<b>${esc(PROJETO.consultor)}</b></div><div>Período<b>Out/2026 a Set/2027 · 12 meses</b></div><div>Fase atual<b>${faseAtual.n}. ${esc(faseAtual.nome)}</b></div></div>
+  </div>
+  <div class="grid g4" style="margin-top:16px">
+    <div class="card kpi"><b>${MES_ATUAL+1} / 12</b><span>Mês do projeto (${MESES[MES_ATUAL]})</span></div>
+    <div class="card kpi"><b>${FRENTES.length}</b><span>Frentes de trabalho</span></div>
+    <div class="card kpi"><b>${c.ok||0} / ${ativs.length}</b><span>Atividades concluídas</span></div>
+    <div class="card kpi"><b>${entregas.filter(e=>e.status==='ok').length} / ${entregas.length}</b><span>Entregas formalizadas</span></div>
+  </div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h2>Farol das frentes</h2>
+      <table>${FRENTES.map(f=>`<tr style="cursor:pointer" onclick="abrirFrente('${f.id}')"><td style="width:34px;color:var(--blue2)">${ic(f.icone)}</td><td><b>${esc(f.nome)}</b><div class="muted" style="font-size:12px">${f.grupo}</div></td><td style="width:40%">${barra(f.atividades)}</td><td style="width:70px;text-align:right" class="muted">${contaStatus(f.atividades).ok||0}/${f.atividades.length}</td></tr>`).join('')}</table>
+      ${legenda}
+    </div>
+    <div class="card"><h2>Próximas ações (30 dias)</h2>
+      <table><tr><th>Ação</th><th>Responsável</th><th>Prazo</th></tr>${PLANO30.filter(p=>p.status!=='ok').slice(0,6).map(p=>`<tr><td>${dot(p.status,p)} ${esc(p.acao)}</td><td class="muted">${esc(p.resp)}</td><td>${esc(p.prazo)}</td></tr>`).join('')||`<tr><td colspan="3">${vazio('Nenhuma ação em aberto')}</td></tr>`}</table>
+    </div>
+  </div>`;
+}
+
+function rEscopo(){
+  return topo('Escopo do projeto','O que a consultoria vai fazer, em quais áreas, o que entrega e como a empresa acompanha')+`
+  <div class="card"><h2>Objetivo ${lapis(()=>editarTexto('Objetivo do projeto',PROJETO,'objetivo'))}</h2><p style="margin:0 0 12px;font-size:15px">${esc(PROJETO.objetivo)}</p>
+    <h3>Resultados esperados ${lapis(()=>editarLista('Resultados esperados',PROJETO.resultados))}</h3><div class="grid g4">${PROJETO.resultados.map(r=>`<div style="background:var(--soft);border-radius:10px;padding:12px;font-size:13px">${esc(r)}</div>`).join('')}</div></div>
+  <div class="card" style="margin-top:16px"><h2>Método: 4 fases ${lapis(editarFases)}</h2><div class="grid g4">${FASES.map(f=>`<div class="fase"><div class="n">FASE ${f.n} · ${MESES[f.meses[0]]} a ${MESES[f.meses[1]]}</div><h4>${esc(f.nome)} ${lapis(()=>editarLista(`Fase ${f.n} · atividades`,f.itens),'Itens')}</h4>${lista(f.itens)}<p style="margin:10px 0 0;font-size:12.5px"><span class="tag">Entrega</span> ${esc(f.entrega)}</p></div>`).join('')}</div></div>
+  <div class="card" style="margin-top:16px"><h2>Frentes de trabalho ${lapis(editarFrentes,'Frentes')}</h2>
+    <h3>Transversais (valem para a empresa toda)</h3>
+    <div class="grid g3">${FRENTES.filter(f=>f.grupo==='Transversal').map(cardEscopo).join('')}</div>
+    <h3 style="margin-top:18px">Por setor</h3>
+    <div class="grid g3">${FRENTES.filter(f=>f.grupo==='Setor').map(cardEscopo).join('')}</div></div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h2>Governança e rituais ${lapis(()=>editarTabela({titulo:'Governança e rituais',colunas:[{k:'nome',rotulo:'Ritual'},{k:'quem',rotulo:'Participantes'},{k:'quando',rotulo:'Quando'},{k:'saida',rotulo:'Saída',tipo:'longo'}],linhas:GOVERNANCA,nova:()=>({nome:'',quem:'',quando:'',saida:''}),aoSalvar:ls=>GOVERNANCA.splice(0,GOVERNANCA.length,...ls)}))}</h2><table><tr><th>Ritual</th><th>Participantes</th><th>Quando</th><th>Saída</th></tr>${GOVERNANCA.map(g=>`<tr><td><b>${esc(g.nome)}</b></td><td>${esc(g.quem)}</td><td>${esc(g.quando)}</td><td>${esc(g.saida)}</td></tr>`).join('')}</table></div>
+    <div class="card"><h2>Premissas e limites</h2>
+      <h3>Premissas ${lapis(()=>editarLista('Premissas',PROJETO.premissas))}</h3>${lista(PROJETO.premissas)}
+      <h3 style="margin-top:12px">Fora do escopo ${lapis(()=>editarLista('Fora do escopo',PROJETO.foraDoEscopo))}</h3>${lista(PROJETO.foraDoEscopo)}</div>
+  </div>
+  <div class="rule-box" style="margin-top:16px">${ic('shield-check')}<div><b>Critério de "processo implantado".</b> Sugestão ou reunião não conta. Um processo só entra como implantado quando a mudança está funcionando na rotina, tem responsável, e existe evidência (registro, planilha, sistema ou indicador) do antes e do depois.</div></div>`;
+}
+function cardEscopo(f){return `<div class="card frente" onclick="abrirFrente('${f.id}')"><div class="hd"><div class="ic">${ic(f.icone)}</div><b>${esc(f.nome)}</b></div><div class="muted" style="font-size:13px">${esc(f.objetivo)}</div>${lista(f.escopo)}<div style="font-size:12px"><span class="tag">${f.entregas.length} entregas</span></div></div>`;}
+function editarFases(){
+  editarTabela({titulo:'Fases do método',dica:'Nome, meses e entrega de cada fase. Os itens de cada fase se editam no próprio card.',
+    colunas:[{k:'nome',rotulo:'Fase'},{k:'ini',rotulo:'Início',tipo:'mes',largura:'110px'},{k:'fim',rotulo:'Fim',tipo:'mes',largura:'110px'},{k:'entrega',rotulo:'Entrega',tipo:'longo'}],
+    linhas:FASES.map(f=>({nome:f.nome,ini:f.meses[0],fim:f.meses[1],entrega:f.entrega,itens:f.itens})),nova:()=>({nome:'',ini:MES_ATUAL,fim:MES_ATUAL,entrega:'',itens:[]}),
+    aoSalvar:ls=>FASES.splice(0,FASES.length,...ls.map((l,i)=>({n:i+1,nome:l.nome,meses:[Math.min(l.ini,l.fim),Math.max(l.ini,l.fim)],entrega:l.entrega,itens:l.itens||[]})))});
+}
+const ICONES=[['network','Organograma'],['users','Pessoas'],['gauge','Indicador'],['hard-hat','Obra'],['package','Suprimentos'],['landmark','Financeiro'],['handshake','Comercial'],['id-card','RH'],['monitor-smartphone','Tecnologia'],['clipboard-check','Qualidade'],['shield-check','Segurança'],['briefcase','Geral']];
+const SETORES=['ENGENHARIA / OBRAS','COMPRAS / SUPRIMENTOS','FINANCEIRO','COMERCIAL / VENDAS','RH / GESTÃO DE PESSOAS','ADMINISTRATIVO / PROCESSOS','TECNOLOGIA'];
+function editarFrentes(){
+  editarTabela({titulo:'Frentes de trabalho',dica:'Nome, grupo e o setor em que a frente aparece no relatório do Vitor. Remover uma frente apaga tudo dela (atividades, entregas e registros).',
+    colunas:[{k:'nome',rotulo:'Frente'},{k:'grupo',rotulo:'Grupo',tipo:'opcoes',opcoes:[['Transversal','Transversal'],['Setor','Setor']],largura:'130px'},{k:'setor',rotulo:'Setor no relatório',tipo:'opcoes',opcoes:SETORES.map(s=>[s,s])},{k:'icone',rotulo:'Ícone',tipo:'opcoes',opcoes:ICONES,largura:'140px'},{k:'objetivo',rotulo:'Objetivo',tipo:'longo'}],
+    linhas:FRENTES,nova:()=>({id:'f'+Date.now().toString(36),nome:'',grupo:'Setor',setor:SETORES[0],icone:'briefcase',objetivo:'',escopo:[],entregas:[],atividades:[],janela:{redesenho:[MES_ATUAL,MES_ATUAL+2],implantacao:[MES_ATUAL+2,MES_ATUAL+5]},kpis:[],principais:[],proximos:[],pontos:[],registros:[],implantados:[]}),
+    aoSalvar:ls=>FRENTES.splice(0,FRENTES.length,...ls.filter(f=>String(f.nome||'').trim()))});
+}
+
+function linhaGantt(label,ranges,sub=false){
+  let h=`<div class="l${sub?' sub':''}">${label}</div>`;
+  for(let m=0;m<12;m++){
+    let bars='';
+    ranges.forEach(r=>{ if(m===r.m[0]){const w=(r.m[1]-r.m[0]+1)*100;bars+=`<div class="b" style="left:3px;width:calc(${w}% - 6px);background:${r.cor};z-index:1" title="${r.t||''}"></div>`;} });
+    h+=`<div class="c${m===MES_ATUAL?' now':''}">${bars}</div>`;
+  }
+  return h;
+}
+function faixasDaFrente(f){
+  const r=[{m:f.janela.redesenho,cor:'var(--sky)',t:'Redesenho'},{m:[...f.janela.implantacao],cor:'var(--blue)',t:'Implantação'}];
+  if(r[1].m[0]<=r[0].m[1]) r[1].m=[r[0].m[1]+1,r[1].m[1]];
+  return r.filter(x=>x.m[0]<=x.m[1]);
+}
+function rJornada(){
+  let g=`<div class="gantt"><div class="h"></div>${MESES.map((m,i)=>`<div class="h" style="${i===MES_ATUAL?'color:var(--blue)':''}">${m}</div>`).join('')}`;
+  FASES.forEach(f=>g+=linhaGantt(`<b>Fase ${f.n}.</b> ${esc(f.nome)}`,[{m:f.meses,cor:'var(--navy2)'}]));
+  ONDAS.forEach(o=>{
+    g+=`<div class="l" style="grid-column:1/-1;padding-top:16px;color:var(--blue2)">${esc(o.nome)}</div>`;
+    o.frentes.map(id=>FRENTES.find(x=>x.id===id)).filter(Boolean).forEach(f=>{g+=linhaGantt(esc(f.nome),faixasDaFrente(f),true);});
+  });
+  g+=linhaGantt('<b>Relatório mensal</b>',MESES.map((_,i)=>({m:[i,i],cor:'#c9d6df'})));
+  g+='</div>';
+  return topo('Jornada · 12 meses','Fases do método e ondas de redesenho e implantação por frente',lapis(editarOndas,'Ondas'))+`<div class="card">${g}
+    <div class="legend"><span><i class="dot" style="background:var(--navy2)"></i>Fase</span><span><i class="dot" style="background:var(--sky)"></i>Redesenho</span><span><i class="dot" style="background:var(--blue)"></i>Implantação</span></div></div>
+    <div class="grid g3" style="margin-top:16px">${ONDAS.map(o=>`<div class="card"><h2>${esc(o.nome)} · ${MESES[o.meses[0]]} a ${MESES[o.meses[1]]}</h2>${lista(o.frentes.map(id=>FRENTES.find(f=>f.id===id)?.nome).filter(Boolean))}</div>`).join('')}</div>
+    <p class="muted" style="font-size:12.5px">A ordem das ondas é confirmada na Fase 2, depois da priorização das dores (impacto x urgência). O redesenho e a implantação de cada frente se ajustam no painel da frente.</p>`;
+}
+function editarOndas(){
+  const nomes=id=>FRENTES.find(f=>f.id===id)?.nome||'';
+  editarTabela({titulo:'Ondas',dica:'Frentes da onda separadas por vírgula, com o nome como aparece na tela.',
+    colunas:[{k:'nome',rotulo:'Onda',largura:'120px'},{k:'ini',rotulo:'Início',tipo:'mes',largura:'110px'},{k:'fim',rotulo:'Fim',tipo:'mes',largura:'110px'},{k:'fr',rotulo:'Frentes'}],
+    linhas:ONDAS.map(o=>({nome:o.nome,ini:o.meses[0],fim:o.meses[1],fr:o.frentes.map(nomes).join(', ')})),nova:()=>({nome:`Onda ${ONDAS.length+1}`,ini:MES_ATUAL,fim:MES_ATUAL,fr:''}),
+    aoSalvar:ls=>ONDAS.splice(0,ONDAS.length,...ls.map(l=>({nome:l.nome,meses:[Math.min(l.ini,l.fim),Math.max(l.ini,l.fim)],frentes:String(l.fr||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean).map(n=>FRENTES.find(f=>f.nome.toLowerCase()===n)?.id).filter(Boolean)})))});
+}
+
+function rFrentes(){
+  if(estado.frente){const f=FRENTES.find(x=>x.id===estado.frente);if(f)return rPainelFrente(f);estado.frente=null;}
+  const card=f=>`<div class="card frente" onclick="abrirFrente('${f.id}')"><div class="hd"><div class="ic">${ic(f.icone)}</div><div><b>${esc(f.nome)}</b><div class="muted" style="font-size:12px">${f.grupo} · Redesenho ${MESES[f.janela.redesenho[0]]}</div></div></div>${barra(f.atividades)}<div style="display:flex;justify-content:space-between;font-size:12px" class="muted"><span>${contaStatus(f.atividades).ok||0}/${f.atividades.length} atividades</span><span>${f.entregas.filter(e=>e.status==='ok').length}/${f.entregas.length} entregas</span></div></div>`;
+  return topo('Frentes de trabalho','Clique numa frente para abrir o painel',lapis(editarFrentes,'Frentes'))+`<h3>Transversais</h3><div class="grid g3">${FRENTES.filter(f=>f.grupo==='Transversal').map(card).join('')}</div><h3 style="margin-top:20px">Por setor</h3><div class="grid g3">${FRENTES.filter(f=>f.grupo==='Setor').map(card).join('')}</div>`;
+}
+
+function rPainelFrente(f){
+  const abas=[['painel','Painel'],['entregas','Entregas'],['acompanhamento','Acompanhamento'],['indicadores','Indicadores']];
+  let corpo='';
+  if(estado.aba==='painel'){
+    const icones=['circle-check','settings','lightbulb'];
+    const cron = `<div class="gantt" style="grid-template-columns:120px repeat(12,1fr)"><div class="h"></div>${MESES.map(m=>`<div class="h">${m.slice(0,3)}</div>`).join('')}${linhaGantt('Redesenho',[{m:f.janela.redesenho,cor:'var(--sky)'}])}${linhaGantt('Implantação',[{m:f.janela.implantacao,cor:'var(--blue)'}])}</div>`;
+    corpo=`<div class="slide">
+      <div class="band"><h2>${esc(f.nome)}</h2><span class="selo"><img src="/marcas/cecilio-rocha.svg" alt=""></span></div>
+      <div class="body">
+        <div class="col"><h3>Farol de atividades ${lapis(()=>editarTabela({titulo:`${f.nome} · farol de atividades`,colunas:[{k:'nome',rotulo:'Atividade',tipo:'longo'},{k:'prazo',rotulo:'Prazo',largura:'100px'},{k:'status',rotulo:'Status',tipo:'status',largura:'180px'}],linhas:f.atividades,nova:()=>({nome:'',prazo:'',status:'todo'}),aoSalvar:ls=>f.atividades.splice(0,f.atividades.length,...ls.filter(l=>String(l.nome||'').trim()))}))}</h3><table class="farol"><tr><th>Atividade</th><th>Status</th></tr>${f.atividades.map(a=>`<tr><td>${esc(a.nome)}${a.prazo?`<div class="muted" style="font-size:11.5px">até ${esc(a.prazo)}</div>`:''}</td><td>${dot(a.status,a)}</td></tr>`).join('')||`<tr><td colspan="2">${vazio('Sem atividades')}</td></tr>`}</table>
+          ${legenda}</div>
+        <div class="col"><h3>Principais frentes ${lapis(()=>editarLista(`${f.nome} · principais frentes`,f.principais))}</h3>${f.principais.map((p,i)=>`<div class="pf"><div class="ci">${ic(icones[i%3])}</div><div>${esc(p)}</div></div>`).join('')||vazio('Sem frentes descritas')}</div>
+        <div class="col"><h3>Próximos passos ${lapis(()=>editarTabela({titulo:`${f.nome} · próximos passos`,dica:'Sempre com responsável e prazo.',colunas:[{k:'acao',rotulo:'Ação',tipo:'longo'},{k:'resp',rotulo:'Responsável',largura:'180px'},{k:'prazo',rotulo:'Prazo',largura:'100px'}],linhas:f.proximos,nova:()=>({acao:'',resp:'Lucas Ruas',prazo:''}),aoSalvar:ls=>f.proximos.splice(0,f.proximos.length,...ls.filter(l=>String(l.acao||'').trim()))}))}</h3>${f.proximos.length?`<table>${f.proximos.map(p=>`<tr><td>${esc(p.acao)}<div class="muted" style="font-size:11.5px">${esc(p.resp)}${p.prazo?` · ${esc(p.prazo)}`:''}</div></td></tr>`).join('')}</table>`:vazio('Sem próximos passos')}</div>
+      </div>
+      <div class="lower"><div><h3 style="color:var(--blue2);font-size:16px">Pontos importantes ${lapis(()=>editarLista(`${f.nome} · pontos importantes`,f.pontos))}</h3>${lista(f.pontos)}</div><div><h3 style="color:var(--blue2);font-size:16px">Cronograma ${lapis(()=>editarTabela({titulo:`${f.nome} · cronograma`,dica:'Meses de redesenho e de implantação desta frente.',colunas:[{k:'etapa',rotulo:'Etapa',tipo:'opcoes',opcoes:[['redesenho','Redesenho'],['implantacao','Implantação']]},{k:'ini',rotulo:'Início',tipo:'mes'},{k:'fim',rotulo:'Fim',tipo:'mes'}],linhas:[{etapa:'redesenho',ini:f.janela.redesenho[0],fim:f.janela.redesenho[1]},{etapa:'implantacao',ini:f.janela.implantacao[0],fim:f.janela.implantacao[1]}],nova:()=>({etapa:'redesenho',ini:MES_ATUAL,fim:MES_ATUAL}),aoSalvar:ls=>ls.forEach(l=>{if(f.janela[l.etapa])f.janela[l.etapa]=[Math.min(l.ini,l.fim),Math.max(l.ini,l.fim)];})}))}</h3>${cron}</div></div>
+      <div class="rule"></div>
+    </div>`;
+  } else if(estado.aba==='entregas'){
+    corpo=`<div class="card"><h2>Entregas ${lapis(()=>editarTabela({titulo:`${f.nome} · entregas`,dica:'O link aponta para o arquivo da entrega (Drive, SharePoint, PDF).',colunas:[{k:'nome',rotulo:'Entrega',tipo:'longo'},{k:'tipo',rotulo:'Tipo',tipo:'opcoes',opcoes:['Processo','Ferramenta','Documento','Desenho','Planilha','Ritual','Treinamento'].map(t=>[t,t]),largura:'140px'},{k:'status',rotulo:'Status',tipo:'status',largura:'170px'},{k:'link',rotulo:'Link do arquivo'}],linhas:f.entregas,nova:()=>({nome:'',tipo:'Processo',status:'todo',link:''}),aoSalvar:ls=>f.entregas.splice(0,f.entregas.length,...ls.filter(l=>String(l.nome||'').trim()))}))}</h2><table><tr><th>Entrega</th><th>Tipo</th><th>Status</th><th>Arquivo</th></tr>${f.entregas.map(e=>`<tr><td><b>${esc(e.nome)}</b></td><td><span class="tag">${esc(e.tipo)}</span></td><td>${dot(e.status,e)} ${STATUS[e.status]}</td><td>${linkSeguro(e.link)}</td></tr>`).join('')||`<tr><td colspan="4">${vazio('Sem entregas')}</td></tr>`}</table></div>
+    <div class="card" style="margin-top:16px"><h2>Escopo da frente ${lapis(()=>editarLista(`${f.nome} · escopo`,f.escopo))}</h2>${lista(f.escopo)}</div>`;
+  } else if(estado.aba==='acompanhamento'){
+    const m=estado.mesReg;
+    const sel=`<select onchange="estado.mesReg=+this.value;render()">${MESES.map((x,i)=>`<option value="${i}" ${i===m?'selected':''}>${x}</option>`).join('')}</select>`;
+    const doMes=t=>f.registros.filter(r=>r.mes===m&&r.tipo===t).map(r=>r.texto);
+    const editaTipo=(t,rot)=>lapis(()=>{const arr=doMes(t);editarTabela({titulo:`${f.nome} · ${rot} · ${MESES_LONGOS[m]}`,dica:'Cada linha vai para o relatório deste mês, no setor desta frente.',colunas:[{k:'t',rotulo:'Registro',tipo:'longo'}],linhas:arr.map(x=>({t:x})),nova:()=>({t:''}),aoSalvar:ls=>{f.registros=f.registros.filter(r=>!(r.mes===m&&r.tipo===t)).concat(ls.map(l=>String(l.t||'').trim()).filter(Boolean).map(texto=>({mes:m,tipo:t,texto})));}});});
+    const imp=f.implantados.filter(i=>i.mes===m);
+    corpo=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><b>Mês</b>${sel}<span class="muted" style="font-size:12.5px">O que for registrado aqui entra no relatório mensal deste mês.</span></div>
+      <div class="grid g2">
+      ${TIPOS_DE_REGISTRO.map(([t,rot])=>`<div class="card"><h2>${rot} ${editaTipo(t,rot)}</h2>${lista(doMes(t))}</div>`).join('')}
+      <div class="card"><h2>Processos implantados (antes e depois) ${lapis(()=>editarTabela({titulo:`${f.nome} · processos implantados · ${MESES_LONGOS[m]}`,dica:'Só entra o que está FUNCIONANDO na rotina, com evidência. Sugestão ou reunião não conta.',colunas:[{k:'processo',rotulo:'Processo / melhoria'},{k:'antes',rotulo:'Situação anterior',tipo:'longo'},{k:'implantado',rotulo:'O que foi implantado',tipo:'longo'},{k:'resultado',rotulo:'Resultado',tipo:'longo'},{k:'evidencia',rotulo:'Evidência',largura:'160px'}],linhas:imp,nova:()=>({processo:'',antes:'',implantado:'',resultado:'',evidencia:'',mes:m}),aoSalvar:ls=>{f.implantados=f.implantados.filter(i=>i.mes!==m).concat(ls.filter(l=>String(l.processo||'').trim()&&String(l.evidencia||'').trim()).map(l=>({...l,mes:m})));}}))}</h2>
+        ${imp.length?`<table><tr><th>Processo</th><th>Antes</th><th>Depois</th><th>Resultado</th></tr>${imp.map(i=>`<tr><td><b>${esc(i.processo)}</b><div class="muted" style="font-size:11.5px">Evidência: ${esc(i.evidencia)}</div></td><td>${esc(i.antes)}</td><td>${esc(i.implantado)}</td><td>${esc(i.resultado)}</td></tr>`).join('')}</table>`:vazio('Nenhum processo implantado neste mês')}</div></div>`;
+  } else {
+    const ks=INDICADORES.filter(k=>k.frente===f.id);
+    corpo=`<div class="card">${ks.length?tabelaKpi(ks,true):vazio('Nenhum indicador ligado a esta frente. Ligue na tela Indicadores.')}</div>`;
+  }
+  return `<button class="crumb" onclick="estado.frente=null;render()">${ic('arrow-left')}Frentes</button>`+topo(`<span style="color:var(--blue2)">${ic(f.icone)}</span> ${esc(f.nome)}`,esc(f.objetivo))+
+    `<div class="tabs">${abas.map(([k,n])=>`<button class="${estado.aba===k?'on':''}" onclick="estado.aba='${k}';render()">${n}</button>`).join('')}</div>`+corpo;
+}
+function linkSeguro(u){ if(!u)return '<span class="empty">A anexar</span>'; try{const x=new URL(u);if(x.protocol!=='https:'&&x.protocol!=='http:')throw 0;return `<a href="${esc(x.href)}" target="_blank" rel="noopener noreferrer">Abrir</a>`;}catch{return '<span class="empty">Link inválido</span>';} }
+
+function fmt(v,u){return v===null||v===undefined||v===''?'<span class="empty">a medir</span>':`${esc(v)}${u==='%'?'%':''}`;}
+function tabelaKpi(ks){return `<table><tr><th>Indicador</th><th>Frente</th><th>Antes</th><th>Atual</th><th>Meta</th><th>Evolução</th></tr>${ks.map(k=>{const f=FRENTES.find(x=>x.id===k.frente);let ev='<span class="empty">a medir</span>';if(k.antes!=null&&k.atual!=null&&k.antes!==''&&k.atual!==''){const d=Math.round((k.atual-k.antes)*100)/100;const bom=d===0?null:(k.melhor==='menor'?d<0:d>0);ev=d===0?'=':`<b style="color:${bom?'var(--ok)':'var(--late)'}">${d>0?'+':''}${d}${k.unidade==='%'?' p.p.':''}</b>`;}return `<tr><td><b>${esc(k.nome)}</b><div class="muted" style="font-size:11.5px">${esc(k.unidade)} · melhor quando ${k.melhor}</div></td><td>${f?esc(f.nome):''}</td><td>${fmt(k.antes,k.unidade)}</td><td>${fmt(k.atual,k.unidade)}</td><td>${fmt(k.meta,k.unidade)}</td><td>${ev}</td></tr>`;}).join('')}</table>`;}
+
+function rPlano(){
+  const ed=lapis(()=>editarTabela({titulo:'Plano de ação · próximos 30 dias',dica:'Toda ação com responsável e prazo.',colunas:[{k:'acao',rotulo:'Ação',tipo:'longo'},{k:'frente',rotulo:'Frente',largura:'150px'},{k:'resp',rotulo:'Responsável',largura:'170px'},{k:'prazo',rotulo:'Prazo',largura:'90px'},{k:'esperado',rotulo:'Resultado esperado',tipo:'longo'},{k:'status',rotulo:'Status',tipo:'status',largura:'160px'}],linhas:PLANO30,nova:()=>({acao:'',frente:'Geral',resp:'Lucas Ruas',prazo:'',esperado:'',status:'todo'}),aoSalvar:ls=>PLANO30.splice(0,PLANO30.length,...ls.filter(l=>String(l.acao||'').trim()))}),'Editar plano');
+  return topo('Plano de ação · próximos 30 dias','Toda ação tem responsável e prazo',ed)+`<div class="card"><table><tr><th>Ação</th><th>Frente</th><th>Responsável</th><th>Prazo</th><th>Resultado esperado</th><th>Status</th></tr>${PLANO30.map(p=>`<tr><td><b>${esc(p.acao)}</b></td><td>${esc(p.frente)}</td><td>${esc(p.resp)}</td><td>${esc(p.prazo)}</td><td class="muted">${esc(p.esperado)}</td><td style="white-space:nowrap">${dot(p.status,p)} ${STATUS[p.status]}</td></tr>`).join('')}</table></div>`;
+}
+function rIndicadores(){
+  const ed=lapis(()=>editarTabela({titulo:'Indicadores de resultado',dica:'Antes = linha de base. Atual = valor do mês. Deixe em branco o que ainda não foi medido.',colunas:[{k:'nome',rotulo:'Indicador'},{k:'frente',rotulo:'Frente',tipo:'opcoes',opcoes:OP_FRENTES(),largura:'140px'},{k:'unidade',rotulo:'Unidade',tipo:'opcoes',opcoes:[['%','%'],['qtd','qtd'],['dias','dias'],['R$','R$'],['índice','índice']],largura:'90px'},{k:'antes',rotulo:'Antes',tipo:'numero',largura:'80px'},{k:'atual',rotulo:'Atual',tipo:'numero',largura:'80px'},{k:'meta',rotulo:'Meta',tipo:'numero',largura:'80px'},{k:'melhor',rotulo:'Melhor quando',tipo:'opcoes',opcoes:[['maior','maior'],['menor','menor']],largura:'110px'}],linhas:INDICADORES,nova:()=>({id:'k'+Date.now().toString(36),nome:'',frente:'',unidade:'qtd',antes:null,atual:null,meta:null,melhor:'maior'}),aoSalvar:ls=>INDICADORES.splice(0,INDICADORES.length,...ls.filter(l=>String(l.nome||'').trim()))}),'Editar indicadores');
+  return topo('Indicadores de resultado','Antes, atual e meta. A linha de base (o "antes") é medida na Fase 2',ed)+`<div class="card">${tabelaKpi(INDICADORES)}</div>`;
+}
+function rEntregas(){
+  return topo('Entregas','Formalização do trabalho: processos desenhados, ferramentas, documentos e rituais. Edite pelo painel de cada frente')+FRENTES.map(f=>`<div class="card" style="margin-bottom:12px"><h2 style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="abrirFrente('${f.id}','entregas')">${ic(f.icone)} ${esc(f.nome)}</h2><table>${f.entregas.map(e=>`<tr><td>${esc(e.nome)}</td><td style="width:120px"><span class="tag">${esc(e.tipo)}</span></td><td style="width:190px">${dot(e.status,e)} ${STATUS[e.status]}</td><td style="width:90px">${linkSeguro(e.link)}</td></tr>`).join('')||`<tr><td>${vazio('Sem entregas')}</td></tr>`}</table></div>`).join('');
+}
+
+// ---------------------------------------------------------------- relatório mensal (modelo do Vitor)
+const ORDEM_SETORES=SETORES;
+// O conteúdo do relatório é MONTADO a partir das frentes. Fechar o mês grava esse conteúdo
+// montado dentro do documento: daí em diante o relatório daquele mês não muda mais, mesmo com as
+// frentes andando. Isso é o que dá o "antes e depois" de um mês para o outro.
+function montarConteudo(m){
+  const setores=ORDEM_SETORES.map(s=>{const fs=FRENTES.filter(f=>f.setor===s);const reg=t=>fs.flatMap(f=>f.registros.filter(r=>r.mes===m&&r.tipo===t).map(r=>r.texto));return {s,tem:fs.length>0,prob:reg('problema'),acoes:reg('acao'),res:reg('resultado'),prox:fs.flatMap(f=>f.proximos).slice(0,4)};}).filter(x=>x.tem);
+  return {
+    setores,
+    implantados:FRENTES.flatMap(f=>f.implantados.filter(i=>i.mes===m).map(i=>({...i,frente:f.nome}))),
+    indicadores:INDICADORES.map(k=>({...k})),
+    plano:PLANO30.filter(p=>p.status!=='ok').map(p=>({...p})),
+    pendencias:JSON.parse(JSON.stringify(DOC.pendencias)),
+  };
+}
+function rRelatorio(){
+  const m=estado.mesRel, nomeMes=MESES_LONGOS[m];
+  const rel=DOC.relatorios[m]=DOC.relatorios[m]||{};
+  const fechado=!!rel.fechado;
+  const C=fechado?rel.fechado.conteudo:montarConteudo(m);
+  const ro=fechado; // mês fechado: nada mais se edita
+  const L=(fn,rot)=>ro?'':lapis(fn,rot);
+  const sel=`<select onchange="estado.mesRel=+this.value;render()">${MESES.map((x,i)=>`<option value="${i}" ${i===m?'selected':''}>${x}${DOC.relatorios[i]?.fechado?' ✓':''}</option>`).join('')}</select>`;
+  const botaoFechar=PODE_EDITAR?(fechado?`<button class="btn ghost noprint" onclick="ACOES[${acao(()=>{if(confirm('Reabrir o relatório de '+nomeMes+'? Ele volta a ser montado com os dados atuais das frentes.')){delete rel.fechado;mudou();render();}})}]()">${ic('lock-open')}Reabrir</button>`:`<button class="btn noprint" onclick="ACOES[${acao(()=>{if(confirm('Fechar o relatório de '+nomeMes+'? O conteúdo fica congelado como está agora.')){rel.fechado={em:new Date().toISOString(),conteudo:montarConteudo(m)};mudou();render();}})}]()">${ic('lock')}Fechar mês</button>`):'';
+  const concl=rel.conclusao=rel.conclusao||{avanco:'',gargalo:'',prioridade:'',resultado:''};
+  const t=v=>v?esc(v):vazio('A preencher');
+  const P=C.pendencias;
+  const editaPend=(k,rot)=>L(()=>editarLista(`Pendências · ${rot}`,DOC.pendencias[k]));
+  const resumoProb=C.setores.flatMap(x=>x.prob).slice(0,3), resumoRes=C.setores.flatMap(x=>x.res).slice(0,3);
+  return topo('Relatório mensal','No modelo pedido pelo Vitor. Montado a partir do que foi registrado nas frentes',sel+botaoFechar+`<button class="btn" onclick="window.print()">${ic('printer')}Imprimir / PDF</button>`)+`
+  <div class="report">
+    <header><div><h1>Relatório Mensal de Resultados da Consultoria</h1>${fechado?`<div style="margin-top:6px"><span class="fechado">${ic('lock')}Fechado em ${new Date(rel.fechado.em).toLocaleDateString('pt-BR')}</span></div>`:''}<div class="ident" style="margin-top:12px">
+      <div><b>Empresa:</b> ${esc(PROJETO.empresa)}</div><div><b>Consultor:</b> ${esc(PROJETO.consultor)}</div>
+      <div><b>Período:</b> ${nomeMes}</div><div><b>Data da apresentação:</b> ${rel.dataApresentacao?esc(rel.dataApresentacao):'<span class="empty">a definir</span>'} ${L(()=>editarTabela({titulo:'Data da apresentação',colunas:[{k:'d',rotulo:'Data (dd/mm/aaaa)'}],linhas:[{d:rel.dataApresentacao||''}],nova:()=>({d:''}),aoSalvar:ls=>{rel.dataApresentacao=String(ls[0]?.d||'').trim();}}))}</div></div></div>
+      <img src="/marcas/cecilio-rocha.svg" alt=""></header>
+    <h2>1. Resumo executivo</h2>
+    <div class="grid g3"><div><h3>Principais problemas</h3>${lista(resumoProb)}</div><div><h3>Melhorias implantadas</h3>${lista(C.implantados.map(i=>i.processo).slice(0,3))}</div><div><h3>Resultados alcançados</h3>${lista(resumoRes)}</div></div>
+    <h2>2. Acompanhamento por setor</h2>
+    ${C.setores.map(x=>`<div class="setor"><h4>${x.s}${x.s==='TECNOLOGIA'?' <span class="tag">frente adicional</span>':''}</h4>
+      <div class="row"><b>Problemas identificados</b><div>${lista(x.prob)}</div></div>
+      <div class="row"><b>Ações realizadas</b><div>${lista(x.acoes)}</div></div>
+      <div class="row"><b>Resultado obtido</b><div>${lista(x.res)}</div></div>
+      <div class="row"><b>Próxima ação</b><div>${x.prox.length?lista(x.prox.map(p=>`${p.acao} (${p.resp}${p.prazo?`, até ${p.prazo}`:''})`)):vazio()}</div></div></div>`).join('')}
+    <p class="muted noprint" style="font-size:12px">Os registros de cada setor são feitos na aba Acompanhamento de cada frente, escolhendo o mês.</p>
+    <h2>3. Indicadores de resultado</h2>${tabelaKpi(C.indicadores)}
+    <h2>4. Processos implantados</h2>
+    <table><tr><th>Processo / melhoria</th><th>Situação anterior</th><th>O que foi implantado</th><th>Resultado</th></tr>${C.implantados.length?C.implantados.map(i=>`<tr><td><b>${esc(i.processo)}</b><div class="muted" style="font-size:11.5px">${esc(i.frente)} · evidência: ${esc(i.evidencia)}</div></td><td>${esc(i.antes)}</td><td>${esc(i.implantado)}</td><td>${esc(i.resultado)}</td></tr>`).join(''):`<tr><td colspan="4">${vazio('Nenhum processo implantado no período')}</td></tr>`}</table>
+    <p class="muted" style="font-size:12px">Não entra aqui sugestão ou reunião: só mudança efetivamente em funcionamento.</p>
+    <h2>5. Plano de ação · próximos 30 dias</h2>
+    <table><tr><th>Ação</th><th>Responsável</th><th>Prazo</th><th>Resultado esperado</th></tr>${C.plano.map(p=>`<tr><td>${esc(p.acao)}</td><td>${esc(p.resp)}</td><td>${esc(p.prazo)}</td><td>${esc(p.esperado)}</td></tr>`).join('')||`<tr><td colspan="4">${vazio('Sem ações em aberto')}</td></tr>`}</table>
+    <h2>6. Pendências e pontos críticos</h2>
+    <div class="grid g2"><div><h3>Da consultoria ${editaPend('consultoria','da consultoria')}</h3>${lista(P.consultoria)}</div><div><h3>Dos gestores / setores ${editaPend('gestores','dos gestores')}</h3>${lista(P.gestores)}</div><div><h3>Da diretoria ${editaPend('diretoria','da diretoria')}</h3>${lista(P.diretoria)}</div><div><h3>Decisões do proprietário ${editaPend('decisoes','decisões do proprietário')}</h3>${lista(P.decisoes)}</div></div>
+    <h2>Conclusão do consultor ${L(()=>editarTabela({titulo:`Conclusão · ${nomeMes}`,colunas:[{k:'avanco',rotulo:'Principal avanço do mês',tipo:'longo'},{k:'gargalo',rotulo:'Maior gargalo hoje',tipo:'longo'},{k:'prioridade',rotulo:'Prioridade nº 1 do próximo mês',tipo:'longo'},{k:'resultado',rotulo:'Resultado geral',tipo:'opcoes',opcoes:[['','A definir'],['abaixo','Abaixo do esperado'],['dentro','Dentro do esperado'],['acima','Acima do esperado']],largura:'170px'}],linhas:[concl],nova:()=>({...concl}),aoSalvar:ls=>{if(ls[0])Object.assign(concl,ls[0]);}}))}</h2>
+    <div class="setor"><div class="row"><b>Principal avanço do mês</b><div>${t(concl.avanco)}</div></div><div class="row"><b>Maior gargalo hoje</b><div>${t(concl.gargalo)}</div></div><div class="row"><b>Prioridade nº 1 do próximo mês</b><div>${t(concl.prioridade)}</div></div>
+      <div class="row"><b>Resultado geral</b><div class="check">${[['abaixo','Abaixo do esperado'],['dentro','Dentro do esperado'],['acima','Acima do esperado']].map(([k,n])=>`<span>${concl.resultado===k?'☒':'☐'} ${n}</span>`).join('')}</div></div></div>
+    <div class="sign"><div>${esc(PROJETO.consultor.split('·')[0].trim())} · Consultor</div><div>${esc(PROJETO.patrocinador)} · Diretoria</div></div>
+  </div>`;
+}
+
+function abrirFrente(id,aba='painel'){estado.secao='frentes';estado.frente=id;estado.aba=aba;render();}
+function ir(id){estado.secao=id;estado.frente=null;render();}
+function render(){
+  ACOES=[];
+  $('#nav').innerHTML=SECOES.map(s=>`<button class="${estado.secao===s.id?'on':''}" onclick="ir('${s.id}')">${ic(s.icone)}${s.nome}</button>`).join('');
+  const y=window.scrollY, mesma=render._ultima===estado.secao+(estado.frente||'')+estado.aba;
+  $('#main').innerHTML=SECOES.find(s=>s.id===estado.secao).render();
+  lucide.createIcons();
+  render._ultima=estado.secao+(estado.frente||'')+estado.aba;
+  window.scrollTo(0,mesma?y:0);
+}
+// modo apresentação: uma seção por tela, setas navegam (frentes entram uma a uma)
+let passo=0;
+const roteiro=()=>[{s:'geral'},{s:'escopo'},{s:'jornada'},...FRENTES.map(f=>({s:'frentes',f:f.id})),{s:'plano'},{s:'indicadores'}];
+function apresentar(){document.body.classList.add('present');passo=0;irPasso();document.documentElement.requestFullscreen?.().catch(()=>{});}
+function irPasso(){const p=roteiro()[passo];estado.secao=p.s;estado.frente=p.f||null;estado.aba='painel';render();}
+document.addEventListener('keydown',e=>{
+  if(!document.body.classList.contains('present'))return;
+  if(e.key==='ArrowRight'||e.key===' '){passo=Math.min(roteiro().length-1,passo+1);irPasso();}
+  if(e.key==='ArrowLeft'){passo=Math.max(0,passo-1);irPasso();}
+  if(e.key==='Escape'){document.body.classList.remove('present');render();}
+});
+document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&document.body.classList.contains('present')){document.body.classList.remove('present');render();}});
+carregar();
+</script>
+</body>
+</html>
