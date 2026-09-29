@@ -127,8 +127,11 @@ export function vinculoDentroDoRecorte(
  *
  * ⚠️ A COLISÃO TRAZIA O NOME DO DONO DO DOCUMENTO, de qualquer ficha da base ("Este documento ja
  * pertence a outra ficha (Fulano)"): um oráculo CPF para nome sobre a casa inteira. Pelo portal, de
- * qualquer tipo, sai a frase neutra. Os outros erros (documento inválido, espelho do C2X) não
+ * qualquer tipo, sai a frase neutra. Os outros erros (documento inválido, ficha não encontrada) não
  * carregam dado de terceiro e passam como vieram.
+ *
+ * ⚠️ ESTA PROTEÇÃO NÃO TEM NADA A VER COM O SYNC e continua valendo inteira. O que saiu em
+ * 28/09/2026 foi só a recusa de ficha espelho do C2X, que não existe mais como erro.
  */
 export function erroDaIdentidadeParaOPortal(resultado: { erro: string; motivo: string }): string {
   return resultado.motivo === "colisao" ? COLISAO_NO_PORTAL : resultado.erro;

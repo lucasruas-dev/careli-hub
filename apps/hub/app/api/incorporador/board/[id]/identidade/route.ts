@@ -28,8 +28,16 @@ import {
 // Correção de IDENTIDADE da ficha pelo portal que opera a venda — POST /api/incorporador/board/[id]/identidade?emp=
 //
 // Mesmas regras da rota do hub (`atualizarIdentidade`: valida CPF/CNPJ, recusa documento
-// repetido, exige motivo, é auditada, recusa ficha espelho do C2X), com o escopo conferido antes:
-// a pessoa tem que ter CAD (ou vínculo de imobiliária) no produto do coordenador. Fora dele: 404.
+// repetido, exige motivo, é auditada), com o escopo conferido antes: a pessoa tem que ter CAD (ou
+// vínculo de imobiliária) no produto do coordenador. Fora dele: 404.
+//
+// ⚠️ A RECUSA DE FICHA ESPELHO DO C2X SAIU (28/09/2026): ela vivia de "o resync desfaria em até 6
+// horas", premissa que morreu em 04/08/2026 com as 7 tabelas de identidade do sync em ON CONFLICT DO
+// NOTHING (`lib/apolo/server.ts:3917-3949`). Lucas, 28/09/2026: *"TUDO PRECISA MORAR DENTRO DO
+// PANTEON, não tem mais cadastro vindo do c2x"*. Os guardas DESTE portal não têm relação com isso e
+// continuam todos: escopo, pessoa inteira no recorte, 403 do produto que só confecciona e a frase
+// neutra da colisão (`erroDaIdentidadeParaOPortal`, que não é sobre o sync e sim sobre não virar um
+// oráculo CPF para nome).
 //
 // Autor = a conta do portal. `atualizarIdentidade` grava o uuid em `actor_user_id` (sem FK) e,
 // desde 16/09/2026, o nome em `metadata.autorNome` e a CAD do recorte em `metadata.enterpriseId`.
@@ -70,11 +78,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     tipo?: "pf" | "pj";
   };
 
-  if (!body.nome || !body.documento || !body.tipo) {
-    return NextResponse.json(
-      { error: "Nome, documento e tipo sao obrigatorios." },
-      { status: 400 },
-    );
+  // ⚠️ Documento OPCIONAL no corpo desde 29/09/2026, pelo mesmo motivo da rota do hub: a PJ sem
+  // CNPJ gravado manda string vazia e a correção do NOME era recusada por causa disso.
+  if (!body.nome || !body.tipo) {
+    return NextResponse.json({ error: "Nome e tipo sao obrigatorios." }, { status: 400 });
   }
   if (body.tipo !== "pf" && body.tipo !== "pj") {
     return NextResponse.json({ error: "Tipo invalido." }, { status: 400 });
@@ -122,7 +129,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (portalConfeccionaContrato(auth.sessao.slug, auth.sessao.tipo)) {
     const recusaDoDocumento = await conferirTrocaDeDocumentoConsultado(admin.client, {
       alvo: "titular",
-      documentoNovo: body.documento,
+      // Sem documento no corpo não há troca a conferir: `trocaDeDocumentoConsultado` só reage a
+      // dígitos, e o corpo vazio significa "não mexi no documento".
+      documentoNovo: body.documento ?? "",
       entityId: id,
     });
     if (recusaDoDocumento) return recusaDoDocumento;
@@ -139,18 +148,23 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     entityId: id,
     motivo: body.motivo ?? "",
     nome: body.nome,
-    nomeFantasia: body.nomeFantasia ?? null,
+    // `undefined` atravessa: sem o campo no corpo, `trade_name` não é tocado (ver a rota do hub).
+    nomeFantasia: body.nomeFantasia,
     tipo: body.tipo,
   });
 
   if (!resultado.ok) {
-    // 409 para colisão e para ficha bloqueada: são conflitos de estado, não erro de entrada.
+    // 409 para colisão: é conflito de estado, não erro de entrada. (O 409 de "ficha espelho do C2X"
+    // não existe mais desde 28/09/2026.)
+    // ⚠️ 500 para `parcial`: a ficha já foi gravada e o que falhou veio depois. Ver a rota do hub.
     const status =
-      resultado.motivo === "colisao" || resultado.motivo === "bloqueado"
+      resultado.motivo === "colisao"
         ? 409
         : resultado.motivo === "nao_encontrada"
           ? 404
-          : 400;
+          : resultado.motivo === "parcial"
+            ? 500
+            : 400;
     // A colisão sai com a frase neutra: a da lib traz o nome do dono do documento, de qualquer ficha.
     return NextResponse.json(
       { error: erroDaIdentidadeParaOPortal(resultado), motivo: resultado.motivo },

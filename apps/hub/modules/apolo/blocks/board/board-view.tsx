@@ -3796,9 +3796,9 @@ function montarSecoes(ficha: Ficha, rascunho: Record<string, string> = {}): Seca
     // que o Lucas encontrou ao tentar corrigir o telefone da imobiliária (15/08: "tudo tem que
     // ser editável quando eu clico em Editar").
     //
-    // Razão social e CNPJ usam as chaves "__nome" e "__documento", que a tela já conhece: elas
-    // viajam para a rota de IDENTIDADE (que valida dígito e colisão e audita), e não para o
-    // patch cru da ficha. Trocar o CNPJ de uma empresa é mudar quem ela é.
+    // A razão social usa a chave "__nome", que a tela já conhece: ela viaja para a rota de
+    // IDENTIDADE (que valida dígito e colisão e audita), e não para o patch cru da ficha. O CNPJ
+    // fica sem chave: trocar o CNPJ de uma empresa é mudar quem ela é.
     const empresaTexto = (chave: string, label: string, full = false): Campo => ({
       chave,
       full,
@@ -3810,13 +3810,33 @@ function montarSecoes(ficha: Ficha, rascunho: Record<string, string> = {}): Seca
 
     secoes.push({
       campos: [
-        // ⚠️ RAZÃO SOCIAL E CNPJ FICAM SÓ DE LEITURA, e isso é decisão, não esquecimento.
-        // Eles viajariam pela rota de IDENTIDADE, que recusa com 409 toda ficha espelho do C2X
-        // ("a correção tem que ser feita no legado, senão o sync desfaz em até 6 horas") — e
-        // **417 das 435 imobiliárias são espelho**. Pior que não gravar: em `salvarTudo` a
-        // identidade vai PRIMEIRO e dá `throw`, então o 409 derrubaria a rodada inteira e o
-        // telefone que o operador acabou de corrigir também não seria salvo.
-        { full: true, label: "Razão social", valor: titleCase(ficha.entidade.nome) },
+        // ⚠️ A RAZÃO SOCIAL É EDITÁVEL EM TODA FICHA PJ, INCLUSIVE NA QUE VEIO DO C2X (28/09/2026).
+        //
+        // O comentário que estava aqui dizia que ela era só de leitura porque a rota de IDENTIDADE
+        // recusa com 409 toda ficha espelho do C2X, "a correção tem que ser feita no legado, senão o
+        // sync desfaz em até 6 horas". ESSA FRASE MORREU EM 04/08/2026, quando as 7 tabelas de
+        // identidade do sync passaram a ON CONFLICT DO NOTHING (`lib/apolo/server.ts:3917-3949`):
+        // quem já existe fica INTOCADO. Medido em 28/09/2026: as 43 correções de identidade feitas em
+        // ficha espelho entre 20/07 e 01/08/2026 continuam gravadas em `apolo_entities` hoje, e desde
+        // 01/08 a trava barrava 433 das 483 imobiliárias (548 das 610 PJ) sem necessidade nenhuma.
+        //
+        // Lucas, 28/09/2026, com o print desta tela: *"não conseguimos editar a razão social de PJ"*
+        // e, ao ver que a liberação sairia só para as fichas nascidas aqui: *"então, é o que eu estou
+        // falando tem tempo, TUDO PRECISA MORAR DENTRO DO PANTEON, não tem mais cadastro vindo do
+        // c2x"*, *"TODOS eu poderia alterar, atualizar"*.
+        //
+        // ⚠️ E A TRAVA NÃO ERA NEM DO ESPELHO, NO CASO DO PRINT: a ficha da igreja
+        // (`bda7977b-6f84-4946-a71f-4170821731dd`) NÃO tem vínculo com o C2X e mesmo assim não abria
+        // input, porque o campo nascia sem `chave`. Com a chave, ele viaja pela rota de IDENTIDADE
+        // (valida, audita, recusa documento repetido) e não pelo patch cru da ficha.
+        {
+          chave: "__nome",
+          full: true,
+          label: "Razão social",
+          tipo: "texto",
+          valor: titleCase(ficha.entidade.nome),
+          valorCru: ficha.entidade.nome,
+        },
         {
           chave: "nomeFantasia",
           label: "Nome fantasia",
@@ -3824,6 +3844,17 @@ function montarSecoes(ficha: Ficha, rascunho: Record<string, string> = {}): Seca
           valor: titleCase(texto(c.nomeFantasia) || ficha.entidade.nomeFantasia),
           valorCru: texto(c.nomeFantasia) || ficha.entidade.nomeFantasia,
         },
+        // ⚠️ O CNPJ CONTINUA SÓ DE LEITURA, e por motivo PRÓPRIO, não pelo sync: trocar o CNPJ de
+        // uma empresa é mudar QUEM ELA É (mexe em `apolo_entity_identifiers`, no dedup e na busca da
+        // CACÁ por documento). O Lucas pediu a razão social. Sem `chave`, sem input.
+        //
+        // ⚠️ E É POR SER CINZA QUE A RODADA DE IDENTIDADE NÃO PODE VALIDÁ-LO (29/09/2026). O
+        // salvamento manda `documento` só quando o operador mexeu nele (ver `salvarTudo`): enquanto
+        // mandava sempre o atual, a ficha PJ com "Documento em revisao" — é a frase que o sync grava
+        // em `document_masked` quando o legado não tem CNPJ (`lib/apolo/server.ts:5260-5271`), e é ela
+        // que põe a ficha em `status = "review"`, isto é, NESTA coluna — recusava a correção do NOME
+        // com 400 "Documento invalido (digito verificador nao confere)", falando de um campo que o
+        // operador não tem como consertar aqui. O mesmo valia para a PJ com CPF gravado (a JFL).
         { label: "CNPJ", valor: ficha.entidade.documento },
         empresaTexto("porte", "Porte"),
         {
@@ -4304,14 +4335,27 @@ function ValidacaoLadoALado({
 
   // SALVA TUDO de uma vez, ao fim da edição.
   //
-  // São dois destinos, e a ordem importa: identidade (nome/documento/tipo) vai para a rota
-  // própria, que valida CPF/CNPJ, recusa documento repetido, troca o identificador e refaz o
-  // índice de busca. Se ela falhar, PARA — não faz sentido gravar o resto de uma ficha cuja
-  // identidade não pôde ser corrigida.
+  // São dois destinos, e a ORDEM importa: identidade (nome/documento/tipo) vai primeiro, para a rota
+  // própria, que valida CPF/CNPJ, recusa documento repetido, troca o identificador e refaz o índice
+  // de busca; depois o resto da ficha, no PATCH.
+  //
+  // ⚠️ A FALHA DE UM NÃO DERRUBA MAIS O OUTRO (28/09/2026). Até aqui a identidade dava `throw`, e o
+  // 409 dela levava embora o telefone que o operador tinha corrigido na MESMA rodada. A colisão de
+  // documento continua sendo um 409 legítimo (`lib/apolo/identidade-persist.ts`, sem índice único em
+  // `document_hash` desde a migration 0026), então o problema sobreviveria à liberação da razão
+  // social. Agora cada metade grava por conta própria, a tela diz o que salvou e o que não salvou, e
+  // o que falhou continua no rascunho para o operador decidir. `throw` fica só para queda de rede.
   const salvarTudo = async () => {
     if (!ficha) return;
     setSalvando(true);
     setErroSalvar(null);
+
+    let erroIdentidade: null | string = null;
+    let erroFicha: null | string = null;
+    let identidadeSalva = false;
+    // A identidade gravou a ficha e falhou DEPOIS (identificador ou índice de busca). A tela não
+    // pode dizer "não foi salva" nesse caso: quem sabe é a rota, que responde `motivo: "parcial"`.
+    let identidadeParcial = false;
 
     try {
       const headers = await cabecalhosDoBoard(porta.api, { "Content-Type": "application/json" });
@@ -4319,23 +4363,48 @@ function ValidacaoLadoALado({
       const nomeNovo = rascunho.__nome;
       const docNovo = rascunho.__documento;
       const tipoNovo = rascunho.__tipo;
+      const fantasiaNova = rascunho.nomeFantasia;
+      // ⚠️ O NOME FANTASIA CONTA COMO IDENTIDADE (29/09/2026). `trade_name` mora em
+      // `apolo_entities`, e é de LÁ que o contrato o lê (`nome_fantasia_cliente` vem de
+      // `ENTIDADE("trade_name")`, lib/temis/variaveis.ts). Enquanto ele só viajava DENTRO deste `if`,
+      // corrigir SÓ o nome fantasia gravava apenas `cadastro.nomeFantasia` no jsonb e deixava
+      // `trade_name` com o valor antigo — e a tela escondia a diferença, porque ela exibe o cadastro
+      // na frente (`texto(c.nomeFantasia) || ficha.entidade.nomeFantasia`). O contrato saía com o
+      // fantasia velho e ninguém ligava as duas coisas.
       const mexeuNaIdentidade =
-        nomeNovo !== undefined || docNovo !== undefined || tipoNovo !== undefined;
+        nomeNovo !== undefined ||
+        docNovo !== undefined ||
+        tipoNovo !== undefined ||
+        fantasiaNova !== undefined;
 
       if (mexeuNaIdentidade) {
         const resposta = await fetch(rotas.identidade(entityId), {
           body: JSON.stringify({
-            documento: docNovo ?? ficha.entidade.documento,
+            // ⚠️ O DOCUMENTO SÓ VAI QUANDO O OPERADOR MEXEU NELE. Mandar o atual "por segurança"
+            // fazia a rota revalidar dígito e coerência de um campo que a tela nem abre para PJ: a
+            // ficha PJ com "Documento em revisao" (é assim que o sync grava PJ sem CNPJ no legado) ou
+            // com CNPJ torto recusava a correção do NOME com 400 falando do documento, sem saída pela
+            // tela. Sem o campo, a rota mantém o documento que a ficha já tem.
+            ...(docNovo !== undefined ? { documento: docNovo } : {}),
             motivo: "Correcao na validacao da CAD",
             nome: nomeNovo ?? ficha.entidade.nome,
+            // ⚠️ SÓ VAI QUANDO O OPERADOR MEXEU. A rota não toca `trade_name` sem o campo, e mandar
+            // o valor atual "por segurança" reescreveria o nome fantasia a cada correção de nome.
+            ...(fantasiaNova !== undefined ? { nomeFantasia: fantasiaNova } : {}),
             tipo: tipoNovo ?? ficha.entidade.tipo,
           }),
           headers,
           method: "POST",
         });
-        if (!resposta.ok) {
-          const payload = (await resposta.json().catch(() => ({}))) as { error?: string };
-          throw new Error(payload.error ?? "Não foi possível salvar a identidade.");
+        if (resposta.ok) {
+          identidadeSalva = true;
+        } else {
+          const payload = (await resposta.json().catch(() => ({}))) as {
+            error?: string;
+            motivo?: string;
+          };
+          erroIdentidade = payload.error ?? "Não foi possível salvar a identidade.";
+          identidadeParcial = payload.motivo === "parcial";
         }
       }
 
@@ -4352,7 +4421,9 @@ function ValidacaoLadoALado({
         (ficha.cadastro ?? {}) as Record<string, unknown>,
       );
 
-      if (Object.keys(paraGravar).length > 0) {
+      const mexeuNaFicha = Object.keys(paraGravar).length > 0;
+
+      if (mexeuNaFicha) {
         const resposta = await fetch(rotas.ficha(entityId), {
           body: JSON.stringify({ campos: paraGravar }),
           headers,
@@ -4360,27 +4431,91 @@ function ValidacaoLadoALado({
         });
         if (!resposta.ok) {
           const payload = (await resposta.json().catch(() => ({}))) as { error?: string };
-          throw new Error(payload.error ?? "Não foi possível salvar.");
+          erroFicha = payload.error ?? "Não foi possível salvar.";
         }
       }
 
-      // Recarrega do servidor: a identidade mudou em outra tabela, e refletir só o rascunho
-      // mostraria a tela "certa" com o banco em outro estado.
-      const recarregada = await fetch(rotas.ficha(entityId), {
-        cache: "no-store",
-        headers: await cabecalhosDoBoard(porta.api),
-      });
-      const payload = (await recarregada.json()) as { data?: Ficha };
-      if (payload.data) setFicha(payload.data);
+      // ⚠️ O QUE SALVOU E O QUE NÃO SALVOU É DECIDIDO ANTES DA RECARGA, E A RECARGA TEM O
+      // TRY/CATCH DELA (29/09/2026).
+      //
+      // A recarga era a única leitura desta função sem rede de proteção (`await recarregada.json()`
+      // sem `.catch`, ao contrário das duas de cima). Quando ela caía ou devolvia HTML — timeout de
+      // função na Vercel vira erro de JSON, armadilha já conhecida da casa — o `catch` do fim
+      // sobrescrevia TUDO com a mensagem de rede: o operador via "Unexpected token '<'" e nada sobre
+      // a identidade recusada nem sobre a ficha que gravou, `onIdentidadeSalva` não disparava (o card
+      // da fila seguia com o nome velho) e a tela continuava em edição com o rascunho inteiro. Quem
+      // olha conclui "não salvou nada" e salva de novo, reemitindo a identidade e mais um evento
+      // `edit_identity`. Regra: NENHUM PASSO POSTERIOR À GRAVAÇÃO PODE APAGAR O QUE JÁ SE SABE SOBRE
+      // A GRAVAÇÃO.
+      //
+      // ⚠️ E A FRASE NÃO AFIRMA SOBRE A METADE QUE A TELA NÃO VIU. `atualizarIdentidade` grava
+      // `apolo_entities` no passo 5 e só depois pode falhar (identificador, índice de busca): nesses
+      // casos a rota responde `motivo: "parcial"` e a tela ECOA o texto dela, em vez de escrever
+      // "Nada foi salvo" na mesma linha de um erro que diz "Identidade gravada, mas...".
+      let aviso: null | string = null;
+      if (erroIdentidade && identidadeParcial) {
+        aviso = `A identidade não foi confirmada: ${erroIdentidade}`;
+        if (erroFicha) aviso = `${aviso} E a ficha não foi salva: ${erroFicha}`;
+      } else if (erroIdentidade && erroFicha) {
+        aviso = `Nada foi salvo. Identidade: ${erroIdentidade} Ficha: ${erroFicha}`;
+      } else if (erroIdentidade) {
+        aviso = mexeuNaFicha
+          ? `O resto da ficha foi salvo. A identidade não: ${erroIdentidade}`
+          : `A identidade não foi salva: ${erroIdentidade}`;
+      } else if (erroFicha) {
+        aviso = identidadeSalva
+          ? `A identidade foi salva. O resto da ficha não: ${erroFicha}`
+          : `A ficha não foi salva: ${erroFicha}`;
+      }
 
-      // Só quando a IDENTIDADE mudou: é o único caso em que a fila mostra dado velho. Salvar
+      // Só quando a IDENTIDADE mudou DE FATO: é o único caso em que a fila mostra dado velho. Salvar
       // profissão ou renda não muda o card, e refetch a cada salvamento seria peso à toa.
-      if (mexeuNaIdentidade) {
+      if (identidadeSalva) {
         onIdentidadeSalva?.();
       }
 
-      setRascunho({});
-      setEditando(false);
+      if (erroIdentidade || erroFicha) {
+        // Fica em edição, e no rascunho sobra SÓ o que não gravou: o campo recusado continua na
+        // tela com o que o operador digitou, e o que já foi salvo sai (a ficha recarregada o mostra).
+        //
+        // ⚠️ `nomeFantasia` VIAJA NAS DUAS METADES (identidade, para `trade_name`, e ficha, para o
+        // jsonb), então ele fica no rascunho quando QUALQUER uma falhar. Sem isso, depois de um 409
+        // da identidade a segunda tentativa não levava mais o fantasia e `trade_name` congelava no
+        // valor antigo para sempre, sem nada na tela dizendo isso.
+        setRascunho((atual) =>
+          Object.fromEntries(
+            Object.entries(atual).filter(([chave]) =>
+              chave === "nomeFantasia"
+                ? Boolean(erroIdentidade || erroFicha)
+                : chave.startsWith("__")
+                  ? Boolean(erroIdentidade)
+                  : Boolean(erroFicha),
+            ),
+          ),
+        );
+      } else {
+        setRascunho({});
+        setEditando(false);
+      }
+
+      // Recarrega do servidor: a identidade mudou em outra tabela, e refletir só o rascunho
+      // mostraria a tela "certa" com o banco em outro estado. Falhar aqui NÃO apaga o relato acima.
+      try {
+        const recarregada = await fetch(rotas.ficha(entityId), {
+          cache: "no-store",
+          headers: await cabecalhosDoBoard(porta.api),
+        });
+        const payload = (await recarregada.json().catch(() => ({}))) as { data?: Ficha };
+        if (payload.data) {
+          setFicha(payload.data);
+        } else {
+          aviso = `${aviso ? `${aviso} ` : ""}Não foi possível recarregar a ficha: recarregue a página para ver o estado salvo.`;
+        }
+      } catch {
+        aviso = `${aviso ? `${aviso} ` : ""}Não foi possível recarregar a ficha: recarregue a página para ver o estado salvo.`;
+      }
+
+      setErroSalvar(aviso);
     } catch (error) {
       setErroSalvar((error as Error).message);
     } finally {

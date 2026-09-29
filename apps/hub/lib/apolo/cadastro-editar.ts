@@ -101,7 +101,13 @@ export async function lerCadastroParaEdicao(
   if (!entity) return null;
 
   const meta = (entity.metadata ?? {}) as Record<string, unknown>;
-  // Só entidade nascida no Apolo tem cadastro editável aqui; a que veio do C2X é espelho do legado.
+  // ⚠️ ISTO NÃO É PERMISSÃO, É PROCEDÊNCIA. `ehApolo` diz apenas se a ficha NASCEU no Apolo, e
+  // `salvarEdicaoCadastro` (mais abaixo) não consulta esta flag: ele grava para qualquer ficha. O
+  // comentário antigo dizia "só entidade nascida no Apolo tem cadastro editável aqui; a que veio do
+  // C2X é espelho do legado", e isso não vale mais: desde 04/08/2026 o sync não sobrescreve ficha
+  // existente (`lib/apolo/server.ts:3917-3949`, ON CONFLICT DO NOTHING). Lucas, 28/09/2026: *"TUDO
+  // PRECISA MORAR DENTRO DO PANTEON, não tem mais cadastro vindo do c2x"*. Não transforme esta flag
+  // em trava de escrita.
   const ehApolo = meta.source === "apolo";
 
   const [{ data: contatos }, { data: enderecos }, { data: rels }, esteira] = await Promise.all([
