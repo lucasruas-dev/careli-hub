@@ -98,7 +98,14 @@ export function signatariosDoAcordo(partes: {
   // ⚠️ O NOME SAI NO PADRÃO DA CASA. Ver `nomeDeSignatario`: no termo que foi para o cliente em
   // 23/09/2026 saíram, em sequência, dois nomes do cadastro em caixa alta e o da Careli em "Nivea
   // Careli", porque as três partes vêm de fontes diferentes.
-  for (const p of pessoas) p.nome = nomeDeSignatario(p.nome);
+  //
+  // ⚠️ E O TEXTO DO CADASTRO FICA GUARDADO ANTES, pela mesma razão do contrato: daqui em diante `nome`
+  // é o nome do ENVELOPE, e as frases de `conferirSignatarios` (que `conferencia` chama logo abaixo)
+  // falam do cadastro, entre aspas, porque é por ele que se acha a ficha.
+  for (const p of pessoas) {
+    p.nomeDoCadastro = p.nomeDoCadastro ?? p.nome;
+    p.nome = nomeDeSignatario(p.nome);
+  }
 
   const impedimento = faltaAlgumaParte(partes) ?? conferencia(pessoas);
 

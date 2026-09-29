@@ -105,7 +105,7 @@ export const ORDEM_MAXIMA = 20;
  * — porque nasceu depois dela — esperando o resto é seguro; ele na frente da vendedora não é.
  */
 /**
- * O nome do signatário no padrão da casa: CAIXA ALTA.
+ * O nome do signatário no padrão da casa: CAIXA ALTA e SEM NÚMERO.
  *
  * ⚠️ TRÊS FONTES, TRÊS FORMATOS, UM DOCUMENTO SÓ. O comprador e o incorporador chegam do cadastro,
  * que guarda em caixa alta; a Careli chega do `display_name` do usuário do hub, que é "Nivea
@@ -123,9 +123,114 @@ export const ORDEM_MAXIMA = 20;
  * para a Clicksign. Por isso ela é chamada nos DOIS montadores — `signatariosDoContrato` e
  * `signatariosDoAcordo` —, e não dentro de `ordenarSignatarios`: ordenar não muda dado, e um teste
  * de ordem que recebesse o nome trocado estaria certo em reclamar.
+ *
+ * ⚠️ A PALAVRA DE CPF/CNPJ SAI DO NOME, E É O MEI QUE MANDOU ISSO ACONTECER (29/09/2026). "NOME +
+ * CPF" é a razão social que a Receita registra para o microempreendedor individual, e o cadastro
+ * guarda exatamente assim: a ficha `d20ac04f-e9c5-571f-8ed0-a4e4ba816a17` (CNPJ 24.634.744/0001-26,
+ * espelho do C2X por `users:4147`) tinha `legal_name` = "ROMULO ANTONIO SIQUEIRA GARCIA
+ * 05848834636". O nome NÃO estava errado; quem recusava era a nossa conferência, porque a Clicksign
+ * não aceita numeral no nome do signatário, e um contrato pronto ficou parado por isso. Lucas, no
+ * mesmo dia, escolhendo entre editar as fichas e tratar no envio: o nome do signatário é *"o nome sem
+ * o CPF"*, e a razão social completa continua guardada e sai no contrato.
+ *
+ * ⚠️ E NÃO SÃO SEIS FICHAS, SÃO 27 (medido em produção, 29/09/2026, só SELECT: 36 entidades `pj` têm
+ * número no nome que vira signatário, e 27 delas têm uma palavra de DOCUMENTO). As seis do print são
+ * do formato "NOME + CPF"; a maioria é o formato novo, com a RAIZ DO CNPJ na frente ("24.773.857
+ * MARIA APARECIDA DE ALMEIDA"). Cada uma travaria na primeira assinatura dela, e é por isso que a
+ * correção é no código e não um UPDATE ficha por ficha.
+ *
+ * ⚠️ E A FICHA NÃO É A ÚNICA FONTE DE NOME DE SIGNATÁRIO — a medição foi refeita sobre TODAS elas na
+ * revisão do mesmo dia. Além das entidades do Apolo, o nome vem do QUADRO (`temis_assinantes`, que é
+ * DIGITADO à mão) e do `cliente_nome` da proposta. Medido: 1 das 51 linhas do quadro tem número
+ * ("1 FABRICIO LUZIANO GURGEL", empreendimento 41, coordenador, contrato@fgurgel.com.br) e 6 das
+ * 4.947 propostas. O "1" do quadro NÃO é documento e continua no nome, de propósito — e é por isso que
+ * a frase de recusa de `conferirSignatarios` passou a dizer, POR PAPEL, onde o nome se arruma: o do
+ * coordenador não está em ficha nenhuma do Apolo, está no Quadro de assinatura do Setup.
+ *
+ * ⚠️ LIMPAR AQUI É LIMPAR EM UM LUGAR SÓ, e o dado não é tocado. Esta função já era o funil por onde
+ * todo nome de signatário passa (os dois montadores), e `conferirSignatarios` julga o que ELA devolve
+ * — não o texto cru. Limpar num ponto e validar noutro é a divergência de sempre: um dia a
+ * conferência recusa o que o envio sabia arrumar, ou aceita o que ele não arruma. Quem imprime o
+ * papel (`lib/temis/dados-do-contrato.ts:1225`, a razão social do `legal_name`) não passa por aqui, e
+ * por isso o CPF do MEI continua no contrato, onde ele DEVE aparecer.
+ *
+ * ⚠️ SAI A PALAVRA TODA, e não os dígitos dela: apagar caractere por caractere deixaria
+ * "058.488.346-36" virar "..-" no meio do nome.
+ *
+ * ⚠️ E SÓ SAI A PALAVRA QUE É DOCUMENTO, NUNCA A QUE TEM NÚMERO NO MEIO DO NOME. As outras NOVE fichas
+ * da medição têm o número como parte do nome, e entre elas há imobiliária e incorporadora de verdade:
+ * "6BORGES IMOVEIS LTDA", "TS 360 NEGOCIOS IMOBILIARIOS", "DS2 EMPREENDIMENTOS IMOBILIARIOS LTDA",
+ * "ON 1 CONSTRUTORA E EMPREENDIMENTOS IMOBILIARIOS LTDA", "KATZ 17 - HARAS DO PASSO...", "EMCCAMP
+ * INCORPORACAO SC 38 SPE LTDA", "J3M EMPREENDIMENTOS IMOBILIARIOS LTDA", "BE4 GROUP LTDA". Apagar
+ * essas palavras trocaria uma recusa barata por um CONTRATO ASSINADO com o nome errado: a "DS2" iria
+ * para o envelope como "EMPREENDIMENTOS IMOBILIARIOS LTDA" e o envio sairia normal, sem ninguém ver.
+ * Elas ficam, e `conferirSignatarios` recusa com a frase que manda corrigir o cadastro, do mesmo jeito
+ * que recusava antes desta mudança.
  */
 export function nomeDeSignatario(nome: string): string {
-  return String(nome ?? "").trim().replace(/\s+/g, " ").toUpperCase();
+  return String(nome ?? "")
+    .split(/\s+/)
+    .map(semDocumentoColado)
+    .filter((palavra) => palavra !== "" && !ehPalavraDeDocumento(palavra))
+    .join(" ")
+    .toUpperCase();
+}
+
+/**
+ * A palavra é um CPF ou um CNPJ escrito no meio do nome?
+ *
+ * ⚠️ A MEDIDA É A FORMA DO DOCUMENTO, E NÃO A QUANTIDADE DE DÍGITOS (revisão de 29/09/2026). Contar
+ * dígitos era o desenho da primeira escrita desta fatia, e ele apagava CALADO muito mais do que
+ * documento: rodei a função como ela estava e "IGREJA EVANGELICA CBA TEMPLO NOVO 10.05.2024" virava
+ * "IGREJA EVANGELICA CBA TEMPLO NOVO", "FULANO IMOVEIS LTDA 74.000-000" (CEP) virava "FULANO IMOVEIS
+ * LTDA", "IMOBILIARIA CENTRO 3221-4567" (telefone) virava "IMOBILIARIA CENTRO" e "2024-2025
+ * ASSOCIACAO" virava "ASSOCIACAO". Data, CEP e telefone têm 8 dígitos, como a raiz do CNPJ. Todas
+ * essas eram RECUSADAS antes desta fatia, e apagar em silêncio troca uma recusa barata por um
+ * envelope de PRODUÇÃO assinado com um nome que ninguém conferiu — que é exatamente o dano que esta
+ * fatia existe para evitar. A máscara resolve porque documento tem grafia canônica e data não tem.
+ *
+ * ⚠️ OS 8 DÍGITOS SÓ VALEM MASCARADOS, e a forma nua ("12345678") fica no nome. É a raiz do CNPJ do
+ * MEI novo, e ela chega SEMPRE pontuada nas fichas medidas em produção (29/09/2026, só SELECT:
+ * "24.773.857 MARIA APARECIDA DE ALMEIDA", "60.054.065 RAIANE SANTOS OLIVEIRA", "31.255.612 CINTHIA
+ * FERREIRA SIMOES DA CRUZ" e as demais, todas com os dois pontos). Aceitar oito dígitos nus para
+ * cobrir um caso que não existe seria reabrir o buraco do CEP ("74000000") e do código qualquer.
+ *
+ * ⚠️ 11 E 14 CONTINUAM VALENDO NUS, e isso não é incoerência: o CPF do MEI chega assim ("ROMULO
+ * ANTONIO SIQUEIRA GARCIA 05848834636", a ficha que travou o contrato do dia 29/09) e onze ou catorze
+ * dígitos seguidos não são data, CEP nem telefone fixo. A forma nua dos 8 é a única ambígua.
+ */
+function ehPalavraDeDocumento(palavra: string): boolean {
+  // A raiz do CNPJ, só na máscara canônica: "24.773.857".
+  if (/^\d{2}\.\d{3}\.\d{3}$/.test(palavra)) return true;
+  // O CPF, nu ou mascarado: "05848834636" e "058.488.346-36".
+  if (/^\d{11}$/.test(palavra) || /^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(palavra)) return true;
+  // O CNPJ inteiro, nu ou mascarado: "24634744000126" e "24.634.744/0001-26".
+  return /^\d{14}$/.test(palavra) || /^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/.test(palavra);
+}
+
+/**
+ * O documento GRUDADO na palavra sai; o resto da palavra fica.
+ *
+ * ⚠️ EXISTE POR UMA SÉTIMA FICHA DE MEI, MEDIDA EM PRODUÇÃO (29/09/2026, só SELECT): a
+ * `3b75c6e4-98db-551a-9379-0f8f1a922798` (pj, CNPJ 32.683.933/0001-17) tem `legal_name` = `trade_name`
+ * = `display_name` = "MARCIA MARIA APARECIDA PEREIRA-CPF085.612.976-38". É o caso do Rômulo — razão
+ * social de MEI com o CPF dentro —, só que escrito com o CPF colado no sobrenome: como a palavra
+ * "PEREIRA-CPF085.612.976-38" tem letras, ela não é documento inteiro, o número ficava e a conferência
+ * recusava. Na primeira venda dessa imobiliária o contrato travaria igual ao do Rômulo, e a frase
+ * mandaria editar uma razão social juridicamente correta.
+ *
+ * ⚠️ SÓ O CASO ANCORADO, e a âncora é a palavra "CPF" ou "CNPJ" antes dos dígitos, com a contagem
+ * EXATA (11 ou 14). Apagar dígito solto de dentro de palavra é o risco DS2: "DS2 EMPREENDIMENTOS" e
+ * "6BORGES IMOVEIS" iriam para o envelope com o nome mutilado e ninguém veria. Com a âncora, só some
+ * o que o próprio cadastro rotulou como documento.
+ */
+function semDocumentoColado(palavra: string): string {
+  const casou = /^(.*?)[\s.:-]*(CPF|CNPJ)[\s.:-]*([\d./-]+)$/i.exec(palavra);
+  if (!casou) return palavra;
+
+  const digitos = casou[3]!.replace(/\D/g, "").length;
+  const esperado = casou[2]!.toUpperCase() === "CPF" ? 11 : 14;
+  return digitos === esperado ? casou[1]! : palavra;
 }
 
 export function ordenarSignatarios(

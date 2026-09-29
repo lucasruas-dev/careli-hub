@@ -35,7 +35,23 @@ import { nomeDeSignatario } from "./ordem";
 // confirma vê que a vendedora não vai no envelope.
 
 /** Uma pessoa pronta para virar signatário: o `Signatario` sem o número da ordem. */
-export type Pessoa = Omit<Signatario, "ordem">;
+export type Pessoa = Omit<Signatario, "ordem"> & {
+  /**
+   * O texto do CADASTRO, como ele está gravado, antes de `nomeDeSignatario` limpar.
+   *
+   * ⚠️ ELE EXISTE PORQUE `nome` DEIXA DE SER O TEXTO DO CADASTRO NA LINHA 149, e as frases de recusa
+   * falam do cadastro. Sem este campo a promessa era falsa em TODOS os caminhos de produção: os três
+   * chamadores de `conferirSignatarios` (`envio-db.ts`, `signatarios-do-acordo.ts`,
+   * `trocar-signatario.ts`) entregam a lista já montada, com o nome limpo. Num cadastro que é SÓ o
+   * documento a frase saía com aspas VAZIAS (`"" (corretor) está sem nome para a Clicksign`) e o
+   * operador não tinha como achar a ficha, que é justamente o que a frase promete entregar.
+   *
+   * ⚠️ E ELE NÃO SUBSTITUI A LIMPEZA EM UM PONTO SÓ: quem limpa continua sendo `nomeDeSignatario`,
+   * chamada nos dois montadores. Isto aqui é a CÓPIA do original, guardada antes, e ninguém julga
+   * por ela — só se fala dela.
+   */
+  nomeDoCadastro?: string;
+};
 
 export type MontagemDosSignatarios = {
   /** O que falta e não impede o envio (a vendedora sem cadastro é o caso de hoje). */
@@ -146,7 +162,15 @@ export function signatariosDoContrato(
 
   // ⚠️ O NOME SAI NO PADRÃO DA CASA, e é aqui que ele passa. Ver `nomeDeSignatario`: as fontes são
   // diferentes (o cadastro guarda em caixa alta, o usuário do hub não) e o documento é um só.
-  for (const p of pessoas) p.nome = nomeDeSignatario(p.nome);
+  //
+  // ⚠️ E O TEXTO DO CADASTRO É GUARDADO ANTES, porque a partir daqui `nome` é o nome do ENVELOPE, e
+  // não o que está gravado. As frases de `conferirSignatarios` falam do cadastro (é por ele que se
+  // acha a ficha), e sem esta cópia elas falavam do nome já limpo — num cadastro que é só o documento,
+  // saíam com aspas vazias.
+  for (const p of pessoas) {
+    p.nomeDoCadastro = p.nomeDoCadastro ?? p.nome;
+    p.nome = nomeDeSignatario(p.nome);
+  }
 
   // ⚠️ O AVISO É SOBRE O ENVELOPE SAIR SEM A PARTE VENDEDORA, e isso já aconteceu: dos três
   // envelopes de produção medidos em 13/09/2026, nenhum tinha vendedora, e um deles fechou como
@@ -213,6 +237,19 @@ export type Veredito = { ok: true } | { erro: string; ok: false };
  * A ordem das checagens é a ordem em que elas ajudam quem lê: primeiro "não há ninguém", depois
  * "falta e-mail de fulano", depois "fulano e beltrano têm o mesmo e-mail", e por último o formato do
  * nome. Uma mensagem por vez, com NOMES — "2 signatários inválidos" manda a pessoa procurar.
+ *
+ * ⚠️ AS CHECAGENS DE NOME JULGAM O NOME QUE VAI SER ENVIADO, não o texto do cadastro, e desde
+ * 29/09/2026 os dois podem ser diferentes: `nomeDeSignatario` tira a palavra de CPF/CNPJ (o caso do
+ * MEI). Quem fala nas frases é sempre o texto do cadastro (`nomeDoCadastro`), entre aspas, porque é
+ * por ele que se acha a ficha para corrigir — e é o campo, e não `p.nome`, porque os três chamadores
+ * desta função entregam a lista com o nome JÁ LIMPO.
+ *
+ * ⚠️ E A FRASE DIZ ONDE SE ARRUMA, POR PAPEL (revisão de 29/09/2026). "Corrija no cadastro" mandava o
+ * operador procurar uma ficha do Apolo que, para vendedora, coordenador e testemunha, não existe: o
+ * nome deles é DIGITADO no Quadro de assinatura do empreendimento. Medido em produção no mesmo dia (só
+ * SELECT): a linha `temis_assinantes` `2b731fdc-60f1-4cda-82c6-9623a323f729` (empreendimento 41,
+ * coordenador, contrato@fgurgel.com.br) tem nome "1 FABRICIO LUZIANO GURGEL", continua recusada de
+ * propósito (o "1" não é documento) — e quem lesse "corrija no cadastro" procuraria para sempre.
  */
 export function conferirSignatarios(pessoas: readonly Pessoa[]): Veredito {
   if (pessoas.length === 0) {
@@ -231,8 +268,9 @@ export function conferirSignatarios(pessoas: readonly Pessoa[]): Veredito {
   if (semEmail.length > 0) {
     return {
       erro:
-        `${listar(semEmail.map((p) => `${p.nome} (${rotulo(p.papel)})`))} ${semEmail.length === 1 ? "está" : "estão"} sem e-mail, ` +
-        "e é por ele que a Clicksign manda o convite de assinatura. Preencha o e-mail no cadastro e tente de novo.",
+        `${listar(semEmail.map((p) => `"${doCadastro(p)}" (${rotulo(p.papel)})`))} ${semEmail.length === 1 ? "está" : "estão"} sem e-mail, ` +
+        "e é por ele que a Clicksign manda o convite de assinatura. " +
+        `Preencha o e-mail ${onde(semEmail)} e tente de novo.`,
       ok: false,
     };
   }
@@ -255,7 +293,7 @@ export function conferirSignatarios(pessoas: readonly Pessoa[]): Veredito {
     if (donos.length > 1) {
       return {
         erro:
-          `${listar(donos.map((p) => `${p.nome} (${rotulo(p.papel)})`))} usam o MESMO e-mail (${email}), ` +
+          `${listar(donos.map((p) => `"${doCadastro(p)}" (${rotulo(p.papel)})`))} usam o MESMO e-mail (${email}), ` +
           "e a Clicksign não aceita dois signatários com o mesmo endereço — o envelope sairia com uma pessoa a menos. " +
           "Cadastre um e-mail próprio para cada um e tente de novo.",
         ok: false,
@@ -263,25 +301,75 @@ export function conferirSignatarios(pessoas: readonly Pessoa[]): Veredito {
     }
   }
 
-  // ⚠️ NOME DE UMA PALAVRA SÓ É RECUSADO PELA CLICKSIGN, e isso é da doc deles, não invenção nossa:
-  // *"Informe ao menos um `Nome` e um `Sobrenome`"*, e o campo não aceita numerais. Descobrir isso
-  // no meio do cadastro dos signatários deixaria o envelope criado com os primeiros dentro.
-  const nomeCurto = pessoas.filter((p) => p.nome.trim().split(/\s+/).length < 2);
-  if (nomeCurto.length > 0) {
+  // ⚠️ A CONFERÊNCIA JULGA O NOME QUE VAI SER ENVIADO, E NÃO O TEXTO DO CADASTRO. É a MESMA
+  // `nomeDeSignatario` que os dois montadores usam para montar a pessoa, chamada aqui de novo: ela é
+  // quem tira a palavra de CPF/CNPJ (ver a nota longa dela, e o caso do MEI de 29/09/2026). Repetir a
+  // regra aqui — um `/\d/` próprio, uma limpeza própria — criaria duas verdades sobre o mesmo nome, e
+  // no primeiro ajuste elas divergiriam: a conferência recusaria o que o envio sabe arrumar, ou
+  // aceitaria o que ele não arruma.
+  const limpo = (p: Pessoa): string => nomeDeSignatario(p.nome);
+
+  // ⚠️ SEM NOME NÃO HÁ SIGNATÁRIO, e este caso nasceu com a limpeza: um cadastro cujo nome é SÓ o
+  // documento (o CPF solto no campo do nome) sobra VAZIO depois dela, e vazio é o que a Clicksign
+  // registraria como nome de quem assina. Vem ANTES da conta do sobrenome porque "sem nome" e "sem
+  // sobrenome" mandam a pessoa fazer coisas diferentes, e zero palavras passaria pela outra checagem
+  // ouvindo a frase errada. O texto do cadastro vai na frase entre aspas: é por ele que se acha a
+  // ficha, já que o nome limpo não existe.
+  const semNome = pessoas.filter((p) => limpo(p) === "");
+  if (semNome.length > 0) {
     return {
       erro:
-        `${listar(nomeCurto.map((p) => `"${p.nome}" (${rotulo(p.papel)})`))} ${nomeCurto.length === 1 ? "está" : "estão"} sem sobrenome no cadastro, ` +
-        "e a Clicksign exige nome e sobrenome. Complete o nome no cadastro e tente de novo.",
+        `${listar(semNome.map((p) => `"${doCadastro(p)}" (${rotulo(p.papel)})`))} ${semNome.length === 1 ? "está" : "estão"} sem nome para a Clicksign: ` +
+        "o cadastro não tem nenhuma palavra que não seja número, e é o nome que ela registra em quem assina. " +
+        `Preencha o nome ${onde(semNome)} e tente de novo.`,
       ok: false,
     };
   }
 
-  const nomeComNumero = pessoas.filter((p) => /\d/.test(p.nome));
-  if (nomeComNumero.length > 0) {
+  // ⚠️ NOME DE UMA PALAVRA SÓ É RECUSADO PELA CLICKSIGN, e isso é da doc deles, não invenção nossa:
+  // *"Informe ao menos um `Nome` e um `Sobrenome`"*. Descobrir isso no meio do cadastro dos
+  // signatários deixaria o envelope criado com os primeiros dentro.
+  //
+  // ⚠️ E A CONTA É SOBRE O NOME LIMPO: "ROMULO 05848834636" tem duas palavras no cadastro e UMA no
+  // envelope. Contar as do cadastro deixaria passar exatamente o nome que a Clicksign vai recusar.
+  const nomeCurto = pessoas.filter((p) => limpo(p).split(" ").length < 2);
+  if (nomeCurto.length > 0) {
     return {
       erro:
-        `${listar(nomeComNumero.map((p) => `"${p.nome}" (${rotulo(p.papel)})`))} ${nomeComNumero.length === 1 ? "tem" : "têm"} número no nome, ` +
-        "e a Clicksign recusa. Corrija o nome no cadastro e tente de novo.",
+        `${listar(nomeCurto.map((p) => `"${doCadastro(p)}" (${rotulo(p.papel)})`))} ${nomeCurto.length === 1 ? "está" : "estão"} sem sobrenome no cadastro, ` +
+        "e a Clicksign exige nome e sobrenome (o CPF do cadastro não conta como sobrenome: ele não vai no envelope). " +
+        `Complete o nome ${onde(nomeCurto)} e tente de novo.`,
+      ok: false,
+    };
+  }
+
+  // ⚠️ O NÚMERO QUE SOBROU CONTINUA SENDO RECUSA, e esta checagem NÃO ficou obsoleta com a limpeza de
+  // 29/09/2026: o campo da Clicksign não aceita numeral, e `nomeDeSignatario` tira só a palavra que é
+  // CPF ou CNPJ. Sobra tudo o que é número DO NOME, e isso existe em produção (medido, só SELECT): das
+  // 36 fichas `pj` com número na razão social, NOVE são assim, entre elas "6BORGES IMOVEIS LTDA", "TS
+  // 360 NEGOCIOS IMOBILIARIOS" e "ON 1 CONSTRUTORA E EMPREENDIMENTOS IMOBILIARIOS LTDA". Apagar o
+  // número dessas trocaria a recusa por um envelope ASSINADO com o nome errado; recusar custa uma
+  // frase e um cadastro para arrumar.
+  //
+  // ⚠️ E A FRASE NÃO MANDA MAIS "CORRIGIR O CADASTRO" DE OLHOS FECHADOS (revisão de 29/09/2026). Para
+  // comprador, cônjuge e imobiliária, o nome do signatário SAI DO MESMO CAMPO que o contrato imprime
+  // como razão social e qualificação (`legal_name` → `gerais.nome_vinculado`, ver
+  // `lib/temis/dados-do-contrato.ts:1225` e :1405). Quem obedecesse à frase antiga apagaria o "DS2" da
+  // ficha para destravar o envio, e o contrato que vai a cartório passaria a chamar a intermediária de
+  // "EMPREENDIMENTOS IMOBILIARIOS LTDA" — o MESMO dano que esta trava existe para evitar, feito pela
+  // mão do operador, sem nada avisando. Onde o nome é campo PRÓPRIO (o Quadro de assinatura), editar é
+  // seguro e a frase manda editar.
+  const nomeComNumero = pessoas.filter((p) => /\d/.test(limpo(p)));
+  if (nomeComNumero.length > 0) {
+    const algumVemDaFicha = nomeComNumero.some((p) => ehNomeDaFicha(p.papel));
+    return {
+      erro:
+        `${listar(nomeComNumero.map((p) => `"${doCadastro(p)}" (${rotulo(p.papel)})`))} ${nomeComNumero.length === 1 ? "tem" : "têm"} número no nome, ` +
+        "e a Clicksign recusa. O CPF e o CNPJ do cadastro o sistema já tira sozinho, então o que sobrou é número do próprio nome. " +
+        (algumVemDaFicha
+          ? "⚠️ NÃO apague um número que faz parte do nome de verdade (6BORGES, TS 360, DS2, ON 1): nesta ficha o nome é a RAZÃO SOCIAL que o contrato imprime, e editá-lo põe o nome errado no papel assinado. Esse caso é da coordenação. " +
+            `Se for número que não é do nome (uma data, um CEP, um telefone colados), tire-o ${onde(nomeComNumero)} e tente de novo.`
+          : `Tire o número ${onde(nomeComNumero)} e tente de novo.`),
       ok: false,
     };
   }
@@ -299,6 +387,58 @@ export function conferirSignatarios(pessoas: readonly Pessoa[]): Veredito {
  */
 function texto(bruto: undefined | string): string {
   return String(bruto ?? "").trim();
+}
+
+/**
+ * O texto do CADASTRO desta pessoa: o que está gravado, e não o nome que vai no envelope.
+ *
+ * ⚠️ O `?? p.nome` NÃO É ENFEITE: quem chama `conferirSignatarios` com uma lista montada à mão (os
+ * testes, e qualquer leitor futuro) não passa por `signatariosDoContrato` e não tem o campo. Aí o
+ * nome cru É o texto do cadastro, e é ele que a frase cita.
+ */
+function doCadastro(p: Pessoa): string {
+  // ⚠️ E SAI COMO ESTÁ GRAVADO, sem subir a caixa. A frase existe para a pessoa ACHAR o registro, e
+  // quem procura compara com o que a tela do cadastro mostra. O padrão de CAIXA ALTA é do nome que vai
+  // no ENVELOPE (`nomeDeSignatario`), não do texto que a frase cita.
+  return p.nomeDoCadastro ?? p.nome;
+}
+
+/**
+ * O nome deste papel vem de uma FICHA do Apolo (e não do Quadro de assinatura)?
+ *
+ * ⚠️ A DIFERENÇA DECIDE O QUE A FRASE PODE MANDAR FAZER. O nome da ficha é o MESMO `legal_name` que o
+ * contrato imprime como razão social; o do quadro é um campo digitado que só serve para assinar.
+ * Mandar editar o primeiro estraga o papel; mandar editar o segundo não estraga nada.
+ */
+function ehNomeDaFicha(papel: PapelNoContrato): boolean {
+  return papel === "comprador" || papel === "conjuge" || papel === "corretor";
+}
+
+/**
+ * ONDE se arruma o nome (ou o e-mail) de quem falhou — sem repetir o mesmo lugar duas vezes.
+ *
+ * ⚠️ EXISTE PORQUE "NO CADASTRO" ESTAVA ERRADO PARA METADE DOS PAPÉIS. Vendedora, coordenador e
+ * testemunha saem de `temis_assinantes`, que é o Quadro de assinatura do empreendimento (aba Setup,
+ * sub-aba Assinatura) — não há ficha do Apolo para abrir. Medido em produção (29/09/2026, só SELECT):
+ * a única linha do quadro com número no nome é o coordenador do empreendimento 41, "1 FABRICIO
+ * LUZIANO GURGEL", e é ele quem assina TODO contrato daquele empreendimento.
+ */
+function onde(pessoas: readonly Pessoa[]): string {
+  const lugares = [...new Set(pessoas.map((p) => lugarDoPapel(p.papel)))];
+  return listar(lugares);
+}
+
+function lugarDoPapel(papel: PapelNoContrato): string {
+  const mapa: Record<PapelNoContrato, string> = {
+    careli: "na configuração de quem assina pela Careli",
+    comprador: "no cadastro do comprador (ficha do Apolo)",
+    conjuge: "no cadastro do cônjuge (ficha do Apolo)",
+    coordenadora: "no Quadro de assinatura do empreendimento (aba Setup, sub-aba Assinatura)",
+    corretor: "na ficha da imobiliária, no Apolo",
+    testemunha: "no Quadro de assinatura do empreendimento (aba Setup, sub-aba Assinatura)",
+    vendedora: "no Quadro de assinatura do empreendimento (aba Setup, sub-aba Assinatura)",
+  };
+  return mapa[papel];
 }
 
 /** "A", "A e B", "A, B e C" — a lista como uma pessoa lê, não como um array. */

@@ -316,7 +316,11 @@ describe("regraDaColuna lê as duas formas gravadas", () => {
 // precisaria acertar as preposições E não devolveria o acento que o cadastro não tem — "FATIMA"
 // viraria "Fatima", nunca "Fátima", num papel que vai a cartório.
 describe("o nome do signatário sai no padrão da casa", () => {
-  it("⚠️ sobe a caixa, e é só isso que ele faz", () => {
+  // ⚠️ SUBIR A CAIXA NÃO É MAIS A ÚNICA COISA QUE ELE FAZ: desde 29/09/2026 a palavra que é CPF ou
+  // CNPJ sai do nome, por causa da razão social do MEI ("NOME + CPF" é como a Receita registra). O
+  // número que é PARTE do nome continua indo, e continua sendo recusado pela conferência. O caso, a
+  // medição em produção e a decisão do Lucas estão em `nome-do-signatario-mei.test.ts`.
+  it("⚠️ sobe a caixa, e não recapitaliza nada", () => {
     expect(nomeDeSignatario("Nivea Careli")).toBe("NIVEA CARELI");
     expect(nomeDeSignatario("MARIA DE FATIMA RODRIGUES DOS SANTOS")).toBe(
       "MARIA DE FATIMA RODRIGUES DOS SANTOS",

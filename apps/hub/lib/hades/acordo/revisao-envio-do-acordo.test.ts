@@ -342,7 +342,7 @@ describe("o apontado com e-mail ruim para antes de existir envelope", () => {
     );
 
     if (saida.ok) throw new Error("o envio devia ter sido recusado");
-    expect(saida.erro).toContain("ANALISTA DO JURIDICO");
+    expect(saida.erro).toContain("Analista Do Juridico");
     expect(saida.erro).toContain("sem e-mail");
     expect(signatarios).toEqual([]);
   });
@@ -358,7 +358,9 @@ describe("o apontado com e-mail ruim para antes de existir envelope", () => {
     const preparo = await prepararEnvioDoAcordo(bancoDeTeste(), acordo());
     if (!preparo.ok) throw new Error("o preparo devia ter dado certo");
 
-    expect(preparo.impedimento).toContain("ANALISTA DO JURIDICO");
+    // ⚠️ A FRASE CITA O TEXTO DO CADASTRO, e não o nome já limpo (revisão de 29/09/2026): é por ele
+    // que se acha o registro para corrigir. Ver `doCadastro`, em `lib/assinatura/signatarios.ts`.
+    expect(preparo.impedimento).toContain("Analista Do Juridico");
     expect(preparo.signatarios.map((s) => s.nome)).not.toContain("FULANA VENDEDORA DO QUADRO");
   });
 
@@ -380,8 +382,8 @@ describe("o apontado com e-mail ruim para antes de existir envelope", () => {
     );
 
     if (saida.ok) throw new Error("o envio devia ter sido recusado");
-    expect(saida.erro).toContain("BELTRANO EXEMPLO FERREIRA");
-    expect(saida.erro).toContain("ANALISTA DO JURIDICO");
+    expect(saida.erro).toContain("Beltrano Exemplo Ferreira");
+    expect(saida.erro).toContain("Analista Do Juridico");
     expect(saida.erro).toContain("MESMO e-mail");
     expect(signatarios).toEqual([]);
   });

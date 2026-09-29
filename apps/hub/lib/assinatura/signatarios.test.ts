@@ -249,9 +249,8 @@ describe("a conferência antes de chamar a API", () => {
     expect(conferirSignatarios([]).ok).toBe(false);
   });
 
-  // ⚠️ REGRA DA CLICKSIGN, não nossa: *"Informe ao menos um `Nome` e um `Sobrenome`"*, e o campo não
-  // aceita numerais. Descobrir isso no meio do cadastro dos signatários deixaria o envelope criado
-  // com os primeiros dentro.
+  // ⚠️ REGRA DA CLICKSIGN, não nossa: *"Informe ao menos um `Nome` e um `Sobrenome`"*. Descobrir isso
+  // no meio do cadastro dos signatários deixaria o envelope criado com os primeiros dentro.
   it("recusa nome sem sobrenome", () => {
     const veredito = conferirSignatarios([pessoa("Henrique", "h@x.com")]);
     expect(veredito.ok).toBe(false);
@@ -259,11 +258,23 @@ describe("a conferência antes de chamar a API", () => {
     expect(veredito.erro).toContain("sobrenome");
   });
 
+  // ⚠️ CONTINUA RECUSANDO, E A CONTA É SOBRE O NOME LIMPO (29/09/2026). O que mudou naquele dia foi
+  // que a palavra de CPF/CNPJ sai do nome antes de o envelope existir, porque "NOME + CPF" é a razão
+  // social correta de um MEI e 26 fichas de produção estão assim. O "2" daqui NÃO é documento: fica no
+  // nome e a recusa continua sendo a resposta certa. O caso inteiro, com a medição e a decisão do
+  // Lucas, está em `nome-do-signatario-mei.test.ts`.
   it("recusa nome com número", () => {
     const veredito = conferirSignatarios([pessoa("Henrique Sales 2", "h@x.com")]);
     expect(veredito.ok).toBe(false);
     if (veredito.ok) return;
     expect(veredito.erro).toContain("número");
+  });
+
+  it("⚠️ e recusa o cadastro que é SÓ o número, que depois de limpo fica sem nome nenhum", () => {
+    const veredito = conferirSignatarios([pessoa("05848834636", "h@x.com")]);
+    expect(veredito.ok).toBe(false);
+    if (veredito.ok) return;
+    expect(veredito.erro).toContain("sem nome para a Clicksign");
   });
 
   // ⚠️ A ORDEM DAS CHECAGENS É A ORDEM EM QUE ELAS AJUDAM. Quem está sem e-mail precisa saber disso
