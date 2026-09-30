@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { loadApoloEnterpriseCarteiraPorIds, type ApoloCarteiraUnit } from "@/lib/apolo/carteira";
+import {
+  type ApoloCarteiraSummary,
+  type ApoloCarteiraUnit,
+  loadApoloEnterpriseCarteiraPorIds,
+} from "@/lib/apolo/carteira";
 import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
 import { type CatalogoParaId, filtroPorIds } from "@/lib/apolo/c2x-pelo-id";
 import { idsDoC2xDasSiglasAoVivo } from "@/lib/apolo/c2x-pelo-id-servidor";
@@ -36,6 +40,14 @@ import {
   carregarCadastroDeEmpreendimentos,
   type LinhaDoCadastro,
 } from "@/lib/hercules/cadastro";
+import {
+  carteiraDoLsoftNoRecorte,
+  juntarNaCarteira,
+  type LsoftDoRecorte,
+  recorteDoLsoft,
+  resumoVazio,
+} from "@/lib/lsoft/carteira-no-financeiro";
+import { portalVeBaseLsoft } from "@/lib/lsoft/portais";
 
 // A CARTEIRA DO INCORPORADOR: o bruto que a Careli administra e o LÍQUIDO que é dele.
 //
@@ -113,6 +125,27 @@ import {
 // MESMAS primitivas do painel de Produtos, e o `?code=` é resolvido por `codigosDoPedido` — o
 // tradutor que as rotas de vendas, assinaturas e contratos já usam, e que entende os três
 // formatos ("pai:<uuid>", id numérico do filho, id do catálogo).
+//
+// O GARDEN VEM DO LSOFT DESDE 29/09/2026, e só no Financeiro do portal que enxerga a base do LSoft
+// (`portalVeBaseLsoft`: `cecilio-rocha` e `cer`). ⚠️ NA PRÁTICA, HOJE, SÓ O `cecilio-rocha`: é o único
+// com o Garden (39) no escopo; o `cer` tem só o VOC (37) e os usuários dele estão inativos (medido em
+// 29/09/2026). Validar no `cer` e não ver o Garden não quer dizer que ele não subiu.
+// Lucas: *"é só copiar e colar na carteira"* e
+// *"esquece o c2x, cecilio não tem nenhum vinculo com o legado c2x"*. Os clientes que o time adm
+// validou saem da tela LSoft Integração (`lsoft_clientes.empreendimentos_na_carteira`, 0199) e as
+// parcelas deles entram aqui, lidas do espelho (lib/lsoft/carteira-no-financeiro.ts), no MESMO
+// formato do C2X:
+//   • os valores absolutos do resumo SOMAM e a inadimplência é RECALCULADA depois da soma (vencido
+//     de todos sobre o previsto de todos), nunca média de percentuais;
+//   • o Garden (id 39) deixa de ser pedido ao C2X nesse caso: lá ele tem zero, e somar duas fontes
+//     do mesmo empreendimento é o erro que se quer evitar;
+//   • cada unidade dele leva `origem: "lsoft"` e o código do cliente no LSoft, e a tela abre a ficha
+//     do LSoft (onde a baixa é dada, com trilha) em vez do modal de parcelas do C2X.
+// ⚠️ O QUE NÃO MUDA: todo outro portal, o modo coordenador (sessão comercial) e as leituras de
+// `?indicadores=1` e `?formato=xlsx` (os KPIs e o extrato continuam só do C2X; a tela avisa que os
+// do Garden ainda não entram lá). Falha na leitura do LSoft não derruba a carteira do C2X: loga, e a
+// resposta sai sem o Garden e com `lsoft.aviso`. E o contrário também (revisão de 29/09/2026): com o
+// Garden já lido, a falha do C2X não derruba o Garden; a resposta sai só com ele e com `avisoDoC2x`.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -125,6 +158,8 @@ export const maxDuration = 30;
 type UnidadeDoPortal = {
   /** SÓ na sessão comercial (ver o cabeçalho): as parcelas de Ato e Sinal desta unidade. */
   atoESinal?: { parcelas: ParcelaDeAtoESinal[] };
+  /** SÓ na unidade do LSoft: o que a linha precisa dizer além dos números (outro lote, lote a confirmar). */
+  avisos?: string[];
   block: null | string;
   /** Nome do comprador. Só o nome: o `entityId` interno do CRM não atravessa esta rota. */
   client: null | string;
@@ -138,7 +173,11 @@ type UnidadeDoPortal = {
   /** O líquido apurado da unidade, ou `null` quando ainda não há parcela paga apurada. */
   liquido: null | Omit<CarteiraPorPedido, "pedidoId" | "unidade" | "unitId">;
   lot: null | string;
+  /** SÓ na unidade do LSoft: o código do cliente, para a tela abrir a ficha dele. */
+  lsoftCodigo?: string;
   maxOverdueDays: number;
+  /** `"lsoft"` = a carteira desta linha vem do espelho do LSoft, e não do C2X. Ausente = C2X. */
+  origem?: "lsoft";
   overdueAmount: number;
   overdueInstallments: number;
   paidAmount: number;
@@ -411,6 +450,22 @@ export async function GET(request: Request) {
   // Catálogo ilegível é o C2X fora: o bruto responde o 503 de sempre, e a política fica sem dado.
   const idsDoEscopo = await idsDoC2xDasSiglasAoVivo(codes, { catalogo, excluir: [] });
 
+  // ⚠️ SÓ O COOKIE DECIDE (ver o cabeçalho): o recorte de Ato e Sinal com boleto é da sessão
+  // COMERCIAL. Nenhum parâmetro de URL liga isto — para o incorporador a leitura nem roda.
+  const comercial = ehPortalComercial(auth.sessao.tipo);
+
+  // ⚠️ O GARDEN DO LSOFT (29/09/2026, ver o cabeçalho). Só na carteira da tela (sem `?indicadores`
+  // nem `?formato`), só no incorporador (nunca no coordenador) e só no portal que enxerga a base do
+  // LSoft; o slug vem do cookie, como o resto. Fora disso `lsoftNoRecorte` é vazio e os ids e siglas
+  // que vão ao C2X são os de sempre, byte a byte. O recorte é pelo id do C2X, nunca pela sigla.
+  const separado =
+    !comercial && !comIndicadores && portalVeBaseLsoft(auth.sessao.slug) && idsDoEscopo.ok
+      ? recorteDoLsoft({ catalogo, codes, ids: idsDoEscopo.ids })
+      : null;
+  const lsoftNoRecorte = separado?.noRecorte ?? [];
+  const idsParaOC2x = idsDoEscopo.ok ? (separado?.idsDoC2x ?? idsDoEscopo.ids) : [];
+  const codesParaOC2x = separado?.codesDoC2x ?? codes;
+
   // A % de gestão de carteira mora no Apolo e muda POR EMPREENDIMENTO, mesmo para o mesmo
   // incorporador (regra do Lucas). Ela alimenta a fórmula de fallback do líquido.
   const adminClient = createApoloAdminClient();
@@ -446,7 +501,7 @@ export async function GET(request: Request) {
     );
 
     const politicas = idsDoEscopo.ok
-      ? await loadPoliticaComercialPorIds(idsDoEscopo.ids, doApolo)
+      ? await loadPoliticaComercialPorIds(idsParaOC2x, doApolo)
       : ({ error: idsDoEscopo.erro, ok: false } as const);
     if (politicas.ok) {
       for (const p of politicas.politicas) {
@@ -459,17 +514,13 @@ export async function GET(request: Request) {
     }
   }
 
-  // ⚠️ SÓ O COOKIE DECIDE (ver o cabeçalho): o recorte de Ato e Sinal com boleto é da sessão
-  // COMERCIAL. Nenhum parâmetro de URL liga isto — para o incorporador a leitura nem roda.
-  const comercial = ehPortalComercial(auth.sessao.tipo);
-
-  const [bruta, liquida, atoESinal] = await Promise.all([
+  const [bruta, liquida, atoESinal, lsoft] = await Promise.all([
     // ⚠️ O LOADER LANÇA QUANDO O MYSQL RECUSA (o `pool.query` não tem try/catch lá dentro). Com o
     // catálogo do C2X vazio, os códigos passaram a sair do cadastro do Panteon, e a guarda antiga
     // ("zero código = C2X fora = 503") não segura mais: sem isto a rota respondia 500 sem corpo e a
     // tela quebrava no `res.json()`. A queda vira `ok: false` e cai no 503 de sempre, logo abaixo.
     (idsDoEscopo.ok
-      ? loadApoloEnterpriseCarteiraPorIds(idsDoEscopo.ids)
+      ? loadApoloEnterpriseCarteiraPorIds(idsParaOC2x)
       : Promise.resolve({ error: idsDoEscopo.erro, ok: false as const })
     ).catch((erro: unknown) => ({
       error: erro instanceof Error ? erro.message : String(erro),
@@ -478,7 +529,9 @@ export async function GET(request: Request) {
     carteiraLiquidaDoIncorporador({
       // O MESMO catálogo de onde o escopo tirou as siglas: é ele que as traduz no id do C2X.
       catalogo,
-      codes,
+      // Sem o Garden quando ele vem do LSoft: o líquido dele não é apurado (política nula), e a
+      // tela diz "não apurado" em vez de somar um zero que o loteador leria como "não recebi".
+      codes: codesParaOC2x,
       // Os KPIs do BI só quando a tela pede: a leitura ampliada (parcelas em aberto) custa mais.
       indicadores: comIndicadores
         ? {
@@ -497,6 +550,11 @@ export async function GET(request: Request) {
       politicaPorCode,
     }),
     comercial ? parcelasDeAtoESinal(codes, catalogo) : Promise.resolve(null),
+    // O espelho do LSoft, em paralelo com o C2X. `carteiraDoLsoftNoRecorte` não lança: a falha
+    // volta como aviso, e a carteira do C2X segue de pé.
+    lsoftNoRecorte.length > 0
+      ? carteiraDoLsoftNoRecorte({ hoje: hojeNaCasa(), noRecorte: lsoftNoRecorte, nomePorCode })
+      : Promise.resolve<LsoftDoRecorte | null>(null),
   ]);
 
   if (atoESinal && "erro" in atoESinal) {
@@ -508,14 +566,38 @@ export async function GET(request: Request) {
     );
   }
 
-  if (!bruta.ok) {
+  // ⚠️ O C2X FORA NÃO LEVA O GARDEN JUNTO (revisão de 29/09/2026). O Garden do LSoft não depende do
+  // legado (Lucas, 29/09/2026: *"esquece o c2x"*), e a falha do LSoft já não derruba o C2X (vira
+  // `lsoft.aviso`). O caminho de volta era o 503, que jogava fora a carteira do Garden já lida em
+  // paralelo. Agora, com unidade do LSoft em mãos, a resposta sai só com ela e com o aviso do que
+  // ficou de fora, NUNCA com a parte do C2X zerada calada. Sem unidade do LSoft (outro portal, o
+  // modo coordenador, os indicadores, a migration 0199 ainda não aplicada), o 503 de sempre.
+  let avisoDoC2x: null | string = null;
+  let doC2x: { summary: ApoloCarteiraSummary; units: ApoloCarteiraUnit[] };
+  if (bruta.ok) {
+    doC2x = bruta.data;
+  } else {
     // O detalhe do loader NÃO atravessa para o cliente EXTERNO: ele pode citar nome de env
     // interna ("Configuração C2X ausente: …"). Fica no log do servidor; o portal recebe genérico.
     console.error("[incorporador/carteira] falha ao carregar a carteira:", bruta.error);
-    return NextResponse.json(
-      { error: "Não foi possível carregar a carteira agora." },
-      { status: 503 },
-    );
+    if (comoArquivo || !lsoft || lsoft.carteira.units.length === 0) {
+      return NextResponse.json(
+        { error: "Não foi possível carregar a carteira agora." },
+        { status: 503 },
+      );
+    }
+    doC2x = { summary: resumoVazio(), units: [] };
+    const foraDaTela = [
+      ...new Set(
+        codesParaOC2x
+          .map((code) => nomePorCode.get(code.toUpperCase()))
+          .filter((nome): nome is string => Boolean(nome)),
+      ),
+    ];
+    avisoDoC2x =
+      foraDaTela.length > 0
+        ? `Não foi possível ler a carteira ${foraDaTela.length === 1 ? "do" : "de"} ${foraDaTela.join(", ")} agora. Ela ficou fora desta tela; tente de novo em alguns minutos.`
+        : "Não foi possível ler a carteira dos outros empreendimentos agora. Ela ficou fora desta tela; tente de novo em alguns minutos.";
   }
 
   // ── A EXPORTAÇÃO SAI AQUI, antes de montar o payload da tela ───────────────
@@ -575,15 +657,41 @@ export async function GET(request: Request) {
     liquida.ok ? liquida.data.porPedido.map((p) => [p.pedidoId, p]) : [],
   );
 
+  // A carteira da tela: a do C2X, e a do LSoft somada quando o recorte a inclui. Sem LSoft, a do
+  // C2X sai intacta (`juntarNaCarteira` devolve a mesma). As unidades do LSoft já nascem no formato
+  // do portal (lib/lsoft/carteira-no-financeiro.ts), sem nada que não atravesse: nem CPF, nem
+  // telefone.
+  const carteira = juntarNaCarteira<UnidadeDoPortal>(
+    {
+      summary: doC2x.summary,
+      // A carteira por unidade da CarteiraTab interna, com a coluna nova de líquido e o sinal
+      // de contrato assinado (18/08/2026) — e SEM o que não atravessa o portal (entityId do
+      // CRM, uuid do D4Sign, selo de cobrança do Hades).
+      units: doC2x.units.map((unit) =>
+        unidadeParaOPortal(
+          unit,
+          nomePorCode,
+          liquidoPorPedido,
+          atoESinal ? atoESinal.porPedido : null,
+        ),
+      ),
+    },
+    lsoft ? lsoft.carteira : null,
+  );
+
   return NextResponse.json(
     {
       data: {
         // SÓ na sessão comercial: `true` = a leitura de Ato e Sinal bateu no teto e a lista NÃO
         // é completa. A tela do coordenador avisa em vez de somar errado calada.
         ...(atoESinal ? { atoESinalParcial: atoESinal.parcial } : null),
+        // SÓ quando o C2X falhou e a resposta saiu com o Garden do LSoft (ver acima): o que ficou
+        // de fora. Fora desse caso o campo nem existe.
+        ...(avisoDoC2x ? { avisoDoC2x } : null),
         // O que a Careli administra: contratos, inadimplência, a receber. É o mesmo número da
         // tela interna, de propósito — carteira que diverge entre nós e o cliente vira reunião.
-        bruto: bruta.data.summary,
+        // Com o Garden do LSoft no recorte, é a soma das duas fontes (inadimplência recalculada).
+        bruto: carteira.summary,
         // O seletor da tela: um produto (o PAI) por chip, com os recortes dentro. `id` é o que
         // volta em `?code` para estreitar a visão — "pai:<uuid>" no produto, o id do C2X no
         // recorte, e os dois passam por `codigosDoPedido` na volta.
@@ -609,18 +717,20 @@ export async function GET(request: Request) {
               total: liquida.data.total,
             }
           : null,
-        unidades: bruta.data.units.length,
-        // A carteira por unidade da CarteiraTab interna, com a coluna nova de líquido e o sinal
-        // de contrato assinado (18/08/2026) — e SEM o que não atravessa o portal (entityId do
-        // CRM, uuid do D4Sign, selo de cobrança do Hades).
-        units: bruta.data.units.map((unit) =>
-          unidadeParaOPortal(
-            unit,
-            nomePorCode,
-            liquidoPorPedido,
-            atoESinal ? atoESinal.porPedido : null,
-          ),
-        ),
+        // SÓ quando o recorte inclui um empreendimento do LSoft (ver o cabeçalho): quais são, quantas
+        // unidades vieram de lá e o aviso de falha. A tela lê isto para dizer que o líquido e os
+        // indicadores deles ainda não entram. Fora desse caso o campo nem existe.
+        ...(lsoft
+          ? {
+              lsoft: {
+                aviso: lsoft.aviso,
+                empreendimentos: lsoft.empreendimentos,
+                unidades: lsoft.carteira.units.length,
+              },
+            }
+          : null),
+        unidades: carteira.units.length,
+        units: carteira.units,
       },
     },
     { headers: { "Cache-Control": "no-store" } },

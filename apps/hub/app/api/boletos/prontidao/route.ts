@@ -84,7 +84,11 @@ export async function GET(request: Request) {
       // fonte" — e a tela precisa dizer isso, não deixar o campo vazio parecendo zero.
       if (e.origem !== "lsoft" || !e.chaveLsoft) return { ...base, cpf: null };
 
-      const carteira = await lerCarteiraDoLsoft({ empreendimento: e.chaveLsoft });
+      // ⚠️ TODO MUNDO, inclusive quem já está no Financeiro do portal (migration 0199). A tela LSoft
+      // Integração tira essa carteira da lista; aqui a pergunta é outra: quantos CPFs o boleto tem.
+      // Sem isto, depois da subida de 29/09/2026 o Garden cairia de 141 para 35 clientes, e sairiam
+      // justamente os 106 validados, os que recebem boleto.
+      const carteira = await lerCarteiraDoLsoft({ empreendimento: e.chaveLsoft, incluirQuemEstaNoFinanceiro: true });
       if (!carteira.ok) return { ...base, cpf: null };
 
       const clientes = carteira.clientes.length;

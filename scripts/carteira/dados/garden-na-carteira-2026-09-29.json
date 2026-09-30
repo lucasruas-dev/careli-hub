@@ -1,0 +1,1358 @@
+{
+ "gerado_em": "2026-09-29",
+ "origem": "scripts/carteira/dados/garden-plano-2026-09-29.json (branch wip/carteira-panteon-longa), conferido no centavo contra o projeto",
+ "sobem": [
+  {
+   "codigo": "00000011",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 54",
+   "unidades": [
+    "Q06-L14"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 54) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000021",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 84",
+   "unidades": [
+    "Q09-L24"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 84) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000046",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 23",
+   "unidades": [
+    "Q07-L25"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 23) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000059",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 138",
+   "unidades": [
+    "Q12-L31"
+   ],
+   "status": null,
+   "observacao": "Garden validado (linha 138) e migrado para a carteira do Panteon em 29/09/2026. As outras carteiras continuam aqui para validar."
+  },
+  {
+   "codigo": "00000074",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 50",
+   "unidades": [
+    "Q06-L13"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 50) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000096",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 120",
+   "unidades": [
+    "Q04-L17"
+   ],
+   "status": null,
+   "observacao": "Garden validado (linha 120) e migrado para a carteira do Panteon em 29/09/2026. As outras carteiras continuam aqui para validar."
+  },
+  {
+   "codigo": "00000245",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 127",
+   "unidades": [
+    "Q13-L19"
+   ],
+   "status": null,
+   "observacao": "Garden validado (linha 127) e migrado para a carteira do Panteon em 29/09/2026. As outras carteiras continuam aqui para validar."
+  },
+  {
+   "codigo": "00000248",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 106",
+   "unidades": [
+    "Q14-L01"
+   ],
+   "status": null,
+   "observacao": "Garden validado (linha 106) e migrado para a carteira do Panteon em 29/09/2026. As outras carteiras continuam aqui para validar."
+  },
+  {
+   "codigo": "00000289",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 93",
+   "unidades": [
+    "Q08-L04"
+   ],
+   "status": null,
+   "observacao": "Garden validado (linha 93) e migrado para a carteira do Panteon em 29/09/2026. As outras carteiras continuam aqui para validar."
+  },
+  {
+   "codigo": "00000290",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 26",
+   "unidades": [
+    "Q08-L01"
+   ],
+   "status": null,
+   "observacao": "Garden validado (linha 26) e migrado para a carteira do Panteon em 29/09/2026. As outras carteiras continuam aqui para validar."
+  },
+  {
+   "codigo": "00000417",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 119",
+   "unidades": [
+    "Q18-L07"
+   ],
+   "status": null,
+   "observacao": "Garden validado (linha 119) e migrado para a carteira do Panteon em 29/09/2026. As outras carteiras continuam aqui para validar."
+  },
+  {
+   "codigo": "00000421",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 122",
+   "unidades": [
+    "Q05-L19"
+   ],
+   "status": null,
+   "observacao": "Garden validado (linha 122) e migrado para a carteira do Panteon em 29/09/2026. As outras carteiras continuam aqui para validar."
+  },
+  {
+   "codigo": "00000422",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 90",
+   "unidades": [
+    "Q16-L15"
+   ],
+   "status": null,
+   "observacao": "Garden validado (linha 90) e migrado para a carteira do Panteon em 29/09/2026. As outras carteiras continuam aqui para validar."
+  },
+  {
+   "codigo": "00000431",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 116",
+   "unidades": [
+    "Q13-L20"
+   ],
+   "status": null,
+   "observacao": "Garden validado (linha 116) e migrado para a carteira do Panteon em 29/09/2026. As outras carteiras continuam aqui para validar."
+  },
+  {
+   "codigo": "00000492",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 132",
+   "unidades": [
+    "Q07-L26"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 132) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000493",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 94",
+   "unidades": [
+    "Q13-L04"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 94) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000494",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 83",
+   "unidades": [
+    "Q09-L11"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 83) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000496",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 121",
+   "unidades": [
+    "Q12-L09"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 121) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000498",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 41",
+   "unidades": [
+    "Q04-L14",
+    "Q04-L13"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 41) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000499",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 49",
+   "unidades": [
+    "Q06-L24"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 49) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000500",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 114",
+   "unidades": [
+    "Q09-L17"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 114) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000501",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 110",
+   "unidades": [
+    "Q09-L16"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 110) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000503",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 87",
+   "unidades": [
+    "Q09-L14"
+   ],
+   "status": null,
+   "observacao": "Garden validado (linha 87) e migrado para a carteira do Panteon em 29/09/2026. As outras carteiras continuam aqui para validar."
+  },
+  {
+   "codigo": "00000504",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 86",
+   "unidades": [
+    "Q11-L06"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 86) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000505",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 82",
+   "unidades": [
+    "Q10-L06"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 82) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000506",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 68",
+   "unidades": [
+    "Q09-L09"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 68) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000507",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 65",
+   "unidades": [
+    "Q09-L23"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 65) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000508",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 30",
+   "unidades": [
+    "Q09-L15"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 30) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000509",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linhas 28 e 29",
+   "unidades": [
+    "Q05-L14"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linhas 28 e 29) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000510",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 115",
+   "unidades": [
+    "Q08-L15",
+    "Q08-L16"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 115) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000511",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 88",
+   "unidades": [
+    "Q07-L13"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 88) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000512",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 53",
+   "unidades": [
+    "Q05-L08"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 53) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000513",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 47",
+   "unidades": [
+    "Q07-L10",
+    "Q08-L07"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 47) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000514",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 64",
+   "unidades": [
+    "Q08-L08"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 64) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000515",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 70",
+   "unidades": [
+    "Q08-L11"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 70) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000516",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 108",
+   "unidades": [
+    "Q09-L22"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 108) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000517",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 99",
+   "unidades": [
+    "Q09-L21",
+    "Q09-L20"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 99) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000518",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 125",
+   "unidades": [
+    "Q08-L13"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 125) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000519",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 104",
+   "unidades": [
+    "Q07-L14"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 104) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000520",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 137",
+   "unidades": [
+    "Q07-L09"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 137) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000521",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 22",
+   "unidades": [
+    "Q08-L23"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 22) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000522",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 25",
+   "unidades": [
+    "Q08-L22"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 25) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000523",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 60",
+   "unidades": [
+    "Q06-L10"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 60) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000526",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 56",
+   "unidades": [
+    "Q14-L05"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 56) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000527",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 37",
+   "unidades": [
+    "Q04-L20"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 37) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000529",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 79",
+   "unidades": [
+    "Q12-L27"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 79) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000530",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 71",
+   "unidades": [
+    "Q12-L28"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 71) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000531",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 118",
+   "unidades": [
+    "Q12-L26",
+    "Q12-L29"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 118) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000532",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 135",
+   "unidades": [
+    "Q12-L05"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 135) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000533",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 112",
+   "unidades": [
+    "Q12-L06"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 112) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000534",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 40",
+   "unidades": [
+    "Q12-L08"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 40) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000535",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 95",
+   "unidades": [
+    "Q12-L10"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 95) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000536",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 128",
+   "unidades": [
+    "Q12-L11"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 128) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000537",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 117",
+   "unidades": [
+    "Q12-L12"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 117) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000540",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 24",
+   "unidades": [
+    "Q09-L28"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 24) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000542",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 136",
+   "unidades": [
+    "Q08-L10"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 136) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000543",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 133",
+   "unidades": [
+    "Q06-L18"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 133) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000545",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 32",
+   "unidades": [
+    "Q08-L19"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 32) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000546",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 33",
+   "unidades": [
+    "Q15-L10"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 33) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000547",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 63",
+   "unidades": [
+    "Q09-L27"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 63) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000549",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 130",
+   "unidades": [
+    "Q10-L13"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 130) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000550",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 92",
+   "unidades": [
+    "Q16-L14"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 92) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000551",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 96",
+   "unidades": [
+    "Q17-L18"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 96) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000552",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 100",
+   "unidades": [
+    "Q14-L22"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 100) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000553",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 101",
+   "unidades": [
+    "Q05-L20"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 101) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000554",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 107",
+   "unidades": [
+    "Q08-L26"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 107) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000555",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 97",
+   "unidades": [
+    "Q09-L08"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 97) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000556",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 98",
+   "unidades": [
+    "Q16-L03"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 98) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000557",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 134",
+   "unidades": [
+    "Q07-L27"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 134) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000559",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 113",
+   "unidades": [
+    "Q08-L25"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 113) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000561",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 131",
+   "unidades": [
+    "Q17-L17"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 131) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000562",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 31",
+   "unidades": [
+    "Q13-L03"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 31) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000564",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 59",
+   "unidades": [
+    "Q12-L21"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 59) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000565",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 38",
+   "unidades": [
+    "Q12-L14"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 38) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000567",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 62",
+   "unidades": [
+    "Q17-L02"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 62) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000568",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 39",
+   "unidades": [
+    "Q05-L21"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 39) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000569",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 75",
+   "unidades": [
+    "Q16-L05"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 75) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000570",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 52",
+   "unidades": [
+    "Q15-L17"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 52) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000571",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 81",
+   "unidades": [
+    "Q05-L22"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 81) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000572",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 45",
+   "unidades": [
+    "Q11-L07"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 45) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000574",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 89",
+   "unidades": [
+    "Q05-L23"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 89) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000575",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 57",
+   "unidades": [
+    "Q15-L01"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 57) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000576",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 46",
+   "unidades": [
+    "Q12-L13"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 46) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000578",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 85",
+   "unidades": [
+    "Q13-L01"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 85) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000579",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 129",
+   "unidades": [
+    "Q16-L06"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 129) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000580",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 78",
+   "unidades": [
+    "Q08-L14"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 78) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000581",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 72",
+   "unidades": [
+    "Q08-L21"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 72) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000583",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 111",
+   "unidades": [
+    "Q09-L26"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 111) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000584",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 42",
+   "unidades": [
+    "Q16-L07"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 42) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000585",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 76",
+   "unidades": [
+    "Q16-L13"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 76) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000589",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 35",
+   "unidades": [
+    "Q09-L06"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 35) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000590",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 58",
+   "unidades": [
+    "Q11-L02"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 58) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000592",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 44",
+   "unidades": [
+    "Q17-L01"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 44) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000593",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 105",
+   "unidades": [
+    "Q15-L09"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 105) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000597",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 123",
+   "unidades": [
+    "Q08-L06"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 123) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000600",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 55",
+   "unidades": [
+    "Q17-L03"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 55) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000601",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 74",
+   "unidades": [
+    "Q11-L04"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 74) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000602",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 69",
+   "unidades": [
+    "Q15-L16"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 69) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000606",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 77",
+   "unidades": [
+    "Q13-L28"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 77) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000607",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 91",
+   "unidades": [
+    "Q13-L27"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 91) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000609",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 80",
+   "unidades": [
+    "Q11-L03"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 80) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000612",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 51",
+   "unidades": [
+    "Q13-L10"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 51) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000613",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 67",
+   "unidades": [
+    "Q08-L20"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 67) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000614",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 27",
+   "unidades": [
+    "Q14-L02"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 27) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000619",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 109",
+   "unidades": [
+    "Q13-L26"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 109) e migrado para a carteira do Panteon em 29/09/2026."
+  },
+  {
+   "codigo": "00000625",
+   "decisao": "OK",
+   "fonte": "OBSERVAÇÕES DO GARDEN S.xlsx · OBS. LUCAS · linha 48",
+   "unidades": [
+    "Q09-L12"
+   ],
+   "status": "validado",
+   "observacao": "Garden validado (linha 48) e migrado para a carteira do Panteon em 29/09/2026."
+  }
+ ],
+ "ficam": [
+  {
+   "codigo": "00000005",
+   "decisao": "NÃO FAZER BOLETAS",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: NÃO FAZER BOLETAS"
+   ]
+  },
+  {
+   "codigo": "00000020",
+   "decisao": "250K LOTE PATRIMÔNIO",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: 250K LOTE PATRIMÔNIO"
+   ]
+  },
+  {
+   "codigo": "00000025",
+   "decisao": "ESTÁ SÓ COM UMA PARCELA LANÇADA, VENCIDA EM 2013",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: ESTÁ SÓ COM UMA PARCELA LANÇADA, VENCIDA EM 2013"
+   ]
+  },
+  {
+   "codigo": "00000086",
+   "decisao": "OK",
+   "grupo": "ok_que_fica",
+   "motivos": [
+    "cronograma nunca lançado: nenhuma parcela a vencer no LSoft, mas há boleto de 09/2026 na Q06 L02",
+    "sem série principal (nenhum lote digitado com 24 parcelas de 24 ou mais)"
+   ]
+  },
+  {
+   "codigo": "00000099",
+   "decisao": "NÃO FAZER BOLETAS",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: NÃO FAZER BOLETAS"
+   ]
+  },
+  {
+   "codigo": "00000179",
+   "decisao": "OK",
+   "grupo": "ok_que_fica",
+   "motivos": [
+    "permuta de materiais: R$ 227,5 mil dos R$ 265 mil em aberto (decisão 5 do Lucas, 29/09/2026)",
+    "permuta ou serviço no texto da parcela"
+   ]
+  },
+  {
+   "codigo": "00000185",
+   "decisao": "TEM DUAS BOLETAS DO GARDEN TODO MÊS. UMA ABATE NA PERMUTA E A OUTRA ELE PAGA. AS PARCELAS DE 10.000,00 TB SÃO PERMUTAS",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: TEM DUAS BOLETAS DO GARDEN TODO MÊS. UMA ABATE NA PERMUTA E A OUTRA ELE PAGA. AS PARCELAS DE 10.000,00 TB SÃO PERMUTAS"
+   ]
+  },
+  {
+   "codigo": "00000213",
+   "decisao": "CANCELAR O DIA 25/09 E EMITIR O PRÓXIMO DIA 25/10 7/84 E DEIXAR OS PRÓXIMOS P DIA 25",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: CANCELAR O DIA 25/09 E EMITIR O PRÓXIMO DIA 25/10 7/84 E DEIXAR OS PRÓXIMOS P DIA 25"
+   ]
+  },
+  {
+   "codigo": "00000219",
+   "decisao": "NAO PRECISA FAZER BOLETOS",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: NAO PRECISA FAZER BOLETOS"
+   ]
+  },
+  {
+   "codigo": "00000276",
+   "decisao": "LOTE 342 VAI FAZER AS BOLETAS NORMAIS, TEM 160K DE PERMUTA E 84X DE 1190,48 REAJUSTÁVEL / NAO FAZER BOLETO P/ LOTE 358",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: LOTE 342 VAI FAZER AS BOLETAS NORMAIS, TEM 160K DE PERMUTA E 84X DE 1190,48 REAJUSTÁVEL / NAO FAZER BOLETO P/ LOTE 358"
+   ]
+  },
+  {
+   "codigo": "00000440",
+   "decisao": "OK",
+   "grupo": "ok_que_fica",
+   "motivos": [
+    "sem ponte: o documento dele não está em nenhum boleto do empreendimento",
+    "linha repetida (P7): 1 linha do lote antigo 4/247 idêntica à do 00000527, dono do lote Q04 L20; até o time dizer de quem é, é duplicata",
+    "sem série principal (nenhum lote digitado com 24 parcelas de 24 ou mais)"
+   ]
+  },
+  {
+   "codigo": "00000443",
+   "decisao": "ESTAVA COM PARCELAS 07 DE 20K MAS NO VALE DO SOL",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: ESTAVA COM PARCELAS 07 DE 20K MAS NO VALE DO SOL"
+   ]
+  },
+  {
+   "codigo": "00000487",
+   "decisao": "OK",
+   "grupo": "ok_que_fica",
+   "motivos": [
+    "sem ponte: sem CPF/CNPJ no LSoft"
+   ]
+  },
+  {
+   "codigo": "00000524",
+   "decisao": "OK",
+   "grupo": "ok_que_fica",
+   "motivos": [
+    "ponte cruzada: o CPF dele está no boleto Q11 L01, emitido em outro nome (P1)",
+    "baixa do LSoft sem data ou sem valor recebido na 005/084 de 10/07/2026"
+   ]
+  },
+  {
+   "codigo": "00000525",
+   "decisao": "VEIO JUNTO O DO VALE DO OURO",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: VEIO JUNTO O DO VALE DO OURO"
+   ]
+  },
+  {
+   "codigo": "00000538",
+   "decisao": "OK",
+   "grupo": "ok_que_fica",
+   "motivos": [
+    "ponte cruzada: o CPF dele está no boleto Q13 L07, emitido em outro nome (P1)"
+   ]
+  },
+  {
+   "codigo": "00000539",
+   "decisao": "PERMUTA DE 20K",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: PERMUTA DE 20K"
+   ]
+  },
+  {
+   "codigo": "00000541",
+   "decisao": "ESTÁ COMO “EM PARTES” SENDO QUE NA VERDADE É PQ ELA TEM 3 LOTES",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: ESTÁ COMO “EM PARTES” SENDO QUE NA VERDADE É PQ ELA TEM 3 LOTES"
+   ]
+  },
+  {
+   "codigo": "00000544",
+   "decisao": "40K PERMUTA DE PROJETO ARQUITETÔNICO",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: 40K PERMUTA DE PROJETO ARQUITETÔNICO"
+   ]
+  },
+  {
+   "codigo": "00000548",
+   "decisao": "OK",
+   "grupo": "ok_que_fica",
+   "motivos": [
+    "sem ponte: o documento dele não está em nenhum boleto do empreendimento"
+   ]
+  },
+  {
+   "codigo": "00000558",
+   "decisao": null,
+   "grupo": "fora_da_planilha",
+   "motivos": [
+    "não estava na planilha do time"
+   ]
+  },
+  {
+   "codigo": "00000560",
+   "decisao": "OK",
+   "grupo": "ok_que_fica",
+   "motivos": [
+    "linha repetida (P7): 7 linhas do lote antigo 12/402 idênticas às do 00000059, dono do lote Q12 L31; até o time dizer de quem é, é duplicata"
+   ]
+  },
+  {
+   "codigo": "00000563",
+   "decisao": "NÃO EMITIR BOLETO / PERMUTA DE 20K",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: NÃO EMITIR BOLETO / PERMUTA DE 20K"
+   ]
+  },
+  {
+   "codigo": "00000566",
+   "decisao": "ESTÁ SO AS PARCELAS ANUAIS",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: ESTÁ SO AS PARCELAS ANUAIS"
+   ]
+  },
+  {
+   "codigo": "00000582",
+   "decisao": "NÃO ESTÁ EM PARTES, SÃO DOIS LOTES",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: NÃO ESTÁ EM PARTES, SÃO DOIS LOTES"
+   ]
+  },
+  {
+   "codigo": "00000586",
+   "decisao": "TEM MAIS DE UM LOTE; 292, 293, 294 E 295 NA Q17",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: TEM MAIS DE UM LOTE; 292, 293, 294 E 295 NA Q17"
+   ]
+  },
+  {
+   "codigo": "00000587",
+   "decisao": "OK",
+   "grupo": "ok_que_fica",
+   "motivos": [
+    "contrato partido: o lote antigo 7/121 vai para Q07 L11, cujo boleto é de outro documento"
+   ]
+  },
+  {
+   "codigo": "00000588",
+   "decisao": "PATRIMÔNIO LOTE",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: PATRIMÔNIO LOTE"
+   ]
+  },
+  {
+   "codigo": "00000591",
+   "decisao": "40K PERMUTA",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: 40K PERMUTA"
+   ]
+  },
+  {
+   "codigo": "00000599",
+   "decisao": "OK",
+   "grupo": "ok_que_fica",
+   "motivos": [
+    "sem ponte: o documento dele não está em nenhum boleto do empreendimento"
+   ]
+  },
+  {
+   "codigo": "00000603",
+   "decisao": "MUDAMOS A PARCELA, TINHA DADO ERRO POR CAUSA DE 0,01",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: MUDAMOS A PARCELA, TINHA DADO ERRO POR CAUSA DE 0,01"
+   ]
+  },
+  {
+   "codigo": "00000605",
+   "decisao": "100K PERMUTA",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: 100K PERMUTA"
+   ]
+  },
+  {
+   "codigo": "00000610",
+   "decisao": "BOLETOS EM ABERTO",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: BOLETOS EM ABERTO"
+   ]
+  },
+  {
+   "codigo": "00000647",
+   "decisao": "ARRUMAMOS E TEM QUE ATUALIZAR - 450.000,00",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: ARRUMAMOS E TEM QUE ATUALIZAR - 450.000,00"
+   ]
+  },
+  {
+   "codigo": "00000654",
+   "decisao": "07 PARC DE 10K SÃO PERMUTA",
+   "grupo": "observacao",
+   "motivos": [
+    "observação do time na planilha: 07 PARC DE 10K SÃO PERMUTA"
+   ]
+  }
+ ]
+}

@@ -11,6 +11,7 @@ import {
 } from "@/lib/lsoft/carteira";
 import { CATEGORIA_PATRIMONIO } from "@/lib/lsoft/categorias";
 import { clientesDaTela, type FiltroDaExportacao } from "@/lib/lsoft/filtro-da-tela";
+import { parcelasQueFicam } from "@/lib/lsoft/na-carteira";
 
 // A CARTEIRA DO LSOFT EM XLSX: o botão "Excel" da tela LSoft Integração.
 //
@@ -34,6 +35,13 @@ import { clientesDaTela, type FiltroDaExportacao } from "@/lib/lsoft/filtro-da-t
 // formato de moeda: quem exporta soma e filtra na planilha. CPF vai como TEXTO formatado: só
 // dígitos o Excel leria como número e comeria o zero à esquerda. O molde é o extrato do portal
 // (lib/apolo/incorporador/planilha-do-extrato.ts).
+//
+// ⚠️ O QUE JÁ ESTÁ NO FINANCEIRO NÃO ENTRA (Lucas, 29/09/2026: o Garden validado *"é só copiar e
+// colar na carteira"* do Financeiro). A aba Clientes já vem sem essa parte (`lerCarteiraDoLsoft`
+// desconta); a aba Parcelas tira as parcelas que o Financeiro lê (o par cliente e empreendimento,
+// na categoria do Financeiro), pela mesma régua (`parcelasQueFicam`, lib/lsoft/na-carteira.ts). Sem
+// isso, o cliente que também tem Giant Towers sairia só com o Giant Towers na aba Clientes e com as
+// parcelas do Garden na aba Parcelas.
 //
 // ⚠️ LEITURA INCOMPLETA NÃO VIRA ARQUIVO. Toda leitura aqui é paginada, conferida contra a contagem
 // do banco e LANÇA erro no primeiro tropeço. Planilha com parcela faltando e cara de completa é
@@ -687,6 +695,10 @@ function notasDoArquivo(porEmpreendimento: boolean, hoje: string): Array<[string
       "Patrimônio",
       "O patrimônio (categoria 17 do LSoft) já está dentro do A receber. A coluna Patrimônio a receber mostra essa parte; não é um valor a mais.",
     ],
+    [
+      "Financeiro",
+      "A carteira que já passou para o Financeiro do portal (por cliente e empreendimento, como o Garden validado) não entra neste arquivo: nem nos números da aba Clientes, nem na aba Parcelas. Ela é acompanhada no Financeiro. O cliente que ainda tem outra carteira aqui aparece só com ela.",
+    ],
     ...(porEmpreendimento
       ? ([
           [
@@ -850,6 +862,15 @@ export async function exportarCarteiraDoLsoft(
   } catch (falha) {
     return { erro: falha instanceof Error ? falha.message : "Leitura das parcelas falhou.", ok: false };
   }
+
+  // ⚠️ O QUE O FINANCEIRO LÊ SAI DA ABA PARCELAS, como já saiu dos números da aba Clientes. Com um
+  // empreendimento escolhido, quem tem aquele empreendimento no Financeiro só está na lista se
+  // sobrou parcela fora da categoria dele, e é ela que fica; em Todos, tira o Garden (124) de quem
+  // ficou aqui por ter outra carteira.
+  parcelas = parcelasQueFicam(
+    parcelas,
+    new Map(clientes.map((cliente) => [cliente.codigo, cliente.empreendimentosNaCarteira])),
+  );
 
   // A segunda conferência, agora contra as parcelas que vão para o arquivo: se uma carga do LSoft
   // rodou entre as leituras, a aba Parcelas e a coluna de patrimônio da aba Clientes descolariam.

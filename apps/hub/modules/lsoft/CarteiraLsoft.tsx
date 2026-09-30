@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Download, Landmark, Loader2, Pencil, RefreshCw, Search, Sparkles, X } from "lucide-react";
+import { Check, Download, Landmark, Loader2, Pencil, RefreshCw, Search, Sparkles, Wallet, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { type ApiDoLsoft, apiInterna } from "./api";
@@ -16,6 +16,7 @@ import type {
 } from "@/lib/lsoft/carteira";
 import { EMPREENDIMENTOS_DO_ESPELHO } from "@/lib/lsoft/categorias";
 import { clientesDaTela } from "@/lib/lsoft/filtro-da-tela";
+import { rotuloDoSelo } from "@/lib/lsoft/na-carteira";
 import { unidadeParaExibir } from "@/lib/lsoft/unidade";
 
 import { SubsidioDaCaixa } from "./SubsidioDaCaixa";
@@ -502,6 +503,7 @@ export function CarteiraLsoft({ api = apiInterna }: { api?: ApiDoLsoft }) {
                           {cliente.empreendimentos.join(" · ")}
                         </span>
                         {cliente.patrimonioParcelasAbertas > 0 ? <SeloDePatrimonio /> : null}
+                        <SeloDoFinanceiro naCarteira={cliente.empreendimentosNaCarteira} />
                       </td>
                       <td className="px-4 py-2.5 tabular-nums text-ink-soft">
                         {cliente.cpfFormatado ?? "—"}
@@ -670,6 +672,29 @@ function SeloDePatrimonio() {
   );
 }
 
+/**
+ * O selo de quem já tem uma carteira no Financeiro do portal e continua aqui por causa das outras.
+ *
+ * ⚠️ SÓ APARECE PARA QUEM FICOU. O cliente cuja carteira inteira subiu nem está nesta lista
+ * (`lerCarteiraDoLsoft`); quem ficou, ficou com os números SEM a parte que subiu, e o selo diz onde
+ * ela foi parar. Sem ele, o time veria o total do cliente cair e acharia que a baixa sumiu.
+ *
+ * ⚠️ `?? []`: a lista vem de uma rota, e um servidor ainda da versão anterior não manda o campo.
+ */
+function SeloDoFinanceiro({ naCarteira }: { naCarteira: readonly string[] | undefined }) {
+  const rotulo = rotuloDoSelo(naCarteira ?? []);
+  if (!rotulo) return null;
+  return (
+    <span
+      className="ml-2 inline-flex items-center gap-1 rounded-full border border-black/10 px-1.5 py-px align-middle text-[10px] font-semibold text-ink-soft dark:border-white/15"
+      title={`${rotulo}: essa carteira já é acompanhada no Financeiro do portal. Aqui fica só o que não passou para lá.`}
+    >
+      <Wallet size={10} />
+      {rotulo}
+    </span>
+  );
+}
+
 function Cartao({
   dica,
   rotulo,
@@ -779,7 +804,21 @@ const OPCOES = {
 /** Estado civil que obriga o regime de bens — a mesma régua do C2X (`EXIGE_REGIME`). */
 const EXIGE_REGIME = new Set(["Casado(a)", "União estável"]);
 
-function PainelDoCliente({
+/**
+ * A ficha do cliente do LSoft: cadastro, parcelas (com a baixa), documentos e histórico.
+ *
+ * ⚠️ EXPORTADO PARA O FINANCEIRO DO PORTAL (29/09/2026). A carteira do Garden validado passou a ser
+ * lida pelo Financeiro, mas o dinheiro continua em `lsoft_parcelas`, e a baixa continua sendo dada
+ * AQUI, com trilha (Lucas: *"é só copiar e colar na carteira"*). O Financeiro (TelaCarteira.tsx) abre
+ * este mesmo painel ao clicar no cliente, com `apiDoPortal`, em vez de ter uma segunda ficha que um
+ * dia daria baixa diferente. As props são o contrato: mudar uma é mudar as duas telas.
+ *
+ * ⚠️ IMPORT ESTÁTICO LÁ, E NÃO `next/dynamic` (checagem integrada de 29/09/2026). O PortalIncorporador
+ * já importa este arquivo inteiro (a aba LSoft Integração), então o dinâmico não tirava nada do
+ * pacote e só criava um pedaço buscado no clique, que some no deploy seguinte. Ver o comentário no
+ * topo de TelaCarteira.tsx.
+ */
+export function PainelDoCliente({
   api,
   codigo,
   onFechar,

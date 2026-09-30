@@ -45,6 +45,7 @@ function cliente(sobrescreve: Partial<ClienteDaCarteira> = {}): ClienteDaCarteir
     cpfFormatado: "012.345.678-90",
     email: null,
     empreendimentos: ["Garden"],
+    empreendimentosNaCarteira: [],
     enriquecidoEm: null,
     nome: "Maria da Silva",
     parcelas: 3,
@@ -393,6 +394,9 @@ describe("planilhaDaCarteiraLsoft", () => {
     // Na visão de todos, a view (0097) soma inclusive o que é da Caixa, e o arquivo diz isso.
     expect(String(todos.get("A receber"))).toContain("inclusive as confirmadas");
     expect(String(todos.get("Recebido"))).toContain("parcela já paga");
+    // A carteira que subiu para o Financeiro não está no arquivo, e ele diz isso nas duas visões.
+    expect(String(todos.get("Financeiro"))).toContain("não entra neste arquivo");
+    expect(String(comEmpreendimento.get("Financeiro"))).toContain("não entra neste arquivo");
     // Em Todos o cadastro vem da 0097, que tem a coluna: nada de nota sobre ele.
     expect(todos.has("Cadastro p/ C2X")).toBe(false);
 
@@ -754,6 +758,87 @@ describe("exportarCarteiraDoLsoft", () => {
 
     const resultado = await exportarCarteiraDoLsoft(SO_PATRIMONIO, NOITE_DO_DIA_29);
     expect(resultado).toMatchObject({ clientes: 1, nome: "lsoft-todos-2026-09-29.xlsx", ok: true, parcelas: 1 });
+  });
+
+  it("a aba Parcelas NÃO traz o par (cliente, empreendimento) que já está no Financeiro", async () => {
+    // A lista já vem descontada (`lerCarteiraDoLsoft`): A ficou aqui pelo Giant Towers, com o Garden
+    // no Financeiro; B tem o Garden na integração (não subiu).
+    duble.carteira = lista([
+      cliente({ codigo: "A", empreendimentos: ["Giant Towers"], empreendimentosNaCarteira: ["Garden"] }),
+      cliente({ codigo: "B" }),
+    ]);
+    const emAberto = (id: string, clienteCodigo: string, empreendimento: string): Linha => ({
+      categoria_lsoft: 124,
+      cliente_codigo: clienteCodigo,
+      empreendimento,
+      id,
+      paga: false,
+      valor: 100,
+      vencimento: "2026-10-10",
+    });
+    duble.banco = bancoFalso({
+      lsoft_classificacao_de_parcela: [],
+      lsoft_parcelas: [
+        emAberto("p1", "A", "Garden"),
+        emAberto("p2", "A", "Garden"),
+        emAberto("p3", "A", "Giant Towers"),
+        emAberto("p4", "B", "Garden"),
+      ],
+    }).banco;
+
+    const resultado = await exportarCarteiraDoLsoft(SEM_FILTRO, NOITE_DO_DIA_29);
+    if (!resultado.ok) throw new Error(resultado.erro);
+    expect(resultado).toMatchObject({ clientes: 2, parcelas: 2 });
+
+    const parcelas = aba(await abrir(resultado.arquivo), "Parcelas");
+    const pares: Array<[unknown, unknown]> = [];
+    parcelas.eachRow((linha, numero) => {
+      if (numero === 1 || numero === parcelas.rowCount) return;
+      pares.push([
+        linha.getCell(coluna(COLUNAS_DAS_PARCELAS, "Código")).value,
+        linha.getCell(coluna(COLUNAS_DAS_PARCELAS, "Empreendimento")).value,
+      ]);
+    });
+    expect(pares.sort()).toEqual([
+      ["A", "Giant Towers"],
+      ["B", "Garden"],
+    ]);
+  });
+
+  it("parcela do par no Financeiro FORA da categoria dele fica na aba Parcelas, e o patrimônio fecha", async () => {
+    // A tem o Garden no Financeiro, mas uma parcela do Garden é da 17 (patrimônio), que o Financeiro
+    // não lê. Antes da revisão de 29/09/2026 ela saía do arquivo com o par inteiro: não estava em
+    // tela nenhuma, e a conferência do patrimônio recusava o arquivo (lista 50, parcelas 0).
+    duble.carteira = lista([
+      cliente({
+        codigo: "A",
+        empreendimentos: ["Garden", "Giant Towers"],
+        empreendimentosNaCarteira: ["Garden"],
+        patrimonioAReceber: 50,
+        patrimonioParcelasAbertas: 1,
+      }),
+    ]);
+    const emAberto = (id: string, empreendimento: string, categoria: number, valor: number): Linha => ({
+      categoria_lsoft: categoria,
+      cliente_codigo: "A",
+      empreendimento,
+      id,
+      paga: false,
+      valor,
+      vencimento: "2026-10-10",
+    });
+    duble.banco = bancoFalso({
+      lsoft_classificacao_de_parcela: [],
+      lsoft_parcelas: [
+        emAberto("p1", "Garden", 124, 100),
+        emAberto("p2", "Garden", 17, 50),
+        emAberto("p3", "Giant Towers", 118, 100),
+      ],
+    }).banco;
+
+    const resultado = await exportarCarteiraDoLsoft(SEM_FILTRO, NOITE_DO_DIA_29);
+    if (!resultado.ok) throw new Error(resultado.erro);
+    expect(resultado).toMatchObject({ clientes: 1, parcelas: 2 });
   });
 
   it("a prova do patrimônio lê o recorte do empreendimento, ordenada e contada", async () => {

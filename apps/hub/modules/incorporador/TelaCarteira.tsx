@@ -23,6 +23,8 @@ import {
   recorteDaConsulta,
 } from "@/lib/apolo/incorporador/planilha-da-carteira-por-unidade";
 import { hojeNaCasa } from "@/lib/guardian/hoje-na-casa";
+import { PainelDoCliente } from "@/modules/lsoft/CarteiraLsoft";
+import { apiDoPortal } from "@/modules/lsoft/api";
 import { fonte } from "@/modules/publico/ui/tokens";
 import type {
   ExtratoParcela,
@@ -35,6 +37,20 @@ import type {
 
 import { T } from "./tema";
 import { chaveDaLinhaDaCarteira } from "./chave-da-linha";
+
+// A FICHA DO LSOFT, PARA A UNIDADE DO GARDEN (29/09/2026). O Garden validado passou a ser lido pelo
+// Financeiro (Lucas: *"é só copiar e colar na carteira"*), mas o dinheiro dele continua em
+// `lsoft_parcelas` e a baixa continua sendo dada na ficha do LSoft, com trilha. Clicar numa unidade
+// dele abre ESSA ficha (o `PainelDoCliente` de CarteiraLsoft.tsx), e não o modal de parcelas do C2X,
+// que não tem as parcelas dele.
+//
+// ⚠️ IMPORTAÇÃO ESTÁTICA, E DE PROPÓSITO (revisão de 29/09/2026). A primeira versão importava a ficha
+// e a `apiDoPortal` por `next/dynamic`, para "não pesar no pacote dos outros portais". Esse ganho não
+// existe: o PortalIncorporador, o único que monta esta tela, já importa `CarteiraLsoft` e `apiDoPortal`
+// estaticamente (a aba LSoft Integração), então os dois já estão no pacote de todo portal. O import
+// dinâmico só criava um pedaço de código buscado no CLIQUE, e o portal aberto de antes de um deploy
+// pediria um pedaço que não existe mais: sem tratamento, a tela inteira caía em "Esta tela parou" (o
+// defeito do editor de minuta, 22/09/2026).
 
 // A CARTEIRA DO INCORPORADOR — a CarteiraTab do Apolo interno, portada para o portal, com o
 // LÍQUIDO que é dele ao lado do bruto que a Careli administra.
@@ -156,6 +172,8 @@ type ParcelaDeAtoESinal = {
 type UnidadeDaTela = {
   /** SÓ na sessão comercial: as parcelas de Ato e Sinal da unidade (modo coordenador). */
   atoESinal?: { parcelas: ParcelaDeAtoESinal[] };
+  /** SÓ na unidade do LSoft: o que a linha diz além dos números (outro lote no CPF, lote a confirmar). */
+  avisos?: string[];
   block: null | string;
   client: null | string;
   code: string;
@@ -166,7 +184,11 @@ type UnidadeDaTela = {
   imobiliaria: null | string;
   liquido: LiquidoDaUnidade | null;
   lot: null | string;
+  /** SÓ na unidade do LSoft: o código do cliente, que abre a ficha dele. */
+  lsoftCodigo?: string;
   maxOverdueDays: number;
+  /** `"lsoft"` = esta linha vem do espelho do LSoft (o Garden), e não do C2X. Ausente = C2X. */
+  origem?: "lsoft";
   overdueAmount: number;
   overdueInstallments: number;
   paidAmount: number;
@@ -195,15 +217,49 @@ type EmpreendimentoDaTela = {
 type Dados = {
   /** SÓ na sessão comercial: `true` = a leitura de Ato e Sinal bateu no teto e está incompleta. */
   atoESinalParcial?: boolean;
+  /**
+   * SÓ quando o C2X falhou e a rota respondeu com o Garden do LSoft já lido: o texto do que ficou
+   * FORA desta carteira. Ausente = o C2X respondeu (ou o recorte não tem o LSoft e a falha foi 503).
+   */
+  avisoDoC2x?: string;
   bruto: null | Resumo;
   empreendimentos?: EmpreendimentoDaTela[];
   filtro?: null | string;
   indicadores?: IndicadoresDaCarteira | null;
   liquido: null | Liquido;
+  /**
+   * SÓ quando o recorte inclui um empreendimento cuja carteira vem do LSoft (o Garden, desde
+   * 29/09/2026). `aviso` não nulo = a leitura dele falhou e ele ficou FORA desta carteira.
+   */
+  lsoft?: LsoftDaCarteira;
   semCarteira?: boolean;
   unidades?: number;
   units?: UnidadeDaTela[];
 };
+
+type LsoftDaCarteira = { aviso: null | string; empreendimentos: string[]; unidades: number };
+
+/** "Garden", "Garden e Vale do Sol": o nome dos empreendimentos do LSoft no texto da tela. */
+function nomesDoLsoft(lsoft: LsoftDaCarteira): string {
+  const nomes = lsoft.empreendimentos.filter(Boolean);
+  if (nomes.length <= 1) return nomes[0] ?? "Garden";
+  return `${nomes.slice(0, -1).join(", ")} e ${nomes[nomes.length - 1]}`;
+}
+
+/**
+ * Quanto da carteira do recorte veio do LSoft: o total das unidades dele, somado em centavos (são
+ * ~100 valores com centavo, e o `brl` do cabeçalho arredonda para o real).
+ */
+function totalDoLsoft(units: readonly UnidadeDaTela[]): { contratos: number; total: number } {
+  let centavos = 0;
+  let contratos = 0;
+  for (const unit of units) {
+    if (unit.origem !== "lsoft") continue;
+    contratos += 1;
+    centavos += Math.round((Number(unit.totalContract) || 0) * 100);
+  }
+  return { contratos, total: centavos / 100 };
+}
 
 /** Uma parcela do modal — allowlist de /api/incorporador/parcelas (ParcelaDoPortal). */
 type ParcelaDaUnidade = {
@@ -497,11 +553,28 @@ export function TelaCarteira({
   // Alfa e logo em Beta dispara duas, e se a de Alfa voltar por último ela ficava na tela debaixo
   // do chip de Beta, sem prazo para acabar (e o Excel baixava Alfa). Cada leitura leva um número;
   // a que volta depois de uma mais nova é descartada inteira: dado, erro e o "carregando".
-  const carregar = useCallback(async (emp: null | string) => {
+  //
+  // ⚠️ A RELEITURA DEPOIS DA FICHA DO LSOFT NÃO TROCA A TELA PELO ERRO (revisão de 29/09/2026). Ela
+  // relê o MESMO recorte que já está na tela; se falhar (o C2X devolve 503, a rede cai), os números de
+  // antes ficam e a tela avisa que não conseguiu atualizar. Com `setErro` a aba inteira virava o
+  // Aviso de erro e ficava presa nele até alguém trocar o chip ou dar F5. Trocar de recorte continua
+  // no caminho de sempre: lá, manter a tabela antiga debaixo do chip novo seria mostrar outro dado.
+  const [avisoDeReleitura, setAvisoDeReleitura] = useState<null | string>(null);
+  const carregar = useCallback(async (emp: null | string, opcoes: { releitura?: boolean } = {}) => {
     const estaLeitura = ++ultimaLeitura.current;
     const aindaVale = () => estaLeitura === ultimaLeitura.current;
+    const falhou = (texto: string) => {
+      if (opcoes.releitura) {
+        setAvisoDeReleitura(
+          "Não consegui atualizar a carteira depois da alteração na ficha. Os números abaixo são de antes dela.",
+        );
+      } else {
+        setErro(texto);
+      }
+    };
     setCarregando(true);
     setErro(null);
+    setAvisoDeReleitura(null);
     try {
       const endereco = emp
         ? `/api/incorporador/carteira?code=${encodeURIComponent(emp)}`
@@ -510,7 +583,7 @@ export function TelaCarteira({
       const corpo = (await r.json().catch(() => null)) as { data?: Dados; error?: string } | null;
       if (!aindaVale()) return;
       if (!r.ok || !corpo?.data) {
-        setErro(corpo?.error ?? "Não foi possível carregar a carteira.");
+        falhou(corpo?.error ?? "Não foi possível carregar a carteira.");
         return;
       }
       const agora = new Date();
@@ -519,7 +592,7 @@ export function TelaCarteira({
       setCarteiraConsultadaEm(agora);
     } catch {
       if (!aindaVale()) return;
-      setErro("Não foi possível carregar a carteira.");
+      falhou("Não foi possível carregar a carteira.");
     } finally {
       if (aindaVale()) setCarregando(false);
     }
@@ -627,6 +700,9 @@ export function TelaCarteira({
   // devolve junto); o chip pode já estar em outro recorte, ainda carregando, com a tabela antiga na
   // tela. Ver `recorteDaConsulta`.
   const recorteDoArquivo = recorteDaConsulta(dados.filtro, empreendimentos);
+  // A parte do total que veio do LSoft (o Garden), para o cabeçalho não chamá-la de "administrada
+  // pela Careli". Sem `dados.lsoft` a rota não leu o LSoft e a conta nem roda.
+  const doLsoftNoTotal = dados.lsoft ? totalDoLsoft(dados.units ?? []) : { contratos: 0, total: 0 };
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -641,6 +717,18 @@ export function TelaCarteira({
             // nada de líquido, rateio ou participação, em texto nenhum deste modo.
             <>
               {inteiro(recorte.contratos)} contratos · {brl(recorte.total)} em ato e sinal.
+            </>
+          ) : doLsoftNoTotal.contratos > 0 && dados.lsoft ? (
+            // ⚠️ O GARDEN NÃO É CARTEIRA ADMINISTRADA PELA CARELI (revisão de 29/09/2026). No cadastro
+            // do portal ele está com `carteira_administrada = false`, e a decisão de 16/09/2026 é que
+            // o time do Cecílio anda sem o administrativo da Careli. Somar os R$ dele debaixo de
+            // "administrada pela Careli" afirmaria ao cliente o contrário; a frase separa as partes.
+            <>
+              {inteiro(dados.bruto.contracts)} contratos, {brl(dados.bruto.totalPortfolio)} de
+              carteira
+              {doLsoftNoTotal.contratos === dados.units?.length
+                ? ` do ${nomesDoLsoft(dados.lsoft)}.`
+                : `: ${brl(Math.max(dados.bruto.totalPortfolio - doLsoftNoTotal.total, 0))} administrada pela Careli e ${brl(doLsoftNoTotal.total)} do ${nomesDoLsoft(dados.lsoft)}.`}
             </>
           ) : (
             <>
@@ -742,14 +830,30 @@ export function TelaCarteira({
       ) : aba === "carteira" ? (
         <AbaCarteira
           atualizando={carregando}
+          avisoDeReleitura={avisoDeReleitura}
+          avisoDoC2x={dados.avisoDoC2x ?? null}
           bruto={dados.bruto}
           consultadoEm={carteiraConsultadaEm}
           liquido={dados.liquido}
+          lsoft={dados.lsoft ?? null}
+          // A baixa dada na ficha do LSoft muda Pago, Vencido e a situação da unidade: relê a
+          // carteira do MESMO recorte, e a tabela mostra o número novo sem o F5. É RELEITURA: se
+          // falhar, os números de antes ficam, com o aviso (ver `carregar`).
+          onRecarregar={() => void carregar(alvo, { releitura: true })}
           recorte={recorteDoArquivo}
           units={dados.units ?? []}
         />
       ) : (
         <AbaIndicadores
+          // ⚠️ SAI DA CARTEIRA, E NÃO DA RESPOSTA DOS INDICADORES: a leitura de `?indicadores=1` não
+          // lê o LSoft (os KPIs continuam só do C2X), então é a carteira que sabe se o Garden está
+          // neste recorte. Sem unidade dele e sem falha (a migration 0199 ainda não rodou, ninguém
+          // subiu), a tela fica como era: não há o que avisar.
+          avisoLsoft={
+            dados.lsoft && (dados.lsoft.unidades > 0 || dados.lsoft.aviso !== null)
+              ? `Os indicadores do ${nomesDoLsoft(dados.lsoft)} ainda não entram aqui: a carteira dele vem do LSoft e, por enquanto, aparece só na aba Carteira.`
+              : null
+          }
           carregando={indicadoresCarregando}
           empreendimento={alvo}
           erro={indicadoresErro}
@@ -767,9 +871,13 @@ export function TelaCarteira({
 
 function AbaCarteira({
   atualizando,
+  avisoDeReleitura,
+  avisoDoC2x,
   bruto,
   consultadoEm,
   liquido,
+  lsoft,
+  onRecarregar,
   recorte,
   units,
 }: {
@@ -779,10 +887,18 @@ function AbaCarteira({
    * escolher outro.
    */
   atualizando: boolean;
+  /** A releitura depois da ficha do LSoft falhou: os números na tela são os de antes dela. */
+  avisoDeReleitura: null | string;
+  /** O C2X falhou e a carteira saiu só com o Garden do LSoft: o que ficou de fora (ver `Dados`). */
+  avisoDoC2x: null | string;
   bruto: Resumo;
   /** A hora em que ESTAS unidades foram lidas (não a do cabeçalho): vai para a aba "Sobre" do Excel. */
   consultadoEm: Date | null;
   liquido: Liquido | null;
+  /** O Garden do LSoft neste recorte (ver `Dados.lsoft`). `null` = só C2X, a tela de sempre. */
+  lsoft: LsoftDaCarteira | null;
+  /** Relê a carteira do recorte atual: ao fechar a ficha do LSoft em que alguém gravou. */
+  onRecarregar: () => void;
   /** O nome do recorte escolhido (produto e filho), para o Excel. `null` = "Todos". */
   recorte: null | string;
   units: UnidadeDaTela[];
@@ -791,6 +907,38 @@ function AbaCarteira({
   const [filtro, setFiltro] = useState<FiltroDaCarteira>("todos");
   const [ordem, setOrdem] = useState<OrdemDaCarteira>({ coluna: "vencido", direcao: "desc" });
   const [unidadeAberta, setUnidadeAberta] = useState<UnidadeDaTela | null>(null);
+  // O código LSoft do cliente cuja ficha está aberta (a unidade do Garden). Separado de
+  // `unidadeAberta` porque são duas janelas diferentes, e uma nunca abre a outra.
+  const [fichaAberta, setFichaAberta] = useState<null | string>(null);
+  // ⚠️ A FICHA GRAVOU; A CARTEIRA SÓ É RELIDA QUANDO ELA FECHA (revisão de 29/09/2026). A ficha chama
+  // `onSalvou` a CADA gravação (cadastro e cada parcela), e reler a cada uma refazia no C2X a consulta
+  // cara desta tela: 20 baixas seguidas eram 20 leituras do bruto e do líquido do recorte inteiro,
+  // no pool de conexões que o resto do Panteon divide. Uma falha no meio fechava a ficha com o
+  // rascunho dentro. Agora a gravação só marca, e o fechamento relê uma vez.
+  const fichaGravou = useRef(false);
+
+  // A unidade do LSoft abre a ficha dele; a do C2X, o modal de parcelas de sempre.
+  const abrir = useCallback((unit: UnidadeDaTela) => {
+    if (unit.origem === "lsoft" && unit.lsoftCodigo) {
+      fichaGravou.current = false;
+      setFichaAberta(unit.lsoftCodigo);
+    } else {
+      setUnidadeAberta(unit);
+    }
+  }, []);
+
+  const fecharFicha = useCallback(() => {
+    setFichaAberta(null);
+    if (fichaGravou.current) {
+      fichaGravou.current = false;
+      onRecarregar();
+    }
+  }, [onRecarregar]);
+
+  // As unidades do LSoft que ENTRARAM nesta carteira. Com o recorte só do Garden, o bloco do líquido
+  // não tem o que somar, e mostrar R$ 0,00 ali seria dizer ao loteador que ninguém pagou.
+  const doLsoft = lsoft ? units.filter((unit) => unit.origem === "lsoft").length : 0;
+  const soDoLsoft = doLsoft > 0 && doLsoft === units.length;
   const [exportando, setExportando] = useState(false);
   const [erroDaExportacao, setErroDaExportacao] = useState<null | string>(null);
 
@@ -865,7 +1013,14 @@ function AbaCarteira({
           abaixo é a sua, já descontado o rateio de cada parcela.
         </p>
 
-        {liquido === null ? (
+        {soDoLsoft && lsoft ? (
+          // ⚠️ O RECORTE É SÓ DO GARDEN: o líquido dele não é apurado (a política comercial dele é
+          // nula), e o bloco sairia com R$ 0,00, que para quem recebeu é acusação de erro nosso.
+          <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>
+            O valor líquido do {nomesDoLsoft(lsoft)} ainda não é apurado aqui. O que os compradores
+            pagaram está nos cartões abaixo, em Recebido.
+          </p>
+        ) : liquido === null ? (
           // ⚠️ Não mostrar R$ 0,00 aqui. Zero, para quem recebeu, é acusação de erro nosso.
           <p style={{ color: T.muted, fontSize: 13, margin: 0 }}>
             Não foi possível calcular o valor líquido agora. O time da Careli já consegue ver isso
@@ -891,9 +1046,52 @@ function AbaCarteira({
                 líquido podem estar incompletos.
               </p>
             ) : null}
+            {/* O Garden soma nos cartões e na tabela, mas não aqui: sem esta linha, o "Bruto pago"
+                deste bloco e o "Recebido" dos cartões divergem sem explicação. */}
+            {doLsoft > 0 && lsoft ? (
+              <p style={{ color: T.muted, fontSize: 12, lineHeight: 1.5, margin: "8px 0 0" }}>
+                O {nomesDoLsoft(lsoft)} ainda não entra neste bloco: o valor líquido dele não é
+                apurado aqui. Ele está nos cartões e na tabela abaixo.
+              </p>
+            ) : null}
           </>
         )}
       </section>
+
+      {/* Uma das duas fontes falhou: o que ela traria ficou FORA desta carteira, e a tela diz isso
+          em vez de mostrar um total menor calado. A do LSoft (o Garden) e a do C2X (o resto do
+          recorte, quando o Garden já tinha sido lido) são avisos separados, e podem vir os dois. */}
+      {[lsoft?.aviso, avisoDoC2x].filter((aviso): aviso is string => Boolean(aviso)).map((aviso) => (
+        <p key={aviso} role="alert" style={alertaDaCarteira}>
+          {aviso}
+        </p>
+      ))}
+
+      {/* A releitura depois da ficha falhou: a tela continua de pé com os números de antes, e dá
+          como tentar de novo sem o F5. */}
+      {avisoDeReleitura ? (
+        <p role="alert" style={{ ...alertaDaCarteira, alignItems: "center", display: "flex", flexWrap: "wrap", gap: 10 }}>
+          <span>{avisoDeReleitura}</span>
+          <button
+            disabled={atualizando}
+            onClick={onRecarregar}
+            style={{
+              background: "transparent",
+              border: `1px solid ${T.danger}`,
+              borderRadius: 8,
+              color: T.danger,
+              cursor: atualizando ? "default" : "pointer",
+              fontFamily: fonte,
+              fontSize: 12,
+              fontWeight: 600,
+              padding: "4px 10px",
+            }}
+            type="button"
+          >
+            Tentar de novo
+          </button>
+        </p>
+      ) : null}
 
       {/* ── O CENÁRIO DA CARTEIRA: os 8 cartões da CarteiraTab interna ─────────
           Mesmos rótulos e mesmas dicas; o tom colorido do interno virou o par neutro/alerta do
@@ -1100,9 +1298,13 @@ function AbaCarteira({
                   // Mesma regra da tabela do coordenador: o lote revendido tem uma linha por
                   // contrato, e o id da unidade se repete. Ver `chave-da-linha.ts`.
                   key={chaveDaLinhaDaCarteira(unit)}
-                  onClick={() => setUnidadeAberta(unit)}
+                  onClick={() => abrir(unit)}
                   style={{ cursor: "pointer" }}
-                  title="Ver as parcelas desta unidade"
+                  title={
+                    unit.origem === "lsoft"
+                      ? "Abrir a ficha do cliente, com as parcelas e a baixa"
+                      : "Ver as parcelas desta unidade"
+                  }
                 >
                   <td style={{ ...celula, paddingLeft: 16 }}>
                     <p style={{ color: T.text, fontSize: 13, fontWeight: 600, margin: 0 }}>
@@ -1112,6 +1314,16 @@ function AbaCarteira({
                       {[unit.block, unit.lot].filter(Boolean).join(" / ")}
                       {unit.empreendimento ? ` · ${unit.empreendimento}` : ""}
                     </p>
+                    {/* O que a linha do LSoft precisa dizer: o outro lote do mesmo CPF, o lote a
+                        confirmar. Pequeno e embaixo, para não brigar com o código da unidade. */}
+                    {(unit.avisos ?? []).map((aviso) => (
+                      <p
+                        key={aviso}
+                        style={{ color: T.muted, fontSize: 10.5, lineHeight: 1.35, margin: "2px 0 0", maxWidth: 220 }}
+                      >
+                        {aviso}
+                      </p>
+                    ))}
                   </td>
                   <td style={celula}>
                     {unit.client ? (
@@ -1183,6 +1395,15 @@ function AbaCarteira({
                           </p>
                         ) : null}
                       </>
+                    ) : unit.origem === "lsoft" ? (
+                      // A política comercial do Garden é nula: não há rateio para aplicar, e o "-"
+                      // de sempre pareceria "ainda vai chegar". Aqui a tela diz o que é.
+                      <span
+                        style={{ color: T.muted, fontSize: 12 }}
+                        title="O valor líquido desta carteira ainda não é apurado aqui"
+                      >
+                        não apurado
+                      </span>
                     ) : (
                       <span style={{ color: T.muted }} title="Líquido ainda não apurado">
                         -
@@ -1209,6 +1430,19 @@ function AbaCarteira({
 
       {unidadeAberta ? (
         <ModalDeParcelas onFechar={() => setUnidadeAberta(null)} unit={unidadeAberta} />
+      ) : null}
+
+      {/* A ficha do LSoft, com a API do portal (a mesma da aba LSoft Integração). Gravar nela só
+          marca a carteira como velha; fechar relê uma vez (ver `fichaGravou`). */}
+      {fichaAberta ? (
+        <PainelDoCliente
+          api={apiDoPortal}
+          codigo={fichaAberta}
+          onFechar={fecharFicha}
+          onSalvou={() => {
+            fichaGravou.current = true;
+          }}
+        />
       ) : null}
     </>
   );
@@ -1732,6 +1966,7 @@ const botaoIcone = {
 // ── ABA INDICADORES (o BI de Gestão de Carteira) ────────────────────────────
 
 function AbaIndicadores({
+  avisoLsoft,
   carregando,
   empreendimento,
   erro,
@@ -1739,6 +1974,11 @@ function AbaIndicadores({
   indicadores,
   onFiltro,
 }: {
+  /**
+   * O Garden do LSoft está neste recorte, e os KPIs (e o extrato) continuam só do C2X: a linha que
+   * diz isso. `null` = nada a avisar.
+   */
+  avisoLsoft: null | string;
   carregando: boolean;
   /** O `?code=` da aba, para a exportação baixar a MESMA carteira que está na tela. */
   empreendimento: null | string;
@@ -1747,16 +1987,57 @@ function AbaIndicadores({
   indicadores: IndicadoresDaCarteira | null;
   onFiltro: (mudanca: Partial<FiltroDoExtrato>) => void;
 }) {
-  if (carregando && !indicadores) return <Aviso texto="Calculando os indicadores…" />;
-  if (erro) return <Aviso texto={erro} tom="erro" />;
+  // ⚠️ O GARDEN NÃO ESTÁ NOS NÚMEROS DESTA ABA (29/09/2026). A carteira dele vem do LSoft e soma só
+  // na aba Carteira; sem esta linha, o total daqui e o de lá divergem sem explicação. Ela aparece
+  // também enquanto os indicadores carregam ou falham: o recorte é o mesmo, e o aviso vale igual.
+  const doLsoft = avisoLsoft ? (
+    <p
+      style={{
+        background: T.soft,
+        border: `1px solid ${T.border}`,
+        borderRadius: 12,
+        color: T.sub,
+        fontSize: 12.5,
+        lineHeight: 1.5,
+        margin: 0,
+        padding: "10px 14px",
+      }}
+    >
+      {avisoLsoft}
+    </p>
+  ) : null;
+
+  if (carregando && !indicadores) {
+    return (
+      <>
+        {doLsoft}
+        <Aviso texto="Calculando os indicadores…" />
+      </>
+    );
+  }
+  if (erro) {
+    return (
+      <>
+        {doLsoft}
+        <Aviso texto={erro} tom="erro" />
+      </>
+    );
+  }
   if (!indicadores) {
-    return <Aviso texto="Não foi possível calcular os indicadores agora." tom="erro" />;
+    return (
+      <>
+        {doLsoft}
+        <Aviso texto="Não foi possível calcular os indicadores agora." tom="erro" />
+      </>
+    );
   }
 
   const { contadores, kpis } = indicadores;
 
   return (
     <>
+      {doLsoft}
+
       {/* Os KPIs da página "Gestão de Carteira" do BI. Os percentuais chegam JÁ em 0–100. */}
       <section style={cartao}>
         <h2 style={titulo}>Receita líquida da carteira</h2>
@@ -2970,6 +3251,18 @@ const cartao = {
 } as const;
 
 const titulo = { color: T.text, fontSize: 15, fontWeight: 700, margin: 0 } as const;
+
+/** O alerta da aba Carteira: uma fonte que não pôde ser lida, ou a releitura que falhou. */
+const alertaDaCarteira = {
+  background: T.dangerBg,
+  border: `1px solid ${T.danger}`,
+  borderRadius: 12,
+  color: T.danger,
+  fontSize: 12.5,
+  lineHeight: 1.5,
+  margin: 0,
+  padding: "10px 14px",
+} as const;
 
 const cabecalho = {
   borderBottom: `1px solid ${T.border}`,

@@ -11,6 +11,19 @@
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { CATEGORIA_PATRIMONIO, EMPREENDIMENTOS_DO_ESPELHO } from "@/lib/lsoft/categorias";
 import { digitalDaParcela } from "@/lib/lsoft/impressao-digital";
+import {
+  CATEGORIA_NO_FINANCEIRO,
+  COLUNA_NA_CARTEIRA,
+  colunaNaCarteiraAusente,
+  descontarDaCarteira,
+  type LinhaPorEmpreendimento,
+  linhaDoQueFicaNoPar,
+  linhaPorEmpreendimentoDaView,
+  listaNaCarteira,
+  naCarteiraQueOFinanceiroLe,
+  type ParcelaQueFicaNoPar,
+  saiDoRecorte,
+} from "@/lib/lsoft/na-carteira";
 
 export type ClienteDaCarteira = {
   /** Quantos dos 9 campos que o C2X exige já estão preenchidos. */
@@ -27,6 +40,12 @@ export type ClienteDaCarteira = {
   cpfFormatado: null | string;
   email: null | string;
   empreendimentos: string[];
+  /**
+   * Os empreendimentos cuja carteira deste cliente já é lida pelo Financeiro do portal (migration
+   * 0199). Os números desta linha JÁ NÃO os contam; a tela usa a lista só para o selo "Garden no
+   * Financeiro" de quem ainda tem outra carteira aqui. Ver `lib/lsoft/na-carteira.ts`.
+   */
+  empreendimentosNaCarteira: string[];
   enriquecidoEm: null | string;
   nome: string;
   parcelas: number;
@@ -251,6 +270,13 @@ export type FiltroDaCarteira = {
   /** Nome, CPF ou unidade ("109", "Q08"). */
   busca?: null | string;
   empreendimento?: null | string;
+  /**
+   * ⚠️ `true` NÃO tira da lista a carteira que já está no Financeiro. A tela LSoft Integração e o
+   * Excel dela nunca passam isto: para eles, o que subiu saiu (Lucas, 29/09/2026). Existe para quem
+   * conta clientes do LSoft para outra coisa, como a prontidão de boletos (CPF de quem vai receber
+   * boleto), onde tirar os 106 do Garden seria contar menos gente do que existe.
+   */
+  incluirQuemEstaNoFinanceiro?: boolean;
 };
 
 type LinhaDaView = Record<string, unknown>;
@@ -267,6 +293,8 @@ function clienteDaLinha(linha: LinhaDaView): ClienteDaCarteira {
     cpf: texto(linha.cpf),
     cpfFormatado: texto(linha.cpf_formatado),
     email: texto(linha.email),
+    // Preenchido em `lerCarteiraDoLsoft`: as views não conhecem a coluna (ela vive só na tabela).
+    empreendimentosNaCarteira: [],
     // A view por empreendimento (0104) traz `empreendimento` no singular; a 0096 traz o array.
     empreendimentos: Array.isArray(linha.empreendimentos)
       ? (linha.empreendimentos as string[])
@@ -296,11 +324,249 @@ function clienteDaLinha(linha: LinhaDaView): ClienteDaCarteira {
   };
 }
 
+/** O cliente do Supabase com a service role. Tipado pelo retorno, sem o `Database` gerado. */
+type Banco = NonNullable<ReturnType<typeof createApoloAdminClient>>;
+
+/** O PostgREST devolve no máximo 1.000 linhas por consulta, e corta SEM erro. */
+const PAGINA = 1000;
+
+/** `.in()` com lista grande estoura a URL (medido nesta casa: 700 ids = 400 Bad Request). */
+const LOTE_DE_CLIENTES = 100;
+
+/**
+ * Quem já tem carteira lida pelo Financeiro: código do cliente -> empreendimentos (migration 0199).
+ *
+ * ⚠️ LIDA SEM O TIPO GERADO E TOLERANDO A COLUNA NÃO EXISTIR. Este código pode chegar ao ar antes
+ * da migration; até ela rodar ninguém está no Financeiro, e a resposta certa é o mapa vazio. Só
+ * esse erro vira vazio (ver `colunaNaCarteiraAusente`): qualquer outro derruba a leitura, porque
+ * tratar falha como "ninguém subiu" mostraria aqui o dinheiro que o Financeiro já mostra.
+ *
+ * ⚠️ PAGINADA, ORDENADA E CONTADA, mesmo sendo hoje ~106 linhas: sem `order`, o PostgREST pode
+ * repetir uma linha e pular outra entre páginas e o total bater (medido em 24/09/2026).
+ */
+export async function lerEmpreendimentosNaCarteira(
+  admin: Banco,
+): Promise<{ erro: string; ok: false } | { ok: true; porCliente: Map<string, string[]> }> {
+  const porCliente = new Map<string, string[]>();
+  const vistos = new Set<string>();
+  const ignorados: string[] = [];
+  let esperado: null | number = null;
+
+  for (let de = 0; ; de += PAGINA) {
+    const { count, data, error } = await admin
+      .from("lsoft_clientes")
+      .select(`codigo, ${COLUNA_NA_CARTEIRA}`, de === 0 ? { count: "exact" } : undefined)
+      .neq(COLUNA_NA_CARTEIRA, "{}")
+      .order("codigo")
+      .range(de, de + PAGINA - 1);
+
+    if (error) {
+      if (colunaNaCarteiraAusente(error)) return { ok: true, porCliente: new Map() };
+      return { erro: `Leitura da carteira do Financeiro falhou: ${error.message}`, ok: false };
+    }
+    if (de === 0) esperado = count;
+
+    const bloco = (data ?? []) as LinhaDaView[];
+    for (const linha of bloco) {
+      const codigo = String(linha.codigo ?? "");
+      if (vistos.has(codigo)) {
+        return { erro: `Leitura da carteira do Financeiro instável: o cliente ${codigo} veio duas vezes.`, ok: false };
+      }
+      vistos.add(codigo);
+      const marcada = listaNaCarteira(linha[COLUNA_NA_CARTEIRA]);
+      // ⚠️ SÓ O QUE O FINANCEIRO LÊ. Um empreendimento marcado que o Financeiro não conhece
+      // continua aqui: tirá-lo seria sumir com a carteira das duas telas.
+      const lista = naCarteiraQueOFinanceiroLe(marcada);
+      if (lista.length < marcada.length) ignorados.push(codigo);
+      if (lista.length > 0) porCliente.set(codigo, lista);
+    }
+    if (bloco.length < PAGINA) break;
+  }
+
+  if (esperado !== null && vistos.size !== esperado) {
+    return { erro: `Leitura da carteira do Financeiro incompleta: vieram ${vistos.size} de ${esperado}.`, ok: false };
+  }
+  if (ignorados.length > 0) {
+    console.warn("[lsoft] empreendimento marcado que o Financeiro não lê: continua na integração", ignorados);
+  }
+  return { ok: true, porCliente };
+}
+
+/**
+ * As linhas da view por empreendimento (0107) dos clientes dados, de TODOS os empreendimentos deles.
+ *
+ * ⚠️ TODOS, E NÃO SÓ O QUE SUBIU: as linhas que ficam dizem quais unidades e qual próximo
+ * vencimento sobram depois do desconto (ver `descontarDaCarteira`). São poucas: os ~106 do Garden,
+ * com uma a seis linhas cada.
+ *
+ * ⚠️ LANÇA NO PRIMEIRO TROPEÇO: lote de 100 no `.in()`, páginas ordenadas por (codigo,
+ * empreendimento), que é a chave da linha, contagem conferida e chave repetida recusada.
+ */
+async function lerLinhasPorEmpreendimento(admin: Banco, codigos: readonly string[]): Promise<LinhaPorEmpreendimento[]> {
+  const linhas: LinhaPorEmpreendimento[] = [];
+  const chaves = new Set<string>();
+
+  for (let i = 0; i < codigos.length; i += LOTE_DE_CLIENTES) {
+    const lote = codigos.slice(i, i + LOTE_DE_CLIENTES);
+    let esperado: null | number = null;
+    let lidas = 0;
+
+    for (let de = 0; ; de += PAGINA) {
+      const { count, data, error } = await admin
+        .from("lsoft_carteira_por_cliente_empreendimento")
+        .select(
+          "codigo, empreendimento, parcelas, parcelas_pagas, parcelas_abertas, parcelas_vencidas, saldo_aberto, saldo_vencido, total_recebido, proximo_vencimento, parcelas_caixa, unidades",
+          de === 0 ? { count: "exact" } : undefined,
+        )
+        .in("codigo", lote)
+        .order("codigo")
+        .order("empreendimento")
+        .range(de, de + PAGINA - 1);
+
+      if (error) throw new Error(`Leitura da carteira por empreendimento falhou: ${error.message}`);
+      if (de === 0) esperado = count;
+
+      const bloco = (data ?? []) as LinhaDaView[];
+      for (const cru of bloco) {
+        const linha = linhaPorEmpreendimentoDaView(cru);
+        const chave = `${linha.codigo}|${linha.empreendimento}`;
+        if (chaves.has(chave)) throw new Error(`Leitura da carteira por empreendimento instável: ${chave} veio duas vezes.`);
+        chaves.add(chave);
+        linhas.push(linha);
+        lidas += 1;
+      }
+      if (bloco.length < PAGINA) break;
+    }
+
+    if (esperado === null || lidas !== esperado) {
+      throw new Error(`Leitura da carteira por empreendimento incompleta: vieram ${lidas} de ${esperado ?? "?"}.`);
+    }
+  }
+  return linhas;
+}
+
+/**
+ * O dia do BANCO (UTC), o `current_date` das views 0097 e 0107.
+ *
+ * ⚠️ NÃO É O DIA DA CASA (`hojeNaCasa`), de propósito: a parte do par que fica é subtraída da linha
+ * da 0107, e a "vencida" das duas tem de usar o mesmo dia para a conta fechar. Das 21h à meia-noite
+ * de São Paulo o banco já está no dia seguinte (ver memória "banco em UTC").
+ */
+function hojeDoBanco(agora: Date = new Date()): string {
+  return agora.toISOString().slice(0, 10);
+}
+
+/**
+ * A parte dos pares marcados que NÃO vai para o Financeiro: as parcelas de (cliente, empreendimento)
+ * fora da categoria que o Financeiro lê (`CATEGORIA_NO_FINANCEIRO`), já no formato da linha da 0107.
+ *
+ * ⚠️ POR QUE EXISTE (revisão de 29/09/2026). O Financeiro lê do par só a categoria 124; a integração
+ * tirava o par inteiro. Uma parcela do Garden em outra categoria (patrimônio da 17 numa recarga, ou
+ * uma parcela do Giant Towers corrigida na ficha para "Garden") sumia das duas telas sem aviso.
+ * Agora ela fica aqui. O normal é esta leitura voltar vazia (medido em 29/09/2026: zero nos 106).
+ *
+ * ⚠️ LANÇA NO PRIMEIRO TROPEÇO, como `lerLinhasPorEmpreendimento`: lote de 100 no `.in()`, páginas
+ * ordenadas por id, contagem conferida e id repetido recusado. `categoria_lsoft` aceita nulo, e
+ * `neq` do PostgREST não casa nulo: por isso o `or` com `is.null`.
+ */
+async function lerOQueFicaNosPares(
+  admin: Banco,
+  pares: ReadonlyMap<string, readonly string[]>,
+): Promise<LinhaPorEmpreendimento[]> {
+  const codigosPorEmpreendimento = new Map<string, string[]>();
+  for (const [codigo, nomes] of pares) {
+    for (const nome of nomes) {
+      codigosPorEmpreendimento.set(nome, [...(codigosPorEmpreendimento.get(nome) ?? []), codigo]);
+    }
+  }
+
+  const cruas: LinhaDaView[] = [];
+  const ids = new Set<string>();
+  for (const [nome, codigos] of codigosPorEmpreendimento) {
+    const categoria = CATEGORIA_NO_FINANCEIRO[nome];
+    // Não acontece: `lerEmpreendimentosNaCarteira` só deixa passar o que o Financeiro lê.
+    if (categoria === undefined) throw new Error(`O Financeiro não lê o empreendimento ${nome}.`);
+
+    for (let i = 0; i < codigos.length; i += LOTE_DE_CLIENTES) {
+      const lote = codigos.slice(i, i + LOTE_DE_CLIENTES);
+      let esperado: null | number = null;
+      let lidas = 0;
+      for (let de = 0; ; de += PAGINA) {
+        const { count, data, error } = await admin
+          .from("lsoft_parcelas")
+          .select(
+            "id, cliente_codigo, empreendimento, valor, valor_recebido, paga, vencimento, quadra, lote",
+            de === 0 ? { count: "exact" } : undefined,
+          )
+          .eq("empreendimento", nome)
+          .in("cliente_codigo", lote)
+          .or(`categoria_lsoft.is.null,categoria_lsoft.neq.${categoria}`)
+          .order("id")
+          .range(de, de + PAGINA - 1);
+
+        if (error) throw new Error(`Leitura das parcelas fora do Financeiro falhou: ${error.message}`);
+        if (de === 0) esperado = count;
+
+        const bloco = (data ?? []) as LinhaDaView[];
+        for (const p of bloco) {
+          const id = String(p.id ?? "");
+          if (ids.has(id)) throw new Error(`Leitura das parcelas fora do Financeiro instável: ${id} veio duas vezes.`);
+          ids.add(id);
+          cruas.push(p);
+          lidas += 1;
+        }
+        if (bloco.length < PAGINA) break;
+      }
+      if (esperado === null || lidas !== esperado) {
+        throw new Error(`Leitura das parcelas fora do Financeiro incompleta: vieram ${lidas} de ${esperado ?? "?"}.`);
+      }
+    }
+  }
+  if (cruas.length === 0) return [];
+
+  // A régua da 0107: só a marca CONFIRMADA de classe `caixa` tira a parcela das contagens.
+  const daCaixa = new Set<string>();
+  const listaDeIds = [...ids];
+  for (let i = 0; i < listaDeIds.length; i += LOTE_DE_CLIENTES) {
+    const { data, error } = await admin
+      .from("lsoft_classificacao_de_parcela")
+      .select("parcela_id")
+      .eq("classe", "caixa")
+      .eq("situacao", "confirmada")
+      .in("parcela_id", listaDeIds.slice(i, i + LOTE_DE_CLIENTES));
+    if (error) throw new Error(`Leitura do subsídio da Caixa falhou: ${error.message}`);
+    for (const marca of (data ?? []) as LinhaDaView[]) daCaixa.add(String(marca.parcela_id ?? ""));
+  }
+
+  const parcelas: ParcelaQueFicaNoPar[] = cruas.map((p) => ({
+    clienteCodigo: String(p.cliente_codigo ?? ""),
+    ehCaixa: daCaixa.has(String(p.id ?? "")),
+    empreendimento: String(p.empreendimento ?? ""),
+    // Cru, sem `texto()`: a view testa `is not null`, e texto vazio conta como preenchido lá.
+    lote: p.lote === null || p.lote === undefined ? null : String(p.lote),
+    paga: Boolean(p.paga),
+    quadra: p.quadra === null || p.quadra === undefined ? null : String(p.quadra),
+    valor: numero(p.valor),
+    valorRecebido: numero(p.valor_recebido),
+    vencimento: texto(p.vencimento),
+  }));
+
+  const hoje = hojeDoBanco();
+  const chaves = new Map(parcelas.map((p) => [`${p.clienteCodigo}|${p.empreendimento}`, p]));
+  return [...chaves.values()].map((p) => linhaDoQueFicaNoPar(p.clienteCodigo, p.empreendimento, parcelas, hoje));
+}
+
 /**
  * A lista de clientes da carteira, já com o resumo financeiro de cada um.
  *
  * ⚠️ O RESUMO VEM DA VIEW, não de soma no servidor: são ~20 mil parcelas para fechar 237 linhas, e
  * essa conta pertence ao banco. Ver `lsoft_carteira_por_cliente` na migration 0096.
+ *
+ * ⚠️ SEM A CARTEIRA QUE JÁ ESTÁ NO FINANCEIRO (29/09/2026, migration 0199): com empreendimento
+ * escolhido, sai quem tem aquele empreendimento lá; em "Todos", o cliente perde essa parte e some
+ * se ficar sem parcela. Nos dois casos sai SÓ a categoria que o Financeiro lê: parcela do par em
+ * outra categoria fica (ver `lerOQueFicaNosPares`). O resumo (os cartões) é somado DEPOIS disso.
+ * Quem precisa da lista cheia passa `incluirQuemEstaNoFinanceiro`.
  */
 export async function lerCarteiraDoLsoft(filtro: FiltroDaCarteira = {}): Promise<
   { clientes: ClienteDaCarteira[]; ok: true; resumo: ResumoDaCarteira } | { erro: string; ok: false }
@@ -342,6 +608,73 @@ export async function lerCarteiraDoLsoft(filtro: FiltroDaCarteira = {}): Promise
 
   const linhas = (data ?? []) as LinhaDaView[];
   let clientes = linhas.map(clienteDaLinha);
+
+  // ── A CARTEIRA QUE JÁ ESTÁ NO FINANCEIRO ─────────────────────────────────
+  //
+  // Lucas, 29/09/2026: o Garden validado *"é só copiar e colar na carteira"* do Financeiro, e o que
+  // subiu sai daqui. Por (cliente, empreendimento): quem também tem outra carteira continua, sem a
+  // parte que subiu. A regra mora em `na-carteira.ts`; aqui só se lê e se aplica.
+  //
+  // ⚠️ ANTES DA BUSCA POR UNIDADE: senão "Q06" acharia o cliente pela unidade do Garden, que já não
+  // é mostrada aqui.
+  const naCarteira = await lerEmpreendimentosNaCarteira(admin);
+  if (!naCarteira.ok) return { erro: naCarteira.erro, ok: false };
+  for (const cliente of clientes) {
+    cliente.empreendimentosNaCarteira = naCarteira.porCliente.get(cliente.codigo) ?? [];
+  }
+
+  if (!filtro.incluirQuemEstaNoFinanceiro) {
+    // Os pares (cliente, empreendimento) que saem DESTE recorte. Com um empreendimento escolhido,
+    // só ele conta: a carteira do cliente nos outros continua nos outros recortes.
+    const pares = new Map<string, string[]>();
+    for (const cliente of clientes) {
+      const saem = porEmpreendimento
+        ? saiDoRecorte(cliente.empreendimentosNaCarteira, empreendimento as string)
+          ? [empreendimento as string]
+          : []
+        : cliente.empreendimentosNaCarteira;
+      if (saem.length > 0) pares.set(cliente.codigo, saem);
+    }
+
+    if (pares.size > 0) {
+      let linhasDosPares: LinhaPorEmpreendimento[];
+      let ficamNoPar: LinhaPorEmpreendimento[];
+      try {
+        // Com um empreendimento escolhido, a linha lida acima JÁ É a da 0107 do par; em "Todos", as
+        // linhas da 0107 dos clientes marcados vêm à parte, de todos os empreendimentos deles.
+        linhasDosPares = porEmpreendimento
+          ? linhas.filter((linha) => pares.has(String(linha.codigo ?? ""))).map((linha) => linhaPorEmpreendimentoDaView(linha))
+          : await lerLinhasPorEmpreendimento(admin, [...pares.keys()]);
+        ficamNoPar = await lerOQueFicaNosPares(admin, pares);
+      } catch (falha) {
+        // ⚠️ SEM O DESCONTO, A TELA NÃO SAI. Mostrar o cliente com o total cheio é contar duas
+        // vezes o dinheiro que o Financeiro já mostra, com cara de número certo.
+        return { erro: falha instanceof Error ? falha.message : "Leitura da carteira por empreendimento falhou.", ok: false };
+      }
+      const linhasPorCliente = new Map<string, LinhaPorEmpreendimento[]>();
+      for (const linha of linhasDosPares) {
+        linhasPorCliente.set(linha.codigo, [...(linhasPorCliente.get(linha.codigo) ?? []), linha]);
+      }
+
+      const inexatos: string[] = [];
+      clientes = clientes.flatMap((cliente) => {
+        const saem = pares.get(cliente.codigo);
+        if (!saem) return [cliente];
+        const desconto = descontarDaCarteira(cliente, saem, linhasPorCliente.get(cliente.codigo) ?? [], ficamNoPar);
+        if (desconto.inexato) inexatos.push(cliente.codigo);
+        return desconto.cliente ? [desconto.cliente] : [];
+      });
+      if (inexatos.length > 0) {
+        console.warn("[lsoft] desconto do Financeiro inexato (Caixa confirmada ou conta negativa)", inexatos);
+      }
+      const comParteQueFica = [...new Set(ficamNoPar.map((linha) => linha.codigo))];
+      if (comParteQueFica.length > 0) {
+        // Não é erro: é parcela do par fora da categoria que o Financeiro lê, e por isso fica aqui.
+        // Vai para o log para alguém olhar se é patrimônio mesmo ou empreendimento trocado na ficha.
+        console.warn("[lsoft] parcela de empreendimento no Financeiro fora da categoria dele: ficou na integração", comParteQueFica);
+      }
+    }
+  }
 
   // A unidade não é coluna: ela sai do parse das observações e vive no array `unidades`. Filtrar
   // por ela no PostgREST exigiria uma função; com 237 linhas, aqui é mais simples e honesto.
