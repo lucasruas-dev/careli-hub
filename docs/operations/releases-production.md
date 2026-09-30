@@ -95,6 +95,38 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Temis/Editor de minuta] Fluxo de pagamento em frase nas minutas (v1.400.0)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; construido pela sessao do portal da Cecilio Rocha e entregue por resumo de entrega.
+- Data e hora local: `2026-09-30 14:56:03 -03:00` (changelog); push na main as 15:05, deploy pronto as 15:08.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("tem o meu ok", 30/09/2026); branch feat/portal-cecilio-melhorias (52cae0c1) relida pela sessao Publicacao antes do push`.
+- Escopo publicado:
+  - `sete variaveis novas no catalogo da Temis para escrever o fluxo em frase (data_limite_entrada, valor_parcela_mensal + extenso, primeiro_vencimento_mensal, valor_total_anuais + extenso, primeiro_vencimento_anual, dia_mes_vencimento_anual, plano_anuais_quantidade_extenso)`;
+  - `preenchidas pelo cronograma congelado em hercules_propostas.condicoes; minuta publicada nao muda`;
+  - `roadmap ganha o PAN-128 (contrato do Garden no portal da Cecilio)`.
+- Commit publicado: `2a20b4055803244655840abb1c7404c8494e246f`.
+- Deployment anterior: `dpl_5nTyi2ouG5F63jciFngWXJDSkqj5` (commit `305ce566`, v1.399.0).
+- Deployment novo: `dpl_5K6Xocz3PUDvPCE7mMCjYgaJ3A7m`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Arquivos/modulos incluidos: `lib/temis/variaveis.ts`, `lib/temis/dados-do-contrato.ts`, `lib/roadmap/roadmap.ts`, `lib/changelog/changelog.ts` e os testes.
+- Arquivos/modulos excluidos: `sem migracao e sem escrita no banco`.
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `vitest lib/temis`: `74 arquivos, 1.435 testes`;
+  - `hook de pre-push`: `728 arquivos, 10.989 testes (a primeira tentativa barrou 4 testes de lib/hercules/proposta-pdf.test.ts por falta da pasta .tmpr no worktree novo de publicacao; criada a pasta, 28 de 28)`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.400.0 com buildTag 2026-09-30-fluxo-de-pagamento-em-frase`.
+- Logs recentes: `nao conferidos alem do healthcheck`.
+- Rollback definido: `Instant Rollback para dpl_5nTyi2ouG5F63jciFngWXJDSkqj5`.
+- Riscos conhecidos: `nenhum; o catalogo so ganhou nomes`.
+- Pendencias: `gravar a minuta do Garden como rascunho, quadro de assinatura do Garden (39) e decisao juros x correcao (sessao do portal da Cecilio)`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `v1.401.0 (Simulacao de Rescisao) na fila da sessao Publicacao`.
+
+Registro de producao:
+
 - Assunto: `[Portal do incorporador/LSoft/Financeiro] O Garden validado sai da LSoft Integracao e entra no Financeiro (v1.397.0)`.
 - Squad/agente responsavel: `Zeus (sessao do portal da Cecilio Rocha)`.
 - Data e hora local: `2026-09-29 21:14:35 -03:00` (changelog); gravacao dos 106 logo depois do deploy.
