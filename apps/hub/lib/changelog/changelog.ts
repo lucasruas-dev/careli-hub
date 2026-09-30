@@ -36,6 +36,40 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-29-garden-validado-no-financeiro",
+    deployedAt: "2026-09-29T21:14:35-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "**Os clientes do Garden validados pelo time adm aparecem no Financeiro**, com as parcelas que estavam no LSoft e no lote novo do boleto.",
+              "**Clicar no cliente abre a ficha que o time já usa**, com cadastro, parcelas, documentos e histórico. A baixa continua sendo dada ali.",
+              "**O líquido do Garden aparece como não apurado** até a porcentagem de gestão de carteira ser cadastrada, e os Indicadores do Garden ainda não entram na aba Indicadores.",
+            ],
+            screen: "Financeiro",
+          },
+          {
+            items: [
+              "**Quem subiu para o Financeiro sai da integração.** Ficam os clientes com observação do time e os que ainda têm pendência.",
+              "**Quem também tem outra carteira continua na tela por ela**, com o selo \"Garden no Financeiro\".",
+            ],
+            screen: "LSoft Integração",
+          },
+        ],
+      },
+    ],
+    rollback: "473404d2",
+    technical: {
+      done: "Migration 0199 (`lsoft_clientes.empreendimentos_na_carteira text[] not null default '{}'`), aplicada com OK do Lucas. `lib/lsoft/carteira-no-financeiro.ts` monta as unidades e o resumo do Garden a partir do espelho (view 0107 e `lsoft_parcelas` categoria 124), lote novo por CPF em `boletos_documentos`; a rota /api/incorporador/carteira soma ao C2X só no modo incorporador de portal que vê o LSoft, tira o 39 da chamada ao C2X e recalcula a inadimplência depois da soma. `lib/lsoft/na-carteira.ts` tira o par (cliente, empreendimento) da integração e desconta em \"Todos\". A prontidão de boletos segue contando todos. Marcação dos 106 por `scripts/carteira/subir-garden-para-carteira.mjs` (ensaio, --gravar, --desfazer). O projeto longo (carteira nova no banco e casador do Asaas) ficou guardado em `wip/carteira-panteon-longa`.",
+      motivation: "Lucas (29/09/2026), com a planilha de validação do time adm: \"agora eu quero subir as carteiras que estão validadas pelo time adm\", \"esquece o c2x, cecilio não tem nenhum vinculo com o legado c2x\" e \"é só copiar e colar na carteira\".",
+    },
+    title: "O Garden validado entra no Financeiro",
+    type: "novidade",
+    version: "1.397.0",
+  },
+  {
     buildTag: "2026-09-29-consultoria-apresentacao",
     deployedAt: "2026-09-29T15:04:49-03:00",
     internal: true,

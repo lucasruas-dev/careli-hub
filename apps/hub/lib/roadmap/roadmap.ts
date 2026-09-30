@@ -106,6 +106,15 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
     titulo: "Panteon dono do cadastro de empreendimentos: consultas do C2X pelo id, tela de editar e criar",
   },
   {
+    id: "PAN-126",
+    entregueEm: "2026-09-29",
+    evidencia: "v1.397.0. Migration 0199 (`lsoft_clientes.empreendimentos_na_carteira`) aplicada com OK do Lucas. `lib/lsoft/carteira-no-financeiro.ts` (Financeiro lê o Garden do espelho do LSoft, lote novo pelo CPF do boleto) e `lib/lsoft/na-carteira.ts` (a integração tira o par cliente x empreendimento). Os 106 clientes marcados por `scripts/carteira/subir-garden-para-carteira.mjs`. Ficam para depois: baixa automática pelo Asaas, Indicadores e líquido do Garden.",
+    modulo: "Portal do incorporador",
+    porque: "Lucas (29/09/2026): *\"agora eu quero subir as carteiras que estão validadas pelo time adm\"*, *\"esquece o c2x, cecilio não tem nenhum vinculo com o legado c2x\"* e *\"é só copiar e colar na carteira\"*. Os clientes do Garden com OK do time adm passam da LSoft Integração para o Financeiro; os com observação ficam.",
+    situacao: "entregue",
+    titulo: "O Garden validado sai da LSoft Integração e entra no Financeiro",
+  },
+  {
     id: "PAN-125",
     entregueEm: "2026-09-29",
     evidencia: "v1.395.0. LSoft Integração: `lib/lsoft/planilha-da-carteira.ts` (Clientes, Parcelas e Sobre, montado no servidor com o filtro da tela) nas duas portas, /lsoft e portal; medido em produção, só leitura: 475 clientes, 32.660 parcelas, 1,54 MB, 9,9 s, fechando com a view em 475 de 475. Financeiro: `lib/apolo/incorporador/planilha-da-carteira-por-unidade.ts`, montado no navegador com a busca, o filtro e a ordem da tela. Revisão com 10 agentes, 7 achados distintos consertados. ⚠️ Três pendências de migration (views do LSoft em UTC, Caixa confirmada em \"Todos\", `campos_c2x_*` fora da 0107) em docs/operations/2026-09-29-exportar-excel-lsoft-e-financeiro.md.",
