@@ -408,7 +408,7 @@ export async function carregarTermoDeRescisao(escopo: EscopoDoTermo): Promise<Te
   // traz o valor em reais (aí a linha some E a multa e a publicidade sobem, porque a base vira a
   // tabela cheia). A frase é o próprio aviso, que já diz qual rubrica e qual base faltou.
   //
-  // ⚠️ DESDE 01/10/2026 É QUALQUER AVISO, E NÃO SÓ "NÃO ENTROU NA CONTA". O PDF imprimia os avisos
+  // ⚠️ DESDE 30/09/2026 É QUALQUER AVISO, E NÃO SÓ "NÃO ENTROU NA CONTA". O PDF imprimia os avisos
   // em "Observações da apuração", e o de corretagem R$ 0,00 (escrito para quem EMITE: "confira no
   // contrato assinado...") chegou ao cliente em 8 contratos do Recanto do Pará. Decisão do Lucas:
   // corretagem zero não sai, pede conferência. Com isso a regra é uma só: aviso é para o operador,

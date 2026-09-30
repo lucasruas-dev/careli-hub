@@ -33,6 +33,8 @@ const CODIGO = FONTE.split("\n")
 const HOJE = "2026-09-16";
 
 const estado = vi.hoisted(() => ({
+  /** Aviso que o teste enfia na conta depois da montagem real, para provar a regra por comportamento. */
+  avisoInjetado: null as null | string,
   comSupabase: true,
   consultasAoSupabase: [] as Array<{ filtros: Array<[string, unknown]>; tabela: string }>,
   extrato: null as unknown,
@@ -40,6 +42,19 @@ const estado = vi.hoisted(() => ({
   linhaDoC2x: { enterprise_id: 37, texto_da_corretagem: null as null | string },
   respostas: {} as Record<string, { data: unknown; error: null | { code?: string; message: string } }>,
 }));
+
+// A montagem é a REAL; o mock só acrescenta, quando o teste pede, um aviso que nenhum código conhece.
+vi.mock("@/lib/apolo/termo-de-rescisao", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/apolo/termo-de-rescisao")>();
+  return {
+    ...real,
+    montarDadosDaRescisao: (...args: Parameters<typeof real.montarDadosDaRescisao>) => {
+      const montado = real.montarDadosDaRescisao(...args);
+      if (montado.ok && estado.avisoInjetado) montado.dados.conta.avisos.push(estado.avisoInjetado);
+      return montado;
+    },
+  };
+});
 
 vi.mock("@/lib/apolo/extrato-cliente-c2x", () => ({
   loadExtratoDoCliente: vi.fn(async () => estado.extrato),
@@ -201,6 +216,7 @@ const CADASTRO_COMPLETO = ["clausula_penal", "publicidade", "corretagem", "tribu
 );
 
 beforeEach(() => {
+  estado.avisoInjetado = null;
   estado.comSupabase = true;
   estado.consultasAoSupabase = [];
   estado.extrato = extratoDe();
@@ -445,7 +461,7 @@ describe("o que cada fonte entrega ao papel", () => {
   });
 
   // ⚠️ O CASO QUE VAZOU PARA O CLIENTE (Recanto do Pará, 30/09/2026): a frase "confira no contrato
-  // assinado" ia impressa. Decisão do Lucas em 01/10/2026: corretagem zero recusa e pede conferência.
+  // assinado" ia impressa. Decisão do Lucas em 30/09/2026: corretagem zero recusa e pede conferência.
   it("corretagem R$ 0,00 no contrato de corretagem: 422 com a frase para o operador", async () => {
     estado.linhaDoC2x = {
       enterprise_id: 37,
@@ -461,10 +477,25 @@ describe("o que cada fonte entrega ao papel", () => {
     });
   });
 
-  it("qualquer aviso da conta segura o papel, e não só os que o servidor conhece pelo texto", async () => {
-    const CODIGO_DO_SERVIDOR = readFileSync(join(__dirname, "termo-de-rescisao-server.ts"), "utf8");
-    expect(CODIGO_DO_SERVIDOR).not.toContain('aviso.includes(" não entrou na conta:")');
-    expect(CODIGO_DO_SERVIDOR).toContain("if (avisos.length)");
+  // ⚠️ POR COMPORTAMENTO, E NÃO PROCURANDO TEXTO NO CÓDIGO. A versão anterior deste teste lia o
+  // arquivo do servidor, e a revisão da Publicação (30/09/2026) provou que ela não guardava nada: uma
+  // mutação que voltava a filtrar os avisos por texto passou nos 29 testes. Aqui a conta real ganha
+  // um aviso INVENTADO, sem nenhuma palavra que um filtro conheceria, e o papel tem de recusar.
+  it("um aviso que nenhum código conhece segura o papel do mesmo jeito", async () => {
+    estado.avisoInjetado = "Aviso inventado pelo teste, sem palavra nenhuma que um filtro reconheça.";
+
+    expect(await carregarTermoDeRescisao(ESCOPO)).toEqual({
+      error:
+        "O termo de rescisão não sai para a unidade VOC0101 sem conferência: Aviso inventado pelo teste, sem palavra nenhuma que um filtro reconheça.",
+      ok: false,
+      status: 422,
+    });
+  });
+
+  it("e sem aviso nenhum, o mesmo contrato sai", async () => {
+    const resultado = await carregarTermoDeRescisao(ESCOPO);
+    expect(resultado.ok).toBe(true);
+    expect(resultado.ok && resultado.dados.conta.avisos).toEqual([]);
   });
 
   it("corretagem pelo valor do contrato sem o valor em reais: 422, e nunca multa sobre a tabela cheia", async () => {

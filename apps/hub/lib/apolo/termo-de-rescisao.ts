@@ -383,7 +383,7 @@ export function montarDadosDaRescisao(entrada: EntradaDoTermo): TermoMontado {
   // o pior defeito: o valor fica (é o que o contrato diz), e quem entrega o papel é avisado. Se zero
   // deve cair na praxe é decisão do dono do produto, não desta linha.
   //
-  // ⚠️ E O PAPEL NÃO SAI (Lucas, 01/10/2026, opção "recusar e pedir conferência"). Até ali o aviso ia
+  // ⚠️ E O PAPEL NÃO SAI (Lucas, 30/09/2026, opção "recusar e pedir conferência"). Até ali o aviso ia
   // impresso ao cliente, com uma frase escrita para quem emite. Agora ele vira a frase da recusa em
   // `carregarTermoDeRescisao`, e por isso fala com o OPERADOR. Medido em 30/09/2026: 8 contratos em
   // curso do Recanto do Pará, 2 com parcela vencida; nenhum em Lavra, Morada ou Vale do Ouro.
