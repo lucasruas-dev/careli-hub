@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-30-simulacao-de-rescisao",
+    deployedAt: "__HORA_REAL__",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Novo botão Rescisão no extrato do cliente.** Na ficha de comprador, ao lado do PDF do extrato, gera a Simulação de Rescisão do contrato escolhido: quanto o cliente pagou, as deduções previstas no contrato dele e o saldo, dizendo com todas as letras se sobra valor a restituir ou se ainda há saldo a pagar.",
+              "**Sai para Lavra do Ouro, Morada da Serra, Vale do Ouro e Recanto do Pará**, com os percentuais lidos no contrato de cada um. Nos demais empreendimentos, o botão explica que as premissas de rescisão ainda não foram cadastradas, em vez de sair com um número que o contrato pode não prever.",
+              "**É uma simulação:** o papel não desfaz o contrato e vale para a data em que foi gerado.",
+            ],
+            screen: "Financeiro · Extrato do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "305ce566",
+    technical: {
+      done: "`TERMO_DE_RESCISAO_LIBERADO = true` (lib/apolo/termos-liberados.ts). O código estava no ar desde a v1.348.0 (16/09) atrás da chave. Três travas vieram junto: (1) `carregarTermoDeRescisao` recusa com 422 quando alguma linha sairia com `origem: padrao` (praxe da Lavra do Ouro) ou quando alguma rubrica cadastrada 'não entrou na conta' por falta de base (fruição com posse, corretagem `valor_efetivo` sem valor em reais); (2) rubrica DESLIGADA chega à conta marcada (`desligada: true` em `premissasDoRecorte`) e não cai mais na praxe, conserto necessário para Vale do Ouro e Recanto, que não preveem publicidade nem tributos; (3) a rota `app/api/apolo/rescisao/pdf` passou para `authorizeApoloWrite` (viewer não baixa). 25 premissas cadastradas em `hercules_premissas_de_rescisao` (C2X 1, 3, 4, 20 e 35, com VOL/VOC/VOR herdando do VLO), lidas nas cláusulas 1.10, 1.8, XI e 5.2 dos contratos; corretagem como `valor_efetivo` sem percentual, para o rótulo sair do valor real. Sem Clicksign, sem e-mail, sem escrita em banco na emissão: só o GET do PDF. Prova com 7 contratos reais antes do deploy; revisão do subagente reviewer (dois achados consertados antes de subir). 437 testes da frente verdes, typecheck limpo.",
+      motivation: "Lucas (30/09/2026): \"me relembra por favor como estamos na frente do termo de rescisão, o que precisa para ele ir ao ar hoje\". Respostas dele no mesmo dia: nome \"Simulação de Rescisão\", texto atual, empreendimento sem premissa não emite, viewer fora, base da multa e da publicidade = tabela menos comissão (o papel que a Careli já praticava).",
+    },
+    title: "Simulação de Rescisão no extrato do cliente",
+    type: "novidade",
+    version: "1.400.0",
+  },
+  {
     buildTag: "2026-09-30-pagamentos-a-conferir",
     deployedAt: "2026-09-30T08:24:23-03:00",
     modules: [
