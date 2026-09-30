@@ -44,9 +44,11 @@
 //   • delinquencyRate: vencido ÷ previsto até hoje, a valor presente (Lucas, 20/08/2026).
 //   • recoveryAmount (Recuperação): C2X soma o `paid_value` das pagas com pagamento no mês corrente;
 //       LSoft soma o `valor_recebido` das pagas com `data_recebido` no mês corrente.
-//   • contracts / clients: no LSoft o contrato é o cliente naquele empreendimento (uma linha por
-//       cliente), então os dois contam o mesmo. criticalContracts: mais de 3 vencidas, como o C2X.
-//   • overdueClients: clientes com pelo menos uma vencida.
+//   • contracts: as LINHAS, uma por (cliente, lote novo), como o C2X conta uma por contrato.
+//       clients: os clientes DISTINTOS (o C2X faz `count(distinct client_id)`). Com dois lotes, o
+//       mesmo cliente é um cliente e dois contratos. criticalContracts: linhas com mais de 3 vencidas,
+//       como o C2X (por contrato).
+//   • overdueClients: clientes distintos com pelo menos uma vencida em qualquer das linhas.
 //
 // ⚠️ "HOJE" É O DE SÃO PAULO (`hojeNaCasa`), e não o `current_date` do banco. As views do LSoft
 // (0097/0107) usam `current_date`, que está em UTC e vira o dia às 21h: das 21h à meia-noite elas
@@ -65,11 +67,23 @@
 // guarda o lote antigo (medido: "Q13 L365" no LSoft para um lote que o boleto chama de "Q13 L20").
 // O lote novo mora em `boletos_documentos` (empreendimento `garden`), e o casamento é pelo CPF, só
 // dígitos dos dois lados. Medido em 29/09/2026: os 106 que sobem casam, 6 deles com dois lotes.
+//
+// ⚠️ UMA LINHA POR LOTE, E NÃO POR CLIENTE (Lucas, 29/09/2026, olhando o cliente de dois lotes que
+// aparecia numa linha só: *"se ele tem dois lotes, tem que ter duas linhas"*). As parcelas de cada
+// cliente são repartidas pelo lote ANTIGO que o LSoft gravou nelas, convertido para o novo pelo mapa
+// conferido (lib/lsoft/lotes-do-garden.ts), e cada lote vira uma linha com os números SÓ das
+// parcelas dele. A sequência que o LSoft lança para dois lotes do mesmo CPF ("LOTE: 216 E 217") é
+// repartida em partes iguais, como o hub já cobra (um boleto por lote, de valor igual). Nenhum
+// dinheiro nasce nem some na partilha: cada parcela cai numa linha, ou em partes que somam ela no
+// centavo, e a soma das linhas é a mesma de quando era uma por cliente (conferido em 29/09/2026 nos
+// 106: carteira R$ 35.041.558,35, recebido R$ 4.484.836,13, em aberto R$ 30.556.722,22). As regras
+// de quem vai para onde estão em `dividirPorLote`.
 
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import type { ApoloCarteiraSummary } from "@/lib/apolo/carteira";
 import { type CatalogoParaId, idsDoC2xDasSiglas } from "@/lib/apolo/c2x-pelo-id";
 import { GARDEN } from "@/lib/lsoft/categorias";
+import { loteNovoDoAntigo, lotesCitadosNoTexto, partesDoLoteNovo } from "@/lib/lsoft/lotes-do-garden";
 import { COLUNA_NA_CARTEIRA, colunaNaCarteiraAusente } from "@/lib/lsoft/na-carteira";
 
 // ── QUEM ENTRA ──────────────────────────────────────────────────────────────
@@ -176,7 +190,12 @@ export function recorteDoLsoft(entrada: {
  * faturamento e imobiliária: o espelho não tem.
  */
 export type UnidadeDoLsoftNoPortal = {
-  /** O que a linha precisa dizer além dos números: outro lote no mesmo CPF, lote a confirmar. */
+  /**
+   * O que a linha precisa dizer ao loteador além dos números, sempre pelo lote NOVO: outro lote no
+   * mesmo CPF, lote a confirmar, lote em conferência, parcelas divididas com outro lote. O que é
+   * defeito do LSoft (parcela sem lote, lote de outro CPF, numeração antiga) não vem aqui: fica nas
+   * `notas` de `dividirPorLote`, que são do time adm.
+   */
   avisos: string[];
   block: null | string;
   client: null | string;
@@ -184,7 +203,15 @@ export type UnidadeDoLsoftNoPortal = {
   contractCode: null;
   empreendimento: null | string;
   faturadoAt: null;
-  /** `lsoft:<código>`: nunca colide com o id numérico do C2X nem com o uuid do Panteon. */
+  /**
+   * `lsoft:<código>:<unidade>` ("lsoft:00000123:GDN1226"), ou `lsoft:<código>` na linha sem lote.
+   * Nunca colide com o id numérico do C2X nem com o uuid do Panteon.
+   *
+   * ⚠️ O LOTE ENTRA NO ID DESDE QUE O CLIENTE PODE TER DUAS LINHAS. A tabela chaveia a linha por id +
+   * contrato + comprador (modules/incorporador/chave-da-linha.ts), e no LSoft contrato é nulo e o
+   * comprador é o mesmo nas duas: com o id só do cliente, as duas linhas teriam a mesma chave, que é
+   * o defeito que deixou linha órfã na tabela em 21/09/2026.
+   */
   id: string;
   imobiliaria: null;
   liquido: null;
@@ -214,8 +241,12 @@ export type ParcelaDaCarteiraNoFinanceiro = {
   clienteCodigo: string;
   dataRecebido: null | string;
   id: string;
+  /** O lote ANTIGO que o LSoft gravou na coluna (`lsoft_parcelas.lote`). Decide a linha da parcela. */
+  lote: null | string;
+  /** O texto da parcela no LSoft: dá o lote quando a coluna está vazia, e cita os outros lotes. */
+  observacoes: null | string;
   paga: boolean;
-  /** A quadra que o LSoft gravou (numeração antiga): só desempata qual lote do boleto é o principal. */
+  /** A quadra que o LSoft gravou (numeração antiga): desempata qual lote do boleto é o principal. */
   quadra: null | string;
   valor: number;
   valorRecebido: number;
@@ -227,11 +258,17 @@ export type LoteDoBoleto = { documento: string; incerta: boolean; unidade: strin
 
 const soDigitos = (valor: unknown): string => String(valor ?? "").replace(/\D/g, "");
 
-/** "Q06 L14", "Q6-L14", "q06 l14" → quadra "06" e lote "14". Qualquer outra coisa: nulo. */
+/** Reais para centavos inteiros: a soma de milhares de parcelas em ponto flutuante deixa resíduo. */
+const emCentavos = (valor: number): number => Math.round((Number.isFinite(valor) ? valor : 0) * 100);
+const emReais = (centavos: number): number => centavos / 100;
+
+/**
+ * "Q06 L14", "Q6-L14", "q06 l14" → quadra "06" e lote "14". Qualquer outra coisa: nulo. A régua é
+ * a de lib/lsoft/lotes-do-garden.ts, a mesma que converte o lote antigo, para as duas pontas
+ * escreverem o lote novo igual.
+ */
 export function quadraELoteDoBoleto(unidade: string): null | { lote: string; quadra: string } {
-  const casa = String(unidade ?? "").trim().match(/^Q\s*0*(\d{1,3})\s*[-\s/]?\s*L\s*0*(\d{1,4})$/i);
-  if (!casa) return null;
-  return { lote: String(casa[2]).padStart(2, "0"), quadra: String(casa[1]).padStart(2, "0") };
+  return partesDoLoteNovo(unidade);
 }
 
 /** "GDN" + quadra(2) + lote(2): o código que o C2X e o masterplan dão ao lote ("GDN0614"). */
@@ -242,12 +279,11 @@ export function codigoDaUnidade(prefixo: string, quadra: string, lote: string): 
 /** O rótulo curto do lote, como a planilha de boletos e a ficha do LSoft escrevem: "Q06 L14". */
 const rotuloDoLote = (quadra: string, lote: string): string => `Q${quadra} L${lote}`;
 
+/** Um lote novo do boleto de um CPF, já lido: quadra e lote com dois dígitos, e o rótulo. */
+export type LoteDoCpf = { incerta: boolean; lote: string; quadra: string; rotulo: string };
+
 /**
- * Qual lote do boleto é o da carteira deste cliente, e quais outros o mesmo CPF tem.
- *
- * ⚠️ CLIENTE COM MAIS DE UM LOTE MOSTRA UM E CITA OS OUTROS. A carteira do LSoft é por cliente, não
- * por lote: as parcelas dos dois lotes vêm juntas no mesmo código, e partir o dinheiro entre eles
- * seria inventar uma divisão que o espelho não tem. A ordem de quem vira o principal:
+ * Os lotes do boleto deste CPF, sem repetir, na ordem de quem é o PRINCIPAL:
  *   1. o lote de conversão CERTA antes do incerto (`boletos_parcelas.unidade_incerta`, 0118: os
  *      lotes em que as duas fontes da renumeração discordam);
  *   2. o lote cuja quadra aparece nas parcelas do LSoft (a quadra mudou pouco na renumeração: casa
@@ -256,49 +292,347 @@ const rotuloDoLote = (quadra: string, lote: string): string => `Q${quadra} L${lo
  * Medido em 29/09/2026: um dos 106 tem no boleto um segundo lote, INCERTO e de outra quadra, que a
  * validação da planilha não reconhece como dele. Sem os passos 1 e 2 ele viraria o principal.
  */
+export function lotesDoCpf(entrada: {
+  cpf: null | string;
+  lotes: readonly LoteDoBoleto[];
+  quadrasNoLsoft: ReadonlySet<number>;
+}): LoteDoCpf[] {
+  const cpf = soDigitos(entrada.cpf);
+  if (!cpf) return [];
+
+  const candidatos: LoteDoCpf[] = [];
+  for (const lote of entrada.lotes) {
+    if (soDigitos(lote.documento) !== cpf) continue;
+    const partes = quadraELoteDoBoleto(lote.unidade);
+    if (!partes) continue;
+    candidatos.push({ incerta: lote.incerta, ...partes, rotulo: rotuloDoLote(partes.quadra, partes.lote) });
+  }
+
+  // O mesmo lote duas vezes (a leitura não repete, mas a régua não depende disso).
+  const unicos = [...new Map(candidatos.map((c) => [c.rotulo, c])).values()];
+
+  return unicos.sort((a, b) => {
+    if (a.incerta !== b.incerta) return a.incerta ? 1 : -1;
+    const aCasa = entrada.quadrasNoLsoft.has(Number(a.quadra));
+    const bCasa = entrada.quadrasNoLsoft.has(Number(b.quadra));
+    if (aCasa !== bCasa) return aCasa ? -1 : 1;
+    return Number(a.quadra) - Number(b.quadra) || Number(a.lote) - Number(b.lote);
+  });
+}
+
+/**
+ * O rótulo com que a linha cita outro lote do boleto.
+ *
+ * ⚠️ O OUTRO LOTE INCERTO VAI MARCADO. Medido em 29/09/2026 contra a planilha validada: 105 dos 106
+ * saem idênticos; no que sobra, o principal é o validado e o boleto ainda liga o mesmo CPF a um lote
+ * incerto que a validação não reconhece. Citar esse lote sem a marca afirmaria ao loteador uma posse
+ * que ninguém confirmou.
+ */
+const citacaoDoLote = (lote: LoteDoCpf): string => `${lote.rotulo}${lote.incerta ? " (em conferência)" : ""}`;
+
+/**
+ * Qual lote do boleto é o principal deste cliente, e quais outros o mesmo CPF tem (na ordem de
+ * `lotesDoCpf`). É a leitura só do boleto: quem decide as linhas é `dividirPorLote`.
+ */
 export function loteDoCliente(entrada: {
   cpf: null | string;
   lotes: readonly LoteDoBoleto[];
   quadrasNoLsoft: ReadonlySet<number>;
 }): { outros: string[]; principal: null | { incerta: boolean; lote: string; quadra: string } } {
-  const cpf = soDigitos(entrada.cpf);
-  if (!cpf) return { outros: [], principal: null };
-
-  const candidatos = entrada.lotes
-    .filter((lote) => soDigitos(lote.documento) === cpf)
-    .map((lote) => ({ ...lote, partes: quadraELoteDoBoleto(lote.unidade) }))
-    .filter(
-      (lote): lote is LoteDoBoleto & { partes: { lote: string; quadra: string } } =>
-        lote.partes !== null,
-    );
-
-  // O mesmo lote duas vezes (a leitura não repete, mas a régua não depende disso).
-  const unicos = [...new Map(candidatos.map((c) => [rotuloDoLote(c.partes.quadra, c.partes.lote), c])).values()];
-
-  unicos.sort((a, b) => {
-    if (a.incerta !== b.incerta) return a.incerta ? 1 : -1;
-    const aCasa = entrada.quadrasNoLsoft.has(Number(a.partes.quadra));
-    const bCasa = entrada.quadrasNoLsoft.has(Number(b.partes.quadra));
-    if (aCasa !== bCasa) return aCasa ? -1 : 1;
-    return (
-      Number(a.partes.quadra) - Number(b.partes.quadra) ||
-      Number(a.partes.lote) - Number(b.partes.lote)
-    );
-  });
-
-  const [primeiro, ...resto] = unicos;
+  const [primeiro, ...resto] = lotesDoCpf(entrada);
   if (!primeiro) return { outros: [], principal: null };
-
   return {
-    // ⚠️ O OUTRO LOTE INCERTO VAI MARCADO. Medido em 29/09/2026 contra a planilha validada: 105 dos
-    // 106 saem idênticos; no que sobra, o principal é o validado e o boleto ainda liga o mesmo CPF
-    // a um lote incerto que a validação não reconhece. Citar esse lote sem a marca afirmaria ao
-    // loteador uma posse que ninguém confirmou.
-    outros: resto.map(
-      (c) => `${rotuloDoLote(c.partes.quadra, c.partes.lote)}${c.incerta ? " (em conferência)" : ""}`,
-    ),
-    principal: { incerta: primeiro.incerta, lote: primeiro.partes.lote, quadra: primeiro.partes.quadra },
+    outros: resto.map(citacaoDoLote),
+    principal: { incerta: primeiro.incerta, lote: primeiro.lote, quadra: primeiro.quadra },
   };
+}
+
+/** Uma linha da carteira antes dos números: o lote novo, as parcelas dele e o que a linha diz. */
+export type LoteDaCarteira = {
+  /**
+   * O que a linha diz AO LOTEADOR, e vai para a tela do portal: só lote NOVO, como o boleto e o
+   * mapa escrevem. Lote em conferência, lote a confirmar, parcelas divididas com outro lote do mesmo
+   * CPF, outro lote do mesmo CPF.
+   */
+  avisos: string[];
+  /** Nulo = "Lote a confirmar" (o CPF não tem boleto do empreendimento). */
+  lote: null | { incerta: boolean; lote: string; quadra: string };
+  /**
+   * O que o TIME ADM precisa corrigir ou conferir no LSoft, e o loteador não: parcela sem lote, lote
+   * antigo fora do mapa, lote que o boleto dá a outro CPF, lote antigo citado sem número novo.
+   *
+   * ⚠️ NÃO VAI PARA A UNIDADE DA TELA (`montarCarteiraDoLsoft` não copia; revisão de 29/09/2026). O
+   * portal é de cliente externo e já se proíbe CPF e código interno no texto (ver "Lote a
+   * confirmar"); a numeração antiga e o erro de digitação do LSoft são a mesma coisa. E o "(sem
+   * número novo)" ainda enganava: medido em 29/09/2026, nos 15 clientes em que ele aparecia, o
+   * boleto do lote novo vale o dobro (ou o triplo) de um lote, igual à parcela do LSoft, isto é, os
+   * lotes antigos foram REUNIDOS no novo, e não sumiram da planta. Fica aqui, puro e testado, para
+   * o ensaio e para a tela LSoft Integração, que é interna.
+   */
+  notas: string[];
+  /**
+   * As parcelas da linha. ⚠️ A parcela repartida (ver `dividirPorLote`) aparece em cada linha com o
+   * MESMO id e só a parte daquele lote em `valor` e `valorRecebido`.
+   */
+  parcelas: ParcelaDaCarteiraNoFinanceiro[];
+};
+
+/** "1 parcela", "8 parcelas". */
+const parcelasPorExtenso = (n: number): string => `${n} ${n === 1 ? "parcela" : "parcelas"}`;
+
+/** "a", "a e b", "a, b e c". */
+function emLista(itens: readonly string[]): string {
+  if (itens.length <= 1) return itens[0] ?? "";
+  return `${itens.slice(0, -1).join(", ")} e ${itens[itens.length - 1]}`;
+}
+
+/** "o lote Q04 L13", "os lotes Q04 L13 e Q04 L14". */
+const oLote = (rotulos: readonly string[]): string =>
+  `${rotulos.length === 1 ? "o lote" : "os lotes"} ${emLista(rotulos)}`;
+
+/**
+ * `centavos` em `n` partes iguais, com o resto (menos de `n` centavos) na PRIMEIRA. A soma das partes
+ * é exatamente o todo: nenhum centavo nasce nem some na divisão.
+ */
+export function partesIguaisEmCentavos(centavos: number, n: number): number[] {
+  const base = Math.trunc(centavos / n);
+  const resto = centavos - base * n;
+  return Array.from({ length: n }, (_, i) => base + (i === 0 ? resto : 0));
+}
+
+/** A parcela em `n` partes iguais de `valor` e de `valorRecebido`, no centavo (resto na primeira). */
+function repartirParcela(parcela: ParcelaDaCarteiraNoFinanceiro, n: number): ParcelaDaCarteiraNoFinanceiro[] {
+  const valores = partesIguaisEmCentavos(emCentavos(parcela.valor), n);
+  const recebidos = partesIguaisEmCentavos(emCentavos(parcela.valorRecebido), n);
+  return valores.map((valor, i) => ({ ...parcela, valor: emReais(valor), valorRecebido: emReais(recebidos[i] ?? 0) }));
+}
+
+/** A lista tem dinheiro (nominal ou recebido)? Lote só de parcela zerada não vira linha (ver `montarCarteiraDoLsoft`). */
+const temDinheiro = (parcelas: readonly ParcelaDaCarteiraNoFinanceiro[] | undefined): boolean =>
+  (parcelas ?? []).some((p) => emCentavos(p.valor) !== 0 || emCentavos(p.valorRecebido) !== 0);
+
+/** Soma um item a um conjunto dentro de um mapa, criando o conjunto na primeira vez. */
+function anotar<T>(mapa: Map<string, Set<T>>, chave: string, item: T): void {
+  const conjunto = mapa.get(chave) ?? new Set<T>();
+  conjunto.add(item);
+  mapa.set(chave, conjunto);
+}
+
+/**
+ * Reparte as parcelas de UM cliente em linhas, uma por lote novo, e diz o que cada linha avisa ao
+ * loteador (`avisos`) e o que fica para o time adm (`notas`). PURA. As regras (Lucas, 29/09/2026:
+ * *"se ele tem dois lotes, tem que ter duas linhas"*):
+ *
+ *   • O LOTE DA PARCELA é o da coluna `lote` do LSoft; com a coluna vazia, o primeiro lote que o
+ *     texto (`observacoes`) cita. Convertido para o novo pelo mapa (lib/lsoft/lotes-do-garden.ts).
+ *   • ⚠️ A LINHA SÓ NASCE PARA LOTE QUE O BOLETO LIGA AO CPF. O lote convertido que o boleto do
+ *     cliente não tem vai para a linha principal, com nota. Medido em 29/09/2026: 2 parcelas anuais
+ *     de um cliente (a 4ª e a 6ª de 7) estão no LSoft com o lote de OUTRO cliente, que tem 91 parcelas
+ *     nele, e o boleto dá esse lote a outro CPF. É erro de digitação do LSoft; uma linha própria
+ *     mostraria ao loteador o mesmo lote em dois compradores.
+ *   • Parcela SEM LOTE (nem na coluna nem no texto) e lote FORA DO MAPA vão para a linha principal,
+ *     com nota dizendo quantas são.
+ *   • ⚠️ SEQUÊNCIA CONJUNTA DE LOTES DO MESMO CPF É REPARTIDA EM PARTES IGUAIS (revisão de
+ *     29/09/2026, que desfez o "fica no primeiro"). O LSoft lança "LOTE: 216 E 217" como UMA
+ *     sequência, com o 216 na coluna. Quando TODOS os lotes que a parcela cita (coluna e texto)
+ *     convertem para lotes que o boleto liga ao mesmo CPF, cada lote recebe uma parte igual de cada
+ *     parcela, no centavo, com o resto no lote da coluna. A divisão não é inventada: medido em
+ *     29/09/2026 nos 4 clientes assim (dois lotes no boleto, uma sequência no LSoft), a parcela do
+ *     LSoft vale o DOBRO da de um lote (4.238,10 contra 2.119,05; a anual, 20.000 contra 10.000), e o
+ *     hub já cobra meio a meio: um boleto por lote, de valor igual (2.119,05 cada em 03/2026). E é
+ *     o pedido: *"a partir de setembro, quem alimenta a carteira é o hub"* (Lucas, 29/09/2026).
+ *   • ⚠️ SE ALGUM LOTE CITADO NÃO CONVERTE, OU É DE OUTRO CPF, A PARCELA NÃO É REPARTIDA: fica
+ *     inteira no lote da coluna. Medido em 29/09/2026: nos 15 clientes com lote antigo sem número
+ *     novo na sequência ("LOTE: 90/91"), o boleto é UM só, do lote novo que reuniu os antigos, e vale
+ *     a parcela inteira. Repartir ali seria tirar dinheiro do único lote que existe.
+ *   • A LINHA PRINCIPAL é o primeiro lote do boleto (ordem de `lotesDoCpf`) que tem dinheiro nas
+ *     parcelas próprias; sem nenhum, o primeiro com parcela; sem nenhum, o primeiro do boleto. Só ela
+ *     leva as notas do cliente e o "O mesmo CPF também tem".
+ *   • Lote do boleto sem linha (sem parcela, ou só com parcela zerada) entra como aviso na linha
+ *     principal ("O mesmo CPF também tem o lote X"), a não ser que alguma linha já diga que as
+ *     parcelas dela cobrem esse lote.
+ *   • CPF sem boleto do empreendimento: uma linha só, "Lote a confirmar", como era antes da partilha.
+ */
+export function dividirPorLote(entrada: {
+  cpf: null | string;
+  lotes: readonly LoteDoBoleto[];
+  nomeDoEmpreendimento: string;
+  parcelas: readonly ParcelaDaCarteiraNoFinanceiro[];
+}): LoteDaCarteira[] {
+  const quadras = new Set<number>();
+  for (const parcela of entrada.parcelas) {
+    const quadra = Number(soDigitos(parcela.quadra));
+    if (quadra > 0) quadras.add(quadra);
+  }
+
+  const doCpf = lotesDoCpf({ cpf: entrada.cpf, lotes: entrada.lotes, quadrasNoLsoft: quadras });
+  if (doCpf.length === 0) {
+    if (entrada.parcelas.length === 0) return [];
+    return [
+      {
+        // ⚠️ O TEXTO VAI PARA A TELA DO LOTEADOR: sem CPF, sem código interno, e dizendo o que falta.
+        avisos: [`Lote a confirmar: não há boleto do ${entrada.nomeDoEmpreendimento} neste CPF.`],
+        lote: null,
+        notas: [],
+        parcelas: [...entrada.parcelas],
+      },
+    ];
+  }
+
+  const doCpfPorRotulo = new Map(doCpf.map((lote) => [lote.rotulo, lote]));
+  const porLote = new Map<string, ParcelaDaCarteiraNoFinanceiro[]>();
+  const juntar = (rotulo: string, parcela: ParcelaDaCarteiraNoFinanceiro) => {
+    const lista = porLote.get(rotulo) ?? [];
+    lista.push(parcela);
+    porLote.set(rotulo, lista);
+  };
+
+  /** Com quais lotes cada linha divide parcelas, e quantas parcelas dela são divididas. */
+  const repartidoCom = new Map<string, Set<string>>();
+  const repartidasPorLote = new Map<string, number>();
+  /** Lotes do MESMO CPF que as parcelas inteiras de cada linha dizem cobrir (vão ao loteador). */
+  const cobreDoCpf = new Map<string, Set<string>>();
+  /** Lotes antigos sem número novo e lotes de outro CPF que as parcelas citam (vão às notas). */
+  const citaSemConversao = new Map<string, Set<string>>();
+  const citaDeOutroCpf = new Map<string, Set<string>>();
+
+  const paraOPrincipal: ParcelaDaCarteiraNoFinanceiro[] = [];
+  let semLote = 0;
+  const foraDoMapa = new Map<string, number>();
+  const foraDoCpf = new Map<string, number>();
+
+  for (const parcela of entrada.parcelas) {
+    // A coluna passa pela mesma leitura do texto: "397" e um eventual "216/217" saem iguais.
+    const daColuna = lotesCitadosNoTexto(`LOTE ${parcela.lote ?? ""}`);
+    const doTexto = lotesCitadosNoTexto(parcela.observacoes);
+    const antigo = daColuna[0] ?? doTexto[0] ?? null;
+
+    if (antigo === null) {
+      semLote += 1;
+      paraOPrincipal.push(parcela);
+      continue;
+    }
+    const novo = loteNovoDoAntigo(parcela.quadra, antigo);
+    if (novo === null) {
+      foraDoMapa.set(antigo, (foraDoMapa.get(antigo) ?? 0) + 1);
+      paraOPrincipal.push(parcela);
+      continue;
+    }
+    if (!doCpfPorRotulo.has(novo)) {
+      foraDoCpf.set(novo, (foraDoCpf.get(novo) ?? 0) + 1);
+      paraOPrincipal.push(parcela);
+      continue;
+    }
+
+    // Os outros lotes que a parcela cita. O texto só vale quando cita o próprio lote da parcela:
+    // texto que fala de outro lote e não deste é texto velho, e não uma sequência conjunta.
+    const citados = [...new Set([...daColuna.slice(1), ...(doTexto.includes(antigo) ? doTexto : [])])]
+      .filter((numero) => numero !== antigo)
+      .map((numero) => ({ antigo: numero, novo: loteNovoDoAntigo(null, numero) }))
+      // Outro número antigo do MESMO lote novo não é outro lote.
+      .filter((citado) => citado.novo !== novo);
+
+    const todosDoCpf = citados.every((citado) => citado.novo !== null && doCpfPorRotulo.has(citado.novo));
+    if (citados.length > 0 && todosDoCpf) {
+      const destinos = [novo, ...new Set(citados.map((citado) => citado.novo as string))];
+      const partes = repartirParcela(parcela, destinos.length);
+      destinos.forEach((rotulo, i) => {
+        juntar(rotulo, partes[i]!);
+        repartidasPorLote.set(rotulo, (repartidasPorLote.get(rotulo) ?? 0) + 1);
+        for (const outro of destinos) if (outro !== rotulo) anotar(repartidoCom, rotulo, outro);
+      });
+      continue;
+    }
+
+    juntar(novo, parcela);
+    for (const citado of citados) {
+      if (citado.novo === null) anotar(citaSemConversao, novo, citado.antigo);
+      else if (doCpfPorRotulo.has(citado.novo)) anotar(cobreDoCpf, novo, citado.novo);
+      else anotar(citaDeOutroCpf, novo, citado.novo);
+    }
+  }
+
+  // ⚠️ O PRINCIPAL SE ESCOLHE ANTES DE RECEBER O QUE NÃO TEM LOTE, e pelo DINHEIRO: um lote só de
+  // parcela zerada não vira linha (a porta de `montarCarteiraDoLsoft`), e as notas e o "mesmo CPF"
+  // sumiriam com ele.
+  const principal =
+    doCpf.find((lote) => temDinheiro(porLote.get(lote.rotulo))) ??
+    doCpf.find((lote) => porLote.has(lote.rotulo)) ??
+    doCpf[0]!;
+  for (const parcela of paraOPrincipal) juntar(principal.rotulo, parcela);
+
+  const cobertosPeloLoteador = new Set([...cobreDoCpf.values()].flatMap((lotes) => [...lotes]));
+  // O outro lote do CPF citado ao loteador leva a marca de conferência, como no "mesmo CPF".
+  const citar = (rotulos: Iterable<string>): string[] =>
+    [...rotulos].map((rotulo) => {
+      const doBoleto = doCpfPorRotulo.get(rotulo);
+      return doBoleto ? citacaoDoLote(doBoleto) : rotulo;
+    });
+
+  const linhas: LoteDaCarteira[] = [];
+  // O principal primeiro, depois os outros na ordem do boleto: a ordem da tela é outra (a da
+  // rota), mas quem ler a lista crua vê a linha que carrega os avisos do cliente em cima.
+  for (const lote of [principal, ...doCpf.filter((l) => l !== principal)]) {
+    const parcelas = porLote.get(lote.rotulo);
+    if (!parcelas) continue;
+    const avisos: string[] = [];
+    const notas: string[] = [];
+
+    if (lote.incerta) avisos.push("Lote em conferência: a troca do lote antigo pelo novo ainda tem dúvida.");
+
+    const repartidos = citar(repartidoCom.get(lote.rotulo) ?? []);
+    if (repartidos.length > 0) {
+      // A ficha que o clique abre mostra a parcela INTEIRA; a linha mostra a parte do lote. Sem este
+      // aviso, o loteador veria a metade do valor e acharia que faltou dinheiro. Curto: a célula da
+      // tela tem 220 px.
+      const n = repartidasPorLote.get(lote.rotulo) ?? 0;
+      const quais = n === parcelas.length ? "Parcelas divididas" : `${parcelasPorExtenso(n)} ${n === 1 ? "dividida" : "divididas"}`;
+      const como = repartidos.length === 1 ? "meio a meio" : "em partes iguais";
+      const juntos = repartidos.length === 1 ? "os dois lotes estão" : `os ${repartidos.length + 1} lotes estão`;
+      avisos.push(`${quais} ${como} com ${oLote(repartidos)}: na ficha, ${juntos} numa parcela só.`);
+    }
+
+    const cobre = citar(cobreDoCpf.get(lote.rotulo) ?? []);
+    if (cobre.length > 0) avisos.push(`As parcelas deste lote cobrem também ${oLote(cobre)}.`);
+
+    const semConversao = [...(citaSemConversao.get(lote.rotulo) ?? [])];
+    if (semConversao.length > 0) {
+      notas.push(
+        `As parcelas deste lote citam também ${semConversao.length === 1 ? "o lote antigo" : "os lotes antigos"} ${emLista(semConversao)}, que o mapa não converte.`,
+      );
+    }
+    const deOutroCpf = [...(citaDeOutroCpf.get(lote.rotulo) ?? [])];
+    if (deOutroCpf.length > 0) {
+      notas.push(`As parcelas deste lote citam também ${oLote(deOutroCpf)}, que o boleto não liga a este CPF.`);
+    }
+
+    if (lote === principal) {
+      if (semLote > 0) notas.push(`${parcelasPorExtenso(semLote)} sem lote no LSoft.`);
+      for (const [antigo, n] of foraDoMapa) {
+        notas.push(`${parcelasPorExtenso(n)} no lote antigo ${antigo}, sem conversão para o lote novo.`);
+      }
+      for (const [novo, n] of foraDoCpf) {
+        notas.push(`${parcelasPorExtenso(n)} no LSoft com o lote ${novo}, que o boleto não liga a este CPF.`);
+      }
+
+      const semLinha = doCpf.filter(
+        (l) => l !== principal && !temDinheiro(porLote.get(l.rotulo)) && !cobertosPeloLoteador.has(l.rotulo),
+      );
+      if (semLinha.length > 0) {
+        avisos.push(
+          `O mesmo CPF também tem ${semLinha.length === 1 ? "o lote" : "os lotes"} ${semLinha.map(citacaoDoLote).join(", ")}.`,
+        );
+      }
+    }
+
+    linhas.push({
+      avisos,
+      lote: { incerta: lote.incerta, lote: lote.lote, quadra: lote.quadra },
+      notas,
+      parcelas,
+    });
+  }
+  return linhas;
 }
 
 /** Dias corridos de `de` até `ate`, as duas em `AAAA-MM-DD`. O `datediff` do MySQL. */
@@ -308,10 +642,6 @@ export function diasEntre(de: string, ate: string): number {
   if (!Number.isFinite(inicio) || !Number.isFinite(fim)) return 0;
   return Math.round((fim - inicio) / 86_400_000);
 }
-
-/** Reais para centavos inteiros: a soma de milhares de parcelas em ponto flutuante deixa resíduo. */
-const emCentavos = (valor: number): number => Math.round((Number.isFinite(valor) ? valor : 0) * 100);
-const emReais = (centavos: number): number => centavos / 100;
 
 /**
  * A carteira por unidade e o resumo, no formato da rota. PURA: quem lê o banco é
@@ -342,6 +672,7 @@ export function montarCarteiraDoLsoft(entrada: {
   }
 
   const units: UnidadeDoLsoftNoPortal[] = [];
+  let clientes = 0;
   let criticos = 0;
   let inadimplentes = 0;
   let parcelasVencidas = 0;
@@ -352,104 +683,104 @@ export function montarCarteiraDoLsoft(entrada: {
   let total = 0;
   let vencido = 0;
 
-  // Um cliente, uma linha: o mesmo código repetido na entrada não pode contar o dinheiro duas vezes.
+  // O mesmo código repetido na entrada não pode contar o dinheiro duas vezes.
   const vistos = new Set<string>();
 
   for (const cliente of entrada.clientes) {
     if (vistos.has(cliente.codigo)) continue;
     vistos.add(cliente.codigo);
 
-    const parcelas = parcelasPorCliente.get(cliente.codigo) ?? [];
-    let uPago = 0;
-    let uAReceber = 0;
-    let uVencido = 0;
-    let uVencidas = 0;
-    let uPrevisto = 0;
-    let uRecuperacao = 0;
-    let maisAntiga: null | string = null;
-    const quadras = new Set<number>();
-
-    for (const parcela of parcelas) {
-      const valor = emCentavos(parcela.valor);
-      const vencimento = parcela.vencimento?.slice(0, 10) ?? null;
-      const quadra = Number(soDigitos(parcela.quadra));
-      if (quadra > 0) quadras.add(quadra);
-
-      if (vencimento !== null && vencimento <= hoje) uPrevisto += valor;
-
-      if (parcela.paga) {
-        // ⚠️ O RECEBIDO, E NÃO O NOMINAL: é o "Recebido" da tela LSoft Integração e da ficha (ver
-        // a régua no cabeçalho). O previsto, acima, continua nominal.
-        const recebido = emCentavos(parcela.valorRecebido);
-        uPago += recebido;
-        if (parcela.dataRecebido?.slice(0, 7) === mesCorrente) uRecuperacao += recebido;
-      } else if (vencimento !== null && vencimento < hoje) {
-        uVencido += valor;
-        uVencidas += 1;
-        if (maisAntiga === null || vencimento < maisAntiga) maisAntiga = vencimento;
-      } else {
-        // Sem vencimento conta como a receber: não dá para chamar de vencido o que não tem data.
-        uAReceber += valor;
-      }
-    }
-
-    // A "Carteira total" da tela LSoft: o recebido mais o saldo aberto (a receber + vencido).
-    const uTotal = uPago + uAReceber + uVencido;
-    // A mesma porta do C2X (`having total_contract > 0 or overdue_amount > 0`): cliente marcado sem
-    // parcela nenhuma no empreendimento não vira linha vazia na tabela.
-    if (uTotal <= 0 && uVencido <= 0) continue;
-
-    const { outros, principal } = loteDoCliente({
+    const linhasDoCliente = dividirPorLote({
       cpf: cliente.cpf,
       lotes: entrada.lotes,
-      quadrasNoLsoft: quadras,
+      nomeDoEmpreendimento: entrada.nomeDoEmpreendimento,
+      parcelas: parcelasPorCliente.get(cliente.codigo) ?? [],
     });
+    let clienteNaTela = false;
+    let clienteComVencida = false;
 
-    // ⚠️ O TEXTO VAI PARA A TELA DO LOTEADOR: sem CPF, sem código interno, e dizendo o que falta.
-    const avisos: string[] = [];
-    if (!principal) {
-      avisos.push(`Lote a confirmar: não há boleto do ${entrada.nomeDoEmpreendimento} neste CPF.`);
-    } else if (principal.incerta) {
-      avisos.push("Lote em conferência: a troca do lote antigo pelo novo ainda tem dúvida.");
+    for (const linha of linhasDoCliente) {
+      let uPago = 0;
+      let uAReceber = 0;
+      let uVencido = 0;
+      let uVencidas = 0;
+      let uPrevisto = 0;
+      let uRecuperacao = 0;
+      let maisAntiga: null | string = null;
+
+      for (const parcela of linha.parcelas) {
+        const valor = emCentavos(parcela.valor);
+        const vencimento = parcela.vencimento?.slice(0, 10) ?? null;
+
+        if (vencimento !== null && vencimento <= hoje) uPrevisto += valor;
+
+        if (parcela.paga) {
+          // ⚠️ O RECEBIDO, E NÃO O NOMINAL: é o "Recebido" da tela LSoft Integração e da ficha (ver
+          // a régua no cabeçalho). O previsto, acima, continua nominal.
+          const recebido = emCentavos(parcela.valorRecebido);
+          uPago += recebido;
+          if (parcela.dataRecebido?.slice(0, 7) === mesCorrente) uRecuperacao += recebido;
+        } else if (vencimento !== null && vencimento < hoje) {
+          uVencido += valor;
+          // ⚠️ A parcela repartida entre dois lotes conta como vencida em CADA um: são dois contratos
+          // e dois boletos no hub, e cada lote tem a sua parcela em atraso (o C2X conta por contrato).
+          uVencidas += 1;
+          if (maisAntiga === null || vencimento < maisAntiga) maisAntiga = vencimento;
+        } else {
+          // Sem vencimento conta como a receber: não dá para chamar de vencido o que não tem data.
+          uAReceber += valor;
+        }
+      }
+
+      // A "Carteira total" da tela LSoft: o recebido mais o saldo aberto (a receber + vencido).
+      const uTotal = uPago + uAReceber + uVencido;
+      // A mesma porta do C2X (`having total_contract > 0 or overdue_amount > 0`): cliente marcado sem
+      // parcela nenhuma no empreendimento (ou lote só com parcela zerada) não vira linha vazia.
+      if (uTotal <= 0 && uVencido <= 0) continue;
+
+      const lote = linha.lote;
+      const code = lote ? codigoDaUnidade(entrada.prefixoDoCodigo, lote.quadra, lote.lote) : "Lote a confirmar";
+
+      units.push({
+        // ⚠️ SÓ OS AVISOS: as `notas` da linha são do time adm e não vão ao portal (ver LoteDaCarteira).
+        avisos: linha.avisos,
+        block: lote?.quadra ?? null,
+        client: cliente.nome.trim() || null,
+        code,
+        contractCode: null,
+        empreendimento: entrada.nomeDoEmpreendimento,
+        faturadoAt: null,
+        id: lote ? `lsoft:${cliente.codigo}:${code}` : `lsoft:${cliente.codigo}`,
+        imobiliaria: null,
+        liquido: null,
+        lot: lote?.lote ?? null,
+        // ⚠️ AS DUAS LINHAS DO MESMO CLIENTE ABREM A MESMA FICHA. A ficha do LSoft é por cliente e
+        // mostra as parcelas dos dois lotes, cada uma com o seu lote; é lá que a baixa é dada.
+        lsoftCodigo: cliente.codigo,
+        maxOverdueDays: maisAntiga ? Math.max(diasEntre(maisAntiga, hoje), 0) : 0,
+        origem: "lsoft",
+        overdueAmount: emReais(uVencido),
+        overdueInstallments: uVencidas,
+        paidAmount: emReais(uPago),
+        temContrato: false,
+        toReceiveAmount: emReais(uAReceber),
+        totalContract: emReais(uTotal),
+      });
+
+      clienteNaTela = true;
+      if (uVencidas > 0) clienteComVencida = true;
+      if (uVencidas > 3) criticos += 1;
+      parcelasVencidas += uVencidas;
+      previsto += uPrevisto;
+      pago += uPago;
+      aReceber += uAReceber;
+      recuperacao += uRecuperacao;
+      total += uTotal;
+      vencido += uVencido;
     }
-    if (outros.length > 0) {
-      avisos.push(`O mesmo CPF também tem ${outros.length === 1 ? "o lote" : "os lotes"} ${outros.join(", ")}.`);
-    }
 
-    units.push({
-      avisos,
-      block: principal?.quadra ?? null,
-      client: cliente.nome.trim() || null,
-      code: principal
-        ? codigoDaUnidade(entrada.prefixoDoCodigo, principal.quadra, principal.lote)
-        : "Lote a confirmar",
-      contractCode: null,
-      empreendimento: entrada.nomeDoEmpreendimento,
-      faturadoAt: null,
-      id: `lsoft:${cliente.codigo}`,
-      imobiliaria: null,
-      liquido: null,
-      lot: principal?.lote ?? null,
-      lsoftCodigo: cliente.codigo,
-      maxOverdueDays: maisAntiga ? Math.max(diasEntre(maisAntiga, hoje), 0) : 0,
-      origem: "lsoft",
-      overdueAmount: emReais(uVencido),
-      overdueInstallments: uVencidas,
-      paidAmount: emReais(uPago),
-      temContrato: false,
-      toReceiveAmount: emReais(uAReceber),
-      totalContract: emReais(uTotal),
-    });
-
-    if (uVencidas > 0) inadimplentes += 1;
-    if (uVencidas > 3) criticos += 1;
-    parcelasVencidas += uVencidas;
-    previsto += uPrevisto;
-    pago += uPago;
-    aReceber += uAReceber;
-    recuperacao += uRecuperacao;
-    total += uTotal;
-    vencido += uVencido;
+    if (clienteNaTela) clientes += 1;
+    if (clienteComVencida) inadimplentes += 1;
   }
 
   // A mesma ordem de partida do C2X (`order by overdue_amount desc, eu.block, eu.lot`); a tela
@@ -463,7 +794,8 @@ export function montarCarteiraDoLsoft(entrada: {
 
   return {
     summary: {
-      clients: units.length,
+      // Clientes distintos; contratos são as linhas (um cliente de dois lotes: 1 e 2).
+      clients: clientes,
       contracts: units.length,
       criticalContracts: criticos,
       delinquencyRate: previsto > 0 ? vencido / previsto : 0,
@@ -721,7 +1053,8 @@ export async function lerCarteiraDoLsoftNoFinanceiro(entrada: {
           admin
             .from("lsoft_parcelas")
             .select(
-              "id, cliente_codigo, valor, valor_recebido, paga, vencimento, data_recebido, quadra",
+              // `lote` e `observacoes` repartem as parcelas em linhas, uma por lote (`dividirPorLote`).
+              "id, cliente_codigo, valor, valor_recebido, paga, vencimento, data_recebido, quadra, lote, observacoes",
               contar ? { count: "exact" } : undefined,
             )
             .eq("empreendimento", empreendimento.chaveLsoft)
@@ -821,6 +1154,8 @@ export async function lerCarteiraDoLsoftNoFinanceiro(entrada: {
           clienteCodigo: String(linha.cliente_codigo ?? ""),
           dataRecebido: texto(linha.data_recebido),
           id: String(linha.id ?? ""),
+          lote: texto(linha.lote),
+          observacoes: texto(linha.observacoes),
           paga: Boolean(linha.paga),
           quadra: texto(linha.quadra),
           valor: numero(linha.valor),

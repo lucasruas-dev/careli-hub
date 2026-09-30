@@ -10,11 +10,13 @@ vi.mock("@/lib/apolo/server", () => ({ createApoloAdminClient: () => duble.banco
 
 import type { ApoloCarteiraSummary } from "@/lib/apolo/carteira";
 import type { CatalogoParaId } from "@/lib/apolo/c2x-pelo-id";
+import { chaveDaLinhaDaCarteira } from "@/modules/incorporador/chave-da-linha";
 
 import {
   carteiraDoLsoftNoRecorte,
   codigoDaUnidade,
   diasEntre,
+  dividirPorLote,
   EMPREENDIMENTOS_DO_LSOFT_NO_FINANCEIRO,
   juntarNaCarteira,
   lerCarteiraDoLsoftNoFinanceiro,
@@ -22,6 +24,7 @@ import {
   type LoteDoBoleto,
   montarCarteiraDoLsoft,
   type ParcelaDaCarteiraNoFinanceiro,
+  partesIguaisEmCentavos,
   quadraELoteDoBoleto,
   recorteDoLsoft,
   resumoVazio,
@@ -153,6 +156,8 @@ function parcela(
     clienteCodigo,
     dataRecebido: null,
     id: `p-${proximoId}`,
+    lote: null,
+    observacoes: null,
     paga: false,
     quadra: null,
     valor,
@@ -175,22 +180,24 @@ describe("montarCarteiraDoLsoft", () => {
   };
 
   it("cada campo: pago e recuperação pelo recebido, a receber, vencido e previsto pelo nominal", () => {
+    // O lote antigo 150 da quadra 6 é o Q06 L14 do boleto.
+    const doLote = { lote: "150", quadra: "6" };
     const { summary, units } = montarCarteiraDoLsoft({
       ...base,
       clientes: [{ codigo: "C1", cpf: "11111111111", nome: "Cliente Um" }],
       parcelas: [
         // Paga no mês corrente, com desconto: entra no Pago e na Recuperação pelo RECEBIDO (990),
         // e no previsto pelo nominal (1.000).
-        parcela("C1", 1000, "2026-09-10", { dataRecebido: "2026-09-12", paga: true, valorRecebido: 990 }),
+        parcela("C1", 1000, "2026-09-10", { ...doLote, dataRecebido: "2026-09-12", paga: true, valorRecebido: 990 }),
         // Paga em agosto: Pago sim, Recuperação não.
-        parcela("C1", 1000, "2026-08-10", { dataRecebido: "2026-08-11", paga: true, valorRecebido: 1000 }),
+        parcela("C1", 1000, "2026-08-10", { ...doLote, dataRecebido: "2026-08-11", paga: true, valorRecebido: 1000 }),
         // Vencida: a mais antiga dá o maior atraso.
-        parcela("C1", 500, "2026-07-10"),
-        parcela("C1", 500, "2026-09-28"),
+        parcela("C1", 500, "2026-07-10", doLote),
+        parcela("C1", 500, "2026-09-28", doLote),
         // Vence HOJE: a receber (o C2X só vence com due_date < hoje), mas já no previsto.
-        parcela("C1", 700, HOJE),
+        parcela("C1", 700, HOJE, doLote),
         // Futura.
-        parcela("C1", 800, "2026-12-10"),
+        parcela("C1", 800, "2026-12-10", doLote),
       ],
     });
 
@@ -204,7 +211,7 @@ describe("montarCarteiraDoLsoft", () => {
       contractCode: null,
       empreendimento: "Garden",
       faturadoAt: null,
-      id: "lsoft:C1",
+      id: "lsoft:C1:GDN0614",
       imobiliaria: null,
       liquido: null,
       lot: "14",
@@ -295,15 +302,20 @@ describe("montarCarteiraDoLsoft", () => {
     expect(summary.overdueInstallments).toBe(4);
   });
 
-  it("dois lotes no CPF: uma linha, o dinheiro inteiro, e o outro lote citado", () => {
+  it("dois lotes no CPF e as parcelas sem lote no LSoft: uma linha no principal; o outro lote é aviso, o 'sem lote' é nota", () => {
+    const parcelas = [parcela("C2", 100, "2026-12-10"), parcela("C2", 100, "2027-01-10")];
     const { units } = montarCarteiraDoLsoft({
       ...base,
       clientes: [{ codigo: "C2", cpf: "22222222222", nome: "Cliente Dois" }],
-      parcelas: [parcela("C2", 100, "2026-12-10"), parcela("C2", 100, "2027-01-10")],
+      parcelas,
     });
     expect(units).toHaveLength(1);
     expect(units[0]).toMatchObject({ code: "GDN0413", totalContract: 200 });
+    // ⚠️ O defeito do LSoft não vai para a tela do loteador: fica na nota, para o time adm.
     expect(units[0]!.avisos).toEqual(["O mesmo CPF também tem o lote Q04 L14."]);
+    expect(units[0]).not.toHaveProperty("notas");
+    const [linha] = dividirPorLote({ cpf: "22222222222", lotes: base.lotes, nomeDoEmpreendimento: "Garden", parcelas });
+    expect(linha!.notas).toEqual(["2 parcelas sem lote no LSoft."]);
   });
 
   it("sem boleto no CPF: 'lote a confirmar', sem quadra nem lote inventados", () => {
@@ -321,7 +333,8 @@ describe("montarCarteiraDoLsoft", () => {
       ...base,
       clientes: [{ codigo: "C4", cpf: "44444444444", nome: "Cliente Quatro" }],
       lotes: [{ documento: "44444444444", incerta: true, unidade: "Q17 L02" }],
-      parcelas: [parcela("C4", 100, "2026-12-10")],
+      // O antigo 284 é o Q17 L02 (o mapa tem a quadra dele em branco).
+      parcelas: [parcela("C4", 100, "2026-12-10", { lote: "284", quadra: "12" })],
     });
     expect(units[0]!.code).toBe("GDN1702");
     expect(units[0]!.avisos).toEqual([
@@ -337,9 +350,9 @@ describe("montarCarteiraDoLsoft", () => {
         { codigo: "C1", cpf: "11111111111", nome: "Cliente Um" },
         { codigo: "C9", cpf: null, nome: "Sem parcela" },
       ],
-      parcelas: [parcela("C1", 100, "2026-12-10"), parcela("OUTRO", 999, "2026-12-10")],
+      parcelas: [parcela("C1", 100, "2026-12-10", { lote: "150" }), parcela("OUTRO", 999, "2026-12-10")],
     });
-    expect(units.map((u) => u.id)).toEqual(["lsoft:C1"]);
+    expect(units.map((u) => u.id)).toEqual(["lsoft:C1:GDN0614"]);
     expect(summary).toMatchObject({ clients: 1, contracts: 1, totalPortfolio: 100 });
   });
 
@@ -364,6 +377,495 @@ describe("montarCarteiraDoLsoft", () => {
     expect(summary.expectedToDate).toBe(0);
     // Sem vencimento conta como a receber, nunca como vencido.
     expect(summary.toReceiveAmount).toBe(200);
+  });
+});
+
+// ── Uma linha por lote (Lucas, 29/09/2026: "se ele tem dois lotes, tem que ter duas linhas") ──
+
+describe("uma linha por (cliente, lote novo)", () => {
+  // Os lotes do boleto de cada CPF sintético. Os números antigos são os do mapa real: 397 = Q12 L26,
+  // 400 = Q12 L29, 216 = Q04 L14, 217 = Q04 L13, 287 = Q17 L03, 297 = Q16 L14, 179 = Q06 L18.
+  const lotes: LoteDoBoleto[] = [
+    { documento: "55555555555", incerta: false, unidade: "Q12 L26" },
+    { documento: "55555555555", incerta: false, unidade: "Q12-L29" },
+    { documento: "66666666666", incerta: false, unidade: "Q04 L13" },
+    { documento: "66666666666", incerta: false, unidade: "Q04 L14" },
+    { documento: "77777777777", incerta: false, unidade: "Q17 L03" },
+    { documento: "88888888888", incerta: false, unidade: "Q13 L04" },
+    { documento: "99999999999", incerta: false, unidade: "Q06 L18" },
+  ];
+  const montar = (clientes: Array<{ codigo: string; cpf: string }>, parcelas: ParcelaDaCarteiraNoFinanceiro[]) =>
+    montarCarteiraDoLsoft({
+      clientes: clientes.map((c) => ({ ...c, nome: `Cliente ${c.codigo}` })),
+      hoje: HOJE,
+      lotes,
+      nomeDoEmpreendimento: "Garden",
+      parcelas,
+      prefixoDoCodigo: "GDN",
+    });
+
+  // O caso do print de 29/09: dois lotes no mesmo CPF, cada sequência "em partes" no seu lote.
+  const L397 = { lote: "397", observacoes: "PARC. OBRA LOTE: 397 - QUADRA: 12", quadra: "12" };
+  const L400 = { lote: "400", observacoes: "PARC. OBRA | LOTE: 400 - QUADRA: 12", quadra: "12" };
+  const doisLotes = () => [
+    parcela("C5", 2201.02, "2026-08-10", { ...L397, dataRecebido: "2026-08-09", paga: true, valorRecebido: 2201.02 }),
+    parcela("C5", 2201.02, "2026-09-10", L397),
+    parcela("C5", 2201.02, "2026-10-10", L397),
+    parcela("C5", 2207.18, "2026-08-10", { ...L400, dataRecebido: "2026-09-08", paga: true, valorRecebido: 2207.18 }),
+    parcela("C5", 2207.18, "2026-09-10", L400),
+    parcela("C5", 2207.18, "2026-06-10", L400),
+    parcela("C5", 2207.18, "2026-11-10", L400),
+  ];
+
+  it("dois lotes com parcelas próprias: duas linhas, cada uma com os números SÓ das parcelas dela", () => {
+    const { summary, units } = montar([{ codigo: "C5", cpf: "555.555.555-55" }], doisLotes());
+
+    expect(units.map((u) => u.code).sort()).toEqual(["GDN1226", "GDN1229"]);
+    const l26 = units.find((u) => u.code === "GDN1226")!;
+    const l29 = units.find((u) => u.code === "GDN1229")!;
+    expect(l26).toMatchObject({
+      avisos: [],
+      block: "12",
+      id: "lsoft:C5:GDN1226",
+      lot: "26",
+      lsoftCodigo: "C5",
+      maxOverdueDays: diasEntre("2026-09-10", HOJE),
+      overdueAmount: 2201.02,
+      overdueInstallments: 1,
+      paidAmount: 2201.02,
+      toReceiveAmount: 2201.02,
+      totalContract: 6603.06,
+    });
+    expect(l29).toMatchObject({
+      avisos: [],
+      block: "12",
+      id: "lsoft:C5:GDN1229",
+      lot: "29",
+      lsoftCodigo: "C5",
+      maxOverdueDays: diasEntre("2026-06-10", HOJE),
+      overdueAmount: 4414.36,
+      overdueInstallments: 2,
+      paidAmount: 2207.18,
+      toReceiveAmount: 2207.18,
+      totalContract: 8828.72,
+    });
+    // ⚠️ O aviso "o mesmo CPF também tem o lote Q12 L29" deixou de existir: ele virou linha.
+    expect(units.flatMap((u) => u.avisos)).toEqual([]);
+
+    // Um cliente, dois contratos; a recuperação do mês só pega o pagamento de setembro.
+    expect(summary).toMatchObject({
+      clients: 1,
+      contracts: 2,
+      overdueClients: 1,
+      overdueInstallments: 3,
+      paidAmount: 4408.2,
+      recoveryAmount: 2207.18,
+    });
+  });
+
+  it("as duas linhas do mesmo cliente têm chave própria na tabela, e abrem a mesma ficha", () => {
+    const { units } = montar([{ codigo: "C5", cpf: "55555555555" }], doisLotes());
+    const chaves = units.map((u) => chaveDaLinhaDaCarteira(u));
+    expect(new Set(chaves).size).toBe(2);
+    expect(new Set(units.map((u) => u.lsoftCodigo))).toEqual(new Set(["C5"]));
+  });
+
+  it("⚠️ a partilha não cria nem some dinheiro: as linhas somam o mesmo que uma linha por cliente", () => {
+    // Medido em 29/09/2026 nos 106 do Garden (a mesma conta, no banco): carteira R$ 35.041.558,35,
+    // recebido R$ 4.484.836,13, em aberto R$ 30.556.722,22, antes e depois da partilha. Aqui, com
+    // dados sintéticos: a mesma carteira montada com os lotes do boleto (várias linhas por cliente)
+    // e sem boleto nenhum (uma linha por cliente, "Lote a confirmar") dá o mesmo dinheiro.
+    const clientes = [
+      { codigo: "C5", cpf: "55555555555" },
+      { codigo: "C6", cpf: "66666666666" },
+      { codigo: "C8", cpf: "88888888888" },
+    ];
+    const parcelas = [
+      ...doisLotes(),
+      parcela("C6", 1000.33, "2026-01-10", { lote: "216", observacoes: "LOTE: 216 E 217 QUADRA: 04" }),
+      parcela("C6", 999.99, "2027-01-10", { lote: "216" }),
+      parcela("C6", 10, "2026-02-10"),
+      parcela("C8", 5000, "2026-05-10", { dataRecebido: "2026-05-10", lote: "377", paga: true, valorRecebido: 5100.5 }),
+      parcela("C8", 10000, "2029-12-20", { lote: "297", observacoes: "LOTE 297 - QUADRA 16 - PARCELAS ANUAIS" }),
+    ];
+    const porLote = montar(clientes, parcelas);
+    const porCliente = montarCarteiraDoLsoft({
+      clientes: clientes.map((c) => ({ ...c, nome: c.codigo })),
+      hoje: HOJE,
+      lotes: [],
+      nomeDoEmpreendimento: "Garden",
+      parcelas,
+      prefixoDoCodigo: "GDN",
+    });
+
+    expect(porCliente.units).toHaveLength(3);
+    // C5: Q12 L26 e Q12 L29. C6: a sequência "216 E 217" repartida entre Q04 L13 e Q04 L14. C8: uma.
+    expect(porLote.units).toHaveLength(5);
+    const dinheiro = (s: ApoloCarteiraSummary) => ({
+      expectedToDate: s.expectedToDate,
+      overdueAmount: s.overdueAmount,
+      paidAmount: s.paidAmount,
+      recoveryAmount: s.recoveryAmount,
+      toReceiveAmount: s.toReceiveAmount,
+      totalPortfolio: s.totalPortfolio,
+    });
+    expect(dinheiro(porLote.summary)).toEqual(dinheiro(porCliente.summary));
+    expect(porLote.summary.clients).toBe(3);
+    expect(porLote.summary.contracts).toBe(5);
+    // ⚠️ A QUANTIDADE de vencidas não é dinheiro: a vencida repartida conta uma vez em CADA lote,
+    // como os dois boletos do hub (5 parcelas vencidas no LSoft, 6 nas linhas).
+    expect(porCliente.summary.overdueInstallments).toBe(5);
+    expect(porLote.summary.overdueInstallments).toBe(6);
+    // E a soma das linhas fecha com o resumo, no centavo.
+    const somaDasLinhas = porLote.units.reduce((soma, u) => soma + Math.round(u.totalContract * 100), 0) / 100;
+    expect(somaDasLinhas).toBe(porLote.summary.totalPortfolio);
+    // O centavo que sobra da divisão de 1.000,33 fica no lote da coluna (o 216, Q04 L14).
+    const c6 = Object.fromEntries(porLote.units.filter((u) => u.lsoftCodigo === "C6").map((u) => [u.code, u]));
+    expect(c6.GDN0414).toMatchObject({ overdueAmount: 500.17, totalContract: 1500.16 });
+    expect(c6.GDN0413).toMatchObject({ overdueAmount: 510.16, totalContract: 510.16 });
+  });
+
+  it("⚠️ sequência conjunta de dois lotes do mesmo CPF: cada lote recebe metade de cada parcela, no centavo", () => {
+    // O LSoft lança "LOTE: 216 E 217" como uma sequência só, com o 216 na coluna, e a parcela vale o
+    // dobro da de um lote; o hub cobra um boleto por lote, de valor igual (medido em 29/09/2026).
+    const { summary, units } = montar(
+      [{ codigo: "C6", cpf: "66666666666" }],
+      [
+        parcela("C6", 4238.11, "2026-09-10", { lote: "216", observacoes: "LOTE: 216 E 217\r\nQUADRA: 04", quadra: "4" }),
+        parcela("C6", 4238.1, "2026-08-10", {
+          dataRecebido: "2026-09-02",
+          lote: "216",
+          observacoes: "LOTE: 216 E 217 QUADRA: 04",
+          paga: true,
+          quadra: "4",
+          valorRecebido: 4300.01,
+        }),
+        parcela("C6", 4238.1, "2026-10-10", { lote: "216", observacoes: "LOTE: 216 E 217 QUADRA: 04", quadra: "4" }),
+      ],
+    );
+    expect(units.map((u) => u.code).sort()).toEqual(["GDN0413", "GDN0414"]);
+    const l13 = units.find((u) => u.code === "GDN0413")!;
+    const l14 = units.find((u) => u.code === "GDN0414")!;
+    // O centavo ímpar fica no lote da coluna (216 = Q04 L14), no nominal e no recebido.
+    expect(l14).toMatchObject({
+      id: "lsoft:C6:GDN0414",
+      overdueAmount: 2119.06,
+      overdueInstallments: 1,
+      paidAmount: 2150.01,
+      toReceiveAmount: 2119.05,
+      totalContract: 6388.12,
+    });
+    expect(l13).toMatchObject({
+      id: "lsoft:C6:GDN0413",
+      overdueAmount: 2119.05,
+      overdueInstallments: 1,
+      paidAmount: 2150,
+      toReceiveAmount: 2119.05,
+      totalContract: 6388.1,
+    });
+    // O loteador vê o porquê da metade (a ficha que o clique abre mostra a parcela inteira), e o
+    // outro lote do CPF não é repetido como "o mesmo CPF também tem".
+    expect(l14.avisos).toEqual([
+      "Parcelas divididas meio a meio com o lote Q04 L13: na ficha, os dois lotes estão numa parcela só.",
+    ]);
+    expect(l13.avisos).toEqual([
+      "Parcelas divididas meio a meio com o lote Q04 L14: na ficha, os dois lotes estão numa parcela só.",
+    ]);
+    // Nenhum centavo nasce nem some: as duas linhas somam as três parcelas.
+    expect(summary).toMatchObject({
+      clients: 1,
+      contracts: 2,
+      overdueAmount: 4238.11,
+      overdueClients: 1,
+      overdueInstallments: 2,
+      paidAmount: 4300.01,
+      recoveryAmount: 4300.01,
+      totalPortfolio: 12776.22,
+    });
+  });
+
+  it("sequência conjunta de lotes de quadras diferentes (o texto 'LOTE: 122 E 93 QUADRA: 07 E 08') também é repartida", () => {
+    const { units } = montarCarteiraDoLsoft({
+      clientes: [{ codigo: "C3", cpf: "33333333333", nome: "Cliente C3" }],
+      hoje: HOJE,
+      lotes: [
+        { documento: "33333333333", incerta: false, unidade: "Q07 L10" },
+        { documento: "33333333333", incerta: false, unidade: "Q08 L07" },
+      ],
+      nomeDoEmpreendimento: "Garden",
+      parcelas: [parcela("C3", 4238.1, "2027-01-10", { lote: "122", observacoes: "LOTE: 122 E 93 QUADRA: 07 E 08", quadra: "7" })],
+      prefixoDoCodigo: "GDN",
+    });
+    expect(units.map((u) => [u.code, u.totalContract]).sort()).toEqual([
+      ["GDN0710", 2119.05],
+      ["GDN0807", 2119.05],
+    ]);
+  });
+
+  it("⚠️ lote antigo sem número novo na sequência: a parcela fica INTEIRA no lote que existe, e o número antigo não vai ao loteador", () => {
+    // Medido em 29/09/2026: nos 15 clientes com "LOTE: 90/91" e afins, o boleto é UM, do lote novo
+    // que reuniu os antigos, e vale a parcela inteira. "(sem número novo)" enganava o loteador.
+    const texto = "PARC. DE OBRA | LOTES: 287/288/289 - QUADRA: 17";
+    const parcelas = [
+      parcela("C7", 100, "2026-12-10", { observacoes: texto, quadra: "17" }),
+      parcela("C7", 100, "2027-01-10", { observacoes: texto, quadra: "17" }),
+    ];
+    const { units } = montar([{ codigo: "C7", cpf: "77777777777" }], parcelas);
+    expect(units).toHaveLength(1);
+    expect(units[0]).toMatchObject({ avisos: [], code: "GDN1703", totalContract: 200 });
+    const [linha] = dividirPorLote({ cpf: "77777777777", lotes, nomeDoEmpreendimento: "Garden", parcelas });
+    expect(linha!.notas).toEqual(["As parcelas deste lote citam também os lotes antigos 288 e 289, que o mapa não converte."]);
+  });
+
+  it("sequência com um lote do CPF e um sem conversão não é repartida: fica no lote da coluna, e cita o outro lote do CPF só pelo número novo", () => {
+    const parcelas = [
+      parcela("C6", 300, "2026-12-10", { lote: "216", observacoes: "LOTE: 216 E 217 E 288 QUADRA: 04", quadra: "4" }),
+    ];
+    const { units } = montar([{ codigo: "C6", cpf: "66666666666" }], parcelas);
+    expect(units).toHaveLength(1);
+    expect(units[0]).toMatchObject({ code: "GDN0414", totalContract: 300 });
+    // O Q04 L13 já está dito como coberto: não aparece de novo como "o mesmo CPF também tem".
+    expect(units[0]!.avisos).toEqual(["As parcelas deste lote cobrem também o lote Q04 L13."]);
+    const [linha] = dividirPorLote({ cpf: "66666666666", lotes, nomeDoEmpreendimento: "Garden", parcelas });
+    expect(linha!.notas).toEqual(["As parcelas deste lote citam também o lote antigo 288, que o mapa não converte."]);
+  });
+
+  it("sequência que cita um lote que o boleto dá a outro CPF não é repartida: fica inteira, com nota e sem aviso", () => {
+    // 297 = Q16 L14, que o boleto não liga ao 66666666666.
+    const parcelas = [parcela("C6", 300, "2026-12-10", { lote: "216", observacoes: "LOTE: 216 E 297", quadra: "4" })];
+    const { units } = montar([{ codigo: "C6", cpf: "66666666666" }], parcelas);
+    expect(units).toHaveLength(1);
+    expect(units[0]).toMatchObject({ code: "GDN0414", totalContract: 300 });
+    expect(units[0]!.avisos).toEqual(["O mesmo CPF também tem o lote Q04 L13."]);
+    const [linha] = dividirPorLote({ cpf: "66666666666", lotes, nomeDoEmpreendimento: "Garden", parcelas });
+    expect(linha!.notas).toEqual(["As parcelas deste lote citam também o lote Q16 L14, que o boleto não liga a este CPF."]);
+  });
+
+  it("sequência conjunta com um lote que também tem parcelas próprias: reparte, sem nenhum 'cobre também'", () => {
+    const conjunta = { lote: "397", observacoes: "LOTE: 397 E 400 - QUADRA: 12", quadra: "12" };
+    const { units } = montar(
+      [{ codigo: "C5", cpf: "55555555555" }],
+      [
+        parcela("C5", 200, "2026-12-10", conjunta),
+        parcela("C5", 200, "2027-01-10", conjunta),
+        parcela("C5", 1000, "2027-02-10", L400),
+      ],
+    );
+    const porCodigo = Object.fromEntries(units.map((u) => [u.code, u]));
+    expect(porCodigo.GDN1226).toMatchObject({ totalContract: 200 });
+    expect(porCodigo.GDN1229).toMatchObject({ totalContract: 1200 });
+    expect(porCodigo.GDN1226!.avisos).toEqual([
+      "Parcelas divididas meio a meio com o lote Q12 L29: na ficha, os dois lotes estão numa parcela só.",
+    ]);
+    // A linha do 400 tem parcela própria e parte repartida: o aviso diz quantas são repartidas.
+    expect(porCodigo.GDN1229!.avisos).toEqual([
+      "2 parcelas divididas meio a meio com o lote Q12 L26: na ficha, os dois lotes estão numa parcela só.",
+    ]);
+    expect(units.flatMap((u) => u.avisos).some((a) => a.includes("cobrem também"))).toBe(false);
+  });
+
+  it("'LOTEV 179' com a coluna vazia é o lote 179: vai para a linha dele, sem aviso de 'sem lote'", () => {
+    const { units } = montar(
+      [{ codigo: "C9", cpf: "99999999999" }],
+      [
+        parcela("C9", 100, "2026-12-10", { lote: "179", observacoes: "ENTRADA LOTE 179 - QUADRA 06", quadra: "6" }),
+        parcela("C9", 50, "2027-12-20", { observacoes: "ENTRADA LOTEV 179 - QUADRA 06 - PARCELA ANUAL", quadra: "6" }),
+      ],
+    );
+    expect(units).toHaveLength(1);
+    expect(units[0]).toMatchObject({ avisos: [], code: "GDN0618", totalContract: 150 });
+  });
+
+  it("⚠️ lote que o boleto não liga ao CPF não vira linha: vai para o principal, com nota (e não aviso)", () => {
+    // O caso medido em 29/09/2026: 2 parcelas anuais de um cliente lançadas no lote de outro.
+    const parcelas = [
+      parcela("C8", 1000, "2026-12-20", { lote: "377", observacoes: "LOTE 377 - QUADRA 13 - PARCELAS ANUAIS", quadra: "13" }),
+      parcela("C8", 1000, "2029-12-20", { lote: "297", observacoes: "LOTE 297 - QUADRA 16 - PARCELAS ANUAIS", quadra: "16" }),
+      parcela("C8", 1000, "2031-12-20", { lote: "297", observacoes: "LOTE 297 - QUADRA 16 - PARCELAS ANUAIS", quadra: "16" }),
+    ];
+    const { units } = montar([{ codigo: "C8", cpf: "88888888888" }], parcelas);
+    expect(units).toHaveLength(1);
+    // O erro de digitação do LSoft (o lote de outro comprador) não vai para a tela do loteador.
+    expect(units[0]).toMatchObject({ avisos: [], code: "GDN1304", totalContract: 3000 });
+    const [linha] = dividirPorLote({ cpf: "88888888888", lotes, nomeDoEmpreendimento: "Garden", parcelas });
+    expect(linha!.notas).toEqual(["2 parcelas no LSoft com o lote Q16 L14, que o boleto não liga a este CPF."]);
+  });
+
+  it("lote fora do mapa e parcela sem lote vão para o principal, cada um com a sua nota", () => {
+    const parcelas = [
+      parcela("C9", 100, "2026-12-10", { lote: "179", quadra: "6" }),
+      parcela("C9", 100, "2026-12-10", { lote: "383", quadra: "13" }),
+      parcela("C9", 100, "2027-12-10", { quadra: "6" }),
+    ];
+    const { units } = montar([{ codigo: "C9", cpf: "99999999999" }], parcelas);
+    expect(units).toHaveLength(1);
+    expect(units[0]).toMatchObject({ avisos: [], code: "GDN0618", totalContract: 300 });
+    const [linha] = dividirPorLote({ cpf: "99999999999", lotes, nomeDoEmpreendimento: "Garden", parcelas });
+    expect(linha!.notas).toEqual([
+      "1 parcela sem lote no LSoft.",
+      "1 parcela no lote antigo 383, sem conversão para o lote novo.",
+    ]);
+  });
+
+  it("com duas linhas, as notas do cliente e o 'mesmo CPF também tem' saem SÓ na principal", () => {
+    // Três lotes no boleto: dois com parcela própria e um sem nenhuma (o Q01 L01).
+    const tresLotes: LoteDoBoleto[] = [
+      ...lotes.filter((l) => l.documento === "55555555555"),
+      { documento: "55555555555", incerta: false, unidade: "Q01 L01" },
+    ];
+    const parcelas = [
+      parcela("C5", 100, "2026-12-10", L397),
+      parcela("C5", 100, "2026-12-10", L400),
+      parcela("C5", 10, "2027-12-10"),
+      parcela("C5", 10, "2027-12-10", { lote: "297", observacoes: "LOTE 297 - QUADRA 16", quadra: "16" }),
+      parcela("C5", 10, "2027-12-10", { lote: "383", quadra: "13" }),
+    ];
+    const linhas = dividirPorLote({ cpf: "55555555555", lotes: tresLotes, nomeDoEmpreendimento: "Garden", parcelas });
+    expect(linhas.map((l) => `Q${l.lote!.quadra} L${l.lote!.lote}`)).toEqual(["Q12 L26", "Q12 L29"]);
+    const [principal, outra] = linhas;
+    expect(principal!.avisos).toEqual(["O mesmo CPF também tem o lote Q01 L01."]);
+    expect(principal!.notas).toEqual([
+      "1 parcela sem lote no LSoft.",
+      "1 parcela no lote antigo 383, sem conversão para o lote novo.",
+      "1 parcela no LSoft com o lote Q16 L14, que o boleto não liga a este CPF.",
+    ]);
+    expect(principal!.parcelas).toHaveLength(4);
+    expect(outra!.avisos).toEqual([]);
+    expect(outra!.notas).toEqual([]);
+    expect(outra!.parcelas).toHaveLength(1);
+  });
+
+  it("lote só com parcela zerada não vira linha, o outro lote continua, e é ele que leva o 'mesmo CPF'", () => {
+    const { summary, units } = montar(
+      [{ codigo: "C5", cpf: "55555555555" }],
+      [
+        parcela("C5", 0, "2026-12-10", L397),
+        parcela("C5", 0, "2026-08-10", { ...L397, dataRecebido: "2026-08-10", paga: true, valorRecebido: 0 }),
+        parcela("C5", 300, "2026-12-10", L400),
+      ],
+    );
+    expect(units).toHaveLength(1);
+    expect(units[0]).toMatchObject({ code: "GDN1229", totalContract: 300 });
+    // O Q12 L26 vem antes na ordem, mas não tem dinheiro: a linha dele não existe, e o aviso não
+    // pode sumir com ela.
+    expect(units[0]!.avisos).toEqual(["O mesmo CPF também tem o lote Q12 L26."]);
+    expect(summary).toMatchObject({ clients: 1, contracts: 1, totalPortfolio: 300 });
+  });
+
+  it("lote do boleto sem parcela nenhuma não vira linha vazia: é aviso na linha principal, e só nela", () => {
+    const { units } = montar(
+      [{ codigo: "C5", cpf: "55555555555" }],
+      [parcela("C5", 100, "2026-12-10", L400), parcela("C5", 100, "2027-01-10", L400)],
+    );
+    expect(units).toHaveLength(1);
+    // O principal é o lote que TEM parcela (o Q12 L29), e não o primeiro da ordem (o Q12 L26).
+    expect(units[0]).toMatchObject({ code: "GDN1229", totalContract: 200 });
+    expect(units[0]!.avisos).toEqual(["O mesmo CPF também tem o lote Q12 L26."]);
+  });
+
+  it("clientes com e sem vencida em linhas diferentes: inadimplentes contam o cliente, críticos contam a linha", () => {
+    const vencidas = ["2026-05-10", "2026-06-10", "2026-07-10", "2026-08-10"];
+    const { summary } = montar(
+      [{ codigo: "C5", cpf: "55555555555" }],
+      [
+        ...vencidas.map((v) => parcela("C5", 10, v, L397)),
+        ...vencidas.map((v) => parcela("C5", 10, v, L400)),
+      ],
+    );
+    expect(summary).toMatchObject({ clients: 1, contracts: 2, criticalContracts: 2, overdueClients: 1 });
+  });
+});
+
+describe("dividirPorLote", () => {
+  it("cliente sem parcela não tem linha", () => {
+    expect(
+      dividirPorLote({ cpf: "55555555555", lotes: [], nomeDoEmpreendimento: "Garden", parcelas: [] }),
+    ).toEqual([]);
+    expect(
+      dividirPorLote({
+        cpf: "55555555555",
+        lotes: [{ documento: "55555555555", incerta: false, unidade: "Q12 L26" }],
+        nomeDoEmpreendimento: "Garden",
+        parcelas: [],
+      }),
+    ).toEqual([]);
+  });
+
+  it("texto que cita outro lote e não o da coluna é texto velho: não vira 'cobre também'", () => {
+    const [linha] = dividirPorLote({
+      cpf: "55555555555",
+      lotes: [{ documento: "55555555555", incerta: false, unidade: "Q12 L26" }],
+      nomeDoEmpreendimento: "Garden",
+      parcelas: [parcela("C5", 100, "2026-12-10", { lote: "397", observacoes: "LOTE: 398 - QUADRA: 12" })],
+    });
+    expect(linha!.avisos).toEqual([]);
+    expect(linha!.notas).toEqual([]);
+    expect(linha!.parcelas.map((p) => p.valor)).toEqual([100]);
+  });
+
+  it("a parcela repartida aparece em cada linha com o mesmo id e só a sua parte", () => {
+    const linhas = dividirPorLote({
+      cpf: "55555555555",
+      lotes: [
+        { documento: "55555555555", incerta: false, unidade: "Q12 L26" },
+        { documento: "55555555555", incerta: false, unidade: "Q12 L29" },
+      ],
+      nomeDoEmpreendimento: "Garden",
+      parcelas: [parcela("C5", 0.03, "2026-12-10", { id: "px", lote: "397", observacoes: "LOTE: 397 E 400" })],
+    });
+    expect(linhas.map((l) => l.parcelas.map((p) => [p.id, p.valor]))).toEqual([[["px", 0.02]], [["px", 0.01]]]);
+  });
+
+  it("o outro lote da divisão, se estiver em conferência, é citado com a marca", () => {
+    const [l26, l29] = dividirPorLote({
+      cpf: "55555555555",
+      lotes: [
+        { documento: "55555555555", incerta: false, unidade: "Q12 L26" },
+        { documento: "55555555555", incerta: true, unidade: "Q12 L29" },
+      ],
+      nomeDoEmpreendimento: "Garden",
+      parcelas: [parcela("C5", 100, "2026-12-10", { lote: "397", observacoes: "LOTE: 397 E 400", quadra: "12" })],
+    });
+    expect(l26!.avisos).toEqual([
+      "Parcelas divididas meio a meio com o lote Q12 L29 (em conferência): na ficha, os dois lotes estão numa parcela só.",
+    ]);
+    expect(l29!.avisos).toEqual([
+      "Lote em conferência: a troca do lote antigo pelo novo ainda tem dúvida.",
+      "Parcelas divididas meio a meio com o lote Q12 L26: na ficha, os dois lotes estão numa parcela só.",
+    ]);
+  });
+
+  it("sequência de três lotes do mesmo CPF: três partes iguais, e o aviso diz 'em partes iguais'", () => {
+    const linhas = dividirPorLote({
+      cpf: "55555555555",
+      lotes: [
+        { documento: "55555555555", incerta: false, unidade: "Q12 L26" },
+        { documento: "55555555555", incerta: false, unidade: "Q12 L29" },
+        { documento: "55555555555", incerta: false, unidade: "Q04 L13" },
+      ],
+      nomeDoEmpreendimento: "Garden",
+      parcelas: [parcela("C5", 100, "2026-12-10", { lote: "397", observacoes: "LOTE: 397 E 400 E 217", quadra: "12" })],
+    });
+    const porLote = Object.fromEntries(linhas.map((l) => [`Q${l.lote!.quadra} L${l.lote!.lote}`, l]));
+    // 100,00 em três: o centavo que sobra fica no lote da coluna (397 = Q12 L26).
+    expect(porLote["Q12 L26"]!.parcelas[0]!.valor).toBe(33.34);
+    expect(porLote["Q12 L29"]!.parcelas[0]!.valor).toBe(33.33);
+    expect(porLote["Q04 L13"]!.parcelas[0]!.valor).toBe(33.33);
+    expect(porLote["Q12 L26"]!.avisos).toEqual([
+      "Parcelas divididas em partes iguais com os lotes Q12 L29 e Q04 L13: na ficha, os 3 lotes estão numa parcela só.",
+    ]);
+  });
+});
+
+describe("partesIguaisEmCentavos", () => {
+  it("divide sem criar nem perder centavo, com o resto na primeira parte", () => {
+    expect(partesIguaisEmCentavos(423_810, 2)).toEqual([211_905, 211_905]);
+    expect(partesIguaisEmCentavos(423_811, 2)).toEqual([211_906, 211_905]);
+    expect(partesIguaisEmCentavos(100, 3)).toEqual([34, 33, 33]);
+    expect(partesIguaisEmCentavos(0, 2)).toEqual([0, 0]);
+    for (const [centavos, n] of [[1, 2], [99_999, 3], [123_457, 4]] as const) {
+      expect(partesIguaisEmCentavos(centavos, n).reduce((a, b) => a + b, 0)).toBe(centavos);
+    }
   });
 });
 
@@ -498,6 +1000,11 @@ type Tabela = { erro?: { code?: string; message: string }; linhas?: Linha[] };
  * 24/09/2026. E o `log` guarda a coluna de cada `.order()` e o tamanho de cada `.in()`, para o teste
  * afirmar a chave única e o lote de 100: um falso que ordena sozinho e aceita `.in()` de qualquer
  * tamanho deixava os dois defeitos passarem verdes.
+ *
+ * ⚠️ E ELE SÓ DEVOLVE AS COLUNAS DO `select()` (revisão de 29/09/2026). Devolvendo a linha inteira,
+ * a leitura que esquecesse `lote` e `observacoes` no select passava verde, e em produção o cliente de
+ * dois lotes voltava a ser uma linha só. Os filtros continuam valendo sobre a linha inteira, como no
+ * PostgREST (filtra por coluna que não vem no select).
  */
 function bancoFalso(tabelas: Record<string, Tabela>) {
   const log = {
@@ -510,6 +1017,9 @@ function bancoFalso(tabelas: Record<string, Tabela>) {
       const tabela = tabelas[nome] ?? { linhas: [] };
       const filtros: Array<(linha: Linha) => boolean> = [];
       let ordem: null | string = null;
+      let colunas: null | string[] = null;
+      const projetar = (linha: Linha): Linha =>
+        colunas === null ? linha : Object.fromEntries(colunas.map((coluna) => [coluna, linha[coluna]]));
       const consulta = {
         contains(coluna: string, valores: unknown[]) {
           filtros.push((l) => valores.every((v) => ((l[coluna] as unknown[]) ?? []).includes(v)));
@@ -537,9 +1047,12 @@ function bancoFalso(tabelas: Record<string, Tabela>) {
             .sort((a, b) => String(a[chave]).localeCompare(String(b[chave])));
           chamadas += 1;
           if (ordem === null && chamadas % 2 === 0) todas.reverse();
-          return { count: todas.length, data: todas.slice(de, ate + 1), error: null };
+          return { count: todas.length, data: todas.slice(de, ate + 1).map(projetar), error: null };
         },
-        select() {
+        select(lista?: string) {
+          // "id, cliente_codigo, valor" → só essas chaves; sem lista (ou "*"), a linha inteira.
+          const pedidas = (lista ?? "*").split(",").map((coluna) => coluna.trim()).filter(Boolean);
+          colunas = pedidas.includes("*") ? null : pedidas;
           return consulta;
         },
       };
@@ -565,6 +1078,12 @@ describe("o banco de mentira castiga a leitura sem ordem", () => {
     const idsComOrdem = [...(c.data ?? []), ...(d.data ?? [])].map((l) => l.id);
     expect(new Set(idsComOrdem).size).toBe(1500);
   });
+
+  it("só devolve as colunas do select, e filtra por coluna que não veio nele", async () => {
+    const banco = bancoFalso({ t: { linhas: [{ id: "a", lote: "397", tipo: "x" }, { id: "b", lote: "400", tipo: "y" }] } });
+    const r = await banco.from("t").select("id, tipo").eq("lote", "397").order("id").range(0, 9);
+    expect(r.data).toEqual([{ id: "a", tipo: "x" }]);
+  });
 });
 
 const clienteDoBanco = (codigo: string, cpf: string, naCarteira: string[] = ["Garden"]) => ({
@@ -580,6 +1099,9 @@ const parcelaDoBanco = (id: string, cliente: string, valor: number, vencimento: 
   data_recebido: null,
   empreendimento: "Garden",
   id,
+  // O antigo 150 da quadra 6 é o Q06 L14 do boleto.
+  lote: "150",
+  observacoes: null,
   paga: false,
   quadra: "06",
   valor: String(valor),
@@ -669,6 +1191,41 @@ describe("lerCarteiraDoLsoftNoFinanceiro", () => {
     });
     expect(r.data.units[0]!.avisos).toEqual(["O mesmo CPF também tem o lote Q07 L28 (em conferência)."]);
     expect(r.data.summary).toMatchObject({ clients: 1, recoveryAmount: 1000, totalPortfolio: 2200 });
+  });
+
+  it("lê o lote e o texto de cada parcela, e o cliente de dois lotes sai em duas linhas", async () => {
+    duble.banco = bancoFalso({
+      boletos_documentos: {
+        linhas: [
+          { documento: "55555555555", empreendimento: "garden", id: "b1", unidade: "Q12 L26", workspace_id: "careli" },
+          { documento: "55555555555", empreendimento: "garden", id: "b2", unidade: "Q12-L29", workspace_id: "careli" },
+        ],
+      },
+      boletos_parcelas: { linhas: [] },
+      lsoft_classificacao_de_parcela: { linhas: [] },
+      lsoft_clientes: { linhas: [clienteDoBanco("C5", "55555555555")] },
+      lsoft_parcelas: {
+        linhas: [
+          parcelaDoBanco("p1", "C5", 2201.02, "2026-09-10", { lote: "397", quadra: "12" }),
+          parcelaDoBanco("p2", "C5", 2207.18, "2026-09-10", { lote: "400", quadra: "12" }),
+          // Coluna vazia: o lote sai do texto.
+          parcelaDoBanco("p3", "C5", 10000, "2027-12-20", {
+            lote: null,
+            observacoes: "PARC. ANUAL LOTE: 397 - QUADRA: 12",
+            quadra: "12",
+          }),
+        ],
+      },
+    });
+
+    const r = await ler();
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const porCodigo = Object.fromEntries(r.data.units.map((u) => [u.code, u]));
+    expect(Object.keys(porCodigo).sort()).toEqual(["GDN1226", "GDN1229"]);
+    expect(porCodigo.GDN1226).toMatchObject({ avisos: [], overdueAmount: 2201.02, totalContract: 12201.02 });
+    expect(porCodigo.GDN1229).toMatchObject({ avisos: [], overdueAmount: 2207.18, totalContract: 2207.18 });
+    expect(r.data.summary).toMatchObject({ clients: 1, contracts: 2, totalPortfolio: 14408.2 });
   });
 });
 
