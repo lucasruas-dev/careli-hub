@@ -407,11 +407,19 @@ export async function carregarTermoDeRescisao(escopo: EscopoDoTermo): Promise<Te
   // ainda não é calculada) e corretagem `valor_efetivo` em contrato cujo texto de corretagem não
   // traz o valor em reais (aí a linha some E a multa e a publicidade sobem, porque a base vira a
   // tabela cheia). A frase é o próprio aviso, que já diz qual rubrica e qual base faltou.
-  const foraDaConta = montado.dados.conta.avisos.filter((aviso) => aviso.includes(" não entrou na conta:"));
-  if (foraDaConta.length) {
+  //
+  // ⚠️ DESDE 01/10/2026 É QUALQUER AVISO, E NÃO SÓ "NÃO ENTROU NA CONTA". O PDF imprimia os avisos
+  // em "Observações da apuração", e o de corretagem R$ 0,00 (escrito para quem EMITE: "confira no
+  // contrato assinado...") chegou ao cliente em 8 contratos do Recanto do Pará. Decisão do Lucas:
+  // corretagem zero não sai, pede conferência. Com isso a regra é uma só: aviso é para o operador,
+  // vira a frase da recusa, e o papel NUNCA leva aviso (o PDF parou de imprimi-los). A régua por
+  // texto, que o reviewer marcou como frágil, saiu junto: aviso novo que alguém escrever amanhã não
+  // vaza para o cliente, recusa.
+  const avisos = montado.dados.conta.avisos;
+  if (avisos.length) {
     return falha(
       422,
-      `O termo de rescisão não sai para a unidade ${relatorio.contrato.codigo} sem conferência: ${foraDaConta.join(" ")}`,
+      `O termo de rescisão não sai para a unidade ${relatorio.contrato.codigo} sem conferência: ${avisos.join(" ")}`,
     );
   }
 

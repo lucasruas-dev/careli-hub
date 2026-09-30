@@ -42,10 +42,11 @@
 // mais num papel que circula por WhatsApp. Se a assinatura voltar e o papel virar instrumento, a
 // qualificação volta com ela.
 //
-// ⚠️ 6. OS AVISOS DA APURAÇÃO CONTINUAM IMPRESSOS, pequenos e em cinza. `conta.avisos` diz quando
-// uma alíquota caiu na praxe por falta de cadastro, ou quando uma rubrica ficou de fora porque a base
-// não foi informada. É o que conta ao jurídico que um número não foi conferido: pode encolher, não
-// pode sumir. Sem aviso, o bloco não aparece.
+// ⚠️ 6. OS AVISOS DA APURAÇÃO NÃO SÃO IMPRESSOS (desde 01/10/2026). Até ali saíam pequenos e em
+// cinza, em "Observações da apuração", e o de corretagem R$ 0,00 levou ao cliente de 8 contratos do
+// Recanto do Pará uma frase escrita para quem emite ("confira no contrato assinado..."). Aviso é para
+// o OPERADOR: `carregarTermoDeRescisao` recusa com 422 quando a conta avisa qualquer coisa, e a frase
+// da recusa é o próprio aviso. O papel que sai é, por construção, um papel sem ressalva.
 //
 // ⚠️ 7. A FRUIÇÃO NÃO É TRATADA AQUI. Ela já vem dentro de `conta.deducoes`, na posição do modelo
 // (entre os tributos e as parcelas vencidas), e só quando houve posse. As linhas saem na ordem em
@@ -567,11 +568,7 @@ export async function montarTermoDeRescisaoPdf(dados: DadosDaRescisao): Promise<
   secaoDeTopicos(ctx, "O que isso significa", significados[0] ?? "", 7.8);
   for (const texto of significados) topico(ctx, texto);
 
-  // ⚠️ PEQUENO E CINZA, MAS IMPRESSO. É exceção, não seção: só existe quando a conta avisou.
-  if (conta.avisos.length) {
-    secaoDeTopicos(ctx, "Observações da apuração", conta.avisos[0] ?? "", 7);
-    for (const aviso of conta.avisos) topico(ctx, aviso, { color: SOFT_TEXT, size: 7 });
-  }
+  // ⚠️ `conta.avisos` NÃO É IMPRESSO: é do operador, e vira a recusa no servidor (ver a decisão 6).
 
   // ⚠️ A CLÁUSULA CADASTRADA É O QUE SUSTENTA A ALÍQUOTA. Quando a premissa do empreendimento traz o
   // trecho do contrato, ele sai impresso: é o que transforma "Multa penal (10%)" numa afirmação

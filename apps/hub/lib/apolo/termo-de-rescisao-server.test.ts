@@ -444,6 +444,29 @@ describe("o que cada fonte entrega ao papel", () => {
     expect(!resultado.ok && resultado.error).toContain("unidade VOC0101 sem conferência");
   });
 
+  // ⚠️ O CASO QUE VAZOU PARA O CLIENTE (Recanto do Pará, 30/09/2026): a frase "confira no contrato
+  // assinado" ia impressa. Decisão do Lucas em 01/10/2026: corretagem zero recusa e pede conferência.
+  it("corretagem R$ 0,00 no contrato de corretagem: 422 com a frase para o operador", async () => {
+    estado.linhaDoC2x = {
+      enterprise_id: 37,
+      texto_da_corretagem:
+        "R$ 0,00 (ZERO REAIS) refere-se à intermediação imobiliária, sendo que a quantia R$ 0,00 (ZERO REAIS) será destinada ao pagamento da COORDENADORA e R$ 0,00 destinada aos ASSOCIADOS.",
+    };
+
+    expect(await carregarTermoDeRescisao(ESCOPO)).toEqual({
+      error:
+        "O termo de rescisão não sai para a unidade VOC0101 sem conferência: o contrato de corretagem desta venda registra R$ 0,00 de intermediação. Confira no contrato assinado se houve corretagem antes de simular a rescisão; enquanto isso não for esclarecido, a simulação não é emitida.",
+      ok: false,
+      status: 422,
+    });
+  });
+
+  it("qualquer aviso da conta segura o papel, e não só os que o servidor conhece pelo texto", async () => {
+    const CODIGO_DO_SERVIDOR = readFileSync(join(__dirname, "termo-de-rescisao-server.ts"), "utf8");
+    expect(CODIGO_DO_SERVIDOR).not.toContain('aviso.includes(" não entrou na conta:")');
+    expect(CODIGO_DO_SERVIDOR).toContain("if (avisos.length)");
+  });
+
   it("corretagem pelo valor do contrato sem o valor em reais: 422, e nunca multa sobre a tabela cheia", async () => {
     estado.linhaDoC2x = { enterprise_id: 37, texto_da_corretagem: null };
 
