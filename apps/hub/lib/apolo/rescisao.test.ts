@@ -589,3 +589,55 @@ describe("a cláusula cadastrada vai impressa na linha", () => {
     expect(deducaoDe(conta, "parcelas_vencidas")?.clausula).toBeNull();
   });
 });
+
+// ⚠️ DESLIGADA NÃO É AUSENTE (30/09/2026). Ausente usa a praxe e avisa; desligada é o empreendimento
+// dizendo "meu contrato não prevê isso" (Vale do Ouro e Recanto do Pará, sem publicidade nem
+// tributos). Antes deste conserto a desligada chegava aqui como ausente e o papel deduzia os 4%.
+describe("rubrica desligada sai do papel, sem praxe e sem aviso", () => {
+  const desligada = { base: "valor_de_tabela" as const, desligada: true, percentual: null, periodicidade: "unica" as const };
+
+  const conta = calcularRescisao({
+    ...CASO_REAL,
+    premissas: {
+      clausula_penal: { base: "total_pago", percentual: 25, periodicidade: "unica" },
+      corretagem: { base: "valor_efetivo", percentual: null, periodicidade: "unica" },
+      publicidade: desligada,
+      tributos: desligada,
+    },
+  });
+
+  it("publicidade e tributos desligados não viram linha", () => {
+    expect(deducaoDe(conta, "publicidade")).toBeUndefined();
+    expect(deducaoDe(conta, "tributos")).toBeUndefined();
+  });
+
+  it("e nenhum aviso fala deles", () => {
+    expect(conta.avisos.some((aviso) => /Publicidade|Tributos/.test(aviso))).toBe(false);
+  });
+
+  it("as ligadas continuam: 25% do pago e a corretagem do contrato", () => {
+    expect(deducaoDe(conta, "clausula_penal")?.valor).toBe(4033.83);
+    expect(deducaoDe(conta, "corretagem")?.valor).toBe(4705.22);
+    expect(conta.totalDeDeducoes).toBe(9702.93);
+  });
+
+  it("corretagem desligada tira a linha, mas a comissão ainda sai da base líquida", () => {
+    const semCorretagem = calcularRescisao({
+      ...CASO_REAL,
+      premissas: {
+        clausula_penal: { base: "valor_de_tabela_menos_comissao", percentual: 10, periodicidade: "unica" },
+        corretagem: desligada,
+        publicidade: { base: "valor_de_tabela_menos_comissao", percentual: 4, periodicidade: "unica" },
+        tributos: { base: "total_pago", percentual: 5.93, periodicidade: "unica" },
+      },
+    });
+    expect(deducaoDe(semCorretagem, "corretagem")).toBeUndefined();
+    expect(semCorretagem.base).toBe(67682.78);
+    expect(semCorretagem.avisos).toEqual([]);
+  });
+
+  it("fruição desligada não entra nem com posse", () => {
+    const comPosse = calcularRescisao({ ...CASO_REAL, mesesDeFruicao: 12, premissas: { fruicao: desligada } });
+    expect(deducaoDe(comPosse, "fruicao")).toBeUndefined();
+  });
+});

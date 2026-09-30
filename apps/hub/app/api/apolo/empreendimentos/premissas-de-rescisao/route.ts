@@ -360,7 +360,10 @@ export async function GET(request: Request) {
       rotulo: rubrica.rotulo,
       rubrica: rubrica.valor,
       /** A linha escolhida entra mesmo na conta do termo? Ver o aviso de `doTermo`. */
-      valeNoTermo: doTermo.premissas[rubrica.valor] !== undefined,
+      // Desligada também chega em `doTermo` (desde 30/09/2026), mas não entra na conta.
+      valeNoTermo:
+        doTermo.premissas[rubrica.valor] !== undefined &&
+        doTermo.premissas[rubrica.valor]?.desligada !== true,
     };
   });
 

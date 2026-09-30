@@ -156,24 +156,30 @@ describe("de onde a premissa veio, que é o que vai impresso no termo", () => {
   });
 });
 
+// ⚠️ DESDE 30/09/2026 A DESLIGADA CHEGA À CONTA MARCADA (`desligada: true`), E NÃO SOME. Antes ela
+// sumia daqui, a régua acertava o degrau, mas `calcularRescisao` lia a ausência como "use a praxe" e
+// deduzia os 4% de publicidade de quem cadastrou "não cobra". Os testes abaixo guardavam o "some";
+// agora guardam o "chega marcada", e a mesma decisão de fundo: o degrau que desliga fecha a questão.
 describe("a linha desligada não vira dedução", () => {
-  it("rubrica cadastrada só como desligada fica de fora, e sem origem", () => {
+  it("rubrica cadastrada só como desligada chega marcada, com a origem do degrau", () => {
     const { origemPorRubrica, premissas } = premissasDoRecorte(loteDoLBF, [
       linha({ ativa: false, enterpriseId: PAI, percentual: 4, rubrica: "publicidade" }),
       linha({ enterpriseId: PAI, rubrica: "clausula_penal" }),
     ]);
-    expect(Object.keys(premissas)).toEqual(["clausula_penal"]);
-    expect(origemPorRubrica.publicidade).toBeUndefined();
+    expect(Object.keys(premissas)).toEqual(["clausula_penal", "publicidade"]);
+    expect(premissas.publicidade?.desligada).toBe(true);
+    expect(premissas.publicidade?.percentual).toBeNull();
+    expect(premissas.clausula_penal?.desligada).toBeUndefined();
+    expect(origemPorRubrica.publicidade).toBe("pai");
   });
 
-  it("desligada no filho não empurra a linha do filho para o degrau do pai", () => {
-    // A linha desligada é do FILHO; o pai não cadastrou nada. Nada pode aparecer — nem com a
-    // origem trocada para "pai" só porque a linha sobrou no universo.
+  it("desligada no filho fica no degrau do filho, e não vira 'pai'", () => {
     const { origemPorRubrica, premissas } = premissasDoRecorte(loteDoLBF, [
       linha({ ativa: false, enterpriseId: LBF, percentual: 4, rubrica: "publicidade" }),
     ]);
-    expect(premissas).toEqual({});
-    expect(origemPorRubrica).toEqual({});
+    expect(Object.keys(premissas)).toEqual(["publicidade"]);
+    expect(premissas.publicidade?.desligada).toBe(true);
+    expect(origemPorRubrica).toEqual({ publicidade: "filho" });
   });
 
   // ⚠️⚠️ DESLIGAR NO FILHO VENCE O PAI, E ESTE É O TESTE QUE GUARDA A DECISÃO. A primeira versão do
@@ -187,7 +193,7 @@ describe("a linha desligada não vira dedução", () => {
   // filtrar por rubrica, rodar a régua, e só então olhar `ativa`.
   //
   // Achado pela revisão adversarial em 15/09/2026, antes de existir tela ou chamador.
-  it("desligar no filho vence o pai: a rubrica não entra, e não herda", () => {
+  it("desligar no filho vence o pai: a rubrica chega desligada, e não herda os 4%", () => {
     const { origemPorRubrica, premissas } = premissasDoRecorte(loteDoLBF, [
       linha({ enterpriseId: PAI, percentual: 4, rubrica: "publicidade" }),
       linha({
@@ -198,8 +204,14 @@ describe("a linha desligada não vira dedução", () => {
         rubrica: "publicidade",
       }),
     ]);
-    expect(premissas.publicidade).toBeUndefined();
-    expect(origemPorRubrica.publicidade).toBeUndefined();
+    expect(premissas.publicidade).toEqual({
+      base: "valor_de_tabela_menos_comissao",
+      clausula: "O LBF não cobra publicidade.",
+      desligada: true,
+      percentual: null,
+      periodicidade: "unica",
+    });
+    expect(origemPorRubrica.publicidade).toBe("filho");
   });
 
   // ⚠️ E O DESLIGAMENTO NÃO CONTAMINA AS VIZINHAS: desligar a publicidade no filho não pode fazer a
@@ -210,9 +222,17 @@ describe("a linha desligada não vira dedução", () => {
       linha({ enterpriseId: PAI, percentual: 4, rubrica: "publicidade" }),
       linha({ ativa: false, enterpriseId: LBF, percentual: 0, rubrica: "publicidade" }),
     ]);
-    expect(Object.keys(premissas)).toEqual(["clausula_penal"]);
+    expect(Object.keys(premissas)).toEqual(["clausula_penal", "publicidade"]);
     expect(premissas.clausula_penal?.percentual).toBe(10);
+    expect(premissas.publicidade?.desligada).toBe(true);
     expect(origemPorRubrica.clausula_penal).toBe("pai");
+  });
+
+  it("desligada com base que o banco não conhece ainda chega desligada", () => {
+    const { premissas } = premissasDoRecorte(loteDoLBF, [
+      linha({ ativa: false, base: "qualquer_coisa", enterpriseId: LBF, rubrica: "tributos" }),
+    ]);
+    expect(premissas.tributos?.desligada).toBe(true);
   });
 });
 
