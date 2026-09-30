@@ -172,6 +172,9 @@ function extratoDe(contrato: Partial<ExtratoClienteContrato> = {}): { data: Extr
   };
 }
 
+const TEXTO_DA_CORRETAGEM =
+  "R$ 9.000,00 (NOVE MIL REAIS) refere-se à intermediação imobiliária, sendo que a quantia R$ 2.000,00 (DOIS MIL REAIS) será destinada ao pagamento da COORDENADORA e R$ 7.000,00 destinada aos ASSOCIADOS.";
+
 const TABELA_AUSENTE = {
   code: "PGRST205",
   message: "Could not find the table 'public.hercules_premissas_de_rescisao' in the schema cache",
@@ -202,7 +205,8 @@ beforeEach(() => {
   estado.consultasAoSupabase = [];
   estado.extrato = extratoDe();
   estado.falhaNoC2x = false;
-  estado.linhaDoC2x = { enterprise_id: 37, texto_da_corretagem: null };
+  // O caso normal: o contrato de corretagem traz o valor em reais (2.888 de 3.012, medido em 16/09).
+  estado.linhaDoC2x = { enterprise_id: 37, texto_da_corretagem: TEXTO_DA_CORRETAGEM };
   estado.respostas = {
     hercules_empreendimentos: {
       data: [{ cidade: "Cidade de Teste", pai_id: "uuid-do-pai", uf: "MG" }],
@@ -231,7 +235,7 @@ describe("sem premissa, o termo não sai", () => {
 
     expect(await carregarTermoDeRescisao(ESCOPO)).toEqual({
       error:
-        "O termo de rescisão ainda não sai para a unidade VOC0101: o empreendimento não tem premissa de rescisão cadastrada para multa penal, publicidade, corretagem e tributos. Sem ela, a conta usaria um percentual de praxe que o contrato pode não prever.",
+        "O termo de rescisão ainda não sai para a unidade VOC0101: o empreendimento não tem premissa de rescisão cadastrada para multa penal, publicidade e tributos. Sem ela, a conta usaria um percentual de praxe que o contrato pode não prever.",
       ok: false,
       status: 422,
     });
@@ -429,13 +433,23 @@ describe("as recusas do contrato", () => {
 });
 
 describe("o que cada fonte entrega ao papel", () => {
-  it("a posse cadastrada chega à conta (e a fruição sem base sai com aviso)", async () => {
+  // ⚠️ ACHADOS DA REVISÃO DE 30/09/2026: a linha que SOME também segura o papel, e não só a que cai
+  // na praxe. Antes, os dois casos abaixo saíam com `ok: true` e um aviso cinza.
+  it("posse cadastrada com a fruição sem base: 422, e nunca um papel sem a fruição", async () => {
     estado.respostas.hercules_posse = { data: { data_da_posse: "2025-09-16" }, error: null };
 
     const resultado = await carregarTermoDeRescisao(ESCOPO);
-    expect(resultado.ok).toBe(true);
-    if (!resultado.ok) return;
-    expect(resultado.dados.conta.avisos.some((aviso) => aviso.startsWith("Fruição não entrou"))).toBe(true);
+    expect(!resultado.ok && resultado.status).toBe(422);
+    expect(!resultado.ok && resultado.error).toContain("Fruição não entrou na conta");
+    expect(!resultado.ok && resultado.error).toContain("unidade VOC0101 sem conferência");
+  });
+
+  it("corretagem pelo valor do contrato sem o valor em reais: 422, e nunca multa sobre a tabela cheia", async () => {
+    estado.linhaDoC2x = { enterprise_id: 37, texto_da_corretagem: null };
+
+    const resultado = await carregarTermoDeRescisao(ESCOPO);
+    expect(!resultado.ok && resultado.status).toBe(422);
+    expect(!resultado.ok && resultado.error).toContain("Corretagem não entrou na conta");
   });
 
   it("a comissão do contrato de corretagem vira a linha 'Conforme contrato'", async () => {

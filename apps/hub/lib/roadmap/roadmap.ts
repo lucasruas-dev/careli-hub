@@ -1188,6 +1188,27 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
     situacao: "entregue",
     titulo: "Termo de acordo com texto legal, assinatura e acompanhamento",
   },
+  {
+    id: "PAN-128",
+    entregueEm: "2026-09-30",
+    evidencia:
+      "v1.400.0. `TERMO_DE_RESCISAO_LIBERADO = true` em lib/apolo/termos-liberados.ts; trava de praxe em lib/apolo/termo-de-rescisao-server.ts; rubrica desligada em lib/apolo/premissas-de-rescisao.ts e rescisao.ts; rota do PDF no portão de escrita. 25 premissas cadastradas em `hercules_premissas_de_rescisao` (Lavra do Ouro LOU e LOS, Morada da Serra, Vale do Ouro pelo principal VLO, Recanto do Pará), lidas no texto dos contratos do C2X.",
+    modulo: "Apolo",
+    porque:
+      "Lucas (30/09/2026): *\"como estamos na frente do termo de rescisão, o que precisa para ele ir ao ar hoje\"*. O papel estava no ar desde 16/09 atrás da chave, esperando o nome e o texto. Ligado com uma trava que ele escolheu: empreendimento sem premissa não emite, porque a praxe é o modelo da Lavra do Ouro e deduziria de outro cliente o que o contrato dele não prevê.",
+    situacao: "entregue",
+    titulo: "Simulação de Rescisão ligada no extrato do cliente",
+  },
+  {
+    id: "PAN-129",
+    evidencia:
+      "Rota GET/PUT em app/api/apolo/empreendimentos/premissas-de-rescisao, sem nenhum .tsx que a chame. Em 30/09/2026 só 5 empreendimentos (7 ids do C2X) têm premissa; Cidade Jardim, Rio de Pedras, Portal dos Vales, Veredas do Ouro, Lagoa Bonita e os demais respondem com a frase de recusa.",
+    modulo: "Apolo",
+    porque:
+      "A Simulação de Rescisão só sai para empreendimento com premissa cadastrada, e hoje o cadastro é SQL feito pelo Zeus. Falta a aba de premissas na tela do empreendimento, para o Financeiro cadastrar o resto lendo a cláusula do contrato, e a leitura das cláusulas dos que ficaram de fora (Veredas do Ouro não tem cláusula de rescisão detalhada). Também em aberto: a base \"valor do contrato atualizado\", que os contratos citam e o sistema não calcula.",
+    situacao: "proximo",
+    titulo: "Tela de premissas de rescisão e os empreendimentos que faltam",
+  },
 ];
 
 /** Quantos itens em cada situação — o cabeçalho da tela lê daqui. */

@@ -400,6 +400,21 @@ export async function carregarTermoDeRescisao(escopo: EscopoDoTermo): Promise<Te
     );
   }
 
+  // ⚠️ E A LINHA QUE SUMIU TAMBÉM SEGURA O PAPEL. Achado pela revisão de 30/09/2026: a trava acima só
+  // vê a linha que EXISTE com origem "padrao". Quando a premissa pede uma base que não veio, a linha
+  // SOME e fica só o aviso cinza "não entrou na conta", e o número muda sem ninguém ver. Dois casos
+  // reais com o cadastro de hoje: fruição com posse cadastrada (a base "valor do contrato atualizado"
+  // ainda não é calculada) e corretagem `valor_efetivo` em contrato cujo texto de corretagem não
+  // traz o valor em reais (aí a linha some E a multa e a publicidade sobem, porque a base vira a
+  // tabela cheia). A frase é o próprio aviso, que já diz qual rubrica e qual base faltou.
+  const foraDaConta = montado.dados.conta.avisos.filter((aviso) => aviso.includes(" não entrou na conta:"));
+  if (foraDaConta.length) {
+    return falha(
+      422,
+      `O termo de rescisão não sai para a unidade ${relatorio.contrato.codigo} sem conferência: ${foraDaConta.join(" ")}`,
+    );
+  }
+
   return { dados: montado.dados, ok: true };
 }
 
