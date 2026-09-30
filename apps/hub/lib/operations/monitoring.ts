@@ -16,6 +16,9 @@ export type OperationsPayloadRisk = "atencao" | "bom" | "critico" | "pesado";
 export type OperationsAlertType =
   | "api_lenta"
   | "banco_indisponivel"
+  // O cadastro de empreendimento do Panteon e o C2X discordam (vigia do PAN-124, F3). A coluna
+  // alert_type do banco é text: tipo novo não pede migration.
+  | "cadastro_divergente"
   | "endpoint_inseguro"
   | "erro_recorrente"
   | "integracao_externa_com_atencao"

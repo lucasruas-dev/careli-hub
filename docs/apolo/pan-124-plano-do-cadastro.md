@@ -180,6 +180,25 @@ risco/rollback: Riscos e mitigações:
 Rollback: revert do código. A tabela fica e não afeta nada.
 OK do Lucas: Aplicar a 0193 e fazer o deploy. Confirmar o aviso que o bootstrap vai gerar: 1, sobre o 30, com 2 motivos. Registrar no PAN-080 que o vigia lê audits pelo sweep, e não pelo incremental. 
 
+### F3 na execução (30/09/2026, branch `feat/pan-124-f3-vigia`, não publicada)
+
+O que mudou em relação ao texto acima, e por quê. Tudo medido só com SELECT em 30/09/2026.
+
+- **Migration 0201, e não 0193.** Os números 0193 a 0199 foram usados por outras frentes entre 28 e 30/09 (0193 é o código do corretor autônomo; 0200, os pagamentos conferidos). As fatias seguintes também precisam de número novo; conferir o diretório e `list_migrations` antes de cada uma.
+- **O prefixo é pela sigla do id, e não pelo segmento.** A regra "quando houver segmento_id, vale o segmento" daria 707 alarmes falsos: as unidades do 31 (LAB) com segmento LBF, LBP e LBR têm código LAB..., e as do 35 (VLO) com segmento VOC e VOL têm código VLO.... Antes da unificação, o código segue o id onde a unidade mora. A regra pelo segmento entra com a unificação.
+- **Coluna nova no retrato: `nome_aceito`.** O nome do C2X nunca é comparado com o do Panteon (diferem de propósito); o vigia compara com o nome que o Panteon deu por sabido. Ele nasce igual ao nome do C2X e só anda pelo silêncio (o C2X passou a dizer o que o cadastro ou a trilha já disseram) ou pela ação de aceitar da F10. Sem essa coluna, o aviso de nome valeria por uma rodada só: o retrato andaria e o motivo sumiria sozinho.
+- **Sigla, cidade e UF comparam o ESTADO** (cadastro contra C2X), e não o evento. O motivo some sozinho quando alguém acompanha do outro lado, e o protocolo fecha. `sigla_divergente_aceita` volta a false quando o C2X troca de novo.
+- **Motivo novo: `sumiu_do_c2x`**, para cadastro com id legado que o C2X não tem mais (nível alto). Hoje, nenhum. Produto do Panteon (id de 100000 em diante) e o ZZ TESTE não entram.
+- **Ids de teste: `C2X_TEST_ENTERPRISE_IDS = [2, 34]`** em `lib/guardian/c2x-analytics.ts`. Não é `EXCLUDED_ENTERPRISE_IDS`, que tem o 31: o LAB é empreendimento de verdade e é conferido.
+- **Três modos por rodada do sweep.** Bootstrap (retrato vazio), diário (07:00 às 07:14 em Brasília, se ainda não conferiu tudo no dia) e evento (auditoria de Enterprise nova depois do cursor). Sem nada disso, a rodada é 1 consulta ao C2X.
+- **Notificação só no nascimento, e nunca com o banco de protocolos fora.** Nesse caso o reserva de `syncOperationAlertProtocols` devolve todo aviso como nascido, e notificar seria notificar a cada 15 minutos.
+- **O ensaio mudou: são 2 avisos, e não 1.** Em 28/09 o 43 foi renomeado duas vezes no C2X (PDI para PLI, auditoria 34709, e PLI para PTI, 34722). O ensaio real (`scratchpad/pan124-f3-ensaio.ts`, só leitura) deu 37 linhas no retrato, 35 ids conferidos e:
+  - 30: sem cadastro, e 31 de 31 unidades do Panteon com ADT contra ACT (2 motivos);
+  - 43: sigla PDI no Panteon, PTI no C2X (1 motivo). Pela decisão 1, o Panteon manda: seguir o C2X (F10, com a trava de movimento; o 43 tem 0 unidades nos dois lados) ou aceitar a divergência (F11).
+  - 0 avisos de nome, cidade ou UF; 2 e 34 ignorados; o ZZ TESTE ignorado.
+
+**OK do Lucas para a F3:** aplicar a 0201 e fazer o deploy. Na primeira rodada do sweep depois dos dois, o bootstrap abre os 2 protocolos acima e notifica os admins uma vez por protocolo.
+
 ## Fatia 4: F4 · A chave do grupo não é o nome (0194)
 objetivo: O id 'group:<Nome>' está gravado em 25 lugares:
 - settings 2, esteira 2 (conferido em 26/09: 'group:Lagoa Bonita' = 2), cad_log_erros 2;
