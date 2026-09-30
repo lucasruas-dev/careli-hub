@@ -100,3 +100,47 @@ já liga a baixa automática".
 - ⚠️ Pendências: os avisos da baixa automática (estorno depois de baixa, valor diferente, lote que
   não casa) vão só para o log do servidor; a rota de sincronização aceita qualquer usuário com leitura
   do Apolo, e agora a mesma chamada dá baixa (o que é baixado não depende de quem chama).
+
+## 30/09/2026 · Pagamentos a conferir (v1.399.0)
+
+Lucas: *"pode fazer a lista de pagamentos a conferir"*. Autorização de 30/09: *"tem o meu ok"* para a
+migration 0200 e para publicar.
+
+- **O que é:** um bloco no Financeiro do Garden com o boleto pago que a baixa do hub não resolveu
+  sozinha. Calculado na hora pela mesma régua da baixa (`lerBaixaDoHub`), sem cópia.
+- **Dois grupos:** "Pagamentos a conferir" (pede decisão) e "Boletos pagos com a parcela em aberto na
+  LSoft Integração" (falta a baixa manual; dada a baixa com o valor e a data do boleto, o item sai
+  sozinho).
+- **Cada linha:** cliente, lote, mês, data e valor pago, o motivo na língua do time, botão Ficha e
+  botão Conferido (com observação). A cobrança conferida que volta por outro motivo diz quem conferiu
+  antes.
+- **Migration 0200** `boletos_pagamentos_conferidos` (chave cobrança + motivo, só insert), aplicada e
+  conferida: RLS ligada, nenhuma policy, nenhum grant a anon, authenticated ou public, 0 linhas.
+- **Rota** `/api/incorporador/carteira/conferir` (GET e POST): autorizar + portalVeBaseLsoft + não
+  comercial + Garden no escopo; fora disso, 404. O POST só aceita cobrança da lista viva, recusa
+  (409) se o motivo mudou desde que a pessoa abriu a lista, e assina com o usuário da sessão.
+- **Como foi feito:** os agentes de implementação caíram duas vezes por sobrecarga do serviço (529);
+  a implementação foi direta, e a revisão independente (2 revisores) rodou depois. Dos 15 achados,
+  os que mudavam o que a lista diz foram consertados antes de subir:
+  - a "rotina" mandava dar baixa manual sem olhar a ficha (10 de 22 já estavam pagos): a régua passou
+    a valer para todo cliente do LSoft (`clientes: "todos"`, opção que a rodada automática não usa);
+  - "o dono do lote não foi localizado" era falso em 3 de 4: agora diz que o documento do boleto não
+    é de ninguém e aponta a ficha que tem o lote, quando é uma só;
+  - três motivos caíam em frase genérica ou errada (dois boletos pagos para o mesmo lote entre eles);
+  - o Conferido gravava o motivo da hora do clique, e não o que a pessoa viu (impressão + 409);
+  - a segunda conferência apagava a primeira (chave cobrança + motivo, insert);
+  - estorno depois de baixa manual não aparecia (`todosOsDesfeitos`);
+  - o texto cru do log ia no payload (sai; a tela recebe só a impressão).
+- **A rodada automática não mudou:** ensaio depois das mudanças, 0 baixa nova, 102 já pagas, 27 a
+  conferir (iguais aos de antes).
+- **Lista de hoje (só leitura, 2 s):** 14 a conferir e 6 boletos pagos com parcela em aberto
+  (R$ 12.278,50). Entre os 14: 00000290 e 00000213 (parcela já baixada com outro valor), 00000612,
+  00000086, 00000654, 00000566 e 00000538 (lote do boleto sem parcela no mês), 00000587 (parcela de
+  dois lotes com um cobrado de outra pessoa), 00000185 e 00000179 (mais de uma parcela do lote no
+  mês), e três boletos cujo documento não é de cliente do LSoft (Q07 L11, Q09 L10, Q12 L16, Q12 L25;
+  em dois a lista aponta a ficha que tem o lote).
+- Deploy: push `ad33e8d0..305ce566` (pré-push: 728 arquivos, 10.986 testes). Rollback: o deployment
+  da v1.398.0 (commit `ad33e8d0`).
+- ⚠️ Ficou para depois, dos achados: um código estável por motivo em `baixa-do-hub.ts` (hoje a chave
+  guardada é o texto da frase; há aviso no arquivo), e reduzir o custo da lista (12 consultas por
+  abertura).
