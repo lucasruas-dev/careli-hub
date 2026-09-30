@@ -367,21 +367,21 @@ describe("a corretagem no papel", () => {
     );
   });
 
-  it("corretagem de R$ 0,00 escrita no contrato fica no papel, mas NÃO calada", () => {
+  it("corretagem de R$ 0,00 escrita no contrato gera o aviso que o servidor transforma em recusa", () => {
     // 15 contratos de corretagem dizem R$ 0,00 (16/09/2026). Sem o aviso, o papel afirmaria
     // "0% sobre o valor de tabela" com a mesma cara de um número apurado.
     const dados = montado({ comissaoEmReais: 0 });
 
     expect(deducaoDe(dados.conta, "corretagem")?.valor).toBe(0);
     expect(
-      dados.conta.avisos.some((aviso) => aviso.startsWith("Corretagem saiu R$ 0,00")),
+      dados.conta.avisos.some((aviso) => aviso.includes("registra R$ 0,00 de intermediação")),
     ).toBe(true);
   });
 
   it("com comissão acima de zero, o aviso do zero não aparece", () => {
     const dados = montado({ comissaoEmReais: 8000 });
 
-    expect(dados.conta.avisos.some((aviso) => aviso.startsWith("Corretagem saiu R$ 0,00"))).toBe(
+    expect(dados.conta.avisos.some((aviso) => aviso.includes("registra R$ 0,00 de intermediação"))).toBe(
       false,
     );
   });
