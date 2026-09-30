@@ -37,7 +37,7 @@ export type ChangelogEntry = {
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
     buildTag: "2026-09-30-rescisao-sem-aviso-no-papel",
-    deployedAt: "__HORA_REAL__",
+    deployedAt: "2026-09-30T17:28:59-03:00",
     internal: true,
     modules: [
       {
@@ -55,7 +55,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "5036cbf6",
     technical: {
       done: "`rescisao-pdf.ts` deixou de imprimir `conta.avisos` (sai a seção \"Observações da apuração\"). `carregarTermoDeRescisao` recusa com 422 quando sobra QUALQUER aviso, no lugar da régua por texto \" não entrou na conta:\". O aviso de corretagem R$ 0,00 (`termo-de-rescisao.ts`) foi reescrito para o operador, porque virou a frase da recusa. Prova com dado real e premissas de produção: REPE186 e REPE193 (Recanto, com vencida e corretagem zero) recusam; REPD158 e LOS0610 saem com os mesmos números da v1.401.0 e sem observações; PVS0901 segue recusando por falta de premissa. 439 testes da frente verdes, typecheck limpo, reviewer PODE SUBIR.",
-      motivation: "A revisão da Publicação achou que 8 contratos do Recanto do Pará com corretagem R$ 0,00 levavam ao cliente a frase interna \"confira no contrato assinado se houve intermediação\". Lucas (01/10/2026) escolheu recusar e pedir conferência.",
+      motivation: "A revisão da Publicação achou que 8 contratos do Recanto do Pará com corretagem R$ 0,00 levavam ao cliente a frase interna \"confira no contrato assinado se houve intermediação\". Lucas (30/09/2026) escolheu recusar e pedir conferência.",
     },
     title: "Simulação de Rescisão sem observação interna no papel",
     type: "correcao",
