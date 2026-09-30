@@ -133,10 +133,21 @@ export async function vigiarCadastroContraOC2x(
     return PARADO;
   }
 
+  // ⚠️ Auditoria de um id que não está em lado nenhum (apagado no C2X antes de o vigia o ver) não tem
+  // retrato para levar o cursor adiante. Sem este filtro, ela dispararia a rodada inteira a cada 15
+  // minutos, para sempre; com ele, custa a faixa de auditoria, os 37 empreendimentos e o cadastro, e
+  // para antes das unidades, dos protocolos e de qualquer gravação.
   const ids =
     modo === "evento"
-      ? [...auditorias.keys()]
+      ? [...auditorias.keys()].filter(
+          (id) => c2x.has(id) || retratos.has(id) || cadastros.has(id),
+        )
       : [...new Set([...c2x.keys(), ...cadastros.keys(), ...retratos.keys()])];
+
+  if (ids.length === 0) {
+    return PARADO;
+  }
+
   const unidades = await lerUnidades(client, ids);
 
   if (!unidades) {

@@ -351,6 +351,23 @@ describe("vigia do cadastro no sweep: evento, janela diária e fechamento", () =
     });
   });
 
+  it("auditoria de id que não está em lado nenhum não dispara a rodada", async () => {
+    const { sqls } = poolFalso({ empreendimentos: C2X, novas: [{ auditable_id: 99, id: 34900 }] });
+    const { client, consultadas, gravados } = clienteFalso({
+      hercules_empreendimentos: { data: CADASTRO },
+      hercules_empreendimentos_c2x_retrato: {
+        data: [retratoGravado("43", "PTI", "PORTAL IBITURUNA", "2026-09-30T10:00:00Z")],
+      },
+    });
+
+    const r = await vigiarCadastroContraOC2x(client, { agora: AGORA_FORA_DA_JANELA, listarAdmins });
+
+    expect(r.modo).toBe("parado");
+    expect(sqls).toHaveLength(2);
+    expect(consultadas).not.toContain("hercules_unidades");
+    expect(gravados).toEqual([]);
+  });
+
   it("na janela diária confere todos os ids, mesmo sem auditoria nova", async () => {
     poolFalso({ empreendimentos: C2X, novas: [] });
     sincroniaQueNasce();
