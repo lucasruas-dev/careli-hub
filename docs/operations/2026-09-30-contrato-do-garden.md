@@ -32,15 +32,32 @@ o contrato do Garden e ligar a parte de emissão de contrato do portal da cecili
   `tem_correcao`, respondidos só quando há plano gravado. E a frase do envio que manda arrumar o
   Quadro de assinatura passa a citar o caminho do hub e o do portal (antes só o do hub, que não existe
   para a Cecílio).
-- **A minuta** `GDN - TERMO DE ADESÃO SCP + ANEXO 1`: o texto dos dois PDFs, palavra por palavra, num
-  documento só (Termo, folha de assinaturas, Anexo 1, folha de assinaturas). O sócio participante
-  entra pelo laço de comprador (PF ou PJ), o lote e a quadra pela unidade, e o fluxo pelas variáveis
-  novas. Fica FORA do repositório porque traz os documentos da Sócia Ostensiva e do administrador:
-  está no scratchpad da sessão (`garden-minuta/minuta-garden.mjs` e `minuta-garden.json`).
-- **Ensaio local pelo motor de verdade** (`dadosDaProposta` → `preencherContrato` →
-  `documentoParaHtml` → PDF), venda fictícia no formato do simulador: plano com 6% a.a., plano sem
-  juros (o À VISTA), plano sem anuais e dois sócios. Nos quatro: 51 variáveis, 0 desconhecida,
-  0 bloco quebrado, 0 sem valor. Prévias em `Relatórios Panteon/2026-09-30 Garden - previa do
+- **Revisão independente** (workflow de 3 lentes, cada achado verificado por um cético): 11 achados
+  confirmados, 7 descartados. Consertados no commit 8dbc7716 (motor) e na minuta:
+  - blocos prontos PRECO e FLUXO_TABELA com juros e correção em orações próprias, cada uma no seu par
+    (com as variáveis preenchidas, a frase única imprimia "juros de sem juros");
+  - `data_limite_entrada` pelo vencimento mais tarde, não pela última posição da lista;
+  - par novo `tem_mensais` (entrada de 100% zera a série mensal);
+  - extenso no feminino para contar parcelas: `prazo_parcelas_extenso` e
+    `plano_anuais_quantidade_extenso` ("2 (duas) parcelas");
+  - `numero_e_complemento_cliente` ("150, AP 700"), sem mexer em `[numero_cliente]` das minutas
+    publicadas;
+  - na minuta: sócio pessoa jurídica pela razão social e "representada na forma de seu contrato
+    social"; alínea a.1) do bem e da permuta; cláusula 2 só com correção e juros como cláusula 3;
+    "reajustáveis" só com correção; texto vazio entre variáveis vizinhas (regra do editor).
+  - Descartado de propósito: travar o contrato quando as mensais do SACOC variam. O item 1 declara o
+    valor nominal (a primeira parcela), a mesma convenção da coluna Valor do quadro; a cláusula 3 diz
+    que os valores são nominais e recebem os juros e a correção.
+- **A minuta** `GDN - TERMO DE ADESÃO SCP + ANEXO 1` está GRAVADA COMO RASCUNHO no 39 desde
+  30/09/2026 (id `00f85737-2e55-484c-8435-3630eb3ee848`, versão 1, 59 variáveis, OK do Lucas). O texto
+  dos dois PDFs vai num documento só (Termo, folha de assinaturas, Anexo 1, folha de assinaturas). O
+  fonte fica FORA do repositório porque traz os documentos da Sócia Ostensiva e do administrador:
+  scratchpad da sessão (`garden-minuta/minuta-garden.mjs`, `ensaio-casos.mjs`, `gravar-rascunho.mjs`).
+- **Ensaio local pelo motor de verdade** com o cronograma REAL do simulador (`montarCronograma`), oito
+  vendas fictícias: parcelado 84x com juros, investidor 60x com dois sócios, à vista sem juros, à vista
+  com prazo curto, entrada de 100%, sócia pessoa jurídica com permuta, plano sem índice com juros e
+  entrada em 3x com datas fora de ordem. Nos oito: 59 variáveis, 0 desconhecida, 0 bloco quebrado,
+  0 sem valor, nenhum colchete no papel. Prévias em `Relatórios Panteon/2026-09-30 Garden - previa do
   contrato*.pdf`.
 
 ## A decisão: juros e correção seguem a proposta
@@ -49,50 +66,51 @@ Lucas, 30/09/2026, sobre a cláusula de correção do Anexo 1 (o exemplo dizia "
 performar maior" e não falava em juros): *"é para seguir o que está na proposta, o que eu mandei é so
 um exemplo"*.
 
-O item 2 do Anexo passou a ser:
-- título "Correção monetária e juros das parcelas" (o "e juros" some quando o plano não tem juros);
-- a) correção pelo `[plano_indice_correcao]`, só a variação positiva, com data-base
-  `[data_emissao_contrato]`, sobre a PARCELA DE OBRA e, quando há, a PARCELA INTERMEDIÁRIA;
-- b) e c) do modelo da Cecílio, palavra por palavra (sem deflação; índice extinto);
-- d) juros remuneratórios de `[plano_juros]` sobre o saldo da PARCELA DE OBRA, pela
-  `[plano_sistema_amortizacao]`, só quando o plano tem juros.
+O Anexo passou a ter:
+- **2) Correção monetária das parcelas** (só quando o plano tem índice): a) correção pelo
+  `[plano_indice_correcao]` sobre as prestações do Anexo, exceto a entrada, só a variação positiva,
+  data-base `[data_emissao_contrato]`; b) e c) do modelo da Cecílio, palavra por palavra.
+- **3) Juros das parcelas** (só quando o plano tem juros e há mensais): a) juros remuneratórios de
+  `[plano_juros]` sobre o saldo da PARCELA DE OBRA, pela `[plano_sistema_amortizacao]`; b) os valores
+  do item 1 são nominais e recebem os juros e a correção.
 
 No Garden de hoje: PROMOÇÃO PARCELADO e INVESTIDOR saem "IPCA ANUAL" e "6% a.a."; o PROMOÇÃO À VISTA
-sai sem a alínea d). As anuais do Garden entram no saldo pelo valor de face, sem juros, e por isso os
-juros são declarados só sobre a obra. A redação das alíneas a) e d) é nossa, montada sobre o item VII
-das minutas publicadas da casa: vale a leitura do jurídico da Cecílio antes de publicar.
+sai sem a cláusula 3. As anuais do Garden entram no saldo pelo valor de face, sem juros, e por isso os
+juros são declarados só sobre a obra. Plano sem índice e com juros (só por troca do coordenador) sai
+com a cláusula 3 sem a 2, buraco de numeração aceito. A redação das cláusulas 2a e 3 é nossa, montada
+sobre o item VII das minutas publicadas da casa: vale a leitura do jurídico da Cecílio antes de publicar.
 
 ## ⚠️ O laço do comprador fica DENTRO do parágrafo
 
 O marcador `[inicio_cada_comprador]` sozinho num parágrafo deixa um parágrafo vazio por comprador no
 papel (o motor repete o que sobra do parágrafo do marcador, e o Plate sempre põe um texto vazio antes
-de uma variável). Na minuta do Garden o laço abre e fecha no mesmo parágrafo, com `\n` separando um
-sócio do outro. Mudar o motor para ignorar o texto vazio mexeria no papel das minutas publicadas da
+de uma variável). Na minuta do Garden o laço abre e fecha no mesmo parágrafo, com uma quebra de
+linha separando um sócio do outro. Mudar o motor para ignorar o texto vazio mexeria no papel das minutas publicadas da
 Gurgel (VOL, VOC, VOR, RVP, Veredas), e isso não foi feito.
 
 ## O que falta
 
 1. ~~Go-live das variáveis~~: feito na v1.400.0.
-2. **Go-live do commit 5167585b** (juros e índice pela proposta) pela sessão Publicação. ⚠️ A minuta
-   do Garden usa `[plano_juros]`, `[plano_indice_correcao]` e os pares `tem_juros`/`tem_correcao`:
-   publicada ANTES desse go-live, a produção trataria os pares como desconhecidos (o motor liga par
-   desconhecido) e a variável dos juros sem valor travaria a geração. Rascunho pode existir antes;
-   PUBLICAR, só depois.
-3. **Gravar a minuta como rascunho no 39** (1 linha em `temis_minutas`; OK do Lucas em 30/09/2026):
-   `node gravar-rascunho.mjs --gravar` no scratchpad, depois da revisão independente do texto.
-   Publicar fica na tela (Produtos → Garden → Ver mais → aba Minutas), pela conferência de lá.
-4. **Quadro de assinatura do 39, pela tela** (Produtos → Garden → Ver mais → aba Minutas, card no fim
-   da página): tirar o coordenador da Gurgel e incluir quem assina pela Garden Residence (bloco
-   Vendedora) e as testemunhas. Quem pode: qualquer conta ativa do `cecilio-rocha`. Regras que travam
-   o envio: e-mail próprio para cada pessoa, nome com sobrenome e sem número. A ordem de assinatura
-   não tem tela no portal (só no hub): o Garden fica em "todos ao mesmo tempo".
-5. ~~Decisão juros × correção~~: decidido, segue a proposta (ver acima).
+2. **Go-live dos commits 5167585b e 8dbc7716** pela sessão Publicação (resumo de entrega). ⚠️ A minuta
+   do Garden usa `[plano_juros]`, `[plano_indice_correcao]`, `[prazo_parcelas_extenso]`,
+   `[numero_e_complemento_cliente]` e os pares `tem_juros`, `tem_correcao` e `tem_mensais`: publicada
+   ANTES desse go-live, a produção trataria os pares como desconhecidos (o motor liga par desconhecido)
+   e as variáveis novas sem valor travariam a geração. O rascunho já existe; PUBLICAR, só depois.
+3. ~~Gravar a minuta como rascunho no 39~~: feito em 30/09/2026 (ver acima).
+4. **Publicar a minuta pela tela**, depois do item 2: Produtos → Garden → Ver mais → aba Minutas.
+5. **Quadro de assinatura do 39:** o coordenador da Gurgel foi DESATIVADO em 30/09/2026 com OK do Lucas
+   (exclusão lógica, autor "Zeus (OK do Lucas...)"); o quadro está vazio. Falta a Cecílio incluir pela
+   tela (mesmo caminho, card no fim da página) quem assina pela Garden Residence (bloco Vendedora) e as
+   testemunhas. Decisão do Lucas: a Cecílio cadastra. Quem pode: qualquer conta ativa do
+   `cecilio-rocha`. Regras que travam o envio: e-mail próprio para cada pessoa, nome com sobrenome e
+   sem número. A ordem de assinatura não tem tela no portal (só no hub): o Garden fica em "todos ao
+   mesmo tempo".
+6. ~~Decisão juros × correção~~: decidido, segue a proposta (ver acima).
 
-Avisos que vão aparecer no envio e não travam: tirando o coordenador do quadro, a tela avisa que "o
+Avisos que vão aparecer no envio e não travam: com o quadro sem coordenador, a tela avisa que "o
 contrato qualifica a COORDENADORA DE VENDAS" porque o cadastro do 39 ainda tem a Gurgel como
 coordenadora (a conferência olha o cadastro, não o texto da minuta). A minuta do Garden não cita a
 coordenadora; o aviso só some trocando a coordenadora do cadastro do 39.
 
-Pontos menores, do próprio modelo da Cecílio: a qualificação da Sócia Ostensiva cita um
-administrador e a folha de assinatura traz outra pessoa; o complemento do endereço (apartamento) não
-tem variável e não sai.
+Ponto menor, do próprio modelo da Cecílio: a qualificação da Sócia Ostensiva cita um administrador e a
+folha de assinatura traz outra pessoa. Vale confirmar com eles quem assina.
