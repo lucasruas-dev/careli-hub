@@ -36,6 +36,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-30-fluxo-de-pagamento-em-frase",
+    deployedAt: "2026-09-30T14:56:03-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Novas variáveis para escrever o fluxo de pagamento em frase**, como no Anexo 1 do Garden: valor e primeiro vencimento da parcela mensal, data até quando a entrada é paga, total e primeiro vencimento das anuais, o dia do ano em que a anual vence e a quantidade de anuais por extenso.",
+              "**Os números saem do cronograma que a proposta gravou**, os mesmos do simulador e do quadro de pagamentos. Minuta já publicada não muda.",
+            ],
+            screen: "Editor de minuta",
+          },
+        ],
+      },
+    ],
+    rollback: "305ce566",
+    technical: {
+      done: "`lib/temis/variaveis.ts` ganha `data_limite_entrada`, `valor_parcela_mensal` (+ extenso), `primeiro_vencimento_mensal`, `valor_total_anuais` (+ extenso), `primeiro_vencimento_anual`, `dia_mes_vencimento_anual` e `plano_anuais_quantidade_extenso`. `lib/temis/dados-do-contrato.ts` preenche pelo cronograma congelado em `hercules_propostas.condicoes` (entrada: último vencimento; anuais: `totais.anuais` pelo valor de face, com a soma das parcelas só para proposta antiga, e nulo se alguma parcela não tem valor). Datas lidas pelos dígitos, sem `Date`, pela mesma trava de fuso de `tabela-de-pagamentos.ts`. Só acrescenta nomes ao catálogo: nenhuma variável existente muda. Sem migração. Ensaio da minuta do Garden com venda fictícia: 43 variáveis, 0 desconhecida, 0 sem valor. Roadmap ganha o PAN-128. Entregue pela sessão Portal Cecílio e publicado pela sessão Publicação.",
+      motivation: "Lucas (30/09/2026): \"eu preciso criar o contrato do Garden e ligar a parte de emissão de contrato do portal da cecilio\". O Anexo 1 do Garden escreve o fluxo em frase, e o catálogo tinha o total e a quantidade, mas não a parcela nem os vencimentos.",
+    },
+    title: "Fluxo de pagamento em frase nas minutas",
+    type: "melhoria",
+    version: "1.400.0",
+  },
+  {
     buildTag: "2026-09-30-pagamentos-a-conferir",
     deployedAt: "2026-09-30T08:24:23-03:00",
     modules: [
