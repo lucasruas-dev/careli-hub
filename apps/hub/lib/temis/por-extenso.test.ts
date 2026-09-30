@@ -4,6 +4,7 @@ import {
   areaPorExtenso,
   dinheiroPorExtenso,
   inteiroPorExtenso,
+  parcelasPorExtenso,
   quantidadePorExtenso,
 } from "./por-extenso";
 
@@ -132,5 +133,24 @@ describe("valores grandes, que aparecem em contrato de área maior", () => {
     expect(dinheiroPorExtenso(125_746.4)).toBe(
       "cento e vinte e cinco mil setecentos e quarenta e seis reais e quarenta centavos",
     );
+  });
+});
+
+// "em 2 (duas) parcelas": o Anexo 1 do Garden conta parcelas, que são femininas (revisão de 30/09).
+describe("parcelas por extenso, no feminino", () => {
+  it.each([
+    [1, "uma"],
+    [2, "duas"],
+    [21, "vinte e uma"],
+    [42, "quarenta e duas"],
+    [84, "oitenta e quatro"],
+    [200, "duzentas"],
+    [252, "duzentas e cinquenta e duas"],
+  ])("%i vira %s", (n, esperado) => {
+    expect(parcelasPorExtenso(n)).toBe(esperado);
+  });
+
+  it("não mexe no masculino dos outros extensos", () => {
+    expect(quantidadePorExtenso(42)).toBe("quarenta e dois");
   });
 });

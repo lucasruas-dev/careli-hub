@@ -147,7 +147,7 @@ const PRECO: BlocoPronto = {
     {
       estilo: "corpo",
       texto:
-        "Parágrafo quarto — O plano contratado é o [plano_nome], com correção por [plano_indice_correcao], juros de [plano_juros] e amortização pelo sistema [plano_sistema_amortizacao].",
+        "Parágrafo quarto — O plano contratado é o [plano_nome], com amortização pelo sistema [plano_sistema_amortizacao].[inicio_tem_correcao] O saldo é corrigido por [plano_indice_correcao].[fim_tem_correcao][inicio_tem_juros] Sobre o saldo incidem juros de [plano_juros].[fim_tem_juros]",
     },
   ],
   rotulo: "Preço e pagamento",
@@ -203,7 +203,7 @@ const FLUXO_TABELA: BlocoPronto = {
     {
       estilo: "corpo",
       texto:
-        "Sobre o saldo devedor incidirão correção por [plano_indice_correcao] e juros de [plano_juros], apurados pelo sistema [plano_sistema_amortizacao], na forma do plano [plano_nome].",
+        "[inicio_tem_correcao]O saldo devedor será corrigido por [plano_indice_correcao].[fim_tem_correcao][inicio_tem_juros] Sobre o saldo devedor incidirão juros de [plano_juros].[fim_tem_juros] A amortização segue o sistema [plano_sistema_amortizacao], na forma do plano [plano_nome].",
     },
   ],
   rotulo: "Fluxo — tabela",

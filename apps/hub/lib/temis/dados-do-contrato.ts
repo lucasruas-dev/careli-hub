@@ -61,6 +61,7 @@ import {
   areaPorExtenso,
   dinheiroPorExtenso,
   inteiroPorExtenso,
+  parcelasPorExtenso,
   quantidadePorExtenso,
 } from "./por-extenso";
 import { rotuloDoIndice, rotuloDoSistema } from "./planos";
@@ -1841,6 +1842,14 @@ function umComprador(entrada: {
     // cadastral, nº..."). Ver `RUIDO_DE_CARGA`.
     por("rua_cliente", textoUtil(enderecoUnido.logradouro));
     por("numero_cliente", enderecoUnido.numero);
+    // ⚠️ O NÚMERO COM O COMPLEMENTO, numa variável À PARTE (revisão de 30/09/2026). O modelo do Garden
+    // escreve "Rua X, 431, AP 700, bairro Y", e o complemento era lido e jogado fora. Juntar em
+    // `[numero_cliente]` mudaria o papel das minutas publicadas ("nº 431, AP 700"); esta existe para
+    // quem pedir. Sem complemento, sai só o número.
+    por(
+      "numero_e_complemento_cliente",
+      [texto(enderecoUnido.numero), textoUtil(enderecoUnido.complemento)].filter(Boolean).join(", "),
+    );
     por("bairro_cliente", enderecoUnido.bairro);
     por("cep_cliente", enderecoUnido.cep);
     // "João Monlevade/MG" — é como o catálogo pede e como a qualificação escreve.
@@ -2400,6 +2409,9 @@ function gerais(
   if (prazo > 0) {
     por("prazo_meses_amortizacao", String(prazo));
     por("prazo_meses_amortizacao_extenso", quantidadePorExtenso(prazo));
+    // "em 42 (quarenta e duas) parcelas": o mesmo prazo contado em PARCELAS, no feminino. O extenso de
+    // cima fica como está porque é o de "meses", e as minutas publicadas já o usam.
+    por("prazo_parcelas_extenso", parcelasPorExtenso(prazo));
   }
 
   // ── O CRONOGRAMA CONGELADO ──
@@ -2428,7 +2440,7 @@ function gerais(
   const anuais = Array.isArray(condicoes.anuais) ? condicoes.anuais : [];
   if (anuais.length > 0) {
     por("plano_anuais_quantidade", String(anuais.length));
-    por("plano_anuais_quantidade_extenso", quantidadePorExtenso(anuais.length));
+    por("plano_anuais_quantidade_extenso", parcelasPorExtenso(anuais.length));
     parDeDinheiro("plano_anuais_valor", numero(anuais[0]?.valor));
   }
 
@@ -2438,8 +2450,14 @@ function gerais(
   // total e da quantidade (ver o catálogo, "O FLUXO ESCRITO POR EXTENSO"). Cada uma sai do mesmo
   // cronograma que o quadro lê: parcela que não está gravada não vira número, e a variável segue
   // cobrando na conferência.
-  const entrada = parcelasGravadas(condicoes.entrada);
-  por("data_limite_entrada", dataDoCronograma(entrada[entrada.length - 1]?.vencimento));
+  // ⚠️ O VENCIMENTO MAIS TARDE, e não a última posição da lista (revisão de 30/09/2026): o corretor
+  // escolhe a data de cada parcela da entrada à mão, e o cronograma as grava na ordem em que vieram.
+  // `AAAA-MM-DD` ordena como texto, sem `Date`.
+  const datasDaEntrada = parcelasGravadas(condicoes.entrada)
+    .map((parcela) => /^(\d{4}-\d{2}-\d{2})/.exec(String(parcela.vencimento ?? ""))?.[1] ?? "")
+    .filter(Boolean)
+    .sort();
+  por("data_limite_entrada", dataDoCronograma(datasDaEntrada[datasDaEntrada.length - 1]));
 
   const mensaisGravadas = parcelasGravadas(condicoes.mensais);
   parDeDinheiro("valor_parcela_mensal", numero(mensaisGravadas[0]?.valor));
@@ -2516,17 +2534,24 @@ function condicoesDoContrato(proposta: LinhaDaProposta): Record<string, boolean>
   const condicoes = objeto(proposta.condicoes) as CondicoesGravadas | null;
   if (!condicoes) return bens;
   const anuais = Array.isArray(condicoes.anuais) ? condicoes.anuais : [];
+  // ⚠️ A SÉRIE MENSAL TAMBÉM PODE NÃO EXISTIR (revisão de 30/09/2026): entrada que cobre o lote
+  // inteiro zera o saldo, e o cronograma sai sem mensal nenhuma. Sem o par, o Anexo do Garden
+  // imprimia "R$ 0,00 como PARCELA DE OBRA, em [prazo] parcelas de [valor]" e travava a geração.
+  const doCronograma = {
+    ...bens,
+    tem_anuais: anuais.length > 0,
+    tem_mensais: parcelasGravadas(condicoes.mensais).length > 0,
+  };
 
   // ⚠️ JUROS E CORREÇÃO SÓ SÃO RESPONDIDOS QUANDO HÁ PLANO GRAVADO (30/09/2026). Sem `condicoes.plano`
   // (proposta nativa anterior ao plano congelado) o par fica fora do mapa: a cláusula sai, as
   // variáveis dela ficam sem valor e a conferência cobra. Responder `false` ali faria o contrato
   // calar os juros de uma venda que tem juros.
   const plano = condicoes.plano;
-  if (!plano) return { ...bens, tem_anuais: anuais.length > 0 };
+  if (!plano) return doCronograma;
   const indice = texto(plano.indiceCorrecao);
   return {
-    ...bens,
-    tem_anuais: anuais.length > 0,
+    ...doCronograma,
     tem_correcao: indice !== "" && indice !== "SEM_CORRECAO",
     tem_juros: jurosDoPlano(plano.jurosTaxa, plano.jurosPeriodicidade) !== null,
   };

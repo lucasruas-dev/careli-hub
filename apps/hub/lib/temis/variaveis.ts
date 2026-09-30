@@ -188,6 +188,8 @@ const COMPRADOR: Base[] = [
   { base: "telefone_cliente", exemplo: "(31) 99999-0000", fonte: FICHA_OU("telefone", "apolo_contacts"), grupo: "comprador", origem: "Cadastro do comprador (CAD)", rotulo: "Telefone", tipo: "texto" },
   { base: "rua_cliente", exemplo: "Rua das Acácias", fonte: FICHA_OU("logradouro", "apolo_addresses"), grupo: "comprador", origem: "Endereço do cadastro", rotulo: "Logradouro", tipo: "texto" },
   { base: "numero_cliente", exemplo: "150", fonte: FICHA_OU("numero", "apolo_addresses"), grupo: "comprador", origem: "Endereço do cadastro", rotulo: "Número", tipo: "texto" },
+  // O número com o complemento ("431, AP 700"), para o modelo que escreve os dois juntos (o Garden).
+  { base: "numero_e_complemento_cliente", exemplo: "431, AP 700", fonte: FICHA_OU("numero + complemento", "apolo_addresses"), grupo: "comprador", origem: "Endereço do cadastro", rotulo: "Número e complemento", tipo: "texto" },
   { base: "bairro_cliente", exemplo: "Centro", fonte: FICHA_OU("bairro", "apolo_addresses"), grupo: "comprador", origem: "Endereço do cadastro", rotulo: "Bairro", tipo: "texto" },
   { base: "cidade_cliente", exemplo: "João Monlevade/MG", fonte: FICHA_OU("cidade + uf", "apolo_addresses"), grupo: "comprador", origem: "Endereço do cadastro", rotulo: "Cidade/UF", tipo: "texto" },
   { base: "cep_cliente", exemplo: "35930-000", fonte: FICHA_OU("cep", "apolo_addresses"), grupo: "comprador", origem: "Endereço do cadastro", rotulo: "CEP", tipo: "texto" },
@@ -563,6 +565,8 @@ const VALORES: VariavelDoContrato[] = [
   { exemplo: "cento e oitenta e cinco mil e quatrocentos reais", extensoDe: "valor_garantia_fiduciaria", fonte: EXTENSO_DE("valor_garantia_fiduciaria"), grupo: "valores", nome: "valor_garantia_fiduciaria_extenso", origem: "Escrito pelo sistema", rotulo: "Garantia fiduciária por extenso", tipo: "extenso" },
   { exemplo: "120", fonte: VENDA("plano_snapshot.parcelas (temis_planos.parcelas na venda)"), grupo: "valores", nome: "prazo_meses_amortizacao", origem: "Parcelas do plano", rotulo: "Prazo em meses", tipo: "numero" },
   { exemplo: "cento e vinte", extensoDe: "prazo_meses_amortizacao", fonte: EXTENSO_DE("prazo_meses_amortizacao"), grupo: "valores", nome: "prazo_meses_amortizacao_extenso", origem: "Escrito pelo sistema", rotulo: "Prazo por extenso", tipo: "extenso" },
+  // No FEMININO, para "em N (extenso) parcelas": 42 vira "quarenta e duas", e não "quarenta e dois".
+  { exemplo: "quarenta e duas", extensoDe: "prazo_meses_amortizacao", fonte: SISTEMA("por-extenso.ts (parcelasPorExtenso) sobre [prazo_meses_amortizacao]"), grupo: "valores", nome: "prazo_parcelas_extenso", origem: "Escrito pelo sistema", rotulo: "Prazo em parcelas por extenso (feminino)", tipo: "extenso" },
   // Novos em 02/09/2026: colunas de `hercules_vendas` que o catálogo medido não expunha.
   { exemplo: "R$ 37.080,00", fonte: VENDA("valor_entrada"), grupo: "valores", nome: "valor_entrada", origem: "Entrada da venda", rotulo: "Valor da entrada", tipo: "dinheiro" },
   { exemplo: "trinta e sete mil e oitenta reais", extensoDe: "valor_entrada", fonte: EXTENSO_DE("valor_entrada"), grupo: "valores", nome: "valor_entrada_extenso", origem: "Escrito pelo sistema", rotulo: "Entrada por extenso", tipo: "extenso" },
@@ -668,6 +672,26 @@ const BLOCOS_DO_PLANO: VariavelDoContrato[] = [
     nome: "fim_tem_anuais",
     origem: "Sai só quando o plano tem parcelas anuais",
     rotulo: "Fim — só quando o plano tem anuais",
+    tipo: "bloco_fim",
+  },
+  // ⚠️ A SÉRIE MENSAL (revisão de 30/09/2026). Entrada que cobre o lote inteiro zera o saldo e o
+  // cronograma sai sem mensal: sem o par, o Anexo do Garden declararia uma PARCELA DE OBRA de R$ 0,00.
+  {
+    exemplo: "",
+    fonte: SISTEMA("condicoes.mensais com ao menos uma parcela (o cronograma congelado na proposta)"),
+    grupo: "bloco",
+    nome: "inicio_tem_mensais",
+    origem: "Sai só quando a venda tem parcelas mensais",
+    rotulo: "Início — só quando há parcelas mensais",
+    tipo: "bloco_inicio",
+  },
+  {
+    exemplo: "",
+    fonte: SISTEMA("condicoes.mensais com ao menos uma parcela (o cronograma congelado na proposta)"),
+    grupo: "bloco",
+    nome: "fim_tem_mensais",
+    origem: "Sai só quando a venda tem parcelas mensais",
+    rotulo: "Fim — só quando há parcelas mensais",
     tipo: "bloco_fim",
   },
   // ⚠️ JUROS E CORREÇÃO DO PLANO (30/09/2026), respondidos por `condicoesDoContrato` a partir do

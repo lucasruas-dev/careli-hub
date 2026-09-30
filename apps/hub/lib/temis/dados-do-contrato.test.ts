@@ -658,9 +658,28 @@ describe("as seis fontes do comprador", () => {
     const v = dados.compradores[0]!.valores;
     expect(v.rua_cliente).toBe("Rua das Acácias");
     expect(v.numero_cliente).toBe("150");
+    // Sem complemento no cadastro, a variável do Garden sai só com o número.
+    expect(v.numero_e_complemento_cliente).toBe("150");
     expect(v.bairro_cliente).toBe("Centro");
     expect(v.cep_cliente).toBe("35930-000");
     expect(v.cidade_cliente).toBe("João Monlevade/MG");
+  });
+
+  it("o complemento vai JUNTO do número só na variável própria; [numero_cliente] não muda", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        apolo_entities: [
+          { display_name: "THIAGO", document_masked: "123.456.789-00", entity_kind: "pf", id: THIAGO, legal_name: null, trade_name: null },
+        ],
+        apolo_esteira: [{ enterprise_id: "39", entity_id: THIAGO, ficha: { ...FICHA_DO_THIAGO, complemento: "AP 700" } }],
+        hercules_propostas: proposta(),
+      }),
+    ))!;
+
+    const v = dados.compradores[0]!.valores;
+    expect(v.numero_cliente).toBe("150");
+    expect(v.numero_e_complemento_cliente).toBe("150, AP 700");
   });
 
   it("o endereço de apolo_addresses aparece quando a ficha não o tem", async () => {
@@ -1058,6 +1077,8 @@ describe("as condições e a data", () => {
       "dois mil cento e dezenove reais e cinco centavos",
     );
     expect(dados.gerais.primeiro_vencimento_mensal).toBe("10/03/2026");
+    expect(dados.condicoes?.tem_mensais).toBe(true);
+    expect(dados.gerais.prazo_parcelas_extenso).toBe("oitenta e quatro");
     expect(dados.gerais.plano_anuais_quantidade).toBe("7");
     expect(dados.gerais.plano_anuais_quantidade_extenso).toBe("sete");
     expect(dados.gerais.valor_total_anuais).toBe("R$ 70.000,00");
@@ -1076,9 +1097,11 @@ describe("as condições e a data", () => {
               { valor: 5000, vencimento: "2027-06-05" },
               { valor: 5000, vencimento: "2028-06-05" },
             ],
+            // Datas escolhidas à mão e FORA DE ORDEM: vale a mais tarde, não a última da lista.
             entrada: [
               { valor: 5000, vencimento: "2026-10-05" },
               { valor: 5000, vencimento: "2026-11-05" },
+              { valor: 5000, vencimento: "2026-10-20" },
             ],
             mensais: [{ valor: 1000, vencimento: "2026-12-05" }],
             totais: { entrada: 10000, financiado: 90000 },
@@ -1167,6 +1190,24 @@ describe("as condições e a data", () => {
     ))!;
     expect(dados.condicoes?.tem_anuais).toBe(false);
     expect(dados.gerais.plano_anuais_quantidade).toBeUndefined();
+  });
+
+  it("⚠️ entrada que cobre o lote inteiro: sem mensal, o par tem_mensais desliga", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_propostas: proposta({
+          condicoes: {
+            anuais: [],
+            entrada: [{ valor: 185400, vencimento: "2026-10-10" }],
+            mensais: [],
+            totais: { entrada: 185400, financiado: 0 },
+          },
+        }),
+      }),
+    ))!;
+    expect(dados.condicoes?.tem_mensais).toBe(false);
+    expect(dados.gerais.valor_parcela_mensal).toBeUndefined();
   });
 
   it("a data de emissão sai nos dois formatos", async () => {

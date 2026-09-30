@@ -6,6 +6,10 @@ import {
   nosDoBloco,
   textoDoBloco,
 } from "./blocos-prontos";
+import { promoverVariaveisNoValor } from "@/modules/temis/plugins/variavel-kit-base";
+
+import { documentoParaTexto, type NoDoDocumento } from "./documento-html";
+import { preencherContrato } from "./preencher-contrato";
 import { acharVariavel, conferirBlocos, extensosOrfaos, variaveisDoTexto } from "./variaveis";
 
 // O QUE ESTES TESTES PROTEGEM. Um bloco pronto é inserido com um clique e vai inteiro para dentro de
@@ -217,6 +221,46 @@ describe("o fluxo de pagamento", () => {
       expect(texto.indexOf("[valor_bens_e_permutas_extenso]"), id).toBeLessThan(fecha);
     }
   });
+
+  // ⚠️ JUROS E CORREÇÃO EM ORAÇÕES PRÓPRIAS, CADA UMA NO SEU PAR (revisão de 30/09/2026). Desde que
+  // `[plano_juros]` e `[plano_indice_correcao]` passaram a vir do plano da proposta, a frase única
+  // "correção por X e juros de Y" imprimia "juros de sem juros" no plano sem juros (o PROMOÇÃO À VISTA
+  // do Garden) e "correção por SEM CORREÇÃO" no plano sem índice, sem travar nada.
+  it.each(["preco", "fluxo-tabela"])(
+    "%s: plano sem juros e sem índice não imprime 'de sem juros' nem 'por SEM CORREÇÃO'",
+    (id) => {
+      // Como o editor insere: o texto do bloco com as variáveis já promovidas a nó.
+      const nos = promoverVariaveisNoValor(
+        nosDoBloco(acharBlocoPronto(id) as never) as never,
+      ) as unknown as NoDoDocumento[];
+      const gerais = {
+        plano_indice_correcao: "sem correção",
+        plano_juros: "sem juros",
+        plano_nome: "INVESTIDOR",
+        plano_sistema_amortizacao: "Tabela SACOC — amortização pura",
+      };
+      const sem = documentoParaTexto(
+        preencherContrato(nos, {
+          compradores: [],
+          condicoes: { tem_bens_e_permutas: false, tem_correcao: false, tem_juros: false },
+          gerais,
+        }).nos,
+      );
+      expect(sem).not.toMatch(/sem juros/i);
+      expect(sem).not.toMatch(/sem correção/i);
+      expect(sem).toContain("Tabela SACOC");
+
+      const com = documentoParaTexto(
+        preencherContrato(nos, {
+          compradores: [],
+          condicoes: { tem_bens_e_permutas: false, tem_correcao: true, tem_juros: true },
+          gerais: { ...gerais, plano_indice_correcao: "IPCA anual", plano_juros: "6% a.a." },
+        }).nos,
+      );
+      expect(com).toContain("IPCA ANUAL");
+      expect(com).toContain("juros de 6% a.a.");
+    },
+  );
 
   it("traz a condição suspensiva do sinal, que é o que dá dente à cláusula", () => {
     expect(textoDoBloco(acharBlocoPronto("fluxo-escrito") as never)).toContain(

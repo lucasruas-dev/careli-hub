@@ -173,3 +173,37 @@ export function areaPorExtenso(valor: number): string {
 export function quantidadePorExtenso(valor: number): string {
   return inteiroPorExtenso(valor);
 }
+
+/**
+ * Quantas PARCELAS, por extenso e no feminino: "em 2 (duas) parcelas", "em 21 (vinte e uma)".
+ *
+ * ⚠️ EXISTE PORQUE O MASCULINO SAÍA ERRADO NO PAPEL (revisão de 30/09/2026). O Anexo 1 do Garden
+ * escreve "em [plano_anuais_quantidade] ([plano_anuais_quantidade_extenso]) parcelas", e o PROMOÇÃO
+ * À VISTA com prazo curto dá 2 anuais: saía "2 (dois) parcelas". Só mudam as palavras com gênero:
+ * um, dois e as centenas de duzentos a novecentos.
+ *
+ * ⚠️ DE MIL PARA CIMA FICA O MASCULINO da casa ("um mil"): não existe plano com mil parcelas, e a
+ * troca palavra a palavra escreveria "uma mil".
+ */
+export function parcelasPorExtenso(valor: number): string {
+  const n = Math.trunc(Math.abs(valor));
+  const escrito = inteiroPorExtenso(n);
+  if (n >= 1000) return escrito;
+  return escrito
+    .split(" ")
+    .map((palavra) => FEMININO_DAS_PARCELAS[palavra] ?? palavra)
+    .join(" ");
+}
+
+const FEMININO_DAS_PARCELAS: Record<string, string> = {
+  dois: "duas",
+  duzentos: "duzentas",
+  novecentos: "novecentas",
+  oitocentos: "oitocentas",
+  quatrocentos: "quatrocentas",
+  quinhentos: "quinhentas",
+  seiscentos: "seiscentas",
+  setecentos: "setecentas",
+  trezentos: "trezentas",
+  um: "uma",
+};
