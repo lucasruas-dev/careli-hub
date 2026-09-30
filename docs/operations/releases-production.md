@@ -95,6 +95,39 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Portal do incorporador/LSoft/Financeiro] O Garden validado sai da LSoft Integracao e entra no Financeiro (v1.397.0)`.
+- Squad/agente responsavel: `Zeus (sessao do portal da Cecilio Rocha)`.
+- Data e hora local: `2026-09-29 21:14:35 -03:00` (changelog); gravacao dos 106 logo depois do deploy.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("tem o meus oks", 29/09/2026) para migration, gravacao e deploy; ensaio da marcacao conferido antes (106 de 106)`.
+- Escopo publicado:
+  - `migration 0199: lsoft_clientes.empreendimentos_na_carteira (text[] not null default '{}')`;
+  - `Financeiro do portal cecilio-rocha le do espelho do LSoft as parcelas do Garden dos clientes marcados, no lote novo do boleto; o clique abre a ficha do LSoft`;
+  - `LSoft Integracao tira o par (cliente, Garden); prontidao de boletos segue contando todos`;
+  - `marcacao dos 106 clientes com OK do time adm (95 validados; 11 com outra carteira mantem o status)`.
+- Commit publicado: `1fd7d9ea4424690cfa068bba3d5914bb66779d6a`.
+- Deployment anterior: `dpl_JCxCAN4a1Z3eDetgMPCwT6627qjw` (commit `473404d2`, v1.396.0).
+- Deployment novo: `dpl_HLhREfNdmRb8Kk3L5eiZAuW5M83Y`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Arquivos/modulos incluidos: `lib/lsoft/carteira-no-financeiro.ts`, `lib/lsoft/na-carteira.ts`, `lib/lsoft/carteira.ts`, `lib/lsoft/planilha-da-carteira.ts`, `app/api/incorporador/carteira/route.ts`, `app/api/boletos/prontidao/route.ts`, `modules/incorporador/TelaCarteira.tsx`, `modules/lsoft/CarteiraLsoft.tsx`, `scripts/carteira/subir-garden-para-carteira.mjs`, `scripts/carteira/dados/garden-na-carteira-2026-09-29.json` (sem CPF nem nome) e os testes.
+- Arquivos/modulos excluidos: `o projeto longo (carteira nova no banco, casador do Asaas) ficou na branch wip/carteira-panteon-longa, por decisao do Lucas ("uma coisa simples")`.
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `hook de pre-push`: `724 arquivos, 10.843 testes (a primeira tentativa estourou tempo em 7 testes alheios com um jogo aberto na maquina; sozinhos passaram 62 de 62)`;
+  - `banco depois da gravacao`: `106 marcados, 95 validados, 35 do Garden na integracao, 9.868 parcelas e R$ 30.556.722,22 em aberto no Financeiro`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.397.0; carteira e lsoft do portal 401 sem sessao`.
+- Logs recentes: `sem erro critico`.
+- Rollback definido: `Instant Rollback para dpl_JCxCAN4a1Z3eDetgMPCwT6627qjw; a marcacao se desfaz com node scripts/carteira/subir-garden-para-carteira.mjs --desfazer`.
+- Riscos conhecidos: `a ficha do LSoft mostra o lote ANTIGO das parcelas e a linha do Financeiro o NOVO do boleto; indicadores, liquido e baixa pelo Asaas do Garden ainda nao entram`.
+- Pendencias: `10 clientes com OK e pendencia seguem na integracao (lista no doc do dia); cadastrar a % de gestao de carteira do Garden para o liquido aparecer`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas conferir por print o chip Garden no Financeiro (106 clientes, R$ 35.041.558,35 de carteira) e a LSoft Integracao (35 do Garden)`.
+
+Registro de producao:
+
 - Assunto: `[Portal do incorporador/LSoft/Financeiro] Exportar para Excel na LSoft Integracao e na Carteira por unidade (v1.395.0)`.
 - Squad/agente responsavel: `Zeus (sessao do portal da Cecilio Rocha)`; implementacao por workflow (2 implementadores, 3 lentes de revisao por tela, 1 corretor por tela).
 - Data e hora local: `2026-09-29 15:01:00 -03:00` (changelog); push na main logo depois.
