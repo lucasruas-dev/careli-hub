@@ -37,6 +37,7 @@ import type {
 
 import { T } from "./tema";
 import { chaveDaLinhaDaCarteira } from "./chave-da-linha";
+import { PagamentosAConferirDoGarden } from "./PagamentosAConferir";
 
 // A FICHA DO LSOFT, PARA A UNIDADE DO GARDEN (29/09/2026). O Garden validado passou a ser lido pelo
 // Financeiro (Lucas: *"é só copiar e colar na carteira"*), mas o dinheiro dele continua em
@@ -927,10 +928,17 @@ function AbaCarteira({
     }
   }, []);
 
+  // A lista "Pagamentos a conferir" relê quando uma ficha fecha depois de gravar (a baixa dada nela
+  // pode ter resolvido um item). ⚠️ CONTADOR PRÓPRIO, e não a hora da leitura da carteira: a lista não
+  // depende do recorte (trocar de chip não pode relê-la) nem do C2X (se a releitura da carteira
+  // falhar, a lista precisa atualizar do mesmo jeito).
+  const [versaoDaLista, setVersaoDaLista] = useState(0);
+
   const fecharFicha = useCallback(() => {
     setFichaAberta(null);
     if (fichaGravou.current) {
       fichaGravou.current = false;
+      setVersaoDaLista((atual) => atual + 1);
       onRecarregar();
     }
   }, [onRecarregar]);
@@ -1091,6 +1099,20 @@ function AbaCarteira({
             Tentar de novo
           </button>
         </p>
+      ) : null}
+
+      {/* ── PAGAMENTOS A CONFERIR (Lucas, 30/09/2026) ─────────────────────────
+          Só com o Garden do LSoft no recorte: é dele a baixa pelo boleto do hub, e é o que ela não
+          resolveu sozinha que aparece aqui. O bloco busca a própria lista (não trava a carteira) e
+          some quando não há nada a conferir. Fechar uma ficha depois de gravar relê a lista. */}
+      {lsoft && doLsoft > 0 ? (
+        <PagamentosAConferirDoGarden
+          onAbrirFicha={(codigo) => {
+            fichaGravou.current = false;
+            setFichaAberta(codigo);
+          }}
+          versao={versaoDaLista}
+        />
       ) : null}
 
       {/* ── O CENÁRIO DA CARTEIRA: os 8 cartões da CarteiraTab interna ─────────

@@ -77,6 +77,13 @@ export const PARCELAS_DA_MENSAL = 24;
  * na integração (sem o Garden marcado no Financeiro), e a baixa dele segue manual. Em setembro de
  * 2026 eram 26 dos 27 pagamentos da conferência; escrever cada um no log toda hora esconderia o que
  * importa. A rodada automática conta estes numa linha só.
+ *
+ * ⚠️ AS FRASES DE MOTIVO DESTE ARQUIVO SÃO CHAVE GRAVADA NO BANCO (30/09/2026). A lista "Pagamentos
+ * a conferir" guarda, em `boletos_pagamentos_conferidos.motivo`, a classe e o texto do motivo do item
+ * que alguém marcou como conferido (`chaveDoMotivo`, em `pagamentos-a-conferir.ts`), e traduz cada
+ * frase para a língua do time (`motivoParaOTime`). Reescrever uma frase aqui faz TODOS os itens já
+ * conferidos com ela voltarem à lista de uma vez, e a tela cair na frase genérica. Mudou uma frase?
+ * Atualize `motivoParaOTime` e o teste dela na mesma mudança.
  */
 export const MOTIVO_FORA_DO_FINANCEIRO = "O CPF do boleto não é de nenhum cliente do Garden que já está no Financeiro.";
 
@@ -339,6 +346,13 @@ export function decidirBaixasDoHub(entrada: {
   pagamentos: readonly PagamentoDoBoleto[];
   parcelas: readonly ParcelaDoEspelho[];
   series: readonly SerieDoBoleto[];
+  /**
+   * `true` = todo pagamento que o Asaas desfez vira conferência, e não só o da parcela que o hub
+   * baixou. É a lista "Pagamentos a conferir" que pede (30/09/2026): a parcela baixada À MÃO e depois
+   * estornada ficaria quitada na ficha sem ninguém saber. A rodada automática NÃO usa: para ela o
+   * estorno de parcela que o hub não baixou continua fora da conta.
+   */
+  todosOsDesfeitos?: boolean;
 }): ResultadoDaDecisao {
   const desde = entrada.desde ?? DESDE_DA_BAIXA_DO_HUB;
   const soEstas = new Set(entrada.competencias ?? []);
@@ -455,6 +469,10 @@ export function decidirBaixasDoHub(entrada: {
       if (foiDesfeito(pagamento.situacao) && baixadas && baixadas.size > 0) {
         conferir(
           `O Asaas desfez este pagamento (${pagamento.situacao}) depois que o hub deu baixa na parcela; reabra à mão se for o caso.`,
+        );
+      } else if (foiDesfeito(pagamento.situacao) && entrada.todosOsDesfeitos) {
+        conferir(
+          `O Asaas desfez este pagamento (${pagamento.situacao}); veja se a parcela foi baixada à mão e precisa ser reaberta.`,
         );
       } else {
         fora.naoPagos += 1;
@@ -981,6 +999,14 @@ function fimDoMes(competencia: string): string {
 export type LeituraDaBaixa = {
   /** `true` = a migration 0199 não rodou: ninguém está no Financeiro, nada a baixar. */
   colunaAusente: boolean;
+  /**
+   * Lote antigo -> os códigos dos clientes lidos que têm parcela do Garden naquele lote, dentro da
+   * janela de vencimento. Serve à lista "Pagamentos a conferir": o boleto cujo documento não é de
+   * ninguém ainda pode apontar para a ficha que tem o lote.
+   */
+  fichasDoLote: Record<string, string[]>;
+  /** Os códigos marcados com o Garden no Financeiro, entre os clientes lidos. */
+  noFinanceiro: string[];
   resultado: ResultadoDaDecisao;
 };
 
@@ -997,15 +1023,31 @@ export type LeituraDaBaixa = {
  */
 export async function lerBaixaDoHub(opcoes: {
   admin?: ClienteDoBanco;
+  /**
+   * `"no_financeiro"` (padrão) = só os clientes marcados com o Garden no Financeiro: é o que a
+   * RODADA AUTOMÁTICA usa, e só deles o hub dá baixa.
+   *
+   * `"todos"` = todo cliente do LSoft, marcado ou não. ⚠️ É SÓ PARA A LISTA "Pagamentos a conferir"
+   * (30/09/2026), que precisa aplicar a MESMA régua a quem ainda está na integração: sem isso a lista
+   * mandava o time "dar a baixa manual" de boleto cuja parcela já estava paga na ficha (10 de 22,
+   * medido). Nesta leitura, a `baixa_nova` de cliente não marcado NÃO é para gravar: quer dizer só
+   * "boleto pago, parcela em aberto na ficha". Quem grava (`rodarBaixaDoHub`) nunca pede "todos".
+   */
+  clientes?: "no_financeiro" | "todos";
   competencias?: readonly string[];
   desde?: string;
+  /** Ver `todosOsDesfeitos` em `decidirBaixasDoHub`. Só a lista de conferência pede. */
+  todosOsDesfeitos?: boolean;
 } = {}): Promise<LeituraDaBaixa> {
   const admin = opcoes.admin ?? createApoloAdminClient();
   if (!admin) throw new Error("Supabase indisponível.");
   const desde = opcoes.desde ?? DESDE_DA_BAIXA_DO_HUB;
+  const todos = opcoes.clientes === "todos";
   const competencias = (opcoes.competencias ?? []).filter((c) => /^\d{4}-\d{2}$/.test(c) && c >= desde);
   const vazio = (colunaAusente: boolean): LeituraDaBaixa => ({
     colunaAusente,
+    fichasDoLote: {},
+    noFinanceiro: [],
     resultado: { decisoes: [], fora: { antesDoCorte: 0, naoPagos: 0 }, totais: totaisVazios() },
   });
 
@@ -1037,13 +1079,13 @@ export async function lerBaixaDoHub(opcoes: {
   let linhasDosClientes: LinhaDoBanco[];
   try {
     linhasDosClientes = await lerTudo(
-      (contar) =>
-        admin
+      (contar) => {
+        const consulta = admin
           .from("lsoft_clientes")
-          .select("codigo, cpf", contar ? { count: "exact" } : undefined)
-          .contains(COLUNA_NA_CARTEIRA, [GARDEN])
-          .order("codigo"),
-      "clientes no Financeiro",
+          .select(`codigo, cpf, ${COLUNA_NA_CARTEIRA}`, contar ? { count: "exact" } : undefined);
+        return (todos ? consulta : consulta.contains(COLUNA_NA_CARTEIRA, [GARDEN])).order("codigo");
+      },
+      todos ? "clientes do LSoft" : "clientes no Financeiro",
       "codigo",
     );
   } catch (falha) {
@@ -1056,6 +1098,9 @@ export async function lerBaixaDoHub(opcoes: {
     cpf: texto(linha.cpf),
   }));
   const codigos = clientes.map((cliente) => cliente.codigo);
+  const noFinanceiro = linhasDosClientes
+    .filter((linha) => Array.isArray(linha[COLUNA_NA_CARTEIRA]) && (linha[COLUNA_NA_CARTEIRA] as unknown[]).includes(GARDEN))
+    .map((linha) => String(linha.codigo ?? ""));
 
   // A janela de vencimento: do primeiro dia da competência mais antiga ao último da mais nova.
   const meses = [...new Set(pagamentos.map((p) => p.competencia).filter((c) => /^\d{4}-\d{2}$/.test(c)))].sort();
@@ -1141,14 +1186,28 @@ export async function lerBaixaDoHub(opcoes: {
     }
   }
 
+  // De quem é cada lote antigo, pelas parcelas lidas (só quem pediu "todos" usa).
+  const fichasDoLote: Record<string, string[]> = {};
+  for (const linha of linhasDasParcelas) {
+    const lote = loteComparavel(texto(linha.lote));
+    const codigo = String(linha.cliente_codigo ?? "");
+    if (!lote || !codigo) continue;
+    const lista = fichasDoLote[lote] ?? [];
+    if (!lista.includes(codigo)) lista.push(codigo);
+    fichasDoLote[lote] = lista;
+  }
+
   return {
     colunaAusente: false,
+    fichasDoLote,
+    noFinanceiro,
     resultado: decidirBaixasDoHub({
       baixasAnteriores,
       caixa: new Set(linhasDaCaixa.map((linha) => String(linha.parcela_id ?? ""))),
       clientes,
       competencias,
       desde,
+      todosOsDesfeitos: opcoes.todosOsDesfeitos,
       documentos: linhasDosDocumentos.map((linha) => ({
         documento: String(linha.documento ?? ""),
         unidade: String(linha.unidade ?? ""),

@@ -141,16 +141,27 @@ const carteira = (
 const cabecalhoDaTela = () => (hospedeiro.querySelector("header p")?.textContent ?? "").replace(/\u00a0/g, " ");
 
 let corpo: object;
+/** O que a rota dos pagamentos a conferir responde (30/09/2026). Vazia = o bloco não aparece. */
+let aConferir: { conferidoDisponivel: boolean; conferir: object[]; integracao: object[] };
 let raiz: Root;
 let hospedeiro: HTMLDivElement;
+
+const ROTA_DE_CONFERIR = "/api/incorporador/carteira/conferir";
 
 beforeEach(() => {
   registro.api.length = 0;
   registro.planilhas.length = 0;
+  aConferir = { conferidoDisponivel: true, conferir: [], integracao: [] };
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (url: string) => {
-      const dados = url.includes("/api/incorporador/parcelas") ? { installments: [] } : corpo;
+    vi.fn(async (url: string, opcoes?: RequestInit) => {
+      const dados = url.startsWith(ROTA_DE_CONFERIR)
+        ? opcoes?.method === "POST"
+          ? { ok: true }
+          : aConferir
+        : url.includes("/api/incorporador/parcelas")
+          ? { installments: [] }
+          : corpo;
       return new Response(JSON.stringify({ data: dados }), {
         headers: { "content-type": "application/json" },
         status: 200,
@@ -221,7 +232,22 @@ const leiturasDaCarteira = () =>
   vi
     .mocked(fetch)
     .mock.calls.map(([url]) => String(url))
-    .filter((url) => url.startsWith("/api/incorporador/carteira") && !url.includes("indicadores=1"));
+    .filter(
+      (url) =>
+        url.startsWith("/api/incorporador/carteira") &&
+        !url.startsWith(ROTA_DE_CONFERIR) &&
+        !url.includes("indicadores=1"),
+    );
+
+/** As chamadas à rota dos pagamentos a conferir, com o método e o corpo. */
+const chamadasDeConferir = () =>
+  vi
+    .mocked(fetch)
+    .mock.calls.filter(([url]) => String(url).startsWith(ROTA_DE_CONFERIR))
+    .map(([, opcoes]) => ({
+      corpo: typeof opcoes?.body === "string" ? (JSON.parse(opcoes.body) as unknown) : null,
+      metodo: opcoes?.method ?? "GET",
+    }));
 
 const leiturasDeParcelas = () =>
   vi
@@ -406,5 +432,177 @@ describe("a unidade do Garden (LSoft) na Carteira do Financeiro", () => {
     expect(Array.from(hospedeiro.querySelectorAll('[role="alert"]')).map((a) => a.textContent)).toEqual([
       avisoDoC2x,
     ]);
+  });
+});
+
+// ── PAGAMENTOS A CONFERIR (Lucas, 30/09/2026: "pode fazer a lista de pagamentos a conferir") ──
+// O bloco do que a baixa do hub não resolveu sozinha. A régua da lista tem teste próprio em
+// lib/lsoft/pagamentos-a-conferir.test.ts; aqui se trava o que a TELA faz com ela.
+
+const A_CONFERIR = {
+  clienteCodigo: "C9",
+  clienteNome: "CLIENTE DO LOTE TROCADO",
+  cobrancaId: "pay_lote",
+  competencia: "2026-09",
+  conferidoAntes: null as null | { em: string; observacao: string; por: string },
+  detalhe: null,
+  impressao: "0123456789abcdef",
+  motivo: "Não há parcela deste lote vencendo neste mês na ficha do cliente.",
+  pagoEm: "2026-09-21",
+  parcela: null,
+  unidade: "Q13 L10",
+  valorPago: 2201.02,
+};
+
+const NA_INTEGRACAO = {
+  ...A_CONFERIR,
+  clienteCodigo: null,
+  clienteNome: null,
+  cobrancaId: "pay_rotina",
+  impressao: "fedcba9876543210",
+  motivo: "Boleto pago, e a parcela está em aberto na ficha. Falta dar a baixa.",
+  unidade: "Q15 L20",
+};
+
+const textoDaTela = () => (hospedeiro.textContent ?? "").replace(/\u00a0/g, " ");
+
+describe("pagamentos a conferir no Financeiro do Garden", () => {
+  it("sem nada a conferir, o bloco não aparece (a tela fica como era)", async () => {
+    corpo = carteira([DO_GARDEN], { aviso: null, unidades: 1 });
+    await montar();
+
+    expect(chamadasDeConferir()).toEqual([{ corpo: null, metodo: "GET" }]);
+    expect(textoDaTela()).not.toContain("Pagamentos a conferir");
+  });
+
+  it("sem o Garden do LSoft no recorte, a lista nem é pedida", async () => {
+    corpo = carteira([DO_C2X], null);
+    await montar();
+
+    expect(chamadasDeConferir()).toEqual([]);
+  });
+
+  it("mostra os dois grupos com a contagem, o valor, a data e o motivo", async () => {
+    corpo = carteira([DO_GARDEN], { aviso: null, unidades: 1 });
+    aConferir = { conferidoDisponivel: true, conferir: [A_CONFERIR], integracao: [NA_INTEGRACAO] };
+    await montar();
+
+    const texto = textoDaTela();
+    expect(texto).toContain("Pagamentos a conferir (1)");
+    expect(texto).toContain("Boletos pagos com a parcela em aberto na LSoft Integração (1)");
+    expect(texto).toContain("CLIENTE DO LOTE TROCADO");
+    expect(texto).toContain("Q13 L10");
+    expect(texto).toContain("09/2026");
+    expect(texto).toContain("21/09/2026");
+    expect(texto).toContain("R$ 2.201,02");
+    expect(texto).toContain(A_CONFERIR.motivo);
+    // Sem dono único do lote, a linha não promete um nome nem uma ficha.
+    expect(texto).toContain("Cliente não identificado");
+    expect(texto).not.toContain("—");
+  });
+
+  it("o botão Ficha abre a ficha do cliente da lista", async () => {
+    corpo = carteira([DO_GARDEN], { aviso: null, unidades: 1 });
+    aConferir = { conferidoDisponivel: true, conferir: [A_CONFERIR], integracao: [] };
+    await montar();
+
+    await clicarNoBotao("Ficha");
+    await esperarAFicha();
+
+    expect(hospedeiro.querySelector("[data-ficha-lsoft]")?.getAttribute("data-ficha-lsoft")).toBe("C9");
+  });
+
+  it("⚠️ Conferido manda SÓ a cobrança, a observação e a impressão do motivo visto, e tira a linha sem reler", async () => {
+    corpo = carteira([DO_GARDEN], { aviso: null, unidades: 1 });
+    aConferir = { conferidoDisponivel: true, conferir: [A_CONFERIR], integracao: [] };
+    await montar();
+
+    await clicarNoBotao("Conferido");
+    const campo = hospedeiro.querySelector<HTMLInputElement>('input[aria-label="O que foi conferido"]');
+    expect(campo).not.toBeNull();
+    // Sem observação, o Confirmar não grava.
+    expect(botao("Confirmar")?.disabled).toBe(true);
+
+    await act(async () => {
+      const definir = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      definir?.call(campo, "baixa dada na ficha");
+      campo?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await clicarNoBotao("Confirmar");
+
+    // Sem segundo GET: a linha sai do estado da tela (reler custava a lista inteira a cada clique).
+    expect(chamadasDeConferir()).toEqual([
+      { corpo: null, metodo: "GET" },
+      {
+        corpo: { cobrancaId: "pay_lote", impressao: "0123456789abcdef", observacao: "baixa dada na ficha" },
+        metodo: "POST",
+      },
+    ]);
+    expect(textoDaTela()).not.toContain("Pagamentos a conferir");
+  });
+
+  it("antes da migration 0200, a lista aparece sem o botão Conferido", async () => {
+    corpo = carteira([DO_GARDEN], { aviso: null, unidades: 1 });
+    aConferir = { conferidoDisponivel: false, conferir: [A_CONFERIR], integracao: [] };
+    await montar();
+
+    expect(textoDaTela()).toContain("Pagamentos a conferir (1)");
+    expect(botao("Conferido")).toBeUndefined();
+    expect(botao("Ficha")).toBeDefined();
+  });
+
+  it("⚠️ resposta fora do formato não derruba o Financeiro: o bloco some e a carteira fica", async () => {
+    corpo = carteira([DO_GARDEN], { aviso: null, unidades: 1 });
+    aConferir = { qualquer: "coisa" } as never;
+    await montar();
+
+    expect(linha("GDN0614")).toBeDefined();
+    expect(textoDaTela()).not.toContain("Pagamentos a conferir");
+  });
+});
+
+describe("pagamentos a conferir: o que mudou no servidor e o que já foi conferido", () => {
+  it("⚠️ o servidor recusa (409) quando o motivo mudou: a tela mostra o aviso e relê a lista", async () => {
+    corpo = carteira([DO_GARDEN], { aviso: null, unidades: 1 });
+    aConferir = { conferidoDisponivel: true, conferir: [A_CONFERIR], integracao: [] };
+    await montar();
+
+    await clicarNoBotao("Conferido");
+    const campo = hospedeiro.querySelector<HTMLInputElement>('input[aria-label="O que foi conferido"]');
+    await act(async () => {
+      const definir = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      definir?.call(campo, "lote corrigido");
+      campo?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    vi.mocked(fetch).mockImplementationOnce(
+      async () =>
+        new Response(JSON.stringify({ error: "Este pagamento mudou desde que a lista foi aberta. Confira de novo." }), {
+          headers: { "content-type": "application/json" },
+          status: 409,
+        }),
+    );
+    await clicarNoBotao("Confirmar");
+
+    expect(chamadasDeConferir().map((chamada) => chamada.metodo)).toEqual(["GET", "POST", "GET"]);
+    expect(textoDaTela()).toContain("Este pagamento mudou desde que a lista foi aberta.");
+    // A linha continua na lista: nada foi conferido.
+    expect(textoDaTela()).toContain("Pagamentos a conferir (1)");
+  });
+
+  it("a cobrança que voltou por outro motivo diz quem conferiu antes, e o quê", async () => {
+    corpo = carteira([DO_GARDEN], { aviso: null, unidades: 1 });
+    aConferir = {
+      conferidoDisponivel: true,
+      conferir: [
+        {
+          ...A_CONFERIR,
+          conferidoAntes: { em: "2026-09-30T11:00:00Z", observacao: "lote corrigido na ficha", por: "Usuária Teste (cecilio-rocha)" },
+        },
+      ],
+      integracao: [],
+    };
+    await montar();
+
+    expect(textoDaTela()).toContain("Já conferido em 30/09/2026 por Usuária Teste (cecilio-rocha): lote corrigido na ficha");
   });
 });
