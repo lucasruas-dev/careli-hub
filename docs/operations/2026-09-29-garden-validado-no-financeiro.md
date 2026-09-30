@@ -137,7 +137,7 @@ migration 0200 e para publicar.
   (R$ 12.278,50). Entre os 14: 00000290 e 00000213 (parcela já baixada com outro valor), 00000612,
   00000086, 00000654, 00000566 e 00000538 (lote do boleto sem parcela no mês), 00000587 (parcela de
   dois lotes com um cobrado de outra pessoa), 00000185 e 00000179 (mais de uma parcela do lote no
-  mês), e três boletos cujo documento não é de cliente do LSoft (Q07 L11, Q09 L10, Q12 L16, Q12 L25;
+  mês), e quatro boletos cujo documento não é de cliente do LSoft (Q07 L11, Q09 L10, Q12 L16, Q12 L25;
   em dois a lista aponta a ficha que tem o lote).
 - Deploy: push `ad33e8d0..305ce566` (pré-push: 728 arquivos, 10.986 testes). Rollback: o deployment
   da v1.398.0 (commit `ad33e8d0`).
