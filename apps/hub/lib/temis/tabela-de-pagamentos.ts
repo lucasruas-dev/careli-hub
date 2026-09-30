@@ -591,10 +591,24 @@ function rotuloDoIndice(indice: unknown): string {
   return palavraDoQuadro(INDICES[chave as IndiceCorrecao] ?? chave);
 }
 
-/** Mesma escrita de `textoDaTaxa` (planos-comerciais): "0,7207% a.m.", sem zero à direita. */
+/** A coluna Juros do quadro: a taxa escrita, ou "SEM JUROS". */
 function rotuloDosJuros(taxa: unknown, periodicidade: unknown): string {
+  return jurosDoPlano(taxa, periodicidade) ?? palavraDoQuadro("sem juros");
+}
+
+/**
+ * A taxa de juros do plano escrita como o contrato a declara: "6% a.a.", "0,7207% a.m.". `null`
+ * quando o plano não tem juros (taxa nula, zero ou negativa).
+ *
+ * Mesma escrita de `textoDaTaxa` (planos-comerciais), sem zero à direita.
+ *
+ * ⚠️ UMA ESCRITA SÓ PARA A COLUNA DO QUADRO E PARA `[plano_juros]` (30/09/2026). O Anexo 1 do Garden
+ * passou a declarar os juros do plano em frase: duas formatações da mesma taxa seriam dois números
+ * para o jurídico conferir.
+ */
+export function jurosDoPlano(taxa: unknown, periodicidade: unknown): null | string {
   const valor = numero(taxa);
-  if (valor === null || valor <= 0) return palavraDoQuadro("sem juros");
+  if (valor === null || valor <= 0) return null;
   // ⚠️ A TAXA NÃO SOBE, e a unidade vai com ela: o número não tem letra que mude e "0,64% A.M." é a
   // unidade gritando no meio de um dado — o mesmo motivo que deixou "300,00 m²" fora da régua da
   // qualificação. O Villa Paris declara "0,64%" nesta coluna, e é isto que sai.

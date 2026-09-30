@@ -428,15 +428,25 @@ function onde(pessoas: readonly Pessoa[]): string {
   return listar(lugares);
 }
 
+/**
+ * Onde fica o Quadro de assinatura, nas DUAS portas que o alcançam.
+ *
+ * ⚠️ A FRASE VALE PARA O HUB E PARA O PORTAL (30/09/2026). O envio do portal da Cecílio usa esta
+ * mesma conferência, e até aqui ela mandava o time de lá para "aba Setup, sub-aba Assinatura", que
+ * só existe no hub: no portal o quadro fica no fim da aba Minutas do produto.
+ */
+const QUADRO_DE_ASSINATURA =
+  "no Quadro de assinatura do empreendimento (no hub, aba Setup, sub-aba Assinatura; no portal, Produtos, aba Minutas)";
+
 function lugarDoPapel(papel: PapelNoContrato): string {
   const mapa: Record<PapelNoContrato, string> = {
     careli: "na configuração de quem assina pela Careli",
     comprador: "no cadastro do comprador (ficha do Apolo)",
     conjuge: "no cadastro do cônjuge (ficha do Apolo)",
-    coordenadora: "no Quadro de assinatura do empreendimento (aba Setup, sub-aba Assinatura)",
+    coordenadora: QUADRO_DE_ASSINATURA,
     corretor: "na ficha da imobiliária, no Apolo",
-    testemunha: "no Quadro de assinatura do empreendimento (aba Setup, sub-aba Assinatura)",
-    vendedora: "no Quadro de assinatura do empreendimento (aba Setup, sub-aba Assinatura)",
+    testemunha: QUADRO_DE_ASSINATURA,
+    vendedora: QUADRO_DE_ASSINATURA,
   };
   return mapa[papel];
 }

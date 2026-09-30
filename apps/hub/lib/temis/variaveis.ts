@@ -629,8 +629,12 @@ const PLANO_DA_VENDA: VariavelDoContrato[] = [
   { exemplo: "Normal 120x", fonte: PLANO("nome (via hercules_vendas.plano_snapshot)"), grupo: "plano", nome: "plano_nome", origem: "Plano da venda", rotulo: "Nome do plano", tipo: "texto" },
   { exemplo: "120", fonte: PLANO("parcelas (via hercules_vendas.plano_snapshot)"), grupo: "plano", nome: "plano_quantidade_parcelas", origem: "Plano da venda", rotulo: "Quantidade de parcelas do plano", tipo: "numero" },
   { exemplo: "20%", fonte: PLANO("entrada_percentual (via hercules_vendas.plano_snapshot)"), grupo: "plano", nome: "plano_entrada_percentual", origem: "Plano da venda", rotulo: "Entrada (%) do plano", tipo: "texto" },
-  { exemplo: "12% ao ano", fonte: PLANO("juros_taxa + juros_periodicidade (via hercules_vendas.plano_snapshot)"), grupo: "plano", nome: "plano_juros", origem: "Plano da venda", rotulo: "Juros do plano", tipo: "texto" },
-  { exemplo: "IPCA anual", fonte: PLANO("indice_correcao (via hercules_vendas.plano_snapshot)"), grupo: "plano", nome: "plano_indice_correcao", origem: "Plano da venda", rotulo: "Índice de correção do plano", tipo: "texto" },
+  // ⚠️ JUROS E ÍNDICE SAEM DO PLANO CONGELADO NA PROPOSTA desde 30/09/2026 (o Anexo 1 do Garden
+  // declara os dois em frase). Até ali o catálogo apontava para `temis_planos` e ninguém lia: minuta
+  // que as usasse travava. Sem juros, `[plano_juros]` sai "sem juros", e o par `tem_juros` corta a
+  // cláusula; plano sem índice (SEM_CORRECAO) desliga `tem_correcao`.
+  { exemplo: "6% a.a.", fonte: SISTEMA("jurosTaxa + jurosPeriodicidade do plano congelado na proposta (condicoes.plano), na escrita da coluna Juros do quadro"), grupo: "plano", nome: "plano_juros", origem: "Plano da venda", rotulo: "Juros do plano", tipo: "texto" },
+  { exemplo: "IPCA anual", fonte: SISTEMA("indiceCorrecao do plano congelado na proposta (condicoes.plano), com o rótulo da lista de índices"), grupo: "plano", nome: "plano_indice_correcao", origem: "Plano da venda", rotulo: "Índice de correção do plano", tipo: "texto" },
   // ⚠️ PREENCHIDA DESDE 22/09/2026, e ela existia vazia desde sempre: as minutas escreveram
   // "Sistema de amortização: SACOC" à mão e a frase acertava por coincidência. Sai do cronograma que
   // a proposta congelou, com o rótulo da casa ("Tabela SACOC — amortização pura").
@@ -664,6 +668,46 @@ const BLOCOS_DO_PLANO: VariavelDoContrato[] = [
     nome: "fim_tem_anuais",
     origem: "Sai só quando o plano tem parcelas anuais",
     rotulo: "Fim — só quando o plano tem anuais",
+    tipo: "bloco_fim",
+  },
+  // ⚠️ JUROS E CORREÇÃO DO PLANO (30/09/2026), respondidos por `condicoesDoContrato` a partir do
+  // plano congelado na proposta. O "PROMOÇÃO À VISTA" do Garden não tem juros: sem o par, o Anexo
+  // declararia "juros remuneratórios de sem juros". Sem plano gravado o par fica fora do mapa e a
+  // cláusula sai, com a variável cobrando na conferência.
+  {
+    exemplo: "",
+    fonte: SISTEMA("jurosTaxa maior que zero no plano congelado na proposta (condicoes.plano)"),
+    grupo: "bloco",
+    nome: "inicio_tem_juros",
+    origem: "Sai só quando o plano tem juros",
+    rotulo: "Início — só quando o plano tem juros",
+    tipo: "bloco_inicio",
+  },
+  {
+    exemplo: "",
+    fonte: SISTEMA("jurosTaxa maior que zero no plano congelado na proposta (condicoes.plano)"),
+    grupo: "bloco",
+    nome: "fim_tem_juros",
+    origem: "Sai só quando o plano tem juros",
+    rotulo: "Fim — só quando o plano tem juros",
+    tipo: "bloco_fim",
+  },
+  {
+    exemplo: "",
+    fonte: SISTEMA("indiceCorrecao preenchido e diferente de SEM_CORRECAO no plano congelado na proposta"),
+    grupo: "bloco",
+    nome: "inicio_tem_correcao",
+    origem: "Sai só quando o plano tem índice de correção",
+    rotulo: "Início — só quando o plano tem correção",
+    tipo: "bloco_inicio",
+  },
+  {
+    exemplo: "",
+    fonte: SISTEMA("indiceCorrecao preenchido e diferente de SEM_CORRECAO no plano congelado na proposta"),
+    grupo: "bloco",
+    nome: "fim_tem_correcao",
+    origem: "Sai só quando o plano tem índice de correção",
+    rotulo: "Fim — só quando o plano tem correção",
     tipo: "bloco_fim",
   },
   // ⚠️ O PAR DA PERMUTA PRECISA EXISTIR NO CATÁLOGO E SER RESPONDIDO SEMPRE. `condicaoLigada`

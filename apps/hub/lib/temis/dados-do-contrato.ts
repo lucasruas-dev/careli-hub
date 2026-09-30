@@ -63,9 +63,9 @@ import {
   inteiroPorExtenso,
   quantidadePorExtenso,
 } from "./por-extenso";
-import { rotuloDoSistema } from "./planos";
+import { rotuloDoIndice, rotuloDoSistema } from "./planos";
 import type { DadosDoComprador, DadosDoContrato } from "./preencher-contrato";
-import { tabelaGeralDePagamentos } from "./tabela-de-pagamentos";
+import { jurosDoPlano, tabelaGeralDePagamentos } from "./tabela-de-pagamentos";
 
 // ── AS LINHAS COMO ELAS CHEGAM ───────────────────────────────────────────────
 
@@ -352,7 +352,16 @@ type CondicoesGravadas = {
   /** A entrada do CRONOGRAMA, parcela a parcela — não confundir com `parcelas_sinal` (coluna). */
   entrada?: ParcelaGravada[];
   mensais?: ParcelaGravada[];
-  plano?: { sistemaAmortizacao?: unknown } | null;
+  /**
+   * O plano EFETIVO que o simulador usou (cadastro, faixa de prazo e o que o corretor escolheu por
+   * cima), gravado pela rota da proposta. `indiceCorrecao` é o CÓDIGO ("IPCA_ANUAL"), não o rótulo.
+   */
+  plano?: {
+    indiceCorrecao?: unknown;
+    jurosPeriodicidade?: unknown;
+    jurosTaxa?: unknown;
+    sistemaAmortizacao?: unknown;
+  } | null;
   totais?: { anuais?: unknown; entrada?: unknown; financiado?: unknown };
 };
 
@@ -2343,6 +2352,27 @@ function gerais(
   const sistema = texto(condicoes?.plano?.sistemaAmortizacao);
   if (sistema) por("plano_sistema_amortizacao", rotuloDoSistema(sistema));
 
+  // ⚠️ O ÍNDICE E OS JUROS TAMBÉM SAEM DO PLANO CONGELADO NA PROPOSTA (30/09/2026). Lucas, sobre o
+  // Anexo 1 do Garden, que trazia a correção escrita à mão ("INCC-DI ou IPCA, o que performar
+  // maior"): *"é para seguir o que está na proposta, o que eu mandei é so um exemplo"*. As duas
+  // variáveis estavam no catálogo desde 02/09 e ninguém as preenchia: minuta que as usasse travava.
+  //
+  // ⚠️ A FONTE É `condicoes.plano`, e não `temis_planos` nem as colunas planas. É o plano que gerou o
+  // cronograma e o PDF da proposta, já com a faixa de prazo e o que o corretor mudou. A coluna
+  // `plano_juros` mistura % ao ano e % ao mês sem dizer qual, e por isso não serve de reserva.
+  //
+  // ⚠️ SEM JUROS VIRA "sem juros", e não ausência. O "PROMOÇÃO À VISTA" do Garden grava taxa 0: com
+  // o valor vazio a variável cairia em `semValor` e o contrato travaria. A cláusula dos juros some
+  // pelo par `tem_juros`; a variável preenchida é a segunda trava.
+  if (condicoes?.plano) {
+    const indice = texto(condicoes.plano.indiceCorrecao);
+    if (indice) por("plano_indice_correcao", rotuloDoIndice(indice));
+    por(
+      "plano_juros",
+      jurosDoPlano(condicoes.plano.jurosTaxa, condicoes.plano.jurosPeriodicidade) ?? "sem juros",
+    );
+  }
+
   // ── O PRAZO ──
   //
   // ⚠️ ELE SAI DA COLUNA, E NÃO SÓ DO CRONOGRAMA. `contrato_parcelas` é o prazo DESTA venda em
@@ -2486,7 +2516,20 @@ function condicoesDoContrato(proposta: LinhaDaProposta): Record<string, boolean>
   const condicoes = objeto(proposta.condicoes) as CondicoesGravadas | null;
   if (!condicoes) return bens;
   const anuais = Array.isArray(condicoes.anuais) ? condicoes.anuais : [];
-  return { ...bens, tem_anuais: anuais.length > 0 };
+
+  // ⚠️ JUROS E CORREÇÃO SÓ SÃO RESPONDIDOS QUANDO HÁ PLANO GRAVADO (30/09/2026). Sem `condicoes.plano`
+  // (proposta nativa anterior ao plano congelado) o par fica fora do mapa: a cláusula sai, as
+  // variáveis dela ficam sem valor e a conferência cobra. Responder `false` ali faria o contrato
+  // calar os juros de uma venda que tem juros.
+  const plano = condicoes.plano;
+  if (!plano) return { ...bens, tem_anuais: anuais.length > 0 };
+  const indice = texto(plano.indiceCorrecao);
+  return {
+    ...bens,
+    tem_anuais: anuais.length > 0,
+    tem_correcao: indice !== "" && indice !== "SEM_CORRECAO",
+    tem_juros: jurosDoPlano(plano.jurosTaxa, plano.jurosPeriodicidade) !== null,
+  };
 }
 
 /**

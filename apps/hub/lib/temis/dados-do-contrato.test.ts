@@ -1092,6 +1092,53 @@ describe("as condições e a data", () => {
     expect(dados.gerais.dia_mes_vencimento_anual).toBe("5 de junho");
   });
 
+  // Lucas (30/09/2026), sobre a correção do Anexo 1 do Garden: *"é para seguir o que está na
+  // proposta, o que eu mandei é so um exemplo"*. Os três planos do Garden, como o simulador os grava.
+  it.each([
+    {
+      caso: "PROMOÇÃO PARCELADO: IPCA anual e 6% a.a.",
+      plano: { indiceCorrecao: "IPCA_ANUAL", jurosPeriodicidade: "anual", jurosTaxa: 6, sistemaAmortizacao: "sacoc" },
+      esperado: { indice: "IPCA anual", juros: "6% a.a.", tem_correcao: true, tem_juros: true },
+    },
+    {
+      caso: "PROMOÇÃO À VISTA: IPCA anual e taxa ZERO — 'sem juros', e o par desliga",
+      plano: { indiceCorrecao: "IPCA_ANUAL", jurosPeriodicidade: "anual", jurosTaxa: 0, sistemaAmortizacao: "sacoc" },
+      esperado: { indice: "IPCA anual", juros: "sem juros", tem_correcao: true, tem_juros: false },
+    },
+    {
+      caso: "plano sem correção e com juros mensais (fora do Garden)",
+      plano: { indiceCorrecao: "SEM_CORRECAO", jurosPeriodicidade: "mensal", jurosTaxa: 0.7207, sistemaAmortizacao: "price" },
+      esperado: { indice: "sem correção", juros: "0,7207% a.m.", tem_correcao: false, tem_juros: true },
+    },
+  ])("juros e índice seguem o plano congelado na proposta — $caso", async ({ esperado, plano }) => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_propostas: proposta({
+          condicoes: {
+            anuais: [],
+            mensais: [{ valor: 1000, vencimento: "2026-11-10" }],
+            plano,
+            totais: { entrada: 10000, financiado: 90000 },
+          },
+        }),
+      }),
+    ))!;
+
+    expect(dados.gerais.plano_indice_correcao).toBe(esperado.indice);
+    expect(dados.gerais.plano_juros).toBe(esperado.juros);
+    expect(dados.condicoes?.tem_correcao).toBe(esperado.tem_correcao);
+    expect(dados.condicoes?.tem_juros).toBe(esperado.tem_juros);
+  });
+
+  it("⚠️ sem plano gravado, juros e índice ficam sem valor e os pares fora do mapa (a cláusula sai e cobra)", async () => {
+    const { dados } = (await dadosDaProposta("p1", clienteFalso({ hercules_propostas: proposta() })))!;
+    expect(dados.gerais.plano_juros).toBeUndefined();
+    expect(dados.gerais.plano_indice_correcao).toBeUndefined();
+    expect(dados.condicoes).not.toHaveProperty("tem_juros");
+    expect(dados.condicoes).not.toHaveProperty("tem_correcao");
+  });
+
   it("cronograma sem vencimento gravado não inventa data: a variável fica sem valor e cobra", async () => {
     const { dados } = (await dadosDaProposta(
       "p1",
