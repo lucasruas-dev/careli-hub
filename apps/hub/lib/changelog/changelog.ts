@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-30-garden-linha-por-lote-e-baixa-pelo-hub",
+    deployedAt: "2026-09-30T07:26:55-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "**Cliente com dois lotes aparece em duas linhas**, cada uma com as parcelas do próprio lote. O total do Garden não muda.",
+              "**De setembro em diante, o boleto pago dá baixa na parcela sozinho.** A baixa entra de hora em hora e fica no histórico da ficha como \"Hub · boleto Asaas\".",
+              "**Os boletos de setembro já pagos entram agora:** sete parcelas que ainda apareciam como vencidas passam a pagas.",
+            ],
+            screen: "Financeiro",
+          },
+        ],
+      },
+    ],
+    rollback: "1fd7d9ea",
+    technical: {
+      done: "`lib/lsoft/lotes-do-garden.ts` (mapa conferido de lote antigo para novo, 143 lotes) e `dividirPorLote` em `lib/lsoft/carteira-no-financeiro.ts`: 106 clientes, 111 linhas, somas iguais; sequência que cobre dois lotes com boleto por lote é repartida meio a meio, com aviso. `lib/lsoft/baixa-do-hub.ts`: boleto pago (boletos_pagamentos, Garden, competência de 2026-09 em diante) casa com a parcela por unidade, lote antigo, CPF e mês de vencimento, nunca por valor; grava por `salvarParcelaDoLsoft` com autor \"Hub · boleto Asaas <id>\"; parcela reaberta à mão não é baixada de novo; o que não casa vai para a conferência e para o log. Entra na rota /api/boletos/pagamentos/sincronizar (cron de hora em hora), que passa a reler competências anteriores do Garden com boleto em aberto (até 2 listagens a mais por hora no Asaas). Ensaio de setembro: 11 pagamentos (R$ 26.479,89) baixam 7 parcelas; 91 já pagos; 27 para conferir (26 de clientes ainda na integração).",
+      motivation: "Lucas (29/09/2026), olhando o Financeiro: \"se ele tem dois lotes, tem que ter duas linhas\", \"subiu os valores de setembro que foi emitido por nos?\" e \"a partir de setembro, quem alimenta a carteira é o hub\".",
+    },
+    title: "Garden: uma linha por lote e a baixa pelo boleto do hub",
+    type: "melhoria",
+    version: "1.398.0",
+  },
+  {
     buildTag: "2026-09-29-garden-validado-no-financeiro",
     deployedAt: "2026-09-29T21:14:35-03:00",
     modules: [
