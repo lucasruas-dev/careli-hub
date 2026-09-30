@@ -1,4 +1,4 @@
-import { authorizeApoloRead } from "@/lib/apolo/auth";
+import { authorizeApoloWrite } from "@/lib/apolo/auth";
 import {
   montarTermoDeRescisaoPdf,
   nomeDoArquivoRescisao,
@@ -30,12 +30,16 @@ import { carregarTermoDeRescisao } from "@/lib/apolo/termo-de-rescisao-server";
 // ⚠️ A RECUSA DO CONTEÚDO SAI COM O STATUS QUE A LEITURA DEU: 404 (contrato de outro cliente), 422
 // (contrato encerrado, unidade sem preço) e 503 (banco fora de alcance). Sempre com `error`, porque
 // é SÓ `error` que o painel lê — a frase é o que explica o botão ao operador.
+//
+// ⚠️ O PORTÃO É O DE ESCRITA (admin, líder e operador), E NÃO O DE LEITURA. Decisão do Lucas em
+// 30/09/2026, ao ligar a chave: quem só olha o Apolo (`viewer`) não baixa papel financeiro que vai
+// para o cliente. O extrato continua no portão de leitura; o termo é um passo de atendimento.
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const authorization = await authorizeApoloRead(request);
+  const authorization = await authorizeApoloWrite(request);
 
   if (!authorization.ok) {
     return authorization.response;

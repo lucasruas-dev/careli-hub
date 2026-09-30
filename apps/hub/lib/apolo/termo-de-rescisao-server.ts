@@ -19,12 +19,17 @@
 //   • posse ilegível → 503. Tratar como "sem posse" tiraria a fruição do papel, calado.
 //   • cadastro do empreendimento ilegível → 503. Tratar como "sem pai" jogaria na praxe uma
 //     premissa que está cadastrada no principal (mesma decisão da rota das premissas).
-//   • premissas com a TABELA AUSENTE → segue com a praxe. Aqui "não existe" é FATO: a migration
-//     0166 está aguardando aplicação, e sem tabela não há cadastro para perder. `calcularRescisao`
-//     imprime no papel, rubrica por rubrica, que o percentual é o de praxe. No dia em que a tabela
-//     existir, o mesmo código passa a ler o cadastro sem mudar uma linha.
-//   • premissas com QUALQUER OUTRO erro → 503. A tabela existe e não respondeu: seguir com a praxe
-//     imprimiria "não há premissa cadastrada" sobre um empreendimento que tem.
+//   • premissas com QUALQUER erro de leitura → 503. A tabela existe (0166 aplicada em 16/09/2026)
+//     e não respondeu: seguir imprimiria "não há premissa cadastrada" sobre um empreendimento que tem.
+//
+// ⚠️ SEM PREMISSA, O TERMO NÃO SAI (decisão do Lucas, 30/09/2026, ao ligar a chave). Até aqui a
+// rubrica sem cadastro caía na praxe do modelo da Lavra do Ouro (multa 10%, publicidade 4%,
+// corretagem 6,5%, tributos 5,93%) com um aviso impresso. Medido nos contratos do C2X: cláusula
+// penal só aparece em 13 de 32 empreendimentos, publicidade e tributos em 6. A praxe mandaria ao
+// cliente, por WhatsApp, deduções que o contrato dele não prevê, e aviso em cinza não segura isso.
+// A régua é "nenhuma linha do papel sai com `origem: padrao`", e não "tem alguma premissa": um
+// cadastro pela metade também cairia na praxe nas rubricas que faltam. Tabela ausente cai na mesma
+// régua, porque sem tabela toda rubrica sai pela praxe.
 import type { RowDataPacket } from "mysql2";
 
 import { hojeEmBrasilia } from "@/lib/apolo/extrato-cliente";
@@ -33,6 +38,7 @@ import {
   type LinhaDePremissa,
   premissasDoRecorte,
   type PremissasResolvidas,
+  RUBRICAS,
 } from "@/lib/apolo/premissas-de-rescisao";
 import type { DadosDaRescisao } from "@/lib/apolo/rescisao-pdf";
 import { createApoloAdminClient } from "@/lib/apolo/server";
@@ -364,8 +370,7 @@ export async function carregarTermoDeRescisao(escopo: EscopoDoTermo): Promise<Te
   if (!premissas.ok) return falha(503, premissas.error);
 
   if (premissas.tabelaAusente) {
-    // Uma linha por emissão, em `info`: é a pendência conhecida da 0166, não um defeito.
-    console.info("[apolo][rescisao] premissas: tabela ainda ausente, termo segue com a praxe.");
+    console.error("[apolo][rescisao] premissas: a tabela sumiu, e o termo recusa em vez de usar a praxe.");
   }
 
   const montado = montarDadosDaRescisao({
@@ -382,5 +387,39 @@ export async function carregarTermoDeRescisao(escopo: EscopoDoTermo): Promise<Te
     uf: familia.uf,
   });
 
-  return montado.ok ? { dados: montado.dados, ok: true } : falha(422, montado.error);
+  if (!montado.ok) return falha(422, montado.error);
+
+  const semPremissa = montado.dados.conta.deducoes.filter((linha) => linha.origem === "padrao");
+  if (semPremissa.length) {
+    const rubricas = semPremissa.map(
+      (linha) => RUBRICAS.find((rubrica) => rubrica.valor === linha.rubrica)?.rotulo.toLowerCase() ?? linha.rubrica,
+    );
+    return falha(
+      422,
+      `O termo de rescisão ainda não sai para a unidade ${relatorio.contrato.codigo}: o empreendimento não tem premissa de rescisão cadastrada para ${listarRubricas(rubricas)}. Sem ela, a conta usaria um percentual de praxe que o contrato pode não prever.`,
+    );
+  }
+
+  // ⚠️ E A LINHA QUE SUMIU TAMBÉM SEGURA O PAPEL. Achado pela revisão de 30/09/2026: a trava acima só
+  // vê a linha que EXISTE com origem "padrao". Quando a premissa pede uma base que não veio, a linha
+  // SOME e fica só o aviso cinza "não entrou na conta", e o número muda sem ninguém ver. Dois casos
+  // reais com o cadastro de hoje: fruição com posse cadastrada (a base "valor do contrato atualizado"
+  // ainda não é calculada) e corretagem `valor_efetivo` em contrato cujo texto de corretagem não
+  // traz o valor em reais (aí a linha some E a multa e a publicidade sobem, porque a base vira a
+  // tabela cheia). A frase é o próprio aviso, que já diz qual rubrica e qual base faltou.
+  const foraDaConta = montado.dados.conta.avisos.filter((aviso) => aviso.includes(" não entrou na conta:"));
+  if (foraDaConta.length) {
+    return falha(
+      422,
+      `O termo de rescisão não sai para a unidade ${relatorio.contrato.codigo} sem conferência: ${foraDaConta.join(" ")}`,
+    );
+  }
+
+  return { dados: montado.dados, ok: true };
+}
+
+/** "multa penal, publicidade e tributos". */
+function listarRubricas(rubricas: string[]): string {
+  if (rubricas.length <= 1) return rubricas.join("");
+  return `${rubricas.slice(0, -1).join(", ")} e ${rubricas[rubricas.length - 1]}`;
 }

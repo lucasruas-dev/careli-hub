@@ -94,6 +94,11 @@ export type PremissaDaRescisao = {
   base: BaseDeCalculo;
   /** O trecho do contrato que justifica a alíquota. Vai impresso no termo. */
   clausula?: null | string;
+  /**
+   * O empreendimento cadastrou a rubrica DESLIGADA: o contrato dele não prevê essa dedução, e a
+   * linha some do papel sem aviso. É o contrário de rubrica AUSENTE, que usa a praxe e avisa.
+   */
+  desligada?: boolean;
   /** Nulo quando a base é `valor_efetivo` (a corretagem em reais do contrato). */
   percentual: null | number;
   /** `mensal` só existe para fruição, e o banco trava isso no CHECK. */
@@ -370,6 +375,10 @@ export function calcularRescisao(entrada: EntradaDaRescisao): ContaDaRescisao {
   // ────────────────────────────────────────────────────────────────────────────────────────────
   const premissaDaCorretagem = premissas.corretagem;
   const corretagemCadastrada = premissaDaCorretagem != null || atalho.corretagem != null;
+  // ⚠️ DESLIGADA SÓ TIRA A LINHA. A comissão em reais, quando veio, continua saindo do valor de
+  // tabela para a base "tabela menos a comissão", porque essa base é o valor líquido da venda,
+  // e não a dedução.
+  const corretagemDesligada = premissaDaCorretagem?.desligada === true;
   const baseDaCorretagem = premissaDaCorretagem?.base ?? BASES_PADRAO.corretagem;
   const percentualDaCorretagem = escolher(
     PERCENTUAIS_PADRAO.corretagem,
@@ -390,6 +399,8 @@ export function calcularRescisao(entrada: EntradaDaRescisao): ContaDaRescisao {
     // do lote mudou desde a venda.
     comissao = centavos(Number(entrada.comissaoEmReais));
     baseEscritaDaCorretagem = "Conforme contrato";
+  } else if (corretagemDesligada) {
+    corretagemEntraNaConta = false;
   } else {
     const valorBase = valorSimples(baseDaCorretagem);
     if (valorBase === null) {
@@ -433,6 +444,8 @@ export function calcularRescisao(entrada: EntradaDaRescisao): ContaDaRescisao {
     vezes = 1,
   ): void => {
     const premissa = premissas[rubrica];
+    // O contrato do empreendimento não prevê a rubrica: sem linha e sem aviso, por decisão.
+    if (premissa?.desligada) return;
     const cadastrada = premissa != null || doAtalho != null;
     const pct = escolher(padraoDoPercentual, premissa?.percentual ?? doAtalho);
     const qualBase = premissa?.base ?? BASES_PADRAO[rubrica];
@@ -474,7 +487,7 @@ export function calcularRescisao(entrada: EntradaDaRescisao): ContaDaRescisao {
   // ⚠️ A CORRETAGEM NÃO PASSA POR `linhaPercentual` porque ela é a única rubrica cujo valor pode vir
   // pronto em reais (`comissaoEmReais`), e porque a base dela tem de ser resolvida antes de todas
   // as outras. A conta está lá em cima; aqui só entra a linha.
-  if (corretagemEntraNaConta) {
+  if (corretagemEntraNaConta && !corretagemDesligada) {
     if (!corretagemCadastrada) {
       avisos.push(
         `${ROTULO.corretagem} usou o percentual de praxe (${percentual(percentualDaCorretagem)}): não há premissa cadastrada para este empreendimento.`,

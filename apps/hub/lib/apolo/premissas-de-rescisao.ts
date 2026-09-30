@@ -167,9 +167,26 @@ export function premissasDoRecorte(
     const escolha = itensDoMenorRecorte(recorte, daRubrica);
     const linha = escolha.itens[0];
     if (!linha || !escolha.origem) continue;
-    if (!linha.ativa) continue;
 
     const base = String(linha.base).trim();
+
+    // ⚠️ DESLIGADA CHEGA À CONTA COMO DESLIGADA, E NÃO COMO AUSENTE. Até 30/09/2026 esta linha fazia
+    // `continue`, e a régua acertava o degrau mas a conta errava o resultado: rubrica ausente é "use
+    // a praxe e avise" em `calcularRescisao`, e o termo deduzia os 4% de publicidade justamente do
+    // empreendimento que cadastrou "não cobra". Achado ao cadastrar Vale do Ouro e Recanto do Pará,
+    // cujos contratos não preveem publicidade nem tributos. A base de uma desligada não entra em
+    // conta nenhuma; `valor_de_tabela` só preenche o tipo quando a gravada não serve.
+    if (!linha.ativa) {
+      premissas[rubrica.valor] = {
+        base: ehBase(base) ? base : "valor_de_tabela",
+        clausula: linha.clausula,
+        desligada: true,
+        percentual: null,
+        periodicidade: "unica",
+      };
+      origemPorRubrica[rubrica.valor] = escolha.origem;
+      continue;
+    }
     if (!ehBase(base)) continue;
 
     // ⚠️ A BASE TEM DE SERVIR À RUBRICA, e conferir isso na LEITURA é o que fecha a terceira porta.

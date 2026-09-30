@@ -304,15 +304,15 @@ function componenteDaAssinatura(): string {
 // assinatura. Uma segunda chave criaria o estado impossível de "não pode baixar, mas pode
 // assinar".
 describe("a chave de liberação", () => {
-  it("liberou o acordo, NÃO liberou a rescisão, e continua sendo uma chave só", () => {
+  it("liberou o acordo e a rescisão, e o acordo continua sendo uma chave só", () => {
     const chaves = readFileSync(
       join(__dirname, "..", "..", "apolo", "termos-liberados.ts"),
       "utf8",
     );
 
     expect(chaves).toContain("export const TERMO_DE_ACORDO_LIBERADO = true;");
-    // A rescisão é outra decisão, e ela não foi tomada: espera o nome do papel e o jurídico.
-    expect(chaves).toContain("export const TERMO_DE_RESCISAO_LIBERADO = false;");
+    // A rescisão foi outra decisão, tomada em 30/09/2026 (nome do papel e texto confirmados).
+    expect(chaves).toContain("export const TERMO_DE_RESCISAO_LIBERADO = true;");
 
     // Os dois blocos do card nascem atrás da MESMA chave.
     expect(TELA).toContain(
