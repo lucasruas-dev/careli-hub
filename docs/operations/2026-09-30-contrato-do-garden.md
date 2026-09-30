@@ -19,7 +19,8 @@ o contrato do Garden e ligar a parte de emissão de contrato do portal da cecili
 
 ## O que foi feito
 
-- **v1.400.0 (branch `feat/portal-cecilio-melhorias`, commit 22ccfae6):** sete variáveis para
+- **Branch `feat/portal-cecilio-melhorias`, commit 22ccfae6** (a versão sai na sessão Publicação):
+  sete variáveis para
   escrever o fluxo em frase, preenchidas pelo cronograma da proposta: `data_limite_entrada`,
   `valor_parcela_mensal` (+ extenso), `primeiro_vencimento_mensal`, `valor_total_anuais` (+ extenso),
   `primeiro_vencimento_anual`, `dia_mes_vencimento_anual` e `plano_anuais_quantidade_extenso`.
@@ -43,7 +44,8 @@ Gurgel (VOL, VOC, VOR, RVP, Veredas), e isso não foi feito.
 
 ## O que falta
 
-1. **Go-live da v1.400.0** (push na `main`, OK do Lucas).
+1. **Go-live das variáveis** pela sessão Publicação (resumo de entrega; push na `main` com OK do
+   Lucas).
 2. **Gravar a minuta como rascunho no 39** (1 linha em `temis_minutas`, OK do Lucas):
    `node gravar-rascunho.mjs --gravar` no scratchpad. Publicar fica na tela (Produtos → Garden →
    Minutas), pela conferência de lá.
