@@ -95,6 +95,38 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Apolo/Financeiro/Extrato do cliente] Simulacao de Rescisao sem observacao interna no papel (v1.401.1, interna)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; construido pela conta de construcao (aba do termo de rescisao) e entregue por resumo de entrega.
+- Data e hora local: `2026-09-30 17:28:59 -03:00` (changelog); deploy pronto cerca de 3 min depois.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("pode publicar", 30/09/2026); decisao dele: corretagem R$ 0,00 nao emite e pede conferencia; branch fix/rescisao-sem-aviso-no-papel (a2b81890) integrada por merge`.
+- Escopo publicado:
+  - `o PDF deixa de imprimir conta.avisos ("Observacoes da apuracao")`;
+  - `carregarTermoDeRescisao recusa com 422 quando a conta tem qualquer aviso (antes, so "nao entrou na conta")`;
+  - `aviso de corretagem R$ 0,00 reescrito para o operador`.
+- Commit publicado: `8e32cd0b1ca24a6f18fbf208d38faabbf2e25c55`.
+- Deployment anterior: `dpl_Ev25AuDx9KjWSGrmERXadehnajuE` (commit `5036cbf6`, v1.401.0).
+- Deployment novo: `dpl_FrCBVtw6YrCEZKhjSAWP4fxRLz39`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Arquivos/modulos incluidos: `lib/apolo/rescisao-pdf.ts`, `lib/apolo/termo-de-rescisao-server.ts`, `lib/apolo/termo-de-rescisao.ts`, `lib/changelog/changelog.ts` e os testes. Junto subiu o registro da v1.401.0 neste diario.
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `suite completa e hook de pre-push`: `728 arquivos, 11.003 testes`;
+  - `medicao independente por workflow nos 870 contratos em curso de C2X 1, 3, 4, 20, 35, 36, 37 e 41 (so leitura, sequencial com pausa)`: `750 emitem; 8 passam a recusar, exatamente os de corretagem R$ 0,00 do Recanto (REPC110, REPE195, REPE193, REPE194, REPE189, REPE199, REPA20, REPE186); 1 ja recusava (REPB63, comissao nula); 111 sem nenhum pagamento no C2X respondem 404 como antes (95 Reservado no VLO); 0 erro`;
+  - `revisao do papel`: `fora a secao removida, o PDF sai identico (texto e ordem), 1 pagina`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.401.1 com buildTag 2026-09-30-rescisao-sem-aviso-no-papel; rota do PDF 401 sem sessao`.
+- Logs recentes: `sem erro na rota /api/apolo/rescisao/pdf nos ultimos 30 min; a consulta do projeto inteiro estourou tempo na ferramenta da Vercel e nao foi conferida`.
+- Rollback definido: `Instant Rollback para dpl_Ev25AuDx9KjWSGrmERXadehnajuE (v1.401.0) e seguro: la a rota ja esta no portao de escrita e com a trava de praxe; volta so a observacao interna impressa nos 8 do Recanto. NAO voltar para antes da v1.401.0`.
+- Riscos conhecidos: `os 8 contratos do Recanto com corretagem R$ 0,00 nao tem como ser liberados depois de conferidos (nao ha registro de conferencia no sistema); a regra "qualquer aviso recusa" so e protegida por um teste que procura texto no codigo (uma mutacao que volta a filtrar por texto passou nos 29 testes); comentarios do codigo datam a decisao como 01/10/2026`.
+- Pendencias: `PAN-130: liberar a simulacao depois da conferencia da corretagem zero; trocar o teste por texto por teste de comportamento`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas conferir logado: REPE186 com a frase de recusa e um contrato da Lavra (LOS0610) sem "Observacoes da apuracao"`.
+
+Registro de producao:
+
 - Assunto: `[Apolo/Financeiro/Extrato do cliente] Simulacao de Rescisao ligada (v1.401.0)`.
 - Squad/agente responsavel: `Zeus (sessao Publicacao)`; construido pela conta de construcao (aba do termo de rescisao) e entregue por resumo de entrega.
 - Data e hora local: `2026-09-30 15:38:52 -03:00` (changelog); deploy pronto por volta de 15:45.
