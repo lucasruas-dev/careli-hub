@@ -65,3 +65,38 @@ O que entrou:
   Vencido R$ 77.958,98 (24 parcelas, 13 clientes), inadimplência 1,67% (vencido sobre o previsto até
   hoje, a régua do Financeiro), 14 unidades com aviso (outro lote ou lote em conferência), nenhuma
   sem lote.
+
+## 30/09/2026 · Uma linha por lote e a baixa pelo boleto do hub (v1.398.0)
+
+Lucas, olhando o Financeiro em 29/09: *"se ele tem dois lotes, tem que ter duas linhas"*, *"subiu os
+valores de setembro que foi emitido por nos?"* e *"a partir de setembro, quem alimenta a carteira é o
+hub"*. Autorização de 30/09: *"pode seguir"*, em resposta a "posso publicar em produção? a publicação
+já liga a baixa automática".
+
+- **Uma linha por lote:** `lib/lsoft/lotes-do-garden.ts` (mapa conferido de lote antigo para novo, 143
+  lotes) e `dividirPorLote` em `lib/lsoft/carteira-no-financeiro.ts`. 106 clientes, 111 linhas (5
+  clientes com 2 lotes). Em 4 deles o LSoft tem uma parcela só para os dois lotes e o hub emite um
+  boleto por lote: a parcela é repartida meio a meio, com aviso na linha. As somas não mudam.
+- **Baixa pelo hub:** `lib/lsoft/baixa-do-hub.ts`. Boleto pago em `boletos_pagamentos` (Garden,
+  competência de 2026-09 em diante) casa com a parcela por unidade, lote antigo, CPF e mês de
+  vencimento, nunca por valor. Grava por `salvarParcelaDoLsoft`, autor "Hub · boleto Asaas <id>".
+  Parcela reaberta à mão não é baixada de novo. Roda na rota `/api/boletos/pagamentos/sincronizar`
+  (cron de hora em hora, minuto 10), que passa a reler competências anteriores do Garden com boleto
+  em aberto (até 2 listagens a mais por hora no Asaas).
+- **Setembro, gravado em 30/09 às 07h35** (`scripts/carteira/baixar-pelo-hub.mjs --competencia 2026-09
+  --gravar`): 7 parcelas baixadas por 11 pagamentos, R$ 26.479,89, 21 linhas de trilha. O ensaio
+  seguinte deu 0 baixa nova e 102 já pagas (não baixa em dobro).
+- **Financeiro do Garden depois da baixa** (mesma função da rota, só leitura): 111 linhas, carteira
+  R$ 35.042.609,64, recebido R$ 4.511.316,02, a receber R$ 30.478.763,24, vencido R$ 52.530,38 (18
+  parcelas, 9 clientes), inadimplência 1,12%.
+- **Para o time adm conferir:** 00000290 (parcela de setembro baixada na ficha em 24/08 com
+  R$ 2.209,59 e boleto de setembro pago no Asaas em 16/09 com R$ 2.223,07: possível pagamento em
+  dobro); 00000612 (boleto Q13 L10, lote antigo 382 pelo mapa, e as parcelas estão no 383 no LSoft);
+  26 boletos pagos de clientes que ainda estão na integração seguem com baixa manual; 12 boletos de
+  setembro vencidos (8 de clientes do Financeiro).
+- Deploy: push `1fd7d9ea..ad33e8d0` (pré-push: 726 arquivos, 10.939 testes). Rollback: o deployment
+  da v1.397.0 (commit `1fd7d9ea`). As baixas do hub se identificam por `editada_por like 'Hub · boleto
+  Asaas%'` e se desfazem reabrindo a parcela na ficha.
+- ⚠️ Pendências: os avisos da baixa automática (estorno depois de baixa, valor diferente, lote que
+  não casa) vão só para o log do servidor; a rota de sincronização aceita qualquer usuário com leitura
+  do Apolo, e agora a mesma chamada dá baixa (o que é baixado não depende de quem chama).
