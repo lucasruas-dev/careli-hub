@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-30-pagamentos-a-conferir",
+    deployedAt: "2026-09-30T08:24:23-03:00",
+    modules: [
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: [
+              "**Nova lista Pagamentos a conferir no Financeiro do Garden.** Mostra o boleto pago que o hub não conseguiu baixar sozinho, com o motivo: lote que não bate com as parcelas, parcela já baixada com outro valor, pagamento desfeito.",
+              "**Um segundo grupo traz o boleto pago com a parcela em aberto** de quem ainda está na LSoft Integração. Dada a baixa na ficha, com o valor e a data do boleto, ele sai da lista sozinho.",
+              "**Cada linha abre a ficha do cliente e tem o botão Conferido**, que pede uma frase sobre o que foi feito. Se o mesmo boleto voltar por outro motivo, a linha diz quem conferiu antes.",
+            ],
+            screen: "Financeiro",
+          },
+        ],
+      },
+    ],
+    rollback: "ad33e8d0",
+    technical: {
+      done: "Migration 0200 (`boletos_pagamentos_conferidos`, chave cobrança + motivo, só insert, RLS sem policy e revoke de anon/authenticated), aplicada com OK do Lucas. `lib/lsoft/pagamentos-a-conferir.ts` calcula a lista na hora pela mesma régua da baixa (`lerBaixaDoHub` com `clientes: \"todos\"` e `todosOsDesfeitos`, opções novas que a rodada automática não usa): já paga com o mesmo valor não entra; parcela em aberto de cliente na integração vai para o segundo grupo; o resto pede decisão, com a frase do time. A tela recebe nome, código e uma impressão (hash) do motivo, nunca CPF nem o texto do log. POST /api/incorporador/carteira/conferir só aceita cobrança da lista viva e recusa (409) quando o motivo mudou desde que a pessoa abriu a lista; autor vem da sessão. Porta: autorizar + portalVeBaseLsoft + não comercial + Garden no escopo. Revisão independente: 15 achados, os que mudavam o que a lista diz foram consertados antes de subir. Medido hoje: 14 a conferir e 6 boletos pagos com parcela em aberto (R$ 12.278,50); a lista responde em cerca de 2 s.",
+      motivation: "Lucas (30/09/2026): \"pode fazer a lista de pagamentos a conferir\". Os avisos da baixa automática iam só para o log do servidor, que ninguém lê de rotina.",
+    },
+    title: "Pagamentos a conferir no Financeiro",
+    type: "novidade",
+    version: "1.399.0",
+  },
+  {
     buildTag: "2026-09-30-garden-linha-por-lote-e-baixa-pelo-hub",
     deployedAt: "2026-09-30T07:26:55-03:00",
     modules: [

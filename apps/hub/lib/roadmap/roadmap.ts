@@ -106,6 +106,15 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
     titulo: "Panteon dono do cadastro de empreendimentos: consultas do C2X pelo id, tela de editar e criar",
   },
   {
+    id: "PAN-127",
+    entregueEm: "2026-09-30",
+    evidencia: "v1.398.0 e v1.399.0. `lib/lsoft/lotes-do-garden.ts` e `dividirPorLote` (106 clientes, 111 linhas, somas iguais). `lib/lsoft/baixa-do-hub.ts` na sincronização de pagamentos de hora em hora: setembro gravado em 30/09 (7 parcelas, R$ 26.479,89). `lib/lsoft/pagamentos-a-conferir.ts` e a migration 0200 (`boletos_pagamentos_conferidos`): a lista do que a baixa não resolve, com Ficha e Conferido. Ficam para depois: Indicadores e líquido do Garden, e os 10 clientes com OK e pendência que ainda estão na integração.",
+    modulo: "Portal do incorporador",
+    porque: "Lucas (29 e 30/09/2026): *\"se ele tem dois lotes, tem que ter duas linhas\"*, *\"a partir de setembro, quem alimenta a carteira é o hub\"* e *\"pode fazer a lista de pagamentos a conferir\"*. O boleto pago no Asaas passa a dar baixa na parcela do Garden sozinho, e o que ele não casa com segurança aparece para o time decidir.",
+    situacao: "entregue",
+    titulo: "Garden no Financeiro: uma linha por lote, baixa pelo boleto do hub e pagamentos a conferir",
+  },
+  {
     id: "PAN-126",
     entregueEm: "2026-09-29",
     evidencia: "v1.397.0. Migration 0199 (`lsoft_clientes.empreendimentos_na_carteira`) aplicada com OK do Lucas. `lib/lsoft/carteira-no-financeiro.ts` (Financeiro lê o Garden do espelho do LSoft, lote novo pelo CPF do boleto) e `lib/lsoft/na-carteira.ts` (a integração tira o par cliente x empreendimento). Os 106 clientes marcados por `scripts/carteira/subir-garden-para-carteira.mjs`. Ficam para depois: baixa automática pelo Asaas, Indicadores e líquido do Garden.",
