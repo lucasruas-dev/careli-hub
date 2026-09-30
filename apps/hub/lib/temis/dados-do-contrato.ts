@@ -348,11 +348,16 @@ function participacaoDoComprador(c: CompradorDaProposta): null | number {
  * lê, e é o que faz um campo novo lá não virar erro de compilação aqui.
  */
 type CondicoesGravadas = {
-  anuais?: { valor?: unknown }[];
-  mensais?: unknown[];
+  anuais?: ParcelaGravada[];
+  /** A entrada do CRONOGRAMA, parcela a parcela — não confundir com `parcelas_sinal` (coluna). */
+  entrada?: ParcelaGravada[];
+  mensais?: ParcelaGravada[];
   plano?: { sistemaAmortizacao?: unknown } | null;
-  totais?: { entrada?: unknown; financiado?: unknown };
+  totais?: { anuais?: unknown; entrada?: unknown; financiado?: unknown };
 };
+
+/** Uma parcela do cronograma congelado: valor em reais e vencimento `AAAA-MM-DD`. */
+type ParcelaGravada = { valor?: unknown; vencimento?: unknown } | null;
 
 // ── A FUNÇÃO ─────────────────────────────────────────────────────────────────
 
@@ -2393,10 +2398,71 @@ function gerais(
   const anuais = Array.isArray(condicoes.anuais) ? condicoes.anuais : [];
   if (anuais.length > 0) {
     por("plano_anuais_quantidade", String(anuais.length));
+    por("plano_anuais_quantidade_extenso", quantidadePorExtenso(anuais.length));
     parDeDinheiro("plano_anuais_valor", numero(anuais[0]?.valor));
   }
 
+  // ── O FLUXO ESCRITO POR EXTENSO (30/09/2026) ──
+  //
+  // O Anexo 1 do Garden escreve o fluxo em frase, e estas são as peças que a frase pede além do
+  // total e da quantidade (ver o catálogo, "O FLUXO ESCRITO POR EXTENSO"). Cada uma sai do mesmo
+  // cronograma que o quadro lê: parcela que não está gravada não vira número, e a variável segue
+  // cobrando na conferência.
+  const entrada = parcelasGravadas(condicoes.entrada);
+  por("data_limite_entrada", dataDoCronograma(entrada[entrada.length - 1]?.vencimento));
+
+  const mensaisGravadas = parcelasGravadas(condicoes.mensais);
+  parDeDinheiro("valor_parcela_mensal", numero(mensaisGravadas[0]?.valor));
+  por("primeiro_vencimento_mensal", dataDoCronograma(mensaisGravadas[0]?.vencimento));
+
+  const anuaisGravadas = parcelasGravadas(condicoes.anuais);
+  if (anuaisGravadas.length > 0) {
+    // ⚠️ O TOTAL É O DE FACE QUE O CRONOGRAMA GRAVOU (`totais.anuais`), e a soma das parcelas só
+    // entra quando a proposta é de antes desse campo. No Garden a anual abate o saldo pelo valor de
+    // face (`cronograma.ts`), e é esse o número que fecha com o valor da obra na mesma frase.
+    parDeDinheiro(
+      "valor_total_anuais",
+      numero(condicoes.totais?.anuais) ?? somaDasParcelas(anuaisGravadas),
+    );
+    por("primeiro_vencimento_anual", dataDoCronograma(anuaisGravadas[0]?.vencimento));
+    por("dia_mes_vencimento_anual", diaEMesDoCronograma(anuaisGravadas[0]?.vencimento));
+  }
+
   return g;
+}
+
+/** A lista do cronograma sem os buracos (`null`) que um jsonb livre pode trazer. */
+function parcelasGravadas(lista: unknown): NonNullable<ParcelaGravada>[] {
+  return Array.isArray(lista) ? (lista.filter(Boolean) as NonNullable<ParcelaGravada>[]) : [];
+}
+
+/** A soma das parcelas, ou `null` se alguma não tem valor — total inventado é pior que nenhum. */
+function somaDasParcelas(lista: readonly NonNullable<ParcelaGravada>[]): null | number {
+  let centavos = 0;
+  for (const parcela of lista) {
+    const valor = numero(parcela.valor);
+    if (valor === null) return null;
+    centavos += Math.round(valor * 100);
+  }
+  return centavos / 100;
+}
+
+/**
+ * `2026-03-10` → `10/03/2026`, lendo os dígitos.
+ *
+ * ⚠️ SEM `Date`, e é a mesma trava de `tabela-de-pagamentos.ts`: o fuso da Vercel (UTC) poderia
+ * mover um vencimento de contrato para a véspera.
+ */
+function dataDoCronograma(valor: unknown): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(valor ?? ""));
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
+}
+
+/** `2027-01-10` → `10 de janeiro`: o dia do ano em que a anual se repete. */
+function diaEMesDoCronograma(valor: unknown): string {
+  const m = /^\d{4}-(\d{2})-(\d{2})/.exec(String(valor ?? ""));
+  const mes = m?.[1] ? MESES[Number(m[1]) - 1] : undefined;
+  return m?.[2] && mes ? `${Number(m[2])} de ${mes}` : "";
 }
 
 /**

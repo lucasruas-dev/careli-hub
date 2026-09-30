@@ -36,6 +36,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-30-contrato-do-garden",
+    deployedAt: "2026-09-30T15:00:00-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Novas variáveis para escrever o fluxo de pagamento em frase**, como no Anexo 1 do Garden: valor e primeiro vencimento da parcela mensal, a data até quando a entrada é paga, o total, o primeiro vencimento e o dia do ano das anuais, e a quantidade de anuais por extenso.",
+              "**Os números saem do cronograma que a proposta gravou**, os mesmos do simulador e do quadro de pagamentos.",
+            ],
+            screen: "Editor de minuta",
+          },
+        ],
+      },
+    ],
+    rollback: "305ce566",
+    technical: {
+      done: "Catálogo (`lib/temis/variaveis.ts`): `data_limite_entrada`, `valor_parcela_mensal` (+ extenso), `primeiro_vencimento_mensal`, `valor_total_anuais` (+ extenso), `primeiro_vencimento_anual`, `dia_mes_vencimento_anual` e `plano_anuais_quantidade_extenso`. `gerais` em `lib/temis/dados-do-contrato.ts` as preenche de `hercules_propostas.condicoes` (entrada, mensais, anuais e `totais.anuais`), lendo as datas pelos dígitos, sem `Date`; vencimento ausente deixa a variável sem valor, e a conferência cobra. A obra do Anexo usa `valor_divida_financiada`, que no Garden já é o saldo sem as anuais pelo valor de face. Ensaio local da minuta do Garden (Termo de Adesão SCP + Anexo 1) pelo motor de verdade, com venda fictícia de um e de dois sócios: 43 variáveis conhecidas, 0 desconhecidas, 0 bloco quebrado, 0 sem valor.",
+      motivation: "Lucas (30/09/2026), com o Termo de Adesão e o Anexo 1 do Garden em PDF: \"eu preciso criar o contrato do Garden e ligar a parte de emissão de contrato do portal da cecilio, o que ele fazem hoje é os pdfs que eu te mandei\". O Anexo escreve o fluxo em frase, e o catálogo não tinha a parcela nem os vencimentos.",
+    },
+    title: "Contrato do Garden: o fluxo de pagamento escrito em frase",
+    type: "melhoria",
+    version: "1.400.0",
+  },
+  {
     buildTag: "2026-09-30-pagamentos-a-conferir",
     deployedAt: "2026-09-30T08:24:23-03:00",
     modules: [

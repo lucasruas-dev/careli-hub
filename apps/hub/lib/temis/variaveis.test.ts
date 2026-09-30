@@ -375,6 +375,10 @@ describe("toda variável nasce do Panteon — Lucas, 02/09/2026: 'esquece c2x co
       "valor_sinal_extenso",
       "dia_vencimento_extenso",
       "data_emissao_contrato_extenso",
+      // O fluxo escrito do Anexo 1 do Garden (30/09/2026).
+      "valor_parcela_mensal_extenso",
+      "valor_total_anuais_extenso",
+      "plano_anuais_quantidade_extenso",
     ]) {
       const v = acharVariavel(nome);
       expect(v?.extensoDe, nome).toBeDefined();

@@ -1016,6 +1016,103 @@ describe("as condições e a data", () => {
     expect(dados.gerais.plano_anuais_valor_extenso).toBe("oito mil reais");
   });
 
+  // O Anexo 1 do Garden (30/09/2026) escreve o fluxo em frase: "R$ 20.000,00 como PARCELA DE
+  // ENTRADA, a ser paga até o dia 18/02/2026 (...) R$ 178.000,00 como PARCELA DE OBRA, em 84
+  // parcelas de R$ 2.119,05 (...) com primeiro vencimento em 10/03/2026 (...) R$ 70.000,00 como
+  // PARCELA INTERMEDIÁRIA, em 7 (sete) parcelas de R$ 10.000,00, anuais (...) vencíveis todo dia 10
+  // de janeiro, com primeiro vencimento em 10/01/2027". Números da forma do modelo, sem cliente.
+  it("o fluxo escrito do Anexo sai do cronograma congelado, peça por peça", async () => {
+    const mensais = Array.from({ length: 84 }, (_, k) => ({
+      numero: k + 1,
+      total: 84,
+      valor: 2119.05,
+      vencimento: `${2026 + Math.floor((k + 2) / 12)}-${String(((k + 2) % 12) + 1).padStart(2, "0")}-10`,
+    }));
+    const anuais = Array.from({ length: 7 }, (_, k) => ({
+      numero: k + 1,
+      total: 7,
+      valor: 10000,
+      vencimento: `${2027 + k}-01-10`,
+    }));
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_propostas: proposta({
+          condicoes: {
+            anuais,
+            entrada: [{ numero: 1, total: 1, valor: 20000, vencimento: "2026-02-18" }],
+            mensais,
+            totais: { anuais: 70000, entrada: 20000, financiado: 178000 },
+          },
+        }),
+      }),
+    ))!;
+
+    expect(mensais[0]?.vencimento).toBe("2026-03-10");
+    expect(dados.gerais.data_limite_entrada).toBe("18/02/2026");
+    expect(dados.gerais.valor_divida_financiada).toBe("R$ 178.000,00");
+    expect(dados.gerais.valor_parcela_mensal).toBe("R$ 2.119,05");
+    // Sem a vírgula do modelo da Cecílio ("dois mil, cento e..."): é o escritor da casa
+    // (`por-extenso.ts`), o mesmo de todo extenso de contrato.
+    expect(dados.gerais.valor_parcela_mensal_extenso).toBe(
+      "dois mil cento e dezenove reais e cinco centavos",
+    );
+    expect(dados.gerais.primeiro_vencimento_mensal).toBe("10/03/2026");
+    expect(dados.gerais.plano_anuais_quantidade).toBe("7");
+    expect(dados.gerais.plano_anuais_quantidade_extenso).toBe("sete");
+    expect(dados.gerais.valor_total_anuais).toBe("R$ 70.000,00");
+    expect(dados.gerais.valor_total_anuais_extenso).toBe("setenta mil reais");
+    expect(dados.gerais.primeiro_vencimento_anual).toBe("10/01/2027");
+    expect(dados.gerais.dia_mes_vencimento_anual).toBe("10 de janeiro");
+  });
+
+  it("⚠️ entrada parcelada: a frase diz 'paga até' o ÚLTIMO vencimento, e o total das anuais cai na soma sem `totais.anuais`", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_propostas: proposta({
+          condicoes: {
+            anuais: [
+              { valor: 5000, vencimento: "2027-06-05" },
+              { valor: 5000, vencimento: "2028-06-05" },
+            ],
+            entrada: [
+              { valor: 5000, vencimento: "2026-10-05" },
+              { valor: 5000, vencimento: "2026-11-05" },
+            ],
+            mensais: [{ valor: 1000, vencimento: "2026-12-05" }],
+            totais: { entrada: 10000, financiado: 90000 },
+          },
+        }),
+      }),
+    ))!;
+
+    expect(dados.gerais.data_limite_entrada).toBe("05/11/2026");
+    expect(dados.gerais.valor_total_anuais).toBe("R$ 10.000,00");
+    expect(dados.gerais.dia_mes_vencimento_anual).toBe("5 de junho");
+  });
+
+  it("cronograma sem vencimento gravado não inventa data: a variável fica sem valor e cobra", async () => {
+    const { dados } = (await dadosDaProposta(
+      "p1",
+      clienteFalso({
+        hercules_propostas: proposta({
+          condicoes: {
+            anuais: [{ valor: 8000 }],
+            mensais: [{ valor: 1000 }],
+            totais: { entrada: 10000, financiado: 90000 },
+          },
+        }),
+      }),
+    ))!;
+
+    expect(dados.gerais.valor_parcela_mensal).toBe("R$ 1.000,00");
+    expect(dados.gerais.data_limite_entrada).toBeUndefined();
+    expect(dados.gerais.primeiro_vencimento_mensal).toBeUndefined();
+    expect(dados.gerais.primeiro_vencimento_anual).toBeUndefined();
+    expect(dados.gerais.dia_mes_vencimento_anual).toBeUndefined();
+  });
+
   it("plano SEM anuais desliga o par — senão o contrato anuncia '0 parcelas de'", async () => {
     const { dados } = (await dadosDaProposta(
       "p1",

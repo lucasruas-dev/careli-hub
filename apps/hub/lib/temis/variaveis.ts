@@ -571,6 +571,32 @@ const VALORES: VariavelDoContrato[] = [
   { exemplo: "10", fonte: VENDA("dia_vencimento"), grupo: "valores", nome: "dia_vencimento", origem: "Dia de vencimento das parcelas", rotulo: "Dia de vencimento", tipo: "numero" },
   { exemplo: "dez", extensoDe: "dia_vencimento", fonte: EXTENSO_DE("dia_vencimento"), grupo: "valores", nome: "dia_vencimento_extenso", origem: "Escrito pelo sistema", rotulo: "Dia de vencimento por extenso", tipo: "extenso" },
   { exemplo: "01 de setembro de 2026", fonte: VENDA("vendida_em"), grupo: "valores", nome: "data_venda", origem: "Data da venda", rotulo: "Data da venda", tipo: "data" },
+  // ── O FLUXO ESCRITO POR EXTENSO (30/09/2026) ──
+  //
+  // Lucas (30/09/2026), com o Termo de Adesão e o Anexo 1 do Garden na mão: *"eu preciso criar o
+  // contrato do Garden e ligar a parte de emissão de contrato do portal da cecilio, o que eles fazem
+  // hoje é os pdfs que eu te mandei"*. O Anexo 1 da Cecílio não usa quadro: escreve o fluxo em frase
+  // ("R$ 178.000,00 como PARCELA DE OBRA, em 84 parcelas de R$ 2.119,05 (...), com primeiro
+  // vencimento em 10/03/2026"). O catálogo tinha o total e a quantidade, mas não a parcela nem os
+  // vencimentos — e sem eles a minuta escrita só podia datilografar os números do dia.
+  //
+  // ⚠️ SAEM DO CRONOGRAMA QUE A PROPOSTA CONGELOU, pela mesma régua do quadro
+  // (`tabela-de-pagamentos.ts`): o contrato repete o que o simulador mostrou, sem conta nova.
+  //
+  // ⚠️ A ENTRADA SAI COMO "PAGA ATÉ", e o dia é o do ÚLTIMO vencimento dela. É a frase do Anexo ("a
+  // ser paga até o dia 18/02/2026"), e com a entrada em uma parcela o primeiro e o último são o mesmo
+  // dia. Com a entrada parcelada, a frase continua verdadeira; quem quiser a agenda parcela a parcela
+  // usa o quadro.
+  { exemplo: "18/02/2026", fonte: VENDA("condicoes.entrada — vencimento da última parcela de entrada"), grupo: "valores", nome: "data_limite_entrada", origem: "Cronograma da proposta", rotulo: "Entrada paga até (último vencimento)", tipo: "data" },
+  { exemplo: "R$ 2.119,05", fonte: VENDA("condicoes.mensais — valor da primeira mensal"), grupo: "valores", nome: "valor_parcela_mensal", origem: "Cronograma da proposta", rotulo: "Valor da parcela mensal", tipo: "dinheiro" },
+  { exemplo: "dois mil cento e dezenove reais e cinco centavos", extensoDe: "valor_parcela_mensal", fonte: EXTENSO_DE("valor_parcela_mensal"), grupo: "valores", nome: "valor_parcela_mensal_extenso", origem: "Escrito pelo sistema", rotulo: "Parcela mensal por extenso", tipo: "extenso" },
+  { exemplo: "10/03/2026", fonte: VENDA("condicoes.mensais — vencimento da primeira mensal"), grupo: "valores", nome: "primeiro_vencimento_mensal", origem: "Cronograma da proposta", rotulo: "Primeiro vencimento da mensal", tipo: "data" },
+  { exemplo: "R$ 70.000,00", fonte: VENDA("condicoes.totais.anuais — as anuais pelo valor de face"), grupo: "valores", nome: "valor_total_anuais", origem: "Cronograma da proposta", rotulo: "Total das parcelas anuais", tipo: "dinheiro" },
+  { exemplo: "setenta mil reais", extensoDe: "valor_total_anuais", fonte: EXTENSO_DE("valor_total_anuais"), grupo: "valores", nome: "valor_total_anuais_extenso", origem: "Escrito pelo sistema", rotulo: "Total das anuais por extenso", tipo: "extenso" },
+  { exemplo: "10/01/2027", fonte: VENDA("condicoes.anuais — vencimento da primeira anual"), grupo: "valores", nome: "primeiro_vencimento_anual", origem: "Cronograma da proposta", rotulo: "Primeiro vencimento da anual", tipo: "data" },
+  // "vencíveis todo dia 10 de janeiro": o dia e o mês da primeira anual, sem o ano, que é o que se
+  // repete nas seguintes.
+  { exemplo: "10 de janeiro", fonte: VENDA("condicoes.anuais — dia e mês da primeira anual"), grupo: "valores", nome: "dia_mes_vencimento_anual", origem: "Cronograma da proposta", rotulo: "Dia e mês do vencimento anual", tipo: "data" },
   // ── O BEM E A PERMUTA RECEBIDOS NA AQUISIÇÃO (migration 0187) ──
   //
   // Lucas (22/09/2026), perguntado onde a permuta aparece: *"Já no contrato também"*. Até aqui o
@@ -614,6 +640,8 @@ const PLANO_DA_VENDA: VariavelDoContrato[] = [
   // `fim_tem_anuais` é o que faz o parágrafo sumir quando não há, em vez de imprimir "0 parcelas de".
   // A coluna é CHECK "os dois ou nenhum", então basta uma condição para os dois.
   { exemplo: "10", fonte: PLANO("anuais_quantidade (via hercules_vendas.plano_snapshot)"), grupo: "plano", nome: "plano_anuais_quantidade", origem: "Parcelas anuais do plano", rotulo: "Quantidade de parcelas anuais", tipo: "numero" },
+  // "em 7 (sete) parcelas": o Anexo 1 do Garden escreve a quantidade das anuais com o extenso ao lado.
+  { exemplo: "dez", extensoDe: "plano_anuais_quantidade", fonte: EXTENSO_DE("plano_anuais_quantidade"), grupo: "plano", nome: "plano_anuais_quantidade_extenso", origem: "Escrito pelo sistema", rotulo: "Quantidade de anuais por extenso", tipo: "extenso" },
   { exemplo: "R$ 8.000,00", fonte: PLANO("anuais_valor (via hercules_vendas.plano_snapshot)"), grupo: "plano", nome: "plano_anuais_valor", origem: "Parcelas anuais do plano", rotulo: "Valor da parcela anual", tipo: "dinheiro" },
   { exemplo: "oito mil reais", extensoDe: "plano_anuais_valor", fonte: EXTENSO_DE("plano_anuais_valor"), grupo: "plano", nome: "plano_anuais_valor_extenso", origem: "Escrito pelo sistema", rotulo: "Valor da parcela anual por extenso", tipo: "extenso" },
 ];

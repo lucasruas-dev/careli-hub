@@ -106,6 +106,14 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
     titulo: "Panteon dono do cadastro de empreendimentos: consultas do C2X pelo id, tela de editar e criar",
   },
   {
+    id: "PAN-128",
+    evidencia: "Minuta do Garden transcrita dos dois PDFs da Clicksign (Termo de Adesão à SCP \"Garden Residence\" e Anexo 1, Planilha Financeira Individual), com o sócio participante no laço de comprador e o fluxo em frase pelas variáveis novas da v1.400.0. Ensaio local pelo motor de verdade: 0 desconhecidas, 0 bloco quebrado, 0 sem valor. A emissão no portal já existia desde a v1.348.0 (board da Têmis operável, prévia, gerar e Clicksign) e nunca rodou: 0 minuta publicada e 0 card no Garden (39). Falta: gravar a minuta como rascunho no 39 e publicar pela tela, acertar o quadro de assinatura do 39 (hoje só tem o coordenador da Gurgel) e a decisão sobre a cláusula de correção (o Anexo diz INCC-DI ou IPCA, o maior, sem juros; os planos do Garden no Panteon têm IPCA anual e 6% a.a.).",
+    modulo: "Portal do incorporador",
+    porque: "Lucas (30/09/2026): *\"eu preciso criar o contrato do Garden e ligar a parte de emissão de contrato do portal da cecilio, o que ele fazem hoje é os pdfs que eu te mandei\"*. Hoje a Cecílio monta o Termo e o Anexo no Word e manda pela Clicksign dela; a venda do Garden feita no portal passa a sair com o contrato pronto, pela Clicksign da Careli.",
+    situacao: "fazendo",
+    titulo: "Contrato do Garden no portal da Cecílio: Termo de Adesão à SCP e Anexo 1",
+  },
+  {
     id: "PAN-127",
     entregueEm: "2026-09-30",
     evidencia: "v1.398.0 e v1.399.0. `lib/lsoft/lotes-do-garden.ts` e `dividirPorLote` (106 clientes, 111 linhas, somas iguais). `lib/lsoft/baixa-do-hub.ts` na sincronização de pagamentos de hora em hora: setembro gravado em 30/09 (7 parcelas, R$ 26.479,89). `lib/lsoft/pagamentos-a-conferir.ts` e a migration 0200 (`boletos_pagamentos_conferidos`): a lista do que a baixa não resolve, com Ficha e Conferido. Ficam para depois: Indicadores e líquido do Garden, e os 10 clientes com OK e pendência que ainda estão na integração.",
