@@ -95,6 +95,40 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Apolo/Financeiro/Extrato do cliente] Simulacao de Rescisao ligada (v1.401.0)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; construido pela conta de construcao (aba do termo de rescisao) e entregue por resumo de entrega.
+- Data e hora local: `2026-09-30 15:38:52 -03:00` (changelog); deploy pronto por volta de 15:45.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("pode publicar", 30/09/2026); branch feat/ligar-termo-de-rescisao (5432d791) integrada por merge sobre a 1.400.0; prova com 7 contratos reais pela aba construtora`.
+- Escopo publicado:
+  - `TERMO_DE_RESCISAO_LIBERADO = true`: botao Rescisao no extrato da ficha de comprador;
+  - `carregarTermoDeRescisao recusa com 422 quando alguma linha sairia pela praxe (origem padrao) ou quando rubrica cadastrada nao entrou na conta`;
+  - `rubrica desligada chega a conta marcada e nao cai na praxe`;
+  - `rota app/api/apolo/rescisao/pdf no portao de escrita (viewer fora)`;
+  - `roadmap PAN-129 (entregue) e PAN-130 (proximo), renumerados na integracao porque PAN-128 ja era do contrato do Garden`.
+- Commit publicado: `5036cbf63578eb78911414e307ed377ee75d19d8`.
+- Deployment anterior: `dpl_5K6Xocz3PUDvPCE7mMCjYgaJ3A7m` (commit `2a20b405`, v1.400.0).
+- Deployment novo: `dpl_Ev25AuDx9KjWSGrmERXadehnajuE`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Banco: `25 premissas em hercules_premissas_de_rescisao (C2X 1, 3, 4 com 5 ligadas; 20 e 35 com 3) gravadas pela sessao Publicacao com OK do Lucas antes do deploy; tabela estava vazia`.
+- Arquivos/modulos incluidos: `lib/apolo/termos-liberados.ts`, `lib/apolo/termo-de-rescisao-server.ts`, `lib/apolo/premissas-de-rescisao.ts`, `lib/apolo/rescisao.ts`, `app/api/apolo/rescisao/pdf/route.ts`, `app/api/apolo/empreendimentos/premissas-de-rescisao/route.ts`, `lib/roadmap/roadmap.ts`, `lib/changelog/changelog.ts` e os testes.
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `suite completa na branch integrada e hook de pre-push`: `728 arquivos, 11.001 testes`;
+  - `revisao independente por workflow`: `5 lentes (travas, dados x codigo, conta, acesso, integracao) e 2 contestadores por achado relevante, 15 agentes; nenhum achado bloqueante, todos rebaixados por serem latentes no cadastro atual`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.401.0 com buildTag 2026-09-30-simulacao-de-rescisao; rota do PDF e de premissas 401 sem sessao`.
+- Logs recentes: `sem erro novo nos ultimos 30 min (so o DeprecationWarning antigo de url.parse em /api/hermes/messages)`.
+- Rollback definido: `NAO usar Instant Rollback para dpl_5K6Xocz3PUDvPCE7mMCjYgaJ3A7m sem avaliar: naquele deploy a rota do PDF ja responde (desde a v1.348.0) no portao de leitura e sem a trava, emitindo pela praxe da Lavra para qualquer empreendimento. Para recolher, publicar correcao por cima (a chave so esconde o botao)`.
+- Riscos conhecidos: `Recanto do Para: 8 contratos com corretagem R$ 0,00 imprimem no PDF do cliente o aviso interno "confira no contrato assinado se houve intermediacao"; contrato com posse e recusado porque a base valor_do_contrato_atualizado nao e calculada (hercules_posse vazia hoje); corretagem desligada sem valor em reais usaria tabela cheia com rotulo de liquida (latente, cadastro atual tem corretagem ligada); viewer ve o botao e recebe "Usuario sem acesso ao Apolo"`.
+- Pendencias: `PAN-130 (tela de premissas e os empreendimentos que faltam); acesso de operador de dominio externo ao Apolo inteiro, anterior a esta entrega, sugerido como tarefa separada`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas testar logado: Rescisao na ficha de um comprador da Lavra do Ouro (ex.: LOS0610) e a frase de recusa num cliente de empreendimento sem premissa`.
+
+Registro de producao:
+
 - Assunto: `[Temis/Editor de minuta] Fluxo de pagamento em frase nas minutas (v1.400.0)`.
 - Squad/agente responsavel: `Zeus (sessao Publicacao)`; construido pela sessao do portal da Cecilio Rocha e entregue por resumo de entrega.
 - Data e hora local: `2026-09-30 14:56:03 -03:00` (changelog); push na main as 15:05, deploy pronto as 15:08.
