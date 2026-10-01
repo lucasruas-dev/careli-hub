@@ -3036,6 +3036,14 @@ function LinhaDoSignatario({
    */
   const precisaDeConserto = signatario.convite === "nao_entregue" && !signatario.assinouEm;
   const emailLimpo = emailNovo.trim();
+  // O campo nasce com o que está no envelope AGORA: o normal é corrigir uma letra, e digitar o
+  // endereço inteiro de novo é como se erra de novo.
+  const abrirCorrecao = (): void => {
+    setErro(null);
+    setRecado(null);
+    setEmailNovo(emailAtual);
+    setCorrigindo(true);
+  };
 
   const executar = async (
     corpo: { acao: "reenviar" } | { acao: "trocar_email"; email: string },
@@ -3241,26 +3249,40 @@ function LinhaDoSignatario({
                   precisa de conserto some no meio do que está certo.
 
                   Convite que voltou → "Corrigir o e-mail" escrito, porque é o que resolve.
-                  Esperando → só o ícone de reenviar, que é o único gesto possível.
-                  Já assinou → nada. */}
+                  Esperando → os ícones de corrigir e de reenviar, sem nome.
+                  Já assinou → nada.
+
+                  ⚠️ ESPERANDO TAMBÉM PRECISA DO LÁPIS (Lucas, 01/10/2026, no contrato da Maura do
+                  VOC0306, em "Sem notícia": *"preciso alterar o e-mail da Maura e reenviar"*). O
+                  convite que não voltou não prova que o endereço está certo: um e-mail de outra
+                  pessoa, ou um que a cliente não usa, chega sem erro e fica em "sem notícia" para
+                  sempre. Com o lápis só no convite que voltou, a tela não tinha caminho nenhum para
+                  esse caso. A troca é a mesma do servidor, e a Clicksign continua recusando quem já
+                  assinou. */}
               {precisaDeConserto ? (
                 <button
                   className="inline-flex items-center gap-1.5 rounded-lg bg-[#A07C3B] px-2.5 py-1 text-[11px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                   disabled={acaoNoAr !== null}
-                  onClick={() => {
-                    setErro(null);
-                    setRecado(null);
-                    // O campo nasce com o que está no envelope AGORA: o normal é corrigir uma
-                    // letra, e digitar o endereço inteiro de novo é como se erra de novo.
-                    setEmailNovo(emailAtual);
-                    setCorrigindo(true);
-                  }}
+                  onClick={abrirCorrecao}
                   type="button"
                 >
                   <Pencil aria-hidden="true" className="size-3" />
                   Corrigir o e-mail
                 </button>
-              ) : null}
+              ) : signatario.assinouEm ? null : (
+                <Tooltip content="Corrigir o e-mail" placement="top">
+                  <button
+                    aria-label="Corrigir o e-mail"
+                    className="grid size-7 shrink-0 place-items-center rounded-lg border border-line text-ink-muted transition-colors hover:bg-subtle hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={acaoNoAr !== null}
+                    onClick={abrirCorrecao}
+                    title="Corrigir o e-mail"
+                    type="button"
+                  >
+                    <Pencil aria-hidden="true" className="size-3.5" />
+                  </button>
+                </Tooltip>
+              )}
 
               {/* ⚠️ REENVIAR VIRA ÍCONE, e some para quem já assinou. O nome vive no `title` e no
                   `aria-label` — a mesma régua dos botões do topo desta tela, pedida pelo Lucas em
