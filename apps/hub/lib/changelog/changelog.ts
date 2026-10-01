@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-10-01-cobranca-variaveis-do-template",
+    deployedAt: "__HORA_REAL__",
+    internal: true,
+    modules: [
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "**As mensagens de cobrança por WhatsApp voltam a trazer o empreendimento, a unidade e o saldo em aberto**, que estavam saindo com \"-\".",
+              "**A prévia do modal Abrir atendimento de cobrança mostra o texto exato que o cliente vai receber.**",
+            ],
+            screen: "Atendimento de cobrança",
+          },
+        ],
+      },
+    ],
+    rollback: "cff26fcf",
+    technical: {
+      done: "`modules/guardian/attendance/contexto-do-template.ts` (novo, com teste) monta os campos `relatedEnterprise`, `relatedUnit`, `relatedOpenBalance`, `relatedDueDate`, `relatedDaysLate`, `relatedBoletoLink` e `relatedInstallmentsTotal`, que `/api/iris/tickets` já lia para preencher {{empreendimento}}, {{unidade}}, {{saldo_aberto}} e afins. O `HadesAttendanceModal` mandava esses dados em `metadata.cobranca.*` e sem saldo, e o `WhatsAppConversationPanel` em `enterprise`/`unitCodes`; os dois passam a usar a função. O saldo é o total vencido do cliente pelas parcelas vivas do C2X, com o `saldoDevedor` da fila como reserva. A prévia resolve as variáveis por chave, como a rota. Sem migração e sem mudança na rota. Entregue por resumo de entrega e integrado por merge pela sessão Publicação.",
+      motivation: "Medido em 01/10/2026: desde 02/07, 2.004 mensagens (1.545 do template de parcelas, também com o saldo \"-\", e 459 do de titular; 1.990 vindas do modal do Hades) dos templates \"Confirmação de titular e pendência\" e \"Parcelas vencidas do empreendimento\" saíram com \"empreendimento -, unidade -\" e \"Saldo total em aberto: -\". O nome e as parcelas chegavam certos, e por isso o defeito passava por funcionando.",
+    },
+    title: "Variáveis dos templates de cobrança do Hades",
+    type: "correcao",
+    version: "1.403.3",
+  },
+  {
     buildTag: "2026-10-01-temis-corrigir-email-sem-noticia",
     deployedAt: "2026-10-01T14:27:36-03:00",
     internal: true,
