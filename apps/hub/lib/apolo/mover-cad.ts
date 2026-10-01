@@ -597,8 +597,10 @@ export async function moverCadDeEmpreendimento(input: {
         // antes de chegar neste ponto. Passar o expansor pronto evita a segunda ida ao banco e mantém
         // a expansão IDÊNTICA à que o Mover usa para `idDeMercado` e para o portão do destino: a
         // habilitação no PAI 35 cobre a divisão 37, como na porta do cadastro.
-        // `nome` e `codigo` são `string | null` aqui e `string` no tipo do expansor; para expandir só
-        // importam `paiId` e `c2xEnterpriseId`, e nome vazio não casa com nenhum `group:`.
+        // `nome` e `codigo` são `string | null` aqui e `string` no tipo do expansor. Para expandir
+        // importam `paiId`, `c2xEnterpriseId` e, no `group:<x>`, a `chaveDoGrupo` (0203, PAN-124 F4),
+        // que vem junto no `...linha`: com o pai renomeado no Panteon, o grupo continua achado pela
+        // chave, e não pelo nome. Nome vazio não casa com nenhum `group:`.
         expandir: (id) =>
           expandirPeloCadastro(
             id,

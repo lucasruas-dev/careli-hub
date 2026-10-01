@@ -1,6 +1,12 @@
 -- 0203 · A CHAVE DO GRUPO NÃO É O NOME (PAN-124, fatia F4)
 --
--- ⏳ ESCRITA, NÃO APLICADA. Aplicar só com OK do Lucas (skill migration-supabase). Idempotente.
+-- ✅ APLICADA em 01/10/2026 (bxgukywoxgivlrhjkwjx), com OK do Lucas, pela sessão Publicação, antes do
+-- deploy da 1.403.0. Conferida com SELECT: 5 chaves iguais aos nomes, 5 linhas de trilha, trava
+-- testada em transação desfeita. Idempotente.
+--
+-- ⚠️ O GATILHO DA SEÇÃO (e) TINHA RISCO DE DEADLOCK e foi refeito na 0204
+-- (0204_a_chave_do_primeiro_filho_sem_deadlock.sql): lia o pai FOR UPDATE depois do FOR SHARE do
+-- pai_raiz. O texto da seção (e) abaixo é o original, aplicado; o que vale é o da 0204.
 -- Inclui ESCRITA em 5 linhas de hercules_empreendimentos (o preenchimento da chave dos 5 pais).
 --
 -- NUMERAÇÃO. O plano de 26/09/2026 chamava esta de 0194. Os números de 0193 a 0200 foram usados por
@@ -159,7 +165,7 @@ create trigger hercules_empreendimentos_chave_no_primeiro_filho
   execute function public.hercules_empreendimento_chave_no_primeiro_filho();
 
 -- ── (b) AS CHAVES DOS 5 PAIS DE HOJE ──────────────────────────────────────────
--- Pelo id (uuid) do pai e conferindo o nome: se alguém tiver renomeado um deles antes desta migration
+-- Pela SIGLA (codigo) do pai e conferindo o nome: se alguém tiver renomeado um deles antes desta migration
 -- rodar, a linha não casa e fica sem chave, e a conferência pós-aplicação acusa (5 esperadas).
 -- O autor e o motivo vão para a trilha da 0192.
 select set_config('panteon.autor', 'migration:0203', true);

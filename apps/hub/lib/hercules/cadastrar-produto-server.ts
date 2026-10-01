@@ -382,6 +382,15 @@ export function falhaDoInsertDoProduto(error: NonNullable<Erro>, produto: Produt
 
   if (ehColunaDoProdutoAusente(error)) return falhaDaMigrationPendente();
 
+  // O primeiro filho dá ao pai a chave do grupo com o nome dele (0203, PAN-124 F4), e a chave não pode
+  // repetir a de outro grupo. O gatilho recusa com [0203:chave-repetida]; numa corrida entre dois
+  // cadastros, quem recusa é o índice único da chave (23505), que NÃO é o código repetido.
+  if (/\[0203:chave-repetida\]/.test(mensagem) || (error.code === "23505" && /chave_do_grupo/i.test(mensagem))) {
+    return falha(422, "Confira os campos destacados.", {
+      paiCodigo: `O empreendimento ${produto.paiCodigo ?? ""} tem o mesmo nome de outro empreendimento que já tem divisões. Mude o nome dele no cadastro antes de pôr um produto embaixo.`,
+    });
+  }
+
   if (error.code === "23505") {
     if (/c2x_uk|c2x_enterprise_id/i.test(mensagem)) {
       return falha(503, "O número gerado para o produto já estava em uso. Tente de novo.");

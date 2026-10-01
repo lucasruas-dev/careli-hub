@@ -645,6 +645,25 @@ describe("o erro do insert do produto", () => {
     expect(fk.erros.paiCodigo).toMatch(/GTW não pode ser pai/);
   });
 
+  it("chave do grupo repetida (0203): erro no campo do pai, e a corrida no índice NÃO vira 'código usado'", () => {
+    const gatilho = falhaDoInsertDoProduto(
+      { code: "P0001", message: '[0203:chave-repetida] O pai GTW se chama "Lagoa Bonita", que já é a chave de outro grupo.' },
+      produto,
+    );
+    const corrida = falhaDoInsertDoProduto(
+      {
+        code: "23505",
+        message: 'duplicate key value violates unique constraint "hercules_empreendimentos_chave_do_grupo_unica"',
+      },
+      produto,
+    );
+    for (const r of [gatilho, corrida]) {
+      expect(r.status).toBe(422);
+      expect(r.erros.paiCodigo).toMatch(/GTW tem o mesmo nome de outro empreendimento que já tem divisões/);
+      expect(r.erros.codigo).toBeUndefined();
+    }
+  });
+
   it("erro desconhecido: 500, e diz que nada foi gravado", () => {
     const r = falhaDoInsertDoProduto({ code: "42501", message: "permission denied" }, produto);
     expect(r.status).toBe(500);

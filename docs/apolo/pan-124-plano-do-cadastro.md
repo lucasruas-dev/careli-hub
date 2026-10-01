@@ -267,6 +267,16 @@ O que mudou em relação ao texto acima, e por quê. Tudo medido só com SELECT 
 
 **OK do Lucas para a F4:** aplicar a 0203 (inclui a escrita das 5 chaves) e rodar a prova viva; depois o deploy. O código sobe antes ou depois da migration, tanto faz.
 
+### F4 depois da publicação (1.403.0, 01/10/2026): as 5 pendências da sessão Publicação
+
+Branch `fix/pan-124-f4-pendencias`.
+
+1. **Mover CAD casava `group:<x>` pelo nome.** A leitura `lerEmpreendimentosDoCadastro` (`lib/apolo/esteira-cad.ts`), usada pelo Mover CAD e pelo Board, não trazia a chave, e a expansão da habilitação do autônomo caía no nome do pai. Agora ela lê com `lerComChaveDoGrupo`. Era requisito antes da F10.
+2. **Prova viva da 0203 reescrita.** Resultado numa tabela no SELECT final (o NOTICE não aparece pelo MCP), sem INSERT (não gasta a sequence da 0170). O gatilho do primeiro filho tem uma conferência pelo catálogo na 0204.
+3. **Cabeçalho da 0203 corrigido.** O UPDATE das 5 chaves filtra pela sigla e confere o nome, não "pelo id (uuid)". O cabeçalho também passa a dizer que a 0203 foi aplicada.
+4. **O "Novo produto" traduz a recusa da chave.** `[0203:chave-repetida]` e o 23505 do índice da chave viram erro no campo do pai. O 23505 antes cairia em "o código acabou de ser usado".
+5. **Deadlock: migration 0204, escrita e não aplicada.** O gatilho da 0203 lia o pai FOR UPDATE, sempre, depois do FOR SHARE do `pai_raiz`. Dois filhos do mesmo pai ao mesmo tempo, mesmo nos grupos que já têm chave, travavam um ao outro. A 0204 faz o gatilho BEFORE, antes do `pai_raiz`, lendo sem trava e só travando o pai para gravar a chave, como primeira trava da transação. Conferência só com SELECT: `0204_...conferencia.sql`; hoje dá FALHOU em 3 das 4 linhas, e deve dar OK nas 4 depois da aplicação.
+
 ## Fatia 5: F5 · Proposta, documento e envelope sabem o id da divisão (0195)
 objetivo: Tirar de 5 leituras do portal o filtro pela sigla gravada (.in('empreendimento_codigo', codes)):
 - apps/hub/app/api/incorporador/venda/route.ts:254;
