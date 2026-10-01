@@ -172,17 +172,41 @@ function extratoDe(contrato: Partial<ExtratoClienteContrato> = {}): { data: Extr
   };
 }
 
+const TEXTO_DA_CORRETAGEM =
+  "R$ 9.000,00 (NOVE MIL REAIS) refere-se à intermediação imobiliária, sendo que a quantia R$ 2.000,00 (DOIS MIL REAIS) será destinada ao pagamento da COORDENADORA e R$ 7.000,00 destinada aos ASSOCIADOS.";
+
 const TABELA_AUSENTE = {
   code: "PGRST205",
   message: "Could not find the table 'public.hercules_premissas_de_rescisao' in the schema cache",
 };
+
+/** Uma linha de `hercules_premissas_de_rescisao` como o PostgREST devolve. */
+function premissa(
+  rubrica: string,
+  sobre: Partial<{ ativa: boolean; base: string; clausula: null | string; enterprise_id: string; percentual: null | string; periodicidade: string }> = {},
+) {
+  const padrao: Record<string, { base: string; percentual: null | string; periodicidade: string }> = {
+    clausula_penal: { base: "valor_de_tabela_menos_comissao", percentual: "10.000", periodicidade: "unica" },
+    corretagem: { base: "valor_efetivo", percentual: null, periodicidade: "unica" },
+    fruicao: { base: "valor_do_contrato_atualizado", percentual: "0.750", periodicidade: "mensal" },
+    publicidade: { base: "valor_de_tabela_menos_comissao", percentual: "4.000", periodicidade: "unica" },
+    tributos: { base: "total_pago", percentual: "5.930", periodicidade: "unica" },
+  };
+  return { ativa: true, clausula: null, enterprise_id: "37", rubrica, ...padrao[rubrica], ...sobre };
+}
+
+/** O cadastro inteiro do empreendimento da unidade (37): nenhuma linha cai na praxe. */
+const CADASTRO_COMPLETO = ["clausula_penal", "publicidade", "corretagem", "tributos", "fruicao"].map((rubrica) =>
+  premissa(rubrica),
+);
 
 beforeEach(() => {
   estado.comSupabase = true;
   estado.consultasAoSupabase = [];
   estado.extrato = extratoDe();
   estado.falhaNoC2x = false;
-  estado.linhaDoC2x = { enterprise_id: 37, texto_da_corretagem: null };
+  // O caso normal: o contrato de corretagem traz o valor em reais (2.888 de 3.012, medido em 16/09).
+  estado.linhaDoC2x = { enterprise_id: 37, texto_da_corretagem: TEXTO_DA_CORRETAGEM };
   estado.respostas = {
     hercules_empreendimentos: {
       data: [{ cidade: "Cidade de Teste", pai_id: "uuid-do-pai", uf: "MG" }],
@@ -193,7 +217,7 @@ beforeEach(() => {
       error: null,
     },
     hercules_posse: { data: null, error: null },
-    hercules_premissas_de_rescisao: { data: null, error: TABELA_AUSENTE },
+    hercules_premissas_de_rescisao: { data: CADASTRO_COMPLETO, error: null },
   };
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   vi.spyOn(console, "info").mockImplementation(() => undefined);
@@ -203,29 +227,87 @@ const ESCOPO = { c2xId: 77, contratoId: 900002, hoje: HOJE };
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-describe("o termo de HOJE, com a migration 0166 pendente", () => {
-  it("tabela das premissas ausente: o termo SAI, pela praxe, e o papel avisa", async () => {
+// ⚠️ SEM PREMISSA, O TERMO NÃO SAI (Lucas, 30/09/2026, ao ligar a chave). A praxe é o modelo da
+// Lavra do Ouro, e aplicada a outro empreendimento deduziria o que o contrato dele não prevê.
+describe("sem premissa, o termo não sai", () => {
+  it("empreendimento sem cadastro nenhum: 422 com a frase, e não um papel pela praxe", async () => {
+    estado.respostas.hercules_premissas_de_rescisao = { data: [], error: null };
+
+    expect(await carregarTermoDeRescisao(ESCOPO)).toEqual({
+      error:
+        "O termo de rescisão ainda não sai para a unidade VOC0101: o empreendimento não tem premissa de rescisão cadastrada para multa penal, publicidade e tributos. Sem ela, a conta usaria um percentual de praxe que o contrato pode não prever.",
+      ok: false,
+      status: 422,
+    });
+  });
+
+  it("tabela das premissas ausente: a mesma recusa, porque tudo cairia na praxe", async () => {
+    estado.respostas.hercules_premissas_de_rescisao = { data: null, error: TABELA_AUSENTE };
+
+    const resultado = await carregarTermoDeRescisao(ESCOPO);
+    expect(!resultado.ok && resultado.status).toBe(422);
+    expect(!resultado.ok && resultado.error).toContain("não tem premissa de rescisão cadastrada");
+  });
+
+  it("cadastro pela metade: a frase cita só a rubrica que falta", async () => {
+    estado.respostas.hercules_premissas_de_rescisao = {
+      data: CADASTRO_COMPLETO.filter((linha) => linha.rubrica !== "tributos"),
+      error: null,
+    };
+
+    const resultado = await carregarTermoDeRescisao(ESCOPO);
+    expect(!resultado.ok && resultado.error).toContain("cadastrada para tributos. Sem ela");
+  });
+
+  it("corretagem sem premissa, com o valor em reais do contrato, não conta como praxe", async () => {
+    estado.linhaDoC2x = {
+      enterprise_id: 37,
+      texto_da_corretagem:
+        "R$ 9.000,00 (NOVE MIL REAIS) refere-se à intermediação imobiliária, sendo que a quantia R$ 2.000,00 (DOIS MIL REAIS) será destinada ao pagamento da COORDENADORA e R$ 7.000,00 destinada aos ASSOCIADOS.",
+    };
+    estado.respostas.hercules_premissas_de_rescisao = {
+      data: CADASTRO_COMPLETO.filter((linha) => linha.rubrica !== "corretagem"),
+      error: null,
+    };
+
+    const resultado = await carregarTermoDeRescisao(ESCOPO);
+    expect(resultado.ok).toBe(true);
+  });
+
+  it("com o cadastro completo, o papel sai sem nenhum aviso de praxe", async () => {
     const resultado = await carregarTermoDeRescisao(ESCOPO);
 
     expect(resultado.ok).toBe(true);
     if (!resultado.ok) return;
-    expect(resultado.dados.conta.avisos).toContain(
-      "Multa penal usou o percentual de praxe (10%): não há premissa cadastrada para este empreendimento.",
-    );
+    expect(resultado.dados.conta.deducoes.every((linha) => linha.origem === "cadastrada")).toBe(true);
+    expect(resultado.dados.conta.avisos.some((aviso) => aviso.includes("praxe"))).toBe(false);
   });
 
-  it("e o dia em que a tabela existir, a premissa do PAI vale para o filho sem mudar código", async () => {
+  // ⚠️ VALE DO OURO E RECANTO DO PARÁ: os contratos não preveem publicidade nem tributos. Desligada
+  // é decisão, e não ausência: sai sem a linha e sem aviso, e o termo SAI.
+  it("rubrica desligada: o termo sai, sem a linha e sem aviso", async () => {
     estado.respostas.hercules_premissas_de_rescisao = {
       data: [
-        {
-          ativa: true,
-          base: "valor_de_tabela",
-          clausula: null,
-          enterprise_id: "35",
-          percentual: "12.000",
-          periodicidade: "unica",
-          rubrica: "clausula_penal",
-        },
+        ...CADASTRO_COMPLETO.filter((linha) => linha.rubrica !== "publicidade" && linha.rubrica !== "tributos"),
+        premissa("publicidade", { ativa: false, clausula: "O contrato não prevê publicidade.", percentual: null }),
+        premissa("tributos", { ativa: false, percentual: null }),
+      ],
+      error: null,
+    };
+
+    const resultado = await carregarTermoDeRescisao(ESCOPO);
+    expect(resultado.ok).toBe(true);
+    if (!resultado.ok) return;
+    expect(deducaoDe(resultado.dados.conta, "publicidade")).toBeUndefined();
+    expect(deducaoDe(resultado.dados.conta, "tributos")).toBeUndefined();
+    expect(resultado.dados.conta.avisos.some((aviso) => /Publicidade|Tributos/.test(aviso))).toBe(false);
+  });
+
+  it("a premissa do PAI vale para o filho sem mudar código", async () => {
+    estado.respostas.hercules_premissas_de_rescisao = {
+      data: [
+        ...CADASTRO_COMPLETO.filter((linha) => linha.rubrica !== "clausula_penal"),
+        premissa("clausula_penal", { base: "valor_de_tabela", enterprise_id: "35", percentual: "12.000" }),
       ],
       error: null,
     };
@@ -351,13 +433,46 @@ describe("as recusas do contrato", () => {
 });
 
 describe("o que cada fonte entrega ao papel", () => {
-  it("a posse cadastrada chega à conta (e a fruição sem base sai com aviso)", async () => {
+  // ⚠️ ACHADOS DA REVISÃO DE 30/09/2026: a linha que SOME também segura o papel, e não só a que cai
+  // na praxe. Antes, os dois casos abaixo saíam com `ok: true` e um aviso cinza.
+  it("posse cadastrada com a fruição sem base: 422, e nunca um papel sem a fruição", async () => {
     estado.respostas.hercules_posse = { data: { data_da_posse: "2025-09-16" }, error: null };
 
     const resultado = await carregarTermoDeRescisao(ESCOPO);
-    expect(resultado.ok).toBe(true);
-    if (!resultado.ok) return;
-    expect(resultado.dados.conta.avisos.some((aviso) => aviso.startsWith("Fruição não entrou"))).toBe(true);
+    expect(!resultado.ok && resultado.status).toBe(422);
+    expect(!resultado.ok && resultado.error).toContain("Fruição não entrou na conta");
+    expect(!resultado.ok && resultado.error).toContain("unidade VOC0101 sem conferência");
+  });
+
+  // ⚠️ O CASO QUE VAZOU PARA O CLIENTE (Recanto do Pará, 30/09/2026): a frase "confira no contrato
+  // assinado" ia impressa. Decisão do Lucas em 01/10/2026: corretagem zero recusa e pede conferência.
+  it("corretagem R$ 0,00 no contrato de corretagem: 422 com a frase para o operador", async () => {
+    estado.linhaDoC2x = {
+      enterprise_id: 37,
+      texto_da_corretagem:
+        "R$ 0,00 (ZERO REAIS) refere-se à intermediação imobiliária, sendo que a quantia R$ 0,00 (ZERO REAIS) será destinada ao pagamento da COORDENADORA e R$ 0,00 destinada aos ASSOCIADOS.",
+    };
+
+    expect(await carregarTermoDeRescisao(ESCOPO)).toEqual({
+      error:
+        "O termo de rescisão não sai para a unidade VOC0101 sem conferência: o contrato de corretagem desta venda registra R$ 0,00 de intermediação. Confira no contrato assinado se houve corretagem antes de simular a rescisão; enquanto isso não for esclarecido, a simulação não é emitida.",
+      ok: false,
+      status: 422,
+    });
+  });
+
+  it("qualquer aviso da conta segura o papel, e não só os que o servidor conhece pelo texto", async () => {
+    const CODIGO_DO_SERVIDOR = readFileSync(join(__dirname, "termo-de-rescisao-server.ts"), "utf8");
+    expect(CODIGO_DO_SERVIDOR).not.toContain('aviso.includes(" não entrou na conta:")');
+    expect(CODIGO_DO_SERVIDOR).toContain("if (avisos.length)");
+  });
+
+  it("corretagem pelo valor do contrato sem o valor em reais: 422, e nunca multa sobre a tabela cheia", async () => {
+    estado.linhaDoC2x = { enterprise_id: 37, texto_da_corretagem: null };
+
+    const resultado = await carregarTermoDeRescisao(ESCOPO);
+    expect(!resultado.ok && resultado.status).toBe(422);
+    expect(!resultado.ok && resultado.error).toContain("Corretagem não entrou na conta");
   });
 
   it("a comissão do contrato de corretagem vira a linha 'Conforme contrato'", async () => {

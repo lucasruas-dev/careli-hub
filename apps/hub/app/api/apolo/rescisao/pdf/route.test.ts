@@ -24,7 +24,7 @@ const estado = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/apolo/auth", () => ({
-  authorizeApoloRead: async () =>
+  authorizeApoloWrite: async () =>
     estado.autorizado
       ? { nome: "Operadora", ok: true, userId: "3f7a2c18-9d4b-4f2a-8a11-0c5e6b7d8e90" }
       : {
@@ -74,8 +74,10 @@ describe("a rota do termo, lida como texto", () => {
     expect(CODIGO).toContain('export const runtime = "nodejs";');
   });
 
-  it("o portão é o de leitura do Apolo, o mesmo do extrato", () => {
-    expect(CODIGO).toContain("await authorizeApoloRead(request)");
+  // Decisão do Lucas, 30/09/2026: `viewer` não baixa o termo. O extrato segue no de leitura.
+  it("o portão é o de escrita do Apolo (sem viewer), e não o de leitura do extrato", () => {
+    expect(CODIGO).toContain("await authorizeApoloWrite(request)");
+    expect(CODIGO).not.toContain("authorizeApoloRead");
   });
 
   it("não calcula: a conta e o papel moram nas libs", () => {

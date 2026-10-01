@@ -382,9 +382,14 @@ export function montarDadosDaRescisao(entrada: EntradaDoTermo): TermoMontado {
   // mesma cara de um número apurado. Zero calado em documento financeiro é
   // o pior defeito: o valor fica (é o que o contrato diz), e quem entrega o papel é avisado. Se zero
   // deve cair na praxe é decisão do dono do produto, não desta linha.
+  //
+  // ⚠️ E O PAPEL NÃO SAI (Lucas, 01/10/2026, opção "recusar e pedir conferência"). Até ali o aviso ia
+  // impresso ao cliente, com uma frase escrita para quem emite. Agora ele vira a frase da recusa em
+  // `carregarTermoDeRescisao`, e por isso fala com o OPERADOR. Medido em 30/09/2026: 8 contratos em
+  // curso do Recanto do Pará, 2 com parcela vencida; nenhum em Lavra, Morada ou Vale do Ouro.
   if (comissaoEmReais === 0) {
     conta.avisos.push(
-      "Corretagem saiu R$ 0,00 porque é o valor escrito no contrato de corretagem desta venda: confira no contrato assinado se houve intermediação antes de entregar o termo.",
+      "o contrato de corretagem desta venda registra R$ 0,00 de intermediação. Confira no contrato assinado se houve corretagem antes de simular a rescisão; enquanto isso não for esclarecido, a simulação não é emitida.",
     );
   }
 

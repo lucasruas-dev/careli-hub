@@ -106,6 +106,14 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
     titulo: "Panteon dono do cadastro de empreendimentos: consultas do C2X pelo id, tela de editar e criar",
   },
   {
+    id: "PAN-128",
+    evidencia: "Minuta do Garden transcrita dos dois PDFs da Clicksign (Termo de Adesão à SCP \"Garden Residence\" e Anexo 1, Planilha Financeira Individual), com o sócio participante no laço de comprador e o fluxo em frase pelas sete variáveis novas do catálogo (`lib/temis/variaveis.ts`, commit 22ccfae6). Ensaio local pelo motor de verdade: 0 desconhecidas, 0 bloco quebrado, 0 sem valor. A emissão no portal já existia desde a v1.348.0 (board da Têmis operável, prévia, gerar e Clicksign) e nunca rodou: 0 minuta publicada e 0 card no Garden (39). Falta: gravar a minuta como rascunho no 39 e publicar pela tela, acertar o quadro de assinatura do 39 (hoje só tem o coordenador da Gurgel) e a decisão sobre a cláusula de correção (o Anexo diz INCC-DI ou IPCA, o maior, sem juros; os planos do Garden no Panteon têm IPCA anual e 6% a.a.).",
+    modulo: "Portal do incorporador",
+    porque: "Lucas (30/09/2026): *\"eu preciso criar o contrato do Garden e ligar a parte de emissão de contrato do portal da cecilio, o que ele fazem hoje é os pdfs que eu te mandei\"*. Hoje a Cecílio monta o Termo e o Anexo no Word e manda pela Clicksign dela; a venda do Garden feita no portal passa a sair com o contrato pronto, pela Clicksign da Careli.",
+    situacao: "fazendo",
+    titulo: "Contrato do Garden no portal da Cecílio: Termo de Adesão à SCP e Anexo 1",
+  },
+  {
     id: "PAN-127",
     entregueEm: "2026-09-30",
     evidencia: "v1.398.0 e v1.399.0. `lib/lsoft/lotes-do-garden.ts` e `dividirPorLote` (106 clientes, 111 linhas, somas iguais). `lib/lsoft/baixa-do-hub.ts` na sincronização de pagamentos de hora em hora: setembro gravado em 30/09 (7 parcelas, R$ 26.479,89). `lib/lsoft/pagamentos-a-conferir.ts` e a migration 0200 (`boletos_pagamentos_conferidos`): a lista do que a baixa não resolve, com Ficha e Conferido. Ficam para depois: Indicadores e líquido do Garden, e os 10 clientes com OK e pendência que ainda estão na integração.",
@@ -1187,6 +1195,27 @@ export const PANTEON_ROADMAP: readonly ItemDoRoadmap[] = [
       "Lucas (20/09/2026): *\"vamos levar esse documento para ser assinado na click. quem vai, o comprador, o incorporador e a nivea careli\"* e *\"o acordo so pode ficar disponivel para envio depois da aprovacao\"*. Havia 40 acordos esperando emissão e nenhum caminho para assinar.",
     situacao: "entregue",
     titulo: "Termo de acordo com texto legal, assinatura e acompanhamento",
+  },
+  {
+    id: "PAN-129",
+    entregueEm: "2026-09-30",
+    evidencia:
+      "v1.401.0. `TERMO_DE_RESCISAO_LIBERADO = true` em lib/apolo/termos-liberados.ts; trava de praxe em lib/apolo/termo-de-rescisao-server.ts; rubrica desligada em lib/apolo/premissas-de-rescisao.ts e rescisao.ts; rota do PDF no portão de escrita. 25 premissas cadastradas em `hercules_premissas_de_rescisao` (Lavra do Ouro LOU e LOS, Morada da Serra, Vale do Ouro pelo principal VLO, Recanto do Pará), lidas no texto dos contratos do C2X.",
+    modulo: "Apolo",
+    porque:
+      "Lucas (30/09/2026): *\"como estamos na frente do termo de rescisão, o que precisa para ele ir ao ar hoje\"*. O papel estava no ar desde 16/09 atrás da chave, esperando o nome e o texto. Ligado com uma trava que ele escolheu: empreendimento sem premissa não emite, porque a praxe é o modelo da Lavra do Ouro e deduziria de outro cliente o que o contrato dele não prevê.",
+    situacao: "entregue",
+    titulo: "Simulação de Rescisão ligada no extrato do cliente",
+  },
+  {
+    id: "PAN-130",
+    evidencia:
+      "Rota GET/PUT em app/api/apolo/empreendimentos/premissas-de-rescisao, sem nenhum .tsx que a chame. Em 30/09/2026 só 5 empreendimentos (7 ids do C2X) têm premissa; Cidade Jardim, Rio de Pedras, Portal dos Vales, Veredas do Ouro, Lagoa Bonita e os demais respondem com a frase de recusa.",
+    modulo: "Apolo",
+    porque:
+      "A Simulação de Rescisão só sai para empreendimento com premissa cadastrada, e hoje o cadastro é SQL feito pelo Zeus. Falta a aba de premissas na tela do empreendimento, para o Financeiro cadastrar o resto lendo a cláusula do contrato, e a leitura das cláusulas dos que ficaram de fora (Veredas do Ouro não tem cláusula de rescisão detalhada). Também em aberto: a base \"valor do contrato atualizado\", que os contratos citam e o sistema não calcula.",
+    situacao: "proximo",
+    titulo: "Tela de premissas de rescisão e os empreendimentos que faltam",
   },
 ];
 

@@ -36,6 +36,85 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-09-30-rescisao-sem-aviso-no-papel",
+    deployedAt: "2026-09-30T17:28:59-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**A Simulação de Rescisão não imprime mais observações internas.** Quando o contrato de corretagem da venda registra R$ 0,00, o botão explica ao operador que é preciso conferir o contrato assinado, e a simulação não é emitida até isso ser esclarecido.",
+            ],
+            screen: "Financeiro · Extrato do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "5036cbf6",
+    technical: {
+      done: "`rescisao-pdf.ts` deixou de imprimir `conta.avisos` (sai a seção \"Observações da apuração\"). `carregarTermoDeRescisao` recusa com 422 quando sobra QUALQUER aviso, no lugar da régua por texto \" não entrou na conta:\". O aviso de corretagem R$ 0,00 (`termo-de-rescisao.ts`) foi reescrito para o operador, porque virou a frase da recusa. Prova com dado real e premissas de produção: REPE186 e REPE193 (Recanto, com vencida e corretagem zero) recusam; REPD158 e LOS0610 saem com os mesmos números da v1.401.0 e sem observações; PVS0901 segue recusando por falta de premissa. 439 testes da frente verdes, typecheck limpo, reviewer PODE SUBIR.",
+      motivation: "A revisão da Publicação achou que 8 contratos do Recanto do Pará com corretagem R$ 0,00 levavam ao cliente a frase interna \"confira no contrato assinado se houve intermediação\". Lucas (30/09/2026) escolheu recusar e pedir conferência.",
+    },
+    title: "Simulação de Rescisão sem observação interna no papel",
+    type: "correcao",
+    version: "1.401.1",
+  },
+  {
+    buildTag: "2026-09-30-simulacao-de-rescisao",
+    deployedAt: "2026-09-30T15:38:52-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Novo botão Rescisão no extrato do cliente.** Na ficha de comprador, ao lado do PDF do extrato, gera a Simulação de Rescisão do contrato escolhido: quanto o cliente pagou, as deduções previstas no contrato dele e o saldo, dizendo com todas as letras se sobra valor a restituir ou se ainda há saldo a pagar.",
+              "**Sai para Lavra do Ouro, Morada da Serra, Vale do Ouro e Recanto do Pará**, com os percentuais lidos no contrato de cada um. Nos demais empreendimentos, o botão explica que as premissas de rescisão ainda não foram cadastradas, em vez de sair com um número que o contrato pode não prever.",
+              "**É uma simulação:** o papel não desfaz o contrato e vale para a data em que foi gerado.",
+            ],
+            screen: "Financeiro · Extrato do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "2a20b405",
+    technical: {
+      done: "`TERMO_DE_RESCISAO_LIBERADO = true` (lib/apolo/termos-liberados.ts). O código estava no ar desde a v1.348.0 (16/09) atrás da chave. Três travas vieram junto: (1) `carregarTermoDeRescisao` recusa com 422 quando alguma linha sairia com `origem: padrao` (praxe da Lavra do Ouro) ou quando alguma rubrica cadastrada 'não entrou na conta' por falta de base (fruição com posse, corretagem `valor_efetivo` sem valor em reais); (2) rubrica DESLIGADA chega à conta marcada (`desligada: true` em `premissasDoRecorte`) e não cai mais na praxe, conserto necessário para Vale do Ouro e Recanto, que não preveem publicidade nem tributos; (3) a rota `app/api/apolo/rescisao/pdf` passou para `authorizeApoloWrite` (viewer não baixa). 25 premissas cadastradas em `hercules_premissas_de_rescisao` (C2X 1, 3, 4, 20 e 35, com VOL/VOC/VOR herdando do VLO), lidas nas cláusulas 1.10, 1.8, XI e 5.2 dos contratos; corretagem como `valor_efetivo` sem percentual, para o rótulo sair do valor real. Sem Clicksign, sem e-mail, sem escrita em banco na emissão: só o GET do PDF. Prova com 7 contratos reais antes do deploy; revisão do subagente reviewer (dois achados consertados antes de subir). 437 testes da frente verdes, typecheck limpo.",
+      motivation: "Lucas (30/09/2026): \"me relembra por favor como estamos na frente do termo de rescisão, o que precisa para ele ir ao ar hoje\". Respostas dele no mesmo dia: nome \"Simulação de Rescisão\", texto atual, empreendimento sem premissa não emite, viewer fora, base da multa e da publicidade = tabela menos comissão (o papel que a Careli já praticava).",
+    },
+    title: "Simulação de Rescisão no extrato do cliente",
+    type: "novidade",
+    version: "1.401.0",
+  },
+  {
+    buildTag: "2026-09-30-fluxo-de-pagamento-em-frase",
+    deployedAt: "2026-09-30T14:56:03-03:00",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Novas variáveis para escrever o fluxo de pagamento em frase**, como no Anexo 1 do Garden: valor e primeiro vencimento da parcela mensal, data até quando a entrada é paga, total e primeiro vencimento das anuais, o dia do ano em que a anual vence e a quantidade de anuais por extenso.",
+              "**Os números saem do cronograma que a proposta gravou**, os mesmos do simulador e do quadro de pagamentos. Minuta já publicada não muda.",
+            ],
+            screen: "Editor de minuta",
+          },
+        ],
+      },
+    ],
+    rollback: "305ce566",
+    technical: {
+      done: "`lib/temis/variaveis.ts` ganha `data_limite_entrada`, `valor_parcela_mensal` (+ extenso), `primeiro_vencimento_mensal`, `valor_total_anuais` (+ extenso), `primeiro_vencimento_anual`, `dia_mes_vencimento_anual` e `plano_anuais_quantidade_extenso`. `lib/temis/dados-do-contrato.ts` preenche pelo cronograma congelado em `hercules_propostas.condicoes` (entrada: último vencimento; anuais: `totais.anuais` pelo valor de face, com a soma das parcelas só para proposta antiga, e nulo se alguma parcela não tem valor). Datas lidas pelos dígitos, sem `Date`, pela mesma trava de fuso de `tabela-de-pagamentos.ts`. Só acrescenta nomes ao catálogo: nenhuma variável existente muda. Sem migração. Ensaio da minuta do Garden com venda fictícia: 43 variáveis, 0 desconhecida, 0 sem valor. Roadmap ganha o PAN-128. Entregue pela sessão Portal Cecílio e publicado pela sessão Publicação.",
+      motivation: "Lucas (30/09/2026): \"eu preciso criar o contrato do Garden e ligar a parte de emissão de contrato do portal da cecilio\". O Anexo 1 do Garden escreve o fluxo em frase, e o catálogo tinha o total e a quantidade, mas não a parcela nem os vencimentos.",
+    },
+    title: "Fluxo de pagamento em frase nas minutas",
+    type: "melhoria",
+    version: "1.400.0",
+  },
+  {
     buildTag: "2026-09-30-pagamentos-a-conferir",
     deployedAt: "2026-09-30T08:24:23-03:00",
     modules: [

@@ -330,7 +330,7 @@ describe("o nome do arquivo", () => {
 // (cada `drawText`), e não o que as funções devolvem: é ali que uma assinatura esquecida ou um aviso
 // que não foi chamado apareceriam.
 describe("o PDF sai de verdade", () => {
-  it("uma página, com título, posição, cliente, imóvel, extenso, parcelas e avisos", async () => {
+  it("uma página, com título, posição, cliente, imóvel, extenso e parcelas, e sem os avisos da conta", async () => {
     const { paginas, textos } = await textoDoPdf(CASO);
     const tudo = textos.join(" | ");
 
@@ -344,7 +344,10 @@ describe("o PDF sai de verdade", () => {
     expect(textos).toContain("19/144");
     expect(textos).toContain("20/144");
     expect(textos).toContain("Total de deduções");
-    expect(tudo).toContain("não há premissa cadastrada");
+    // ⚠️ O CASO TEM AVISOS DE PRAXE NA CONTA, e eles NÃO vão para a folha (01/10/2026): aviso é do
+    // operador e vira recusa no servidor.
+    expect(CASO.conta.avisos.length).toBeGreaterThan(0);
+    expect(tudo).not.toContain("não há premissa cadastrada");
     expect(tudo).toContain("Esta é uma simulação");
   });
 
@@ -401,7 +404,7 @@ describe("o PDF sai de verdade", () => {
     expect(textos).toContain("33/144");
   });
 
-  it("emite sem avisos, e aí o bloco das observações não existe", async () => {
+  it("o bloco das observações não existe, com ou sem aviso na conta", async () => {
     const tudoCadastrado = calcularRescisao({
       comissaoEmReais: 4705.22,
       parcelasVencidas: 963.88,
@@ -414,6 +417,12 @@ describe("o PDF sai de verdade", () => {
     const { paginas, textos } = await textoDoPdf({ ...CASO, conta: tudoCadastrado });
     expect(paginas).toBe(1);
     expect(textos).not.toContain("OBSERVAÇÕES DA APURAÇÃO");
+
+    // O aviso que vazou em 30/09/2026 (Recanto do Pará), posto à força na conta: não sai na folha.
+    const comAviso = { ...tudoCadastrado, avisos: ["confira no contrato assinado se houve intermediação"] };
+    const vazou = await textoDoPdf({ ...CASO, conta: comAviso });
+    expect(vazou.textos.join(" ")).not.toContain("confira no contrato assinado");
+    expect(vazou.textos).not.toContain("OBSERVAÇÕES DA APURAÇÃO");
   });
 
   // ⚠️ FRUIÇÃO SÓ COM POSSE, e quando ela existe a tabela ganha uma linha no meio, com um cálculo
