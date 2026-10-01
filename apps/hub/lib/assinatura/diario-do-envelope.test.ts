@@ -7,6 +7,10 @@ import {
   quemAssinou,
   type SignatarioDoEnvelope,
 } from "./diario-do-envelope";
+import {
+  RECUSA_DE_QUEM_NAO_ESTA_NO_QUADRO,
+  RECUSA_DE_REENVIO_SEM_ID,
+} from "./recusa-de-reenvio";
 
 import payloadReal from "./__fixtures__/clicksign-sign-com-bounce.json";
 
@@ -294,11 +298,22 @@ function comEventosExtras(extras: unknown[]): unknown {
 
 // ── A CHAVE QUE O REENVIO USA ───────────────────────────────────────────────
 //
-// ⚠️ A `signer.key` DO WEBHOOK NÃO É O SIGNER ID DA API v3, e foi isso que devolveu 422 para a
-// Nívea em 24/09/2026 (*"não consigo reenviar"*). O reenvio é
-// `POST /envelopes/{id}/signers/{signer_id}/notifications`: o id que serve ali é o que a Clicksign
-// devolveu no passo 3 do envio, e ele passou a ser congelado em `temis_envelopes.signatarios`.
-// Quando não houver chave congelada, o signatário vem marcado e o botão NÃO tenta.
+// ⚠️ CORREÇÃO DE 01/10/2026: A `signer.key` DO WEBHOOK É O SIGNER ID DA API v3. Este cabeçalho
+// afirmava o contrário ("a `signer.key` do webhook NÃO é o signer id... o id que serve ali é o que a
+// Clicksign devolveu no passo 3 do envio"), e a afirmação era dedução, não medição. Medido em
+// produção em 01/10/2026 (só SELECT, projeto bxgukywoxgivlrhjkwjx), cruzando a `chave` congelada com
+// `temis_assinatura_eventos.payload->document->signers[].key` por envelope e e-mail:
+//
+//   pares: 54 | identicas: 54 | diferentes: 0 | envelopes: 8
+//
+// E nos 18 envelopes VIVOS sem nenhuma `chave` congelada as 104 `signer.key` do payload têm forma de
+// uuid e TODAS trazem e-mail. Lucas, no mesmo dia: *"Nao consigo reenviar os contratos."*
+//
+// ⚠️ O 422 DE 24/09/2026 ERA DO OUTRO CASO, E É ELE QUE SOBRA: quem só existe na lista congelada não
+// tem `signer.key`, e `juntarComOsCongelados` põe o PRÓPRIO E-MAIL na `chave` da tela — e-mail nunca
+// é id. Os motivos de bloqueio são TRÊS (envelope encerrado, chave que não é id, pessoa fora do
+// quadro), cada um com a SUA frase: um booleano com uma frase só afirmava, no `fora_do_quadro`, o
+// inverso do que acontecia.
 describe("juntarComOsCongelados: quem pode ser reenviado", () => {
   const doPayload = (patch: Partial<SignatarioDoEnvelope> = {}): SignatarioDoEnvelope => ({
     assinouEm: null,
@@ -326,30 +341,113 @@ describe("juntarComOsCongelados: quem pode ser reenviado", () => {
     );
 
     expect(juntos[0]?.chave).toBe("sig-clicksign-1");
-    expect(juntos[0]?.reenvioIndisponivel).toBe(false);
+    expect(juntos[0]?.reenvioIndisponivel).toBeNull();
   });
 
-  it("sem chave congelada o signatário vem marcado como reenvio indisponível", () => {
-    // É o caso medido do AC-000051: envelope enviado em 23/09, antes desta correção.
+  // ⚠️ SEM CHAVE CONGELADA O BOTÃO VOLTOU A VALER (01/10/2026), PORQUE A `signer.key` DO WEBHOOK É O
+  // ID. Medido em produção em 01/10/2026 (só SELECT, projeto bxgukywoxgivlrhjkwjx): a chave que o
+  // envio congela e a `signer.key` do webhook são o MESMO valor em 54 de 54 pares (8 envelopes, zero
+  // diferenças), e nos 18 envelopes vivos sem nenhuma chave congelada as 70 pessoas sem a marca de
+  // assinatura no quadro TODAS
+  // têm `signer.key` no payload. Com o botão desabilitado esses 18 (14 termos de acordo do Hades e 4
+  // contratos da Têmis) não tinham caminho nenhum pelo Panteon. Lucas, no mesmo dia: *"Nao consigo
+  // reenviar os contratos."*
+  it("sem chave congelada, a key do webhook destrava o botão: ela É o id", () => {
+    // É o caso medido do AC-000051 e dos 4 contratos de 23/09.
     const juntos = juntarComOsCongelados(
       [doPayload()],
       [{ chave: null, email: "comprador@exemplo.test", nome: "Iago", papel: "comprador" }],
     );
 
-    expect(juntos[0]?.reenvioIndisponivel).toBe(true);
-    // A chave antiga continua servindo para a tela casar a linha; o que ela não faz é ir para a
-    // Clicksign como se fosse signer id.
+    expect(juntos[0]?.reenvioIndisponivel).toBeNull();
     expect(juntos[0]?.chave).toBe("key-do-webhook");
   });
 
-  it("quem só existe na lista congelada, sem chave, nunca vira e-mail reenviável", () => {
+  // ⚠️ QUEM NÃO ESTÁ NO NOSSO QUADRO FICA DESABILITADO, porque o servidor recusa esse pedido: sem a
+  // linha congelada não se sabe se a pessoa já assinou, e a marca de assinatura mora no quadro. A
+  // régua da tela é a MESMA do servidor de propósito — tela que oferece o gesto que o servidor
+  // recusa é o que faz o operador clicar três vezes na mesma faixa vermelha.
+  //
+  // ⚠️ E A FRASE TEM DE SER A DESTE MOTIVO. Era `RECUSA_DE_REENVIO_SEM_ID` que aparecia aqui, e ela
+  // afirma que a pessoa "só aparece na lista que o envio congelou, e a Clicksign ainda não avisou nada
+  // sobre ela" — o INVERSO exato: aqui ela aparece no payload do webhook e NÃO está na lista
+  // congelada. Prender só o booleano era o que deixava a frase errada passar.
+  it("quem aparece só no payload, sem linha no quadro, fica indisponível, com a frase DESSE motivo", () => {
+    const juntos = juntarComOsCongelados([doPayload()], []);
+
+    expect(juntos[0]?.chave).toBe("key-do-webhook");
+    expect(juntos[0]?.reenvioIndisponivel?.motivo).toBe("fora_do_quadro");
+    expect(juntos[0]?.reenvioIndisponivel?.frase).toBe(RECUSA_DE_QUEM_NAO_ESTA_NO_QUADRO);
+    expect(juntos[0]?.reenvioIndisponivel?.frase).not.toBe(RECUSA_DE_REENVIO_SEM_ID);
+  });
+
+  // ⚠️ SEM E-MAIL A LINHA NÃO CASA COM O QUADRO, e aí o botão continua desabilitado: o casamento
+  // entre o payload e a lista congelada é por e-mail.
+  it("sem chave E sem e-mail continua indisponível", () => {
+    const juntos = juntarComOsCongelados(
+      [doPayload({ chave: "key-do-webhook", email: "" })],
+      [{ chave: null, email: "", nome: "Sem Endereço", papel: "comprador" }],
+    );
+
+    expect(juntos[0]?.reenvioIndisponivel?.motivo).toBe("fora_do_quadro");
+  });
+
+  // ⚠️ E-MAIL NÃO É SIGNER ID, E ESTE É O 422 DE 24/09/2026 QUE SOBRA. Quem só existe na lista
+  // congelada não tem linha no payload, então a `chave` da tela é o PRÓPRIO E-MAIL — e
+  // `POST /envelopes/{id}/signers/{signer_id}/notifications` devolve 422 para e-mail. Medido em
+  // 01/10/2026 (só SELECT): das 55 chaves congeladas e das 160 `signer.key` dos envelopes da
+  // Clicksign, ZERO têm "@". O botão fica desabilitado, e NÃO some.
+  it("quem só existe na lista congelada, sem chave, fica indisponível: a chave é o e-mail", () => {
     const juntos = juntarComOsCongelados(
       [],
       [{ chave: null, email: "vendedora@exemplo.test", nome: "Fulana", papel: "vendedora" }],
     );
 
     expect(juntos[0]?.chave).toBe("vendedora@exemplo.test");
-    expect(juntos[0]?.reenvioIndisponivel).toBe(true);
+    expect(juntos[0]?.reenvioIndisponivel?.motivo).toBe("sem_id_na_clicksign");
+    expect(juntos[0]?.reenvioIndisponivel?.frase).toBe(RECUSA_DE_REENVIO_SEM_ID);
+  });
+
+  // ⚠️ ENVELOPE ENCERRADO BLOQUEIA TODAS AS LINHAS, E ISSO ERA UMA REGRESSÃO DA TELA. `reenviarConvite`
+  // passou a recusar envelope terminal com 409 e a régua da tela não olhava estado nenhum: nos
+  // envelopes `cancelado` sem chave congelada, as linhas que antes vinham desabilitadas voltavam
+  // HABILITADAS, porque a `signer.key` do payload passa a régua da chave. Medido em produção em
+  // 01/10/2026 (só SELECT, projeto bxgukywoxgivlrhjkwjx): são 3 envelopes `cancelado` sem nenhuma
+  // `chave` no quadro e, cruzando o payload conferido com o quadro por e-mail, 16 linhas com
+  // `signer.key` em forma de uuid, com linha no quadro e `assinado_em` nulo — 16 botões habilitados
+  // para dar faixa vermelha. A casa já escreveu a regra no painel do Hades: *"O BOTÃO QUE TENTA E
+  // FALHA É PIOR DO QUE O BOTÃO DESABILITADO"*.
+  it("envelope cancelado bloqueia o reenvio de QUEM TEM a key e linha no quadro", () => {
+    const juntos = juntarComOsCongelados(
+      [doPayload({ chave: "11111111-1111-4111-8111-111111111111" })],
+      [{ chave: null, email: "comprador@exemplo.test", nome: "Iago", papel: "comprador" }],
+      { envelopeId: "env-cancelado", estado: "cancelado" },
+    );
+
+    expect(juntos[0]?.reenvioIndisponivel?.motivo).toBe("envelope_encerrado");
+    expect(juntos[0]?.reenvioIndisponivel?.frase).toContain("foi cancelado");
+    expect(juntos[0]?.reenvioIndisponivel?.frase).toContain("env-cancelado");
+  });
+
+  it("envelope assinado também bloqueia, e o vivo não bloqueia nada", () => {
+    const pessoa = [doPayload({ chave: "11111111-1111-4111-8111-111111111111" })];
+    const quadro = [
+      { chave: null, email: "comprador@exemplo.test", nome: "Iago", papel: "comprador" },
+    ];
+
+    expect(
+      juntarComOsCongelados(pessoa, quadro, { envelopeId: "e", estado: "assinado" })[0]
+        ?.reenvioIndisponivel?.motivo,
+    ).toBe("envelope_encerrado");
+    expect(
+      juntarComOsCongelados(pessoa, quadro, { envelopeId: "e", estado: "parcial" })[0]
+        ?.reenvioIndisponivel,
+    ).toBeNull();
+    // ⚠️ `desconhecido` NÃO É TERMINAL: o que não se sabe não pode virar recusa.
+    expect(
+      juntarComOsCongelados(pessoa, quadro, { envelopeId: "e", estado: "desconhecido" })[0]
+        ?.reenvioIndisponivel,
+    ).toBeNull();
   });
 
   it("quem só existe na lista congelada, COM chave, pode ser reenviado antes do primeiro webhook", () => {
@@ -359,7 +457,7 @@ describe("juntarComOsCongelados: quem pode ser reenviado", () => {
     );
 
     expect(juntos[0]?.chave).toBe("sig-clicksign-9");
-    expect(juntos[0]?.reenvioIndisponivel).toBe(false);
+    expect(juntos[0]?.reenvioIndisponivel).toBeNull();
   });
 });
 

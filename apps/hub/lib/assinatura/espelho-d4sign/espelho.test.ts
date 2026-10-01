@@ -147,7 +147,12 @@ function registroFalso(banco: Banco) {
     let depois = antes;
     const proposto = entrada.estado ?? null;
     if (proposto && proposto !== "desconhecido" && !TERMINAL.has(antes) && (ORDEM[proposto] ?? 0) > (ORDEM[antes] ?? 0)) depois = proposto;
-    const quadro = entrada.quadro ? entrada.quadro.map((i) => ({ ...i })) : lerQuadro(linha.signatarios);
+    // ⚠️ O QUADRO GRAVADO VOLTA PELA LEITURA, E NÃO POR UM SPREAD. Quem grava pode mandar item SEM
+    // `chave` (é a forma do banco: 104 das 159 linhas dos envelopes da Clicksign, medido em
+    // 01/10/2026, só SELECT), e é `lerQuadro` que completa a posição faltante — exatamente como o
+    // caminho real faz depois da função da 0195. Copiando o item cru, este duplo devolveria um quadro
+    // que a leitura de verdade nunca devolve.
+    const quadro = lerQuadro(entrada.quadro ?? linha.signatarios);
     for (const m of entrada.marcas ?? []) {
       const item = quadro.find((i) => i.chave === m.chave);
       if (item && m.assinadoEm && !item.assinado_em) item.assinado_em = m.assinadoEm;

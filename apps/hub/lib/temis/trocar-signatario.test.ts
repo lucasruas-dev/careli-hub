@@ -7,7 +7,14 @@ import {
   conferirEmailDaTroca,
   fraseDaFalhaDepoisDeRemover,
   lerSignatariosCongelados,
+  RECUSA_DE_CHAVE_QUE_NAO_E_DA_CLICKSIGN,
+  RECUSA_DE_CONVITE_DE_QUEM_JA_ASSINOU,
+  RECUSA_DE_CONVITE_DE_QUEM_RECUSOU,
+  RECUSA_DE_EMAIL_REPETIDO_NO_QUADRO,
+  RECUSA_DE_ID_QUE_NAO_E_DESTE_ENVELOPE,
   RECUSA_DE_QUEM_JA_ASSINOU,
+  RECUSA_DE_QUEM_NAO_ESTA_NO_QUADRO,
+  RECUSA_DE_TROCA_DE_QUEM_JA_ASSINOU,
   reenviarConvite,
   type SignatarioCongelado,
   trocarEmailDoSignatario,
@@ -22,7 +29,9 @@ import {
 // um teste que chamasse a API de verdade mexeria num contrato de alguém.
 
 const pessoa = (patch: Partial<SignatarioCongelado> = {}): SignatarioCongelado => ({
+  assinadoEm: null,
   chave: null,
+  recusadoEm: null,
   email: "titular@x.com",
   nome: "Henrique Sales do Vale",
   ordem: 1,
@@ -44,8 +53,34 @@ describe("a lista congelada do envio", () => {
       { chave: "sig-1", email: "a@x.com", nome: "Ana Paula Dias", ordem: 2, papel: "conjuge" },
     ]);
     expect(lida).toEqual([
-      { chave: "sig-1", email: "a@x.com", nome: "Ana Paula Dias", ordem: 2, papel: "conjuge" },
+      {
+        assinadoEm: null,
+        chave: "sig-1",
+        email: "a@x.com",
+        nome: "Ana Paula Dias",
+        ordem: 2,
+        papel: "conjuge",
+        recusadoEm: null,
+      },
     ]);
+  });
+
+  // ⚠️ AS DUAS MARCAS VÊM JUNTAS, E NÃO SÃO ENFEITE: são elas que recusam o convite de quem já
+  // acabou com o documento. Medido em produção em 01/10/2026 (só SELECT) nos 18 envelopes vivos sem
+  // id da Clicksign: 87 linhas, 17 com `assinado_em` e 0 com `recusado_em`. A segunda entra porque a
+  // função da 0195 carrega `assinado_em` e `recusado_em` NO MESMO NÍVEL (parte (a) de
+  // `0195_o_contrato_mora_no_panteon.sql`), e ler só uma seria tratar o recusado como pendente.
+  it("carrega `assinado_em` e `recusado_em`, que são as travas do convite", () => {
+    const lida = lerSignatariosCongelados([
+      { assinado_em: "2026-09-30T12:00:00.000Z", email: "a@x.com", nome: "Ana", papel: "conjuge" },
+      { email: "b@x.com", nome: "Bia", papel: "comprador", recusado_em: "2026-09-30T13:00:00.000Z" },
+      { email: "c@x.com", nome: "Cida", papel: "comprador" },
+    ]);
+    expect(lida[0]?.assinadoEm).toBe("2026-09-30T12:00:00.000Z");
+    expect(lida[0]?.recusadoEm).toBeNull();
+    expect(lida[1]?.recusadoEm).toBe("2026-09-30T13:00:00.000Z");
+    expect(lida[2]?.assinadoEm).toBeNull();
+    expect(lida[2]?.recusadoEm).toBeNull();
   });
 
   // ⚠️ PAPEL DESCONHECIDO NÃO SOME COM A PESSOA. O papel aqui só vira rótulo dentro da frase de
@@ -507,10 +542,15 @@ describe("a troca de e-mail, do começo ao fim", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.nome).toBe("Maria Souza Lima");
-    // ⚠️ QUEM NÃO TEM ID DA CLICKSIGN SAI COM A CHAVE PROVISÓRIA DA POSIÇÃO: a 0195 exige `chave` em
-    // todo item, e é por ela que a marca de quem assinou continua na pessoa certa.
+    // ⚠️ CORREÇÃO DE 01/10/2026: QUEM NÃO TEM ID DA CLICKSIGN SAI SEM O CAMPO `chave`, E NÃO COM
+    // `tmp:<posição>`. Esta assertiva prendia o contrário, e a 0195 NÃO exige `chave` em todo item —
+    // ela só testa `nullif(item->>'chave','') is not null` e, sem chave, casa a linha antiga pelo
+    // e-mail ÚNICO. Medido em produção em 01/10/2026 (só SELECT): 104 das 159 linhas dos 29 envelopes
+    // da Clicksign NÃO têm o campo `chave`, e zero têm `tmp:`. A chave inventada é posicional, então
+    // numa reescrita seguinte com o quadro em outra ordem ela cai na linha de OUTRA pessoa — e a 0195
+    // casa pela chave ANTES do e-mail, levando o `assinado_em` para quem nunca assinou.
     expect(chamadasDaFuncao[0]?.p_quadro).toEqual([
-      { chave: "tmp:1", email: "titular@x.com", nome: "Henrique Sales do Vale", ordem: 1, papel: "comprador" },
+      { email: "titular@x.com", nome: "Henrique Sales do Vale", ordem: 1, papel: "comprador" },
       { chave: "sig-novo", email: "maria@x.com", nome: "Maria Souza Lima", ordem: 1, papel: "conjuge" },
     ]);
   });
@@ -642,48 +682,34 @@ describe("a troca grava pela função, com a versão lida", () => {
 
 // ── O REENVIO DO CONVITE ────────────────────────────────────────────────────
 //
-// ⚠️ O QUE DEVOLVIA 422 ERA O REENVIO, E A FRASE NÃO DIZIA O QUE FAZER. Nívea, 24/09/2026: *"Deu
-// erro no envio dos acordos. Não recebi e não consigo reenviar."* Medido no mesmo dia: o ENVIO de
-// AC-000051 não falhou (`falha` vazia, `estado='aguardando'`, `enviado_em` 23/09 13:11:33Z). O
-// endpoint do reenvio é `POST /envelopes/{id}/signers/{signer_id}/notifications`, e a tela mandava
-// ali a `chave` do diário — que é a `signer.key` do webhook ou, quando a pessoa só existe na lista
-// congelada, o PRÓPRIO E-MAIL. Nenhum dos dois é o signer id que a Clicksign criou.
+// ⚠️ O ID QUE A TELA MANDA SEMPRE FOI O ID CERTO — ERA A NOSSA RECUSA QUE ESTAVA ERRADA. Lucas,
+// 01/10/2026: *"Nao consigo reenviar os contratos. Precisamos sentar e resolver os pontos pendentes
+// da Temis."* Medido em produção em 01/10/2026 (só SELECT, projeto bxgukywoxgivlrhjkwjx): a `chave`
+// que o envio congela e a `signer.key` que o webhook manda são O MESMO VALOR em 54 de 54 pares
+// (8 envelopes, zero diferenças), e nos 18 envelopes vivos sem nenhuma `chave` congelada as 70
+// pessoas sem `assinado_em` no quadro TODAS têm `signer.key` no payload do webhook (87 linhas, 17
+// com `assinado_em`, 0 sem key) — e 68 delas precisam de convite, porque o payload tem 19 eventos
+// `sign` e o quadro só 17 marcas. Ou seja: o `signer.key` do webhook É o `signer_id` que
+// `POST /envelopes/{id}/signers/{signer_id}/notifications` aceita, e ele já estava no nosso banco.
+//
+//   with ev as (select distinct on (provedor_documento_id) provedor_documento_id, payload
+//                 from temis_assinatura_eventos where assinatura_conferida
+//                order by provedor_documento_id, recebido_em desc)
+//   -- pares: 54 | identicas: 54 | diferentes: 0 | envelopes: 8
+//   -- 18 vivos sem chave: pessoas 87 | sem assinado_em 70 | com key uuid 70 | sem key 0
+//   -- e o payload sabe de 19 `sign` contra 17 `assinado_em`: 68 precisam de convite, nao 70
+//
+// ⚠️ O 422 DE 24/09/2026 ERA DO OUTRO CASO, E É ELE QUE SOBRA. Quando a pessoa só existe na lista
+// congelada (sem linha no payload), `juntarComOsCongelados` põe o PRÓPRIO E-MAIL na `chave`
+// (`diario-do-envelope-db.ts`), e e-mail nunca é id. Medido no mesmo dia: das 55 chaves congeladas e
+// das 160 `signer.key` dos envelopes da Clicksign, 55 e 160 têm forma de uuid, ZERO têm "@" e ZERO
+// começam com `tmp:` ou `c2x:`.
 describe("o reenvio do convite", () => {
   const doEnvelope = { envelopeId: "env-30", signerId: "sig-titular" };
 
-  it("e-mail no lugar do signer id é recusado ANTES da chamada que cobra", async () => {
-    const { sb } = bancoDeTeste({ envelope: envelopeGravado });
-    const { chamadas, porta } = portaDeTeste();
-
-    const r = await reenviarConvite(sb, { ...doEnvelope, signerId: "titular@x.com" }, porta);
-
-    expect(r.ok).toBe(false);
-    if (r.ok) return;
-    expect(r.status).toBe(400);
-    expect(r.erro).toContain("painel da Clicksign");
-    // ⚠️ ZERO CHAMADAS: mandar e-mail nesse endpoint é pedir 422 e escrever na tela um erro nosso
-    // como se fosse do provedor.
-    expect(chamadas).toEqual([]);
-  });
-
-  it("o 422 da Clicksign devolve frase que diz o que fazer, e não só o detalhe cru do provedor", async () => {
-    const { sb } = bancoDeTeste({ envelope: envelopeGravado });
-    const { porta } = portaDeTeste({
-      "POST /envelopes/env-30/signers/sig-titular/notifications": new FalhaDaClicksign(
-        "Clicksign 422",
-        { detalhes: ["Unprocessable Entity"], requestId: "req-1", status: 422 },
-      ),
-    });
-
-    const r = await reenviarConvite(sb, doEnvelope, porta);
-
-    expect(r.ok).toBe(false);
-    if (r.ok) return;
-    expect(r.erro).toContain("painel da Clicksign");
-    expect(r.erro).toContain("O envelope continua como estava");
-  });
-
-  it("o convite que sai continua saindo", async () => {
+  // ⚠️ COM A CHAVE CONGELADA NADA MUDA, E ELE NÃO GANHA LEITURA NENHUMA: 8 dos 29 envelopes da
+  // Clicksign têm o id de todo mundo (01/10/2026), o da MAURA MARIA PASSOS entre eles.
+  it("o convite que sai continua saindo, com UMA chamada só", async () => {
     const { sb } = bancoDeTeste({ envelope: envelopeGravado });
     const { chamadas, porta } = portaDeTeste();
 
@@ -693,5 +719,721 @@ describe("o reenvio do convite", () => {
     expect(chamadas).toEqual([
       { caminho: "/envelopes/env-30/signers/sig-titular/notifications", metodo: "POST" },
     ]);
+  });
+
+  it("o 429 da Clicksign vira “espere um minuto”, e não erro", async () => {
+    const { sb } = bancoDeTeste({ envelope: envelopeGravado });
+    const { porta } = portaDeTeste({
+      "/notifications": new FalhaDaClicksign("Clicksign devolveu 429.", {
+        detalhes: [],
+        requestId: "req-9",
+        status: 429,
+      }),
+    });
+
+    const r = await reenviarConvite(sb, doEnvelope, porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(429);
+    expect(r.erro).toContain("Aguarde um minuto");
+  });
+
+  // ⚠️ A FRASE DO 422 NÃO PODE MAIS DIZER "O PANTEON NÃO TEM O ID", porque ele tem: o id que foi
+  // mandado saiu do quadro congelado ou do payload de webhook DESTE envelope, conferido antes da
+  // chamada. Dizer o contrário manda a operadora ao painel da Clicksign procurar um id que ela vai
+  // encontrar lá certinho.
+  it("o 422 diz que a Clicksign não aceitou o signatário, e não que falta id aqui", async () => {
+    const { sb } = bancoDeTeste({ envelope: envelopeGravado });
+    const { porta } = portaDeTeste({
+      "POST /envelopes/env-30/signers/sig-titular/notifications": new FalhaDaClicksign(
+        "Clicksign devolveu 422.",
+        { detalhes: [], requestId: "req-7", status: 422 },
+      ),
+    });
+
+    const r = await reenviarConvite(sb, doEnvelope, porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(502);
+    expect(r.erro).not.toContain("não tem o id");
+    expect(r.erro).toContain("não aceitou");
+    expect(r.erro).toContain("painel da Clicksign");
+    expect(r.erro).toContain("O envelope continua como estava");
+  });
+});
+
+// ── O REENVIO NOS 18 ENVELOPES QUE NUNCA CONGELARAM A CHAVE ─────────────────
+//
+// ⚠️ SÃO 18 ENVELOPES, E O ID DELES JÁ ESTÁ NO NOSSO BANCO. Medido em produção em 01/10/2026 (só
+// SELECT): dos 29 envelopes da Clicksign em `temis_envelopes`, 21 estão sem nenhuma `chave` no
+// quadro e 18 deles seguem VIVOS (12 `aguardando` e 6 `parcial` — 14 termos de acordo do Hades e 4
+// contratos da Têmis), com 87 pessoas, 17 marcadas como assinadas no quadro e 70 sem a marca (68
+// pendentes de verdade: o payload tem 19 `sign`); os outros 3 estão
+// `cancelado`. Nenhuma das 87 linhas tem o campo `chave`. O que a tela manda nessas linhas é a
+// `signer.key` do payload do webhook, que é exatamente o `signer_id` do endpoint de notificação —
+// então o reenvio destrava SEM NENHUMA CHAMADA NOVA e sem reescrever o quadro.
+describe("o reenvio nos 18 envelopes que nunca congelaram a chave", () => {
+  /**
+   * A linha dos 18, NA FORMA DO BANCO: nenhum item tem o campo `chave`.
+   *
+   * ⚠️ A FORMA AQUI É MEDIDA, NÃO IMAGINADA. Medido em 01/10/2026 (só SELECT): das 87 linhas dos 18
+   * envelopes vivos sem id, 87 estão SEM o campo `chave` (as chaves do item são só `assinado_em`,
+   * `email`, `nome`, `ordem`, `papel`), zero têm `tmp:` e zero têm `c2x:`. Semear `chave: "tmp:1"`
+   * aqui esconderia justamente o defeito que esta suíte existe para pegar.
+   */
+  const envelopeSemAsChaves = {
+    atualizado_em: "2026-09-29T16:06:00.000Z",
+    envelope_id: "env-40",
+    estado: "parcial",
+    id: "reg-40",
+    proposta_id: null,
+    provedor_documento_id: "doc-40",
+    signatarios: [
+      {
+        assinado_em: "2026-09-30T12:00:00.000Z",
+        email: "nivea@careli.test",
+        nome: "Nivea Careli",
+        ordem: 1,
+        papel: "careli",
+      },
+      { email: "maura@exemplo.test", nome: "Maura Maria Passos", ordem: 2, papel: "comprador" },
+      {
+        email: "huber@exemplo.test",
+        nome: "Huber de Andrade Lustosa Junior",
+        ordem: 3,
+        papel: "testemunha",
+      },
+      {
+        email: "recusou@exemplo.test",
+        nome: "Quem Recusou o Documento",
+        ordem: 4,
+        papel: "conjuge",
+        recusado_em: "2026-09-30T14:00:00.000Z",
+      },
+    ],
+  };
+
+  // Os ids na forma MEDIDA: uuid. 55 de 55 chaves congeladas e 160 de 160 `signer.key` (01/10/2026).
+  const ID_NIVEA = "11111111-1111-4111-8111-111111111111";
+  const ID_MAURA = "22222222-2222-4222-8222-222222222222";
+  const ID_HUBER = "33333333-3333-4333-8333-333333333333";
+  const ID_RECUSOU = "44444444-4444-4444-8444-444444444444";
+
+  /**
+   * O payload do último webhook deste envelope — a fonte do id, e ela já está no nosso banco.
+   *
+   * ⚠️ O E-MAIL VEM COM CAIXA DIFERENTE DE PROPÓSITO (`Nivea@Careli.test`): o casamento com o quadro
+   * é por e-mail normalizado, e a Clicksign devolve o endereço como foi digitado.
+   */
+  const payloadDoWebhook = {
+    document: {
+      events: [],
+      key: "doc-40",
+      signers: [
+        { email: "Nivea@Careli.test", key: ID_NIVEA, name: "Nivea Careli" },
+        { email: "maura@exemplo.test", key: ID_MAURA, name: "Maura Maria Passos" },
+        { email: "huber@exemplo.test", key: ID_HUBER, name: "Huber de Andrade Lustosa Junior" },
+        { email: "recusou@exemplo.test", key: ID_RECUSOU, name: "Quem Recusou o Documento" },
+      ],
+    },
+  };
+
+  const banco = (patch: Record<string, unknown> = {}) =>
+    bancoDeTeste({
+      envelope: { ...envelopeSemAsChaves, ...patch },
+      payload: payloadDoWebhook,
+    });
+
+  // ⚠️ ESTE É O TESTE DA FATIA. As 68 pessoas pendentes passam por aqui, e o que elas custam é UMA
+  // notificação: nenhuma leitura nova na Clicksign e nenhuma escrita em `temis_envelopes`.
+  it("pendente com key do webhook recebe o convite, sem leitura nova na Clicksign", async () => {
+    const { chamadasDaFuncao, sb } = banco();
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await reenviarConvite(
+      sb,
+      { envelopeId: "env-40", signerId: ID_MAURA },
+      porta,
+    );
+
+    expect(r.ok).toBe(true);
+    expect(chamadas).toEqual([
+      { caminho: `/envelopes/env-40/signers/${ID_MAURA}/notifications`, metodo: "POST" },
+    ]);
+    // ⚠️ E O QUADRO NÃO É REESCRITO. Reescrevê-lo para "aproveitar" o id lido é o que custou duas
+    // rodadas de revisão e foi recusado: a 0195 só reencontra a linha sem `chave` pelo e-mail ÚNICO,
+    // e a casa já perdeu marca de esteira assim (122 CADs, 20/07/2026).
+    expect(chamadasDaFuncao).toEqual([]);
+  });
+
+  /**
+   * ⚠️ O PAYLOAD SABE MAIS QUE O QUADRO SOBRE QUEM ASSINOU, E JOGAR ISSO FORA MANDAVA CONVITE PARA
+   * QUEM JÁ ASSINOU.
+   *
+   * `noPayloadDesteEnvelope` chama `quemAssinou`, que calcula o `assinouEm` de cada pessoa a partir
+   * dos eventos `sign` do documento, e devolvia só o e-mail. Depois disso a única pergunta sobre
+   * assinatura era o `assinado_em` do nosso quadro.
+   *
+   * Medido em produção em 01/10/2026 (só SELECT, projeto bxgukywoxgivlrhjkwjx, reproduzindo a leitura
+   * deste código — evento mais recente com `assinatura_conferida = true`, por `provedor_documento_id`
+   * e, na falta, por `envelope_id`): nos 18 envelopes vivos sem chave há 19 eventos `sign` no payload
+   * mais recente e apenas 17 `assinado_em` nas 87 linhas do quadro. As 2 de diferença são pessoas
+   * reais de termos de acordo do Hades — envelope 9eafed62-4451-4ba2-b76f-c552f47c5f8a (assinou
+   * 23/09/2026 15:37:41Z) e envelope f76d7af0-1f51-4161-a094-abeee04a5829 (assinou 24/09/2026
+   * 17:58:32Z) —, as duas com `assinado_em` NULO no quadro. Ou seja: dos 70 "pendentes" do recorte, 2
+   * já assinaram, e quem deve receber convite são 68.
+   */
+  it("o payload diz que assinou e o quadro não: recusa com 409, antes de qualquer chamada", async () => {
+    const { chamadasDaFuncao, sb } = bancoDeTeste({
+      envelope: envelopeSemAsChaves,
+      payload: {
+        document: {
+          // A forma dos 2 casos medidos: o `sign` está nos eventos, e a linha do quadro ficou atrás.
+          events: [
+            {
+              data: { signer: { email: "maura@exemplo.test", key: ID_MAURA } },
+              name: "sign",
+              occurred_at: "2026-09-23T15:37:41.002Z",
+            },
+          ],
+          key: "doc-40",
+          signers: [{ email: "maura@exemplo.test", key: ID_MAURA, name: "Maura Maria Passos" }],
+        },
+      },
+    });
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await reenviarConvite(sb, { envelopeId: "env-40", signerId: ID_MAURA }, porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(409);
+    expect(r.erro).toBe(RECUSA_DE_CONVITE_DE_QUEM_JA_ASSINOU);
+    expect(chamadas).toEqual([]);
+    expect(chamadasDaFuncao).toEqual([]);
+  });
+
+  /**
+   * ⚠️ QUEM CASA A LINHA DO QUADRO É O E-MAIL DO PAYLOAD, E NUNCA NADA QUE O PEDIDO TRAGA.
+   *
+   * Havia um `|| pedido.email` de última saída, e ele era o ÚNICO ponto em que o navegador
+   * influenciava a trava de quem já assinou: no payload "pobre" (`document.signers` VAZIO, as pessoas
+   * saindo dos eventos — medido em 01/10/2026, 28 dos 283 payloads conferidos têm `signers` vazio) a
+   * `signer.key` pode chegar sem e-mail, e aí o endereço do navegador decidia QUAL linha do quadro era
+   * auditada. Mandando a key de quem JÁ ASSINOU com o e-mail de um pendente, a trava não disparava e o
+   * convite saía. O campo foi removido do pedido inteiro (rota, serviço e as duas telas): sem e-mail no
+   * payload não se sabe de quem é a linha, e a resposta é recusa.
+   *
+   * Medido no mesmo dia: das 104 `signer.key` dos envelopes sem chave congelada, ZERO chegam sem
+   * e-mail — isto não tira nada dos 68 pendentes.
+   */
+  it("key no payload SEM e-mail não casa linha nenhuma: recusa, sem chamada", async () => {
+    const { sb } = bancoDeTeste({
+      envelope: envelopeSemAsChaves,
+      payload: {
+        document: {
+          // O formato "mais enxuto": a key vem no evento, sem endereço nenhum.
+          events: [{ data: { signer: { key: ID_NIVEA } } }],
+          key: "doc-40",
+          signers: [],
+        },
+      },
+    });
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await reenviarConvite(sb, { envelopeId: "env-40", signerId: ID_NIVEA }, porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(409);
+    expect(r.erro).toBe(RECUSA_DE_QUEM_NAO_ESTA_NO_QUADRO);
+    expect(chamadas).toEqual([]);
+  });
+
+  // ⚠️ E O PEDIDO NÃO TEM MAIS CAMPO DE E-MAIL: quem diz de quem é a linha é o payload deste
+  // envelope, não o navegador.
+  it("sem o e-mail no pedido, o payload do envelope diz de quem é a linha", async () => {
+    const { sb } = banco();
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await reenviarConvite(sb, { envelopeId: "env-40", signerId: ID_HUBER }, porta);
+
+    expect(r.ok).toBe(true);
+    expect(chamadas.map((c) => c.caminho)).toEqual([
+      `/envelopes/env-40/signers/${ID_HUBER}/notifications`,
+    ]);
+  });
+
+  // ⚠️ QUEM JÁ ASSINOU NÃO RECEBE CONVITE DE NOVO. São 17 assinaturas nas 87 linhas dos 18
+  // envelopes, 3 delas num contrato da Têmis de 11 signatários: um convite de documento já assinado
+  // é o tipo de e-mail que gera ligação para o atendimento. A guarda é do SERVIDOR porque o pedido
+  // chega por HTTP, com um id que está visível no payload.
+  it("quem já assinou é recusado com 409, antes de qualquer chamada", async () => {
+    const { chamadasDaFuncao, sb } = banco();
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await reenviarConvite(
+      sb,
+      { envelopeId: "env-40", signerId: ID_NIVEA },
+      porta,
+    );
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(409);
+    expect(r.erro).toBe(RECUSA_DE_CONVITE_DE_QUEM_JA_ASSINOU);
+    expect(chamadas).toEqual([]);
+    expect(chamadasDaFuncao).toEqual([]);
+  });
+
+  // ⚠️ E QUEM RECUSOU O DOCUMENTO TAMBÉM, NO MESMO NÍVEL. A função da 0195 carrega `assinado_em` e
+  // `recusado_em` lado a lado (parte (a) da `0195_o_contrato_mora_no_panteon.sql`): tratar só a
+  // primeira faria o recusado passar por pendente e receber convite de um documento que ele negou.
+  // Medido em 01/10/2026: 0 das 87 linhas têm `recusado_em` hoje — a marca existe no modelo e a
+  // trava não espera o primeiro caso.
+  it("quem RECUSOU o documento é recusado com 409, antes de qualquer chamada", async () => {
+    const { chamadasDaFuncao, sb } = banco();
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await reenviarConvite(
+      sb,
+      { envelopeId: "env-40", signerId: ID_RECUSOU },
+      porta,
+    );
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(409);
+    expect(r.erro).toBe(RECUSA_DE_CONVITE_DE_QUEM_RECUSOU);
+    expect(chamadas).toEqual([]);
+    expect(chamadasDaFuncao).toEqual([]);
+  });
+
+  // ⚠️ O NAVEGADOR NÃO ESCOLHE QUEM RECEBE CONVITE DENTRO DE UM ENVELOPE PAGO, e esta é a guarda que
+  // o caminho novo exige. O id tem de constar no quadro congelado OU no payload de webhook DESTE
+  // envelope; um id de outro contrato da conta de produção é recusado sem nenhuma chamada.
+  it("id que não está nem no quadro nem no payload deste envelope é recusado, sem chamada", async () => {
+    const { chamadasDaFuncao, sb } = banco();
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await reenviarConvite(
+      sb,
+      { envelopeId: "env-40", signerId: "99999999-9999-4999-8999-999999999999" },
+      porta,
+    );
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(409);
+    expect(r.erro).toBe(RECUSA_DE_ID_QUE_NAO_E_DESTE_ENVELOPE);
+    expect(chamadas).toEqual([]);
+    expect(chamadasDaFuncao).toEqual([]);
+  });
+
+  // ⚠️ ENVELOPE EM ESTADO TERMINAL NÃO RECEBE CONVITE, e isto não é hipótese: medido em 01/10/2026
+  // (só SELECT), 3 dos 21 envelopes da Clicksign sem `chave` estão `cancelado`, e eles entrariam no
+  // caminho novo porque nada aqui olhava o estado. Convite de envelope cancelado é um link morto na
+  // caixa de entrada do cliente.
+  it("envelope cancelado é recusado antes de notificar", async () => {
+    const { chamadasDaFuncao, sb } = banco({ estado: "cancelado" });
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await reenviarConvite(
+      sb,
+      { envelopeId: "env-40", signerId: ID_MAURA },
+      porta,
+    );
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(409);
+    expect(r.erro).toContain("cancelado");
+    expect(chamadas).toEqual([]);
+    expect(chamadasDaFuncao).toEqual([]);
+  });
+
+  it("envelope assinado também é recusado antes de notificar", async () => {
+    const { sb } = banco({ estado: "assinado" });
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await reenviarConvite(
+      sb,
+      { envelopeId: "env-40", signerId: ID_MAURA },
+      porta,
+    );
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(409);
+    expect(chamadas).toEqual([]);
+  });
+
+  // ⚠️ E-MAIL REPETIDO NO NOSSO QUADRO NÃO IDENTIFICA NINGUÉM: escolher a primeira linha mandaria o
+  // convite sem saber se aquela pessoa já assinou. É a mesma régua que a 0195 usa para casar o quadro
+  // por e-mail (só quando ele é único). Medido em 01/10/2026 (só SELECT): nenhum dos 29 envelopes da
+  // Clicksign tem e-mail repetido hoje, mas 23 dos 2.231 da D4Sign têm — a forma existe em contrato
+  // real.
+  it("e-mail repetido no quadro recusa, sem chamada", async () => {
+    const { chamadasDaFuncao, sb } = bancoDeTeste({
+      envelope: {
+        ...envelopeSemAsChaves,
+        signatarios: [
+          { assinado_em: "2026-09-30T12:00:00.000Z", email: "casal@x.test", nome: "Um", ordem: 1, papel: "comprador" },
+          { email: "casal@x.test", nome: "Dois", ordem: 1, papel: "conjuge" },
+        ],
+      },
+      payload: {
+        document: {
+          events: [],
+          key: "doc-40",
+          signers: [
+            { email: "casal@x.test", key: ID_MAURA, name: "Um" },
+            { email: "casal@x.test", key: ID_HUBER, name: "Dois" },
+          ],
+        },
+      },
+    });
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await reenviarConvite(
+      sb,
+      { envelopeId: "env-40", signerId: ID_HUBER },
+      porta,
+    );
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(409);
+    expect(r.erro).toBe(RECUSA_DE_EMAIL_REPETIDO_NO_QUADRO);
+    expect(chamadas).toEqual([]);
+    expect(chamadasDaFuncao).toEqual([]);
+  });
+
+  // ⚠️ E-MAIL NUNCA É ID, E ESSE É O 422 DE 24/09/2026 QUE SOBRA. Quem só existe na lista congelada
+  // não tem linha no payload, e `juntarComOsCongelados` põe o próprio e-mail na `chave` da tela. A
+  // recusa vem antes da chamada que cobra, com a frase que manda ao painel da Clicksign.
+  it("e-mail no lugar do id é recusado ANTES de qualquer chamada", async () => {
+    const { chamadasDaFuncao, sb } = banco();
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await reenviarConvite(
+      sb,
+      { envelopeId: "env-40", signerId: "so-na-lista@exemplo.test" },
+      porta,
+    );
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(400);
+    expect(r.erro).toContain("painel da Clicksign");
+    expect(chamadas).toEqual([]);
+    expect(chamadasDaFuncao).toEqual([]);
+  });
+
+  // ⚠️ `tmp:` E `c2x:` TAMBÉM NÃO SÃO ID. `abrirRegistro` grava `tmp:<posição>` em todo mundo antes
+  // do carimbo do envio (`lib/assinatura/envio-db.ts`), e `c2x:` é do espelho da D4Sign.
+  it("chave provisória e chave do espelho não viram convite", async () => {
+    const { sb } = banco();
+    const { chamadas, porta } = portaDeTeste();
+
+    for (const chave of ["tmp:2", "c2x:4711"]) {
+      const r = await reenviarConvite(sb, { envelopeId: "env-40", signerId: chave }, porta);
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.status).toBe(400);
+    }
+    expect(chamadas).toEqual([]);
+  });
+
+  // ⚠️ SEM PAYLOAD NENHUM NÃO SE AFIRMA NADA. O envelope que nunca recebeu webhook não tem de onde
+  // provar que o id é dele; notificar ali seria deixar o navegador escolher a quem o e-mail vai.
+  it("envelope sem webhook nenhum recusa o id que não está no quadro", async () => {
+    const { sb } = bancoDeTeste({ envelope: envelopeSemAsChaves });
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await reenviarConvite(
+      sb,
+      { envelopeId: "env-40", signerId: ID_MAURA },
+      porta,
+    );
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(409);
+    expect(r.erro).toBe(RECUSA_DE_ID_QUE_NAO_E_DESTE_ENVELOPE);
+    expect(chamadas).toEqual([]);
+  });
+
+  // ⚠️ A CHAVE CONGELADA DISPENSA O PAYLOAD. Nos 8 envelopes que têm o id de todo mundo a conferência
+  // acaba no nosso próprio quadro, e nenhuma leitura de evento é feita.
+  it("chave congelada no quadro não precisa do payload do webhook", async () => {
+    const { sb } = bancoDeTeste({
+      envelope: {
+        ...envelopeSemAsChaves,
+        signatarios: [
+          { chave: ID_MAURA, email: "maura@exemplo.test", nome: "Maura Maria Passos", ordem: 2, papel: "comprador" },
+        ],
+      },
+    });
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await reenviarConvite(
+      sb,
+      { envelopeId: "env-40", signerId: ID_MAURA },
+      porta,
+    );
+
+    expect(r.ok).toBe(true);
+    expect(chamadas.map((c) => c.caminho)).toEqual([
+      `/envelopes/env-40/signers/${ID_MAURA}/notifications`,
+    ]);
+  });
+
+  // ⚠️ ID DO PAYLOAD CUJO E-MAIL NÃO ESTÁ NO NOSSO QUADRO É RECUSA. Sem a linha não se sabe se a
+  // pessoa já assinou, e a marca de assinatura mora no quadro — é a fonte única da casa.
+  it("pessoa que está só no payload, e não no nosso quadro, é recusada", async () => {
+    const { sb } = bancoDeTeste({
+      envelope: {
+        ...envelopeSemAsChaves,
+        signatarios: [
+          { email: "maura@exemplo.test", nome: "Maura Maria Passos", ordem: 2, papel: "comprador" },
+        ],
+      },
+      payload: payloadDoWebhook,
+    });
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await reenviarConvite(sb, { envelopeId: "env-40", signerId: ID_HUBER }, porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(409);
+    expect(chamadas).toEqual([]);
+  });
+});
+
+// ── A TROCA DE E-MAIL NOS ENVELOPES SEM ID ──────────────────────────────────
+//
+// ⚠️ É AQUI QUE A LINHA DE QUEM ASSINOU E A CHAVE QUE NÃO É ID DA CLICKSIGN SE CRUZAM. Medido em
+// produção em 01/10/2026 (só SELECT): nos 18 envelopes vivos sem id são 87 linhas, NENHUMA com o
+// campo `chave`, e 17 com `assinado_em` — 3 delas num contrato da Têmis de 11 signatários.
+describe("a troca de e-mail não encosta em quem assinou nem manda chave inventada", () => {
+  const comQuemAssinou = {
+    atualizado_em: "2026-09-29T16:06:00.000Z",
+    envelope_id: "env-50",
+    id: "reg-50",
+    proposta_id: null,
+    provedor_documento_id: "doc-50",
+    signatarios: [
+      {
+        assinado_em: "2026-09-30T12:00:00.000Z",
+        chave: "sig-nivea",
+        email: "nivea@careli.test",
+        nome: "Nivea Careli",
+        ordem: 1,
+        papel: "careli",
+      },
+      { chave: "tmp:2", email: "maura@exemplo.test", nome: "Maura Maria Passos", ordem: 2, papel: "comprador" },
+    ],
+  };
+
+  // ⚠️ A TRAVA É NOSSA, E NÃO O 403 DO PROVEDOR. Nem `podeMexer` na tela nem `conferirEmailDaTroca`
+  // olham assinatura: até aqui o único "não" vinha da Clicksign, e ele só vem quando o id mandado é
+  // o da pessoa certa. Quando não é, vem 404, e o 404 SEGUE EM FRENTE de propósito.
+  it("quem já assinou não tem e-mail trocado, e nada é chamado", async () => {
+    const { atualizacoes, sb } = bancoDeTeste({ envelope: comQuemAssinou });
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await trocarEmailDoSignatario(
+      sb,
+      { email: "outro@exemplo.test", envelopeId: "env-50", signerId: "sig-nivea" },
+      porta,
+    );
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(409);
+    expect(r.erro).toBe(RECUSA_DE_TROCA_DE_QUEM_JA_ASSINOU);
+    expect(r.removido).toBe(false);
+    expect(chamadas).toEqual([]);
+    expect(atualizacoes).toEqual([]);
+  });
+
+  // ⚠️ `tmp:` NO DELETE É O ESTRAGO CALADO: a Clicksign devolve 404 (não 403), o 404 segue em frente,
+  // o signatário antigo FICA no envelope e um duplicado nasce com o e-mail novo — e a tela escreve
+  // "a Clicksign não achou o signatário antigo", que é verdade sobre uma chave que nunca foi dele.
+  it("chave provisória não vai para o DELETE: a troca recusa antes de qualquer chamada", async () => {
+    const { atualizacoes, sb } = bancoDeTeste({ envelope: comQuemAssinou });
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await trocarEmailDoSignatario(
+      sb,
+      { email: "outro@exemplo.test", envelopeId: "env-50", signerId: "tmp:2" },
+      porta,
+    );
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.erro).toBe(RECUSA_DE_CHAVE_QUE_NAO_E_DA_CLICKSIGN);
+    expect(r.removido).toBe(false);
+    expect(chamadas).toEqual([]);
+    expect(atualizacoes).toEqual([]);
+  });
+
+  /**
+   * ⚠️ A TROCA NÃO CUNHA `tmp:<posição>` NA LINHA DE QUEM NÃO TEM `chave`, E ISSO MOVERIA ASSINATURA.
+   *
+   * Medido em produção em 01/10/2026 (só SELECT): ZERO das 87 linhas dos 18 envelopes vivos sem id
+   * têm o campo `chave`. A parte (a) da `0195_o_contrato_mora_no_panteon.sql` (perto da 251) casa a
+   * linha antiga PELA CHAVE antes de casar pelo e-mail: gravado um `tmp:1` POSICIONAL na linha de
+   * quem assinou, uma reescrita seguinte em que a ordem do quadro mudou põe esse mesmo `tmp:1` na
+   * linha de OUTRA pessoa — e a função leva o `assinado_em` junto, para quem nunca assinou. Sem o
+   * campo, a 0195 reencontra a linha pelo e-mail ÚNICO, que é o caminho que o banco já usa hoje nas
+   * 104 de 159 linhas sem `chave`.
+   */
+  it("quem não tem chave sai do quadro gravado SEM o campo chave", async () => {
+    const semChaveNenhuma = {
+      atualizado_em: "2026-09-29T16:06:00.000Z",
+      envelope_id: "env-51",
+      id: "reg-51",
+      proposta_id: null,
+      provedor_documento_id: "doc-51",
+      signatarios: [
+        {
+          assinado_em: "2026-09-30T12:00:00.000Z",
+          email: "nivea@careli.test",
+          nome: "Nivea Careli",
+          ordem: 1,
+          papel: "careli",
+        },
+        { chave: "sig-maura", email: "maura@exemplo.test", nome: "Maura Maria Passos", ordem: 2, papel: "comprador" },
+      ],
+    };
+    const { chamadasDaFuncao, sb } = bancoDeTeste({ envelope: semChaveNenhuma });
+    const { porta } = portaDeTeste();
+
+    const r = await trocarEmailDoSignatario(
+      sb,
+      { email: "nova@exemplo.test", envelopeId: "env-51", signerId: "sig-maura" },
+      porta,
+    );
+
+    expect(r.ok).toBe(true);
+    expect(chamadasDaFuncao[0]?.p_quadro).toEqual([
+      // A linha de quem assinou sai EXATAMENTE como entrou: sem o campo `chave`.
+      { email: "nivea@careli.test", nome: "Nivea Careli", ordem: 1, papel: "careli" },
+      { chave: "sig-novo", email: "nova@exemplo.test", nome: "Maura Maria Passos", ordem: 2, papel: "comprador" },
+    ]);
+  });
+
+  /**
+   * ⚠️ ENVELOPE ENCERRADO NÃO RECEBE TROCA, E ESTA ERA A OUTRA PORTA DO MESMO DANO.
+   *
+   * A trava de estado nasceu só no reenvio, e a troca é o gesto IRREVERSÍVEL que TAMBÉM NOTIFICA (o
+   * passo 4 chama `notificarSignatario`): sem esta guarda, o convite de um envelope morto continuava
+   * alcançável por aqui, com uma remoção de signatário por cima. Medido em produção em 01/10/2026 (só
+   * SELECT, projeto bxgukywoxgivlrhjkwjx): dos 29 envelopes da Clicksign, 4 estão `cancelado` e 3
+   * deles não têm nenhuma `chave` no quadro — e nesses 3 a tela da Têmis habilitava "Corrigir o
+   * e-mail", porque `podeTrocarEmail` só olhava o "@" e a chave que o diário entrega é o uuid do
+   * webhook.
+   */
+  it("envelope cancelado não tem troca de e-mail: recusa antes da remoção", async () => {
+    const { atualizacoes, sb } = bancoDeTeste({
+      envelope: { ...envelopeGravado, estado: "cancelado" },
+    });
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await trocarEmailDoSignatario(sb, pedidoDaTroca, porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(409);
+    expect(r.erro).toContain("foi cancelado");
+    expect(r.removido).toBe(false);
+    expect(chamadas).toEqual([]);
+    expect(atualizacoes).toEqual([]);
+  });
+
+  it("envelope assinado também não tem troca de e-mail", async () => {
+    const { sb } = bancoDeTeste({ envelope: { ...envelopeGravado, estado: "assinado" } });
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await trocarEmailDoSignatario(sb, pedidoDaTroca, porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(409);
+    expect(chamadas).toEqual([]);
+  });
+
+  /**
+   * ⚠️ E-MAIL REPETIDO NO QUADRO RECUSA DIZENDO O MOTIVO CERTO — E A REMOÇÃO NUNCA CHEGOU A ACONTECER.
+   *
+   * MEDIDO NO PRÓPRIO CÓDIGO, desfazendo a guarda e rodando este teste: o desfecho ANTES já era 409 e
+   * ZERO chamada, porque `conferirEmailDaTroca` projeta o quadro com o e-mail novo em TODA linha cujo
+   * endereço é o antigo — as duas viram o mesmo endereço, e `conferirSignatarios` recusa. Ou seja: a
+   * remoção de quem assinou NÃO era alcançável por aqui. O que estava errado era a FRASE, que
+   * culpava o endereço NOVO (*"Um do Casal e Dois do Casal usam o MESMO e-mail (corrigido@x.test)...
+   * cadastre um e-mail próprio para cada um"*) quando a causa é o endereço ANTIGO estar repetido — e o
+   * operador ia corrigir o campo errado.
+   *
+   * ⚠️ E SOBRAVAM DUAS ARMADILHAS LATENTES, que esta recusa antecipada desarma: `acharOSignatario`
+   * escolhia a PRIMEIRA linha com aquele endereço (e é dela que a trava de `assinadoEm` lê a marca,
+   * então a key de quem assinou casava na linha pendente), e `quadroComATroca` gravava a mesma
+   * `chaveNova` e o mesmo e-mail novo em TODAS as linhas que casassem. Qualquer reordenação futura
+   * dessas três conferências transformaria as duas em remoção de quem assinou.
+   *
+   * Medido em produção em 01/10/2026 (só SELECT): nenhum dos 29 envelopes da Clicksign tem e-mail
+   * repetido hoje, mas 23 dos 2.231 da D4Sign têm — a forma existe em contrato real.
+   */
+  it("e-mail repetido no quadro recusa a troca antes da remoção, culpando o endereço CERTO", async () => {
+    const CHAVE_DA_SEGUNDA = "77777777-7777-4777-8777-777777777777";
+    const { atualizacoes, sb } = bancoDeTeste({
+      envelope: {
+        atualizado_em: "2026-09-29T16:06:00.000Z",
+        envelope_id: "env-52",
+        id: "reg-52",
+        proposta_id: "prop-52",
+        provedor_documento_id: "doc-52",
+        signatarios: [
+          // A PRIMEIRA está pendente, e era ela que o `find` devolvia.
+          { email: "casal@x.test", nome: "Um do Casal", ordem: 1, papel: "comprador" },
+          {
+            assinado_em: "2026-09-30T12:00:00.000Z",
+            email: "casal@x.test",
+            nome: "Dois do Casal",
+            ordem: 1,
+            papel: "conjuge",
+          },
+        ],
+      },
+      payload: {
+        document: {
+          events: [],
+          key: "doc-52",
+          signers: [
+            { email: "casal@x.test", key: "66666666-6666-4666-8666-666666666666", name: "Um do Casal" },
+            { email: "casal@x.test", key: CHAVE_DA_SEGUNDA, name: "Dois do Casal" },
+          ],
+        },
+      },
+    });
+    const { chamadas, porta } = portaDeTeste();
+
+    const r = await trocarEmailDoSignatario(
+      sb,
+      { email: "corrigido@x.test", envelopeId: "env-52", signerId: CHAVE_DA_SEGUNDA },
+      porta,
+    );
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(409);
+    expect(r.erro).toBe(RECUSA_DE_EMAIL_REPETIDO_NO_QUADRO);
+    expect(r.removido).toBe(false);
+    expect(chamadas).toEqual([]);
+    expect(atualizacoes).toEqual([]);
   });
 });

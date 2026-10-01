@@ -42,7 +42,7 @@ import {
 import { contratoVigente } from "@/lib/temis/contrato-guardado";
 import { MOTIVOS } from "@/lib/temis/indeferimento";
 import { recadoDaGeracao } from "@/lib/temis/minuta-da-cadeia";
-import { RECUSA_DE_REENVIO_SEM_ID } from "@/lib/assinatura/recusa-de-reenvio";
+import { RECUSA_DE_CHAVE_QUE_NAO_E_DA_CLICKSIGN } from "@/lib/assinatura/recusa-de-reenvio";
 import { pedidoDoTrabalho } from "@/lib/temis/pedido-do-trabalho";
 import {
   caminhoDoCard,
@@ -227,14 +227,23 @@ type SignatarioNaTela = {
    */
   papel: null | string;
   /**
-   * O reenvio de convite não pode ser tentado para esta pessoa.
+   * O reenvio de convite não pode ser tentado para esta pessoa — `null` = pode.
    *
-   * ⚠️ O ENDPOINT DO REENVIO QUER O SIGNER ID DA CLICKSIGN, e até 24/09/2026 ele nunca foi guardado
-   * do nosso lado: a tela mandava a `chave` (a key do webhook, ou o e-mail) e levava 422, que
-   * aparecia em vermelho como se fosse defeito do provedor. Nos envelopes antigos o botão some, e
-   * o reenvio se faz no painel da Clicksign. `trocar_email` continua valendo.
+   * ⚠️ O ENDPOINT DO REENVIO QUER O SIGNER ID DA CLICKSIGN, E A `signer.key` DO WEBHOOK É ELE. Medido
+   * em produção em 01/10/2026 (só SELECT): a chave congelada no envio e a `signer.key` do webhook são
+   * o MESMO valor em 54 de 54 pares. Então esta marca sobrou para TRÊS motivos, os três calculados no
+   * servidor (`lib/assinatura/diario-do-envelope-db.ts`, com a régua de `reenviarConvite`): o envelope
+   * já terminou, a `chave` não serve para falar com a Clicksign (e-mail, `tmp:` ou `c2x:`), ou a
+   * pessoa não tem linha no quadro congelado. Marcada, o botão fica DESABILITADO com a frase do
+   * motivo — nunca some.
+   *
+   * ⚠️ E ELA NÃO É UM BOOLEANO, PORQUE UM BOOLEANO MENTIA. As duas telas mostravam a MESMA frase nos
+   * três motivos, e no `fora_do_quadro` ela afirmava o INVERSO: que a pessoa "só aparece na lista que
+   * o envio congelou", quando ali é justamente quem aparece só no payload do webhook e não está na
+   * lista. A frase vem pronta do servidor; o `motivo` é o que esta tela consulta para saber se o
+   * envelope encerrou (e aí a troca de e-mail também não vale).
    */
-  reenvioIndisponivel?: boolean;
+  reenvioIndisponivel?: null | { frase: string; motivo: string };
 };
 
 type Card = {
@@ -3025,7 +3034,52 @@ function LinhaDoSignatario({
 
   const signerId = signatario.chave;
   const emailAtual = (signatario.email ?? "").trim();
-  const podeMexer = envelopeId !== null && !signerId.includes("@");
+  /**
+   * A FAIXA DE AÇÕES APARECE? — e a resposta é "sempre que há envelope".
+   *
+   * ⚠️ O "@" SAIU DAQUI EM 01/10/2026, PORQUE ELE APAGAVA A LINHA INTEIRA. A condição era
+   * `envelopeId !== null && !signerId.includes("@")` e este ternário embrulha TODO o bloco de ações:
+   * quando a `chave` da linha é o próprio e-mail — o que `juntarComOsCongelados` faz com quem só
+   * existe na lista congelada do envio (`lib/assinatura/diario-do-envelope-db.ts`) — a pessoa
+   * aparecia sem botão, sem tooltip e sem uma frase dizendo por quê, que é exatamente o que o Lucas
+   * pediu para não acontecer em 12/09/2026: *"temos que conduzir o usuário na tela, ele tem que saber
+   * o que fazer"*.
+   */
+  const podeMexer = envelopeId !== null;
+  /**
+   * O ENVELOPE JÁ TERMINOU? — e aí NENHUM dos dois gestos vale, nem reenvio nem troca.
+   *
+   * ⚠️ O ESTADO VEM DO SERVIDOR DENTRO DO MOTIVO, e não é desencargo: `reenviarConvite` e
+   * `trocarEmailDoSignatario` recusam envelope terminal com 409, e sem esta régua a tela OFERECIA os
+   * dois. Medido em produção em 01/10/2026 (só SELECT): 3 dos 21 envelopes da Clicksign sem nenhuma
+   * `chave` no quadro estão `cancelado`, com 16 linhas que ficariam com o botão habilitado para dar
+   * faixa vermelha. A regra já está escrita no painel do Hades: *"O BOTÃO QUE TENTA E FALHA É PIOR DO
+   * QUE O BOTÃO DESABILITADO"*.
+   */
+  const envelopeEncerrado = signatario.reenvioIndisponivel?.motivo === "envelope_encerrado";
+  /** O reenvio pode? A régua é a do servidor, calculada lá (`diario-do-envelope-db.ts`). */
+  const podeReenviar = podeMexer && !signatario.reenvioIndisponivel;
+  /** A frase do botão de reenviar: a do motivo, que vem pronta do servidor, ou o que ele faz. */
+  const fraseDoReenvio = signatario.reenvioIndisponivel?.frase ?? "Reenviar o convite para este e-mail";
+  /**
+   * A TROCA DE E-MAIL PODE? — aqui a régua do "@" vale, e é quase a única coisa que ela guarda.
+   *
+   * ⚠️ É ESTE BOTÃO QUE MANDA O `signerId` CRU PARA O `DELETE /envelopes/{id}/signers/{signer_id}`,
+   * e e-mail ali devolve 404 (não 403). O 404 da remoção SEGUE EM FRENTE de propósito
+   * (`lib/temis/trocar-signatario.ts`, passo 1), então o signatário antigo FICARIA no envelope e um
+   * duplicado nasceria com o e-mail novo. O servidor recusa isso com
+   * `RECUSA_DE_CHAVE_QUE_NAO_E_DA_CLICKSIGN`; aqui a tela conta a mesma história antes do clique.
+   *
+   * ⚠️ E O ENVELOPE ENCERRADO BARRA OS DOIS. A troca é o gesto IRREVERSÍVEL e TAMBÉM NOTIFICA (passo
+   * 4): num envelope cancelado ela removeria o signatário, criaria outro e mandaria um link morto.
+   */
+  const podeTrocarEmail = podeMexer && !signerId.includes("@") && !envelopeEncerrado;
+  /** A frase do botão de corrigir: a do envelope encerrado vence, porque é a do envelope inteiro. */
+  const fraseDaTroca = envelopeEncerrado
+    ? (signatario.reenvioIndisponivel?.frase ?? RECUSA_DE_CHAVE_QUE_NAO_E_DA_CLICKSIGN)
+    : podeTrocarEmail
+      ? "Remove esta pessoa do envelope e a recria com o e-mail corrigido."
+      : RECUSA_DE_CHAVE_QUE_NAO_E_DA_CLICKSIGN;
   /**
    * Esta linha PEDE alguma coisa de quem está olhando?
    *
@@ -3056,6 +3110,12 @@ function LinhaDoSignatario({
     setAcaoNoAr(corpo.acao === "reenviar" ? "reenviar" : "trocar");
     try {
       const r = await temisFetch("/assinatura/signatario", {
+        // ⚠️ O REENVIO NÃO MANDA E-MAIL NENHUM, E ISSO É DE PROPÓSITO. O e-mail da linha chegou a
+        // subir junto como "ajuda" para o servidor casar a linha do quadro congelado, e era o ÚNICO
+        // ponto em que o navegador influenciava a trava de quem já assinou: quando o payload do
+        // webhook traz a `signer.key` SEM e-mail, era o endereço do navegador que escolhia QUAL linha
+        // do quadro era auditada. Quem diz de quem é a linha é o nosso quadro (pela `chave`) ou o
+        // payload deste envelope (pela `signer.key`), e os dois são lidos no servidor.
         body: JSON.stringify({ ...corpo, envelopeId, signerId }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -3259,24 +3319,34 @@ function LinhaDoSignatario({
                   sempre. Com o lápis só no convite que voltou, a tela não tinha caminho nenhum para
                   esse caso. A troca é a mesma do servidor, e a Clicksign continua recusando quem já
                   assinou. */}
+              {/* ⚠️ SEM O ID DA CLICKSIGN ELE FICA DESABILITADO, NÃO SOME — e é só ELE que a régua do
+                  "@" guarda (01/10/2026). Este botão abre o campo que manda o `signerId` cru para o
+                  `DELETE /envelopes/{id}/signers/{signer_id}`, onde e-mail devolve 404 e o 404 segue
+                  em frente, deixando o signatário antigo no envelope com um duplicado ao lado. A
+                  frase é a MESMA que o servidor devolve (`RECUSA_DE_CHAVE_QUE_NAO_E_DA_CLICKSIGN`).
+                  Vale para os DOIS lápis: o escrito (convite que voltou) e o ícone (sem notícia),
+                  juntados na integração da sessão Publicação (01/10/2026). */}
               {precisaDeConserto ? (
-                <button
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#A07C3B] px-2.5 py-1 text-[11px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                  disabled={acaoNoAr !== null}
-                  onClick={abrirCorrecao}
-                  type="button"
-                >
-                  <Pencil aria-hidden="true" className="size-3" />
-                  Corrigir o e-mail
-                </button>
+                <Tooltip content={fraseDaTroca} placement="top">
+                  <button
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#A07C3B] px-2.5 py-1 text-[11px] font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={acaoNoAr !== null || !podeTrocarEmail}
+                    onClick={abrirCorrecao}
+                    title={podeTrocarEmail ? undefined : fraseDaTroca}
+                    type="button"
+                  >
+                    <Pencil aria-hidden="true" className="size-3" />
+                    Corrigir o e-mail
+                  </button>
+                </Tooltip>
               ) : signatario.assinouEm ? null : (
-                <Tooltip content="Corrigir o e-mail" placement="top">
+                <Tooltip content={podeTrocarEmail ? "Corrigir o e-mail" : fraseDaTroca} placement="top">
                   <button
                     aria-label="Corrigir o e-mail"
                     className="grid size-7 shrink-0 place-items-center rounded-lg border border-line text-ink-muted transition-colors hover:bg-subtle hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={acaoNoAr !== null}
+                    disabled={acaoNoAr !== null || !podeTrocarEmail}
                     onClick={abrirCorrecao}
-                    title="Corrigir o e-mail"
+                    title={podeTrocarEmail ? "Corrigir o e-mail" : fraseDaTroca}
                     type="button"
                   >
                     <Pencil aria-hidden="true" className="size-3.5" />
@@ -3289,37 +3359,31 @@ function LinhaDoSignatario({
                   10/09/2026 (*"coloca esses botões no topo somente o ícone"*). E reenviar convite
                   para quem JÁ ASSINOU é gesto sem sentido: a tela oferecia, e oferecer o que não
                   serve é o que faz o operador duvidar do que serve. */}
-              {/* ⚠️ E QUANDO NÃO TEMOS O ID DO SIGNATÁRIO NA CLICKSIGN ELE FICA DESABILITADO, NÃO
-                  SOME. O endpoint do reenvio espera o signer id criado no envio, e nos envelopes
-                  anteriores a 24/09/2026 ele nunca foi guardado do nosso lado: a chamada volta 422
-                  e a tela escreve, em vermelho, um erro que é nosso. Medido em 24/09/2026: 21
-                  envelopes em `temis_envelopes`, ZERO com `chave` congelada — ou seja, sumir aqui
-                  era sumir em 100% dos envelopes que existem. E para quem está em "sem notícia"
-                  (`precisaDeConserto` falso) a faixa de ações ficava COMPLETAMENTE VAZIA, contra o
-                  que o Lucas pediu em 12/09/2026, duas telas acima: *"temos que conduzir o usuário
-                  na tela, ele tem que saber o que fazer"*. O Hades já faz assim
-                  (`PropostasPanel.tsx`), e as duas telas do painel de assinatura têm de bater.
-                  `trocar_email` continua valendo — ele reencontra a pessoa pelo diário —, e por
-                  isso `podeMexer` não muda. */}
+              {/* ⚠️ O BOTÃO VOLTOU A VALER NOS ENVELOPES ANTIGOS (01/10/2026), PORQUE A `signer.key`
+                  DO WEBHOOK É O SIGNER ID. O código afirmava que só o id devolvido no ENVIO servia,
+                  e era dedução: medido em produção em 01/10/2026 (só SELECT) a chave congelada e a
+                  `signer.key` do webhook são o MESMO valor em 54 de 54 pares, e nos 18 envelopes
+                  vivos sem chave congelada as 68 pessoas pendentes TODAS têm key no payload — 4
+                  contratos da Têmis (VOL0307, VOC1102, VOL0311 e VOL1107, parados desde 23/09) mais
+                  14 termos de acordo do Hades. O que sobra desabilitado são TRÊS motivos, e cada um
+                  com a SUA frase, que vem pronta do servidor: o envelope já terminou, a `chave` da
+                  linha não é id da Clicksign (é o próprio e-mail), ou a pessoa não tem linha no
+                  quadro congelado. E desabilitado ele NÃO SOME: para quem está em "sem notícia"
+                  (`precisaDeConserto` falso) a faixa de ações ficaria COMPLETAMENTE VAZIA, contra o
+                  que o Lucas pediu em 12/09/2026, duas telas acima: *"temos que conduzir o usuário na
+                  tela, ele tem que saber o que fazer"*. O Hades faz igual (`PropostasPanel.tsx`), e as
+                  duas telas do painel de assinatura têm de bater. */}
               {signatario.assinouEm ? null : (
                 <Tooltip
-                  content={
-                    signatario.reenvioIndisponivel
-                      ? RECUSA_DE_REENVIO_SEM_ID
-                      : "Reenviar o convite para este e-mail"
-                  }
+                  content={fraseDoReenvio}
                   placement="top"
                 >
                   <button
                     aria-label="Reenviar o convite para este e-mail"
                     className="grid size-7 shrink-0 place-items-center rounded-lg border border-line text-ink-muted transition-colors hover:bg-subtle hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={acaoNoAr !== null || signatario.reenvioIndisponivel === true}
+                    disabled={acaoNoAr !== null || !podeReenviar}
                     onClick={() => void executar({ acao: "reenviar" })}
-                    title={
-                      signatario.reenvioIndisponivel
-                        ? RECUSA_DE_REENVIO_SEM_ID
-                        : "Reenviar o convite para este e-mail"
-                    }
+                    title={fraseDoReenvio}
                     type="button"
                   >
                     {acaoNoAr === "reenviar" ? (

@@ -39,7 +39,6 @@ import {
 } from "@/lib/hades/dossie/termo-de-acordo-gate";
 import { motivoParaNaoEnviarParaAssinatura } from "@/lib/hades/acordo/envio-gate";
 import { TERMO_DE_ACORDO_LIBERADO } from "@/lib/apolo/termos-liberados";
-import { RECUSA_DE_REENVIO_SEM_ID } from "@/lib/assinatura/recusa-de-reenvio";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import type {
   GuardianCompromissoDetail,
@@ -571,16 +570,27 @@ type QuemAssinouNaTela = {
   nome: string;
   papel: null | string;
   /**
-   * O botão de reenviar convite não pode nem tentar.
+   * O botão de reenviar convite não pode nem tentar — `null` = pode, e o resto é a frase pronta.
    *
    * ⚠️ O BOTÃO QUE TENTA E FALHA É PIOR DO QUE O BOTÃO DESABILITADO. Nívea, 24/09/2026: *"Deu erro
    * no envio dos acordos. Não recebi e não consigo reenviar."* O envio de AC-000051 não falhou; o
    * que falhava era este botão, que mandava a `chave` do diário para um endpoint que espera o
    * signer id da Clicksign, levava 422 e escrevia na tela, em vermelho, um erro nosso como se
-   * fosse do provedor. Nos envelopes enviados antes de 24/09/2026 o id não existe do nosso lado:
-   * o reenvio se faz no painel da Clicksign, e o tooltip diz isso.
+   * fosse do provedor.
+   *
+   * ⚠️ CORREÇÃO DE 01/10/2026: "NOS ENVELOPES ANTES DE 24/09/2026 O ID NÃO EXISTE DO NOSSO LADO" É
+   * FALSO. Era o que este doc afirmava, e era dedução: medido em produção em 01/10/2026 (só SELECT,
+   * projeto bxgukywoxgivlrhjkwjx), a `chave` que o envio congela e a `signer.key` do webhook são o
+   * MESMO valor em 54 de 54 pares (8 envelopes, zero diferenças), e dos 18 envelopes vivos sem
+   * nenhuma chave congelada 14 são termos de acordo do Hades, com as 68 pessoas pendentes TODAS com
+   * key no payload que já está em `temis_assinatura_eventos`. O reenvio desses se faz AQUI.
+   *
+   * ⚠️ E O QUE SOBROU SÃO TRÊS MOTIVOS, COM TRÊS FRASES — o envelope já terminou, a `chave` não é id
+   * da Clicksign, ou a pessoa não tem linha no quadro congelado. O servidor calcula o motivo e manda
+   * a frase (`lib/assinatura/diario-do-envelope-db.ts`), com a régua de `reenviarConvite`: um booleano
+   * com uma frase só dizia, num dos três, o inverso do que acontecia.
    */
-  reenvioIndisponivel?: boolean;
+  reenvioIndisponivel?: null | { frase: string; motivo: string };
 };
 
 type AssinaturaDoCard = {
@@ -855,24 +865,33 @@ function AssinaturaDoAcordo({ item }: { item: GuardianCompromissoDetail }) {
                   {!s.assinouEm && assinatura.envelope.envelopeId ? (
                     <Tooltip
                       content={
-                        // ⚠️ A FRASE É A MESMA DA TÊMIS, E VEM DA MESMA CONSTANTE. Estava copiada
-                        // à mão aqui, com outras palavras; as duas telas do painel de assinatura
-                        // têm de contar a mesma história (a casa já pagou caro para mantê-las
-                        // iguais).
-                        s.reenvioIndisponivel || s.chave.includes("@")
-                          ? RECUSA_DE_REENVIO_SEM_ID
+                        // ⚠️ A FRASE VEM PRONTA DO SERVIDOR, E É A MESMA DA TÊMIS. Estava copiada à
+                        // mão aqui, com outras palavras; depois virou uma constante só para TRÊS
+                        // motivos diferentes, e numa delas afirmava o contrário do caso (dizia que a
+                        // pessoa "só aparece na lista que o envio congelou" justamente para quem está
+                        // só no payload e NÃO está na lista). Agora o motivo e a frase vêm de
+                        // `reenvioIndisponivel` (`lib/assinatura/diario-do-envelope-db.ts`), e as duas
+                        // telas do painel de assinatura escrevem o mesmo texto que o servidor devolve.
+                        s.reenvioIndisponivel
+                          ? s.reenvioIndisponivel.frase
                           : "Reenvia o convite desta pessoa. Nada é criado nem removido no envelope."
                       }
                       placement="top"
                     >
                       <button
                         type="button"
+                        // ⚠️ O "@" SAIU DO `disabled` DAQUI (01/10/2026), E QUEM MANDA É
+                        // `reenvioIndisponivel`, QUE O SERVIDOR CALCULA. A régua do "@" barrava junto
+                        // a `signer.key` do webhook, que SERVE: medido em produção em 01/10/2026 (só
+                        // SELECT), a chave congelada e a `signer.key` são o MESMO valor em 54 de 54
+                        // pares, e dos 18 envelopes vivos sem chave congelada 14 são termos de acordo,
+                        // com as 68 pessoas pendentes TODAS tendo key no payload.
+                        //
+                        // ⚠️ E O PEDIDO NÃO LEVA E-MAIL. Ele chegou a levar, como "ajuda" para o
+                        // servidor achar a linha do quadro, e era o único ponto em que o navegador
+                        // influenciava a trava de quem já assinou.
                         onClick={() => void agir("reenviar", { signerId: s.chave })}
-                        disabled={
-                          trabalhando !== null ||
-                          s.reenvioIndisponivel === true ||
-                          s.chave.includes("@")
-                        }
+                        disabled={trabalhando !== null || Boolean(s.reenvioIndisponivel)}
                         className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-line text-ink-soft transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
                         aria-label={`Reenviar o convite de ${s.nome}`}
                       >

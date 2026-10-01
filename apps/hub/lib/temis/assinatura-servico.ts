@@ -267,6 +267,7 @@ export async function consertarSignatario(
 ): Promise<NextResponse> {
   const corpo = (await request.json().catch(() => ({}))) as {
     acao?: unknown;
+    /** O e-mail NOVO, só na troca. */
     email?: unknown;
     envelopeId?: unknown;
     signerId?: unknown;
@@ -290,6 +291,12 @@ export async function consertarSignatario(
   if (recusa) return recusa;
 
   if (corpo.acao === "reenviar") {
+    // ⚠️ O PEDIDO NÃO MANDA E-MAIL NENHUM, E ISSO É A GUARDA. Quem diz de quem é a linha é o nosso
+    // quadro congelado (pela `chave`) ou o payload de webhook DESTE envelope (pela `signer.key`), os
+    // dois lidos dentro de `reenviarConvite`. Um endereço vindo do navegador chegou a existir aqui
+    // como "última saída", e ele era o ÚNICO ponto em que o navegador influenciava a trava de quem já
+    // assinou: era ele que escolhia QUAL linha do quadro era auditada quando o payload trazia a
+    // `signer.key` sem e-mail.
     const reenvio = await reenviarConvite(sb, { envelopeId, signerId });
     if (!reenvio.ok) {
       return NextResponse.json({ erro: reenvio.erro }, { status: reenvio.status });
