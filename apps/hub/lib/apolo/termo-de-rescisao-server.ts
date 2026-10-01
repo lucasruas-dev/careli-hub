@@ -512,7 +512,8 @@ export async function carregarTermoDeRescisao(escopo: EscopoDoTermo): Promise<Te
 }
 
 export type ContratoConferivel =
-  | { ok: true }
+  /** `valorDeTabela`: o teto do valor conferido (a corretagem não passa do preço do lote). */
+  | { ok: true; valorDeTabela: null | number }
   | { error: string; ok: false; status: number };
 
 /**
@@ -536,7 +537,8 @@ export async function conferirContratoDeCorretagemZero(escopo: {
   });
   if (!extrato.ok) return { error: extrato.error, ok: false, status: 503 };
 
-  if (!extrato.data.contratos.some((item) => item.contrato.id === escopo.contratoId)) {
+  const relatorio = extrato.data.contratos.find((item) => item.contrato.id === escopo.contratoId);
+  if (!relatorio) {
     return {
       error: "Este contrato não está entre os contratos com carteira deste cliente no C2X.",
       ok: false,
@@ -556,7 +558,8 @@ export async function conferirContratoDeCorretagemZero(escopo: {
     };
   }
 
-  return { ok: true };
+  const preco = relatorio.contrato.precoTabela;
+  return { ok: true, valorDeTabela: preco !== null && Number.isFinite(preco) && preco > 0 ? preco : null };
 }
 
 /** "multa penal, publicidade e tributos". */

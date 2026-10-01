@@ -153,6 +153,22 @@ export async function PUT(request: Request) {
   const conferivel = await conferirContratoDeCorretagemZero({ c2xId, contratoId });
   if (!conferivel.ok) return erro(conferivel.error, conferivel.status);
 
+  // ⚠️ O VALOR CONFERIDO TEM TETO: O PREÇO DO LOTE. Achado da revisão de 30/09/2026: só "maior que
+  // zero" deixava passar R$ 700.000 digitado no lugar de R$ 7.000, e a base "tabela menos comissão"
+  // da multa e da publicidade ficaria negativa num papel que vai ao cliente. Corretagem do tamanho do
+  // lote não existe; sem preço conhecido, não há como conferir, e a gravação recusa.
+  if (valor !== null) {
+    if (conferivel.valorDeTabela === null) {
+      return erro("A unidade está sem valor de tabela no C2X, e sem ele não dá para conferir o valor da corretagem.", 422);
+    }
+    if (valor >= conferivel.valorDeTabela) {
+      return erro(
+        "O valor da corretagem informado não é menor que o valor de tabela da unidade. Confira o número lido no contrato assinado.",
+        400,
+      );
+    }
+  }
+
   try {
     const { error: erroDoBanco } = await admin.from(TABELA).upsert(
       {

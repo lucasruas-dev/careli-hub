@@ -17,7 +17,7 @@ const CODIGO = ROTA.split("\n")
 const estado = vi.hoisted(() => ({
   autorizacao: "coordenacao" as "coordenacao" | "negada" | "sem_sessao",
   comSupabase: true,
-  conferivel: { ok: true } as { error?: string; ok: boolean; status?: number },
+  conferivel: { ok: true, valorDeTabela: 93900 } as { error?: string; ok: boolean; status?: number; valorDeTabela?: null | number },
   errosDoUpsert: null as null | { code?: string; message: string },
   guardas: [] as Array<{ c2xId: number; contratoId: number }>,
   gravacoes: [] as Array<{ opcoes: unknown; tabela: string; valores: Record<string, unknown> }>,
@@ -85,7 +85,7 @@ const COM_CORRETAGEM = {
 beforeEach(() => {
   estado.autorizacao = "coordenacao";
   estado.comSupabase = true;
-  estado.conferivel = { ok: true };
+  estado.conferivel = { ok: true, valorDeTabela: 93900 };
   estado.errosDoUpsert = null;
   estado.guardas = [];
   estado.gravacoes = [];
@@ -211,6 +211,32 @@ describe("a guarda do C2X", () => {
     expect(resposta.status).toBe(422);
     expect((await resposta.json()).error).toContain("R$ 0,00");
     expect(estado.gravacoes).toHaveLength(0);
+  });
+
+  // ⚠️ ACHADO DA REVISÃO (30/09/2026): R$ 700.000 no lugar de R$ 7.000 deixaria a base da multa
+  // negativa. O teto é o valor de tabela da unidade.
+  it("valor da corretagem igual ou acima do valor de tabela: 400, e nada é gravado", async () => {
+    const resposta = await PUT(pedido({ ...COM_CORRETAGEM, valor: "700.000,00" }));
+
+    expect(resposta.status).toBe(400);
+    expect((await resposta.json()).error).toContain("não é menor que o valor de tabela");
+    expect(estado.gravacoes).toHaveLength(0);
+  });
+
+  it("logo abaixo do valor de tabela ainda grava", async () => {
+    const resposta = await PUT(pedido({ ...COM_CORRETAGEM, valor: "93.899,99" }));
+    expect(resposta.status).toBe(200);
+  });
+
+  it("unidade sem valor de tabela: 'houve' recusa com 422, e 'não houve' grava", async () => {
+    estado.conferivel = { ok: true, valorDeTabela: null };
+
+    const houve = await PUT(pedido(COM_CORRETAGEM));
+    expect(houve.status).toBe(422);
+    expect(estado.gravacoes).toHaveLength(0);
+
+    const naoHouve = await PUT(pedido(SEM_CORRETAGEM));
+    expect(naoHouve.status).toBe(200);
   });
 
   it("C2X fora do ar: 503", async () => {

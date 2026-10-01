@@ -667,7 +667,7 @@ describe("a guarda da gravação da conferência", () => {
 
   it("contrato do cliente e comissão zero: libera", async () => {
     estado.linhaDoC2x = { enterprise_id: 37, texto_da_corretagem: TEXTO_ZERO };
-    expect(await conferirContratoDeCorretagemZero({ c2xId: 77, contratoId: 900002 })).toEqual({ ok: true });
+    expect(await conferirContratoDeCorretagemZero({ c2xId: 77, contratoId: 900002 })).toEqual({ ok: true, valorDeTabela: 150000 });
   });
 
   it("contrato que não é do cliente: 404", async () => {
