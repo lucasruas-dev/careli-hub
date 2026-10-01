@@ -28,6 +28,7 @@ import {
   EXCLUDED_ENTERPRISE_IDS,
   MIRROR_ENTERPRISE_IDS,
 } from "@/lib/guardian/c2x-analytics";
+import { lerComChaveDoGrupo } from "@/lib/hercules/chave-do-grupo";
 
 // Só o que estes helpers usam. Aceita tanto o admin client do Apolo quanto um SupabaseClient
 // cru — os dois convivem no módulo (lib/apolo/* usa os dois estilos).
@@ -154,6 +155,12 @@ export const FRASE_TROCA_DE_EMPREENDIMENTO =
 /** O pedaço de `hercules_empreendimentos` (o cadastro do Panteon) que a régua de mercado usa. */
 export type EmpreendimentoDoCadastro = {
   c2xEnterpriseId: null | string;
+  /**
+   * A chave congelada do grupo (0203, PAN-124 F4), só no pai de grupo. É ela, e não o nome, que casa
+   * `group:<x>` quando quem lê expande o grupo (o Mover CAD, por `expandirPeloCadastro`). Nula sem a
+   * coluna; aí vale o nome, como antes.
+   */
+  chaveDoGrupo?: null | string;
   codigo: null | string;
   id: string;
   nome: null | string;
@@ -277,15 +284,22 @@ export async function lerEmpreendimentosDoCadastro(
   const PAGINA = 1000;
   const saida: EmpreendimentoDoCadastro[] = [];
   for (let de = 0; ; de += PAGINA) {
-    const { data, error } = await client
-      .from("hercules_empreendimentos")
-      .select("id, pai_id, c2x_enterprise_id, codigo, nome")
-      .eq("workspace_id", "careli")
-      .order("id", { ascending: true })
-      .range(de, de + PAGINA - 1);
-    if (error) throw new Error(`hercules_empreendimentos: leitura falhou (${error.message})`);
+    // Com a chave do grupo (0203); sem a coluna, repete sem ela (lib/hercules/chave-do-grupo.ts).
+    const { data, error } = await lerComChaveDoGrupo("id, pai_id, c2x_enterprise_id, codigo, nome", (selecao) =>
+      client
+        .from("hercules_empreendimentos")
+        .select(selecao)
+        .eq("workspace_id", "careli")
+        .order("id", { ascending: true })
+        .range(de, de + PAGINA - 1),
+    );
+    if (error) {
+      const mensagem = (error as { message?: unknown }).message;
+      throw new Error(`hercules_empreendimentos: leitura falhou (${String(mensagem ?? "sem detalhe")})`);
+    }
     const pagina = (data ?? []) as Array<{
       c2x_enterprise_id: null | number | string;
+      chave_do_grupo?: null | string;
       codigo: null | string;
       id: string;
       nome: null | string;
@@ -294,6 +308,7 @@ export async function lerEmpreendimentosDoCadastro(
     for (const linha of pagina) {
       saida.push({
         c2xEnterpriseId: normalizarEnterpriseId(linha.c2x_enterprise_id),
+        chaveDoGrupo: String(linha.chave_do_grupo ?? "").trim() || null,
         codigo: linha.codigo ?? null,
         id: String(linha.id),
         nome: linha.nome ?? null,
