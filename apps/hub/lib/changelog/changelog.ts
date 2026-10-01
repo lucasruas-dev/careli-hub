@@ -36,6 +36,39 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-10-01-autonomo-link-publico",
+    deployedAt: "__HORA_REAL__",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Novo link público para o corretor autônomo se cadastrar pelo celular:** c2x.app.br/publico/autonomo. Ele escolhe os empreendimentos em que quer atuar (é só um pedido), informa o CPF e o celular e fotografa a identidade e o comprovante de endereço.",
+            ],
+            screen: "Link público do autônomo",
+          },
+          {
+            items: [
+              "**Nova tela Autônomos, só para a coordenação:** lista os pedidos que chegaram pelo link, com os documentos, e as ações Aprovar, Pedir correção e Indeferir. O corretor recebe o aviso pelo WhatsApp do Relacionamento.",
+              "**A ficha do corretor só nasce quando a coordenação aprova.** Até lá, o que chegou pelo link é só um pedido e não mexe em nenhum cadastro.",
+              "**Aba Habilitação na mesma tela:** libera cada autônomo aprovado num empreendimento, e o coordenador é avisado. Aviso no sino para a coordenação e botão Copiar link do cadastro.",
+            ],
+            screen: "Autônomos",
+          },
+        ],
+      },
+    ],
+    rollback: "c9ee4d22",
+    technical: {
+      done: "Rotas públicas `/api/publico/autonomo/iniciar` (pré-sessão HS256 própria, `preAutonomo`) e `/api/publico/autonomo/cadastro`; `proxy.ts` libera só esse prefixo. O envio grava SÓ o pedido em `apolo_audit_events` (entity_id nulo), com a proposta por lista de inclusão (sem cônjuge), documentos no staging privado e o interesse; reenvio após correção é um pedido novo; a resposta é sempre a mesma (não revela CPF ou e-mail existente). Aprovar grava pela porta do cadastro interno (`createApoloEntity`), papel ativo, código CA (`broker_code is null`) e documentos do staging. Com o token do autônomo, `/api/publico/cad/ocr` só faz `extract` (enrich e enrich-company dão 403). Celular conferido por dígitos, teto geral de 40 pedidos por hora, sino sem inundar. Fila, documentos, decisão e habilitação (`/api/apolo/corretores-autonomos/*`) só para a coordenação (admin e líder). Testes de não regressão da CAD do cliente, da imobiliária e do portal. Sem migração. Segunda versão, depois de a primeira ser barrada pela revisão da Publicação. Integrado por merge pela sessão Publicação.",
+      motivation: "Lucas (01/10/2026): \"fizemos o processo de cadastro de corretor autonomo, mas ele seria para o time interno, preciso criar o link publico igual temos da cad, imobiliaria\".",
+    },
+    title: "Link público do corretor autônomo e tela Autônomos",
+    type: "novidade",
+    version: "1.404.0",
+  },
+  {
     buildTag: "2026-10-01-clicksign-requisitos-em-massa",
     deployedAt: "2026-10-01T15:09:56-03:00",
     internal: true,
