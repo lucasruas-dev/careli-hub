@@ -5,6 +5,11 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// `vi.mock` é içado para antes dos imports, então o import estático já recebe o módulo falso. Um
+// `await import` no topo do arquivo, como estava, travava o worker do vitest na suíte inteira
+// ("Timeout calling onTaskUpdate", medido em 01/10/2026).
+import { ConferenciaDaCorretagem } from "./conferencia-corretagem-form";
+
 // O FORMULÁRIO DA CONFERÊNCIA DA CORRETAGEM, EXERCITADO DE VERDADE (jsdom, sem rota).
 //
 // ⚠️ ALÉM DO TESTE POR TEXTO (`conferencia-corretagem-form.test.ts`), AQUI O FLUXO RODA: o Salvar só
@@ -19,7 +24,6 @@ vi.mock("../../data/apolo-operations", () => ({
   getApoloAccessToken: async () => "token-de-teste",
 }));
 
-const { ConferenciaDaCorretagem } = await import("./conferencia-corretagem-form");
 
 type Chamada = { corpo: null | Record<string, unknown>; metodo: string; url: string };
 
