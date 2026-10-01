@@ -36,6 +36,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-10-01-temis-corrigir-email-sem-noticia",
+    deployedAt: "__HORA_REAL__",
+    internal: true,
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**No card em Em assinatura, quem ainda não assinou ganha o lápis Corrigir o e-mail também em Sem notícia**, e não só quando o convite voltou. Quem já assinou continua sem botão.",
+            ],
+            screen: "Contrato · Em assinatura",
+          },
+        ],
+      },
+    ],
+    rollback: "ecd57dd4",
+    technical: {
+      done: "`modules/temis/blocks/trabalho/tela-de-trabalho.tsx`, LinhaDoSignatario: o botão escrito \"Corrigir o e-mail\" segue só para convite não entregue; para quem não assinou e não teve o convite devolvido entra um ícone de lápis (Tooltip + aria-label) com a mesma ação (`abrirCorrecao`). A rota POST /api/temis/assinatura/signatario (acao trocar_email, portão `autorizarEmissaoDeContrato`) não mudou e já aceitava a troca sem olhar a situação do convite; a Clicksign continua recusando remover quem já assinou. Teste novo de comportamento com 3 casos. Sem migração. Integrado por merge pela sessão Publicação.",
+      motivation: "Lucas (01/10/2026), no contrato da Maura do VOC0306 em Sem notícia: \"preciso alterar o e-mail da Maura e reenviar\". Convite que não voltou não prova que o endereço está certo, e a tela só oferecia o reenvio.",
+    },
+    title: "Corrigir o e-mail de quem está sem notícia na assinatura",
+    type: "correcao",
+    version: "1.403.2",
+  },
+  {
     buildTag: "2026-10-01-conferencia-da-corretagem-acabamento",
     deployedAt: "2026-10-01T13:13:51-03:00",
     internal: true,
