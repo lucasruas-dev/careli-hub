@@ -816,6 +816,104 @@ describe("a recusa por avisos, de ponta a ponta", () => {
   });
 });
 
+// ⚠️ O AVISO DE CADA RUBRICA, PELO CAMINHO REAL (01/10/2026, achado da revisão da Publicação da
+// 1.403.1). Os testes acima cobriam o aviso da fruição, o da corretagem e o do zero; um filtro que
+// ESCONDESSE por texto o aviso de Multa penal, Publicidade ou Tributos (uma lista de frases
+// PROIBIDAS na chamada de `recusaPorAvisos`) passava em todos, porque nenhum teste gerava esses
+// avisos pela montagem real. Aqui a premissa cadastrada pede uma base que não veio, a conta real
+// escreve "<Rubrica> não entrou na conta: ...", e a recusa tem de trazer a frase COMPLETA, sem a
+// costura `dependencias.montar`.
+//
+// Os caminhos reais que existem hoje: `valor_do_contrato_atualizado` é SEMPRE nulo (nenhuma fonte da
+// casa o define, ver `montarDadosDaRescisao`), e `valor_do_contrato` é nulo quando a soma das
+// parcelas do contrato é zero (o caso do LOS0618, medido em 1.017 contratos). Os tributos NÃO aceitam
+// o "atualizado" (as bases da rubrica são total pago, valor do contrato e valor de tabela, e a leitura
+// das premissas ignora a linha com base que não serve), então o caminho real deles é o valor do
+// contrato com a soma das parcelas zerada.
+describe("o aviso de cada rubrica, pela montagem real", () => {
+  /** O cadastro completo, com a base de UMA rubrica trocada. */
+  function cadastroComBase(rubrica: string, base: string) {
+    return CADASTRO_COMPLETO.map((linha) => (linha.rubrica === rubrica ? { ...linha, base } : linha));
+  }
+
+  const BASE_ATUALIZADA = "valor_do_contrato_atualizado";
+  const SEM_BASE = "a premissa manda calcular sobre o valor do contrato atualizado, que não foi informado.";
+  const ABERTURA = "O termo de rescisão não sai para a unidade VOC0101 sem conferência: ";
+
+  /** Um contrato cujas parcelas somam ZERO: o "valor do contrato" não existe, e as rubricas que o pedem avisam. */
+  function extratoComParcelasZeradas() {
+    const relatorio = montarExtratoDoContrato({
+      contrato: CONTRATO,
+      hoje: HOJE,
+      parcelas: [
+        parcela({ id: 1, parcelaAtual: 1, statusId: 7, valorInicial: 0, vencimento: "2026-08-10" }),
+        parcela({ id: 2, parcelaAtual: 2, valorInicial: 0, vencimento: "2026-10-10" }),
+      ],
+    });
+    return {
+      data: {
+        cliente: { c2xId: 77, documentoMascarado: "***.123.456-**", nome: "CLIENTE DE TESTE" },
+        contratos: [relatorio],
+        posicaoEm: HOJE,
+      },
+      ok: true,
+    };
+  }
+
+  it.each([
+    ["clausula_penal", "Multa penal"],
+    ["publicidade", "Publicidade"],
+  ])("%s com a base que não veio: 422 com o aviso de %s por inteiro", async (rubrica, rotulo) => {
+    estado.respostas.hercules_premissas_de_rescisao = {
+      data: cadastroComBase(rubrica, BASE_ATUALIZADA),
+      error: null,
+    };
+
+    expect(await carregarTermoDeRescisao(ESCOPO)).toEqual({
+      error: `${ABERTURA}${rotulo} não entrou na conta: ${SEM_BASE}`,
+      ok: false,
+      status: 422,
+    });
+  });
+
+  it("tributos sobre o valor do contrato, com a soma das parcelas zerada: o aviso real do LOS0618", async () => {
+    estado.extrato = extratoComParcelasZeradas();
+    estado.respostas.hercules_premissas_de_rescisao = {
+      data: cadastroComBase("tributos", "valor_do_contrato"),
+      error: null,
+    };
+
+    expect(await carregarTermoDeRescisao(ESCOPO)).toEqual({
+      error: `${ABERTURA}Tributos não entrou na conta: a premissa manda calcular sobre o valor do contrato, que não foi informado.`,
+      ok: false,
+      status: 422,
+    });
+  });
+
+  it("multa, publicidade, tributos e fruição juntas: a frase leva os quatro avisos na ordem em que a conta os produz", async () => {
+    estado.extrato = extratoComParcelasZeradas();
+    estado.respostas.hercules_posse = { data: { data_da_posse: "2025-09-16" }, error: null };
+    estado.respostas.hercules_premissas_de_rescisao = {
+      data: CADASTRO_COMPLETO.map((linha) => {
+        if (linha.rubrica === "tributos") return { ...linha, base: "valor_do_contrato" };
+        if (["clausula_penal", "publicidade"].includes(linha.rubrica)) return { ...linha, base: BASE_ATUALIZADA };
+        return linha;
+      }),
+      error: null,
+    };
+
+    expect(await carregarTermoDeRescisao(ESCOPO)).toEqual({
+      error:
+        `${ABERTURA}Multa penal não entrou na conta: ${SEM_BASE} ` +
+        `Publicidade não entrou na conta: ${SEM_BASE} ` +
+        "Tributos não entrou na conta: a premissa manda calcular sobre o valor do contrato, que não foi informado. " +
+        `Fruição não entrou na conta: ${SEM_BASE}`,
+      ok: false,
+      status: 422,
+    });
+  });
+});
+
 // ⚠️ A CHAMADA NÃO PODE FILTRAR NADA, PROVADA COM UM AVISO QUE NENHUM CÓDIGO CONHECE (01/10/2026,
 // achado da segunda revisão da Publicação). Os testes acima usam os avisos REAIS de hoje, e uma lista
 // de frases permitidas que casasse com todos eles (por exemplo `/não entrou na conta|Sem a

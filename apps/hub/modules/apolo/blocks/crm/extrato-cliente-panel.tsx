@@ -12,7 +12,7 @@ import {
   TrendingUp,
   TriangleAlert,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Tooltip } from "@repo/uix";
 import {
@@ -104,6 +104,36 @@ function ExtratoClienteConteudo({ entity }: { entity: ApoloEntity }) {
     resultado: ResultadoDaConferencia;
   }>(null);
   const [mensagemDaConferencia, setMensagemDaConferencia] = useState<null | string>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
+
+  // ⚠️ CANCELAR AO TROCAR DE CLIENTE (decisão do Lucas, 01/10/2026: "cancelar ao trocar"; achado da
+  // revisão da Publicação da 1.403.1). Sem isto, o PDF pedido para o cliente A e ainda a caminho, com
+  // o cliente B já aberto, tinha dois defeitos: a FALHA de A sumia (o estado era de A e o painel já
+  // era de B) e o SUCESSO de A baixava o arquivo com a tela de B na frente do operador, que entregaria
+  // o papel do cliente errado. Cada pedido tem o seu AbortController: o desmonte (a `key` por c2xId
+  // desmonta ao trocar de cliente) aborta todos, e a troca de CONTRATO aborta os que eram do contrato
+  // anterior. Pedido abortado não baixa, não mostra erro e não mexe em estado.
+  const pdfDoContratoRef = useRef<AbortController | null>(null);
+  const pdfDeTodosRef = useRef<AbortController | null>(null);
+  const termoRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    // Os refs guardam o pedido VIVO no momento do desmonte, e é esse que se quer abortar; por isso a
+    // leitura de `.current` é na limpeza, e não copiada na montagem (a regra de lint presume nó do DOM).
+    const pedidos = [pdfDoContratoRef, pdfDeTodosRef, termoRef];
+    return () => {
+      for (const pedido of pedidos) pedido.current?.abort();
+    };
+  }, []);
+
+  // ⚠️ DEPOIS DE GRAVAR, O FOCO VAI PARA A MENSAGEM DE SUCESSO (01/10/2026). O formulário se fecha
+  // quando a rota responde, e o botão que tinha o foco (Confirmar) sai da tela: o foco caía no
+  // `body` e quem usa teclado ou leitor de tela perdia o lugar. A mensagem diz o que aconteceu e o
+  // próximo passo ("Clique em Rescisão"), e o link "Ver ou corrigir" está logo abaixo dela na ordem
+  // de tabulação; focar o link seria pular a notícia.
+  useEffect(() => {
+    if (mensagemDaConferencia) statusRef.current?.focus();
+  }, [mensagemDaConferencia]);
 
   useEffect(() => {
     if (c2xId == null) {
@@ -112,6 +142,7 @@ function ExtratoClienteConteudo({ entity }: { entity: ApoloEntity }) {
     }
 
     let ativo = true;
+    const controlador = new AbortController();
     setLoading(true);
     setError(null);
 
@@ -120,7 +151,7 @@ function ExtratoClienteConteudo({ entity }: { entity: ApoloEntity }) {
         const token = await getApoloAccessToken();
         const response = await fetch(
           `/api/apolo/extrato-cliente?c2xId=${encodeURIComponent(String(c2xId))}`,
-          { cache: "no-store", headers: { Authorization: `Bearer ${token}` } },
+          { cache: "no-store", headers: { Authorization: `Bearer ${token}` }, signal: controlador.signal },
         );
         const payload = (await response.json().catch(() => null)) as
           | { data?: ExtratoClienteData; error?: string }
@@ -152,6 +183,7 @@ function ExtratoClienteConteudo({ entity }: { entity: ApoloEntity }) {
 
     return () => {
       ativo = false;
+      controlador.abort();
     };
   }, [c2xId]);
 
@@ -171,6 +203,10 @@ function ExtratoClienteConteudo({ entity }: { entity: ApoloEntity }) {
         return;
       }
 
+      const ref = escopo === "contrato" ? pdfDoContratoRef : pdfDeTodosRef;
+      const controlador = iniciarPedido(ref);
+      const { signal } = controlador;
+
       setBaixando(true);
       setErroPdf(null);
 
@@ -184,21 +220,26 @@ function ExtratoClienteConteudo({ entity }: { entity: ApoloEntity }) {
         const response = await fetch(`/api/apolo/extrato-cliente/pdf?${query.toString()}`, {
           cache: "no-store",
           headers: { Authorization: `Bearer ${token}` },
+          signal,
         });
+        if (signal.aborted) return;
 
         if (!response.ok) {
           const payload = (await response.json().catch(() => null)) as
             | { error?: string }
             | null;
+          if (signal.aborted) return;
           setErroPdf(payload?.error ?? "Não foi possível gerar o PDF.");
           return;
         }
 
-        await salvarPdf(response, nomeSugerido(response, data, relatorio, escopo));
+        await salvarPdf(response, nomeSugerido(response, data, relatorio, escopo), signal);
       } catch {
+        if (signal.aborted) return;
         setErroPdf("Não foi possível gerar o PDF.");
       } finally {
-        setBaixando(false);
+        if (ref.current === controlador) ref.current = null;
+        if (!signal.aborted) setBaixando(false);
       }
     },
     [c2xId, data, relatorio],
@@ -214,6 +255,9 @@ function ExtratoClienteConteudo({ entity }: { entity: ApoloEntity }) {
     if (c2xId == null || !relatorio) {
       return;
     }
+
+    const controlador = iniciarPedido(termoRef);
+    const { signal } = controlador;
 
     setBaixandoTermo(true);
     setErroTermo(null);
@@ -231,7 +275,9 @@ function ExtratoClienteConteudo({ entity }: { entity: ApoloEntity }) {
       const response = await fetch(`/api/apolo/rescisao/pdf?${query.toString()}`, {
         cache: "no-store",
         headers: { Authorization: `Bearer ${token}` },
+        signal,
       });
+      if (signal.aborted) return;
 
       if (!response.ok) {
         // A rota sempre devolve `error` com a frase (contrato encerrado, posse ilegível, C2X fora).
@@ -239,6 +285,7 @@ function ExtratoClienteConteudo({ entity }: { entity: ApoloEntity }) {
         const payload = (await response.json().catch(() => null)) as
           | { error?: string; motivo?: string }
           | null;
+        if (signal.aborted) return;
         setErroTermo(payload?.error ?? "Não foi possível gerar o termo de rescisão.");
         // O código vem da rota (e não da frase): é ele que abre o formulário de conferência.
         if (payload?.motivo === "corretagem_zero") {
@@ -263,11 +310,14 @@ function ExtratoClienteConteudo({ entity }: { entity: ApoloEntity }) {
         response,
         nomeDoCabecalho(response) ??
           `Simulacao de Rescisao - ${relatorio.contrato.codigo} - ${dataBr(relatorio.posicaoEm).replace(/\//g, "-")}.pdf`,
+        signal,
       );
     } catch {
+      if (signal.aborted) return;
       setErroTermo("Não foi possível gerar o termo de rescisão.");
     } finally {
-      setBaixandoTermo(false);
+      if (termoRef.current === controlador) termoRef.current = null;
+      if (!signal.aborted) setBaixandoTermo(false);
     }
   }, [c2xId, relatorio]);
 
@@ -332,6 +382,16 @@ function ExtratoClienteConteudo({ entity }: { entity: ApoloEntity }) {
                   className="h-9 rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
                   onChange={(event) => {
                     setContratoId(Number(event.target.value));
+                    // ⚠️ O PEDIDO DO CONTRATO ANTERIOR É CANCELADO: a simulação e o PDF do contrato
+                    // anterior não podem baixar com o outro contrato na tela. O PDF "de todos" é do
+                    // cliente, não do contrato, e segue.
+                    pdfDoContratoRef.current?.abort();
+                    termoRef.current?.abort();
+                    pdfDoContratoRef.current = null;
+                    termoRef.current = null;
+                    setBaixandoTermo(false);
+                    if (!pdfDeTodosRef.current) setBaixando(false);
+                    setErroPdf(null);
                     // A frase de erro do termo era do contrato anterior; ficar na tela seria
                     // atribuí-la ao que acabou de ser escolhido. O mesmo vale para a conferência:
                     // o código da recusa, a conferência usada e a mensagem de sucesso são do contrato
@@ -438,7 +498,7 @@ function ExtratoClienteConteudo({ entity }: { entity: ApoloEntity }) {
         {ehComprador && ehCoordenacao ? (
           // ⚠️ A REGIÃO `status` FICA SEMPRE NA TELA e só o texto entra: leitor de tela anuncia o que
           // MUDA dentro de uma região que já existia, e não a que acabou de nascer com o texto.
-          <div role="status">
+          <div ref={statusRef} role="status" tabIndex={-1}>
             {mensagemDaConferencia ? (
               <p className="m-0 mt-3 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
                 {mensagemDaConferencia}
@@ -994,8 +1054,10 @@ function descreverUnidade(relatorio: ExtratoClienteRelatorio): string {
  * manda o header. Busca-se o blob e dispara-se o download local. Os dois botões (extrato e termo)
  * passam por aqui, para a correção da revogação abaixo valer para os dois.
  */
-async function salvarPdf(response: Response, nome: string): Promise<void> {
+async function salvarPdf(response: Response, nome: string, signal?: AbortSignal): Promise<void> {
   const blob = await response.blob();
+  // ⚠️ PEDIDO CANCELADO NÃO BAIXA: o cliente foi trocado enquanto o corpo chegava.
+  if (signal?.aborted) return;
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -1011,6 +1073,17 @@ async function salvarPdf(response: Response, nome: string): Promise<void> {
   // permissão. Os outros cinco downloads do sistema já adiavam (60s em `painel-contratos` e
   // em `empreendimentos-view`, 4s no cadastro); esta era a única linha que revogava na hora.
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/**
+ * Começa um pedido novo: aborta o anterior do mesmo tipo (dois cliques seguidos não deixam dois
+ * downloads correndo) e devolve o controlador que o fetch usa.
+ */
+function iniciarPedido(ref: { current: AbortController | null }): AbortController {
+  ref.current?.abort();
+  const controlador = new AbortController();
+  ref.current = controlador;
+  return controlador;
 }
 
 /** O nome que o servidor mandou no Content-Disposition, ou null. */

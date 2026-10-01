@@ -87,7 +87,8 @@ describe("a conferência da corretagem no painel", () => {
 
   it("a mensagem de sucesso também é só da coordenação, numa região role=status que já existia", () => {
     expect(FONTE).toContain("{ehComprador && ehCoordenacao ? (");
-    expect(FONTE).toContain('<div role="status">');
+    // `tabIndex={-1}` e o ref existem para o foco ir para a mensagem depois de gravar.
+    expect(FONTE).toContain('<div ref={statusRef} role="status" tabIndex={-1}>');
     expect(FONTE).toContain("setMensagemDaConferencia(mensagem)");
   });
 

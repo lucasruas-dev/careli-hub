@@ -111,6 +111,19 @@ export function ConferenciaDaCorretagem({
   // O erro é do CAMPO do valor (formato ilegível) ou geral (a rota recusou): só o primeiro marca o campo.
   const [erroNoValor, setErroNoValor] = useState(false);
 
+  // ⚠️ CANCELAR AO TROCAR DE CLIENTE OU DE CONTRATO (decisão do Lucas, 01/10/2026: "cancelar ao
+  // trocar"). O painel desmonta este formulário (`key`) ao trocar de contrato ou de cliente, e o
+  // desmonte aborta o GET e o PUT em voo: a resposta tardia não mexe em estado, não mostra erro e,
+  // sobretudo, não chama `onSalva` para escrever "Conferência registrada" na tela de OUTRO cliente.
+  const pedidosRef = useRef<Set<AbortController>>(new Set());
+  useEffect(() => {
+    const pedidos = pedidosRef.current;
+    return () => {
+      for (const pedido of pedidos) pedido.abort();
+      pedidos.clear();
+    };
+  }, []);
+
   const confirmacaoRef = useRef<HTMLParagraphElement>(null);
   const salvarRef = useRef<HTMLButtonElement>(null);
   // ⚠️ O Voltar remonta o Salvar (a confirmação ocupa o lugar dele); a marca diz ao efeito de foco
@@ -131,6 +144,10 @@ export function ConferenciaDaCorretagem({
   }, [confirmando]);
 
   const abrirParaCorrigir = useCallback(async () => {
+    const controlador = new AbortController();
+    const { signal } = controlador;
+    pedidosRef.current.add(controlador);
+
     setCarregando(true);
     setErro(null);
     setErroNoValor(false);
@@ -141,11 +158,13 @@ export function ConferenciaDaCorretagem({
       const response = await fetch(`/api/apolo/rescisao/conferencia-corretagem?${query.toString()}`, {
         cache: "no-store",
         headers: { Authorization: `Bearer ${token}` },
+        signal,
       });
       const payload = (await response.json().catch(() => null)) as {
         data?: { atual?: Registro | null; historico?: Registro[] };
         error?: string;
       } | null;
+      if (signal.aborted) return;
 
       if (!response.ok) {
         setErro(payload?.error ?? "Não foi possível ler a conferência da corretagem.");
@@ -161,9 +180,11 @@ export function ConferenciaDaCorretagem({
       setConfirmando(false);
       setVerCorrigir(true);
     } catch {
+      if (signal.aborted) return;
       setErro("Não foi possível ler a conferência da corretagem.");
     } finally {
-      setCarregando(false);
+      pedidosRef.current.delete(controlador);
+      if (!signal.aborted) setCarregando(false);
     }
   }, [c2xId, contratoId]);
 
@@ -191,6 +212,10 @@ export function ConferenciaDaCorretagem({
       return;
     }
 
+    const controlador = new AbortController();
+    const { signal } = controlador;
+    pedidosRef.current.add(controlador);
+
     setSalvando(true);
     setErro(null);
     setErroNoValor(false);
@@ -198,6 +223,7 @@ export function ConferenciaDaCorretagem({
     try {
       const token = await getApoloAccessToken();
       const response = await fetch("/api/apolo/rescisao/conferencia-corretagem", {
+        signal,
         cache: "no-store",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         method: "PUT",
@@ -215,6 +241,7 @@ export function ConferenciaDaCorretagem({
         data?: { resultado?: string; valor?: null | number };
         error?: string;
       } | null;
+      if (signal.aborted) return;
 
       if (!response.ok) {
         setConfirmando(false);
@@ -237,10 +264,12 @@ export function ConferenciaDaCorretagem({
       setHistorico([]);
       onSalva(mensagem, gravado);
     } catch {
+      if (signal.aborted) return;
       setConfirmando(false);
       setErro("Não foi possível registrar a conferência.");
     } finally {
-      setSalvando(false);
+      pedidosRef.current.delete(controlador);
+      if (!signal.aborted) setSalvando(false);
     }
   }, [c2xId, contratoId, observacao, onSalva, resultado, valor]);
 

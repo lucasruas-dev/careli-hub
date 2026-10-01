@@ -367,6 +367,75 @@ describe("ver e corrigir", () => {
   });
 });
 
+// ⚠️ CANCELAR AO TROCAR (decisão do Lucas, 01/10/2026): o painel desmonta o formulário ao trocar de
+// contrato ou de cliente, e o GET e o PUT em voo têm de morrer com ele.
+describe("cancelar ao desmontar", () => {
+  function fetchPendurado() {
+    const pendentes: Array<{ resolver: (r: unknown) => void; signal?: AbortSignal; url: string }> = [];
+    vi.stubGlobal("fetch", (url: string, init?: { signal?: AbortSignal }) => {
+      return new Promise((resolver) => {
+        pendentes.push({ resolver, signal: init?.signal, url });
+      });
+    });
+    return pendentes;
+  }
+
+  it("o GET do 'Ver ou corrigir' é abortado no desmonte, e a resposta tardia não faz nada", async () => {
+    const pendentes = fetchPendurado();
+    montar({ conferenciaUsada: "com_corretagem" });
+    clicar(botao("Ver ou corrigir"));
+    await esperar();
+    expect(pendentes).toHaveLength(1);
+    expect(pendentes[0]!.signal?.aborted).toBe(false);
+
+    act(() => raiz.render(<div>outro contrato</div>));
+    expect(pendentes[0]!.signal?.aborted).toBe(true);
+
+    await act(async () => {
+      pendentes[0]!.resolver({
+        json: async () => ({ data: { atual: null, historico: [] } }),
+        ok: true,
+      });
+    });
+    await esperar();
+    expect(texto()).toBe("outro contrato");
+  });
+
+  it("o PUT é abortado no desmonte, e o onSalva NÃO é chamado com a resposta tardia", async () => {
+    const pendentes = fetchPendurado();
+    montar({ recusado: true });
+    clicar(radio(0));
+    digitar(campoDaObservacao(), "Não prevê intermediação.");
+    clicar(botao("Salvar"));
+    clicar(botao("Confirmar"));
+    await esperar();
+    expect(pendentes).toHaveLength(1);
+
+    act(() => raiz.render(<div>outro cliente</div>));
+    expect(pendentes[0]!.signal?.aborted).toBe(true);
+
+    await act(async () => {
+      pendentes[0]!.resolver({
+        json: async () => ({ data: { resultado: "sem_corretagem", valor: null } }),
+        ok: true,
+      });
+    });
+    await esperar();
+
+    expect(salvas).toHaveLength(0);
+  });
+
+  it("sem desmontar, o mesmo pedido segue vivo (o signal não nasce abortado)", async () => {
+    const pendentes = fetchPendurado();
+    montar({ conferenciaUsada: "com_corretagem" });
+    clicar(botao("Ver ou corrigir"));
+    await esperar();
+
+    expect(pendentes[0]!.signal).toBeDefined();
+    expect(pendentes[0]!.signal?.aborted).toBe(false);
+  });
+});
+
 // ⚠️ ACESSIBILIDADE (01/10/2026, achado da segunda revisão da Publicação). O formulário decide um
 // número impresso no papel do cliente; quem usa leitor de tela precisa ouvir o rótulo de cada campo,
 // o erro quando ele nasce, e o passo da confirmação.
