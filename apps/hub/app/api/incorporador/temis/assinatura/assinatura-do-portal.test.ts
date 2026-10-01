@@ -306,9 +306,20 @@ describe("portal: o contrato que a Cecílio confecciona", () => {
 
   it("reenviar e trocar o e-mail respondem para o envelope da proposta dele", async () => {
     const reenvio = await PORTAL_SIGNATARIO(
-      post(`${BASE}/signatario`, { acao: "reenviar", envelopeId: ENVELOPE, signerId: "s1" }),
+      post(`${BASE}/signatario`, {
+        acao: "reenviar",
+        emailDoSignatario: "comprador@exemplo.test",
+        envelopeId: ENVELOPE,
+        signerId: "s1",
+      }),
     );
     expect(reenvio.status).toBe(200);
+    // ⚠️ E O E-MAIL QUE O NAVEGADOR MANDAR É IGNORADO, DE PROPÓSITO. Ele chegou a atravessar até
+    // `reenviarConvite` como "ajuda" para casar a linha do quadro congelado, e era o ÚNICO ponto em
+    // que o navegador influenciava a trava de quem já assinou: no payload pobre (`document.signers`
+    // vazio, as pessoas saindo dos eventos) a `signer.key` pode vir sem e-mail, e aí o endereço do
+    // navegador decidia QUAL linha do quadro era auditada. Quem diz de quem é a linha é o nosso quadro
+    // ou o payload deste envelope, os dois lidos no servidor — e o portal é a porta de FORA.
     expect(espioes.reenviarConvite).toHaveBeenCalledWith(expect.anything(), {
       envelopeId: ENVELOPE,
       signerId: "s1",

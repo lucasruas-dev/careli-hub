@@ -17,7 +17,7 @@ import {
   prepararEnvioDoAcordo,
 } from "@/lib/hades/acordo/envio-db";
 import { motivoParaNaoEnviarParaAssinatura } from "@/lib/hades/acordo/envio-gate";
-import { RECUSA_DE_REENVIO_SEM_ID, reenviarConvite } from "@/lib/temis/trocar-signatario";
+import { reenviarConvite } from "@/lib/temis/trocar-signatario";
 
 // O TERMO DE ACORDO INDO PARA A ASSINATURA — a porta do Hades.
 //
@@ -211,13 +211,16 @@ export async function PATCH(request: Request) {
   const corpo = await lerCorpo(request);
   if (!UUID.test(corpo.acordo)) return erro("Acordo não informado.", 400);
   if (!corpo.signerId) return erro("Sem o signatário não dá para reenviar o convite.", 400);
-  // ⚠️ E-MAIL NÃO É SIGNER ID. Nívea, 24/09/2026: *"não consigo reenviar"*. O endpoint da Clicksign
-  // é `POST /envelopes/{id}/signers/{signer_id}/notifications` e devolve 422 para qualquer coisa
-  // que não seja o id criado no envio; a tela mandava a `chave` do diário, que nos envelopes
-  // anteriores a 24/09/2026 podia ser o próprio e-mail. A recusa vem aqui, antes de abrir o acordo,
-  // que é onde começa o trabalho pago. A mesma régua vive em `reenviarConvite`, para quem chamar
-  // por outra porta.
-  if (corpo.signerId.includes("@")) return erro(RECUSA_DE_REENVIO_SEM_ID, 400);
+  // ⚠️ A RECUSA DO "@" SAIU DAQUI (01/10/2026), E QUEM RECUSA AGORA É `reenviarConvite`. Esta porta
+  // barrava `signerId` com "@" antes de abrir o acordo, e a recusa em si continua certa (e-mail não é
+  // signer id); o problema é que ela era a ÚNICA régua, e barrava junto a `signer.key` do webhook, que
+  // SERVE. Medido em produção em 01/10/2026 (só SELECT): a chave congelada e a `signer.key` do webhook
+  // são o MESMO valor em 54 de 54 pares, e dos 18 envelopes vivos sem nenhuma chave congelada 14 são
+  // termos de acordo do Hades, com as 70 pessoas sem `assinado_em` no quadro TODAS tendo key no
+  // payload (68 precisam de convite: 2 já assinaram pelo payload). `reenviarConvite`
+  // confere o id contra o quadro congelado e contra o payload de webhook DESTE envelope, aplica as
+  // travas (quem assinou, quem recusou, envelope encerrado, e-mail repetido) e devolve a frase de cada
+  // desfecho — tudo antes de qualquer chamada que cobra, que é o que esta porta protegia.
 
   return comOAcordo(corpo.acordo, async (acordo, sb) => {
     // ⚠️ O GATE DO LUCAS VALE PARA O REENVIO, E ELE É CHAMADO DIRETO AQUI. Lucas, 20/09/2026: a
@@ -235,6 +238,9 @@ export async function PATCH(request: Request) {
     const envelopeId = preparo.envelope?.envelopeId;
     if (!envelopeId) return erro("Este acordo não tem envelope na Clicksign.", 404);
 
+    // ⚠️ E O PEDIDO NÃO MANDA E-MAIL NENHUM: quem diz de quem é a linha é o nosso quadro congelado
+    // (pela `chave`) ou o payload de webhook DESTE envelope (pela `signer.key`). Um endereço do
+    // navegador aqui era o único ponto em que ele influenciava a trava de quem já assinou.
     const reenviado = await reenviarConvite(sb, { envelopeId, signerId: corpo.signerId });
     if (!reenviado.ok) return erro(reenviado.erro, reenviado.status);
 

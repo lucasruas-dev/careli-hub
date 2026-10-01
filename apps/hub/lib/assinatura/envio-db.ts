@@ -960,8 +960,14 @@ export async function carimbarSucesso(
   }
 
   // ⚠️ `aguardando`, E NÃO `rascunho`: a esta altura o envelope foi ATIVADO e notificado. E COM A
-  // `chave` DA CLICKSIGN (`lib/assinatura/congelar-signatarios.ts`): sem ela o reenvio de convite
-  // manda a key do webhook (ou o e-mail) e leva 422.
+  // `chave` DA CLICKSIGN (`lib/assinatura/congelar-signatarios.ts`), que é a identidade com que a
+  // função da 0195 casa as marcas de quem assinou e o atalho que a troca de e-mail usa.
+  //
+  // ⚠️ CORREÇÃO DE 01/10/2026: "SEM ELA O REENVIO MANDA A KEY DO WEBHOOK E LEVA 422" É FALSO. A key
+  // do webhook É o mesmo id: medido em produção em 01/10/2026 (só SELECT, projeto
+  // bxgukywoxgivlrhjkwjx), 54 pares, 54 idênticas, 0 diferentes, 8 envelopes. O 422 era do E-MAIL,
+  // que `juntarComOsCongelados` põe na `chave` de quem só existe na lista congelada e não tem key
+  // nenhuma no payload.
   const gravou = await registrarEnvioAtivo(sb, registroId, {
     estadoCru: "clicksign:running",
     quadro: quadroDoEnvio(signatarios, resultado.signatarios),

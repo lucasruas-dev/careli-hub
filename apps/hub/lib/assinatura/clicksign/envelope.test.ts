@@ -153,10 +153,15 @@ describe("o fluxo do envelope", () => {
   });
 });
 
-// ⚠️ O ID DO SIGNATÁRIO É O QUE VOLTA DO PASSO 3, E É O ÚNICO QUE SERVE PARA REENVIAR CONVITE. O
-// reenvio é `POST /envelopes/{id}/signers/{signer_id}/notifications`; mandar ali a `signer.key` do
-// webhook ou o e-mail da pessoa devolve 422 (Nívea, 24/09/2026: *"não consigo reenviar"*). Este
-// teste prende o contrato do retorno: sem ele, o carimbo do envio não tem o que congelar.
+// ⚠️ O ID DO SIGNATÁRIO É O QUE VOLTA DO PASSO 3, E É ELE QUE O ENVIO CONGELA. Este teste prende o
+// contrato do retorno: sem ele, o carimbo do envio não tem o que congelar, e a troca de e-mail perde
+// o atalho que a dispensa de ler o diário.
+//
+// ⚠️ CORREÇÃO DE 01/10/2026: ELE NÃO É O "ÚNICO QUE SERVE PARA REENVIAR CONVITE". Era o que este
+// comentário afirmava, e a `signer.key` do webhook é o MESMO valor: medido em produção em 01/10/2026
+// (só SELECT, projeto bxgukywoxgivlrhjkwjx), 54 pares, 54 idênticas, 0 diferentes, 8 envelopes. O 422
+// de 24/09/2026 (Nívea: *"não consigo reenviar"*) era do e-mail, que `juntarComOsCongelados` põe na
+// `chave` de quem só existe na lista congelada — e-mail nunca é signer id.
 describe("o envio devolve o id de cada signatário", () => {
   it("um id por e-mail, e não só o envelope e o documento", async () => {
     const { porta } = duplo();

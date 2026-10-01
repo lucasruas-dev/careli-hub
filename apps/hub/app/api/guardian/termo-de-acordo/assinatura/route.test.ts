@@ -57,17 +57,26 @@ describe("a porta do envio para assinatura", () => {
     expect(metodo("PATCH")).toContain("motivoParaNaoEnviarParaAssinatura(acordo)");
   });
 
-  // ⚠️ O SIGNER ID É O DA CLICKSIGN, E E-MAIL NÃO É SIGNER ID. Nívea, 24/09/2026: *"não consigo
-  // reenviar"*. A tela manda a `chave` do diário, que até 24/09/2026 podia ser a `signer.key` do
-  // webhook ou o PRÓPRIO E-MAIL da pessoa (quando ela só existe na lista congelada do envio).
-  // `POST /envelopes/{id}/signers/{signer_id}/notifications` com um e-mail no lugar do id devolve
-  // 422, e a tela escrevia esse 422 como se fosse defeito do provedor.
-  it("o PATCH recusa e-mail no lugar do signer id antes de qualquer chamada que cobra", () => {
+  // ⚠️ A RECUSA DO "@" SAIU DO PATCH (01/10/2026): ELA BARRAVA JUNTO A KEY DO WEBHOOK, QUE SERVE.
+  // Até aqui o PATCH barrava `signerId` com "@" antes de abrir o acordo, e a recusa em si continua
+  // certa — e-mail não é signer id —, mas ela era a ÚNICA régua e nunca separou o e-mail da
+  // `signer.key`. Medido em produção em 01/10/2026, só SELECT: a chave congelada e a `signer.key` do
+  // webhook são o MESMO valor em 54 de 54 pares, e dos 18 envelopes vivos sem nenhuma chave congelada
+  // 14 são termos de acordo do Hades, com as 68 pessoas pendentes TODAS tendo key no payload. Quem
+  // recusa agora é `reenviarConvite`, com as travas e a frase de cada desfecho, antes de qualquer
+  // chamada que cobra.
+  //
+  // ⚠️ E O PEDIDO NÃO LEVA E-MAIL NENHUM. Ele chegou a levar (`email: corpo.emailDoSignatario`), como
+  // "ajuda" para o servidor casar a linha do quadro congelado, e era o ÚNICO ponto em que o navegador
+  // influenciava a trava de quem já assinou: quando o payload do webhook traz a `signer.key` SEM
+  // e-mail, era o endereço do navegador que escolhia QUAL linha do quadro era auditada. Quem diz de
+  // quem é a linha é o nosso quadro (pela `chave`) ou o payload deste envelope (pela `signer.key`).
+  it("o PATCH não barra mais e-mail no lugar do signer id, e não manda e-mail nenhum", () => {
     const patch = metodo("PATCH");
 
-    expect(patch).toContain('corpo.signerId.includes("@")');
-    // E a recusa vem ANTES de abrir o acordo, que é onde começa o trabalho pago.
-    expect(patch.indexOf('corpo.signerId.includes("@")')).toBeLessThan(patch.indexOf("comOAcordo("));
+    expect(patch).not.toContain('corpo.signerId.includes("@")');
+    expect(patch).not.toContain("emailDoSignatario");
+    expect(patch).toContain("reenviarConvite(sb, { envelopeId, signerId: corpo.signerId })");
   });
 
   // ⚠️ O CANCELAMENTO NÃO PASSA PELO GATE, E A AUSÊNCIA É DELIBERADA. Ele é o gesto CORRETIVO: o

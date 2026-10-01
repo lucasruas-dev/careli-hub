@@ -47,6 +47,21 @@ export type ItemDoQuadro = {
   convite_entregue_em?: string;
 };
 
+/**
+ * O item como quem GRAVA o quadro o manda — `chave` opcional.
+ *
+ * ⚠️ A FORMA DO BANCO É ESTA, E NÃO A DE `ItemDoQuadro`. Medido em produção em 01/10/2026 (só
+ * SELECT): das 159 linhas de signatário dos 29 envelopes da Clicksign, 104 NÃO TÊM o campo `chave`
+ * (zero `tmp:`, zero `c2x:`). A função da 0195 aceita o item sem chave — ela só testa
+ * `nullif(item->>'chave','') is not null` e casa a linha antiga pelo e-mail ÚNICO. Exigir a chave na
+ * ESCRITA obrigava quem grava a INVENTAR uma (`tmp:<posição>`), e chave inventada em cima de chave
+ * ausente é o que (a) apaga `assinado_em` de quem tem e-mail repetido, porque tira da 0195 o único
+ * casamento que sobrava, e (b) vira o id que a tela manda ao `DELETE /envelopes/{id}/signers/{id}`,
+ * onde `tmp:` volta 404 e o 404 segue em frente. `ItemDoQuadro` segue com `chave` obrigatória porque
+ * é o tipo da LEITURA, onde `lerQuadro` completa a posição faltante de propósito.
+ */
+export type ItemParaGravar = Omit<ItemDoQuadro, "chave"> & { chave?: string };
+
 export type EntradaDoRegistro = {
   conferidoEm?: null | string;
   /** O `provedor_documento_id` do evento: adota se a linha não tem; recusa se é outro. */
@@ -57,7 +72,7 @@ export type EntradaDoRegistro = {
   /** Só data REAL do provedor; nunca "agora" (ATENCAO 5 da 0195). */
   fechadoEm?: null | string;
   marcas?: readonly MarcaDeAssinatura[];
-  quadro?: readonly ItemDoQuadro[] | null;
+  quadro?: readonly ItemParaGravar[] | null;
   /** O `atualizado_em` lido antes da troca (a versão do quadro). */
   quadroDe?: null | string;
 };
