@@ -46,7 +46,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
             items: [
               "**Contrato com corretagem R$ 0,00 agora pode ser liberado para a Simulação de Rescisão.** A coordenação (admin ou líder) confere o contrato assinado e registra no extrato do cliente: houve corretagem, com o valor em reais, ou não houve. A observação é obrigatória.",
               "**Antes de gravar, a tela confirma o valor por extenso** (\"R$ 7.000,00, sete mil reais\"), e depois mostra o que foi gravado. O valor segue o formato brasileiro: ponto separa o milhar e vírgula separa os centavos.",
-              "**Cada conferência fica no histórico, com quem registrou e quando, e vale a mais recente.** Se algo foi registrado errado, a coordenação corrige ali mesmo. Depois do registro, a simulação sai normalmente.",
+              "**Cada conferência fica no histórico, com quem registrou e quando, e vale a mais recente.** Depois do registro, a simulação sai normalmente, e junto dela aparece o botão Ver ou corrigir, para a coordenação rever o histórico ou registrar de novo.",
             ],
             screen: "Financeiro · Extrato do cliente",
           },
