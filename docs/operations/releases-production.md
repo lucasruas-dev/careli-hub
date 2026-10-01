@@ -95,6 +95,39 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Apolo/Financeiro/Extrato do cliente] Acabamento da conferencia da corretagem (v1.403.1, interna)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; construido pela conta de construcao (aba do termo de rescisao, PAN-130) e entregue por resumo de entrega.
+- Data e hora local: `2026-10-01 13:13:51 -03:00` (changelog); deploy pronto cerca de 3,5 min depois do push.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("pode publicar a 1.403.1"); branch fix/rescisao-conferencia-acabamento (d22f9b95, base v1.402.0) integrada por merge sobre a v1.403.0, sem arquivo em comum com a F4`.
+- Escopo publicado:
+  - `painel do extrato com key por c2xId (mensagem e formulario da conferencia nao vazam para o cliente seguinte)`;
+  - `"Ver ou corrigir" logo depois de registrar`;
+  - `rota da conferencia recusa observacao, resultado e ids de tipo errado com 400`;
+  - `costura de teste dependencias.montar em carregarTermoDeRescisao (unico chamador de producao nao a passa)`;
+  - `acessibilidade do formulario`.
+- Commit publicado: `ecd57dd41d399e00ee330b9cb9ff955d9581c19f`.
+- Deployment anterior: `dpl_6Rxswn13UvctP6Ye8UR56rp7b2Xf` (commit `f48fd60f`, v1.403.0).
+- Deployment novo: `dpl_9ToC5itNZKcjUTSHdGKoVTe8GKGd`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Banco: `sem migracao e sem escrita`.
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `suite completa e hook de pre-push`: `735 arquivos, 11.290 testes`;
+  - `revisao independente por workflow (5 agentes)`: `pendencias 1, 2, 4 e 5 provadas por mutacao; a 3 em parte (lista de frases proibidas por texto ainda passa nos 58 testes; o codigo de producao nao filtra); sem regressao no painel do extrato para quem nao usa a conferencia`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.403.1 com buildTag 2026-10-01-conferencia-da-corretagem-acabamento; PDF e conferencia 401 sem sessao`.
+- Logs recentes: `nenhum erro nos ultimos 20 min`.
+- Rollback definido: `Instant Rollback para dpl_6Rxswn13UvctP6Ye8UR56rp7b2Xf (v1.403.0) e seguro`.
+- Riscos conhecidos: `a rede de testes ainda nao pega um filtro que esconda por texto os avisos de multa, publicidade ou tributos; foco do teclado cai no body depois de gravar; falha de PDF que chega depois da troca de cliente nao aparece`.
+- Pendencias: `os tres riscos acima para a proxima entrega do PAN-130`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `nenhuma acao obrigatoria; conferir a conferencia do REPE186 no uso do dia`.
+
+Registro de producao:
+
 - Assunto: `[Hercules/Cadastro de empreendimentos] PAN-124 F4: chave do grupo separada do nome do pai (v1.403.0, interna)`.
 - Squad/agente responsavel: `Zeus (sessao Publicacao)`; construido pela conta de construcao (PAN-124) e entregue por resumo de entrega.
 - Data e hora local: `2026-10-01 12:47:23 -03:00` (changelog); deploy pronto cerca de 3,5 min depois do push.
