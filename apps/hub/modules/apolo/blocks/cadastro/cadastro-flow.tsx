@@ -905,6 +905,12 @@ export type PublicoConfig = {
   // Vitrine de empreendimentos ATIVOS (só imobiliária pública): alimenta o multi-select e a
   // resolução de rótulos, já que NÃO há rota pública que os liste. Vem do server component.
   empreendimentos?: SelectOption[];
+  // Campos que a PORTA acrescenta ao corpo do envio (o link do autônomo manda os empreendimentos de
+  // interesse escolhidos antes do wizard). O servidor confere cada um contra a lista dele.
+  extrasDoEnvio?: Record<string, unknown>;
+  // Sem a conferência de CPF duplicado: ela fala da CAD do COMPRADOR por empreendimento, e a rota
+  // dela só aceita o token da CAD. No link do autônomo o portão do CPF já fez a conferência dele.
+  semChecagemCpf?: boolean;
 };
 
 // O que o EMPREENDIMENTO desta CAD exige além do conjunto de sempre. Hoje só o comprovante de
@@ -1099,14 +1105,17 @@ async function salvarPublico(
     | (Partial<SalvarResposta> & { error?: string })
     | null;
   if (response.status === 401 && mensagem401) throw new Error(mensagem401);
-  if (!response.ok || !json?.entityId) {
+  // ⚠️ O LINK DO CORRETOR AUTÔNOMO (01/10/2026) NÃO DEVOLVE O ID DA FICHA: `rotas.ts` pede que nenhum
+  // id interno vaze para a rota pública, e o wizard não usa o id para nada além de saber que gravou.
+  // O código de autenticação, que a pessoa já recebe no PDF, serve de comprovante do mesmo jeito.
+  if (!response.ok || !(json?.entityId || json?.autenticacao)) {
     throw new Error(json?.error ?? `Falha HTTP ${response.status}`);
   }
   return {
     autenticacao: json.autenticacao ?? "",
     aviso: json.aviso ?? null,
     cadBase64: json.cadBase64 ?? null,
-    entityId: json.entityId,
+    entityId: json.entityId ?? "",
     savedDocs: json.savedDocs ?? [],
     warnings: json.warnings ?? [],
   };
@@ -1245,6 +1254,7 @@ function criarApiCadastro(publico?: PublicoConfig): ApiCadastro {
     // No público o empreendimento sai do TOKEN, então o corpo não manda enterpriseId: mandar
     // deixaria o corretor consultar a carteira de qualquer loteamento.
     checarCpf: async (dados: ChecagemCpfPedido) => {
+      if (publico.semChecagemCpf) return SEM_CHECAGEM;
       try {
         return await postPublico<ChecagemCpf>(
           "/api/publico/cad/checar-cpf",
@@ -1266,7 +1276,8 @@ function criarApiCadastro(publico?: PublicoConfig): ApiCadastro {
     imobiliarias: async () => [],
     ocr: <T,>(body: Record<string, unknown>) =>
       postPublico<T>("/api/publico/cad/ocr", body, headers()),
-    salvar: (body: Record<string, unknown>) => salvarPublico(salvarUrl, body, headers()),
+    salvar: (body: Record<string, unknown>) =>
+      salvarPublico(salvarUrl, { ...body, ...(publico.extrasDoEnvio ?? {}) }, headers()),
   };
 }
 
@@ -1275,7 +1286,15 @@ function criarApiCadastro(publico?: PublicoConfig): ApiCadastro {
 // O DEFAULT é o modo interno: um filho fora do provider (não acontece) ainda funciona igual hoje.
 // `portal` presente = modo PORTAL (que também liga `modoPublico`: vínculo pronto, sem seletor). Os
 // steps só leem `portal` para o texto e para o "fechar" depois do envio.
-type CadastroCtx = { api: ApiCadastro; modoPublico: boolean; portal: PortalConfig | null };
+// `autonomoPublico` = o link público do CORRETOR AUTÔNOMO (01/10/2026): quem preenche é a própria
+// pessoa, então a tela fala com ela ("seu documento"), e o estado civil não pede documento (Lucas:
+// *"os mesmos sem a necessidade de certidão estado civil"*).
+type CadastroCtx = {
+  api: ApiCadastro;
+  autonomoPublico: boolean;
+  modoPublico: boolean;
+  portal: PortalConfig | null;
+};
 
 const ApiCadastroContext = createContext<CadastroCtx>({
   api: {
@@ -1287,6 +1306,7 @@ const ApiCadastroContext = createContext<CadastroCtx>({
     ocr: apiPost,
     salvar: apiSalvarCadastro,
   },
+  autonomoPublico: false,
   modoPublico: false,
   portal: null,
 });
@@ -1356,12 +1376,13 @@ export function CadastroFlow({
   const ctx = useMemo<CadastroCtx>(
     () => ({
       api: portal ? criarApiDoPortal(portal) : criarApiCadastro(publico),
+      autonomoPublico: Boolean(publico) && isCorretor,
       modoPublico: Boolean(publico || portal),
       portal: portal ?? null,
     }),
-    [portal, publico],
+    [isCorretor, portal, publico],
   );
-  const { api } = ctx;
+  const { api, autonomoPublico } = ctx;
   // Remontar tudo do zero: incrementar esta key recria o wizard (inclusive o estado interno dos
   // uploaders, que guardam a lista de arquivos localmente) — é o "recomeçar cadastro".
   const [resetKey, setResetKey] = useState(0);
@@ -1556,9 +1577,10 @@ export function CadastroFlow({
   // PJ não tem certidão/cônjuge. PF: Casado(2), Divorciado(3), Separado(4) e
   // União Estável(6) exigem certidão (o MOST valida a autenticidade).
   const isPj = persona === "pj";
-  const needsCertidao = !isPj && ["2", "3", "4", "6"].includes(perfil.estadoCivilId);
+  const needsCertidao =
+    !isPj && !autonomoPublico && ["2", "3", "4", "6"].includes(perfil.estadoCivilId);
   // Cônjuge presente: casado ou união estável (só PF).
-  const temConjuge = !isPj && ["2", "6"].includes(perfil.estadoCivilId);
+  const temConjuge = !isPj && !autonomoPublico && ["2", "6"].includes(perfil.estadoCivilId);
   // PJ tem jornada própria (Lucas 17/jul): o endereço da empresa já vem do cartão CNPJ, então
   // não se pede comprovante dela — o que se pede é o contrato social e a ficha de cada sócio
   // (com o comprovante DELE dentro do próprio bloco).
@@ -1671,7 +1693,11 @@ export function CadastroFlow({
         <div className="rounded-2xl border border-line bg-surface px-6 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] print:hidden">
           <div className="flex items-center justify-between gap-4">
             <h1 className="text-lg font-semibold tracking-tight text-ink">
-              {modoPublico && !isImobiliaria ? "Cadastro do cliente" : formato.titulo}
+              {autonomoPublico
+                ? "Seu cadastro de corretor autônomo"
+                : modoPublico && !isImobiliaria
+                  ? "Cadastro do cliente"
+                  : formato.titulo}
             </h1>
             <div className="flex items-center gap-2">
               <span className="hidden items-center gap-1.5 rounded-full border border-line bg-subtle px-3 py-1.5 text-xs font-medium text-ink-soft sm:inline-flex">
@@ -1707,7 +1733,8 @@ export function CadastroFlow({
             <span className="mt-5 block text-xs text-ink-muted">
               {/* O mesmo wizard serve o CAD do cliente E o auto-cadastro da imobiliária. Falar em
                   "cliente" na tela da imobiliária confundiria quem está cadastrando a si mesma. */}
-              Parte 2 de 2: {isImobiliaria ? "dados da imobiliária" : "dados do cliente"}
+              Parte 2 de 2:{" "}
+              {isImobiliaria ? "dados da imobiliária" : autonomoPublico ? "seus dados" : "dados do cliente"}
               {publico?.empreendimentoNome || portal?.empreendimentoNome
                 ? ` · ${publico?.empreendimentoNome || portal?.empreendimentoNome}`
                 : ""}
@@ -2461,7 +2488,7 @@ function StepIdentificacao({
 }) {
   // Adapter de leitura/enriquecimento + flag público (esconde o seletor de imobiliária e
   // dispensa `imobiliariaId`, que no público vem do token).
-  const { api, modoPublico } = useCadastroCtx();
+  const { api, autonomoPublico, modoPublico } = useCadastroCtx();
   const [enriching, setEnriching] = useState(false);
   const [enrichingConjuge, setEnrichingConjuge] = useState(false);
   const isPj = persona === "pj";
@@ -2469,7 +2496,8 @@ function StepIdentificacao({
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const emailValido = emailRegex.test(perfil.email);
   // Cônjuge presente: casado (2) ou união estável (6).
-  const temConjuge = ["2", "6"].includes(perfil.estadoCivilId);
+  // No link do autônomo o cônjuge não é pedido: ele é dado do COMPRADOR (quem assina junto).
+  const temConjuge = !autonomoPublico && ["2", "6"].includes(perfil.estadoCivilId);
   const estadoCivilLabel =
     C2X_ESTADO_CIVIL.find((o) => o.id.toString() === perfil.estadoCivilId)?.label ?? "";
   const conjugeEmailOk =
@@ -2798,7 +2826,13 @@ function StepIdentificacao({
             lidos do próprio documento.
           </>
         ) : formato.persona === "pf" ? (
-          <>
+          autonomoPublico ? (
+            <>
+              Anexe o seu documento de identificação:{" "}
+              <span className="font-semibold">RG, CNH ou passaporte</span>. Nós lemos os dados do
+              próprio documento, e você só confere.
+            </>
+          ) : <>
             Anexe o documento de identificação do corretor:{" "}
             <span className="font-semibold">RG, CNH ou passaporte</span>. Os dados são lidos do
             próprio documento.
@@ -2819,7 +2853,9 @@ function StepIdentificacao({
             formato.persona === "pj"
               ? "Adicionar cartão CNPJ da imobiliária"
               : formato.persona === "pf"
-                ? "Adicionar documento do corretor"
+                ? autonomoPublico
+                  ? "Adicionar o seu documento"
+                  : "Adicionar documento do corretor"
                 : "Adicionar documento do cliente"
           }
           hint={
@@ -3010,8 +3046,9 @@ function StepIdentificacao({
               produção). A nacionalidade sai dela sozinha, por isso não é cobrada aqui. */}
           {identidade.naturalidade.trim() ? null : (
             <p className="mb-3 rounded-lg border border-rose-300/60 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
-              Informe a naturalidade (a cidade de nascimento do cliente) para continuar. Sem ela o
-              cadastro é recusado depois e volta para refazer.
+              {autonomoPublico
+                ? "Informe a sua naturalidade (a cidade onde você nasceu) para continuar."
+                : "Informe a naturalidade (a cidade de nascimento do cliente) para continuar. Sem ela o cadastro é recusado depois e volta para refazer."}
             </p>
           )}
 
@@ -3903,11 +3940,14 @@ function StepEndereco({
   onExtract: (ext: Extraction) => void;
   onNext: () => void;
 }) {
+  const { autonomoPublico } = useCadastroCtx();
   return (
     <StepCard title="2. Comprovante de endereço">
       <p className="m-0 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-3 py-2 text-xs text-[#7a5e2c] print:hidden dark:text-[#d9b877]">
-        Agora anexe o comprovante de endereço do cliente: conta de luz, de água ou de telefone,
-        emitida nos últimos 3 meses. Fotografe a conta inteira, sem cortar as bordas.
+        Agora anexe{" "}
+        {autonomoPublico ? "o seu comprovante de endereço" : "o comprovante de endereço do cliente"}:
+        conta de luz, de água ou de telefone, emitida nos últimos 3 meses. Fotografe a conta inteira,
+        sem cortar as bordas.
       </p>
       <div className="print:hidden">
         <DocUploader
@@ -4279,7 +4319,7 @@ function StepRevisao({
   // Adapter de salvamento (interno: /api/apolo/cadastro/salvar; público: rota gated do modo) +
   // flag público, que redireciona os "sair/novo cadastro" para recarregar em vez de ir ao /apolo.
   // No PORTAL os dois devolvem o controle à TelaCrm (`onConcluir`), que fecha a janela e recarrega.
-  const { api, modoPublico, portal } = useCadastroCtx();
+  const { api, autonomoPublico, modoPublico, portal } = useCadastroCtx();
   const label = (options: SelectOption[], id: string) =>
     options.find((o) => o.id.toString() === id)?.label ?? "";
 
@@ -4329,7 +4369,12 @@ function StepRevisao({
     ...(socios.some((s) => s.arquivosComprovante.length > 0) ? ["comprovante_socio_1"] : []),
   ];
   const faltando = documentosFaltandoCurto(
-    { estadoCivilId: perfil.estadoCivilId, exigeComprovanteRenda, persona },
+    {
+      estadoCivilId: perfil.estadoCivilId,
+      exigeComprovanteRenda,
+      persona,
+      semEstadoCivil: autonomoPublico,
+    },
     categoriasAnexadas,
   );
   const podeEnviar = faltando.length === 0;
@@ -4753,7 +4798,7 @@ function StepRevisao({
           envio apressado e a ficha voltando para correção. */}
       {enviado || !modoPublico ? null : (
         <p className="mt-4 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-3 py-2 text-xs text-[#7a5e2c] print:hidden dark:text-[#d9b877]">
-          {isImobiliaria
+          {isImobiliaria || autonomoPublico
             ? "Confira os dados antes de enviar. Ao tocar em Enviar, o cadastro vai para a análise da Careli e não dá mais para editar por aqui."
             : portal
               ? "Confira os dados do cliente. Ao tocar em Enviar, a ficha é registrada e não dá mais para editar por aqui."
@@ -4972,7 +5017,13 @@ function StepRevisao({
                   </h2>
                   <p className="m-0 mt-0.5 text-xs text-ink-muted">
                     {nomeCliente} ·{" "}
-                    {isImobiliaria ? "Imobiliária" : modoPublico ? "Cliente" : formato.papelLabel}
+                    {isImobiliaria
+                      ? "Imobiliária"
+                      : autonomoPublico
+                        ? formato.papelLabel
+                        : modoPublico
+                          ? "Cliente"
+                          : formato.papelLabel}
                   </p>
                   <p className="m-0 text-xs text-ink-muted">
                     Enviado em {registro.data} às {registro.hora}
@@ -5005,6 +5056,11 @@ function StepRevisao({
                   {resultado.aviso}
                 </p>
               ) : null
+            ) : autonomoPublico ? (
+              <p className="m-0 mt-4 rounded-lg bg-subtle px-3 py-2 text-xs text-ink-soft">
+                Pronto, você não precisa fazer mais nada. Seu cadastro chegou para a análise da
+                Careli, e avisamos você pelo WhatsApp assim que terminarmos.
+              </p>
             ) : modoPublico ? (
               <p className="m-0 mt-4 rounded-lg bg-subtle px-3 py-2 text-xs text-ink-soft">
                 Pronto, você não precisa fazer mais nada. A ficha já chegou para a análise da
@@ -5087,9 +5143,11 @@ function StepRevisao({
               >
                 {portal
                   ? "Voltar ao CRM"
-                  : modoPublico && !isImobiliaria
-                    ? "Cadastrar outro cliente"
-                    : "Novo cadastro"}
+                  : autonomoPublico
+                    ? "Voltar ao início"
+                    : modoPublico && !isImobiliaria
+                      ? "Cadastrar outro cliente"
+                      : "Novo cadastro"}
               </a>
             </div>
           </div>

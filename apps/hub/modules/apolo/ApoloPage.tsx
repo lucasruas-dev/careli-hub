@@ -2,6 +2,7 @@
 
 import { type ApoloScreen, telaValida } from "@/lib/apolo/catalog";
 import { DashboardScreen } from "./blocks/dashboard/apolo-dashboard";
+import { AutonomosView } from "./blocks/autonomos/autonomos-view";
 import { BoardView } from "./blocks/board/board-view";
 import { LogErrosView } from "./blocks/log-erros/log-erros-view";
 import { EmpreendimentosScreen } from "./blocks/empreendimentos/empreendimentos-view";
@@ -37,6 +38,7 @@ import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
 export function ApoloPage({
   buscaInicial,
   entidadeInicial,
+  telaInicial,
 }: {
   /**
    * Termo que traz a ficha para a lista (documento ou nome).
@@ -49,6 +51,9 @@ export function ApoloPage({
   /** Ficha para abrir direto, vinda de `?entidade=` — ex.: o cockpit da Iris mandando o operador
    *  para o cadastro daquele contato específico, em vez de despejá-lo na lista. */
   entidadeInicial?: null | string;
+  /** Tela para abrir direto, vinda de `?tela=` — ex.: o aviso do sino de um corretor autônomo novo
+   *  pelo link público leva à tela Autônomos. Valor fora do catálogo é ignorado. */
+  telaInicial?: null | string;
 } = {}) {
   // Persistidos: a tela/aba/filtro/busca e o registro aberto do Apolo "continuam
   // de onde estavam" ao navegar e voltar. Ver [[use-persisted-state]].
@@ -126,6 +131,11 @@ export function ApoloPage({
   // largava o operador na lista e ele tinha que procurar de novo a pessoa com quem já estava
   // conversando.
   const deepLinkAplicadoRef = useRef(false);
+  useEffect(() => {
+    const tela = telaValida(telaInicial);
+    if (tela && !entidadeInicial && !buscaInicial) setActiveScreen(tela);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [telaInicial]);
   useEffect(() => {
     if (deepLinkAplicadoRef.current) return;
     if (!entidadeInicial && !buscaInicial) return;
@@ -502,6 +512,11 @@ export function ApoloPage({
         {/* O "+ novo cadastro" e os KPIs ficam no cabeçalho do CRM (CrmCommandCenter). */}
         {activeScreen === "board" ? <BoardView onOpenEntity={openEntityInCrm} /> : null}
         {activeScreen === "logErros" ? <LogErrosView /> : null}
+        {activeScreen === "autonomos" ? (
+          <AutonomosView
+            onOpenEntity={(nome, entityId) => openEntityInCrm(nome, entityId, "documentos")}
+          />
+        ) : null}
         {activeScreen === "dashboard" ? (
           <DashboardScreen dashboard={dashboard} entities={entities} loading={loading} />
         ) : null}

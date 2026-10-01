@@ -11,7 +11,7 @@
 //
 // HS256 na mão com node:crypto de propósito: uma dependência nova para assinar 200 bytes não
 // se justifica, e o formato é o mesmo JWT de sempre.
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 // 90 min (era 45): o fluxo parte do corretor JÁ com os documentos em mãos (premissa do Lucas,
 // 03/08), então não precisa de horas — mas 45 min expirava no meio de preenchimento real e o
@@ -287,6 +287,84 @@ export function preSessaoImobDoRequest(request: Request): VerificarPreImobResult
 }
 
 // ---------------------------------------------------------------------------
+// Pré-sessão do CORRETOR AUTÔNOMO: o CPF foi conferido no portão do link próprio dele
+// ---------------------------------------------------------------------------
+//
+// O link público do autônomo (01/10/2026) reusa o MESMO wizard do cadastro interno, que faz OCR do
+// documento e `enrich` do CPF: torneiras PAGAS, e a regra de ouro exige sessão para elas. O portão
+// confere o CPF (formato e que ele ainda não é autônomo da casa) e emite este token.
+//
+// ⚠️ ELE CARREGA SÓ O CPF, e é a chave anti-troca: a rota de cadastro recusa se o CPF do documento
+// lido divergir. Sem isso, o token de um CPF pagaria o OCR do cadastro de outra pessoa.
+//
+// O discriminante `preAutonomo` isola este token dos outros três: sessão do corretor da CAD,
+// pré-sessão do corretor e pré-sessão da imobiliária nunca valem aqui, e vice-versa.
+export type PreSessaoAutonomo = {
+  // Só dígitos do CPF conferido no portão.
+  cpf: string;
+};
+
+type PreAutonomoPayload = PreSessaoAutonomo & { exp: number; preAutonomo: true };
+
+export const HEADER_PRE_SESSAO_AUTONOMO = "x-autonomo-pre-sessao";
+
+export function assinarPreSessaoAutonomo(pre: PreSessaoAutonomo): EmitirResultado {
+  const chave = segredo();
+  if (!chave) return { error: "Assinatura de sessão indisponível.", ok: false };
+
+  const payload: PreAutonomoPayload = {
+    cpf: String(pre.cpf ?? "").replace(/\D/g, ""),
+    exp: Math.floor(Date.now() / 1000) + SESSAO_TTL_SEGUNDOS,
+    preAutonomo: true,
+  };
+  const cabecalho = b64url(Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })));
+  const corpo = b64url(Buffer.from(JSON.stringify(payload)));
+  const conteudo = `${cabecalho}.${corpo}`;
+  return { ok: true, token: `${conteudo}.${assinar(conteudo, chave)}` };
+}
+
+export type VerificarPreAutonomoResultado =
+  | { ok: false; error: string }
+  | { ok: true; pre: PreSessaoAutonomo };
+
+export function verificarPreSessaoAutonomo(
+  token: string | null | undefined,
+): VerificarPreAutonomoResultado {
+  const chave = segredo();
+  if (!chave) return { error: "Assinatura de sessão indisponível.", ok: false };
+
+  const partes = String(token ?? "").trim().split(".");
+  if (partes.length !== 3) return { error: "Sessão inválida.", ok: false };
+
+  const [cabecalho, corpo, assinatura] = partes as [string, string, string];
+  const a = Buffer.from(assinatura);
+  const b = Buffer.from(assinar(`${cabecalho}.${corpo}`, chave));
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    return { error: "Sessão inválida.", ok: false };
+  }
+
+  let payload: PreAutonomoPayload;
+  try {
+    payload = JSON.parse(Buffer.from(corpo, "base64url").toString("utf8")) as PreAutonomoPayload;
+  } catch {
+    return { error: "Sessão inválida.", ok: false };
+  }
+
+  if (payload?.preAutonomo !== true) return { error: "Sessão inválida.", ok: false };
+  if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) {
+    return { error: "Sessão expirada.", ok: false };
+  }
+  const cpf = String(payload.cpf ?? "").replace(/\D/g, "");
+  if (cpf.length !== 11) return { error: "Sessão inválida.", ok: false };
+
+  return { ok: true, pre: { cpf } };
+}
+
+export function preSessaoAutonomoDoRequest(request: Request): VerificarPreAutonomoResultado {
+  return verificarPreSessaoAutonomo(request.headers.get(HEADER_PRE_SESSAO_AUTONOMO));
+}
+
+// ---------------------------------------------------------------------------
 // Dono da área de staging do upload direto de documento
 // ---------------------------------------------------------------------------
 //
@@ -300,6 +378,14 @@ export function donoUploadSessao(sessao: SessaoCad): string {
 
 export function donoUploadPreImob(pre: PreSessaoImob): string {
   return `c-${pre.cnpj}`;
+}
+
+// ⚠️ O CPF VAI RESUMIDO, NUNCA EM CLARO. O CNPJ da imobiliária é dado público e entra cru no caminho;
+// o CPF é dado pessoal, e o caminho do staging aparece em log do Storage. O resumo é estável (o mesmo
+// CPF dá o mesmo dono, que é o que a conferência do /cadastro precisa) e não volta a ser CPF.
+export function donoUploadPreAutonomo(pre: PreSessaoAutonomo): string {
+  const resumo = createHash("sha256").update(`autonomo-upload:${pre.cpf}`).digest("hex");
+  return `a-${resumo.slice(0, 24)}`;
 }
 
 // Reemite a sessão com o empreendimento escolhido. O corretor pode enviar várias CADs na

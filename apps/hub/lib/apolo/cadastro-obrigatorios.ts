@@ -124,6 +124,15 @@ export type RequisitosInput = {
   // por esta mesma função como PJ, e a etapa não fala dela — fala do comprador da CAD.
   exigeComprovanteRenda?: boolean;
   persona: PersonaCadastro;
+  /**
+   * O estado civil NÃO pede documento (nem certidão, nem identificação do cônjuge).
+   *
+   * ⚠️ SÓ O LINK PÚBLICO DO CORRETOR AUTÔNOMO LIGA ISTO. Lucas (01/10/2026), escolhendo os documentos
+   * do link: *"os mesmos sem a necessidade de certidão estado civil"*. A certidão e o documento do
+   * cônjuge existem para o COMPRADOR (regime de bens, quem assina junto); o corretor não compra nada.
+   * O cadastro interno do autônomo segue cobrando como sempre: a decisão foi sobre o link.
+   */
+  semEstadoCivil?: boolean;
 };
 
 // O requisito do comprovante de renda (uma das três formas). Igual para PF e PJ: quem decide é a
@@ -177,7 +186,7 @@ export function requisitosDocumentos(input: RequisitosInput): RequisitoDocumento
     },
   ];
 
-  const estadoCivil = normalizarCategoria(input.estadoCivilId);
+  const estadoCivil = input.semEstadoCivil ? "" : normalizarCategoria(input.estadoCivilId);
   if (ESTADO_CIVIL_EXIGE_CERTIDAO.has(estadoCivil)) {
     requisitos.push({
       match: (c) => c === "certidao",
@@ -278,12 +287,15 @@ export function validarDocumentosObrigatorios(payload: {
   exigeComprovanteRenda?: boolean;
   perfil?: { estadoCivilId?: string | null } | null;
   persona: PersonaCadastro;
+  // Decidido pela PORTA (o link do autônomo), nunca pelo corpo. Ver `RequisitosInput.semEstadoCivil`.
+  semEstadoCivil?: boolean;
 }): ValidacaoObrigatorios {
   const faltando = documentosFaltando(
     {
       estadoCivilId: payload.perfil?.estadoCivilId,
       exigeComprovanteRenda: payload.exigeComprovanteRenda,
       persona: payload.persona,
+      semEstadoCivil: payload.semEstadoCivil,
     },
     categoriasComArquivo(payload.documentos),
   );

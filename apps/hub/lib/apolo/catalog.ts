@@ -21,6 +21,7 @@ import type { LucideIcon } from "lucide-react";
 import type { ApoloProfile } from "./types";
 
 export type ApoloScreen =
+  | "autonomos"
   | "board"
   | "dashboard"
   | "crm"
@@ -105,6 +106,15 @@ export const apoloScreens = [
     icon: ContactRound,
     id: "crm",
     label: "CRM 360",
+  },
+  {
+    // (01/10/2026) Quem se cadastrou pelo link público do corretor autônomo espera aqui, e é aqui
+    // que o time aprova, pede correção, indefere e habilita em empreendimento.
+    description: "Corretores autonomos: validacao do link publico e habilitacao por empreendimento.",
+    hidden: false,
+    icon: IdCard,
+    id: "autonomos",
+    label: "Autônomos",
   },
   {
     description: "Cenario geral, unidades e relacionamentos por empreendimento.",

@@ -1,7 +1,12 @@
 import { enrichCompany, enrichPerson, extractDocument } from "@/lib/apolo/mostqi";
 import { anotarContexto } from "@/lib/publico/cad/log-erros";
 import { erro, json, lerCorpo, prepararRota, recusar, responder } from "@/lib/publico/cad/rotas";
-import { preSessaoImobDoRequest, sessaoDoRequest } from "@/lib/publico/cad/sessao";
+import { normalizarCpf } from "@/lib/publico/cad/regras";
+import {
+  preSessaoAutonomoDoRequest,
+  preSessaoImobDoRequest,
+  sessaoDoRequest,
+} from "@/lib/publico/cad/sessao";
 
 // S6 — leitura/enriquecimento pela MOST (iOCR). Espelho público de /api/apolo/mostqi.
 //
@@ -14,8 +19,14 @@ import { preSessaoImobDoRequest, sessaoDoRequest } from "@/lib/publico/cad/sessa
 //
 // ⚠️ TORNEIRA PAGA: ~R$ 0,50 por imagem (extract) e ~R$ 1,60 por consulta (enrich). Por isso a
 // rota EXIGE sessão: a do CORRETOR (x-cad-sessao, CAD) OU a pré-sessão da IMOBILIÁRIA
-// (x-cad-pre-sessao-imob, auto-cadastro). O CPF cadastrado / CNPJ conferido É a trava, somada
-// ao teto diário por IP (balde `ocr`).
+// (x-cad-pre-sessao-imob, auto-cadastro) OU a pré-sessão do CORRETOR AUTÔNOMO (x-autonomo-pre-sessao,
+// o link dele, 01/10/2026). O CPF cadastrado / CNPJ conferido É a trava, somada ao teto diário por
+// IP (balde `ocr`).
+//
+// ⚠️ COM O TOKEN DO AUTÔNOMO, A CONSULTA POR CPF SÓ VALE PARA O CPF DELE, e a de CNPJ não vale. O
+// `enrich` devolve dados de uma pessoa (endereço, telefones): aberto para qualquer CPF, o link virava
+// um balcão de consulta de terceiros pago pela Careli. O cadastro do autônomo só precisa do próprio
+// CPF (o do cônjuge é best-effort no wizard e cai na digitação), e autônomo é pessoa física.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 // O enrichment roda datasets on-demand e pode passar de 100s; damos folga (igual ao interno).
@@ -39,7 +50,8 @@ export async function POST(request: Request) {
   // cadastrado ou CNPJ conferido) — é a autorização que paga a consulta.
   const sessaoCorretor = sessaoDoRequest(request);
   const preImob = preSessaoImobDoRequest(request);
-  if (!sessaoCorretor.ok && !preImob.ok) {
+  const preAutonomo = preSessaoAutonomoDoRequest(request);
+  if (!sessaoCorretor.ok && !preImob.ok && !preAutonomo.ok) {
     return recusar(
       request,
       erro("Sua sessão expirou. Reabra o link e informe o seu CPF ou CNPJ de novo.", 401),
@@ -55,7 +67,11 @@ export async function POST(request: Request) {
     });
   } else if (preImob.ok) {
     anotarContexto(request, { imobiliariaCnpj: preImob.pre.cnpj });
+  } else if (preAutonomo.ok) {
+    anotarContexto(request, { corretorCpf: preAutonomo.pre.cpf });
   }
+  // Só o token do autônomo valeu: as outras sessões seguem com o que sempre puderam.
+  const soAutonomo = !sessaoCorretor.ok && !preImob.ok && preAutonomo.ok;
 
   const preparo = await prepararRota(request, "ocr");
   if (!preparo.ok) return preparo.response;
@@ -95,6 +111,13 @@ export async function POST(request: Request) {
   }
 
   if (action === "enrich") {
+    if (soAutonomo && preAutonomo.ok && normalizarCpf(corpo?.cpf) !== preAutonomo.pre.cpf) {
+      return responder(
+        request,
+        inicio,
+        erro("Os dados deste CPF não podem ser completados aqui. Preencha os campos na mão.", 403),
+      );
+    }
     try {
       const enr = await enrichPerson(String(corpo?.cpf ?? ""), {
         datasets: Array.isArray(corpo?.datasets) ? corpo?.datasets : undefined,
@@ -111,6 +134,9 @@ export async function POST(request: Request) {
   }
 
   if (action === "enrich-company") {
+    if (soAutonomo) {
+      return responder(request, inicio, erro("Consulta indisponível neste cadastro.", 403));
+    }
     try {
       const enr = await enrichCompany(String(corpo?.cnpj ?? ""), {
         query: typeof corpo?.query === "string" ? corpo?.query : undefined,

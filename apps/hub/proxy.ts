@@ -74,6 +74,10 @@ const PUBLIC_API_PREFIXES = [
   // Ver [[project_esteira_credenciamento_venda]].
   "/api/publico/cad", // formulario publico de CAD do corretor (sem login, por desenho)
   "/api/publico/imobiliaria", // auto-cadastro de imobiliaria (sem login, por desenho)
+  // Link do CORRETOR AUTONOMO (01/10/2026). So duas rotas moram aqui (iniciar e cadastro), e as
+  // duas validam por dentro a pre-sessao assinada amarrada ao CPF. NADA de operador aqui dentro: a
+  // fila e as decisoes do time moram em /api/apolo/corretores-autonomos (Bearer).
+  "/api/publico/autonomo", // auto-cadastro do corretor autonomo (sem login, por desenho)
   // Fila do CLIENTE no dia do lancamento: ele abre no celular o link que recebeu no check-in e
   // ve a PROPRIA posicao. Nao ha sessao possivel (o cliente nao e' usuario do hub); quem autoriza
   // e' o token HMAC do link (lib/prometeu/link-da-fila.ts), validado dentro da rota, e a resposta

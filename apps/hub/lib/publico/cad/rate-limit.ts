@@ -21,6 +21,7 @@ type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
 
 export type Balde =
   | "assistente"
+  | "autonomo"
   | "creci"
   | "enviar"
   | "exigencias"
@@ -40,6 +41,11 @@ type Regra = { janelaSegundos: number; teto: number };
 const REGRAS: Record<Balde, Regra> = {
   // Widget de FAQ: conversa longa é legítima, conversa infinita é bot.
   assistente: { janelaSegundos: 60 * 60, teto: 40 },
+  // O PORTÃO DO LINK DO CORRETOR AUTÔNOMO (01/10/2026): "este CPF já é autônomo da casa?". É um
+  // oráculo de enumeração apontado para a internet, como o do CNPJ da imobiliária, e por isso tem o
+  // mesmo teto curto e o mesmo atraso progressivo. Balde PRÓPRIO: no `imobiliaria` ele gastaria o
+  // teto do escritório que credencia imobiliária no mesmo Wi-Fi.
+  autonomo: { janelaSegundos: 10 * 60, teto: 24 },
   // Torneiras PAGAS: teto diário e 429 seco, sem atraso progressivo (atrasar não economiza).
   creci: { janelaSegundos: 24 * 60 * 60, teto: 60 },
   enviar: { janelaSegundos: 60 * 60, teto: 60 },
@@ -59,7 +65,7 @@ const REGRAS: Record<Balde, Regra> = {
 
 // Baldes onde o excesso vira espera antes de virar bloqueio. Só os de identificação: nas
 // torneiras pagas, segurar a conexão aberta custa function-time e não economiza a consulta.
-const PROGRESSIVO: Balde[] = ["identificacao", "imobiliaria"];
+const PROGRESSIVO: Balde[] = ["autonomo", "identificacao", "imobiliaria"];
 
 export function chaveDoRequest(request: Request): string {
   // x-forwarded-for na Vercel: o primeiro é o cliente real.
