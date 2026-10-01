@@ -22,6 +22,14 @@
 //   • premissas com QUALQUER erro de leitura → 503. A tabela existe (0166 aplicada em 16/09/2026)
 //     e não respondeu: seguir imprimiria "não há premissa cadastrada" sobre um empreendimento que tem.
 //
+// ⚠️ CORRETAGEM ZERO SÓ SAI COM CONFERÊNCIA DA COORDENAÇÃO (Lucas, 30/09/2026). Quando o contrato de
+// corretagem do C2X registra R$ 0,00, a leitura recusa com `motivo: "corretagem_zero"` (um código, e
+// não uma comparação de texto: é o que o painel usa para abrir o formulário). A coordenação confere o
+// contrato assinado e grava o resultado em `hercules_conferencia_corretagem` (migration 0202); aqui
+// só se LÊ essa linha e se passa a `montarDadosDaRescisao`, que é quem decide o efeito. Conferência
+// ilegível → 503 (não consegui ler NÃO vira "sem conferência"); tabela ausente → segue como sem
+// conferência, porque a recusa do zero continua de pé e não há o que perder.
+//
 // ⚠️ SEM PREMISSA, O TERMO NÃO SAI (decisão do Lucas, 30/09/2026, ao ligar a chave). Até aqui a
 // rubrica sem cadastro caía na praxe do modelo da Lavra do Ouro (multa 10%, publicidade 4%,
 // corretagem 6,5%, tributos 5,93%) com um aviso impresso. Medido nos contratos do C2X: cláusula
@@ -43,6 +51,7 @@ import {
 import type { DadosDaRescisao } from "@/lib/apolo/rescisao-pdf";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import {
+  type ConferenciaDaCorretagem,
   comissaoDoContratoDeCorretagem,
   montarDadosDaRescisao,
   motivoParaNaoEmitirTermo,
@@ -55,17 +64,21 @@ import { ehTabelaAusente } from "@/lib/temis/tabela-ausente";
 // silêncio, e o termo sairia "sem posse" e "sem premissa" para todo contrato.
 const WORKSPACE = "careli";
 const TABELA_DAS_PREMISSAS = "hercules_premissas_de_rescisao";
+const TABELA_DA_CONFERENCIA = "hercules_conferencia_corretagem";
 
 type ClienteAdmin = NonNullable<ReturnType<typeof createApoloAdminClient>>;
 
+/** Por que a recusa aconteceu, quando o painel precisa saber sem ler a frase. */
+export type MotivoDaRecusa = "corretagem_zero";
+
 export type TermoCarregado =
   | { dados: DadosDaRescisao; ok: true }
-  | { error: string; ok: false; status: number };
+  | { error: string; motivo?: MotivoDaRecusa; ok: false; status: number };
 
 type Lido<T> = ({ ok: true } & T) | { error: string; ok: false };
 
-function falha(status: number, error: string): TermoCarregado {
-  return { error, ok: false, status };
+function falha(status: number, error: string, motivo?: MotivoDaRecusa): TermoCarregado {
+  return motivo ? { error, motivo, ok: false, status } : { error, ok: false, status };
 }
 
 type ContratoNoC2xRow = RowDataPacket & {
@@ -83,7 +96,7 @@ type ContratoNoC2xRow = RowDataPacket & {
  * ⚠️ O CONTRATO DE CORRETAGEM MAIS RECENTE (`order by id desc`), como `lib/hades/dossie/dados.ts`
  * faz com o contrato principal: a venda pode ter o documento regerado, e o que vale é o último.
  */
-async function lerContratoNoC2x(
+export async function lerContratoNoC2x(
   contratoId: number,
 ): Promise<Lido<{ comissaoEmReais: null | number; enterpriseId: null | string }>> {
   const poolResult = getHadesDbPool();
@@ -150,6 +163,69 @@ async function lerPosse(
     return { dataDaPosse: String(linha?.data_da_posse ?? "").trim() || null, ok: true };
   } catch (erro) {
     console.error("[apolo][rescisao] posse", erro);
+    return { error: naoLi, ok: false };
+  }
+}
+
+type LinhaDaConferencia = {
+  conferido_em: null | string;
+  resultado: null | string;
+  valor_em_reais: null | number | string;
+};
+
+/**
+ * A conferência da corretagem zero deste contrato, ou `null`.
+ *
+ * ⚠️ `null` É O ESTADO NORMAL (só os contratos de corretagem zero têm conferência), e a TABELA
+ * AUSENTE (0202 ainda não aplicada) também vira `null`: a recusa do zero segue de pé, então não há
+ * conferência a perder. Erro de leitura é OUTRA coisa e vira 503 lá em cima. Resultado que não é um
+ * dos dois valores conhecidos é tratado como ilegível, e não como "sem conferência".
+ */
+async function lerConferenciaDaCorretagem(
+  admin: ClienteAdmin,
+  contratoId: number,
+): Promise<Lido<{ conferencia: ConferenciaDaCorretagem | null }>> {
+  const naoLi =
+    "Não foi possível ler a conferência da corretagem deste contrato, e sem ela o termo não sabe se a corretagem zero já foi esclarecida.";
+
+  try {
+    const { data, error } = await admin
+      .from(TABELA_DA_CONFERENCIA)
+      .select("resultado,valor_em_reais,conferido_em")
+      .eq("workspace_id", WORKSPACE)
+      .eq("contrato_c2x_id", contratoId)
+      .maybeSingle();
+
+    if (error) {
+      if (ehTabelaAusente(error, TABELA_DA_CONFERENCIA)) return { conferencia: null, ok: true };
+      console.error("[apolo][rescisao] conferência da corretagem", error.message);
+      return { error: naoLi, ok: false };
+    }
+
+    const linha = (data ?? null) as LinhaDaConferencia | null;
+    if (!linha) return { conferencia: null, ok: true };
+
+    const resultado = String(linha.resultado ?? "").trim();
+    if (resultado !== "sem_corretagem" && resultado !== "com_corretagem") {
+      console.error("[apolo][rescisao] conferência da corretagem com resultado desconhecido");
+      return { error: naoLi, ok: false };
+    }
+
+    const valor =
+      linha.valor_em_reais === null || linha.valor_em_reais === ""
+        ? null
+        : Number(linha.valor_em_reais);
+    return {
+      conferencia: {
+        // O carimbo é timestamptz (UTC); o papel fala em dia de Brasília.
+        conferidoEm: hojeEmBrasilia(new Date(String(linha.conferido_em ?? ""))),
+        resultado,
+        valorEmReais: valor !== null && Number.isFinite(valor) ? valor : null,
+      },
+      ok: true,
+    };
+  } catch (erro) {
+    console.error("[apolo][rescisao] conferência da corretagem", erro);
     return { error: naoLi, ok: false };
   }
 }
@@ -356,12 +432,14 @@ export async function carregarTermoDeRescisao(escopo: EscopoDoTermo): Promise<Te
     );
   }
 
-  const [doC2x, posse] = await Promise.all([
+  const [doC2x, posse, conferencia] = await Promise.all([
     lerContratoNoC2x(escopo.contratoId),
     lerPosse(admin, escopo.contratoId),
+    lerConferenciaDaCorretagem(admin, escopo.contratoId),
   ]);
   if (!doC2x.ok) return falha(503, doC2x.error);
   if (!posse.ok) return falha(503, posse.error);
+  if (!conferencia.ok) return falha(503, conferencia.error);
 
   const familia = await lerFamilia(admin, doC2x.enterpriseId);
   if (!familia.ok) return falha(503, familia.error);
@@ -380,6 +458,7 @@ export async function carregarTermoDeRescisao(escopo: EscopoDoTermo): Promise<Te
       nome: extrato.data.cliente.nome,
     },
     comissaoEmReais: doC2x.comissaoEmReais,
+    conferenciaDaCorretagem: conferencia.conferencia,
     dataDaPosse: posse.dataDaPosse,
     emitidoEm: hoje,
     premissas: premissas.resolvidas.premissas,
@@ -415,15 +494,69 @@ export async function carregarTermoDeRescisao(escopo: EscopoDoTermo): Promise<Te
   // vira a frase da recusa, e o papel NUNCA leva aviso (o PDF parou de imprimi-los). A régua por
   // texto, que o reviewer marcou como frágil, saiu junto: aviso novo que alguém escrever amanhã não
   // vaza para o cliente, recusa.
+  //
+  // ⚠️ O `motivo` SAI DO FATO, E NÃO DA FRASE: comissão lida exatamente zero e nenhuma conferência
+  // gravada (a conferência só vale com zero, então "zero e sem conferência" é o único caso em que o
+  // aviso do zero foi empurrado). O painel abre o formulário por esse código.
   const avisos = montado.dados.conta.avisos;
   if (avisos.length) {
+    const corretagemZero = doC2x.comissaoEmReais === 0 && conferencia.conferencia === null;
     return falha(
       422,
       `O termo de rescisão não sai para a unidade ${relatorio.contrato.codigo} sem conferência: ${avisos.join(" ")}`,
+      corretagemZero ? "corretagem_zero" : undefined,
     );
   }
 
   return { dados: montado.dados, ok: true };
+}
+
+export type ContratoConferivel =
+  | { ok: true }
+  | { error: string; ok: false; status: number };
+
+/**
+ * O contrato é deste cliente E o C2X ainda diz corretagem zero? É a guarda da rota que grava a
+ * conferência: só SELECT no C2X, e a mesma leitura que o termo faz.
+ *
+ * ⚠️ NÃO SE GRAVA CONFERÊNCIA DE QUEM NÃO É ZERO. A linha só tem efeito com a comissão lida
+ * exatamente zero, e aceitá-la em outro contrato deixaria uma decisão da coordenação pendurada,
+ * inerte, esperando o dia em que o texto do C2X virasse zero por acaso. E o pertencimento vem do
+ * mesmo extrato do termo (`loadExtratoDoCliente` com o `c2xId`), para a coordenação não gravar o
+ * contrato de outro cliente digitando um número.
+ */
+export async function conferirContratoDeCorretagemZero(escopo: {
+  c2xId: number;
+  contratoId: number;
+}): Promise<ContratoConferivel> {
+  const extrato = await loadExtratoDoCliente({
+    c2xId: escopo.c2xId,
+    contratoId: escopo.contratoId,
+    hoje: hojeEmBrasilia(),
+  });
+  if (!extrato.ok) return { error: extrato.error, ok: false, status: 503 };
+
+  if (!extrato.data.contratos.some((item) => item.contrato.id === escopo.contratoId)) {
+    return {
+      error: "Este contrato não está entre os contratos com carteira deste cliente no C2X.",
+      ok: false,
+      status: 404,
+    };
+  }
+
+  const doC2x = await lerContratoNoC2x(escopo.contratoId);
+  if (!doC2x.ok) return { error: doC2x.error, ok: false, status: 503 };
+
+  if (doC2x.comissaoEmReais !== 0) {
+    return {
+      error:
+        "O contrato de corretagem desta venda não registra R$ 0,00 de intermediação no C2X, então não há conferência a registrar.",
+      ok: false,
+      status: 422,
+    };
+  }
+
+  return { ok: true };
 }
 
 /** "multa penal, publicidade e tributos". */

@@ -31,6 +31,10 @@ import { carregarTermoDeRescisao } from "@/lib/apolo/termo-de-rescisao-server";
 // (contrato encerrado, unidade sem preço) e 503 (banco fora de alcance). Sempre com `error`, porque
 // é SÓ `error` que o painel lê — a frase é o que explica o botão ao operador.
 //
+// ⚠️ A RECUSA DA CORRETAGEM ZERO VAI COM `motivo: "corretagem_zero"` (30/09/2026). O painel abre o
+// formulário de conferência por esse código, e não lendo a frase: comparar texto quebraria no dia em
+// que alguém reescrevesse o aviso. Só essa recusa leva `motivo`; as outras seguem só com `error`.
+//
 // ⚠️ O PORTÃO É O DE ESCRITA (admin, líder e operador), E NÃO O DE LEITURA. Decisão do Lucas em
 // 30/09/2026, ao ligar a chave: quem só olha o Apolo (`viewer`) não baixa papel financeiro que vai
 // para o cliente. O extrato continua no portão de leitura; o termo é um passo de atendimento.
@@ -69,7 +73,12 @@ export async function GET(request: Request) {
     const resultado = await carregarTermoDeRescisao({ c2xId, contratoId });
 
     if (!resultado.ok) {
-      return json({ error: resultado.error }, resultado.status);
+      return json(
+        resultado.motivo
+          ? { error: resultado.error, motivo: resultado.motivo }
+          : { error: resultado.error },
+        resultado.status,
+      );
     }
 
     const bytes = await montarTermoDeRescisaoPdf(resultado.dados);
@@ -93,7 +102,7 @@ export async function GET(request: Request) {
   }
 }
 
-function json(payload: { error: string }, status: number) {
+function json(payload: { error: string; motivo?: string }, status: number) {
   return new Response(JSON.stringify(payload), {
     headers: { "Cache-Control": "no-store", "Content-Type": "application/json" },
     status,

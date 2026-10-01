@@ -79,6 +79,17 @@ export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
   const [erroPdf, setErroPdf] = useState<null | string>(null);
   const [baixandoTermo, setBaixandoTermo] = useState(false);
   const [erroTermo, setErroTermo] = useState<null | string>(null);
+  // ⚠️ O FORMULÁRIO DA CONFERÊNCIA É DE UM CONTRATO: guarda qual, para não aparecer sobre o contrato
+  // que o operador escolheu depois. Abre só com `motivo === "corretagem_zero"` na resposta da rota.
+  const [corretagemZeroDoContrato, setCorretagemZeroDoContrato] = useState<null | number>(null);
+  const [resultadoDaConferencia, setResultadoDaConferencia] = useState<
+    "" | "com_corretagem" | "sem_corretagem"
+  >("");
+  const [valorDaConferencia, setValorDaConferencia] = useState("");
+  const [observacaoDaConferencia, setObservacaoDaConferencia] = useState("");
+  const [salvandoConferencia, setSalvandoConferencia] = useState(false);
+  const [erroDaConferencia, setErroDaConferencia] = useState<null | string>(null);
+  const [conferenciaSalva, setConferenciaSalva] = useState(false);
 
   useEffect(() => {
     if (c2xId == null) {
@@ -192,6 +203,8 @@ export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
 
     setBaixandoTermo(true);
     setErroTermo(null);
+    setCorretagemZeroDoContrato(null);
+    setConferenciaSalva(false);
 
     try {
       const token = await getApoloAccessToken();
@@ -210,9 +223,13 @@ export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
         // A rota sempre devolve `error` com a frase (contrato encerrado, posse ilegível, C2X fora).
         // Só o que não é JSON — a página de erro da Vercel num estouro de tempo — cai na genérica.
         const payload = (await response.json().catch(() => null)) as
-          | { error?: string }
+          | { error?: string; motivo?: string }
           | null;
         setErroTermo(payload?.error ?? "Não foi possível gerar o termo de rescisão.");
+        // O código vem da rota (e não da frase): é ele que abre o formulário de conferência.
+        if (payload?.motivo === "corretagem_zero") {
+          setCorretagemZeroDoContrato(relatorio.contrato.id);
+        }
         return;
       }
 
@@ -227,6 +244,50 @@ export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
       setBaixandoTermo(false);
     }
   }, [c2xId, relatorio]);
+
+  const salvarConferencia = useCallback(async () => {
+    if (c2xId == null || !relatorio || !resultadoDaConferencia) {
+      return;
+    }
+
+    setSalvandoConferencia(true);
+    setErroDaConferencia(null);
+    setConferenciaSalva(false);
+
+    try {
+      const token = await getApoloAccessToken();
+      const response = await fetch("/api/apolo/rescisao/conferencia-corretagem", {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        method: "PUT",
+        body: JSON.stringify({
+          c2xId,
+          contrato: relatorio.contrato.id,
+          observacao: observacaoDaConferencia,
+          resultado: resultadoDaConferencia,
+          ...(resultadoDaConferencia === "com_corretagem" ? { valor: valorDaConferencia } : {}),
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        setErroDaConferencia(payload?.error ?? "Não foi possível registrar a conferência.");
+        return;
+      }
+
+      // Gravou: o operador clica de novo em Rescisão, e a simulação sai com a conferência.
+      setConferenciaSalva(true);
+      setCorretagemZeroDoContrato(null);
+      setErroTermo(null);
+      setResultadoDaConferencia("");
+      setValorDaConferencia("");
+      setObservacaoDaConferencia("");
+    } catch {
+      setErroDaConferencia("Não foi possível registrar a conferência.");
+    } finally {
+      setSalvandoConferencia(false);
+    }
+  }, [c2xId, observacaoDaConferencia, relatorio, resultadoDaConferencia, valorDaConferencia]);
 
   if (c2xId == null) {
     return <EmptyPanel text="Cadastro sem vinculo com o C2X para montar o extrato do cliente." />;
@@ -379,6 +440,82 @@ export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
           <p className="m-0 mt-3 text-xs font-semibold text-rose-600 dark:text-rose-300">
             {erroTermo}
           </p>
+        ) : null}
+
+        {ehComprador && conferenciaSalva ? (
+          <p className="m-0 mt-3 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+            Conferência registrada. Clique em Rescisão para gerar a simulação.
+          </p>
+        ) : null}
+
+        {ehComprador && corretagemZeroDoContrato === contrato.id ? (
+          // ⚠️ SÓ A COORDENAÇÃO GRAVA (a rota responde 403 com a frase para quem não é): o formulário
+          // aparece para todos os que veem a recusa, e o erro da rota é mostrado escrito.
+          <div className="mt-3 flex flex-col gap-3 rounded-lg border border-line bg-subtle p-3">
+            <p className="m-0 text-xs font-semibold text-ink-soft">
+              Registrar conferência da corretagem
+            </p>
+            <div className="flex flex-col gap-2 text-sm text-ink">
+              <label className="inline-flex items-center gap-2">
+                <input
+                  checked={resultadoDaConferencia === "sem_corretagem"}
+                  disabled={salvandoConferencia}
+                  name="resultado-da-conferencia"
+                  onChange={() => setResultadoDaConferencia("sem_corretagem")}
+                  type="radio"
+                />
+                Não houve corretagem
+              </label>
+              <label className="inline-flex flex-wrap items-center gap-2">
+                <input
+                  checked={resultadoDaConferencia === "com_corretagem"}
+                  disabled={salvandoConferencia}
+                  name="resultado-da-conferencia"
+                  onChange={() => setResultadoDaConferencia("com_corretagem")}
+                  type="radio"
+                />
+                Houve corretagem de R$
+                <input
+                  aria-label="Valor da corretagem em reais"
+                  className="h-9 w-32 rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none placeholder:text-ink-muted disabled:opacity-60"
+                  disabled={salvandoConferencia || resultadoDaConferencia !== "com_corretagem"}
+                  inputMode="decimal"
+                  onChange={(event) => setValorDaConferencia(event.target.value)}
+                  placeholder="0,00"
+                  value={valorDaConferencia}
+                />
+              </label>
+            </div>
+            <textarea
+              aria-label="Observação da conferência"
+              className="min-h-[64px] w-full resize-none rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-muted"
+              disabled={salvandoConferencia}
+              onChange={(event) => setObservacaoDaConferencia(event.target.value)}
+              placeholder="O que você viu no contrato assinado (obrigatório)"
+              value={observacaoDaConferencia}
+            />
+            {erroDaConferencia ? (
+              <p className="m-0 text-xs font-semibold text-rose-600 dark:text-rose-300">
+                {erroDaConferencia}
+              </p>
+            ) : null}
+            <button
+              className="inline-flex h-9 items-center gap-2 self-start rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink-soft outline-none transition-colors hover:bg-subtle focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={
+                salvandoConferencia ||
+                !resultadoDaConferencia ||
+                !observacaoDaConferencia.trim() ||
+                (resultadoDaConferencia === "com_corretagem" && !valorDaConferencia.trim())
+              }
+              onClick={() => void salvarConferencia()}
+              type="button"
+            >
+              {salvandoConferencia ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              ) : null}
+              Salvar
+            </button>
+          </div>
         ) : null}
 
         <p className="m-0 mt-3 text-xs font-medium text-ink-muted">

@@ -60,6 +60,53 @@ describe("o termo só existe na ficha de comprador", () => {
   });
 });
 
+// ⚠️ O FORMULÁRIO DA CONFERÊNCIA DA CORRETAGEM (30/09/2026). Só abre com o CÓDIGO que a rota do PDF
+// devolve (`motivo === "corretagem_zero"`), e não pela frase; e o fetch dele leva o Bearer como os
+// outros (sem ele, o `proxy.ts` responde 401 e a coordenação veria "não foi possível" para sempre).
+describe("o formulário de conferência da corretagem", () => {
+  it("abre pelo código da rota, e não pelo texto da frase", () => {
+    expect(FONTE).toContain('payload?.motivo === "corretagem_zero"');
+    expect(FONTE).not.toContain("R$ 0,00 de intermediação");
+  });
+
+  it("só aparece para o contrato que recusou, e só na ficha de comprador", () => {
+    expect(FONTE).toContain("{ehComprador && corretagemZeroDoContrato === contrato.id ? (");
+  });
+
+  it("limpa o motivo a cada nova tentativa de baixar o termo", () => {
+    const inicio = FONTE.indexOf("const baixarTermo");
+    const bloco = FONTE.slice(inicio, FONTE.indexOf("setCorretagemZeroDoContrato(relatorio", inicio));
+    expect(bloco).toContain("setCorretagemZeroDoContrato(null)");
+  });
+
+  it("tem os dois resultados, a observação e o Salvar", () => {
+    expect(FONTE).toContain("Registrar conferência da corretagem");
+    expect(FONTE).toContain("Não houve corretagem");
+    expect(FONTE).toContain("Houve corretagem de R$");
+    expect(FONTE).toContain("Observação da conferência");
+    expect(FONTE).toContain("Salvar");
+  });
+
+  it("grava na rota da conferência, com PUT, o Bearer e o contrato", () => {
+    const inicio = FONTE.indexOf("const salvarConferencia");
+    const bloco = FONTE.slice(inicio, FONTE.indexOf("}, [c2xId, observacaoDaConferencia", inicio));
+    expect(bloco).toContain('"/api/apolo/rescisao/conferencia-corretagem"');
+    expect(bloco).toContain('method: "PUT"');
+    expect(bloco).toMatch(/Authorization:\s*`Bearer /);
+    expect(bloco).toContain("contrato: relatorio.contrato.id");
+  });
+
+  it("a frase de erro da rota aparece escrita, e o sucesso manda clicar em Rescisão", () => {
+    expect(FONTE).toContain("setErroDaConferencia(payload?.error ??");
+    expect(FONTE).toContain("Clique em Rescisão para gerar a simulação.");
+  });
+
+  it("o Salvar fica apagado sem resultado, sem observação ou sem valor no 'houve'", () => {
+    expect(FONTE).toContain("!observacaoDaConferencia.trim()");
+    expect(FONTE).toContain('resultadoDaConferencia === "com_corretagem" && !valorDaConferencia.trim()');
+  });
+});
+
 describe("botão apagado tem frase", () => {
   it("o motivo vem da MESMA função que a rota usa para recusar", () => {
     expect(FONTE).toContain('import { motivoParaNaoEmitirTermo } from "@/lib/apolo/termo-de-rescisao";');

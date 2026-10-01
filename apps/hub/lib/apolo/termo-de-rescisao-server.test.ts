@@ -11,7 +11,7 @@ import {
   type ExtratoClienteParcelaBruta,
 } from "./extrato-cliente";
 import { deducaoDe } from "./rescisao";
-import { carregarTermoDeRescisao } from "./termo-de-rescisao-server";
+import { carregarTermoDeRescisao, conferirContratoDeCorretagemZero } from "./termo-de-rescisao-server";
 
 // A LEITURA DO TERMO DE RESCISÃO — os três bancos simulados, e o que cada falha vira.
 //
@@ -456,6 +456,8 @@ describe("o que cada fonte entrega ao papel", () => {
     expect(await carregarTermoDeRescisao(ESCOPO)).toEqual({
       error:
         "O termo de rescisão não sai para a unidade VOC0101 sem conferência: o contrato de corretagem desta venda registra R$ 0,00 de intermediação. Confira no contrato assinado se houve corretagem antes de simular a rescisão; enquanto isso não for esclarecido, a simulação não é emitida.",
+      // O código que abre o formulário de conferência no painel (e não a frase).
+      motivo: "corretagem_zero",
       ok: false,
       status: 422,
     });
@@ -517,6 +519,178 @@ describe("o que cada fonte entrega ao papel", () => {
     await carregarTermoDeRescisao(ESCOPO);
     const premissas = estado.consultasAoSupabase.find((c) => c.tabela === "hercules_premissas_de_rescisao");
     expect(premissas?.filtros).toContainEqual(["enterprise_id", ["37"]]);
+  });
+});
+
+// ⚠️ A CONFERÊNCIA DA CORRETAGEM ZERO (Lucas, 30/09/2026, migration 0202). O que se trava aqui é o
+// MOTIVO da recusa (um código, e não o texto), cada resultado da conferência no papel, e a regra de
+// que ela só vale onde o C2X diz EXATAMENTE zero.
+describe("a conferência da corretagem zero", () => {
+  const TEXTO_ZERO =
+    "R$ 0,00 (ZERO REAIS) refere-se à intermediação imobiliária, sendo que a quantia R$ 0,00 (ZERO REAIS) será destinada ao pagamento da COORDENADORA e R$ 0,00 destinada aos ASSOCIADOS.";
+
+  const conferencia = (sobre: Record<string, unknown>) => ({
+    data: {
+      conferido_em: "2026-09-30T15:00:00.000Z",
+      resultado: "sem_corretagem",
+      valor_em_reais: null,
+      ...sobre,
+    },
+    error: null,
+  });
+
+  beforeEach(() => {
+    estado.linhaDoC2x = { enterprise_id: 37, texto_da_corretagem: TEXTO_ZERO };
+  });
+
+  it("sem conferência: 422 com motivo corretagem_zero", async () => {
+    const resultado = await carregarTermoDeRescisao(ESCOPO);
+    expect(!resultado.ok && resultado.status).toBe(422);
+    expect(!resultado.ok && resultado.motivo).toBe("corretagem_zero");
+  });
+
+  it("as outras recusas não levam motivo", async () => {
+    estado.linhaDoC2x = { enterprise_id: 37, texto_da_corretagem: TEXTO_DA_CORRETAGEM };
+    estado.respostas.hercules_premissas_de_rescisao = { data: [], error: null };
+
+    const resultado = await carregarTermoDeRescisao(ESCOPO);
+    expect(!resultado.ok && resultado.status).toBe(422);
+    expect(resultado).not.toHaveProperty("motivo");
+  });
+
+  it("sem_corretagem: sai SEM a linha de corretagem e sem aviso", async () => {
+    estado.respostas.hercules_conferencia_corretagem = conferencia({ resultado: "sem_corretagem" });
+
+    const resultado = await carregarTermoDeRescisao(ESCOPO);
+    expect(resultado.ok).toBe(true);
+    if (!resultado.ok) return;
+    expect(deducaoDe(resultado.dados.conta, "corretagem")).toBeUndefined();
+    expect(resultado.dados.conta.avisos).toEqual([]);
+  });
+
+  it("com_corretagem: a linha sai com o valor conferido e a cláusula da conferência", async () => {
+    estado.respostas.hercules_conferencia_corretagem = conferencia({
+      resultado: "com_corretagem",
+      valor_em_reais: "6000.00",
+    });
+
+    const resultado = await carregarTermoDeRescisao(ESCOPO);
+    expect(resultado.ok).toBe(true);
+    if (!resultado.ok) return;
+    const linha = deducaoDe(resultado.dados.conta, "corretagem");
+    expect(linha?.valor).toBe(6000);
+    expect(linha?.base).toBe("Conforme contrato");
+    expect(linha?.descricao).toBe("Corretagem (4%)");
+    expect(linha?.clausula).toContain("conferida no contrato assinado em 30/09/2026");
+    expect(resultado.dados.conta.avisos).toEqual([]);
+  });
+
+  it("a data da conferência é a de Brasília, e não a do UTC", async () => {
+    estado.respostas.hercules_conferencia_corretagem = conferencia({
+      conferido_em: "2026-10-01T01:30:00.000Z",
+      resultado: "com_corretagem",
+      valor_em_reais: 6000,
+    });
+
+    const resultado = await carregarTermoDeRescisao(ESCOPO);
+    const linha = resultado.ok ? deducaoDe(resultado.dados.conta, "corretagem") : undefined;
+    expect(linha?.clausula).toContain("em 30/09/2026");
+  });
+
+  // ⚠️ A CONFERÊNCIA SÓ VALE COM ZERO. Texto de corretagem corrigido no C2X vence a conferência velha.
+  it("comissão diferente de zero: a conferência é ignorada", async () => {
+    estado.linhaDoC2x = { enterprise_id: 37, texto_da_corretagem: TEXTO_DA_CORRETAGEM };
+    estado.respostas.hercules_conferencia_corretagem = conferencia({ resultado: "sem_corretagem" });
+
+    const resultado = await carregarTermoDeRescisao(ESCOPO);
+    expect(resultado.ok).toBe(true);
+    if (!resultado.ok) return;
+    expect(deducaoDe(resultado.dados.conta, "corretagem")?.valor).toBe(9000);
+  });
+
+  it("comissão nula (texto sem o valor): a conferência é ignorada e a recusa segue", async () => {
+    estado.linhaDoC2x = { enterprise_id: 37, texto_da_corretagem: null };
+    estado.respostas.hercules_conferencia_corretagem = conferencia({ resultado: "sem_corretagem" });
+
+    const resultado = await carregarTermoDeRescisao(ESCOPO);
+    expect(!resultado.ok && resultado.status).toBe(422);
+    expect(resultado).not.toHaveProperty("motivo");
+  });
+
+  it("erro ao ler a conferência: 503, e não 'sem conferência'", async () => {
+    estado.respostas.hercules_conferencia_corretagem = {
+      data: null,
+      error: { message: "connection reset" },
+    };
+
+    const resultado = await carregarTermoDeRescisao(ESCOPO);
+    expect(!resultado.ok && resultado.status).toBe(503);
+    expect(!resultado.ok && resultado.error).toContain("conferência da corretagem");
+  });
+
+  it("resultado desconhecido na linha: 503", async () => {
+    estado.respostas.hercules_conferencia_corretagem = conferencia({ resultado: "talvez" });
+
+    const resultado = await carregarTermoDeRescisao(ESCOPO);
+    expect(!resultado.ok && resultado.status).toBe(503);
+  });
+
+  it("tabela ausente: segue como sem conferência, e a recusa do zero continua", async () => {
+    estado.respostas.hercules_conferencia_corretagem = {
+      data: null,
+      error: {
+        code: "PGRST205",
+        message: "Could not find the table 'public.hercules_conferencia_corretagem' in the schema cache",
+      },
+    };
+
+    const resultado = await carregarTermoDeRescisao(ESCOPO);
+    expect(!resultado.ok && resultado.status).toBe(422);
+    expect(!resultado.ok && resultado.motivo).toBe("corretagem_zero");
+  });
+
+  it("a conferência é lida junto com a posse, filtrada pelo contrato", async () => {
+    await carregarTermoDeRescisao(ESCOPO);
+
+    const ida = estado.consultasAoSupabase.find((c) => c.tabela === "hercules_conferencia_corretagem");
+    expect(ida?.filtros).toEqual([
+      ["workspace_id", "careli"],
+      ["contrato_c2x_id", 900002],
+    ]);
+  });
+});
+
+// A guarda da rota que GRAVA a conferência: só SELECT, contrato do cliente e comissão exatamente zero.
+describe("a guarda da gravação da conferência", () => {
+  const TEXTO_ZERO =
+    "R$ 0,00 (ZERO REAIS) refere-se à intermediação imobiliária, sendo que a quantia R$ 0,00 (ZERO REAIS) será destinada ao pagamento da COORDENADORA e R$ 0,00 destinada aos ASSOCIADOS.";
+
+  it("contrato do cliente e comissão zero: libera", async () => {
+    estado.linhaDoC2x = { enterprise_id: 37, texto_da_corretagem: TEXTO_ZERO };
+    expect(await conferirContratoDeCorretagemZero({ c2xId: 77, contratoId: 900002 })).toEqual({ ok: true });
+  });
+
+  it("contrato que não é do cliente: 404", async () => {
+    estado.linhaDoC2x = { enterprise_id: 37, texto_da_corretagem: TEXTO_ZERO };
+    const resultado = await conferirContratoDeCorretagemZero({ c2xId: 77, contratoId: 123 });
+    expect(!resultado.ok && resultado.status).toBe(404);
+  });
+
+  it("comissão diferente de zero: 422", async () => {
+    const resultado = await conferirContratoDeCorretagemZero({ c2xId: 77, contratoId: 900002 });
+    expect(!resultado.ok && resultado.status).toBe(422);
+  });
+
+  it("comissão não achada no texto: 422, e não zero", async () => {
+    estado.linhaDoC2x = { enterprise_id: 37, texto_da_corretagem: null };
+    const resultado = await conferirContratoDeCorretagemZero({ c2xId: 77, contratoId: 900002 });
+    expect(!resultado.ok && resultado.status).toBe(422);
+  });
+
+  it("C2X fora do ar: 503", async () => {
+    estado.falhaNoC2x = true;
+    const resultado = await conferirContratoDeCorretagemZero({ c2xId: 77, contratoId: 900002 });
+    expect(!resultado.ok && resultado.status).toBe(503);
   });
 });
 

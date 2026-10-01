@@ -58,6 +58,7 @@
 //                            simulação de 16/09/2026 não os imprime. Ver `clienteDoContrato`.
 
 import {
+  dataBr,
   type ExtratoClienteRelatorio,
   situacaoParaOComprador,
 } from "@/lib/apolo/extrato-cliente";
@@ -302,6 +303,17 @@ export function parcelasVencidasDoExtrato(relatorio: ExtratoClienteRelatorio): {
   };
 }
 
+/**
+ * O que a coordenação registrou depois de olhar o contrato assinado (`hercules_conferencia_corretagem`).
+ * `conferidoEm` é 'YYYY-MM-DD' em Brasília.
+ */
+export type ConferenciaDaCorretagem = {
+  conferidoEm: string;
+  resultado: "com_corretagem" | "sem_corretagem";
+  /** Só em `com_corretagem`. */
+  valorEmReais: null | number;
+};
+
 export type EntradaDoTermo = {
   /** Município do empreendimento, do cadastro do Panteon (`hercules_empreendimentos`). */
   cidade: null | string;
@@ -309,6 +321,8 @@ export type EntradaDoTermo = {
   cliente: { documentoMascarado: null | string; nome: null | string };
   /** De `comissaoDoContratoDeCorretagem`. `null` = não achado. */
   comissaoEmReais: null | number;
+  /** A conferência da corretagem zero, ou ausente. Só vale com a comissão lida EXATAMENTE zero. */
+  conferenciaDaCorretagem?: ConferenciaDaCorretagem | null;
   /** 'YYYY-MM-DD' de `hercules_posse`, ou `null` (o estado normal). */
   dataDaPosse: null | string;
   /** 'YYYY-MM-DD' — hoje em Brasília. É também a data até a qual a fruição corre. */
@@ -347,10 +361,49 @@ export function montarDadosDaRescisao(entrada: EntradaDoTermo): TermoMontado {
   const valorDeTabela = centavos(contrato.precoTabela ?? 0);
   const vencidas = parcelasVencidasDoExtrato(relatorio);
 
-  const comissaoEmReais =
+  const comissaoLida =
     typeof entrada.comissaoEmReais === "number" && Number.isFinite(entrada.comissaoEmReais)
       ? centavos(entrada.comissaoEmReais)
       : null;
+
+  // ⚠️ A CONFERÊNCIA SÓ VALE ONDE O C2X DIZ ZERO, e é só aqui que ela mexe na conta (Lucas,
+  // 30/09/2026). Comissão diferente de zero ou nula ignora a conferência: se o texto de corretagem
+  // foi corrigido no C2X, o contrato vence, e uma conferência velha não pode reescrevê-lo.
+  // "Não houve" vira corretagem DESLIGADA (sem linha e sem aviso, como a rubrica que o contrato do
+  // empreendimento não prevê). "Houve" vira a comissão em reais conferida, que sai "Conforme
+  // contrato" com a cláusula carimbada com a data da conferência. Em ambos o aviso do zero não é
+  // empurrado, porque a pergunta que ele fazia ao operador já foi respondida.
+  const conferencia = comissaoLida === 0 ? (entrada.conferenciaDaCorretagem ?? null) : null;
+  const valorConferido =
+    conferencia?.resultado === "com_corretagem" && Number(conferencia.valorEmReais) > 0
+      ? centavos(Number(conferencia.valorEmReais))
+      : null;
+
+  // "Não houve" zera a comissão para NULO, e não para 0: a conta dá precedência ao valor em reais
+  // sobre a premissa desligada, e queremos a linha fora do papel. Conferência incompleta ("houve"
+  // sem valor, que o CHECK do banco não deixa gravar) não libera nada: segue como zero, com aviso.
+  const comissaoEmReais =
+    conferencia?.resultado === "sem_corretagem" ? null : (valorConferido ?? comissaoLida);
+
+  const premissas: EntradaDoTermo["premissas"] = { ...entrada.premissas };
+  if (conferencia?.resultado === "sem_corretagem") {
+    premissas.corretagem = {
+      base: "valor_efetivo",
+      desligada: true,
+      percentual: null,
+      periodicidade: "unica",
+    };
+  } else if (conferencia && valorConferido !== null) {
+    premissas.corretagem = {
+      base: "valor_efetivo",
+      percentual: null,
+      periodicidade: "unica",
+      ...entrada.premissas.corretagem,
+      clausula: `Corretagem conferida no contrato assinado em ${dataBr(conferencia.conferidoEm)}.`,
+      desligada: false,
+    };
+  }
+
   const percentualDaComissao =
     comissaoEmReais === null
       ? null
@@ -365,7 +418,7 @@ export function montarDadosDaRescisao(entrada: EntradaDoTermo): TermoMontado {
     parcelasVencidas: vencidas.total,
     // Chave AUSENTE quando não há o que dizer — ver o aviso de `premissas` em `rescisao.ts`.
     ...(percentualDaComissao === null ? {} : { percentuais: { corretagem: percentualDaComissao } }),
-    premissas: entrada.premissas,
+    premissas,
     totalPago: totais.totalPago,
     valorDeTabela,
     // "Valor do contrato" não é coluna no C2X: é a SOMA DAS PARCELAS (`rescisao.ts`). O que já foi

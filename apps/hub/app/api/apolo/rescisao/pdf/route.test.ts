@@ -170,6 +170,24 @@ describe("a resposta", () => {
     expect(await resposta.json()).toEqual({ error: frase });
   });
 
+  // ⚠️ O `motivo` É O CÓDIGO QUE ABRE O FORMULÁRIO DE CONFERÊNCIA no painel. Só a recusa da corretagem
+  // zero o leva; as outras seguem só com `error`, e o texto não participa da decisão.
+  it("a recusa da corretagem zero leva o motivo junto do error", async () => {
+    estado.resultado = {
+      error: "O termo de rescisão não sai para a unidade TST0101 sem conferência: corretagem zero.",
+      motivo: "corretagem_zero",
+      ok: false,
+      status: 422,
+    };
+
+    const resposta = await GET(pedido("?c2xId=77&contrato=1050"));
+    expect(resposta.status).toBe(422);
+    expect(await resposta.json()).toEqual({
+      error: "O termo de rescisão não sai para a unidade TST0101 sem conferência: corretagem zero.",
+      motivo: "corretagem_zero",
+    });
+  });
+
   it("falha ao desenhar o PDF: 500 com frase, e não uma página de erro", async () => {
     estado.falhaNoPdf = true;
 
