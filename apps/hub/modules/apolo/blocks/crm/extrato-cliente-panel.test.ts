@@ -60,50 +60,61 @@ describe("o termo só existe na ficha de comprador", () => {
   });
 });
 
-// ⚠️ O FORMULÁRIO DA CONFERÊNCIA DA CORRETAGEM (30/09/2026). Só abre com o CÓDIGO que a rota do PDF
-// devolve (`motivo === "corretagem_zero"`), e não pela frase; e o fetch dele leva o Bearer como os
-// outros (sem ele, o `proxy.ts` responde 401 e a coordenação veria "não foi possível" para sempre).
-describe("o formulário de conferência da corretagem", () => {
+// ⚠️ A CONFERÊNCIA DA CORRETAGEM NO PAINEL (30/09/2026, ajustada em 01/10/2026). O formulário em si
+// mora em `conferencia-corretagem-form.tsx` (e tem o teste dele); aqui se trava a FIAÇÃO: só a
+// coordenação o vê, o código da recusa vem da rota (e não da frase), o header diz qual conferência o
+// PDF usou, e trocar de contrato não deixa nada preso na tela.
+describe("a conferência da corretagem no painel", () => {
   it("abre pelo código da rota, e não pelo texto da frase", () => {
     expect(FONTE).toContain('payload?.motivo === "corretagem_zero"');
     expect(FONTE).not.toContain("R$ 0,00 de intermediação");
   });
 
-  it("só aparece para o contrato que recusou, e só na ficha de comprador", () => {
-    expect(FONTE).toContain("{ehComprador && corretagemZeroDoContrato === contrato.id ? (");
+  it("o formulário é montado com a key do contrato, para trocar de contrato desmontar tudo", () => {
+    expect(FONTE).toContain("<ConferenciaDaCorretagem");
+    expect(FONTE).toContain("key={contrato.id}");
   });
 
-  it("limpa o motivo a cada nova tentativa de baixar o termo", () => {
+  it("só admin e líder veem o formulário (useAuth), e os demais leem a frase", () => {
+    expect(FONTE).toContain('import { useAuth } from "@/providers/auth-provider";');
+    expect(FONTE).toContain('const ehCoordenacao = hubUser?.role === "admin" || hubUser?.role === "leader";');
+    expect(FONTE).toContain("{ehComprador && ehCoordenacao ? (");
+    expect(FONTE).toContain("{ehComprador && !ehCoordenacao && corretagemZeroDoContrato === contrato.id ? (");
+    expect(FONTE).toContain(
+      "Peça à coordenação (admin ou líder) para registrar a conferência da corretagem deste contrato.",
+    );
+  });
+
+  it("a mensagem de sucesso também é só da coordenação, e vem do formulário", () => {
+    expect(FONTE).toContain("{ehComprador && ehCoordenacao && mensagemDaConferencia ? (");
+    expect(FONTE).toContain("setMensagemDaConferencia(mensagem)");
+  });
+
+  it("limpa o motivo, a conferência usada e a mensagem a cada nova tentativa de baixar o termo", () => {
     const inicio = FONTE.indexOf("const baixarTermo");
-    const bloco = FONTE.slice(inicio, FONTE.indexOf("setCorretagemZeroDoContrato(relatorio", inicio));
+    const bloco = FONTE.slice(inicio, FONTE.indexOf("const response = await fetch(`/api/apolo/rescisao/pdf", inicio));
     expect(bloco).toContain("setCorretagemZeroDoContrato(null)");
+    expect(bloco).toContain("setConferenciaUsada(null)");
+    expect(bloco).toContain("setMensagemDaConferencia(null)");
   });
 
-  it("tem os dois resultados, a observação e o Salvar", () => {
-    expect(FONTE).toContain("Registrar conferência da corretagem");
-    expect(FONTE).toContain("Não houve corretagem");
-    expect(FONTE).toContain("Houve corretagem de R$");
-    expect(FONTE).toContain("Observação da conferência");
-    expect(FONTE).toContain("Salvar");
+  it("trocar de contrato no seletor limpa tudo o que era do anterior", () => {
+    const inicio = FONTE.indexOf("setContratoId(Number(event.target.value))");
+    const bloco = FONTE.slice(inicio, FONTE.indexOf("value={String(relatorio.contrato.id)}", inicio));
+    expect(bloco).toContain("setErroTermo(null)");
+    expect(bloco).toContain("setCorretagemZeroDoContrato(null)");
+    expect(bloco).toContain("setConferenciaUsada(null)");
+    expect(bloco).toContain("setMensagemDaConferencia(null)");
   });
 
-  it("grava na rota da conferência, com PUT, o Bearer e o contrato", () => {
-    const inicio = FONTE.indexOf("const salvarConferencia");
-    const bloco = FONTE.slice(inicio, FONTE.indexOf("}, [c2xId, observacaoDaConferencia", inicio));
-    expect(bloco).toContain('"/api/apolo/rescisao/conferencia-corretagem"');
-    expect(bloco).toContain('method: "PUT"');
-    expect(bloco).toMatch(/Authorization:\s*`Bearer /);
-    expect(bloco).toContain("contrato: relatorio.contrato.id");
+  it("lê o header X-Conferencia-Corretagem do PDF para oferecer o 'ver ou corrigir'", () => {
+    expect(FONTE).toContain('response.headers.get("X-Conferencia-Corretagem")');
+    expect(FONTE).toContain("conferenciaUsada?.contratoId === contrato.id");
   });
 
-  it("a frase de erro da rota aparece escrita, e o sucesso manda clicar em Rescisão", () => {
-    expect(FONTE).toContain("setErroDaConferencia(payload?.error ??");
-    expect(FONTE).toContain("Clique em Rescisão para gerar a simulação.");
-  });
-
-  it("o Salvar fica apagado sem resultado, sem observação ou sem valor no 'houve'", () => {
-    expect(FONTE).toContain("!observacaoDaConferencia.trim()");
-    expect(FONTE).toContain('resultadoDaConferencia === "com_corretagem" && !valorDaConferencia.trim()');
+  it("não guarda mais o estado do formulário aqui (ele é do componente)", () => {
+    expect(FONTE).not.toContain("valorDaConferencia");
+    expect(FONTE).not.toContain("salvarConferencia");
   });
 });
 

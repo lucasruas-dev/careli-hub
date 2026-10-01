@@ -82,10 +82,15 @@ export async function GET(request: Request) {
     }
 
     const bytes = await montarTermoDeRescisaoPdf(resultado.dados);
+    // ⚠️ QUAL CONFERÊNCIA O PAPEL USOU vai no header, e não no corpo (o corpo é o PDF): o painel da
+    // coordenação lê para oferecer "ver ou corrigir" (01/10/2026). Ausente quando o papel não usou.
     const nome = nomeDoArquivoRescisao(resultado.dados);
 
     return new Response(new Uint8Array(bytes), {
       headers: {
+        ...(resultado.conferenciaUsada
+          ? { "X-Conferencia-Corretagem": resultado.conferenciaUsada }
+          : {}),
         "Cache-Control": "no-store",
         // `nomeDoArquivoRescisao` já tira os diacríticos (`sanitizarNomeDeArquivo`), então o
         // `filename*` não está salvando acento: é a forma que os navegadores atuais leem, e o

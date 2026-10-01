@@ -38,7 +38,12 @@ const HOJE = "2026-09-16";
 
 const estado = vi.hoisted(() => ({
   comSupabase: true,
-  consultasAoSupabase: [] as Array<{ filtros: Array<[string, unknown]>; tabela: string }>,
+  consultasAoSupabase: [] as Array<{
+    filtros: Array<[string, unknown]>;
+    limite: null | number;
+    ordens: Array<[string, unknown]>;
+    tabela: string;
+  }>,
   extrato: null as unknown,
   falhaNoC2x: false,
   linhaDoC2x: { enterprise_id: 37, texto_da_corretagem: null as null | string },
@@ -64,7 +69,12 @@ vi.mock("@/lib/guardian/db", () => ({
 vi.mock("@/lib/apolo/server", () => {
   /** Um construtor de consulta que só anota os filtros e devolve a resposta combinada da tabela. */
   function consulta(tabela: string) {
-    const registro = { filtros: [] as Array<[string, unknown]>, tabela };
+    const registro = {
+      filtros: [] as Array<[string, unknown]>,
+      limite: null as null | number,
+      ordens: [] as Array<[string, unknown]>,
+      tabela,
+    };
     estado.consultasAoSupabase.push(registro);
 
     const chave = () => {
@@ -84,7 +94,15 @@ vi.mock("@/lib/apolo/server", () => {
         registro.filtros.push([coluna, valor]);
         return construtor;
       },
+      limit: (n: number) => {
+        registro.limite = n;
+        return construtor;
+      },
       maybeSingle: async () => resposta(),
+      order: (coluna: string, opcoes: unknown) => {
+        registro.ordens.push([coluna, opcoes]);
+        return construtor;
+      },
       select: () => construtor,
       then: (resolver: (valor: unknown) => unknown) => Promise.resolve(resposta()).then(resolver),
     };
@@ -588,7 +606,7 @@ describe("a conferência da corretagem zero", () => {
     expect(resultado.dados.conta.avisos).toEqual([]);
   });
 
-  it("com_corretagem: a linha sai com o valor conferido e a cláusula da conferência", async () => {
+  it("com_corretagem: a linha sai com o valor conferido, 'Conforme contrato' e sem aviso", async () => {
     estado.respostas.hercules_conferencia_corretagem = conferencia({
       resultado: "com_corretagem",
       valor_em_reais: "6000.00",
@@ -601,20 +619,70 @@ describe("a conferência da corretagem zero", () => {
     expect(linha?.valor).toBe(6000);
     expect(linha?.base).toBe("Conforme contrato");
     expect(linha?.descricao).toBe("Corretagem (4%)");
-    expect(linha?.clausula).toContain("conferida no contrato assinado em 30/09/2026");
     expect(resultado.dados.conta.avisos).toEqual([]);
   });
 
-  it("a data da conferência é a de Brasília, e não a do UTC", async () => {
+  // ⚠️ O FUNDAMENTO CONTRATUAL É O DA PREMISSA (01/10/2026, achado da revisão da Publicação). A
+  // versão de 30/09 escrevia "conferida no contrato assinado em dd/mm/aaaa" ali; a coluna cita
+  // CLÁUSULA DO CONTRATO, e a data da conferência vive só no registro.
+  it("com_corretagem mantém a cláusula da premissa cadastrada, sem frase da conferência", async () => {
+    estado.respostas.hercules_premissas_de_rescisao = {
+      data: CADASTRO_COMPLETO.map((linha) =>
+        linha.rubrica === "corretagem" ? { ...linha, clausula: "5.2 c)" } : linha,
+      ),
+      error: null,
+    };
     estado.respostas.hercules_conferencia_corretagem = conferencia({
-      conferido_em: "2026-10-01T01:30:00.000Z",
       resultado: "com_corretagem",
       valor_em_reais: 6000,
     });
 
     const resultado = await carregarTermoDeRescisao(ESCOPO);
     const linha = resultado.ok ? deducaoDe(resultado.dados.conta, "corretagem") : undefined;
-    expect(linha?.clausula).toContain("em 30/09/2026");
+    expect(linha?.valor).toBe(6000);
+    expect(linha?.clausula).toBe("5.2 c)");
+  });
+
+  it("com_corretagem sem cláusula na premissa: a cláusula fica nula, e não uma frase inventada", async () => {
+    estado.respostas.hercules_conferencia_corretagem = conferencia({
+      resultado: "com_corretagem",
+      valor_em_reais: 6000,
+    });
+
+    const resultado = await carregarTermoDeRescisao(ESCOPO);
+    const linha = resultado.ok ? deducaoDe(resultado.dados.conta, "corretagem") : undefined;
+    expect(linha?.clausula).toBeNull();
+  });
+
+  it("devolve qual conferência o papel usou (o header do PDF), e nulo quando não usou", async () => {
+    estado.respostas.hercules_conferencia_corretagem = conferencia({ resultado: "sem_corretagem" });
+    const semCorretagem = await carregarTermoDeRescisao(ESCOPO);
+    expect(semCorretagem.ok && semCorretagem.conferenciaUsada).toBe("sem_corretagem");
+
+    estado.respostas.hercules_conferencia_corretagem = conferencia({
+      resultado: "com_corretagem",
+      valor_em_reais: 6000,
+    });
+    const comCorretagem = await carregarTermoDeRescisao(ESCOPO);
+    expect(comCorretagem.ok && comCorretagem.conferenciaUsada).toBe("com_corretagem");
+
+    // Comissão que não é zero: a conferência é ignorada, e então o papel não a usou.
+    estado.linhaDoC2x = { enterprise_id: 37, texto_da_corretagem: TEXTO_DA_CORRETAGEM };
+    const ignorada = await carregarTermoDeRescisao(ESCOPO);
+    expect(ignorada.ok && ignorada.conferenciaUsada).toBeNull();
+  });
+
+  // ⚠️ HISTÓRICO (migration 0202, 01/10/2026): vale a mais recente. Sem a ordem e o limite, o
+  // `maybeSingle` erraria com duas linhas e o termo cairia em 503 na primeira correção.
+  it("lê a conferência MAIS RECENTE (conferido_em desc, id desc, limite 1)", async () => {
+    await carregarTermoDeRescisao(ESCOPO);
+
+    const ida = estado.consultasAoSupabase.find((c) => c.tabela === "hercules_conferencia_corretagem");
+    expect(ida?.ordens).toEqual([
+      ["conferido_em", { ascending: false }],
+      ["id", { ascending: false }],
+    ]);
+    expect(ida?.limite).toBe(1);
   });
 
   // ⚠️ A CONFERÊNCIA SÓ VALE COM ZERO. Texto de corretagem corrigido no C2X vence a conferência velha.
@@ -680,6 +748,73 @@ describe("a conferência da corretagem zero", () => {
   });
 });
 
+// ⚠️ A FIAÇÃO DA RECUSA, POR COMPORTAMENTO (01/10/2026, achado da revisão da Publicação). `recusaPorAvisos`
+// é testada pura acima, mas a CHAMADA dentro de `carregarTermoDeRescisao` também precisa de guarda:
+// uma mutação que filtrava os avisos por texto na chamada (só os que dizem "não entrou na conta" ou
+// "R$ 0,00") passava em todos os testes, porque eles só conferiam um pedaço da frase com
+// `toContain`. Aqui a frase é COMPLETA, com TODOS os avisos que a conta real produz em cada
+// caminho real, e `toEqual`: um aviso que sumir da chamada muda a frase e derruba o teste.
+describe("a recusa por avisos, de ponta a ponta", () => {
+  const TEXTO_ZERO =
+    "R$ 0,00 (ZERO REAIS) refere-se à intermediação imobiliária, sendo que a quantia R$ 0,00 (ZERO REAIS) será destinada ao pagamento da COORDENADORA e R$ 0,00 destinada aos ASSOCIADOS.";
+
+  it("(i) fruição com posse cadastrada: a frase traz o aviso da fruição por inteiro", async () => {
+    estado.respostas.hercules_posse = { data: { data_da_posse: "2025-09-16" }, error: null };
+
+    expect(await carregarTermoDeRescisao(ESCOPO)).toEqual({
+      error:
+        "O termo de rescisão não sai para a unidade VOC0101 sem conferência: Fruição não entrou na conta: a premissa manda calcular sobre o valor do contrato atualizado, que não foi informado.",
+      ok: false,
+      status: 422,
+    });
+  });
+
+  it("(ii) corretagem valor_efetivo sem texto de corretagem: os DOIS avisos entram na frase", async () => {
+    estado.linhaDoC2x = { enterprise_id: 37, texto_da_corretagem: null };
+
+    expect(await carregarTermoDeRescisao(ESCOPO)).toEqual({
+      error:
+        "O termo de rescisão não sai para a unidade VOC0101 sem conferência: Corretagem não entrou na conta: a premissa manda usar o valor do contrato, que não foi informado. Sem a corretagem, a base da multa penal e da publicidade passa a ser o valor de tabela cheio.",
+      ok: false,
+      status: 422,
+    });
+  });
+
+  it("(iii) corretagem zero sem conferência: a frase do zero, por inteiro, com o motivo", async () => {
+    estado.linhaDoC2x = { enterprise_id: 37, texto_da_corretagem: TEXTO_ZERO };
+
+    expect(await carregarTermoDeRescisao(ESCOPO)).toEqual({
+      error:
+        "O termo de rescisão não sai para a unidade VOC0101 sem conferência: o contrato de corretagem desta venda registra R$ 0,00 de intermediação. Confira no contrato assinado se houve corretagem antes de simular a rescisão; enquanto isso não for esclarecido, a simulação não é emitida.",
+      motivo: "corretagem_zero",
+      ok: false,
+      status: 422,
+    });
+  });
+
+  // ⚠️ O `motivo` SÓ VAI COM ZERO E SEM CONFERÊNCIA. Com a conferência gravada (e a posse cadastrada,
+  // então sobra o aviso da fruição), a recusa continua, mas o formulário NÃO deve reabrir: o problema
+  // já não é a corretagem. A mutação que tira `conferencia.conferencia === null` da condição devolve
+  // o motivo aqui e derruba este teste.
+  it("zero, conferência gravada e posse cadastrada: recusa 422 SEM motivo", async () => {
+    estado.linhaDoC2x = { enterprise_id: 37, texto_da_corretagem: TEXTO_ZERO };
+    estado.respostas.hercules_conferencia_corretagem = {
+      data: { resultado: "sem_corretagem", valor_em_reais: null },
+      error: null,
+    };
+    estado.respostas.hercules_posse = { data: { data_da_posse: "2025-09-16" }, error: null };
+
+    const resultado = await carregarTermoDeRescisao(ESCOPO);
+    expect(resultado).toEqual({
+      error:
+        "O termo de rescisão não sai para a unidade VOC0101 sem conferência: Fruição não entrou na conta: a premissa manda calcular sobre o valor do contrato atualizado, que não foi informado.",
+      ok: false,
+      status: 422,
+    });
+    expect(resultado).not.toHaveProperty("motivo");
+  });
+});
+
 // A guarda da rota que GRAVA a conferência: só SELECT, contrato do cliente e comissão exatamente zero.
 describe("a guarda da gravação da conferência", () => {
   const TEXTO_ZERO =
@@ -699,6 +834,22 @@ describe("a guarda da gravação da conferência", () => {
   it("comissão diferente de zero: 422", async () => {
     const resultado = await conferirContratoDeCorretagemZero({ c2xId: 77, contratoId: 900002 });
     expect(!resultado.ok && resultado.status).toBe(422);
+  });
+
+  // ⚠️ PARA LER (GET da rota) NÃO SE EXIGE ZERO (01/10/2026): quem corrige uma conferência antiga
+  // precisa vê-la mesmo que o C2X já tenha sido corrigido. O pertencimento continua conferido.
+  it("exigirZero: false lê mesmo com a comissão diferente de zero, mas segue conferindo o cliente", async () => {
+    const lendo = await conferirContratoDeCorretagemZero(
+      { c2xId: 77, contratoId: 900002 },
+      { exigirZero: false },
+    );
+    expect(lendo.ok).toBe(true);
+
+    const deOutro = await conferirContratoDeCorretagemZero(
+      { c2xId: 77, contratoId: 123 },
+      { exigirZero: false },
+    );
+    expect(!deOutro.ok && deOutro.status).toBe(404);
   });
 
   it("comissão não achada no texto: 422, e não zero", async () => {

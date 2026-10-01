@@ -54,8 +54,20 @@ describe("a migration 0202", () => {
     expect(COMANDOS).toContain("resultado = 'com_corretagem' and valor_em_reais > 0");
   });
 
-  it("uma conferência por contrato", () => {
-    expect(COMANDOS).toContain("unique (workspace_id, contrato_c2x_id)");
+  // ⚠️ HISTÓRICO (01/10/2026): sem unique por contrato. Cada registro é uma linha nova e vale a mais
+  // recente; um unique aqui obrigaria o app a regravar por cima e apagaria o rastro das correções.
+  it("é histórico: nenhuma unicidade por contrato", () => {
+    expect(COMANDOS).not.toMatch(/\bunique\b/i);
+    expect(COMANDOS).not.toMatch(/primary key \(/i);
+  });
+
+  it("tem o índice que serve 'a mais recente' e o histórico", () => {
+    expect(COMANDOS).toContain("create index if not exists hercules_conferencia_corretagem_por_contrato");
+    expect(COMANDOS).toContain("(workspace_id, contrato_c2x_id, conferido_em desc)");
+  });
+
+  it("a observação tem teto de 1000 caracteres, o mesmo da rota e do painel", () => {
+    expect(COMANDOS).toContain("length(observacao) <= 1000");
   });
 
   it("RLS ligada, sem policy, e o acesso revogado de anon e authenticated", () => {

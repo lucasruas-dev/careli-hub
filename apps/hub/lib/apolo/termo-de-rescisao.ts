@@ -58,7 +58,6 @@
 //                            simulação de 16/09/2026 não os imprime. Ver `clienteDoContrato`.
 
 import {
-  dataBr,
   type ExtratoClienteRelatorio,
   situacaoParaOComprador,
 } from "@/lib/apolo/extrato-cliente";
@@ -305,10 +304,9 @@ export function parcelasVencidasDoExtrato(relatorio: ExtratoClienteRelatorio): {
 
 /**
  * O que a coordenação registrou depois de olhar o contrato assinado (`hercules_conferencia_corretagem`).
- * `conferidoEm` é 'YYYY-MM-DD' em Brasília.
+ * A data e o autor ficam só no registro: o papel não os cita (ver o aviso em `montarDadosDaRescisao`).
  */
 export type ConferenciaDaCorretagem = {
-  conferidoEm: string;
   resultado: "com_corretagem" | "sem_corretagem";
   /** Só em `com_corretagem`. */
   valorEmReais: null | number;
@@ -371,8 +369,8 @@ export function montarDadosDaRescisao(entrada: EntradaDoTermo): TermoMontado {
   // foi corrigido no C2X, o contrato vence, e uma conferência velha não pode reescrevê-lo.
   // "Não houve" vira corretagem DESLIGADA (sem linha e sem aviso, como a rubrica que o contrato do
   // empreendimento não prevê). "Houve" vira a comissão em reais conferida, que sai "Conforme
-  // contrato" com a cláusula carimbada com a data da conferência. Em ambos o aviso do zero não é
-  // empurrado, porque a pergunta que ele fazia ao operador já foi respondida.
+  // contrato". Em ambos o aviso do zero não é empurrado, porque a pergunta que ele fazia ao operador
+  // já foi respondida.
   const conferencia = comissaoLida === 0 ? (entrada.conferenciaDaCorretagem ?? null) : null;
   const valorConferido =
     conferencia?.resultado === "com_corretagem" && Number(conferencia.valorEmReais) > 0
@@ -394,12 +392,16 @@ export function montarDadosDaRescisao(entrada: EntradaDoTermo): TermoMontado {
       periodicidade: "unica",
     };
   } else if (conferencia && valorConferido !== null) {
+    // ⚠️ A CLÁUSULA É A DA PREMISSA CADASTRADA, e só dela (decisão de 01/10/2026, achado da revisão
+    // da Publicação). A versão de 30/09 escrevia "Corretagem conferida no contrato assinado em
+    // dd/mm/aaaa" no Fundamento contratual, e esse campo cita CLÁUSULA DO CONTRATO (ex.: "5.2 c)"):
+    // a data da conferência é fato interno, vive no registro (`hercules_conferencia_corretagem`) e
+    // não vai ao papel do cliente. Sem premissa cadastrada a cláusula fica nula, como em toda linha.
     premissas.corretagem = {
       base: "valor_efetivo",
       percentual: null,
       periodicidade: "unica",
       ...entrada.premissas.corretagem,
-      clausula: `Corretagem conferida no contrato assinado em ${dataBr(conferencia.conferidoEm)}.`,
       desligada: false,
     };
   }

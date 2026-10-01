@@ -18,10 +18,18 @@
 -- comissão lida do C2X não é exatamente 0: se o texto de corretagem for corrigido lá, o que vale é
 -- o C2X, e esta linha fica inerte em vez de contradizer o contrato.
 --
--- ⚠️ UMA CONFERÊNCIA POR CONTRATO. Conferir de novo SUBSTITUI (upsert por `workspace_id` +
--- `contrato_c2x_id`) e o carimbo é reescrito junto: o papel não pode atribuir a quem conferiu antes
--- um resultado que outra pessoa corrigiu. `contrato_c2x_id` é o `acquisition_requests.id` do C2X,
--- sem FK porque o C2X é outro banco.
+-- ⚠️ HISTÓRICO, E NÃO UMA LINHA POR CONTRATO (decisão de 01/10/2026, achado da revisão da
+-- Publicação). A primeira versão desta migration tinha `unique (workspace_id, contrato_c2x_id)` e
+-- o app regravava por cima (upsert): um valor digitado errado e corrigido apagava o rastro de quem
+-- registrou o quê, e o papel que já circulou com o número antigo ficava sem prova do que valia
+-- naquele dia. Agora cada registro é uma linha NOVA (o app só faz INSERT, nunca UPDATE), e VALE A
+-- MAIS RECENTE por `conferido_em desc, id` (o `id` desempata dois registros no mesmo instante). O
+-- índice abaixo serve essa leitura e também a lista do histórico na tela.
+-- `contrato_c2x_id` é o `acquisition_requests.id` do C2X, sem FK porque o C2X é outro banco.
+--
+-- ⚠️ A OBSERVAÇÃO TEM TETO DE 1.000 CARACTERES (aparada). Ela é obrigatória porque é a prova da
+-- conferência, mas campo de texto livre sem limite vira depósito de colagem de contrato inteiro.
+-- O mesmo limite vale na rota e no painel; o CHECK é a última barreira.
 --
 -- ⚠️ QUEM CONFERIU É COPIADO, NÃO RESOLVIDO POR JOIN (mesmo desenho de `hercules_posse`): a pessoa
 -- sai da empresa, o cadastro muda, e o histórico tem de continuar dizendo quem foi naquele dia.
@@ -44,13 +52,17 @@ create table if not exists public.hercules_conferencia_corretagem (
   constraint hercules_conferencia_corretagem_resultado check (
     resultado in ('sem_corretagem', 'com_corretagem')
   ),
-  constraint hercules_conferencia_corretagem_observacao check (length(trim(observacao)) > 0),
+  constraint hercules_conferencia_corretagem_observacao check (
+    length(trim(observacao)) > 0 and length(observacao) <= 1000
+  ),
   constraint hercules_conferencia_corretagem_coerente check (
     (resultado = 'sem_corretagem' and valor_em_reais is null)
     or (resultado = 'com_corretagem' and valor_em_reais > 0)
-  ),
-  constraint hercules_conferencia_corretagem_um_por_contrato unique (workspace_id, contrato_c2x_id)
+  )
 );
+
+create index if not exists hercules_conferencia_corretagem_por_contrato
+  on public.hercules_conferencia_corretagem (workspace_id, contrato_c2x_id, conferido_em desc);
 
 alter table public.hercules_conferencia_corretagem enable row level security;
 
@@ -59,7 +71,7 @@ revoke all on table public.hercules_conferencia_corretagem from anon;
 revoke all on table public.hercules_conferencia_corretagem from authenticated;
 
 comment on table public.hercules_conferencia_corretagem is
-  'Conferencia da coordenacao, no contrato assinado, de uma corretagem que o C2X registra como R$ 0,00. Libera a simulacao de rescisao. Uma linha por contrato; so vale enquanto a comissao lida do C2X for exatamente zero.';
+  'Conferencia da coordenacao, no contrato assinado, de uma corretagem que o C2X registra como R$ 0,00. Libera a simulacao de rescisao. Historico: cada registro e uma linha nova e vale a mais recente (conferido_em desc, id); so vale enquanto a comissao lida do C2X for exatamente zero.';
 comment on column public.hercules_conferencia_corretagem.contrato_c2x_id is
   'acquisition_requests.id do C2X. Sem FK: banco diferente.';
 comment on column public.hercules_conferencia_corretagem.resultado is
@@ -67,7 +79,7 @@ comment on column public.hercules_conferencia_corretagem.resultado is
 comment on column public.hercules_conferencia_corretagem.valor_em_reais is
   'Corretagem em reais lida no contrato assinado. Nulo em sem_corretagem; positivo em com_corretagem.';
 comment on column public.hercules_conferencia_corretagem.observacao is
-  'O que a coordenacao viu no contrato assinado. Obrigatoria: e a prova da conferencia.';
+  'O que a coordenacao viu no contrato assinado. Obrigatoria, ate 1000 caracteres: e a prova da conferencia.';
 comment on column public.hercules_conferencia_corretagem.conferido_por is
   'Quem conferiu (auth.users.id), tirado da sessao e nunca do corpo do pedido.';
 comment on column public.hercules_conferencia_corretagem.conferido_por_nome is

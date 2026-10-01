@@ -71,8 +71,11 @@ type ClienteAdmin = NonNullable<ReturnType<typeof createApoloAdminClient>>;
 /** Por que a recusa aconteceu, quando o painel precisa saber sem ler a frase. */
 export type MotivoDaRecusa = "corretagem_zero";
 
+/** Qual conferência da corretagem o papel usou (header `X-Conferencia-Corretagem` da rota do PDF). */
+export type ConferenciaUsada = "com_corretagem" | "sem_corretagem";
+
 export type TermoCarregado =
-  | { dados: DadosDaRescisao; ok: true }
+  | { conferenciaUsada: ConferenciaUsada | null; dados: DadosDaRescisao; ok: true }
   | { error: string; motivo?: MotivoDaRecusa; ok: false; status: number };
 
 type Lido<T> = ({ ok: true } & T) | { error: string; ok: false };
@@ -168,7 +171,6 @@ async function lerPosse(
 }
 
 type LinhaDaConferencia = {
-  conferido_em: null | string;
   resultado: null | string;
   valor_em_reais: null | number | string;
 };
@@ -191,9 +193,15 @@ async function lerConferenciaDaCorretagem(
   try {
     const { data, error } = await admin
       .from(TABELA_DA_CONFERENCIA)
-      .select("resultado,valor_em_reais,conferido_em")
+      .select("resultado,valor_em_reais")
       .eq("workspace_id", WORKSPACE)
       .eq("contrato_c2x_id", contratoId)
+      // ⚠️ HISTÓRICO (01/10/2026, migration 0202): cada conferência é uma linha nova e VALE A MAIS
+      // RECENTE. O `id` desempata dois registros no mesmo instante. Sem a ordem, `maybeSingle`
+      // erraria com 2 linhas e o termo cairia em 503 depois da primeira correção.
+      .order("conferido_em", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (error) {
@@ -217,8 +225,6 @@ async function lerConferenciaDaCorretagem(
         : Number(linha.valor_em_reais);
     return {
       conferencia: {
-        // O carimbo é timestamptz (UTC); o papel fala em dia de Brasília.
-        conferidoEm: hojeEmBrasilia(new Date(String(linha.conferido_em ?? ""))),
         resultado,
         valorEmReais: valor !== null && Number.isFinite(valor) ? valor : null,
       },
@@ -506,7 +512,12 @@ export async function carregarTermoDeRescisao(escopo: EscopoDoTermo): Promise<Te
   );
   if (recusa) return recusa;
 
-  return { dados: montado.dados, ok: true };
+  // ⚠️ A CONFERÊNCIA SÓ FOI USADA SE O C2X DIZ ZERO (a leitura do papel a ignora fora disso). A rota
+  // do PDF a expõe no header `X-Conferencia-Corretagem` para o painel oferecer "ver ou corrigir".
+  const conferenciaUsada =
+    doC2x.comissaoEmReais === 0 ? (conferencia.conferencia?.resultado ?? null) : null;
+
+  return { conferenciaUsada, dados: montado.dados, ok: true };
 }
 
 export type ContratoConferivel =
@@ -518,16 +529,19 @@ export type ContratoConferivel =
  * O contrato é deste cliente E o C2X ainda diz corretagem zero? É a guarda da rota que grava a
  * conferência: só SELECT no C2X, e a mesma leitura que o termo faz.
  *
- * ⚠️ NÃO SE GRAVA CONFERÊNCIA DE QUEM NÃO É ZERO. A linha só tem efeito com a comissão lida
+ * ⚠️ NÃO SE GRAVA CONFERÊNCIA DE QUEM NÃO É ZERO (`exigirZero`, padrão; o GET passa `false`). A linha só tem efeito com a comissão lida
  * exatamente zero, e aceitá-la em outro contrato deixaria uma decisão da coordenação pendurada,
  * inerte, esperando o dia em que o texto do C2X virasse zero por acaso. E o pertencimento vem do
  * mesmo extrato do termo (`loadExtratoDoCliente` com o `c2xId`), para a coordenação não gravar o
  * contrato de outro cliente digitando um número.
  */
-export async function conferirContratoDeCorretagemZero(escopo: {
-  c2xId: number;
-  contratoId: number;
-}): Promise<ContratoConferivel> {
+export async function conferirContratoDeCorretagemZero(
+  escopo: {
+    c2xId: number;
+    contratoId: number;
+  },
+  opcoes: { exigirZero?: boolean } = {},
+): Promise<ContratoConferivel> {
   const extrato = await loadExtratoDoCliente({
     c2xId: escopo.c2xId,
     contratoId: escopo.contratoId,
@@ -547,7 +561,9 @@ export async function conferirContratoDeCorretagemZero(escopo: {
   const doC2x = await lerContratoNoC2x(escopo.contratoId);
   if (!doC2x.ok) return { error: doC2x.error, ok: false, status: 503 };
 
-  if (doC2x.comissaoEmReais !== 0) {
+  // ⚠️ PARA LER (GET da rota) NÃO SE EXIGE ZERO: quem corrige uma conferência antiga precisa vê-la
+  // mesmo que o C2X já tenha sido corrigido. Para GRAVAR continua exigindo (padrão).
+  if (opcoes.exigirZero !== false && doC2x.comissaoEmReais !== 0) {
     return {
       error:
         "O contrato de corretagem desta venda não registra R$ 0,00 de intermediação no C2X, então não há conferência a registrar.",

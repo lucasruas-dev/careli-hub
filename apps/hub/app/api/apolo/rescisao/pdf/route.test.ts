@@ -188,6 +188,27 @@ describe("a resposta", () => {
     });
   });
 
+  // ⚠️ O HEADER DIZ QUAL CONFERÊNCIA O PAPEL USOU (01/10/2026): o painel da coordenação o lê para
+  // oferecer "ver ou corrigir". Ausente quando o papel não usou nenhuma.
+  it.each(["sem_corretagem", "com_corretagem"])(
+    "o PDF que usou a conferência %s leva o header X-Conferencia-Corretagem",
+    async (usada) => {
+      estado.resultado = { conferenciaUsada: usada, dados: { cliente: { nome: "Cliente Teste" } }, ok: true };
+
+      const resposta = await GET(pedido("?c2xId=77&contrato=1050"));
+      expect(resposta.status).toBe(200);
+      expect(resposta.headers.get("X-Conferencia-Corretagem")).toBe(usada);
+    },
+  );
+
+  it("sem conferência usada, o header não existe", async () => {
+    estado.resultado = { conferenciaUsada: null, dados: { cliente: { nome: "Cliente Teste" } }, ok: true };
+
+    const resposta = await GET(pedido("?c2xId=77&contrato=1050"));
+    expect(resposta.status).toBe(200);
+    expect(resposta.headers.has("X-Conferencia-Corretagem")).toBe(false);
+  });
+
   it("falha ao desenhar o PDF: 500 com frase, e não uma página de erro", async () => {
     estado.falhaNoPdf = true;
 
