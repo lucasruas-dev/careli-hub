@@ -25,6 +25,10 @@ type Estado = "aprovado" | "correcao" | "em-analise" | "indeferido";
 
 type Item = {
   codigo: null | string;
+  contatoInformado: { email: null | string; telefone: null | string };
+  fichaExistia: boolean;
+  nomeInformado: null | string;
+  papelAntes: null | string;
   cpfMascarado: null | string;
   decididoEm: null | string;
   email: null | string;
@@ -48,6 +52,13 @@ const ABAS: Array<{ id: Aba; label: string }> = [
   { id: "decididos", label: "Decididos (30 dias)" },
   { id: "habilitacao", label: "Habilitação" },
 ];
+
+const ROTULO_DO_PAPEL: Record<string, string> = {
+  active: "ativo",
+  archived: "arquivado",
+  blocked: "bloqueado",
+  review: "em análise",
+};
 
 const ROTULO_DO_ESTADO: Record<Estado, string> = {
   aprovado: "Aprovado",
@@ -286,6 +297,30 @@ function CartaoDoPedido({
           {item.codigo ?? ROTULO_DO_ESTADO[item.estado]}
         </span>
       </div>
+
+      {/* ⚠️ O LINK NÃO PROVA QUE QUEM DIGITA É DONO DO CPF (revisão adversarial de 01/10/2026). Em
+          ficha que já existia, o que foi digitado não entrou na ficha: a tela mostra os dois lados
+          para o time conferir antes de aprovar. Contato ou nome diferentes = desconfie. */}
+      {item.fichaExistia ? (
+        <div className="mt-3 rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          <p className="m-0 font-semibold">
+            Este CPF já tinha ficha na Careli
+            {item.papelAntes
+              ? `, e já era corretor (${ROTULO_DO_PAPEL[item.papelAntes] ?? item.papelAntes})`
+              : ""}
+            . Confira se quem pediu é mesmo a pessoa.
+          </p>
+          <p className="m-0 mt-1">
+            Digitado no link: {item.nomeInformado ?? "sem nome"}
+            {" · "}
+            {[item.contatoInformado.telefone, item.contatoInformado.email].filter(Boolean).join(" · ") ||
+              "sem contato"}
+          </p>
+          <p className="m-0 mt-0.5">
+            O aviso da decisão vai para o contato que já estava na ficha (acima), e não para o digitado.
+          </p>
+        </div>
+      ) : null}
 
       <div className="mt-3">
         <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">

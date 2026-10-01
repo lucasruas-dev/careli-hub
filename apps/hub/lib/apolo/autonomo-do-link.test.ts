@@ -29,11 +29,11 @@ import {
   estadoDoPedido,
   MENSAGEM_DO_PORTAO,
   montarFila,
+  papelDepoisDoLink,
   recusaDaDecisao,
   registrarCadastroDoLink,
   situacaoDoCpf,
   situacaoNoPortao,
-  statusDoPapelDepoisDoLink,
 } from "./autonomo-do-link";
 
 // ---------------------------------------------------------------------------
@@ -190,11 +190,11 @@ describe("o que o link grava", () => {
     expect(entrada.perfil?.imobiliariaLabel).toBe("");
   });
 
-  it("o papel fica em análise, a não ser que a pessoa já fosse corretor ativo", () => {
-    expect(statusDoPapelDepoisDoLink(null)).toBe("review");
-    expect(statusDoPapelDepoisDoLink("review")).toBe("review");
-    expect(statusDoPapelDepoisDoLink("blocked")).toBe("review");
-    expect(statusDoPapelDepoisDoLink("active")).toBe("active");
+  it("só o papel que o link cria fica em análise; o que já existia não é tocado (bloqueado inclusive)", () => {
+    expect(papelDepoisDoLink(null)).toBe("review");
+    expect(papelDepoisDoLink("review")).toBe("manter");
+    expect(papelDepoisDoLink("blocked")).toBe("manter");
+    expect(papelDepoisDoLink("active")).toBe("manter");
   });
 
   it("CAI NA MESMA ENTIDADE, SEM CÓDIGO, EM ANÁLISE E NA FILA DO TIME", async () => {
@@ -224,7 +224,8 @@ describe("o que o link grava", () => {
       persona: "pf",
       role: "corretor",
     });
-    expect(opcoes).toMatchObject({ cadastroDeCorretorAutonomo: true });
+    // Ficha que já existe é só ACRESCENTADA: nada do que ela tem é trocado (revisão adversarial).
+    expect(opcoes).toMatchObject({ cadastroDeCorretorAutonomo: true, fichaExistente: "acrescentar" });
     expect(opcoes).not.toHaveProperty("codigoDoCorretor");
     expect(opcoes).not.toHaveProperty("habilitacaoInterna");
 
@@ -238,8 +239,14 @@ describe("o que o link grava", () => {
     expect(pedido?.valores).toMatchObject({
       action: ACOES_DO_PEDIDO.solicitado,
       entity_id: "nova",
-      metadata: { empreendimentosDeInteresse: [{ id: "35", label: "Vale do Ouro" }] },
+      metadata: {
+        contatoInformado: { email: "joana@email.com", telefone: "31999990000" },
+        empreendimentosDeInteresse: [{ id: "35", label: "Vale do Ouro" }],
+        fichaExistia: false,
+        papelAntes: null,
+      },
     });
+    expect(gravado).toMatchObject({ fichaExistia: false });
     expect(feitas.some((op) => op.tabela === "apolo_relationships" && op.acao !== "select")).toBe(false);
     expect(
       feitas.some(
@@ -267,14 +274,44 @@ describe("o que o link grava", () => {
         : { data: [] },
     );
 
-    await registrarCadastroDoLink(client, { corpo: CORPO, empreendimentosDeInteresse: [] });
+    const gravado = await registrarCadastroDoLink(client, { corpo: CORPO, empreendimentosDeInteresse: [] });
 
     expect(
       feitas.some((op) => op.tabela === "apolo_entity_profiles" && op.acao === "update"),
     ).toBe(false);
+    expect(gravado).toMatchObject({ fichaExistia: true, ok: true });
     // A ficha é a mesma (o persist anexou nela) e o pedido entra nela.
     const pedido = feitas.find((op) => op.tabela === "apolo_audit_events" && op.acao === "insert");
     expect((pedido?.valores as { entity_id: string }).entity_id).toBe("existente");
+  });
+
+  it("corretor BLOQUEADO pela casa continua bloqueado: o link não reativa nem rebaixa", async () => {
+    m.fichas.mockResolvedValue({ falhou: false, ids: ["existente"] });
+    m.criar.mockResolvedValue({ autenticacao: "CAD-2026-X", entityId: "existente", ok: true, warnings: [] });
+    const { client, feitas } = banco((op) =>
+      op.tabela === "apolo_entity_profiles" && op.acao === "select"
+        ? { data: [{ entity_id: "existente", status: "blocked" }] }
+        : { data: [] },
+    );
+    await registrarCadastroDoLink(client, { corpo: CORPO, empreendimentosDeInteresse: [] });
+    expect(feitas.some((op) => op.tabela === "apolo_entity_profiles" && op.acao !== "select")).toBe(false);
+    const pedido = feitas.find((op) => op.tabela === "apolo_audit_events" && op.acao === "insert");
+    expect(pedido?.valores).toMatchObject({ metadata: { fichaExistia: true, papelAntes: "blocked" } });
+  });
+
+  it("se o papel novo não vai para análise, o cadastro FALHA: corretor ativo sem validação não fica", async () => {
+    m.fichas.mockResolvedValue({ falhou: false, ids: [] });
+    m.criar.mockResolvedValue({ autenticacao: "CAD-2026-X", entityId: "nova", ok: true, warnings: [] });
+    const { client, feitas } = banco((op) =>
+      op.tabela === "apolo_entity_profiles" && op.acao === "update"
+        ? { error: { message: "timeout" } }
+        : { data: [] },
+    );
+    expect(await registrarCadastroDoLink(client, { corpo: CORPO, empreendimentosDeInteresse: [] })).toEqual({
+      ok: false,
+      recusa: null,
+    });
+    expect(feitas.some((op) => op.tabela === "apolo_audit_events")).toBe(false);
   });
 
   it("sem o pedido na trilha a gravação FALHA: ficha que ninguém vê não é sucesso", async () => {
@@ -368,13 +405,30 @@ describe("as três decisões do time", () => {
     expect(recusaDaDecisao({ ...base, acao: "aprovar", estado: "correcao" })).toBeNull();
   });
 
-  function bancoDaDecisao(extra: { brokerCode?: null | string; gravouCodigo?: boolean; papel?: string } = {}) {
+  function bancoDaDecisao(
+    extra: {
+      brokerCode?: null | string;
+      codigoNaCopia?: string;
+      gravouCodigo?: boolean;
+      papel?: string;
+      papelAntes?: null | string;
+    } = {},
+  ) {
     return banco((op) => {
+      if (op.tabela === "apolo_entities" && op.acao === "select" && filtroDe(op, "document_hash")) {
+        return {
+          data: [
+            { broker_code: null, id: "e1" },
+            ...(extra.codigoNaCopia ? [{ broker_code: extra.codigoNaCopia, id: "copia" }] : []),
+          ],
+        };
+      }
       if (op.tabela === "apolo_entities" && op.acao === "select") {
         return {
           data: {
             broker_code: extra.brokerCode ?? null,
             display_name: "JOANA DA SILVA",
+            document_hash: "hash-do-cpf",
             entity_kind: "pf",
             id: "e1",
           },
@@ -388,7 +442,14 @@ describe("as três decisões do time", () => {
       }
       if (op.tabela === "apolo_audit_events" && op.acao === "select") {
         return {
-          data: [{ action: ACOES_DO_PEDIDO.solicitado, created_at: "2026-10-01T10:00:00Z", entity_id: "e1" }],
+          data: [
+            {
+              action: ACOES_DO_PEDIDO.solicitado,
+              created_at: "2026-10-01T10:00:00Z",
+              entity_id: "e1",
+              metadata: { papelAntes: extra.papelAntes ?? null },
+            },
+          ],
         };
       }
       if (op.tabela === "apolo_contacts") {
@@ -467,6 +528,48 @@ describe("as três decisões do time", () => {
     expect(papel?.valores).toEqual({ status: "blocked" });
     expect(papel?.filtros).toContainEqual(["eq", "status", "review"]);
     expect(m.enviar.mock.calls[0]![1].texto).toContain("CRECI cancelado");
+  });
+
+  it("indeferir quem já estava em análise pela IMOBILIÁRIA dele não decide nada sobre ela", async () => {
+    const { client, feitas } = bancoDaDecisao({ papel: "review", papelAntes: "review" });
+    await decidirPedidoDoAutonomo(client, {
+      acao: "indeferir",
+      autorNome: null,
+      autorUserId: "u-1",
+      entityId: "e1",
+      motivos: ["x"],
+    });
+    expect(feitas.some((op) => op.tabela === "apolo_entity_profiles" && op.acao !== "select")).toBe(false);
+  });
+
+  it("CORRIDA: depois que alguém aprovou, pedir correção ou indeferir é recusado", async () => {
+    for (const acao of ["correcao", "indeferir"] as const) {
+      const { client, feitas } = bancoDaDecisao({ brokerCode: "CA-0003" });
+      const feita = await decidirPedidoDoAutonomo(client, {
+        acao,
+        autorNome: null,
+        autorUserId: "u-2",
+        entityId: "e1",
+        motivos: ["x"],
+      });
+      expect(feita).toMatchObject({ ok: false, status: 409 });
+      expect(feitas.some((op) => op.acao !== "select")).toBe(false);
+    }
+    expect(m.enviar).not.toHaveBeenCalled();
+  });
+
+  it("uma pessoa, um código: se outra ficha do mesmo CPF já é autônomo, aprovar recusa", async () => {
+    m.sequencia.mockResolvedValue({ codigo: "CA-0009", ok: true });
+    const { client, feitas } = bancoDaDecisao({ codigoNaCopia: "CA-0004" });
+    const feita = await decidirPedidoDoAutonomo(client, {
+      acao: "aprovar",
+      autorNome: null,
+      autorUserId: "u-1",
+      entityId: "e1",
+    });
+    expect(feita).toMatchObject({ ok: false, status: 409 });
+    expect(m.sequencia).not.toHaveBeenCalled();
+    expect(feitas.some((op) => op.acao !== "select")).toBe(false);
   });
 
   it("indeferir quem já era corretor ativo de imobiliária não mexe no papel dele", async () => {

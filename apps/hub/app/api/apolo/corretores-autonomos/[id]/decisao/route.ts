@@ -17,6 +17,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const ACOES: AcaoDoTime[] = ["aprovar", "correcao", "indeferir"];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Corpo = { acao?: unknown; motivos?: unknown; observacao?: unknown };
 
@@ -28,6 +29,9 @@ export async function POST(
   if (!auth.ok) return auth.response;
 
   const { id } = await context.params;
+  if (!UUID_RE.test(String(id ?? ""))) {
+    return NextResponse.json({ error: "Ficha não encontrada." }, { status: 404 });
+  }
   const client = createApoloAdminClient();
   if (!client) {
     return NextResponse.json({ error: "Escrita no Apolo indisponível." }, { status: 503 });

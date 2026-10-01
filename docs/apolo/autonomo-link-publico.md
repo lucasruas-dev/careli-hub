@@ -35,22 +35,42 @@ O cadastro feito pelo link cai na **mesma entidade** e na **mesma validação** 
    - já é autônomo: frase fixa, sem nome nem dado da ficha;
    - em análise: frase fixa.
 3. **Assistente.** O mesmo `CadastroFlow` do time, `tipo="corretor"`, em modo público. Os textos falam com a pessoa ("seu documento"). Não pede certidão nem cônjuge.
-4. **Envio.** `POST /api/publico/autonomo/cadastro` grava e devolve o código de autenticação e o PDF. Não devolve o id da ficha.
+4. **Envio.** `POST /api/publico/autonomo/cadastro` grava e devolve o código de autenticação e o PDF. Não devolve o id da ficha. O celular é obrigatório: é por ele que a Careli responde ao pedido.
 
 ### O que é gravado (`lib/apolo/autonomo-do-link.ts`, `registrarCadastroDoLink`)
 
-- A ficha, por `createApoloEntity`: a mesma porta do cadastro interno, com `role: corretor`, `persona: pf`, `dedupPorDocumento: true` (o mesmo CPF anexa na ficha que já existe) e `cadastroDeCorretorAutonomo: true`. **Sem gerador de código.**
+- A ficha, por `createApoloEntity`: a mesma porta do cadastro interno, com `role: corretor`, `persona: pf`, `dedupPorDocumento: true` (o mesmo CPF não ganha segunda ficha) e `cadastroDeCorretorAutonomo: true`. **Sem gerador de código.**
+- **Ficha que já existe só é acrescentada** (`fichaExistente: "acrescentar"`, o modo do portal do incorporador). O link não prova que quem digita é dono do CPF. No modo `anexar`, quem digitasse o CPF de um comprador gravaria na ficha dele um segundo e-mail e um segundo telefone primários, reescreveria o índice de busca e trocaria o código da CAD. No modo que acrescenta:
+  - nada que a ficha tem é trocado;
+  - telefone e e-mail não entram (são chave de identidade da Iris);
+  - o papel que existe não é tocado;
+  - o que foi digitado fica como pendência.
+  - Nesse caso, a resposta também não devolve o código de autenticação nem o PDF da ficha.
 - A entrada é por lista de inclusão. O corpo não consegue mandar `empreendimentos` (viraria habilitação), `corretores`, `empresa`, `vinculo` nem imobiliária.
-- O papel `corretor` fica `review`. A exceção é quem já era corretor `active` de uma imobiliária: continua ativo, porque rebaixar tiraria a imobiliária dele do ar. Sem código, ele não é autônomo de qualquer jeito.
-- O **pedido** vai para `apolo_audit_events` (`corretor_autonomo_solicitado`, com o interesse no `metadata`). Não vai para o `metadata` da ficha, que o sync do C2X reescreve inteiro.
+- **Papel `corretor`:** só o papel que o link cria fica `review`, e se essa gravação falhar o cadastro falha. O papel que já existia fica como estava: ativo de uma imobiliária, em análise pela imobiliária, ou bloqueado pela casa. Sem código, ninguém é autônomo de qualquer jeito.
+- O **pedido** vai para `apolo_audit_events` (`corretor_autonomo_solicitado`). Não vai para o `metadata` da ficha, que o sync do C2X reescreve inteiro. O `metadata` do pedido leva:
+  - o interesse;
+  - se a ficha já existia;
+  - como estava o papel antes;
+  - o nome e o contato digitados.
 - Documentos agrupados no drive da ficha, PDF com autenticação, e o aviso no sino para administradores e líderes ativos. Medido: não existe permissão do Apolo no hub, e eram 7 das 10 pessoas ativas.
 
 ### Lado do time (Apolo > Autônomos)
 
 - **Em análise**, **Em correção**, **Decididos (30 dias)** e **Habilitação**. A fila sai da trilha: o estado de cada ficha é a última das quatro ações (`solicitado`, `aprovado`, `correcao`, `indeferido`).
-- **Aprovar** faz o que o cadastro interno faz: código CA da sequência do banco, gravado só em ficha sem código (`broker_code is null` no próprio UPDATE, então dois cliques não dão dois códigos), e papel `corretor` `active`. Não habilita nada.
+- **Sinal de CPF de terceiro.** Quando a ficha já existia, o cartão mostra um alerta com:
+  - o papel anterior;
+  - o nome e o contato digitados no link, para comparar com os da ficha.
+
+  O aviso da decisão vai para o contato que já estava na ficha.
+- **Aprovar** faz o que o cadastro interno faz:
+  - dá o código CA da sequência do banco, gravado só em ficha sem código (`broker_code is null` no próprio UPDATE, então dois cliques não dão dois códigos);
+  - põe o papel `corretor` em `active`;
+  - recusa se outra ficha do mesmo CPF (`document_hash`) já tem código;
+  - não habilita nada.
 - **Pedir correção** registra o motivo e manda WhatsApp com o link. A pessoa abre o link, informa o CPF e reenvia; o portão reabre para quem está em correção, e a ficha é a mesma.
-- **Indeferir** registra o motivo, bloqueia o papel que o link pôs em análise e avisa. Quem já era corretor ativo de imobiliária não é tocado.
+- **Indeferir** registra o motivo e avisa. Bloqueia só o papel que o próprio link criou; quem já era corretor de imobiliária (ativo ou em análise) não é tocado.
+- **Corrida entre duas pessoas do time:** pedir correção ou indeferir uma ficha que já tem código é recusado (409). Assim a fila não diz o contrário do que vale.
 - **Habilitação** lista todo autônomo aprovado, inclusive os do cadastro interno, e chama a rota que já existia. Ela grava auditoria e avisa o coordenador.
 - Os documentos ficam na ficha do CRM ("Abrir ficha e documentos" abre na aba Documentos).
 - O aviso ao corretor sai pelo celular do Relacionamento (`enviarPeloRelacionamento`) e fica registrado em `apolo_disparos`. O código CA não vai na mensagem: o código aparece *"somente no CRM"*.
@@ -83,3 +103,10 @@ O cadastro feito pelo link cai na **mesma entidade** e na **mesma validação** 
 - A pessoa que é corretor de imobiliária **e** pede para ser autônomo fica com as duas coisas depois da aprovação. Falta o Lucas dizer se isso pode.
 - O cadastro interno do autônomo continua pedindo a certidão. A decisão de 01/10 foi só sobre o link.
 - A habilitação não avisa o próprio autônomo, só o coordenador. Isso já era assim antes.
+- **Sem prova de posse do CPF e sem captcha.** Qualquer CPF válido abre o assistente, com o teto por IP (24 por 10 min no portão, 60 envios por hora). Quem rotaciona IP pode:
+  - gastar OCR;
+  - pôr um pedido em análise no CPF de outra pessoa, até o time indeferir;
+  - anexar documentos na ficha que já existe, marcados "(auto-cadastro)".
+
+  A tela mostra o alerta de ficha existente para o time desconfiar. Captcha (Turnstile) ou teto global ficam para decisão.
+- Revisão adversarial de 01/10/2026: todos os achados altos e médios (A1, A2, M1, M2, M3, M5) foram corrigidos e têm teste. Também foram corrigidos os baixos B2, B3 e B5. Dos baixos, B1 (duas abas do mesmo CPF), B4 (portão distingue "já é autônomo" de "em análise") e B6 (tamanho dos campos livres) ficaram como estavam.

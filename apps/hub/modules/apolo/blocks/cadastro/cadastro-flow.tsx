@@ -1102,13 +1102,13 @@ async function salvarPublico(
     method: "POST",
   });
   const json = (await response.json().catch(() => null)) as
-    | (Partial<SalvarResposta> & { error?: string })
+    | (Partial<SalvarResposta> & { error?: string; recebido?: boolean })
     | null;
   if (response.status === 401 && mensagem401) throw new Error(mensagem401);
   // ⚠️ O LINK DO CORRETOR AUTÔNOMO (01/10/2026) NÃO DEVOLVE O ID DA FICHA: `rotas.ts` pede que nenhum
   // id interno vaze para a rota pública, e o wizard não usa o id para nada além de saber que gravou.
   // O código de autenticação, que a pessoa já recebe no PDF, serve de comprovante do mesmo jeito.
-  if (!response.ok || !(json?.entityId || json?.autenticacao)) {
+  if (!response.ok || !(json?.entityId || json?.autenticacao || json?.recebido)) {
     throw new Error(json?.error ?? `Falha HTTP ${response.status}`);
   }
   return {
@@ -2690,6 +2690,9 @@ function StepIdentificacao({
           vinculoOk: vinculoProspectOk,
         }),
         emailValido ? null : "e-mail válido",
+        // No link do autônomo o CELULAR é obrigatório: é por ele que a Careli responde ao pedido
+        // (revisão de 01/10/2026). A mesma régua está no servidor (/api/publico/autonomo/cadastro).
+        !autonomoPublico || soDigitos(perfil.telefone).length >= 10 ? null : "celular com DDD",
         conjugeOk ? null : "dados do cônjuge",
       ].filter((item): item is string => item !== null)
     : ["o documento de identificação"];
@@ -5059,7 +5062,7 @@ function StepRevisao({
             ) : autonomoPublico ? (
               <p className="m-0 mt-4 rounded-lg bg-subtle px-3 py-2 text-xs text-ink-soft">
                 Pronto, você não precisa fazer mais nada. Seu cadastro chegou para a análise da
-                Careli, e avisamos você pelo WhatsApp assim que terminarmos.
+                Careli, e assim que ela terminar a Careli entra em contato com você.
               </p>
             ) : modoPublico ? (
               <p className="m-0 mt-4 rounded-lg bg-subtle px-3 py-2 text-xs text-ink-soft">

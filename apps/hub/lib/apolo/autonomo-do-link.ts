@@ -138,8 +138,10 @@ export function situacaoNoPortao(input: {
  * "código CA" ou quem na Careli está com o pedido.
  */
 export const MENSAGEM_DO_PORTAO: Record<Exclude<SituacaoNoPortao, "liberado">, string> = {
+  // ⚠️ "ENTRAMOS EM CONTATO", E NÃO "AVISAMOS PELO WHATSAPP" (revisão de 01/10/2026): o aviso da decisão
+  // é best-effort, e uma frase que promete o envio automático mente no dia em que ele falha.
   "em-analise":
-    "Já recebemos um cadastro com este CPF e ele está em análise. Assim que terminarmos, avisamos você pelo WhatsApp informado no cadastro.",
+    "Já recebemos um cadastro com este CPF e ele está em análise. Assim que a análise terminar, a Careli entra em contato com você.",
   "ja-autonomo":
     "Este CPF já tem cadastro de corretor autônomo com a Careli. Se precisar atualizar algum dado, fale com a nossa central.",
 };
@@ -223,19 +225,31 @@ export function entradaDaFichaDoLink(corpo: CadastroDoLink): CreateApoloEntityIn
 }
 
 /**
- * O status que o papel `corretor` deve ter depois que o link grava.
+ * O que o link faz com o papel `corretor` da ficha.
  *
- * ⚠️ `createApoloEntity` grava o papel `active` (é o que o cadastro do time quer). Pelo link:
- *   • quem JÁ era corretor ativo (de uma imobiliária) continua ativo: rebaixar tiraria do ar a
- *     imobiliária dele, e quem ainda não é autônomo continua não sendo, porque não tem código;
- *   • quem não tinha o papel, ou o tinha parado (`review`, `blocked`), fica `review`: é um pedido.
+ * ⚠️ O PAPEL QUE JÁ EXISTE NÃO É TOCADO, SEJA QUAL FOR (revisão adversarial de 01/10/2026). A primeira
+ * versão gravava por cima: o persist fazia upsert `active` e depois o link rebaixava para `review`. Isso
+ * (1) reativava por um instante o corretor que a casa BLOQUEOU, e para sempre se o rebaixamento falhasse;
+ * (2) transformava o bloqueio da casa em "pedido em análise". Agora o persist grava no modo que
+ * ACRESCENTA (`ignoreDuplicates`), e o link só decide o papel que ELE criou:
+ *   • não havia papel        → nasce `review`: é um pedido;
+ *   • havia (active, review, blocked) → fica como estava. Sem código ninguém é autônomo, e o bloqueio
+ *     ou a imobiliária de quem já era corretor continuam valendo até uma pessoa decidir.
  */
-export function statusDoPapelDepoisDoLink(statusAntes: null | string): "active" | "review" {
-  return String(statusAntes ?? "").trim() === "active" ? "active" : "review";
+export function papelDepoisDoLink(statusAntes: null | string): "manter" | "review" {
+  return String(statusAntes ?? "").trim() ? "manter" : "review";
 }
 
 export type ResultadoDoCadastroDoLink =
-  | { autenticacao: string; entityId: string; ok: true; savedDocs: string[]; warnings: string[] }
+  | {
+      autenticacao: string;
+      entityId: string;
+      /** O CPF já tinha ficha: o link só acrescentou, e o código dela não sai para fora. */
+      fichaExistia: boolean;
+      ok: true;
+      savedDocs: string[];
+      warnings: string[];
+    }
   | { ok: false; recusa: Extract<CreateApoloEntityResult, { ok: false }> }
   | { ok: false; recusa: null };
 
@@ -280,27 +294,43 @@ export async function registrarCadastroDoLink(
   // como corretor, e o e-mail dela na cópia da própria ficha não conta contra ela), sem dar código: o
   // código é da aprovação. Entre pessoas DIFERENTES, o e-mail repetido continua recusando
   // ([[reference_email_unico_barra_dono_da_imobiliaria]]).
+  //
+  // ⚠️ FICHA QUE JÁ EXISTE É SÓ ACRESCENTADA, NUNCA REESCRITA (revisão adversarial de 01/10/2026). O
+  // link não prova que quem digita é dono do CPF. No modo `anexar`, quem digitasse o CPF de um
+  // comprador gravaria na ficha dele um segundo e-mail e um segundo telefone PRIMÁRIOS (o e-mail é o
+  // signatário no D4Sign), reescreveria o índice de busca e trocaria o código de autenticação da CAD
+  // dele, tudo antes de qualquer decisão do time. O modo `acrescentar` é o do portal do incorporador,
+  // feito para esse risco: não troca nada do que a ficha tem, não insere telefone nem e-mail (chave de
+  // identidade da Iris), não mexe no papel que existe e guarda o que foi digitado como pendência em
+  // `metadata.cadsAcrescentadas`. Ficha nova nasce igual ao cadastro interno.
   const criado = await createApoloEntity(client, entrada, {
     cadastroDeCorretorAutonomo: true,
-    fichaExistente: "anexar",
+    fichaExistente: "acrescentar",
   });
   if (!criado.ok) return { ok: false, recusa: criado };
   const entityId = criado.entityId;
+  const fichaExistia = fichas.ids.includes(entityId);
+  const statusAntes = papelAntes.get(entityId) ?? null;
   const warnings: string[] = [...criado.warnings];
 
-  // O PAPEL EM ANÁLISE.
-  const alvo = statusDoPapelDepoisDoLink(papelAntes.get(entityId) ?? null);
-  if (alvo === "review") {
+  // O PAPEL EM ANÁLISE, só o que o link criou. OBRIGATÓRIO: o persist grava o papel novo `active`, e
+  // deixar assim seria um corretor ativo que ninguém validou.
+  if (papelDepoisDoLink(statusAntes) === "review") {
     const { error } = await client
       .from("apolo_entity_profiles")
       .update({ status: "review" })
       .eq("entity_id", entityId)
       .eq("profile", PAPEL_DO_AUTONOMO);
-    // Sem código ele não é autônomo em lugar nenhum, então a falha aqui não abre porta: vira aviso.
-    if (error) warnings.push(`papel: ${error.message}`);
+    if (error) {
+      console.error("[apolo][autonomo-link] falha ao pôr o papel em análise", error.message);
+      return { ok: false, recusa: null };
+    }
   }
 
   // O PEDIDO NA TRILHA. Este é obrigatório: é a fila.
+  //
+  // O que a fila precisa para DESCONFIAR de CPF de terceiro vai junto: se a ficha já existia, como
+  // estava o papel antes, e o contato digitado (que, em ficha existente, não entrou na ficha).
   const nome = String(entrada.identidade?.nome ?? "").trim() || "Corretor";
   const { error: erroDoPedido } = await client.from("apolo_audit_events").insert({
     action: ACOES_DO_PEDIDO.solicitado,
@@ -308,9 +338,15 @@ export async function registrarCadastroDoLink(
     entity_id: entityId,
     field_name: "cadastro_corretor_autonomo",
     metadata: {
-      autenticacao: criado.autenticacao,
+      contatoInformado: {
+        email: String(entrada.perfil?.email ?? "").trim() || null,
+        telefone: String(entrada.perfil?.telefone ?? "").trim() || null,
+      },
       empreendimentosDeInteresse: input.empreendimentosDeInteresse.slice(0, 30),
+      fichaExistia,
+      nomeInformado: nome,
       origem: ORIGEM_DO_LINK_DO_AUTONOMO,
+      papelAntes: statusAntes,
     },
     status: "mapped",
   });
@@ -334,6 +370,7 @@ export async function registrarCadastroDoLink(
   return {
     autenticacao: criado.autenticacao,
     entityId,
+    fichaExistia,
     ok: true,
     savedDocs: upload.savedDocs,
     warnings,
@@ -395,10 +432,27 @@ export type ItemDaFilaDoAutonomo = {
   /** Quando a última decisão aconteceu (null em análise). */
   decididoEm: null | string;
   email: null | string;
+  /**
+   * O contato que a pessoa DIGITOU no link. Em ficha que já existia ele não entra na ficha (modo que
+   * acrescenta), então a tela mostra os dois lado a lado: contato da ficha diferente do digitado é o
+   * primeiro sinal de CPF de outra pessoa.
+   */
+  contatoInformado: { email: null | string; telefone: null | string };
+  /** O CPF já tinha ficha na Careli (comprador, corretor de imobiliária, cópia do sync). */
+  fichaExistia: boolean;
   interesse: EmpreendimentoDeInteresse[];
   motivos: string[];
   nome: string;
+  /** O nome que a pessoa digitou no link (em ficha existente, o da ficha não muda). */
+  nomeInformado: null | string;
+  /** Como estava o papel `corretor` da ficha antes do pedido (null = não tinha). */
+  papelAntes: null | string;
   telefone: null | string;
+};
+
+const texto = (valor: unknown): null | string => {
+  const limpo = typeof valor === "string" ? valor.trim() : "";
+  return limpo || null;
 };
 
 /** Quantos dias o que já foi DECIDIDO continua na tela (o mesmo corte do Board). */
@@ -415,7 +469,19 @@ export function montarFila(
   eventos: EventoDoPedido[],
   agora: Date = new Date(),
 ): Array<
-  Pick<ItemDaFilaDoAutonomo, "decididoEm" | "enviadoEm" | "entityId" | "estado" | "interesse" | "motivos">
+  Pick<
+    ItemDaFilaDoAutonomo,
+    | "contatoInformado"
+    | "decididoEm"
+    | "enviadoEm"
+    | "entityId"
+    | "estado"
+    | "fichaExistia"
+    | "interesse"
+    | "motivos"
+    | "nomeInformado"
+    | "papelAntes"
+  >
 > {
   const porFicha = new Map<string, EventoDoPedido[]>();
   for (const evento of eventos) {
@@ -453,8 +519,13 @@ export function montarFila(
     const observacao =
       estado === "em-analise" ? "" : String(ultimo.metadata?.observacao ?? "").trim();
 
+    const contato = (pedido.metadata?.contatoInformado ?? {}) as Record<string, unknown>;
     itens.push({
+      contatoInformado: { email: texto(contato.email), telefone: texto(contato.telefone) },
       decididoEm: estado === "em-analise" ? null : ultimo.created_at,
+      fichaExistia: pedido.metadata?.fichaExistia === true,
+      nomeInformado: texto(pedido.metadata?.nomeInformado),
+      papelAntes: texto(pedido.metadata?.papelAntes),
       enviadoEm: pedido.created_at,
       entityId,
       estado,
@@ -653,18 +724,19 @@ export async function decidirPedidoDoAutonomo(
   const [entidade, papeis, eventos, contatos] = await Promise.all([
     client
       .from("apolo_entities")
-      .select("id, broker_code, display_name, entity_kind")
+      .select("id, broker_code, display_name, document_hash, entity_kind")
       .eq("id", entityId)
       .maybeSingle<{
         broker_code: null | string;
         display_name: null | string;
+        document_hash: null | string;
         entity_kind: null | string;
         id: string;
       }>(),
     client.from("apolo_entity_profiles").select("profile, status").eq("entity_id", entityId),
     client
       .from("apolo_audit_events")
-      .select("action, created_at, entity_id")
+      .select("action, created_at, entity_id, metadata")
       .eq("entity_id", entityId)
       .in("action", ACOES)
       .order("created_at", { ascending: false })
@@ -673,7 +745,10 @@ export async function decidirPedidoDoAutonomo(
       .from("apolo_contacts")
       .select("normalized_value, is_primary")
       .eq("entity_id", entityId)
-      .eq("contact_type", "phone"),
+      .eq("contact_type", "phone")
+      // O mais antigo primeiro: com mais de um primário (ficha antiga com sujeira), vale o que a
+      // ficha já tinha, e não um número que entrou depois.
+      .order("created_at", { ascending: true }),
   ]);
   if (entidade.error || papeis.error || eventos.error) {
     return { mensagem: MENSAGEM_FALHA_DA_DECISAO, ok: false, status: 503 };
@@ -699,7 +774,45 @@ export async function decidirPedidoDoAutonomo(
   let codigo: null | string = String(entidade.data.broker_code ?? "").trim() || null;
   let novoEstado: EstadoDoPedido;
 
+  // ⚠️ CORRIDA ENTRE DUAS PESSOAS DO TIME (revisão adversarial de 01/10/2026). O estado foi lido antes
+  // de decidir: se outra pessoa APROVOU no meio-tempo, a ficha já tem código e papel ativo, e um
+  // "indeferir" ou "pedir correção" deixaria a fila dizendo o contrário do que vale, com o WhatsApp
+  // avisando o contrário também. Código presente = já aprovado, e só a aprovação pode continuar (é o
+  // caminho que termina uma aprovação que caiu no meio).
+  if (input.acao !== "aprovar" && codigo) {
+    return {
+      mensagem: `Este pedido já foi aprovado (código ${codigo}). Atualize a tela.`,
+      ok: false,
+      status: 409,
+    };
+  }
+
+  // O pedido mais recente diz como o papel estava ANTES do link (null = o link criou).
+  const pedido = ((eventos.data ?? []) as EventoDoPedido[]).find(
+    (evento) => evento.action === ACOES_DO_PEDIDO.solicitado,
+  );
+  const papelCriadoPeloLink = !String(pedido?.metadata?.papelAntes ?? "").trim();
+
   if (input.acao === "aprovar") {
+    // ⚠️ UMA PESSOA, UM CÓDIGO. A mesma pessoa pode ter mais de uma ficha (as cópias do Asana), e o
+    // portão olha todas; mas uma cópia pode ter ganhado código pelo cadastro interno DEPOIS do pedido.
+    if (!codigo && entidade.data.document_hash) {
+      const { data: copias, error: erroDasCopias } = await client
+        .from("apolo_entities")
+        .select("id, broker_code")
+        .eq("document_hash", entidade.data.document_hash);
+      if (erroDasCopias) return { mensagem: MENSAGEM_FALHA_DA_DECISAO, ok: false, status: 503 };
+      const outra = ((copias ?? []) as Array<{ broker_code: null | string; id: string }>).find(
+        (linha) => linha.id !== entityId && String(linha.broker_code ?? "").trim(),
+      );
+      if (outra) {
+        return {
+          mensagem: `Esta pessoa já é corretor autônomo em outra ficha (código ${String(outra.broker_code).trim()}). Indefira este pedido.`,
+          ok: false,
+          status: 409,
+        };
+      }
+    }
     // A ficha pode já ter código de uma aprovação que caiu no meio (o código gravou e o papel não).
     // Nesse caso não se gera outro: termina o que faltou.
     if (!codigo) {
@@ -730,13 +843,16 @@ export async function decidirPedidoDoAutonomo(
     if (erroDoPapel) return { mensagem: MENSAGEM_FALHA_DA_DECISAO, ok: false, status: 503 };
     novoEstado = "aprovado";
   } else if (input.acao === "indeferir") {
-    // O papel que o LINK pôs em análise vira `blocked`. O que já era ativo (corretor de imobiliária)
-    // não é tocado: indeferir o pedido de autônomo não tira ninguém da imobiliária dele.
-    const emAnalise = linhasDePapel.some(
-      (linha) =>
-        String(linha.profile ?? "").trim() === PAPEL_DO_AUTONOMO &&
-        String(linha.status ?? "").trim() === "review",
-    );
+    // Só o papel que o LINK CRIOU vira `blocked`. O que já existia (o corretor de imobiliária, ativo
+    // ou ainda em análise pela imobiliária dele) não é tocado: indeferir o pedido de autônomo não decide
+    // nada sobre a imobiliária.
+    const emAnalise =
+      papelCriadoPeloLink &&
+      linhasDePapel.some(
+        (linha) =>
+          String(linha.profile ?? "").trim() === PAPEL_DO_AUTONOMO &&
+          String(linha.status ?? "").trim() === "review",
+      );
     if (emAnalise) {
       const { error } = await client
         .from("apolo_entity_profiles")

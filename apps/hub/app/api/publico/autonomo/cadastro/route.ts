@@ -106,6 +106,11 @@ export async function POST(request: Request) {
 
   const campos = validarCamposMinimos({ identidade: corpo.identidade, persona: "pf" });
   if (!campos.ok) return responder(request, inicio, erro(campos.mensagem));
+  // O CELULAR É OBRIGATÓRIO NO LINK: é por ele que a Careli responde ao pedido (aprovação, correção ou
+  // recusa). Sem ele o pedido entraria na fila sem ter como avisar quem pediu.
+  if (String(corpo.perfil?.telefone ?? "").replace(/D/g, "").length < 10) {
+    return responder(request, inicio, erro("Informe o seu celular com DDD para enviar o cadastro."));
+  }
   const obrigatorios = validarDocumentosObrigatorios({
     documentos,
     perfil: corpo.perfil,
@@ -164,7 +169,11 @@ export async function POST(request: Request) {
     const savedDocs = [...gravado.savedDocs];
     let cadBase64: null | string = null;
     const nome = String(corpo.identidade.nome ?? "").trim() || "Corretor";
-    const cadStruct = corpo.cad?.secoes?.length ? corpo.cad : null;
+    // ⚠️ FICHA QUE JÁ EXISTIA NÃO DEVOLVE O CÓDIGO DELA, NEM O PDF COM ELE (revisão adversarial de
+    // 01/10/2026). O link não prova que quem digita é dono do CPF: devolver o código de autenticação
+    // da ficha de um comprador, num PDF montado com o que o corpo mandou, entregaria a um estranho a
+    // CAD "oficial" de outra pessoa. A ficha nova é de quem preencheu, e ali o PDF sai como sempre.
+    const cadStruct = !gravado.fichaExistia && corpo.cad?.secoes?.length ? corpo.cad : null;
     if (cadStruct) {
       try {
         const bytes = await montarCadPdf({
@@ -200,7 +209,16 @@ export async function POST(request: Request) {
     return responder(
       request,
       inicio,
-      json({ autenticacao: gravado.autenticacao, cadBase64, savedDocs, warnings: [] }, 201),
+      json(
+        {
+          autenticacao: gravado.fichaExistia ? "" : gravado.autenticacao,
+          cadBase64,
+          recebido: true,
+          savedDocs,
+          warnings: [],
+        },
+        201,
+      ),
     );
   } catch {
     return responder(request, inicio, erro(undefined, 500));

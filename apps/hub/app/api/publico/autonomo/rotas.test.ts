@@ -66,6 +66,7 @@ beforeEach(() => {
   m.registrar.mockResolvedValue({
     autenticacao: "CAD-2026-ABCDEF12",
     entityId: "id-interno-da-ficha",
+    fichaExistia: false,
     ok: true,
     savedDocs: ["identificacao", "comprovante_endereco"],
     warnings: ["papel: algo interno"],
@@ -123,7 +124,7 @@ function corpoValido() {
     empreendimentosDeInteresse: ["35", "999-inventado"],
     identidade: { cpf: CPF, naturalidade: "Belo Horizonte - MG", nome: "JOANA DA SILVA" },
     // Casada: no link NÃO se pede certidão nem documento do cônjuge (Lucas, 01/10/2026).
-    perfil: { email: "joana@email.com", estadoCivilId: "2" },
+    perfil: { email: "joana@email.com", estadoCivilId: "2", telefone: "+55 31 99999-0000" },
   };
 }
 
@@ -194,6 +195,33 @@ describe("o cadastro", () => {
       storagePath: `staging/${donoUploadPreAutonomo({ cpf: CPF })}/rg.pdf`,
     } as never;
     expect((await cadastrar(post("/api/publico/autonomo/cadastro", doDono, token()))).status).toBe(201);
+  });
+
+  it("sem celular não grava: é por ele que a Careli responde", async () => {
+    const corpo = corpoValido();
+    corpo.perfil.telefone = "";
+    const resposta = await cadastrar(post("/api/publico/autonomo/cadastro", corpo, token()));
+    expect(resposta.status).toBe(400);
+    expect(m.registrar).not.toHaveBeenCalled();
+  });
+
+  it("FICHA QUE JÁ EXISTIA: nem o código de autenticação dela nem o PDF voltam para quem preencheu", async () => {
+    m.registrar.mockResolvedValue({
+      autenticacao: "CAD-2025-DAVITIMA",
+      entityId: "ficha-do-comprador",
+      fichaExistia: true,
+      ok: true,
+      savedDocs: [],
+      warnings: [],
+    });
+    const resposta = await cadastrar(
+      post("/api/publico/autonomo/cadastro", { ...corpoValido(), cad: { secoes: [{}] } }, token()),
+    );
+    expect(resposta.status).toBe(201);
+    const corpo = await resposta.json();
+    expect(corpo).toMatchObject({ autenticacao: "", cadBase64: null, recebido: true });
+    expect(JSON.stringify(corpo)).not.toContain("CAD-2025-DAVITIMA");
+    expect(m.pdf).not.toHaveBeenCalled();
   });
 
   it("o interesse é lido contra a vitrine do servidor: id inventado cai e o rótulo é o do servidor", async () => {
