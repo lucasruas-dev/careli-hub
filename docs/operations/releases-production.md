@@ -95,6 +95,40 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Apolo/Financeiro/Extrato do cliente] Conferencia da corretagem zero libera a Simulacao de Rescisao (v1.402.0)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; construido pela conta de construcao (aba do termo de rescisao, PAN-130) e entregue por resumo de entrega.
+- Data e hora local: `2026-10-01 12:06:22 -03:00` (changelog); deploy pronto cerca de 3 min depois do push.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("tem o meu ok" para a migration e "pode publicar a 1.402.0"); branch feat/rescisao-conferencia-da-corretagem (dec29493) integrada por merge. A primeira versao (c52cccbd) foi barrada pela revisao da Publicacao: "7.000" gravava R$ 7,00 e a conferencia nao podia ser corrigida`.
+- Escopo publicado:
+  - `migration 0202 hercules_conferencia_corretagem (historico, so INSERT, vale a mais recente)`;
+  - `rota /api/apolo/rescisao/conferencia-corretagem com GET e PUT no portao da coordenacao (admin e lider)`;
+  - `lib/apolo/valor-em-reais-br.ts: valor no formato brasileiro estrito, ambiguo recusado`;
+  - `formulario de conferencia com confirmacao por extenso e Ver ou corrigir`;
+  - `carregarTermoDeRescisao usa a conferencia so enquanto o C2X disser zero; Fundamento contratual mantem a clausula cadastrada`;
+  - `recusaPorAvisos com testes de comportamento`.
+- Commit publicado: `8928f8f83489a867d9ee9244fe77e7e4379237c1`.
+- Deployment anterior: `dpl_FrCBVtw6YrCEZKhjSAWP4fxRLz39` (commit `8e32cd0b`, v1.401.1).
+- Deployment novo: `dpl_EMP6Mv8NMaQ9agmMqghnAoDDVGRQ`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Banco: `0202 aplicada antes do push (supabase_migrations 20261001142434): tabela vazia, RLS ligada sem policy, nenhum grant para anon, authenticated ou PUBLIC, indice por workspace + contrato + data`.
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `suite completa e hook de pre-push`: `733 arquivos, 11.218 testes (a primeira tentativa de push barrou no typecheck do hook sem erro impresso: o Node caiu com 0xC000001D no PowerShell; o mesmo comando passou duas vezes em seguida)`;
+  - `revisao independente por workflow em duas rodadas`: `1a (19 agentes) barrou a versao c52cccbd; 2a (9 agentes) provou as 6 correcoes, inclusive 16 formas de digitar o valor e PDF real com a clausula 5.2 c)`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.402.0 com buildTag 2026-10-01-conferencia-da-corretagem; PDF e conferencia (GET e PUT) 401 sem sessao`.
+- Logs recentes: `sem erro nas rotas de rescisao nos ultimos 30 min`.
+- Rollback definido: `Instant Rollback para dpl_FrCBVtw6YrCEZKhjSAWP4fxRLz39 (v1.401.1) e seguro: a tabela 0202 fica e nao e lida; os 8 contratos de corretagem zero voltam a recusar sem saida. NAO voltar para antes da v1.401.0`.
+- Riscos conhecidos: `a mensagem "Conferencia registrada" continua na tela ao abrir o cliente seguinte (nada e gravado nem impresso errado); "Ver ou corrigir" so aparece depois de gerar a simulacao do contrato; testes de comportamento cobrem as mutacoes nomeadas, nao qualquer filtro por texto na chamada; observacao de tipo errado pela API vira texto; acessibilidade do formulario`.
+- Pendencias: `ajustes acima para a proxima entrega da frente; PAN-130 segue com a tela de premissas e os empreendimentos que faltam`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas, logado como admin ou lider: REPE186 -> Rescisao -> registrar a conferencia -> gerar a simulacao`.
+
+Registro de producao:
+
 - Assunto: `[Apolo/Financeiro/Extrato do cliente] Simulacao de Rescisao sem observacao interna no papel (v1.401.1, interna)`.
 - Squad/agente responsavel: `Zeus (sessao Publicacao)`; construido pela conta de construcao (aba do termo de rescisao) e entregue por resumo de entrega.
 - Data e hora local: `2026-09-30 17:28:59 -03:00` (changelog); deploy pronto cerca de 3 min depois.
