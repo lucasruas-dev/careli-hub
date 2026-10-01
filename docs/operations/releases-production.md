@@ -95,6 +95,34 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Temis/Contrato em assinatura] Corrigir o e-mail de quem esta sem noticia (v1.403.2, interna, urgente)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; entregue por resumo de entrega.
+- Data e hora local: `2026-10-01 14:27:36 -03:00` (changelog); deploy pronto cerca de 3,5 min depois do push.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `pedido do Lucas ("eu preciso subir isso aqui urgente"); branch fix/temis-corrigir-email-sem-noticia (fffe108a) integrada por merge sobre a v1.403.1. Passou na frente da correcao do Hades, que estava em revisao e vira 1.403.3`.
+- Escopo publicado: `LinhaDoSignatario ganha o icone de lapis "Corrigir o e-mail" para quem nao assinou e nao teve o convite devolvido; a rota POST /api/temis/assinatura/signatario nao mudou`.
+- Commit publicado: `cff26fcfe4fc1ed5b2ada842ec2eea9804bf241d`.
+- Deployment anterior: `dpl_9ToC5itNZKcjUTSHdGKoVTe8GKGd` (commit `ecd57dd4`, v1.403.1).
+- Deployment novo: `dpl_6YV9ANTckaufPLfPXUZVg4R91V24`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Banco: `sem migracao e sem escrita`.
+- Validacoes executadas:
+  - `leitura do diff inteiro pela Publicacao`: `so tela; o servico consertarSignatario nao filtra pela situacao do convite (a troca ja era aceita), portao autorizarEmissaoDeContrato inalterado, Clicksign recusa remover quem ja assinou e a tela esconde o botao`;
+  - `vitest modules/temis, lib/temis, app/api/temis`: `88 arquivos, 1.591 testes`;
+  - `hook de pre-push (typecheck e suite completa)`: `736 arquivos, 11.293 testes`;
+  - `revisao por workflow`: `NAO feita, pela urgencia e pelo tamanho (tela de um componente)`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.403.2 com buildTag 2026-10-01-temis-corrigir-email-sem-noticia; rota do signatario 401 sem sessao`.
+- Logs recentes: `nao conferidos: a consulta de erros da Vercel estourou o tempo duas vezes`.
+- Rollback definido: `Instant Rollback para dpl_9ToC5itNZKcjUTSHdGKoVTe8GKGd (v1.403.1) e seguro`.
+- Riscos conhecidos: `a sessao de plantao tem mudancas nao commitadas no mesmo componente (reenvio pela Clicksign em LinhaDoSignatario); a proxima entrega dela pode conflitar nesse bloco`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas abrir o card do VOC0306 (Maura): lapis nas 3 pessoas em Sem noticia, nenhum nas 4 que assinaram; trocar o e-mail da Maura`.
+
+Registro de producao:
+
 - Assunto: `[Apolo/Financeiro/Extrato do cliente] Acabamento da conferencia da corretagem (v1.403.1, interna)`.
 - Squad/agente responsavel: `Zeus (sessao Publicacao)`; construido pela conta de construcao (aba do termo de rescisao, PAN-130) e entregue por resumo de entrega.
 - Data e hora local: `2026-10-01 13:13:51 -03:00` (changelog); deploy pronto cerca de 3,5 min depois do push.
