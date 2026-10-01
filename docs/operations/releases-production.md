@@ -95,6 +95,34 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Temis/Contrato em assinatura] Troca de e-mail sem o group que a Clicksign recusa (v1.403.4, interna, urgente)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; entregue por resumo de entrega.
+- Data e hora local: `2026-10-01 14:48:17 -03:00` (changelog); deploy pronto cerca de 4 min depois do push.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("pode publicar a 1.403.4"); branch fix/clicksign-recadastro-sem-group (09e2ff93) integrada por merge sobre a v1.403.3. Urgente: no primeiro uso real da troca de e-mail (Maura, VOC0306, envelope 0384000d) a Clicksign removeu a pessoa e recusou o recadastro com 400 "group nao e permitido", deixando-a fora do envelope`.
+- Escopo publicado: `lib/assinatura/clicksign/envelope.ts: acrescentarSignatario (so a troca de e-mail em envelope ativo) cadastra sem group; o envio normal segue com group`.
+- Commit publicado: `f2df6d382fceb95775ed710e87adb6bfcf734ba4`.
+- Deployment anterior: `dpl_GDbEaJoufptnpxnpD5VdvokVh3EG` (commit `755d31a1`, v1.403.3).
+- Deployment novo: `dpl_He2JXu9pJCghNZCfMCAGH4dLkRZG`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Banco: `sem migracao e sem escrita`.
+- Validacoes executadas:
+  - `leitura do diff pela Publicacao`: `so a troca de e-mail muda; na nova tentativa a remocao de quem ja saiu da 404 e trocarEmailDoSignatario segue para o cadastro, de proposito`;
+  - `vitest lib/assinatura, lib/temis, app/api/temis, app/api/incorporador/temis, app/api/guardian/termo-de-acordo`: `116 arquivos, 2.246 testes`;
+  - `hook de pre-push (typecheck e suite completa)`: `737 arquivos, 11.301 testes`;
+  - `revisao por workflow`: `NAO feita, pela urgencia e pelo tamanho (13 linhas num arquivo)`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.403.4 com buildTag 2026-10-01-clicksign-recadastro-sem-group; rota do signatario 401 sem sessao`.
+- Logs recentes: `sem erro em /api/temis/assinatura/signatario nos ultimos 15 min`.
+- Rollback definido: `Instant Rollback para dpl_GDbEaJoufptnpxnpD5VdvokVh3EG (v1.403.3) e seguro, mas volta a quebrar a troca de e-mail`.
+- Riscos conhecidos: `a sessao de plantao tem mudancas nao commitadas no mesmo arquivo envelope.ts`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas refazer a troca de e-mail da Maura no card do VOC0306 (lapis da linha dela)`.
+
+Registro de producao:
+
 - Assunto: `[Hades/Atendimento de cobranca] Variaveis dos templates de cobranca voltam a trazer empreendimento, unidade e saldo (v1.403.3, interna)`.
 - Squad/agente responsavel: `Zeus (sessao Publicacao)`; entregue por resumo de entrega.
 - Data e hora local: `2026-10-01 14:38:56 -03:00` (changelog); deploy pronto cerca de 4 min depois do push.
