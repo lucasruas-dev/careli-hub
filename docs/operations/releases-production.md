@@ -95,6 +95,36 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Hercules/Cadastro de empreendimentos] PAN-124 F4: chave do grupo separada do nome do pai (v1.403.0, interna)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; construido pela conta de construcao (PAN-124) e entregue por resumo de entrega.
+- Data e hora local: `2026-10-01 12:47:23 -03:00` (changelog); deploy pronto cerca de 3,5 min depois do push.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("pode aplicar o item 1 e 2": migration 0203 e deploy); branch feat/pan-124-f4-chave-do-grupo (8ec1d506) integrada por merge sobre a v1.402.0`.
+- Escopo publicado:
+  - `migration 0203: coluna hercules_empreendimentos.chave_do_grupo, chave dos 5 pais (LAB, VLO, LOX, PDX, RDX) com o nome de hoje, indice unico por workspace sem caixa, gatilho de chave imutavel e gatilho do primeiro filho`;
+  - `lib/hercules/chave-do-grupo.ts; regua do cadastro, escopo da venda, cadeia da Temis, divisoes do grupo e coordenador montam e casam group:<x> pela chave; lista da Temis e nome de mercado mostram o nome atual do pai`.
+- Commit publicado: `f48fd60f96083936bc36896045a68888b9cfa27c`.
+- Deployment anterior: `dpl_EMP6Mv8NMaQ9agmMqghnAoDDVGRQ` (commit `8928f8f8`, v1.402.0).
+- Deployment novo: `dpl_6Rxswn13UvctP6Ye8UR56rp7b2Xf`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Banco: `0203 aplicada antes do push (supabase_migrations 20261001154700). Conferido so com leitura: 5 chaves iguais aos nomes, 0 erradas, 38 linhas no cadastro, 5 linhas de trilha so do campo chave_do_grupo, indice e os 2 gatilhos novos ao lado de carimbo, guarda, pai_raiz e trilha. Trava testada em transacao desfeita: trocar a chave do LAB recusado com [0203:chave-do-grupo]. O prova-viva.sql NAO foi rodado: so imprime NOTICE (invisivel pelo MCP) e gasta 4 numeros da sequence ao inserir linhas de teste`.
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `suite completa e hook de pre-push`: `734 arquivos, 11.241 testes`;
+  - `revisao independente por workflow (13 agentes)`: `equivalencia antigo x novo com o cadastro real em 4 estados (sem coluna, coluna da 0203, coluna nula, so o LAB): saida identica em grupos, coordenador, lista da Temis, escopo da venda e 1.374 cadeias de contrato; 33 ocorrencias gravadas, todas "group:Lagoa Bonita", continuam casando; guarda e trilha da 0192 aceitam a carga; nenhum achado bloqueante`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.403.0 com buildTag 2026-10-01-chave-do-grupo`.
+- Logs recentes: `sem erro novo (so o DeprecationWarning antigo de url.parse)`.
+- Rollback definido: `Instant Rollback para dpl_EMP6Mv8NMaQ9agmMqghnAoDDVGRQ (v1.402.0) e seguro: o codigo antigo ignora a coluna, e hoje chave = nome. A 0203 se desfaz pelo SQL do cabecalho dela, mas nao e preciso desfazer para voltar o codigo`.
+- Riscos conhecidos: `o Mover CAD ainda casa group:<x> pelo NOME do pai (mover-cad.ts ~603): precisa ler a chave ANTES da F10 (renomear pai); dois filhos inseridos ao mesmo tempo sob o mesmo pai podem dar deadlock; o Novo produto nao traduz a recusa [0203:chave-repetida]; o cabecalho da 0203 diz "pelo id (uuid)" mas o UPDATE filtra por codigo`.
+- Pendencias: `F3 (vigia, 0201) segue pronta e nao publicada; Mover CAD pela chave antes da F10; prova-viva reescrita com SELECT em vez de NOTICE`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `nenhuma tela muda; conferir que CAD, Temis e habilitacao da Lagoa Bonita seguem normais no uso do dia`.
+
+Registro de producao:
+
 - Assunto: `[Apolo/Financeiro/Extrato do cliente] Conferencia da corretagem zero libera a Simulacao de Rescisao (v1.402.0)`.
 - Squad/agente responsavel: `Zeus (sessao Publicacao)`; construido pela conta de construcao (aba do termo de rescisao, PAN-130) e entregue por resumo de entrega.
 - Data e hora local: `2026-10-01 12:06:22 -03:00` (changelog); deploy pronto cerca de 3 min depois do push.
