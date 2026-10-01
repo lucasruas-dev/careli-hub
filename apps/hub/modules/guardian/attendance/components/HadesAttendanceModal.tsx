@@ -14,6 +14,11 @@ import {
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
+import {
+  contextoDoTemplateDeCobranca,
+  parametrosDaPrevia,
+  valoresDaPrevia,
+} from "@/modules/guardian/attendance/contexto-do-template";
 import type { QueueClient } from "@/modules/guardian/attendance/types";
 
 // Form de abertura de atendimento de COBRANCA (UI propria do Hades; Iris e o
@@ -43,6 +48,8 @@ type IrisTemplate = {
   name: string;
   slug?: string | null;
   templateName?: string | null;
+  /** Cada {{n}} ligado à sua chave — é por elas que a rota preenche o template. */
+  variables?: { key: string; placeholder: string }[] | null;
 };
 type IrisConfig = {
   profiles: IrisProfile[];
@@ -205,18 +212,35 @@ export function HadesAttendanceModal({
   const allSelected =
     overdue.length > 0 && overdue.every((item) => selected.has(item.id));
 
-  // Pre-visualizacao do que a Meta envia: {{1}} nome, {{2}} resumo das parcelas
-  // (mesmo corte do backend: 3 + "+N parcela(s)"), {{3}} protocolo (gerado na
-  // abertura). So importa com a janela de 24h fechada.
+  // Empreendimento, unidade, saldo... com os NOMES que a rota le (ver contexto-do-template.ts:
+  // ate 01/10/2026 iam em `cobranca.*` e o cliente recebia "empreendimento -, unidade -").
+  const templateContext = contextoDoTemplateDeCobranca({
+    empreendimento: detail?.carteira.empreendimento,
+    saldoDevedor: detail?.saldoDevedor,
+    selecionadas: selectedInstallments,
+    vencidas: overdue,
+  });
+
+  // Pre-visualizacao do que a Meta envia, resolvida por CHAVE como a rota faz (o resumo das
+  // parcelas tem o mesmo corte do backend: 3 + "+N parcela(s)"). So importa com a janela de
+  // 24h fechada.
   const firstName = detail
     ? detail.nome.trim().split(/\s+/)[0] ?? detail.nome
     : "{{1}}";
   const previewText = template?.body
-    ? renderTemplatePreview(template.body, [
-        firstName,
-        formatInstallmentSummary(installmentLabels),
-        "(gerado na abertura)",
-      ])
+    ? renderTemplatePreview(
+        template.body,
+        parametrosDaPrevia(
+          template.variables,
+          valoresDaPrevia({
+            assunto: selectedProfile?.name ?? "Cobrança",
+            contexto: templateContext,
+            nomeCompleto: detail?.nome ?? "",
+            primeiroNome: firstName,
+            resumoDasParcelas: formatInstallmentSummary(installmentLabels),
+          }),
+        ),
+      )
     : null;
 
   function toggle(id: string) {
@@ -249,6 +273,7 @@ export function HadesAttendanceModal({
       contactName: detail.nome,
       firstName,
       metadata: {
+        ...templateContext,
         relatedInstallments: installmentLabels,
         cobranca: {
           clientId: detail.id,
