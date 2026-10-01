@@ -37,7 +37,7 @@ export type ChangelogEntry = {
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
     buildTag: "2026-10-01-clicksign-recadastro-sem-group",
-    deployedAt: "__HORA_REAL__",
+    deployedAt: "2026-10-01T14:48:17-03:00",
     internal: true,
     modules: [
       {
