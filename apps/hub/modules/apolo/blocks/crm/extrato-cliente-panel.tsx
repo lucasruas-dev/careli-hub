@@ -30,10 +30,13 @@ import {
 import { motivoParaNaoEmitirTermo } from "@/lib/apolo/termo-de-rescisao";
 import { TERMO_DE_RESCISAO_LIBERADO } from "@/lib/apolo/termos-liberados";
 import type { ApoloEntity } from "@/lib/apolo/types";
+import type { ResultadoDaConferencia } from "@/lib/apolo/valor-em-reais-br";
+import { useAuth } from "@/providers/auth-provider";
 
 import { buyerStatusLabel, entityC2xId } from "../../data/apolo-derive";
 import { getApoloAccessToken } from "../../data/apolo-operations";
 import { EmptyPanel } from "../shared/apolo-ui";
+import { ConferenciaDaCorretagem } from "./conferencia-corretagem-form";
 
 // EXTRATO DO CLIENTE COMPRADOR — "quanto já paguei e quanto ainda devo", a pergunta que o
 // comprador faz por telefone e que hoje o backoffice responde montando planilha à mão.
@@ -79,6 +82,19 @@ export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
   const [erroPdf, setErroPdf] = useState<null | string>(null);
   const [baixandoTermo, setBaixandoTermo] = useState(false);
   const [erroTermo, setErroTermo] = useState<null | string>(null);
+  // ⚠️ SÓ A COORDENAÇÃO (admin e líder) VÊ O FORMULÁRIO DA CONFERÊNCIA (01/10/2026): é quem tem o
+  // contrato assinado na mão. A rota repete o portão; aqui é para o operador não ver um formulário
+  // que só devolveria 403. Os demais leem a frase que manda pedir à coordenação.
+  const { hubUser } = useAuth();
+  const ehCoordenacao = hubUser?.role === "admin" || hubUser?.role === "leader";
+  // ⚠️ AS TRÊS COISAS DA CONFERÊNCIA SÃO DE UM CONTRATO: guardam qual, e o formulário é montado com
+  // `key` do contrato (ver `ConferenciaDaCorretagem`). O código `corretagem_zero` vem da rota do PDF.
+  const [corretagemZeroDoContrato, setCorretagemZeroDoContrato] = useState<null | number>(null);
+  const [conferenciaUsada, setConferenciaUsada] = useState<null | {
+    contratoId: number;
+    resultado: ResultadoDaConferencia;
+  }>(null);
+  const [mensagemDaConferencia, setMensagemDaConferencia] = useState<null | string>(null);
 
   useEffect(() => {
     if (c2xId == null) {
@@ -192,6 +208,9 @@ export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
 
     setBaixandoTermo(true);
     setErroTermo(null);
+    setCorretagemZeroDoContrato(null);
+    setConferenciaUsada(null);
+    setMensagemDaConferencia(null);
 
     try {
       const token = await getApoloAccessToken();
@@ -210,10 +229,21 @@ export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
         // A rota sempre devolve `error` com a frase (contrato encerrado, posse ilegível, C2X fora).
         // Só o que não é JSON — a página de erro da Vercel num estouro de tempo — cai na genérica.
         const payload = (await response.json().catch(() => null)) as
-          | { error?: string }
+          | { error?: string; motivo?: string }
           | null;
         setErroTermo(payload?.error ?? "Não foi possível gerar o termo de rescisão.");
+        // O código vem da rota (e não da frase): é ele que abre o formulário de conferência.
+        if (payload?.motivo === "corretagem_zero") {
+          setCorretagemZeroDoContrato(relatorio.contrato.id);
+        }
         return;
+      }
+
+      // ⚠️ O PAPEL SAIU USANDO UMA CONFERÊNCIA? A rota avisa no header (o corpo é o PDF). É o que faz
+      // aparecer o "Ver ou corrigir" para a coordenação.
+      const usada = response.headers.get("X-Conferencia-Corretagem");
+      if (usada === "sem_corretagem" || usada === "com_corretagem") {
+        setConferenciaUsada({ contratoId: relatorio.contrato.id, resultado: usada });
       }
 
       await salvarPdf(
@@ -290,8 +320,13 @@ export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
                   onChange={(event) => {
                     setContratoId(Number(event.target.value));
                     // A frase de erro do termo era do contrato anterior; ficar na tela seria
-                    // atribuí-la ao que acabou de ser escolhido.
+                    // atribuí-la ao que acabou de ser escolhido. O mesmo vale para a conferência:
+                    // o código da recusa, a conferência usada e a mensagem de sucesso são do contrato
+                    // anterior, e o formulário (com o seu erro e o histórico) é desmontado pela `key`.
                     setErroTermo(null);
+                    setCorretagemZeroDoContrato(null);
+                    setConferenciaUsada(null);
+                    setMensagemDaConferencia(null);
                   }}
                   value={String(relatorio.contrato.id)}
                 >
@@ -379,6 +414,35 @@ export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
           <p className="m-0 mt-3 text-xs font-semibold text-rose-600 dark:text-rose-300">
             {erroTermo}
           </p>
+        ) : null}
+
+        {ehComprador && !ehCoordenacao && corretagemZeroDoContrato === contrato.id ? (
+          <p className="m-0 mt-3 text-xs font-semibold text-ink-soft">
+            Peça à coordenação (admin ou líder) para registrar a conferência da corretagem deste contrato.
+          </p>
+        ) : null}
+
+        {ehComprador && ehCoordenacao && mensagemDaConferencia ? (
+          <p className="m-0 mt-3 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+            {mensagemDaConferencia}
+          </p>
+        ) : null}
+
+        {ehComprador && ehCoordenacao ? (
+          <ConferenciaDaCorretagem
+            c2xId={c2xId}
+            conferenciaUsada={
+              conferenciaUsada?.contratoId === contrato.id ? conferenciaUsada.resultado : null
+            }
+            contratoId={contrato.id}
+            key={contrato.id}
+            onSalva={(mensagem) => {
+              setCorretagemZeroDoContrato(null);
+              setErroTermo(null);
+              setMensagemDaConferencia(mensagem);
+            }}
+            recusado={corretagemZeroDoContrato === contrato.id}
+          />
         ) : null}
 
         <p className="m-0 mt-3 text-xs font-medium text-ink-muted">

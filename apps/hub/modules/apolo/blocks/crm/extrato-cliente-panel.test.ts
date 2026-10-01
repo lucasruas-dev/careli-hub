@@ -60,6 +60,64 @@ describe("o termo só existe na ficha de comprador", () => {
   });
 });
 
+// ⚠️ A CONFERÊNCIA DA CORRETAGEM NO PAINEL (30/09/2026, ajustada em 01/10/2026). O formulário em si
+// mora em `conferencia-corretagem-form.tsx` (e tem o teste dele); aqui se trava a FIAÇÃO: só a
+// coordenação o vê, o código da recusa vem da rota (e não da frase), o header diz qual conferência o
+// PDF usou, e trocar de contrato não deixa nada preso na tela.
+describe("a conferência da corretagem no painel", () => {
+  it("abre pelo código da rota, e não pelo texto da frase", () => {
+    expect(FONTE).toContain('payload?.motivo === "corretagem_zero"');
+    expect(FONTE).not.toContain("R$ 0,00 de intermediação");
+  });
+
+  it("o formulário é montado com a key do contrato, para trocar de contrato desmontar tudo", () => {
+    expect(FONTE).toContain("<ConferenciaDaCorretagem");
+    expect(FONTE).toContain("key={contrato.id}");
+  });
+
+  it("só admin e líder veem o formulário (useAuth), e os demais leem a frase", () => {
+    expect(FONTE).toContain('import { useAuth } from "@/providers/auth-provider";');
+    expect(FONTE).toContain('const ehCoordenacao = hubUser?.role === "admin" || hubUser?.role === "leader";');
+    expect(FONTE).toContain("{ehComprador && ehCoordenacao ? (");
+    expect(FONTE).toContain("{ehComprador && !ehCoordenacao && corretagemZeroDoContrato === contrato.id ? (");
+    expect(FONTE).toContain(
+      "Peça à coordenação (admin ou líder) para registrar a conferência da corretagem deste contrato.",
+    );
+  });
+
+  it("a mensagem de sucesso também é só da coordenação, e vem do formulário", () => {
+    expect(FONTE).toContain("{ehComprador && ehCoordenacao && mensagemDaConferencia ? (");
+    expect(FONTE).toContain("setMensagemDaConferencia(mensagem)");
+  });
+
+  it("limpa o motivo, a conferência usada e a mensagem a cada nova tentativa de baixar o termo", () => {
+    const inicio = FONTE.indexOf("const baixarTermo");
+    const bloco = FONTE.slice(inicio, FONTE.indexOf("const response = await fetch(`/api/apolo/rescisao/pdf", inicio));
+    expect(bloco).toContain("setCorretagemZeroDoContrato(null)");
+    expect(bloco).toContain("setConferenciaUsada(null)");
+    expect(bloco).toContain("setMensagemDaConferencia(null)");
+  });
+
+  it("trocar de contrato no seletor limpa tudo o que era do anterior", () => {
+    const inicio = FONTE.indexOf("setContratoId(Number(event.target.value))");
+    const bloco = FONTE.slice(inicio, FONTE.indexOf("value={String(relatorio.contrato.id)}", inicio));
+    expect(bloco).toContain("setErroTermo(null)");
+    expect(bloco).toContain("setCorretagemZeroDoContrato(null)");
+    expect(bloco).toContain("setConferenciaUsada(null)");
+    expect(bloco).toContain("setMensagemDaConferencia(null)");
+  });
+
+  it("lê o header X-Conferencia-Corretagem do PDF para oferecer o 'ver ou corrigir'", () => {
+    expect(FONTE).toContain('response.headers.get("X-Conferencia-Corretagem")');
+    expect(FONTE).toContain("conferenciaUsada?.contratoId === contrato.id");
+  });
+
+  it("não guarda mais o estado do formulário aqui (ele é do componente)", () => {
+    expect(FONTE).not.toContain("valorDaConferencia");
+    expect(FONTE).not.toContain("salvarConferencia");
+  });
+});
+
 describe("botão apagado tem frase", () => {
   it("o motivo vem da MESMA função que a rota usa para recusar", () => {
     expect(FONTE).toContain('import { motivoParaNaoEmitirTermo } from "@/lib/apolo/termo-de-rescisao";');
