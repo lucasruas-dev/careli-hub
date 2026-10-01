@@ -95,6 +95,31 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Apolo/Autonomos + link publico] Link publico do corretor autonomo e tela Autonomos (v1.404.0)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; construido pela conta de construcao e entregue por resumo de entrega (2a versao).
+- Data e hora local: `2026-10-01 16:18:48 -03:00` (changelog); deploy pronto cerca de 4 min depois do push.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `pedido do Lucas ("eu preciso urgente divulgar esse link"), ciente do risco residual da aprovacao em ficha existente; decisao dele: sem captcha. Branch feat/autonomo-link-publico (82f84d50, ja com a main 1.403.5). A 1a versao (f8d6ea58) foi barrada pela revisao`.
+- Escopo publicado: `paginas e rotas publicas /publico/autonomo, /api/publico/autonomo/iniciar e /cadastro (envio grava so o pedido em apolo_audit_events); token do autonomo so faz extract no /api/publico/cad/ocr; tela Apolo > Autonomos e rotas internas so para a coordenacao; aprovacao cria/acrescenta a ficha, papel ativo, codigo CA e documentos`.
+- Commit publicado: `47e19c01`.
+- Deployment anterior: `dpl_BTgjjjr95eKKa4sdqbju4T3cqTm5` (commit `c9ee4d22`, v1.403.5).
+- Deployment novo: `ver list_deployments do commit 47e19c01`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Banco: `sem migracao`.
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `suite completa e hook de pre-push`: `744 arquivos, 11.364 testes`;
+  - `revisao de seguranca por workflow em duas rodadas`: `1a (42 agentes) barrou a f8d6ea58: link gravava dado digitado como real em ficha existente e o token liberava enrich pago de qualquer CPF; 2a (29 agentes) provou os 10 achados resolvidos (envio nao toca ficha, enrich 403, resposta uniforme, celular por digitos, reenvio vira pedido novo, rotas internas so coordenacao, sino e fila com teto)`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `/api/version 1.404.0 com buildTag 2026-10-01-autonomo-link-publico; /publico/autonomo 200 e renderiza no celular (375x812); /api/publico/autonomo/iniciar 400 com CPF invalido; fila interna 401 sem sessao`.
+- Logs recentes: `sem erro nas rotas do autonomo nos ultimos 15 min`.
+- Rollback definido: `Instant Rollback para dpl_BTgjjjr95eKKa4sdqbju4T3cqTm5 (v1.403.5) e seguro (sem migracao; pedidos ja gravados ficam em apolo_audit_events sem tela)`.
+- Riscos conhecidos: `APROVAR em CPF que ja tem ficha grava qualificacao e endereco digitados nos campos vazios e isso chega ao contrato da Temis; o cartao nao mostra a ficha existente e o aviso "ja tem ficha" falha em 20 CPFs do sync. Orientacao dada: coordenacao nao aprova CPF que ja tem ficha ate a correcao. Teto geral de 40/h esgotavel por um IP (negacao de servico) e nao atomico; fila le so 1.000 eventos; indeferir manda WhatsApp ao numero digitado; staging sem prazo. O buraco de enrich pelo token da IMOBILIARIA segue aberto em producao (tarefa de correcao separada)`.
+- Status: `OPERACIONAL COM ATENCAO`.
+- Proxima acao: `correcao da aprovacao em ficha existente e do teto por IP pela frente do autonomo; correcao do enrich da imobiliaria`.
+
+Registro de producao:
+
 - Assunto: `[Temis/Contrato em assinatura] Troca de e-mail conclui os requisitos no envelope em andamento (v1.403.5, interna, urgente)`.
 - Squad/agente responsavel: `Zeus (sessao Publicacao)`; entregue por resumo de entrega.
 - Data e hora local: `2026-10-01 15:09:56 -03:00` (changelog); deploy pronto cerca de 4 min depois do push.
