@@ -11,7 +11,11 @@ import {
   type ExtratoClienteParcelaBruta,
 } from "./extrato-cliente";
 import { deducaoDe } from "./rescisao";
-import { carregarTermoDeRescisao, conferirContratoDeCorretagemZero } from "./termo-de-rescisao-server";
+import {
+  carregarTermoDeRescisao,
+  conferirContratoDeCorretagemZero,
+  recusaPorAvisos,
+} from "./termo-de-rescisao-server";
 
 // A LEITURA DO TERMO DE RESCISÃO — os três bancos simulados, e o que cada falha vira.
 //
@@ -445,7 +449,7 @@ describe("o que cada fonte entrega ao papel", () => {
   });
 
   // ⚠️ O CASO QUE VAZOU PARA O CLIENTE (Recanto do Pará, 30/09/2026): a frase "confira no contrato
-  // assinado" ia impressa. Decisão do Lucas em 01/10/2026: corretagem zero recusa e pede conferência.
+  // assinado" ia impressa. Decisão do Lucas em 30/09/2026: corretagem zero recusa e pede conferência.
   it("corretagem R$ 0,00 no contrato de corretagem: 422 com a frase para o operador", async () => {
     estado.linhaDoC2x = {
       enterprise_id: 37,
@@ -463,10 +467,26 @@ describe("o que cada fonte entrega ao papel", () => {
     });
   });
 
-  it("qualquer aviso da conta segura o papel, e não só os que o servidor conhece pelo texto", async () => {
-    const CODIGO_DO_SERVIDOR = readFileSync(join(__dirname, "termo-de-rescisao-server.ts"), "utf8");
-    expect(CODIGO_DO_SERVIDOR).not.toContain('aviso.includes(" não entrou na conta:")');
-    expect(CODIGO_DO_SERVIDOR).toContain("if (avisos.length)");
+  // ⚠️ POR COMPORTAMENTO, E NÃO PROCURANDO TEXTO NO CÓDIGO. A versão anterior deste teste lia o
+  // arquivo do servidor, e a revisão da Publicação (30/09/2026) provou que ela não guardava nada: uma
+  // mutação que voltava a filtrar os avisos por texto passou nos 29 testes. Aqui a conta real ganha
+  // um aviso INVENTADO, sem nenhuma palavra que um filtro conheceria, e o papel tem de recusar.
+  it("um aviso que nenhum código conhece segura o papel do mesmo jeito", () => {
+    const inventado = "Aviso inventado pelo teste, sem palavra nenhuma que um filtro reconheça.";
+
+    expect(recusaPorAvisos([inventado], "VOC0101")).toEqual({
+      error: `O termo de rescisão não sai para a unidade VOC0101 sem conferência: ${inventado}`,
+      ok: false,
+      status: 422,
+    });
+    expect(recusaPorAvisos(["um", "dois"], "VOC0101")).not.toBeNull();
+    expect(recusaPorAvisos([], "VOC0101")).toBeNull();
+  });
+
+  it("e sem aviso nenhum, o mesmo contrato sai", async () => {
+    const resultado = await carregarTermoDeRescisao(ESCOPO);
+    expect(resultado.ok).toBe(true);
+    expect(resultado.ok && resultado.dados.conta.avisos).toEqual([]);
   });
 
   it("corretagem pelo valor do contrato sem o valor em reais: 422, e nunca multa sobre a tabela cheia", async () => {

@@ -487,7 +487,7 @@ export async function carregarTermoDeRescisao(escopo: EscopoDoTermo): Promise<Te
   // traz o valor em reais (aí a linha some E a multa e a publicidade sobem, porque a base vira a
   // tabela cheia). A frase é o próprio aviso, que já diz qual rubrica e qual base faltou.
   //
-  // ⚠️ DESDE 01/10/2026 É QUALQUER AVISO, E NÃO SÓ "NÃO ENTROU NA CONTA". O PDF imprimia os avisos
+  // ⚠️ DESDE 30/09/2026 É QUALQUER AVISO, E NÃO SÓ "NÃO ENTROU NA CONTA". O PDF imprimia os avisos
   // em "Observações da apuração", e o de corretagem R$ 0,00 (escrito para quem EMITE: "confira no
   // contrato assinado...") chegou ao cliente em 8 contratos do Recanto do Pará. Decisão do Lucas:
   // corretagem zero não sai, pede conferência. Com isso a regra é uma só: aviso é para o operador,
@@ -498,15 +498,13 @@ export async function carregarTermoDeRescisao(escopo: EscopoDoTermo): Promise<Te
   // ⚠️ O `motivo` SAI DO FATO, E NÃO DA FRASE: comissão lida exatamente zero e nenhuma conferência
   // gravada (a conferência só vale com zero, então "zero e sem conferência" é o único caso em que o
   // aviso do zero foi empurrado). O painel abre o formulário por esse código.
-  const avisos = montado.dados.conta.avisos;
-  if (avisos.length) {
-    const corretagemZero = doC2x.comissaoEmReais === 0 && conferencia.conferencia === null;
-    return falha(
-      422,
-      `O termo de rescisão não sai para a unidade ${relatorio.contrato.codigo} sem conferência: ${avisos.join(" ")}`,
-      corretagemZero ? "corretagem_zero" : undefined,
-    );
-  }
+  const corretagemZero = doC2x.comissaoEmReais === 0 && conferencia.conferencia === null;
+  const recusa = recusaPorAvisos(
+    montado.dados.conta.avisos,
+    relatorio.contrato.codigo,
+    corretagemZero ? "corretagem_zero" : undefined,
+  );
+  if (recusa) return recusa;
 
   return { dados: montado.dados, ok: true };
 }
@@ -560,6 +558,28 @@ export async function conferirContratoDeCorretagemZero(escopo: {
 
   const preco = relatorio.contrato.precoTabela;
   return { ok: true, valorDeTabela: preco !== null && Number.isFinite(preco) && preco > 0 ? preco : null };
+}
+
+/**
+ * A recusa de um papel cuja conta avisou QUALQUER coisa, ou `null` quando não há aviso.
+ *
+ * ⚠️ EXPORTADA PARA SER TESTADA POR COMPORTAMENTO, com um aviso que nenhum código conhece. A revisão
+ * da Publicação (30/09/2026) mostrou que o teste antigo, que procurava texto no código, deixava
+ * passar a mutação que volta a filtrar avisos por texto. Uma função pura com um aviso inventado
+ * mata essa mutação sem precisar de `vi.mock` no módulo da montagem (que travava o worker do
+ * vitest na suíte completa).
+ */
+export function recusaPorAvisos(
+  avisos: readonly string[],
+  codigoDaUnidade: string,
+  motivo?: MotivoDaRecusa,
+): null | TermoCarregado {
+  if (!avisos.length) return null;
+  return falha(
+    422,
+    `O termo de rescisão não sai para a unidade ${codigoDaUnidade} sem conferência: ${avisos.join(" ")}`,
+    motivo,
+  );
 }
 
 /** "multa penal, publicidade e tributos". */

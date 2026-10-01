@@ -344,7 +344,7 @@ describe("o PDF sai de verdade", () => {
     expect(textos).toContain("19/144");
     expect(textos).toContain("20/144");
     expect(textos).toContain("Total de deduções");
-    // ⚠️ O CASO TEM AVISOS DE PRAXE NA CONTA, e eles NÃO vão para a folha (01/10/2026): aviso é do
+    // ⚠️ O CASO TEM AVISOS DE PRAXE NA CONTA, e eles NÃO vão para a folha (30/09/2026): aviso é do
     // operador e vira recusa no servidor.
     expect(CASO.conta.avisos.length).toBeGreaterThan(0);
     expect(tudo).not.toContain("não há premissa cadastrada");

@@ -42,7 +42,7 @@
 // mais num papel que circula por WhatsApp. Se a assinatura voltar e o papel virar instrumento, a
 // qualificação volta com ela.
 //
-// ⚠️ 6. OS AVISOS DA APURAÇÃO NÃO SÃO IMPRESSOS (desde 01/10/2026). Até ali saíam pequenos e em
+// ⚠️ 6. OS AVISOS DA APURAÇÃO NÃO SÃO IMPRESSOS (desde 30/09/2026). Até ali saíam pequenos e em
 // cinza, em "Observações da apuração", e o de corretagem R$ 0,00 levou ao cliente de 8 contratos do
 // Recanto do Pará uma frase escrita para quem emite ("confira no contrato assinado..."). Aviso é para
 // o OPERADOR: `carregarTermoDeRescisao` recusa com 422 quando a conta avisa qualquer coisa, e a frase
