@@ -415,15 +415,27 @@ export async function carregarTermoDeRescisao(escopo: EscopoDoTermo): Promise<Te
   // vira a frase da recusa, e o papel NUNCA leva aviso (o PDF parou de imprimi-los). A régua por
   // texto, que o reviewer marcou como frágil, saiu junto: aviso novo que alguém escrever amanhã não
   // vaza para o cliente, recusa.
-  const avisos = montado.dados.conta.avisos;
-  if (avisos.length) {
-    return falha(
-      422,
-      `O termo de rescisão não sai para a unidade ${relatorio.contrato.codigo} sem conferência: ${avisos.join(" ")}`,
-    );
-  }
+  const recusa = recusaPorAvisos(montado.dados.conta.avisos, relatorio.contrato.codigo);
+  if (recusa) return recusa;
 
   return { dados: montado.dados, ok: true };
+}
+
+/**
+ * A recusa de um papel cuja conta avisou QUALQUER coisa, ou `null` quando não há aviso.
+ *
+ * ⚠️ EXPORTADA PARA SER TESTADA POR COMPORTAMENTO, com um aviso que nenhum código conhece. A revisão
+ * da Publicação (30/09/2026) mostrou que o teste antigo, que procurava texto no código, deixava
+ * passar a mutação que volta a filtrar avisos por texto. Uma função pura com um aviso inventado
+ * mata essa mutação sem precisar de `vi.mock` no módulo da montagem (que travava o worker do
+ * vitest na suíte completa).
+ */
+export function recusaPorAvisos(avisos: readonly string[], codigoDaUnidade: string): null | TermoCarregado {
+  if (!avisos.length) return null;
+  return falha(
+    422,
+    `O termo de rescisão não sai para a unidade ${codigoDaUnidade} sem conferência: ${avisos.join(" ")}`,
+  );
 }
 
 /** "multa penal, publicidade e tributos". */

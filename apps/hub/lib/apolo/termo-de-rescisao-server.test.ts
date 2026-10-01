@@ -11,7 +11,7 @@ import {
   type ExtratoClienteParcelaBruta,
 } from "./extrato-cliente";
 import { deducaoDe } from "./rescisao";
-import { carregarTermoDeRescisao } from "./termo-de-rescisao-server";
+import { carregarTermoDeRescisao, recusaPorAvisos } from "./termo-de-rescisao-server";
 
 // A LEITURA DO TERMO DE RESCISÃO — os três bancos simulados, e o que cada falha vira.
 //
@@ -33,8 +33,6 @@ const CODIGO = FONTE.split("\n")
 const HOJE = "2026-09-16";
 
 const estado = vi.hoisted(() => ({
-  /** Aviso que o teste enfia na conta depois da montagem real, para provar a regra por comportamento. */
-  avisoInjetado: null as null | string,
   comSupabase: true,
   consultasAoSupabase: [] as Array<{ filtros: Array<[string, unknown]>; tabela: string }>,
   extrato: null as unknown,
@@ -42,19 +40,6 @@ const estado = vi.hoisted(() => ({
   linhaDoC2x: { enterprise_id: 37, texto_da_corretagem: null as null | string },
   respostas: {} as Record<string, { data: unknown; error: null | { code?: string; message: string } }>,
 }));
-
-// A montagem é a REAL; o mock só acrescenta, quando o teste pede, um aviso que nenhum código conhece.
-vi.mock("@/lib/apolo/termo-de-rescisao", async (importOriginal) => {
-  const real = await importOriginal<typeof import("@/lib/apolo/termo-de-rescisao")>();
-  return {
-    ...real,
-    montarDadosDaRescisao: (...args: Parameters<typeof real.montarDadosDaRescisao>) => {
-      const montado = real.montarDadosDaRescisao(...args);
-      if (montado.ok && estado.avisoInjetado) montado.dados.conta.avisos.push(estado.avisoInjetado);
-      return montado;
-    },
-  };
-});
 
 vi.mock("@/lib/apolo/extrato-cliente-c2x", () => ({
   loadExtratoDoCliente: vi.fn(async () => estado.extrato),
@@ -216,7 +201,6 @@ const CADASTRO_COMPLETO = ["clausula_penal", "publicidade", "corretagem", "tribu
 );
 
 beforeEach(() => {
-  estado.avisoInjetado = null;
   estado.comSupabase = true;
   estado.consultasAoSupabase = [];
   estado.extrato = extratoDe();
@@ -481,15 +465,16 @@ describe("o que cada fonte entrega ao papel", () => {
   // arquivo do servidor, e a revisão da Publicação (30/09/2026) provou que ela não guardava nada: uma
   // mutação que voltava a filtrar os avisos por texto passou nos 29 testes. Aqui a conta real ganha
   // um aviso INVENTADO, sem nenhuma palavra que um filtro conheceria, e o papel tem de recusar.
-  it("um aviso que nenhum código conhece segura o papel do mesmo jeito", async () => {
-    estado.avisoInjetado = "Aviso inventado pelo teste, sem palavra nenhuma que um filtro reconheça.";
+  it("um aviso que nenhum código conhece segura o papel do mesmo jeito", () => {
+    const inventado = "Aviso inventado pelo teste, sem palavra nenhuma que um filtro reconheça.";
 
-    expect(await carregarTermoDeRescisao(ESCOPO)).toEqual({
-      error:
-        "O termo de rescisão não sai para a unidade VOC0101 sem conferência: Aviso inventado pelo teste, sem palavra nenhuma que um filtro reconheça.",
+    expect(recusaPorAvisos([inventado], "VOC0101")).toEqual({
+      error: `O termo de rescisão não sai para a unidade VOC0101 sem conferência: ${inventado}`,
       ok: false,
       status: 422,
     });
+    expect(recusaPorAvisos(["um", "dois"], "VOC0101")).not.toBeNull();
+    expect(recusaPorAvisos([], "VOC0101")).toBeNull();
   });
 
   it("e sem aviso nenhum, o mesmo contrato sai", async () => {
