@@ -113,8 +113,9 @@ export function ConferenciaDaCorretagem({
 
   // ⚠️ CANCELAR AO TROCAR DE CLIENTE OU DE CONTRATO (decisão do Lucas, 01/10/2026: "cancelar ao
   // trocar"). O painel desmonta este formulário (`key`) ao trocar de contrato ou de cliente, e o
-  // desmonte aborta o GET e o PUT em voo: a resposta tardia não mexe em estado, não mostra erro e,
-  // sobretudo, não chama `onSalva` para escrever "Conferência registrada" na tela de OUTRO cliente.
+  // desmonte aborta o GET em voo e DESCARTA a resposta do PUT (que segue até o servidor, ver
+  // `enviar`): a resposta tardia não mexe em estado, não mostra erro e, sobretudo, não chama
+  // `onSalva` para escrever "Conferência registrada" na tela de OUTRO cliente.
   const pedidosRef = useRef<Set<AbortController>>(new Set());
   useEffect(() => {
     const pedidos = pedidosRef.current;
@@ -222,8 +223,12 @@ export function ConferenciaDaCorretagem({
 
     try {
       const token = await getApoloAccessToken();
+      // ⚠️ O PUT NÃO LEVA O `signal`: GRAVAÇÃO NÃO SE CANCELA PELA METADE (revisão de 01/10/2026). O
+      // abort no navegador não desfaz o insert que o servidor pode já ter feito, e só faria parecer
+      // que nada aconteceu. A decisão "cancelar ao trocar" do Lucas era sobre os PDFs: aqui o pedido
+      // segue até o fim, e o controlador serve só para a tela DESCARTAR a resposta tardia (não chama
+      // `onSalva`, não escreve erro). O registro aparece no histórico do "Ver ou corrigir".
       const response = await fetch("/api/apolo/rescisao/conferencia-corretagem", {
-        signal,
         cache: "no-store",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         method: "PUT",

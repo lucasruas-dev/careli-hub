@@ -494,7 +494,8 @@ describe("cancelar ao trocar de cliente", () => {
 
     renderizar(88);
     await esperar();
-    expect(pedido.signal?.aborted).toBe(true);
+    // O PUT NÃO é cancelado (gravação não se cancela pela metade): segue sem `signal`.
+    expect(pedido.signal).toBeUndefined();
 
     await act(async () => {
       pedido.resolver({

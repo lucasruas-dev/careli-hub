@@ -401,7 +401,9 @@ describe("cancelar ao desmontar", () => {
     expect(texto()).toBe("outro contrato");
   });
 
-  it("o PUT é abortado no desmonte, e o onSalva NÃO é chamado com a resposta tardia", async () => {
+  // ⚠️ O PUT NÃO É CANCELADO (revisão de 01/10/2026): o abort não desfaria o insert no servidor. O que
+  // o desmonte garante é que a resposta tardia seja DESCARTADA pela tela.
+  it("o PUT segue até o fim no desmonte, e o onSalva NÃO é chamado com a resposta tardia", async () => {
     const pendentes = fetchPendurado();
     montar({ recusado: true });
     clicar(radio(0));
@@ -411,8 +413,8 @@ describe("cancelar ao desmontar", () => {
     await esperar();
     expect(pendentes).toHaveLength(1);
 
+    expect(pendentes[0]!.signal).toBeUndefined();
     act(() => raiz.render(<div>outro cliente</div>));
-    expect(pendentes[0]!.signal?.aborted).toBe(true);
 
     await act(async () => {
       pendentes[0]!.resolver({
