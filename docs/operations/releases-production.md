@@ -95,6 +95,34 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Temis/Contrato em assinatura] Troca de e-mail conclui os requisitos no envelope em andamento (v1.403.5, interna, urgente)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; entregue por resumo de entrega.
+- Data e hora local: `2026-10-01 15:09:56 -03:00` (changelog); deploy pronto cerca de 4 min depois do push.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("pode publicar a 1.403.5"); branch fix/clicksign-recadastro-sem-group (86b7ba4a) integrada por merge sobre a v1.403.4. Segunda tentativa real (Maura, VOC0306, envelope 0384000d): o cadastro passou e os requisitos voltaram 403 "envelope nao esta com status draft"`.
+- Escopo publicado: `acrescentarSignatario usa POST /envelopes/{id}/bulk_requirements com atomic:operations (dois add); o envio normal segue com POST /requirements`.
+- Commit publicado: `c9ee4d22f35cdcc2b69f3d167c9804cedf3f58d2`.
+- Deployment anterior: `dpl_He2JXu9pJCghNZCfMCAGH4dLkRZG` (commit `f2df6d38`, v1.403.4).
+- Deployment novo: `dpl_BTgjjjr95eKKa4sdqbju4T3cqTm5`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Banco: `sem migracao e sem escrita`.
+- Validacoes executadas:
+  - `conferencia com a doc oficial da Clicksign (developers.clicksign.com/reference/bulk-requirements, 01/10/2026)`: `metodo, caminho, formato atomic:operations e Content-Type application/vnd.api+json batem; a doc indica o uso em envelopes ativados`;
+  - `vitest lib/assinatura, lib/temis, app/api/temis, app/api/incorporador/temis, app/api/guardian/termo-de-acordo`: `116 arquivos, 2.246 testes`;
+  - `hook de pre-push`: `737 arquivos, 11.301 testes`;
+  - `revisao por workflow`: `NAO feita, pela urgencia`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.403.5 com buildTag 2026-10-01-clicksign-requisitos-em-massa; rota do signatario 401 sem sessao`.
+- Logs recentes: `sem erro em /api/temis/assinatura/signatario nos ultimos 15 min`.
+- Rollback definido: `Instant Rollback para dpl_He2JXu9pJCghNZCfMCAGH4dLkRZG (v1.403.4) e seguro, mas volta a quebrar a troca de e-mail`.
+- Riscos conhecidos: `terceira tentativa no contrato real; so o uso real prova a troca inteira. Se falhar, a Maura segue fora do envelope e o caminho e inclui-la pelo painel da Clicksign. Plantao com mudancas nao commitadas em envelope.ts e trocar-signatario.test.ts`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas refazer a troca de e-mail da Maura no card do VOC0306`.
+
+Registro de producao:
+
 - Assunto: `[Temis/Contrato em assinatura] Troca de e-mail sem o group que a Clicksign recusa (v1.403.4, interna, urgente)`.
 - Squad/agente responsavel: `Zeus (sessao Publicacao)`; entregue por resumo de entrega.
 - Data e hora local: `2026-10-01 14:48:17 -03:00` (changelog); deploy pronto cerca de 4 min depois do push.
