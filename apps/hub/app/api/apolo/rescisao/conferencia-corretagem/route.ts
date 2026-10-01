@@ -81,9 +81,16 @@ type LinhaDaConferencia = {
   valor_em_reais: null | number | string;
 };
 
-/** Id plausível: só dígitos, até 15 casas (o contrato é bigint e acima de 2^53 chegaria arredondado). */
+/**
+ * Id plausível: só dígitos, até 15 casas (o contrato é bigint e acima de 2^53 chegaria arredondado).
+ *
+ * ⚠️ SÓ TEXTO OU NÚMERO (01/10/2026, segunda revisão da Publicação). `String(valor)` transforma
+ * `["77"]` em "77", e um array de um elemento virava um id válido; objeto, booleano e nulo viram
+ * texto que a regex recusa, mas a recusa não pode depender de coincidência.
+ */
 function idPlausivel(valor: unknown): null | number {
-  const bruto = String(valor ?? "").trim();
+  if (typeof valor !== "string" && typeof valor !== "number") return null;
+  const bruto = String(valor).trim();
   if (!/^\d{1,15}$/.test(bruto)) return null;
   const numero = Number(bruto);
   return numero > 0 ? numero : null;
@@ -204,7 +211,10 @@ export async function PUT(request: Request) {
     return erro("Escolha o resultado da conferência: não houve corretagem, ou houve.", 400);
   }
 
-  const observacao = String(corpo.observacao ?? "").trim();
+  // ⚠️ SÓ TEXTO (01/10/2026, segunda revisão da Publicação): `String({})` é "[object Object]" e
+  // `String(["a"])` é "a". Um objeto mandado direto à API virava observação gravada como prova da
+  // conferência. Qualquer coisa que não seja string cai na mesma frase da observação ausente.
+  const observacao = typeof corpo.observacao === "string" ? corpo.observacao.trim() : "";
   if (!observacao) {
     return erro("Escreva a observação: o que você viu no contrato assinado.", 400);
   }

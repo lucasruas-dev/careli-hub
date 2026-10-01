@@ -541,3 +541,76 @@ describe("o GET", () => {
     expect(JSON.stringify(await outro.json())).not.toContain("connection reset");
   });
 });
+
+// ⚠️ TIPO ERRADO ENVIADO DIRETO À API (01/10/2026, achado da segunda revisão da Publicação).
+// `String({})` é "[object Object]" e `String(["a"])` é "a": a observação, que é a PROVA da conferência,
+// podia ser gravada como lixo. Texto é só `string`; id é só texto ou número; resultado é só uma das
+// duas strings do conjunto. Qualquer outra coisa recusa com 400, e nada é consultado nem gravado.
+describe("tipo errado no corpo", () => {
+  const tortos: Array<[string, unknown]> = [
+    ["objeto", { a: 1 }],
+    ["array de texto", ["a"]],
+    ["array vazio", []],
+    ["número", 42],
+    ["booleano", true],
+    ["nulo", null],
+  ];
+
+  it.each(tortos)("observação %s: 400 com a frase da observação, e nada é gravado", async (_nome, observacao) => {
+    const resposta = await PUT(pedido({ ...SEM_CORRETAGEM, observacao }));
+
+    expect(resposta.status).toBe(400);
+    expect((await resposta.json()).error).toContain("Escreva a observação");
+    expect(estado.guardas).toHaveLength(0);
+    expect(estado.gravacoes).toHaveLength(0);
+  });
+
+  it.each(tortos)("resultado %s: 400, e nada é gravado", async (_nome, resultado) => {
+    const resposta = await PUT(pedido({ ...SEM_CORRETAGEM, resultado }));
+
+    expect(resposta.status).toBe(400);
+    expect((await resposta.json()).error).toContain("Escolha o resultado");
+    expect(estado.gravacoes).toHaveLength(0);
+  });
+
+  it.each([
+    ["objeto", { a: 1 }],
+    ["array de um elemento (String(['77']) seria '77')", ["77"]],
+    ["array de número", [77]],
+    ["booleano", true],
+    ["nulo", null],
+    ["número com casas", 77.5],
+  ])("c2xId %s: 400, e nada é gravado", async (_nome, c2xId) => {
+    const resposta = await PUT(pedido({ ...SEM_CORRETAGEM, c2xId }));
+
+    expect(resposta.status).toBe(400);
+    expect(estado.guardas).toHaveLength(0);
+    expect(estado.gravacoes).toHaveLength(0);
+  });
+
+  it.each([
+    ["objeto", { a: 1 }],
+    ["array de um elemento", ["2417"]],
+    ["array de número", [2417]],
+    ["booleano", true],
+    ["nulo", null],
+  ])("contrato %s: 400, e nada é gravado", async (_nome, contrato) => {
+    const resposta = await PUT(pedido({ ...SEM_CORRETAGEM, contrato }));
+
+    expect(resposta.status).toBe(400);
+    expect(estado.guardas).toHaveLength(0);
+    expect(estado.gravacoes).toHaveLength(0);
+  });
+
+  it("texto e número válidos continuam passando como id", async () => {
+    const comTexto = await PUT(pedido({ ...SEM_CORRETAGEM, c2xId: "77", contrato: "2417" }));
+    expect(comTexto.status).toBe(200);
+    expect(estado.guardas.at(-1)?.escopo).toEqual({ c2xId: 77, contratoId: 2417 });
+  });
+
+  it("a observação em texto continua aparada e aceita", async () => {
+    const resposta = await PUT(pedido({ ...SEM_CORRETAGEM, observacao: "  ok  " }));
+    expect(resposta.status).toBe(200);
+    expect(estado.gravacoes.at(-1)?.valores.observacao).toBe("ok");
+  });
+});

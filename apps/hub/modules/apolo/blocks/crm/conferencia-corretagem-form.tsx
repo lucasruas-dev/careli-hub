@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { dataBr, hojeEmBrasilia } from "@/lib/apolo/extrato-cliente";
 import {
@@ -35,6 +35,15 @@ import { getApoloAccessToken } from "../../data/apolo-operations";
 // ⚠️ GRAVAR É SEMPRE UM REGISTRO NOVO (histórico, migration 0202). "Corrigir" não edita o antigo: o
 // formulário abre preenchido com o atual, e o Salvar cria outro registro que passa a valer. O
 // histórico recente aparece abaixo, para a coordenação ver quem registrou o quê e quando.
+//
+// ⚠️ ACESSÍVEL PARA QUEM NÃO ENXERGA A TELA (01/10/2026, achado da segunda revisão da Publicação). O
+// formulário decide um número impresso no papel do cliente, e a confirmação aparecia só visualmente:
+// (1) cada campo tem `<label htmlFor>` de verdade (o valor e a observação, que só tinham `aria-label`,
+// ganham rótulo visível para leitor de tela via `sr-only`); (2) o erro mora numa região
+// `role="alert"`, e o campo que o causou leva `aria-invalid` + `aria-describedby` apontando para ele;
+// (3) a confirmação nasce dentro de uma região `aria-live="polite"` que já existia, e o foco VAI para
+// ela ao abrir (a pessoa que tecla Salvar não ficaria sabendo que o passo mudou); (4) ao Voltar, o
+// foco volta ao Salvar, que acabou de ser remontado, em vez de se perder no `body`.
 
 type Registro = {
   conferido_em: null | string;
@@ -49,8 +58,11 @@ type Props = {
   /** Qual conferência o último PDF usou, ou nulo. Com isso aparece o "Ver ou corrigir". */
   conferenciaUsada: null | ResultadoDaConferencia;
   contratoId: number;
-  /** Chamado depois de gravar, com a mensagem de sucesso que o painel mostra. */
-  onSalva: (mensagem: string) => void;
+  /**
+   * Chamado depois de gravar, com a mensagem de sucesso que o painel mostra e o resultado que a rota
+   * devolveu (o painel já oferece o "Ver ou corrigir" sem esperar o PDF).
+   */
+  onSalva: (mensagem: string, gravada: null | ResultadoDaConferencia) => void;
   /** A rota do PDF acabou de recusar com `motivo: "corretagem_zero"`: o formulário abre sozinho. */
   recusado: boolean;
 };
@@ -79,6 +91,14 @@ export function ConferenciaDaCorretagem({
   onSalva,
   recusado,
 }: Props) {
+  const base = useId();
+  const idNaoHouve = `${base}-nao-houve`;
+  const idHouve = `${base}-houve`;
+  const idValor = `${base}-valor`;
+  const idObservacao = `${base}-observacao`;
+  const idErro = `${base}-erro`;
+  const idTitulo = `${base}-titulo`;
+
   const [verCorrigir, setVerCorrigir] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [historico, setHistorico] = useState<Registro[]>([]);
@@ -88,12 +108,32 @@ export function ConferenciaDaCorretagem({
   const [confirmando, setConfirmando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<null | string>(null);
+  // O erro é do CAMPO do valor (formato ilegível) ou geral (a rota recusou): só o primeiro marca o campo.
+  const [erroNoValor, setErroNoValor] = useState(false);
+
+  const confirmacaoRef = useRef<HTMLParagraphElement>(null);
+  const salvarRef = useRef<HTMLButtonElement>(null);
+  // ⚠️ O Voltar remonta o Salvar (a confirmação ocupa o lugar dele); a marca diz ao efeito de foco
+  // que a confirmação fechou POR VOLTAR, e não por erro da rota (aí o foco fica com o alerta).
+  const voltouRef = useRef(false);
 
   const aberto = recusado || verCorrigir;
+
+  useEffect(() => {
+    if (confirmando) {
+      confirmacaoRef.current?.focus();
+      return;
+    }
+    if (voltouRef.current) {
+      voltouRef.current = false;
+      salvarRef.current?.focus();
+    }
+  }, [confirmando]);
 
   const abrirParaCorrigir = useCallback(async () => {
     setCarregando(true);
     setErro(null);
+    setErroNoValor(false);
 
     try {
       const token = await getApoloAccessToken();
@@ -129,11 +169,13 @@ export function ConferenciaDaCorretagem({
 
   const preparar = useCallback(() => {
     setErro(null);
+    setErroNoValor(false);
     if (!resultado) return;
 
     // ⚠️ A MESMA LEITURA DA ROTA: o que não é legível não chega ao envio.
     if (resultado === "com_corretagem" && lerValorEmReaisBr(valor) === null) {
       setErro(FRASE_DO_FORMATO_DO_VALOR);
+      setErroNoValor(true);
       return;
     }
     setConfirmando(true);
@@ -145,11 +187,13 @@ export function ConferenciaDaCorretagem({
     if (resultado === "com_corretagem" && valorLido === null) {
       setConfirmando(false);
       setErro(FRASE_DO_FORMATO_DO_VALOR);
+      setErroNoValor(true);
       return;
     }
 
     setSalvando(true);
     setErro(null);
+    setErroNoValor(false);
 
     try {
       const token = await getApoloAccessToken();
@@ -191,7 +235,7 @@ export function ConferenciaDaCorretagem({
       setValor("");
       setObservacao("");
       setHistorico([]);
-      onSalva(mensagem);
+      onSalva(mensagem, gravado);
     } catch {
       setConfirmando(false);
       setErro("Não foi possível registrar a conferência.");
@@ -218,7 +262,9 @@ export function ConferenciaDaCorretagem({
           </button>
         </p>
         {erro ? (
-          <p className="m-0 text-xs font-semibold text-rose-600 dark:text-rose-300">{erro}</p>
+          <p className="m-0 text-xs font-semibold text-rose-600 dark:text-rose-300" role="alert">
+            {erro}
+          </p>
         ) : null}
       </div>
     );
@@ -229,43 +275,55 @@ export function ConferenciaDaCorretagem({
 
   return (
     <div className="mt-3 flex flex-col gap-3 rounded-lg border border-line bg-subtle p-3">
-      <p className="m-0 text-xs font-semibold text-ink-soft">Registrar conferência da corretagem</p>
-      <div className="flex flex-col gap-2 text-sm text-ink">
-        <label className="inline-flex items-center gap-2">
+      <p className="m-0 text-xs font-semibold text-ink-soft" id={idTitulo}>
+        Registrar conferência da corretagem
+      </p>
+      <div aria-labelledby={idTitulo} className="flex flex-col gap-2 text-sm text-ink" role="radiogroup">
+        <div className="inline-flex items-center gap-2">
           <input
             checked={resultado === "sem_corretagem"}
             disabled={travado}
+            id={idNaoHouve}
             name={`resultado-da-conferencia-${contratoId}`}
             onChange={() => setResultado("sem_corretagem")}
             type="radio"
           />
-          Não houve corretagem
-        </label>
-        <label className="inline-flex flex-wrap items-center gap-2">
+          <label htmlFor={idNaoHouve}>Não houve corretagem</label>
+        </div>
+        <div className="inline-flex flex-wrap items-center gap-2">
           <input
             checked={resultado === "com_corretagem"}
             disabled={travado}
+            id={idHouve}
             name={`resultado-da-conferencia-${contratoId}`}
             onChange={() => setResultado("com_corretagem")}
             type="radio"
           />
-          Houve corretagem de R$
+          <label htmlFor={idHouve}>Houve corretagem de R$</label>
+          <label className="sr-only" htmlFor={idValor}>
+            Valor da corretagem em reais
+          </label>
           <input
-            aria-label="Valor da corretagem em reais"
+            aria-describedby={erroNoValor && erro ? idErro : undefined}
+            aria-invalid={erroNoValor ? true : undefined}
             className="h-9 w-32 rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none placeholder:text-ink-muted disabled:opacity-60"
             disabled={travado || resultado !== "com_corretagem"}
+            id={idValor}
             inputMode="decimal"
             onChange={(event) => setValor(event.target.value)}
             placeholder="7.000,00"
             value={valor}
           />
-        </label>
+        </div>
       </div>
       <div className="flex flex-col gap-1">
+        <label className="sr-only" htmlFor={idObservacao}>
+          Observação da conferência
+        </label>
         <textarea
-          aria-label="Observação da conferência"
           className="min-h-[64px] w-full resize-none rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-muted"
           disabled={travado}
+          id={idObservacao}
           maxLength={LIMITE_DA_OBSERVACAO_DA_CONFERENCIA}
           onChange={(event) => setObservacao(event.target.value)}
           placeholder="O que você viu no contrato assinado (obrigatório)"
@@ -276,14 +334,21 @@ export function ConferenciaDaCorretagem({
         </span>
       </div>
       {erro ? (
-        <p className="m-0 text-xs font-semibold text-rose-600 dark:text-rose-300">{erro}</p>
+        <p className="m-0 text-xs font-semibold text-rose-600 dark:text-rose-300" id={idErro} role="alert">
+          {erro}
+        </p>
       ) : null}
+
+      <div aria-live="polite">
+        {confirmando && resultado ? (
+          <p className="m-0 text-sm font-semibold text-ink" ref={confirmacaoRef} tabIndex={-1}>
+            Confirmar: {descreverConferencia(resultado, valorLido)}
+          </p>
+        ) : null}
+      </div>
 
       {confirmando && resultado ? (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface p-2">
-          <p className="m-0 flex-1 text-sm font-semibold text-ink">
-            Confirmar: {descreverConferencia(resultado, valorLido)}
-          </p>
           <button
             className="inline-flex h-9 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink-soft outline-none transition-colors hover:bg-subtle focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-60"
             disabled={salvando}
@@ -296,7 +361,10 @@ export function ConferenciaDaCorretagem({
           <button
             className="inline-flex h-9 items-center rounded-lg px-3 text-sm font-semibold text-ink-muted outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:opacity-60"
             disabled={salvando}
-            onClick={() => setConfirmando(false)}
+            onClick={() => {
+              voltouRef.current = true;
+              setConfirmando(false);
+            }}
             type="button"
           >
             Voltar
@@ -305,6 +373,7 @@ export function ConferenciaDaCorretagem({
       ) : (
         <div className="flex items-center gap-2">
           <button
+            aria-describedby={erro && !erroNoValor ? idErro : undefined}
             className="inline-flex h-9 items-center gap-2 self-start rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink-soft outline-none transition-colors hover:bg-subtle focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-60"
             disabled={
               !resultado ||
@@ -312,6 +381,7 @@ export function ConferenciaDaCorretagem({
               (resultado === "com_corretagem" && !valor.trim())
             }
             onClick={preparar}
+            ref={salvarRef}
             type="button"
           >
             Salvar
