@@ -95,6 +95,34 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Hades/Atendimento de cobranca] Variaveis dos templates de cobranca voltam a trazer empreendimento, unidade e saldo (v1.403.3, interna)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; entregue por resumo de entrega.
+- Data e hora local: `2026-10-01 14:38:56 -03:00` (changelog); deploy pronto cerca de 4 min depois do push.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("pode subir"); branch fix/cobranca-variaveis-do-template (5dcb16ad) integrada por merge sobre a v1.403.2. Nasceu como 1.403.2 e foi renumerada porque a correcao urgente da Temis passou na frente`.
+- Escopo publicado: `modules/guardian/attendance/contexto-do-template.ts (novo); HadesAttendanceModal e WhatsAppConversationPanel mandam relatedEnterprise, relatedUnit, relatedOpenBalance e afins, que /api/iris/tickets ja lia; previa resolve por chave como a rota`.
+- Commit publicado: `755d31a19c08f2dca3a756159647c47985829458`.
+- Deployment anterior: `dpl_6YV9ANTckaufPLfPXUZVg4R91V24` (commit `cff26fcf`, v1.403.2).
+- Deployment novo: `dpl_GDbEaJoufptnpxnpD5VdvokVh3EG`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Banco: `sem migracao e sem escrita`.
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `suite completa e hook de pre-push`: `737 arquivos, 11.300 testes`;
+  - `revisao independente por workflow (10 agentes, so leitura em producao e no C2X)`: `saldo da tela = overdue_amount da fila em 20 de 20 clientes (diferenca R$ 0,00); os 2 templates de cobranca ativos ficam com todas as chaves preenchidas; previa identica ao texto da rota nos templates usados; os campos related* nao sao lidos por mais ninguem; desde 02/07 sairam 2.004 mensagens com "-" (1.545 de parcelas, 459 de titular; 1.990 do modal do Hades)`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.403.3 com buildTag 2026-10-01-cobranca-variaveis-do-template; /api/iris/tickets 401 sem sessao`.
+- Logs recentes: `sem erro em /api/iris/tickets nos ultimos 15 min`.
+- Rollback definido: `Instant Rollback para dpl_6YV9ANTckaufPLfPXUZVg4R91V24 (v1.403.2) e seguro (volta o "-" nas mensagens)`.
+- Riscos conhecidos: `{{empreendimento}} sai com o rotulo do C2X (sem acento e, as vezes, com a sigla do filho) e {{unidade}} como codigo; Sinal do VDO e do LBR entra no saldo a ~65% com boleto e a 100% sem boleto (regra anterior, cerca de 16 clientes; decisao de negocio pendente); com uma unidade selecionada entre varias, o saldo soma todas; a Iris continua mandando "-" fora do contexto parcelas`.
+- Pendencias: `nome bonito do empreendimento e quadra/lote na unidade; decisao do Lucas sobre a base do Sinal; contexto da Iris fora de parcelas`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas ou o time abrirem um atendimento de cobranca com a janela de 24h fechada e o template "Parcelas vencidas do empreendimento", conferindo empreendimento, unidade e saldo na previa e na mensagem da Iris`.
+
+Registro de producao:
+
 - Assunto: `[Temis/Contrato em assinatura] Corrigir o e-mail de quem esta sem noticia (v1.403.2, interna, urgente)`.
 - Squad/agente responsavel: `Zeus (sessao Publicacao)`; entregue por resumo de entrega.
 - Data e hora local: `2026-10-01 14:27:36 -03:00` (changelog); deploy pronto cerca de 3,5 min depois do push.
