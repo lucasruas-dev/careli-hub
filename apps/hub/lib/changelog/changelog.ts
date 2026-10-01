@@ -37,7 +37,7 @@ export type ChangelogEntry = {
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
     buildTag: "2026-10-01-temis-corrigir-email-sem-noticia",
-    deployedAt: "__HORA_REAL__",
+    deployedAt: "2026-10-01T14:27:36-03:00",
     internal: true,
     modules: [
       {
