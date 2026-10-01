@@ -5,9 +5,6 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// `vi.mock` é içado para antes dos imports, então o import estático já recebe o módulo falso. Um
-// `await import` no topo do arquivo, como estava, travava o worker do vitest na suíte inteira
-// ("Timeout calling onTaskUpdate", medido em 01/10/2026).
 import { ConferenciaDaCorretagem } from "./conferencia-corretagem-form";
 
 // O FORMULÁRIO DA CONFERÊNCIA DA CORRETAGEM, EXERCITADO DE VERDADE (jsdom, sem rota).
@@ -15,7 +12,14 @@ import { ConferenciaDaCorretagem } from "./conferencia-corretagem-form";
 // ⚠️ ALÉM DO TESTE POR TEXTO (`conferencia-corretagem-form.test.ts`), AQUI O FLUXO RODA: o Salvar só
 // abre a confirmação, nada vai à rota antes do Confirmar, valor ilegível nem chega ao envio, e a
 // mensagem de sucesso usa o valor que a ROTA devolveu (não o digitado). São as promessas do pedido
-// de 01/10/2026 (achado da revisão da Publicação: "7.000" gravava R$ 7,00 sem ninguém ver).
+// de 01/10/2026 (achado da revisão da Publicação: "7.000" gravava R$ 7,00 sem ninguém ver). E a
+// acessibilidade (segunda revisão da Publicação): rótulos ligados, erro anunciado, foco na
+// confirmação e de volta ao Salvar.
+//
+// ⚠️ IMPORT ESTÁTICO, E SEM `await import` NO TOPO (01/10/2026): o `await import` no topo de um
+// arquivo de teste travou o worker do vitest na suíte inteira ("Errors 1", "Timeout calling
+// onTaskUpdate") com todos os testes verdes. O `vi.mock` abaixo é içado pelo vitest e vale para o
+// import estático; o `React` global só é lido na hora de renderizar, depois de definido.
 
 (globalThis as unknown as { React: typeof React }).React = React;
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -24,14 +28,14 @@ vi.mock("../../data/apolo-operations", () => ({
   getApoloAccessToken: async () => "token-de-teste",
 }));
 
-
 type Chamada = { corpo: null | Record<string, unknown>; metodo: string; url: string };
+type Salva = { gravada: null | string; mensagem: string };
 
 let raiz: Root;
 let recipiente: HTMLElement;
 let chamadas: Chamada[];
 let respostas: Array<{ corpo: unknown; ok: boolean }>;
-let salvas: string[];
+let salvas: Salva[];
 
 beforeEach(() => {
   recipiente = document.createElement("div");
@@ -65,7 +69,7 @@ function montar(props: { conferenciaUsada?: "com_corretagem" | "sem_corretagem" 
         c2xId={77}
         conferenciaUsada={props.conferenciaUsada ?? null}
         contratoId={2417}
-        onSalva={(mensagem) => salvas.push(mensagem)}
+        onSalva={(mensagem, gravada) => salvas.push({ gravada, mensagem })}
         recusado={props.recusado ?? false}
       />,
     );
@@ -98,11 +102,20 @@ function digitar(el: HTMLInputElement | HTMLTextAreaElement, valor: string) {
   });
 }
 
+/** O campo que um `<label htmlFor>` de texto exato aponta: é como o leitor de tela o encontra. */
+function campoPorRotulo(rotulo: string): HTMLInputElement | HTMLTextAreaElement {
+  const label = [...recipiente.querySelectorAll("label")].find((l) => l.textContent?.trim() === rotulo);
+  if (!label) throw new Error(`rótulo "${rotulo}" não encontrado em: ${texto()}`);
+  const campo = label.htmlFor ? document.getElementById(label.htmlFor) : null;
+  if (!campo) throw new Error(`rótulo "${rotulo}" não aponta para nenhum campo`);
+  return campo as HTMLInputElement | HTMLTextAreaElement;
+}
+
 function campoDoValor() {
-  return recipiente.querySelector('input[aria-label="Valor da corretagem em reais"]') as HTMLInputElement;
+  return campoPorRotulo("Valor da corretagem em reais") as HTMLInputElement;
 }
 function campoDaObservacao() {
-  return recipiente.querySelector("textarea") as HTMLTextAreaElement;
+  return campoPorRotulo("Observação da conferência") as HTMLTextAreaElement;
 }
 function radio(indice: number) {
   return recipiente.querySelectorAll('input[type="radio"]')[indice] as HTMLInputElement;
@@ -241,7 +254,10 @@ describe("a gravação", () => {
 
     expect(chamadas[0]?.corpo).not.toHaveProperty("valor");
     expect(salvas).toEqual([
-      "Conferência registrada: não houve corretagem. Clique em Rescisão para gerar a simulação.",
+      {
+        gravada: "sem_corretagem",
+        mensagem: "Conferência registrada: não houve corretagem. Clique em Rescisão para gerar a simulação.",
+      },
     ]);
   });
 
@@ -256,7 +272,11 @@ describe("a gravação", () => {
     await esperar();
 
     expect(salvas).toEqual([
-      "Conferência registrada: houve corretagem de R$ 7.000,50 (sete mil reais e cinquenta centavos). Clique em Rescisão para gerar a simulação.",
+      {
+        gravada: "com_corretagem",
+        mensagem:
+          "Conferência registrada: houve corretagem de R$ 7.000,50 (sete mil reais e cinquenta centavos). Clique em Rescisão para gerar a simulação.",
+      },
     ]);
   });
 
@@ -335,7 +355,7 @@ describe("ver e corrigir", () => {
     expect(chamadas).toHaveLength(1);
   });
 
-  it("falha ao ler: a frase da rota aparece e o formulário não abre", async () => {
+  it("falha ao ler: a frase da rota aparece (anunciada) e o formulário não abre", async () => {
     respostas = [{ corpo: { error: "A tabela da conferência ainda não foi criada." }, ok: false }];
     montar({ conferenciaUsada: "sem_corretagem" });
     clicar(botao("Ver ou corrigir"));
@@ -343,5 +363,100 @@ describe("ver e corrigir", () => {
 
     expect(texto()).toContain("A tabela da conferência ainda não foi criada.");
     expect(texto()).not.toContain("Registrar conferência");
+    expect(recipiente.querySelector('[role="alert"]')?.textContent).toContain("A tabela da conferência");
+  });
+});
+
+// ⚠️ ACESSIBILIDADE (01/10/2026, achado da segunda revisão da Publicação). O formulário decide um
+// número impresso no papel do cliente; quem usa leitor de tela precisa ouvir o rótulo de cada campo,
+// o erro quando ele nasce, e o passo da confirmação.
+describe("acessibilidade", () => {
+  it("cada controle tem um <label htmlFor> de verdade apontando para ele", () => {
+    montar({ recusado: true });
+
+    expect(radio(0).labels?.[0]?.textContent).toBe("Não houve corretagem");
+    expect(radio(1).labels?.[0]?.textContent).toBe("Houve corretagem de R$");
+    expect(campoDoValor().labels?.[0]?.textContent).toBe("Valor da corretagem em reais");
+    expect(campoDaObservacao().labels?.[0]?.textContent).toBe("Observação da conferência");
+  });
+
+  it("os dois resultados formam um radiogroup com nome", () => {
+    montar({ recusado: true });
+    const grupo = recipiente.querySelector('[role="radiogroup"]')!;
+    const titulo = document.getElementById(grupo.getAttribute("aria-labelledby") ?? "");
+
+    expect(titulo?.textContent).toBe("Registrar conferência da corretagem");
+  });
+
+  it("valor ilegível: o erro é um role=alert, e o campo do valor fica aria-invalid apontando para ele", () => {
+    montar({ recusado: true });
+    preencherHouve("7.5");
+    expect(campoDoValor().getAttribute("aria-invalid")).toBeNull();
+
+    clicar(botao("Salvar"));
+
+    const alerta = recipiente.querySelector('[role="alert"]')!;
+    expect(alerta.textContent).toContain("Use o formato brasileiro");
+    expect(campoDoValor().getAttribute("aria-invalid")).toBe("true");
+    expect(campoDoValor().getAttribute("aria-describedby")).toBe(alerta.id);
+  });
+
+  it("corrigir o valor e salvar de novo tira o aria-invalid e o alerta", () => {
+    montar({ recusado: true });
+    preencherHouve("7.5");
+    clicar(botao("Salvar"));
+
+    digitar(campoDoValor(), "7.000");
+    clicar(botao("Salvar"));
+
+    expect(campoDoValor().getAttribute("aria-invalid")).toBeNull();
+    expect(recipiente.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("erro geral da rota: role=alert, e quem aponta para ele é o Salvar (o valor não está inválido)", async () => {
+    respostas = [{ corpo: { error: "Só a coordenação (admin ou líder) registra a conferência da corretagem." }, ok: false }];
+    montar({ recusado: true });
+    preencherHouve("7.000");
+    clicar(botao("Salvar"));
+    clicar(botao("Confirmar"));
+    await esperar();
+
+    const alerta = recipiente.querySelector('[role="alert"]')!;
+    expect(alerta.textContent).toContain("Só a coordenação");
+    expect(botao("Salvar").getAttribute("aria-describedby")).toBe(alerta.id);
+    expect(campoDoValor().getAttribute("aria-invalid")).toBeNull();
+  });
+
+  it("a região aria-live=polite existe ANTES da confirmação, e a confirmação nasce dentro dela", () => {
+    montar({ recusado: true });
+    const regiao = recipiente.querySelector('[aria-live="polite"]')!;
+    expect(regiao).toBeTruthy();
+    expect(regiao.textContent).toBe("");
+
+    preencherHouve("7.000");
+    clicar(botao("Salvar"));
+
+    expect(recipiente.querySelector('[aria-live="polite"]')).toBe(regiao);
+    expect(regiao.textContent).toContain("Confirmar: houve corretagem de R$ 7.000,00 (sete mil reais)");
+  });
+
+  it("ao abrir a confirmação, o foco VAI para ela", () => {
+    montar({ recusado: true });
+    preencherHouve("7.000");
+    clicar(botao("Salvar"));
+
+    const regiao = recipiente.querySelector('[aria-live="polite"]')!;
+    expect(document.activeElement).toBeTruthy();
+    expect(regiao.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement?.textContent).toContain("Confirmar: houve corretagem");
+  });
+
+  it("ao Voltar, o foco volta ao Salvar", () => {
+    montar({ recusado: true });
+    preencherHouve("7.000");
+    clicar(botao("Salvar"));
+    clicar(botao("Voltar"));
+
+    expect(document.activeElement).toBe(botao("Salvar"));
   });
 });

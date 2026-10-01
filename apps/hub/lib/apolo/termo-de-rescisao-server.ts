@@ -392,6 +392,17 @@ async function lerPremissas(
   }
 }
 
+/**
+ * COSTURA DE TESTE, E SÓ ISSO (01/10/2026, achado da segunda revisão da Publicação). O `montar`
+ * padrão é a função real; o teste passa um que chama a real e ACRESCENTA um aviso inventado, para
+ * provar que a chamada de `recusaPorAvisos` não filtra nada. Antes, uma lista de frases permitidas
+ * que casasse com todos os avisos reais de hoje passava em todos os testes, porque nenhum caminho
+ * real produz um aviso que o filtro não conheça. Nenhum código de produção passa este parâmetro.
+ */
+export type DependenciasDoTermo = {
+  montar?: typeof montarDadosDaRescisao;
+};
+
 export type EscopoDoTermo = {
   /** `users.id` do C2X — o mesmo `c2xId` do extrato. */
   c2xId: number;
@@ -407,7 +418,11 @@ export type EscopoDoTermo = {
  * ⚠️ A RECUSA DO CONTRATO VEM ANTES DO SUPABASE. Contrato encerrado e unidade sem preço são
  * respondidos só com o extrato, e o operador lê a frase certa mesmo num ambiente sem Supabase.
  */
-export async function carregarTermoDeRescisao(escopo: EscopoDoTermo): Promise<TermoCarregado> {
+export async function carregarTermoDeRescisao(
+  escopo: EscopoDoTermo,
+  dependencias: DependenciasDoTermo = {},
+): Promise<TermoCarregado> {
+  const montar = dependencias.montar ?? montarDadosDaRescisao;
   const hoje = escopo.hoje ?? hojeEmBrasilia();
 
   const extrato = await loadExtratoDoCliente({
@@ -457,7 +472,7 @@ export async function carregarTermoDeRescisao(escopo: EscopoDoTermo): Promise<Te
     console.error("[apolo][rescisao] premissas: a tabela sumiu, e o termo recusa em vez de usar a praxe.");
   }
 
-  const montado = montarDadosDaRescisao({
+  const montado = montar({
     cidade: familia.cidade,
     cliente: {
       documentoMascarado: extrato.data.cliente.documentoMascarado,

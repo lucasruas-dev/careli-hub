@@ -11,6 +11,7 @@ import {
   type ExtratoClienteParcelaBruta,
 } from "./extrato-cliente";
 import { deducaoDe } from "./rescisao";
+import { montarDadosDaRescisao } from "./termo-de-rescisao";
 import {
   carregarTermoDeRescisao,
   conferirContratoDeCorretagemZero,
@@ -812,6 +813,72 @@ describe("a recusa por avisos, de ponta a ponta", () => {
       status: 422,
     });
     expect(resultado).not.toHaveProperty("motivo");
+  });
+});
+
+// ⚠️ A CHAMADA NÃO PODE FILTRAR NADA, PROVADA COM UM AVISO QUE NENHUM CÓDIGO CONHECE (01/10/2026,
+// achado da segunda revisão da Publicação). Os testes acima usam os avisos REAIS de hoje, e uma lista
+// de frases permitidas que casasse com todos eles (por exemplo `/não entrou na conta|Sem a
+// corretagem|R\$ 0,00/`) passava em todos, porque nenhum caminho real produz um aviso fora dela.
+// `carregarTermoDeRescisao` tem um ponto de injeção pequeno (`dependencias.montar`) só para isto: o
+// teste passa uma montagem que chama a real e ACRESCENTA um aviso inventado. Qualquer filtro por
+// texto na chamada engole o aviso e o papel sai; aqui ele tem de recusar com a frase inteira.
+describe("a chamada de recusaPorAvisos não filtra nada", () => {
+  const INVENTADO = "Aviso inventado pelo teste, sem palavra nenhuma que um filtro reconheça.";
+
+  /** A montagem real, com um aviso a mais no fim da conta. */
+  const comAvisoInventado: typeof montarDadosDaRescisao = (entrada) => {
+    const montado = montarDadosDaRescisao(entrada);
+    if (!montado.ok) return montado;
+    return {
+      ...montado,
+      dados: {
+        ...montado.dados,
+        conta: { ...montado.dados.conta, avisos: [...montado.dados.conta.avisos, INVENTADO] },
+      },
+    };
+  };
+
+  it("o contrato que sairia limpo recusa só por causa do aviso inventado, com a frase inteira", async () => {
+    // Sem a injeção, é o mesmo contrato do teste "sem aviso nenhum, sai".
+    expect((await carregarTermoDeRescisao(ESCOPO)).ok).toBe(true);
+
+    expect(await carregarTermoDeRescisao(ESCOPO, { montar: comAvisoInventado })).toEqual({
+      error: `O termo de rescisão não sai para a unidade VOC0101 sem conferência: ${INVENTADO}`,
+      ok: false,
+      status: 422,
+    });
+  });
+
+  it("junto dos avisos reais, a frase leva TODOS, na ordem em que a conta os produziu", async () => {
+    estado.respostas.hercules_posse = { data: { data_da_posse: "2025-09-16" }, error: null };
+
+    expect(await carregarTermoDeRescisao(ESCOPO, { montar: comAvisoInventado })).toEqual({
+      error:
+        "O termo de rescisão não sai para a unidade VOC0101 sem conferência: Fruição não entrou na conta: a premissa manda calcular sobre o valor do contrato atualizado, que não foi informado. " +
+        INVENTADO,
+      ok: false,
+      status: 422,
+    });
+  });
+
+  it("na corretagem zero sem conferência, o aviso inventado entra na frase e o motivo continua", async () => {
+    estado.linhaDoC2x = {
+      enterprise_id: 37,
+      texto_da_corretagem:
+        "R$ 0,00 (ZERO REAIS) refere-se à intermediação imobiliária, sendo que a quantia R$ 0,00 (ZERO REAIS) será destinada ao pagamento da COORDENADORA e R$ 0,00 destinada aos ASSOCIADOS.",
+    };
+
+    const resultado = await carregarTermoDeRescisao(ESCOPO, { montar: comAvisoInventado });
+    expect(!resultado.ok && resultado.error).toContain(`. ${INVENTADO}`);
+    expect(!resultado.ok && resultado.motivo).toBe("corretagem_zero");
+  });
+
+  it("a costura só troca a montagem: as recusas anteriores a ela seguem as mesmas", async () => {
+    estado.respostas.hercules_premissas_de_rescisao = { data: [], error: null };
+
+    const resultado = await carregarTermoDeRescisao(ESCOPO, { montar: comAvisoInventado });
+    expect(!resultado.ok && resultado.error).toContain("não tem premissa de rescisão cadastrada");
   });
 });
 

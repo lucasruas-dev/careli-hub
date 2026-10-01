@@ -85,17 +85,41 @@ describe("a conferência da corretagem no painel", () => {
     );
   });
 
-  it("a mensagem de sucesso também é só da coordenação, e vem do formulário", () => {
-    expect(FONTE).toContain("{ehComprador && ehCoordenacao && mensagemDaConferencia ? (");
+  it("a mensagem de sucesso também é só da coordenação, numa região role=status que já existia", () => {
+    expect(FONTE).toContain("{ehComprador && ehCoordenacao ? (");
+    expect(FONTE).toContain('<div role="status">');
     expect(FONTE).toContain("setMensagemDaConferencia(mensagem)");
   });
 
-  it("limpa o motivo, a conferência usada e a mensagem a cada nova tentativa de baixar o termo", () => {
+  it("limpa o motivo e a mensagem a cada nova tentativa de baixar o termo", () => {
     const inicio = FONTE.indexOf("const baixarTermo");
     const bloco = FONTE.slice(inicio, FONTE.indexOf("const response = await fetch(`/api/apolo/rescisao/pdf", inicio));
     expect(bloco).toContain("setCorretagemZeroDoContrato(null)");
-    expect(bloco).toContain("setConferenciaUsada(null)");
     expect(bloco).toContain("setMensagemDaConferencia(null)");
+  });
+
+  // ⚠️ O "VER OU CORRIGIR" NÃO SOME NUMA RECUSA (01/10/2026): quem acabou de registrar continua
+  // podendo corrigir mesmo que a simulação recuse por outro motivo. Só um PDF que SAIU sem o header
+  // (a comissão do C2X não é zero) o tira.
+  it("a conferência usada não é zerada ao pedir o PDF, só quando um PDF sai sem o header", () => {
+    const inicio = FONTE.indexOf("const baixarTermo");
+    const bloco = FONTE.slice(inicio, FONTE.indexOf("const response = await fetch(`/api/apolo/rescisao/pdf", inicio));
+    expect(bloco).not.toContain("setConferenciaUsada(null)");
+    expect(FONTE).toContain("? { contratoId: relatorio.contrato.id, resultado: usada }");
+    expect(FONTE).toContain(": null,");
+  });
+
+  it("depois de gravar, o 'ver ou corrigir' vem do resultado da rota, sem esperar o PDF", () => {
+    expect(FONTE).toContain("onSalva={(mensagem, gravada) => {");
+    expect(FONTE).toContain("if (gravada) setConferenciaUsada({ contratoId: contrato.id, resultado: gravada });");
+  });
+
+  // ⚠️ O PAINEL É MONTADO COM key DO c2xId (01/10/2026): trocar de CLIENTE desmonta o estado todo.
+  // O teste de comportamento (extrato-cliente-panel.comportamento.test.tsx) prova o efeito na tela.
+  it("o painel exportado remonta o conteúdo por c2xId", () => {
+    expect(FONTE).toContain(
+      'return <ExtratoClienteConteudo entity={entity} key={entityC2xId(entity) ?? "sem-c2x"} />;',
+    );
   });
 
   it("trocar de contrato no seletor limpa tudo o que era do anterior", () => {

@@ -69,7 +69,16 @@ import { ConferenciaDaCorretagem } from "./conferencia-corretagem-form";
 // `motivoParaNaoEmitirTermo`, a mesma função que a rota usa para recusar: a tela nunca promete um
 // termo que a rota não entrega, nem esconde um que ela entregaria.
 
+// ⚠️ A CONFERÊNCIA NÃO PODE SOBREVIVER AO CLIENTE (01/10/2026, achado da segunda revisão da
+// Publicação): a mensagem "Conferência registrada" ficava na tela ao abrir o cliente seguinte,
+// porque o estado era limpo só ao trocar de CONTRATO. O painel é montado com `key` do `c2xId`:
+// trocar de cliente desmonta tudo (mensagem, motivo, conferência usada, formulário, extrato e
+// contrato escolhido) por construção, sem lista de `set...(null)` para alguém esquecer de ampliar.
 export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
+  return <ExtratoClienteConteudo entity={entity} key={entityC2xId(entity) ?? "sem-c2x"} />;
+}
+
+function ExtratoClienteConteudo({ entity }: { entity: ApoloEntity }) {
   const c2xId = entityC2xId(entity);
   // ⚠️ A CHAVE VEM ANTES DA RÉGUA: enquanto o termo não for liberado (lib/apolo/termos-liberados.ts),
   // nem o botão nem a frase de "por que não sai" aparecem para ninguém.
@@ -209,7 +218,6 @@ export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
     setBaixandoTermo(true);
     setErroTermo(null);
     setCorretagemZeroDoContrato(null);
-    setConferenciaUsada(null);
     setMensagemDaConferencia(null);
 
     try {
@@ -241,10 +249,15 @@ export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
 
       // ⚠️ O PAPEL SAIU USANDO UMA CONFERÊNCIA? A rota avisa no header (o corpo é o PDF). É o que faz
       // aparecer o "Ver ou corrigir" para a coordenação.
+      // ⚠️ SEM O HEADER, O PAPEL NÃO USOU CONFERÊNCIA (a comissão do C2X não é zero): aí o "ver ou
+      // corrigir" some. Numa RECUSA ele não é tocado: quem acabou de registrar continua podendo
+      // corrigir, mesmo que a simulação recuse por outro motivo.
       const usada = response.headers.get("X-Conferencia-Corretagem");
-      if (usada === "sem_corretagem" || usada === "com_corretagem") {
-        setConferenciaUsada({ contratoId: relatorio.contrato.id, resultado: usada });
-      }
+      setConferenciaUsada(
+        usada === "sem_corretagem" || usada === "com_corretagem"
+          ? { contratoId: relatorio.contrato.id, resultado: usada }
+          : null,
+      );
 
       await salvarPdf(
         response,
@@ -422,10 +435,16 @@ export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
           </p>
         ) : null}
 
-        {ehComprador && ehCoordenacao && mensagemDaConferencia ? (
-          <p className="m-0 mt-3 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
-            {mensagemDaConferencia}
-          </p>
+        {ehComprador && ehCoordenacao ? (
+          // ⚠️ A REGIÃO `status` FICA SEMPRE NA TELA e só o texto entra: leitor de tela anuncia o que
+          // MUDA dentro de uma região que já existia, e não a que acabou de nascer com o texto.
+          <div role="status">
+            {mensagemDaConferencia ? (
+              <p className="m-0 mt-3 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                {mensagemDaConferencia}
+              </p>
+            ) : null}
+          </div>
         ) : null}
 
         {ehComprador && ehCoordenacao ? (
@@ -436,10 +455,14 @@ export function ExtratoClientePanel({ entity }: { entity: ApoloEntity }) {
             }
             contratoId={contrato.id}
             key={contrato.id}
-            onSalva={(mensagem) => {
+            onSalva={(mensagem, gravada) => {
               setCorretagemZeroDoContrato(null);
               setErroTermo(null);
               setMensagemDaConferencia(mensagem);
+              // ⚠️ O "VER OU CORRIGIR" JÁ APARECE, sem gerar o PDF antes (01/10/2026): o resultado
+              // gravado veio na resposta da rota, e esperar o header do PDF escondia o link de quem
+              // acabou de registrar e queria conferir o que digitou.
+              if (gravada) setConferenciaUsada({ contratoId: contrato.id, resultado: gravada });
             }}
             recusado={corretagemZeroDoContrato === contrato.id}
           />
