@@ -7,8 +7,9 @@
 //   • o NOME DE MERCADO (o do pai, sem a divisão interna; [[feedback_pai_e_a_fonte_unidade_unica]]);
 //   • a SIGLA do cadastro (`hercules_empreendimentos.codigo`);
 //   • o PAI e os FILHOS;
-//   • a CHAVE DO GRUPO. Até a F4 ela é o NOME DO PAI, porque é com ele que o catálogo, a sessão e o
-//     settings gravam `group:<Nome>` hoje; a F4 congela a chave numa coluna;
+//   • a CHAVE DO GRUPO. Desde a F4 ela vem da coluna congelada `chave_do_grupo` (migration 0203), e
+//     o nome do pai só vale como reserva, sem a coluna (./chave-do-grupo). Renomear o pai muda o nome
+//     de mercado e NÃO muda a chave: é ela que casa com os `group:<Nome>` gravados;
 //   • o PAPEL no grupo (divisão, pai ou simples). A chave sozinha não diz quem PERTENCE ao grupo: o
 //     pai com id vivo (o VLO 35) tem a chave e fica fora dos ids, como em ENTERPRISE_GROUPS;
 //   • os GRUPOS, derivados de `pai_id`, e não de `ENTERPRISE_GROUPS`.
@@ -44,6 +45,7 @@ import { PREFIXO_DO_GRUPO } from "@/lib/apolo/c2x-pelo-id";
 import { EXCLUDED_ENTERPRISE_IDS } from "@/lib/guardian/c2x-analytics";
 
 import type { LinhaDoCadastro } from "./cadastro";
+import { chaveDoGrupoDe } from "./chave-do-grupo";
 import { filhosDoCadastro } from "./expandir-id-do-painel";
 
 /** O pedaço de uma linha do cadastro que a régua devolve para o próprio, o pai, o filho e a divisão. */
@@ -64,7 +66,7 @@ export type EmpreendimentoDaRegua = ParteDaRegua & {
   c2xEnterpriseId: string;
   /**
    * A chave do grupo LIGADO ao id: na divisão, a do grupo que ela compõe; no pai, a do grupo que ele
-   * encabeça; no simples, `null`. Até a F4 é o nome do pai.
+   * encabeça; no simples, `null`. É a coluna congelada da 0203; sem ela, o nome do pai.
    *
    * ⚠️ TER A CHAVE NÃO É PERTENCER AO GRUPO. O pai com id próprio (o VLO 35) tem a chave e fica FORA
    * de `grupos[].ids`: ENTERPRISE_GROUPS o deixa de fora de propósito, porque o 35 tem os mesmos lotes
@@ -98,7 +100,10 @@ export type PapelNaRegua = "divisao" | "pai" | "simples";
 
 /** Um grupo, derivado de `pai_id`: um pai do cadastro e as divisões dele. */
 export type GrupoDaRegua = {
-  /** Até a F4, o nome do pai ("Lagoa Bonita"). */
+  /**
+   * A chave congelada do pai (0203), ou o nome dele sem a coluna. Hoje igual ao nome nos 5 pais
+   * ("Lagoa Bonita"); depois de um renome, fica a de antes.
+   */
   chave: string;
   /** Todas as divisões, na ordem (ordem, codigo) do cadastro. */
   divisoes: readonly ParteDaRegua[];
@@ -238,7 +243,7 @@ export function reguaDoCadastro(
     if (filhos.length === 0 || grupoDoPai.has(raiz.id)) continue;
 
     const vivos = filhos.filter(vivo);
-    const chave = raiz.nome.trim();
+    const chave = chaveDoGrupoDe(raiz);
     const grupo: GrupoDaRegua = {
       chave,
       divisoes: filhos.map(parte),

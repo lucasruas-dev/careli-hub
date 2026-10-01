@@ -52,6 +52,7 @@ import { type EnderecoDaFicha, unirConjuge, unirEndereco } from "@/lib/apolo/cad
 import { type CarteiraDaVenda, carteiraDaVendaImportada } from "@/lib/apolo/carteira-da-venda";
 import { formatarDocumento, soDigitos } from "@/lib/apolo/documento";
 import { type BemOuPermuta, somarBensEPermutas, valeDinheiro } from "@/lib/hercules/bens-e-permutas";
+import { chaveDoGrupoDe, lerComChaveDoGrupo } from "@/lib/hercules/chave-do-grupo";
 import type { FatosApurados } from "@/lib/hercules/fatos-do-contrato";
 import { lerFatosDoContrato } from "@/lib/hercules/fatos-do-contrato-server";
 import { lerComColunasDoApartamento } from "@/lib/hercules/nome-da-unidade";
@@ -1438,7 +1439,9 @@ async function quemVendeuPeloApolo(
  *
  * ⚠️ SÓ O PANTEON, E NÃO O CATÁLOGO DO C2X. `catalogoDeEmpreendimentos` (que o resto do código usa
  * para achar o grupo) lê o legado; aqui o grupo sai do cadastro de pai e filhos do Hércules: o pai
- * que tem filhos é o consolidado, e o id dele é `group:<nome do pai>`. Medido em 18/09/2026: os cinco
+ * que tem filhos é o consolidado, e o id dele é `group:<chave do pai>`. A chave é a coluna congelada
+ * da 0203 (PAN-124 F4), e não o nome: renomear o pai não tira do contrato as CADs gravadas com o id
+ * de antes. Sem a 0203, vale o nome, como antes. Medido em 18/09/2026: os cinco
  * pais com filhos (Lagoa Bonita, Lavra do Ouro, Portal dos Vales, Rio de Pedras, Vale do Ouro) têm o
  * nome igual ao do grupo do catálogo, e `apolo_esteira.enterprise_id` guarda hoje duas CADs como
  * `group:Lagoa Bonita` (o Vale do Ouro aparece como `group:Vale do Ouro` nos ajustes do empreendimento).
@@ -1457,14 +1460,22 @@ async function escopoDaVenda(
   const raiz = texto(empreendimento?.pai_id) || texto(empreendimento?.id);
   if (!raiz) return escopo;
 
-  type Membro = { c2x_enterprise_id: null | string; id: string; nome: null | string; pai_id: null | string };
+  type Membro = {
+    c2x_enterprise_id: null | string;
+    chave_do_grupo?: null | string;
+    id: string;
+    nome: null | string;
+    pai_id: null | string;
+  };
   let familia: Membro[] = [];
   try {
     familia = await varias<Membro>(
-      sb
-        .from("hercules_empreendimentos")
-        .select("c2x_enterprise_id, id, nome, pai_id")
-        .or(`id.eq.${raiz},pai_id.eq.${raiz}`),
+      lerComChaveDoGrupo("c2x_enterprise_id, id, nome, pai_id", (selecao) =>
+        sb
+          .from("hercules_empreendimentos")
+          .select(selecao)
+          .or(`id.eq.${raiz},pai_id.eq.${raiz}`),
+      ),
       "hercules_empreendimentos",
     );
   } catch (erro) {
@@ -1477,8 +1488,9 @@ async function escopoDaVenda(
     if (id) escopo.add(id);
   }
   const doPai = familia.find((m) => m.id === raiz);
-  if (doPai && familia.some((m) => m.pai_id === raiz) && texto(doPai.nome)) {
-    escopo.add(`group:${texto(doPai.nome)}`);
+  const chave = doPai ? chaveDoGrupoDe({ chaveDoGrupo: doPai.chave_do_grupo, nome: doPai.nome }) : "";
+  if (doPai && familia.some((m) => m.pai_id === raiz) && chave) {
+    escopo.add(`group:${chave}`);
   }
   return escopo;
 }

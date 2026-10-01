@@ -228,6 +228,26 @@ risco/rollback: Risco: a grafia da chave diferir da gravada. A prova compara com
 Rollback: revert do código. Enquanto ninguém renomear um pai, o nome ainda é igual à chave. A coluna fica.
 OK do Lucas: Aplicar a 0194 (inclui a escrita de 5 linhas) e fazer o deploy. 
 
+### F4 na execução (01/10/2026, branch `feat/pan-124-f4-chave-do-grupo`, não publicada)
+
+O que mudou em relação ao texto acima, e por quê. Tudo medido só com SELECT em 01/10/2026.
+
+- **Migration 0203, e não 0194.** De 0193 a 0200 foram usados por outras frentes, a 0201 é o retrato da F3 e a 0202 é a conferência da corretagem.
+- **O que está gravado mudou.** Uma varredura das colunas de texto de todas as tabelas apolo_, temis_, hercules_, prometeu_, lsoft_, boletos_ e incorporador_ achou 33 ocorrências, todas de `group:Lagoa Bonita`: relationships 12, audit_events 6, esteira 4, documents 4, source_links 6 e settings 1. O `group:Vale do Ouro` não está mais gravado; temis_assinantes e apolo_entities têm 0. Os 5 pais têm hoje exatamente os nomes da migration, e as 4 CADs e o settings batem letra por letra com o nome do LAB: aplicada a 0203, nada muda até alguém renomear um pai.
+- **A chave nasce num GATILHO**, e não "dentro da função da 0197": quando uma linha ganha o primeiro filho, o pai sem chave a recebe com o nome do dia. Assim vale também para o "Novo produto" e para SQL manual. Nome de pai igual à chave de outro grupo é recusado com mensagem legível.
+- **O grep, refeito (investigador, só leitura).** Trocam para a chave:
+  - a régua (`lib/hercules/regua-do-cadastro.ts`);
+  - o escopo da venda (`lib/temis/dados-do-contrato.ts`);
+  - os dois apelidos da cadeia (`lib/temis/cadeia-do-contrato.ts`);
+  - as divisões do grupo (`lib/apolo/c2x-pelo-id.ts`);
+  - o coordenador (`lib/apolo/coordenador-do-empreendimento.ts`).
+- **Mostram o nome NOVO do pai, achado pela chave:** a lista da Têmis (`lib/temis/trabalho-servico.ts`) e o nome de mercado do cabeçalho da CAD (`lib/apolo/empreendimento-de-mercado.ts`, que passa a fazer 1 leitura dos pais com chave para `group:`).
+- **Não mudam:** `c2x-pelo-id-servidor.ts`, `habilitacao-pelo-cadastro.ts` e `empreendimentos.ts:1344`, que o plano listava, além de catálogo, esteira-cad, alcance e estrutura. Ou só testam o prefixo, ou montam pela constante `ENTERPRISE_GROUPS.display`, que é o texto gravado.
+- **Leitura tolerante.** Sem a 0203, toda leitura repete sem a coluna e lembra disso por 60 s (`lib/hercules/chave-do-grupo.ts`, no molde da 0170), e a chave vira o nome do pai, como antes.
+- **A prova viva** está em `packages/database/migrations/0203_a_chave_do_grupo_nao_e_o_nome.prova-viva.sql` (begin/rollback, 7 checagens), para rodar logo depois da aplicação.
+
+**OK do Lucas para a F4:** aplicar a 0203 (inclui a escrita das 5 chaves) e rodar a prova viva; depois o deploy. O código sobe antes ou depois da migration, tanto faz.
+
 ## Fatia 5: F5 · Proposta, documento e envelope sabem o id da divisão (0195)
 objetivo: Tirar de 5 leituras do portal o filtro pela sigla gravada (.in('empreendimento_codigo', codes)):
 - apps/hub/app/api/incorporador/venda/route.ts:254;

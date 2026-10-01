@@ -29,6 +29,7 @@
 import type { EmpreendimentoDoCatalogo } from "@/lib/apolo/catalogo-empreendimentos";
 import { ENTERPRISE_GROUPS, EXCLUDED_ENTERPRISE_IDS } from "@/lib/guardian/c2x-analytics";
 import type { LinhaDoCadastro } from "@/lib/hercules/cadastro";
+import { chaveCasa } from "@/lib/hercules/chave-do-grupo";
 import { ehIdDoPanteon } from "@/lib/hercules/produto-novo";
 
 /** O pedaço do catálogo que a tradução usa: o id, as siglas e os ids das divisões, na mesma ordem. */
@@ -36,7 +37,7 @@ export type CatalogoParaId = ReadonlyArray<Pick<EmpreendimentoDoCatalogo, "codes
 
 /** O pedaço do cadastro do Panteon (`hercules_empreendimentos`) que resolve um grupo nas divisões. */
 export type CadastroParaId = ReadonlyArray<
-  Pick<LinhaDoCadastro, "c2xEnterpriseId" | "codigo" | "id" | "nome" | "paiId">
+  Pick<LinhaDoCadastro, "c2xEnterpriseId" | "chaveDoGrupo" | "codigo" | "id" | "nome" | "paiId">
 >;
 
 /**
@@ -152,8 +153,9 @@ export function filtroPorIds(
  * As divisões de `group:<Nome>`, pela UNIÃO das três fontes que conhecem o grupo.
  *
  *   1. o catálogo (a linha de id `group:<Nome>` e os `stageIds` dela): é o que as telas usam hoje;
- *   2. o cadastro do Panteon: as linhas cujo `pai_id` é o pai com esse nome (o LAB para a Lagoa
- *      Bonita, o VLO para o Vale do Ouro, o LOX, o RDX e o PDX, que não têm id no C2X);
+ *   2. o cadastro do Panteon: as linhas cujo `pai_id` é o pai com essa CHAVE (o LAB para a Lagoa
+ *      Bonita, o VLO para o Vale do Ouro, o LOX, o RDX e o PDX, que não têm id no C2X). A chave é a
+ *      coluna congelada da 0203, e não o nome: renomear o pai no Panteon não desfaz o grupo (F4);
  *   3. os ids fixos de `ENTERPRISE_GROUPS`.
  *
  * ⚠️ UNIÃO, E NÃO A PRIMEIRA QUE RESPONDER. O catálogo junta as divisões pela SIGLA do legado: se
@@ -185,7 +187,7 @@ export function divisoesDoGrupo(pedido: unknown, fontes: FontesDoIdDoC2x = {}): 
 
   const cadastro = fontes.cadastro ?? [];
   const pais = new Set(
-    cadastro.filter((linha) => !linha.paiId && normalizar(linha.nome) === nome).map((l) => l.id),
+    cadastro.filter((linha) => !linha.paiId && chaveCasa(linha, nome)).map((l) => l.id),
   );
   for (const linha of cadastro) {
     if (linha.paiId && pais.has(linha.paiId)) guardar(linha.c2xEnterpriseId);

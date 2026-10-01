@@ -371,3 +371,40 @@ describe("pelo id: nome de mercado, sigla, pai, filhos e chave do grupo", () => 
     expect(nome("20")).toBe("Recanto do Pará");
   });
 });
+
+describe("F4: a chave do grupo é a coluna congelada, e não o nome do pai", () => {
+  // As 5 chaves que a migration 0203 grava: o nome de hoje de cada pai com filhos.
+  const PAIS = new Set(["LAB", "VLO", "LOX", "PDX", "RDX"]);
+  const comChave = CADASTRO.map((l) => (PAIS.has(l.codigo) ? { ...l, chaveDoGrupo: l.nome } : l));
+  const renomeado = comChave.map((l) =>
+    l.codigo === "LAB" ? { ...l, nome: "Lagoa Bonita Residencial" } : l,
+  );
+
+  it("com a 0203 aplicada e nada renomeado, a régua é a mesma de antes", () => {
+    const antes = REGUA.grupos.map((g) => [g.id, [...g.ids]]);
+    expect(reguaDoCadastro(comChave).grupos.map((g) => [g.id, [...g.ids]])).toEqual(antes);
+  });
+
+  it("o pai renomeado no Panteon continua group:Lagoa Bonita, com as mesmas divisões", () => {
+    const regua = reguaDoCadastro(renomeado);
+    const grupo = grupoPeloId(regua, "group:Lagoa Bonita");
+
+    expect(grupo?.id).toBe("group:Lagoa Bonita");
+    expect([...(grupo?.ids ?? [])].sort()).toEqual(["27", "32", "33"]);
+    expect(grupoPeloId(regua, "group:Lagoa Bonita Residencial")).toBeNull();
+    expect(empreendimentoPorId(regua, "33")?.chaveDoGrupo).toBe("Lagoa Bonita");
+  });
+
+  it("e o nome de mercado passa a ser o novo: renomear muda a tela, não a chave", () => {
+    const regua = reguaDoCadastro(renomeado);
+
+    expect(grupoPeloId(regua, "group:Lagoa Bonita")?.nomeDeMercado).toBe("Lagoa Bonita Residencial");
+    expect(empreendimentoPorId(regua, "33")?.nomeDeMercado).toBe("Lagoa Bonita Residencial");
+  });
+
+  it("sem a coluna (0203 pendente), o renome desfaria o grupo: é o risco que a F4 fecha", () => {
+    const semColuna = CADASTRO.map((l) => (l.codigo === "LAB" ? { ...l, nome: "Lagoa Bonita Residencial" } : l));
+
+    expect(grupoPeloId(reguaDoCadastro(semColuna), "group:Lagoa Bonita")).toBeNull();
+  });
+});
