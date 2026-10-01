@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-10-01-conferencia-da-corretagem",
+    deployedAt: "__HORA_REAL__",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Contrato com corretagem R$ 0,00 agora pode ser liberado para a Simulação de Rescisão.** A coordenação (admin ou líder) confere o contrato assinado e registra no extrato do cliente: houve corretagem, com o valor em reais, ou não houve. A observação é obrigatória.",
+              "**Antes de gravar, a tela confirma o valor por extenso** (\"R$ 7.000,00, sete mil reais\"), e depois mostra o que foi gravado. O valor segue o formato brasileiro: ponto separa o milhar e vírgula separa os centavos.",
+              "**Cada conferência fica no histórico, com quem registrou e quando, e vale a mais recente.** Se algo foi registrado errado, a coordenação corrige ali mesmo. Depois do registro, a simulação sai normalmente.",
+            ],
+            screen: "Financeiro · Extrato do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "8e32cd0b",
+    technical: {
+      done: "Migration 0202 (`hercules_conferencia_corretagem`, histórico: só INSERT, vale a mais recente por `conferido_em desc, id`, índice por workspace + contrato + data; resultado sem_corretagem ou com_corretagem, valor só no segundo e positivo por CHECK, observação obrigatória até 1.000 caracteres, autor copiado da sessão; RLS sem policy e revoke de public, anon e authenticated). Rota /api/apolo/rescisao/conferencia-corretagem com GET (conferência atual e histórico) e PUT (novo registro), as duas no portão `authorizeApoloCoordenacao` (admin e líder): o contrato tem de ser do cliente pelo mesmo extrato do termo, o PUT exige comissão exatamente zero no C2X e valor abaixo do valor de tabela. `lib/apolo/valor-em-reais-br.ts` é a régua única do valor (rota e painel): ponto sempre milhar, vírgula sempre decimal, o ambíguo é recusado. `carregarTermoDeRescisao` usa a conferência só enquanto o C2X disser zero; a recusa leva `motivo: corretagem_zero`. O fundamento contratual do PDF mantém a cláusula cadastrada do empreendimento. A trava de avisos é a função pura `recusaPorAvisos`, e testes de comportamento pegam o filtro por texto na chamada e a condição do motivo. Formulário próprio (`conferencia-corretagem-form.tsx`) só para a coordenação, limpo ao trocar de contrato. Entregue pela conta de construção (PAN-130) depois de uma rodada de revisão da sessão Publicação que barrou a primeira versão (\"7.000\" gravava R$ 7,00) e integrado por merge.",
+      motivation: "Revisão da Publicação na 1.401.1 (30/09/2026): os 8 contratos do Recanto do Pará com corretagem R$ 0,00 ficavam recusados para sempre, sem jeito de registrar a conferência, e a regra \"qualquer aviso recusa\" só era protegida por um teste que procurava texto no código.",
+    },
+    title: "Conferência da corretagem zero libera a Simulação de Rescisão",
+    type: "melhoria",
+    version: "1.402.0",
+  },
+  {
     buildTag: "2026-09-30-rescisao-sem-aviso-no-papel",
     deployedAt: "2026-09-30T17:28:59-03:00",
     internal: true,
