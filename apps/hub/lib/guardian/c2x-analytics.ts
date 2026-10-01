@@ -62,6 +62,14 @@ export const EXCLUDED_ENTERPRISE_CODES = ["TSC", "SDT", "LAB", "LAG"];
 // Voltar a excluí-lo, ou fazê-lo filho da ACP (42), é a pergunta 5 do plano ao Lucas.
 export const EXCLUDED_ENTERPRISE_IDS: readonly number[] = [2, 31, 34];
 
+// OS IDS DE TESTE DO C2X, E SÓ ELES (PAN-124, F3). Não é a lista de cima: o 31 é o masterplan da
+// Lagoa Bonita, que sai das análises por decisão do Lucas, mas é empreendimento de verdade, tem 495
+// unidades e cadastro no Panteon (LAB, pai de LBF, LBP e LBR). O vigia do cadastro confere o 31 e
+// ignora estes dois. Medido em 30/09/2026: 2 = SDT "SERVIDOR DE TREINAMENTO" (5 unidades) e 34 =
+// TSC "TESTE SPLIT CARELI" (2 unidades), nenhum com cadastro no Panteon. O ZZ TESTE (9001) não
+// está aqui porque não existe no C2X: é id inventado do Panteon, e o vigia o reconhece pelo nome.
+export const C2X_TEST_ENTERPRISE_IDS: readonly number[] = [2, 34];
+
 // ESPELHO = o registro HISTÓRICO de antes de uma divisão, cujos lotes existem DE NOVO nas
 // divisões vivas. Não é teste, não é lixo: é o mesmo loteamento gravado duas vezes no C2X.
 //

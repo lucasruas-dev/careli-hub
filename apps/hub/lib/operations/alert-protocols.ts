@@ -246,6 +246,37 @@ export async function loadOperationAlertProtocols(
   return (data ?? []).map(mapAlertProtocolRow);
 }
 
+/**
+ * Os protocolos ABERTOS (ativo, em análise ou monitorando) de uma fonte, pelo começo da impressão
+ * digital. Silenciado e tratado ficam de fora: quem fecha sozinho (o vigia do cadastro, PAN-124 F3)
+ * só fecha o que ainda está aberto, e nunca desfaz o silêncio que alguém deu.
+ */
+export async function loadOpenAlertProtocolsByFingerprintPrefix(
+  prefix: string,
+): Promise<Array<{ fingerprint: string; protocol: string }>> {
+  const adminClient = createAlertProtocolClient();
+
+  if (!adminClient) {
+    return [];
+  }
+
+  const { data, error } = await adminClient
+    .from("hub_operations_alert_protocols")
+    .select("*")
+    .like("fingerprint", `${prefix.replace(/[\\%_]/g, "\\$&")}%`)
+    .in("status", ["ativo", "em_analise", "monitorando"])
+    .limit(200);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []).map((row) => ({
+    fingerprint: row.fingerprint,
+    protocol: row.protocol,
+  }));
+}
+
 export async function updateOperationAlertFeedback({
   feedback,
   protocol,

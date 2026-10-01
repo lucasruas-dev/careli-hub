@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { vigiarCadastroContraOC2x } from "@/lib/apolo/vigia-do-cadastro-servidor";
 import { loadHadesOverview } from "@/lib/guardian/overview";
 import { publishHubNotification } from "@/lib/notifications/publish";
 import { createPushServiceClient } from "@/lib/notifications/push";
@@ -14,9 +15,13 @@ const SWEEP_BATCH = 200;
 // Janela de antecedência para "reunião começando": avisa quem participa entre agora e
 // +20min. Casa com o cron de 15min (pega toda reunião uma vez, sem duplicar via dedup).
 const MEETING_LOOKAHEAD_MS = 20 * 60 * 1000;
+// Teto do vigia do cadastro numa rodada. A rodada completa (1x/dia) mediu bem menos que isso; o teto
+// existe para um C2X lento não segurar o cron inteiro.
+const CADASTRO_C2X_BUDGET_MS = 45 * 1000;
 
 export type NotificationSweepResult = {
   agendaReminders: number;
+  cadastroC2x: number;
   hadesCritical: number;
   meetingReminders: number;
 };
@@ -25,16 +30,39 @@ export async function runNotificationSweep(): Promise<NotificationSweepResult> {
   const client = createPushServiceClient();
 
   if (!client) {
-    return { agendaReminders: 0, hadesCritical: 0, meetingReminders: 0 };
+    return { agendaReminders: 0, cadastroC2x: 0, hadesCritical: 0, meetingReminders: 0 };
   }
 
-  const [agendaReminders, meetingReminders, hadesCritical] = await Promise.all([
+  const [agendaReminders, meetingReminders, hadesCritical, cadastroC2x] = await Promise.all([
     sweepAgendaReminders(client).catch(() => 0),
     sweepMeetingReminders(client).catch(() => 0),
     sweepHadesCriticalDigest(client).catch(() => 0),
+    sweepCadastroC2x(client).catch(() => 0),
   ]);
 
-  return { agendaReminders, hadesCritical, meetingReminders };
+  return { agendaReminders, cadastroC2x, hadesCritical, meetingReminders };
+}
+
+// --- Vigia do cadastro de empreendimentos contra o C2X (PAN-124, F3). Dedup próprio: um protocolo
+// do Zeus por divergência, e notificação só quando o protocolo nasce. Ver
+// lib/apolo/vigia-do-cadastro-servidor.ts. Devolve quantos admins foram avisados. ---
+
+async function sweepCadastroC2x(client: SupabaseClient): Promise<number> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const budget = new Promise<number>((resolve) => {
+    timer = setTimeout(() => resolve(0), CADASTRO_C2X_BUDGET_MS);
+  });
+
+  try {
+    return await Promise.race([
+      vigiarCadastroContraOC2x(client, {
+        listarAdmins: () => listAdminUserIds(client),
+      }).then((result) => result.notificados),
+      budget,
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // --- Meu dia: tarefas/retornos com lembrete vencido. Dedup NATIVO via reminded_at. ---
