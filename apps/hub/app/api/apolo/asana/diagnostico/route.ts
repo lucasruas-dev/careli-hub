@@ -3,6 +3,10 @@ import { NextResponse } from "next/server";
 import { asanaConfigurado, escanearCads } from "@/lib/apolo/asana-import";
 import { classificarCad, type VereditoCad } from "@/lib/apolo/cad-diagnostico";
 import { authorizeApoloWrite } from "@/lib/apolo/auth";
+import {
+  aplicarFiltroDaEsteira,
+  filtroDaEsteiraPeloTermo,
+} from "@/lib/apolo/empreendimento-do-termo-servidor";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 // DIAGNÓSTICO das CADs importadas — CUSTO ZERO e NÃO altera cadastro nenhum.
@@ -51,6 +55,8 @@ export async function POST(request: Request) {
     secoes?: string[];
   };
   const empreendimento = body.empreendimento?.trim() || "Vale do Ouro";
+  // O empreendimento pelos ids (PAN-124 F6); o texto, igual sem caixa como antes, só de reserva.
+  const filtroDoEmpreendimento = await filtroDaEsteiraPeloTermo(empreendimento, { contem: false });
   const secoes = body.secoes?.length ? body.secoes : ["Finalizado", "Em Cadastro"];
 
   try {
@@ -92,14 +98,11 @@ export async function POST(request: Request) {
         // Uma linha por CAD desde a 0080. O diagnóstico é do lote DESTE empreendimento, então a
         // ficha lida é a da CAD dele — sem o filtro, a ficha de outro loteamento poderia entrar
         // no laudo e apontar divergência de titular onde não há.
-        client
-          .from("apolo_esteira")
-          .select("entity_id, ficha")
-          // `.ilike`, não `.eq`: a esteira grava "VALE DO OURO" (prod) mas o default é "Vale do
-          // Ouro". `.eq` é case-sensitive e casaria ZERO linha, e o diagnóstico ficava sem a ficha
-          // de cada CAD (todo laudo saía como se faltasse dado). `.ilike` compara sem caixa.
-          .ilike("empreendimento", empreendimento)
-          .in("entity_id", bloco),
+        // PELO ID (PAN-124 F6); o `.ilike` sem caixa de antes só quando o termo não resolve.
+        aplicarFiltroDaEsteira(
+          client.from("apolo_esteira").select("entity_id, ficha"),
+          filtroDoEmpreendimento,
+        ).in("entity_id", bloco),
         client
           .from("apolo_relationships")
           .select("entity_id, label")

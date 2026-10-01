@@ -8,6 +8,10 @@
 //
 // Ver [[project_asaas_prevenda]] e [[project_esteira_credenciamento_venda]].
 
+import {
+  aplicarFiltroDaEsteira,
+  filtroDaEsteiraPeloTermo,
+} from "@/lib/apolo/empreendimento-do-termo-servidor";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 export type ApoloFunilResumo = {
@@ -36,14 +40,14 @@ export async function carregarResumoApolo(
   const alvo = empreendimento.trim();
   if (!alvo) return null;
 
-  // Filtro por NOME (texto), não por `enterprise_id`: este resumo é público e recebe o nome do
-  // empreendimento na URL. Continua correto com a chave nova — cada linha é uma CAD, e é isso que
-  // o funil conta. Migrar para `enterprise_id` exigiria o id do C2X na rota pública; fica como
-  // melhoria, não como correção.
-  const { data, error } = await client
-    .from("apolo_esteira")
-    .select("etapa, pago_em, pagamento_ref")
-    .ilike("empreendimento", `%${alvo}%`);
+  // PELO ID, E NÃO PELO TEXTO GRAVADO (PAN-124 F6). O termo vira os ids do empreendimento (com o
+  // grupo inteiro), e o filtro é `enterprise_id in (...)`; o texto gravado na CAD envelhece quando o
+  // nome muda de fonte ou é renomeado. Termo que não resolve: o `ilike` de antes.
+  const filtro = await filtroDaEsteiraPeloTermo(alvo);
+  const { data, error } = await aplicarFiltroDaEsteira(
+    client.from("apolo_esteira").select("etapa, pago_em, pagamento_ref"),
+    filtro,
+  );
 
   if (error) return null;
 
@@ -129,10 +133,11 @@ export async function carregarListasCredenciamento(
 
   // Estágios do funil que vêm do Apolo (crédito, revisão, pré-venda, credenciado) OU já pago (pago
   // sem estar em 'credenciado' também conta como pagamento). Uma consulta só; separa por etapa embaixo.
-  const { data, error } = await client
-    .from("apolo_esteira")
-    .select("entity_id, etapa, imobiliaria, chegou_em, pago_em")
-    .ilike("empreendimento", `%${alvo}%`)
+  // Pelo id, com o texto só de reserva (PAN-124 F6; ver `carregarResumoApolo`).
+  const { data, error } = await aplicarFiltroDaEsteira(
+    client.from("apolo_esteira").select("entity_id, etapa, imobiliaria, chegou_em, pago_em"),
+    await filtroDaEsteiraPeloTermo(alvo),
+  )
     .or(
       "etapa.eq.credito,etapa.eq.revisao,etapa.eq.prevenda,etapa.eq.credenciado,pago_em.not.is.null",
     );

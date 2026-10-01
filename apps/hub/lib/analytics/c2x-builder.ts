@@ -44,6 +44,12 @@ export type C2xBuilderInput = {
   agruparPor: C2xAgruparPor | null;
   filtros: PanteonFiltros;
   range: PanteonRange | null;
+  /**
+   * Os ids do C2X que o termo de empreendimento nomeia PELO CADASTRO do Panteon (PAN-124 F6), já
+   * resolvidos por quem chama (o resolvedor é assíncrono). Entram em OU com a sigla e o nome do C2X:
+   * o nome renomeado no Panteon também acha, e nada que achava deixa de achar.
+   */
+  idsDoEmpreendimento?: readonly number[];
 };
 
 export type C2xQueryPlan = {
@@ -264,7 +270,7 @@ function porIds(ids: readonly number[]): FiltroSql {
 
 // Filtro de empreendimento: casa primeiro com os GRUPOS consolidados (ex.: "Lavra do Ouro"
 // = LOS+LOU, pra fechar com o número do painel); senão, sigla exata ou nome LIKE.
-function filtroEmpreendimento(term: string): FiltroSql {
+function filtroEmpreendimento(term: string, idsDoCadastro: readonly number[] = []): FiltroSql {
   const norm = normalizeTerm(term);
 
   // Gleba individual da Lagoa Bonita (Raposo/Paulo/Fernando ou LBR/LBP/LBF) → o id exato dela.
@@ -296,7 +302,17 @@ function filtroEmpreendimento(term: string): FiltroSql {
     return porIds(group.ids);
   }
 
-  // ⚠️ O TERMO LIVRE FICA PELA SIGLA E PELO NOME, de propósito: é o texto que a pessoa digitou.
+  // ⚠️ O TERMO LIVRE FICA PELA SIGLA E PELO NOME DO C2X, de propósito: é o texto que a pessoa digitou.
+  // E desde a F6 do PAN-124, também pelos ids que o cadastro do Panteon dá a esse termo, em OU: depois
+  // de um renome no Panteon, o nome novo continua achando, e nada que achava deixa de achar.
+  const ids = [...new Set(idsDoCadastro.filter((id) => Number.isInteger(id) && id > 0))];
+  if (ids.length > 0) {
+    return {
+      clause: `(e.id in (${ids.map(() => "?").join(", ")}) or upper(e.code) = upper(?) or e.name like ? or e.divulgation_name like ?)`,
+      needs: {},
+      params: [...ids, term, `%${term}%`, `%${term}%`],
+    };
+  }
   return {
     clause:
       "(upper(e.code) = upper(?) or e.name like ? or e.divulgation_name like ?)",
@@ -305,11 +321,11 @@ function filtroEmpreendimento(term: string): FiltroSql {
   };
 }
 
-function buildFiltros(filtros: PanteonFiltros): FiltroSql[] {
+function buildFiltros(filtros: PanteonFiltros, idsDoEmpreendimento: readonly number[] = []): FiltroSql[] {
   const parts: FiltroSql[] = [];
 
   if (filtros.empreendimento) {
-    parts.push(filtroEmpreendimento(filtros.empreendimento));
+    parts.push(filtroEmpreendimento(filtros.empreendimento, idsDoEmpreendimento));
   }
 
   if (filtros.imobiliaria) {
@@ -432,7 +448,7 @@ function resolveGroupMode(
 export function buildC2xAnalyticsQuery(input: C2xBuilderInput): C2xQueryPlan {
   const spec = METRICA_SQL[input.metrica];
   const grupoResolved = input.agruparPor ? grupoSql(input.agruparPor) : null;
-  const filtros = buildFiltros(input.filtros);
+  const filtros = buildFiltros(input.filtros, input.idsDoEmpreendimento);
   const needs = mergeNeeds(grupoResolved, filtros);
 
   // ⚠️ A EXCLUSÃO PELO ID (PAN-124): [2, 31, 34, 35] = SDT, LAB, TSC e o espelho VLO. Pela sigla, o

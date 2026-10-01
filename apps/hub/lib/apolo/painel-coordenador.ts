@@ -7,43 +7,29 @@
 //
 // ⚠️ EMPREENDIMENTO É `enterprise_id`, NUNCA O TEXTO. O mesmo loteamento aparece escrito de
 // jeitos diferentes ("VALE DO OURO" e "Vale do Ouro" convivem hoje em `apolo_relationships`), e
-// agrupar por texto parte o painel em dois empreendimentos com números pela metade. O nome de
-// tela vem do C2X, a chave é sempre o id.
+// agrupar por texto parte o painel em dois empreendimentos com números pela metade.
+//
+// ⚠️ E O LINK É PELA CHAVE, NÃO PELO SLUG DO NOME (PAN-124 F6). A lista agrupa pelo cadastro do Panteon
+// (os 5 pais com filhos, com o `group:<chave>` junto), e o link antigo abre por apelido; um link que não
+// casa mostra o seletor, nunca o primeiro da lista. Ver ./painel-coordenador-lista.ts.
 import type { RowDataPacket } from "mysql2";
 
 import { getHadesDbPool } from "@/lib/guardian/db";
+import { reguaEmCache } from "@/lib/hercules/cadastro-em-cache";
 
 import { imobiliariaEntityIdEmLote } from "./imobiliaria-do-cliente";
 import { grafiaCanonicaPorCliente } from "./imobiliaria-grafia";
+import {
+  acharNaLista,
+  type EmpreendimentoDoPainel,
+  montarListaDoPainel,
+  slugDoNome,
+} from "./painel-coordenador-lista";
 import { createApoloAdminClient } from "./server";
 
-/**
- * Loteamentos que o C2X guarda partido e o comércio enxerga inteiro.
- *
- * O Vale do Ouro é três `enterprises` com o MESMO nome: VLO (35) é o masterplan histórico, VOL
- * (36) e VOC (37) são as carteiras financeiras que nasceram da divisão. A CAD é registrada no 35;
- * o contrato e o boleto vivem no 36/37. Sem esta ponte, a aba CAD mostra 659 e as abas de
- * assinatura e sinal mostram zero — cada uma certa no seu canto e o painel inteiro mentindo.
- *
- * Chave = id que aparece no Apolo; valor = todos os ids do grupo. Ver [[project_vale_do_ouro_divisao]].
- */
-const GRUPOS_C2X: Record<number, number[]> = {
-  35: [35, 36, 37],
-  36: [35, 36, 37],
-  37: [35, 36, 37],
-};
+export { slugDoNome, type EmpreendimentoDoPainel };
 
 const TTL_MS = 5 * 60 * 1000;
-
-export type EmpreendimentoDoPainel = {
-  /** Ids do C2X que compõem o empreendimento (mais de um quando a carteira é partida). */
-  ids: number[];
-  /** Quantas CADs o Apolo tem para ele. Zero é possível: pode ter só imobiliária credenciada. */
-  cads: number;
-  imobiliarias: number;
-  nome: string;
-  slug: string;
-};
 
 export type CadDoPainel = {
   cliente: string;
@@ -79,20 +65,6 @@ function doCache<T>(cache: Cache<T>, chave: string): null | T {
   const guardado = cache.get(chave);
   if (guardado && Date.now() - guardado.em < TTL_MS) return guardado.dados;
   return null;
-}
-
-export function slugDoNome(nome: string): string {
-  return nome
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-/** Todos os ids do grupo do empreendimento (ele mesmo, quando não faz parte de nenhum). */
-export function idsDoGrupo(id: number): number[] {
-  return GRUPOS_C2X[id] ?? [id];
 }
 
 const limpo = (v: unknown) => String(v ?? "").trim();
@@ -182,110 +154,69 @@ export async function listarEmpreendimentos(): Promise<EmpreendimentoDoPainel[]>
   const client = createApoloAdminClient();
   if (!client) return [];
 
-  const [{ data: esteira }, { data: vinculos }, ehImobiliaria, nomes] = await Promise.all([
-    client.from("apolo_esteira").select("enterprise_id, empreendimento"),
-    client
-      .from("apolo_relationships")
-      .select("entity_id, label, metadata")
-      .eq("relationship_type", "empreendimento"),
-    carregarIdsDeImobiliarias(),
-    carregarNomes(),
-  ]);
+  const [{ data: esteira }, { data: vinculos }, ehImobiliaria, nomesDoC2x, regua, nomesAnteriores] =
+    await Promise.all([
+      client.from("apolo_esteira").select("enterprise_id, empreendimento"),
+      client
+        .from("apolo_relationships")
+        .select("entity_id, label, metadata")
+        .eq("relationship_type", "empreendimento"),
+      carregarIdsDeImobiliarias(),
+      carregarNomes(),
+      // Sem o cadastro, o painel ainda abre, cada id no seu lugar: nada agrupa, e o aviso fica no log.
+      reguaEmCache().catch((erro) => {
+        console.error("[painel-coordenador] cadastro do Panteon indisponível", erro);
+        return null;
+      }),
+      carregarNomesAnteriores(client),
+    ]);
 
-  // Contagem por id do C2X; o agrupamento (Vale do Ouro = 35+36+37) vem depois, para o mesmo
-  // loteamento não aparecer três vezes no seletor.
-  const cadsPorId = new Map<number, number>();
-  const rotuloPorId = new Map<number, string>();
-
-  for (const linha of (esteira ?? []) as Array<{
-    empreendimento: null | string;
-    enterprise_id: null | string;
-  }>) {
-    const id = Number(linha.enterprise_id);
-    if (!Number.isFinite(id) || id <= 0) continue;
-    cadsPorId.set(id, (cadsPorId.get(id) ?? 0) + 1);
-    if (!rotuloPorId.has(id) && limpo(linha.empreendimento)) {
-      rotuloPorId.set(id, limpo(linha.empreendimento));
-    }
-  }
-
-  // Imobiliárias: a mesma pode estar credenciada em vários empreendimentos, então contamos
-  // entidades DISTINTAS por id — somar linhas contaria a mesma imobiliária duas vezes no grupo.
-  //
-  // ⚠️ O vínculo `empreendimento` NÃO É SÓ DE IMOBILIÁRIA. A ficha do prospect e a do corretor
-  // recebem o mesmo tipo de relação (é assim que a CAD do portal guarda em qual loteamento a
-  // pessoa entrou). Sem o filtro por PAPEL, o painel dizia "76 imobiliárias credenciadas" no Vale
-  // do Ouro e listava gente física com CPF na tabela; as imobiliárias de verdade são 30.
-  const imobsPorId = new Map<number, Set<string>>();
-  for (const vinculo of (vinculos ?? []) as Array<{
-    entity_id: string;
-    label: null | string;
-    metadata: null | { enterpriseId?: number | string };
-  }>) {
-    const id = Number(vinculo.metadata?.enterpriseId);
-    if (!Number.isFinite(id) || id <= 0) continue;
-    if (!ehImobiliaria.has(vinculo.entity_id)) {
-      // Ainda serve para descobrir o empreendimento (o rótulo abaixo), mas não conta como
-      // imobiliária: um loteamento que só tem CAD precisa aparecer no seletor do mesmo jeito.
-      if (!rotuloPorId.has(id) && limpo(vinculo.label)) {
-        rotuloPorId.set(id, limpo(vinculo.label));
-      }
-      continue;
-    }
-    const jaTem = imobsPorId.get(id) ?? new Set<string>();
-    jaTem.add(vinculo.entity_id);
-    imobsPorId.set(id, jaTem);
-    if (!rotuloPorId.has(id) && limpo(vinculo.label)) {
-      rotuloPorId.set(id, limpo(vinculo.label));
-    }
-  }
-
-  // Agrupa: cada id cai no seu grupo, e o grupo é identificado pelo MENOR id (estável).
-  const porGrupo = new Map<number, EmpreendimentoDoPainel>();
-  const todosOsIds = new Set([...cadsPorId.keys(), ...imobsPorId.keys()]);
-
-  for (const id of todosOsIds) {
-    const grupo = idsDoGrupo(id);
-    const chave = Math.min(...grupo);
-    // Nome do C2X; o texto gravado no Apolo é só o plano B (empreendimento novo que ainda não
-    // existe no legado, como Jardim das Gerais até ganhar unidades).
-    const nome =
-      nomes.get(chave)?.name ?? rotuloPorId.get(id) ?? `Empreendimento ${chave}`;
-
-    const atual = porGrupo.get(chave) ?? {
-      cads: 0,
-      ids: grupo,
-      imobiliarias: 0,
-      nome,
-      slug: slugDoNome(nome),
-    };
-    porGrupo.set(chave, atual);
-  }
-
-  // Segunda passada para somar: um grupo recebe as CADs e as imobiliárias de TODOS os seus ids.
-  for (const empreendimento of porGrupo.values()) {
-    const imobs = new Set<string>();
-    for (const id of empreendimento.ids) {
-      empreendimento.cads += cadsPorId.get(id) ?? 0;
-      for (const entityId of imobsPorId.get(id) ?? []) imobs.add(entityId);
-    }
-    empreendimento.imobiliarias = imobs.size;
-  }
-
-  const lista = [...porGrupo.values()].sort(
-    (a, b) => b.cads - a.cads || b.imobiliarias - a.imobiliarias || a.nome.localeCompare(b.nome),
-  );
+  const lista = montarListaDoPainel({
+    ehImobiliaria,
+    esteira: (esteira ?? []) as Array<{ empreendimento: null | string; enterprise_id: null | string }>,
+    nomesAnteriores,
+    nomesDoC2x,
+    regua,
+    vinculos: (vinculos ?? []) as Array<{
+      entity_id: string;
+      label: null | string;
+      metadata: null | { enterpriseId?: number | string };
+    }>,
+  });
 
   cacheLista.set("todos", { dados: lista, em: Date.now() });
   return lista;
 }
 
+/**
+ * Os nomes que o C2X já deu a cada id, do retrato do vigia (F3, migration 0201): são apelidos para os
+ * links antigos. Sem a tabela (0201 pendente) ou com erro, mapa vazio: os outros apelidos continuam.
+ */
+async function carregarNomesAnteriores(
+  client: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+): Promise<Map<string, string[]>> {
+  const { data, error } = await client
+    .from("hercules_empreendimentos_c2x_retrato")
+    .select("enterprise_id, nomes_anteriores")
+    .limit(1000);
+  if (error || !data) return new Map();
+  return new Map(
+    (data as Array<{ enterprise_id: string; nomes_anteriores: null | string[] }>).map((linha) => [
+      String(linha.enterprise_id),
+      linha.nomes_anteriores ?? [],
+    ]),
+  );
+}
+
+/**
+ * O empreendimento do `?emp=`, ou `null`, e aí a página mostra o seletor. Aceita a chave do link novo
+ * (o id ou `group:<chave>`), um id do C2X que ele contém e o slug de um nome que ele já teve.
+ * ⚠️ NUNCA O PRIMEIRO DA LISTA: o slug que não casava abria outro empreendimento, com nome de cliente.
+ */
 export async function acharEmpreendimento(
-  slug: string,
+  pedido: string,
 ): Promise<EmpreendimentoDoPainel | null> {
-  const lista = await listarEmpreendimentos();
-  const alvo = slugDoNome(slug);
-  return lista.find((item) => item.slug === alvo) ?? lista[0] ?? null;
+  return acharNaLista(await listarEmpreendimentos(), pedido);
 }
 
 // --- aba CAD -----------------------------------------------------------------------------------
@@ -297,7 +228,7 @@ const cacheCads: Cache<CadDoPainel[]> = new Map();
  * (portal público, cadastro manual ou o lote importado do Asana). Decisão do Lucas 14/08: o que
  * está no Apolo conta, ponto; separar por origem só esconderia metade do funil.
  */
-export async function carregarCads(ids: number[]): Promise<CadDoPainel[]> {
+export async function carregarCads(ids: readonly string[]): Promise<CadDoPainel[]> {
   const chave = ids.join(",");
   const guardado = doCache(cacheCads, chave);
   if (guardado) return guardado;
@@ -308,7 +239,8 @@ export async function carregarCads(ids: number[]): Promise<CadDoPainel[]> {
   const { data, error } = await client
     .from("apolo_esteira")
     .select("entity_id, etapa, imobiliaria, chegou_em, pago_em, pagamento_ref")
-    .in("enterprise_id", ids.map(String));
+    // Os ids como a esteira guarda: os do C2X em texto e o `group:<chave>` do grupo (PAN-124 F6).
+    .in("enterprise_id", [...ids]);
 
   if (error || !data) {
     if (error) console.error("[painel-coordenador] esteira", error.message);
@@ -400,7 +332,7 @@ const cacheImobs: Cache<ImobiliariaDoPainel[]> = new Map();
  * ser credenciada e ainda não vendeu. Ver [[project_apolo_cadastro_imobiliaria]].
  */
 export async function carregarImobiliarias(
-  ids: number[],
+  ids: readonly string[],
 ): Promise<ImobiliariaDoPainel[]> {
   const chave = ids.join(",");
   const guardado = doCache(cacheImobs, chave);
@@ -419,7 +351,7 @@ export async function carregarImobiliarias(
 
   // Só quem tem o PAPEL de imobiliária. O mesmo tipo de vínculo é usado pela ficha do prospect e
   // pela do corretor — sem este filtro, a aba lista pessoa física com CPF como "credenciada".
-  const doGrupo = new Set(ids.map(String));
+  const doGrupo = new Set(ids.map((id) => String(id).trim()));
   const entityIds = [
     ...new Set(
       ((vinculos ?? []) as Array<{

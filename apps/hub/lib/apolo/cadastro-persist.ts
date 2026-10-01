@@ -359,7 +359,12 @@ export function linhasQueFaltamNaFicha(
     identificadores: null | Array<{ identifier_type: null | string }>;
     relacionamentos:
       | null
-      | Array<{ label: null | string; related_entity_id: null | string; relationship_type: null | string }>;
+      | Array<{
+          label: null | string;
+          metadata?: unknown;
+          related_entity_id: null | string;
+          relationship_type: null | string;
+        }>;
   },
 ): {
   contatos: Array<Record<string, unknown>>;
@@ -374,15 +379,26 @@ export function linhasQueFaltamNaFicha(
   const tiposDeRelacionamento = new Set(
     (existentes.relacionamentos ?? []).map((l) => l.relationship_type),
   );
-  const chaveDoVinculo = (linha: {
+  // ⚠️ O VÍNCULO DE EMPREENDIMENTO TAMBÉM SE RECONHECE PELO ID (PAN-124 F6). Ele não tem
+  // `related_entity_id`, e o rótulo é o nome do dia em que foi gravado: depois de um renome, o vínculo
+  // novo nasce com o nome de hoje e não casaria com o antigo, e o mesmo empreendimento ganharia um
+  // vínculo repetido. Cada vínculo dá TODAS as chaves que tem (id da entidade, id do empreendimento,
+  // rótulo), e basta uma bater para ele já existir.
+  const chavesDoVinculo = (linha: {
     label?: unknown;
+    metadata?: unknown;
     related_entity_id?: unknown;
     relationship_type?: unknown;
-  }) =>
-    `${String(linha.relationship_type ?? "")}|${
-      linha.related_entity_id ? `id:${String(linha.related_entity_id).toLowerCase()}` : `rotulo:${text(linha.label).toLowerCase()}`
-    }`;
-  const vinculosExistentes = new Set((existentes.relacionamentos ?? []).map(chaveDoVinculo));
+  }): string[] => {
+    const tipo = String(linha.relationship_type ?? "");
+    if (linha.related_entity_id) return [`${tipo}|id:${String(linha.related_entity_id).toLowerCase()}`];
+    const chaves = [`${tipo}|rotulo:${text(linha.label).toLowerCase()}`];
+    const metadata = linha.metadata && typeof linha.metadata === "object" ? (linha.metadata as Record<string, unknown>) : null;
+    const enterpriseId = text(metadata?.enterpriseId).toLowerCase();
+    if (enterpriseId) chaves.push(`${tipo}|empreendimento:${enterpriseId}`);
+    return chaves;
+  };
+  const vinculosExistentes = new Set((existentes.relacionamentos ?? []).flatMap(chavesDoVinculo));
 
   return {
     contatos: existentes.contatos
@@ -403,7 +419,7 @@ export function linhasQueFaltamNaFicha(
     relacionamentos: existentes.relacionamentos
       ? novas.relacionamentos.filter((l) =>
           RELACIONAMENTOS_DE_TRABALHO.has(String(l.relationship_type))
-            ? !vinculosExistentes.has(chaveDoVinculo(l))
+            ? !chavesDoVinculo(l).some((chave) => vinculosExistentes.has(chave))
             : !tiposDeRelacionamento.has(String(l.relationship_type)),
         )
       : [],
@@ -1329,7 +1345,7 @@ export async function createApoloEntity(
         tiposDeRelacionamento.length
           ? adminClient
               .from("apolo_relationships")
-              .select("label, related_entity_id, relationship_type")
+              .select("label, metadata, related_entity_id, relationship_type")
               .eq("entity_id", entityId)
               .in("relationship_type", tiposDeRelacionamento)
               .neq("status", "archived")

@@ -7,6 +7,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { asanaConfigurado, escanearCads } from "@/lib/apolo/asana-import";
 import { contatoDaEntidadeImobiliaria } from "@/lib/apolo/disparo-imobiliaria";
+import {
+  aplicarFiltroDaEsteira,
+  filtroDaEsteiraPeloTermo,
+} from "@/lib/apolo/empreendimento-do-termo-servidor";
 import { imobiliariaEntityIdEmLote } from "@/lib/apolo/imobiliaria-do-cliente";
 import { toTitleCase } from "@/lib/format/name-case";
 
@@ -111,14 +115,14 @@ export async function montarRelatoriosDoEmpreendimento(
   const alvo = empreendimento.trim();
   if (!alvo) return [];
 
-  // 1) Esteira do empreendimento.
-  // Já filtrado por empreendimento (texto): cada linha é uma CAD deste lançamento, que é
-  // exatamente o que o relatório da imobiliária conta. Uma pessoa com CAD em outro loteamento não
-  // entra aqui — e não deve entrar.
-  const { data: esteira } = await client
-    .from("apolo_esteira")
-    .select("entity_id, etapa, corretor, pago_em, pagamento_ref, imobiliaria")
-    .ilike("empreendimento", `%${alvo}%`);
+  // 1) Esteira do empreendimento: cada linha é uma CAD deste lançamento, que é exatamente o que o
+  // relatório da imobiliária conta. Uma pessoa com CAD em outro loteamento não entra aqui.
+  // ⚠️ PELO ID, E NÃO PELO TEXTO GRAVADO (PAN-124 F6): "Villa Paris" e "Residencial Villa Paris" acham
+  // as mesmas CADs do 38. O texto só vale quando o termo não resolve, como antes.
+  const { data: esteira } = await aplicarFiltroDaEsteira(
+    client.from("apolo_esteira").select("entity_id, etapa, corretor, pago_em, pagamento_ref, imobiliaria"),
+    await filtroDaEsteiraPeloTermo(alvo),
+  );
   const fichas = (esteira ?? []) as Array<{
     corretor: string | null;
     entity_id: string;

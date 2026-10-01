@@ -462,6 +462,27 @@ describe("as regras puras do acrescentar", () => {
       }),
     ).toEqual({ contatos: [], enderecos: [], identificadores: [], relacionamentos: [] });
   });
+
+  it("🔴 PAN-124 F6: vínculo de empreendimento renomeado não repete: casa pelo id do empreendimento", () => {
+    // Gravado com o nome antigo; o novo vem com o nome de hoje e o mesmo id.
+    const gravado = {
+      label: "Residencial Villa Paris",
+      metadata: { enterpriseId: "38" },
+      related_entity_id: null,
+      relationship_type: "empreendimento",
+    };
+    const mesmoRenomeado = { label: "Villa Paris", metadata: { enterpriseId: "38" }, related_entity_id: null, relationship_type: "empreendimento" };
+    const outro = { label: "Garden", metadata: { enterpriseId: "39" }, related_entity_id: null, relationship_type: "empreendimento" };
+    const semId = { label: "Residencial Villa Paris", related_entity_id: null, relationship_type: "empreendimento" };
+
+    const r = linhasQueFaltamNaFicha(
+      { contatos: [], enderecos: [], identificadores: [], relacionamentos: [mesmoRenomeado, outro, semId] },
+      { contatos: [], enderecos: [], identificadores: [], relacionamentos: [gravado] },
+    );
+
+    // O renomeado casa pelo id, o sem id casa pelo rótulo de antes; só o outro empreendimento entra.
+    expect(r.relacionamentos).toEqual([outro]);
+  });
 });
 
 describe("o código de autenticação no modo anexo", () => {

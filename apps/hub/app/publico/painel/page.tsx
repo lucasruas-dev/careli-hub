@@ -74,7 +74,14 @@ export default async function PainelCoordenadorRoute({
     </main>
   );
 
+  // O link leva a CHAVE do empreendimento (o id, ou `group:<chave>`), que não muda com renome. O link
+  // antigo, com o slug do nome, continua abrindo por apelido (PAN-124 F6).
+  const linkPara = (emp: string, destinoAba: AbaChave) =>
+    `/publico/painel?emp=${encodeURIComponent(emp)}&aba=${destinoAba}`;
+
   if (!empreendimento) {
+    // ⚠️ NENHUM CASOU: mostra o seletor, nunca o primeiro da lista. Antes, um link renomeado ou
+    // digitado errado abria OUTRO empreendimento, com nome de cliente de outra carteira.
     return shell(
       <div
         style={{
@@ -82,17 +89,42 @@ export default async function PainelCoordenadorRoute({
           border: `1px solid ${C.border}`,
           borderRadius: 14,
           color: C.sub,
-          padding: "40px 24px",
+          padding: "32px 24px",
           textAlign: "center",
         }}
       >
-        Painel indisponível no momento. Tente novamente em instantes.
+        {empreendimentos.length === 0 ? (
+          "Painel indisponível no momento. Tente novamente em instantes."
+        ) : (
+          <>
+            <p style={{ margin: "0 0 16px" }}>Escolha o empreendimento.</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
+              {empreendimentos.map((item) => (
+                <Link
+                  href={linkPara(item.chave, aba)}
+                  key={item.chave}
+                  style={{
+                    background: C.card,
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 999,
+                    color: C.sub,
+                    fontSize: 13,
+                    padding: "7px 14px",
+                    textDecoration: "none",
+                  }}
+                >
+                  {item.nome}
+                </Link>
+              ))}
+            </div>
+          </>
+        )}
       </div>,
     );
   }
 
   const linkDe = (destino: { aba?: AbaChave; emp?: string }) =>
-    `/publico/painel?emp=${encodeURIComponent(destino.emp ?? empreendimento.slug)}&aba=${destino.aba ?? aba}`;
+    linkPara(destino.emp ?? empreendimento.chave, destino.aba ?? aba);
 
   const cabecalho = (
     <>
@@ -122,11 +154,11 @@ export default async function PainelCoordenadorRoute({
       {empreendimentos.length > 1 ? (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 18 }}>
           {empreendimentos.map((item) => {
-            const ativo = item.slug === empreendimento.slug;
+            const ativo = item.chave === empreendimento.chave;
             return (
               <Link
-                href={linkDe({ emp: item.slug })}
-                key={item.slug}
+                href={linkDe({ emp: item.chave })}
+                key={item.chave}
                 style={{
                   background: ativo ? GOLD : C.card,
                   border: `1px solid ${ativo ? GOLD : C.border}`,
@@ -185,7 +217,7 @@ export default async function PainelCoordenadorRoute({
   );
 
   if (aba === "cad") {
-    const cads = await carregarCads(empreendimento.ids);
+    const cads = await carregarCads(empreendimento.idsGravados);
     return shell(
       <>
         {cabecalho}
@@ -196,7 +228,7 @@ export default async function PainelCoordenadorRoute({
   }
 
   if (aba === "imobiliarias") {
-    const imobiliarias = await carregarImobiliarias(empreendimento.ids);
+    const imobiliarias = await carregarImobiliarias(empreendimento.idsGravados);
     return shell(
       <>
         {cabecalho}

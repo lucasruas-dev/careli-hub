@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 
 import { asanaConfigurado, escanearCads } from "@/lib/apolo/asana-import";
 import { authorizeApoloRead } from "@/lib/apolo/auth";
+import {
+  aplicarFiltroDaEsteira,
+  filtroDaEsteiraPeloTermo,
+} from "@/lib/apolo/empreendimento-do-termo-servidor";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 // COMPARATIVO Asana x Board do Apolo — de que lado está cada CAD.
@@ -40,6 +44,8 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const empreendimento = url.searchParams.get("empreendimento")?.trim() || "Vale do Ouro";
+  // O empreendimento pelos ids (PAN-124 F6); o texto, igual sem caixa como antes, só de reserva.
+  const filtroDoEmpreendimento = await filtroDaEsteiraPeloTermo(empreendimento, { contem: false });
 
   // Seções vazias = varre o projeto inteiro daquele empreendimento.
   const { cads, secoesEncontradas } = await escanearCads({ empreendimento, secoes: [] });
@@ -70,14 +76,12 @@ export async function GET(request: Request) {
   const etapaPorEntidade = new Map<string, string>();
   const entityIds = [...vinculo.values()];
   for (let i = 0; i < entityIds.length; i += 200) {
-    const { data } = await client
-      .from("apolo_esteira")
-      .select("entity_id, etapa")
-      // `.ilike`, não `.eq`: a esteira grava o nome como o time digitou ("VALE DO OURO", 637 linhas
-      // em prod), mas o default deste filtro é "Vale do Ouro". `.eq` é case-sensitive e casaria
-      // ZERO linha — a tela de conferência voltava vazia. `.ilike` compara sem caixa.
-      .ilike("empreendimento", empreendimento)
-      .in("entity_id", entityIds.slice(i, i + 200));
+    // PELO ID (PAN-124 F6): o termo vira os ids do empreendimento, e o texto gravado ("VALE DO
+    // OURO", como o time digitou) só vale quando o termo não resolve, com o `.ilike` sem caixa de antes.
+    const { data } = await aplicarFiltroDaEsteira(
+      client.from("apolo_esteira").select("entity_id, etapa"),
+      filtroDoEmpreendimento,
+    ).in("entity_id", entityIds.slice(i, i + 200));
 
     for (const e of (data ?? []) as { entity_id: string; etapa: string | null }[]) {
       etapaPorEntidade.set(e.entity_id, e.etapa ?? "sem etapa");
@@ -85,11 +89,10 @@ export async function GET(request: Request) {
   }
 
   // Do lado do Apolo: a esteira inteira do empreendimento, para achar quem existe lá SEM task.
-  const { data: esteiraToda } = await client
-    .from("apolo_esteira")
-    .select("entity_id, etapa")
-    // `.ilike` pelo mesmo motivo: "VALE DO OURO" (prod) x "Vale do Ouro" (default) é só caixa.
-    .ilike("empreendimento", empreendimento);
+  const { data: esteiraToda } = await aplicarFiltroDaEsteira(
+    client.from("apolo_esteira").select("entity_id, etapa"),
+    filtroDoEmpreendimento,
+  );
 
   const fichasApolo = (esteiraToda ?? []) as { entity_id: string; etapa: string | null }[];
 

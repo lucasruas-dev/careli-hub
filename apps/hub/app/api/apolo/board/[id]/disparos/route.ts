@@ -10,6 +10,7 @@ import {
   formatarTelefone,
 } from "@/lib/apolo/credenciamento-disparos";
 import { contatoDaEntidadeImobiliaria } from "@/lib/apolo/disparo-imobiliaria";
+import { resolverTermoNoServidor } from "@/lib/apolo/empreendimento-do-termo-servidor";
 import {
   avisarCredenciamentoAprovado,
   avisarCredenciamentoCorrecao,
@@ -196,7 +197,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     // Os empreendimentos que ela DE FATO trabalha hoje: é a lista que a mensagem promete.
     const { data: vinculos, error: vinculosError } = await adminClient
       .from("apolo_relationships")
-      .select("label")
+      .select("label, metadata")
       .eq("entity_id", id)
       .eq("relationship_type", "empreendimento")
       .eq("status", "verified")
@@ -206,9 +207,22 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return NextResponse.json({ error: "Falha ao ler os empreendimentos." }, { status: 500 });
     }
 
-    const empreendimentos = ((vinculos ?? []) as Array<{ label: null | string }>).map((linha) => ({
-      label: linha.label ?? "Empreendimento",
-    }));
+    // O NOME PELO ID, E NÃO PELO RÓTULO GRAVADO (PAN-124 F6): o rótulo é o nome do dia em que a
+    // imobiliária foi habilitada, e envelhece com um renome. O nome de mercado vem do cadastro (a gleba
+    // vira o loteamento, e duas glebas do mesmo loteamento viram um nome só); sem ele, o rótulo de antes.
+    const nomes: string[] = [];
+    for (const linha of (vinculos ?? []) as Array<{
+      label: null | string;
+      metadata: null | { enterpriseId?: number | string };
+    }>) {
+      const enterpriseId = String(linha.metadata?.enterpriseId ?? "").trim();
+      const peloId = enterpriseId
+        ? (await resolverTermoNoServidor(enterpriseId).catch(() => null))?.nome
+        : null;
+      const nome = (peloId && peloId !== enterpriseId ? peloId : null) ?? linha.label ?? "Empreendimento";
+      if (!nomes.includes(nome)) nomes.push(nome);
+    }
+    const empreendimentos = nomes.map((label) => ({ label }));
 
     if (empreendimentos.length === 0) {
       return NextResponse.json(

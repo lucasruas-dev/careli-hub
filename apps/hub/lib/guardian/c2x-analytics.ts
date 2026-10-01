@@ -660,15 +660,29 @@ export async function loadC2xUnidade(filters: {
     return [];
   }
 
+  // Os ids que o cadastro do Panteon dá ao termo (PAN-124 F6), em OU com a sigla e o nome do C2X: o nome
+  // renomeado no Panteon também acha. ⚠️ Importação dinâmica: o resolvedor alcança a régua, que importa
+  // este arquivo.
+  let idsDoCadastro: number[] = [];
+  try {
+    const { resolverTermoNoServidor } = await import("@/lib/apolo/empreendimento-do-termo-servidor");
+    idsDoCadastro = (await resolverTermoNoServidor(emp))?.idsDoC2x ?? [];
+  } catch {
+    idsDoCadastro = [];
+  }
+
   const where: string[] = [
     semExcluidosDaAnalise(),
-    // ⚠️ ESTE CONTINUA PELA SIGLA, e é de propósito: é o TERMO que a pessoa digitou para a CACÁ
-    // ("unidade 5 do VOC"), e quem digita usa a sigla que vê hoje. Não é chave guardada.
-    "(upper(e.code) = upper(?) or e.name like ? or e.divulgation_name like ?)",
+    // ⚠️ ESTE CONTINUA PELA SIGLA E PELO NOME DO C2X, e é de propósito: é o TERMO que a pessoa digitou
+    // para a CACÁ ("unidade 5 do VOC"), e quem digita usa a sigla que vê hoje. Não é chave guardada.
+    idsDoCadastro.length > 0
+      ? `(e.id in (${idsDoCadastro.map(() => "?").join(", ")}) or upper(e.code) = upper(?) or e.name like ? or e.divulgation_name like ?)`
+      : "(upper(e.code) = upper(?) or e.name like ? or e.divulgation_name like ?)",
     "(eu.lot = ? or eu.lot = lpad(?, 2, '0'))",
   ];
   const params: unknown[] = [
     ...ANALYTICS_EXCLUDED_ENTERPRISE_IDS,
+    ...idsDoCadastro,
     emp,
     `%${emp}%`,
     `%${emp}%`,

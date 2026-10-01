@@ -8,15 +8,21 @@
 // Cada linha de `apolo_esteira` = uma CAD = uma pessoa NUM empreendimento (a chave é
 // `(entity_id, enterprise_id)` desde a migration 0080; a mesma pessoa pode ter CAD em dois
 // loteamentos, e são duas CADs). Ver [[project_esteira_credenciamento_venda]].
+import { resolverTermoDeEmpreendimento } from "@/lib/apolo/empreendimento-do-termo";
+import { resolverTermoNoServidor } from "@/lib/apolo/empreendimento-do-termo-servidor";
 import { carregarNomes } from "@/lib/apolo/painel-coordenador";
 import { createApoloAdminClient } from "@/lib/apolo/server";
+import { reguaEmCache } from "@/lib/hercules/cadastro-em-cache";
 import { type C2xPeriodo, resolvePeriodoRange } from "@/lib/guardian/c2x-analytics";
 
 const CACHE_TTL_MS = 120_000;
 
 export type CadRecord = {
   cliente: string;
+  /** O nome de MERCADO do empreendimento (o do grupo, para uma divisão), pelo id. */
   empreendimento: string | null;
+  /** O id gravado na esteira (do C2X, ou `group:<chave>`). É por ele que o filtro casa (PAN-124 F6). */
+  enterpriseId: string | null;
   imobiliaria: string | null;
   etapa: string | null;
   criadoEm: string | null; // ISO
@@ -79,19 +85,31 @@ export async function loadCadRecords(): Promise<CadRecord[] | null> {
       }
     }
 
-    // Nome do empreendimento pelo id do C2X, com o texto da esteira como plano B. O texto varia
-    // ("VALE DO OURO" e "Vale do Ouro" convivem) e a CACÁ agrupa por ele — resolver pelo id é o
-    // que impede o mesmo loteamento de virar dois grupos na resposta.
-    const nomes = await carregarNomes();
+    // Nome do empreendimento PELO ID, com o texto da esteira como plano B. O texto varia ("VALE DO
+    // OURO" e "Vale do Ouro" convivem) e a CACÁ agrupa por ele. Desde a F6 do PAN-124 o nome é o de
+    // MERCADO pelo cadastro: a divisão (VOC, LBF) e o `group:<chave>` caem no nome do grupo, e o mesmo
+    // loteamento não vira três grupos na resposta. Sem cadastro, o nome do C2X, como antes.
+    const [nomesDoC2x, regua] = await Promise.all([carregarNomes(), reguaEmCache().catch(() => null)]);
+    const nomePorEnterprise = new Map<string, null | string>();
+    const nomeDoId = (enterpriseId: string): null | string => {
+      if (!nomePorEnterprise.has(enterpriseId)) {
+        nomePorEnterprise.set(
+          enterpriseId,
+          resolverTermoDeEmpreendimento(enterpriseId, { nomesDoC2x, regua })?.nome ?? null,
+        );
+      }
+      return nomePorEnterprise.get(enterpriseId) ?? null;
+    };
 
     const records: CadRecord[] = linhas.map((linha) => {
-      const id = Number(linha.enterprise_id);
-      const doC2x = Number.isFinite(id) ? nomes.get(id)?.name : undefined;
+      const enterpriseId = linha.enterprise_id?.trim() || null;
+      const peloId = enterpriseId ? nomeDoId(enterpriseId) : null;
 
       return {
         cliente: nomePorId.get(linha.entity_id) ?? "(sem nome)",
         criadoEm: linha.chegou_em,
-        empreendimento: doC2x ?? (linha.empreendimento?.trim() || null),
+        empreendimento: peloId ?? (linha.empreendimento?.trim() || null),
+        enterpriseId,
         etapa: linha.etapa,
         imobiliaria: linha.imobiliaria?.trim() || null,
       };
@@ -152,8 +170,17 @@ export async function queryCad(input: {
   const filtros = input.filtros ?? {};
   const range = input.periodo ? resolvePeriodoRange(input.periodo) : null;
 
+  // O empreendimento pedido vira IDS (com o grupo inteiro), e a CAD casa pelo id gravado (PAN-124 F6).
+  // Termo que não resolve: o "contém o texto" de antes, sobre o nome.
+  const doEmpreendimento = filtros.empreendimento
+    ? await resolverTermoNoServidor(filtros.empreendimento).catch(() => null)
+    : null;
+  const idsDoEmpreendimento = doEmpreendimento ? new Set(doEmpreendimento.ids) : null;
+
   const filtrados = records.filter((record) => {
-    if (!matchTerm(record.empreendimento, filtros.empreendimento)) {
+    if (idsDoEmpreendimento) {
+      if (!record.enterpriseId || !idsDoEmpreendimento.has(record.enterpriseId)) return false;
+    } else if (!matchTerm(record.empreendimento, filtros.empreendimento)) {
       return false;
     }
     if (!matchTerm(record.imobiliaria, filtros.imobiliaria)) {

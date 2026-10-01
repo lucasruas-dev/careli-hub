@@ -138,6 +138,23 @@ type ModuloParcial =
     }
   | { ok: false; erro: string };
 
+/**
+ * Os ids do C2X que o cadastro do Panteon dá ao termo de empreendimento (PAN-124 F6). Vazio quando não
+ * há termo, nada casa ou o cadastro está fora: o motor fica com a sigla e o nome, como antes.
+ * ⚠️ IMPORTAÇÃO DINÂMICA: o resolvedor alcança a régua, que importa c2x-analytics; carregá-lo aqui no
+ * topo fecharia um ciclo de módulos.
+ */
+async function idsDoTermoDeEmpreendimento(termo: unknown): Promise<number[]> {
+  const texto = String(termo ?? "").trim();
+  if (!texto) return [];
+  try {
+    const { resolverTermoNoServidor } = await import("@/lib/apolo/empreendimento-do-termo-servidor");
+    return (await resolverTermoNoServidor(texto))?.idsDoC2x ?? [];
+  } catch {
+    return [];
+  }
+}
+
 async function runC2xModule(
   input: PanteonInputNormalizado,
 ): Promise<ModuloParcial> {
@@ -153,6 +170,7 @@ async function runC2xModule(
   const builderInput: C2xBuilderInput = {
     agruparPor: input.agruparPor as C2xAgruparPor | null,
     filtros: input.filtros,
+    idsDoEmpreendimento: await idsDoTermoDeEmpreendimento(input.filtros?.empreendimento),
     metrica: input.metrica as C2xMetrica,
     range: input.range,
   };

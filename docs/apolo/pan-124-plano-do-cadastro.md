@@ -389,6 +389,39 @@ O link do painel passa a mostrar o empreendimento inteiro onde antes mostrava um
 Rollback: revert.
 OK do Lucas: Deploy, com a mensagem pro grupo: o painel do coordenador passa a mostrar o empreendimento inteiro (Lavra do Ouro, Portal dos Vales, Rio de Pedras, Lagoa Bonita e Vale do Ouro com o VOR), e os links antigos continuam valendo. 
 
+### F6 na execução (01/10/2026, branch `feat/pan-124-cadastro-completo`, não publicada; sem migration)
+
+Medido só com SELECT em 01/10/2026.
+
+**Painel do coordenador** (`lib/apolo/painel-coordenador-lista.ts`, puro, mais `painel-coordenador.ts`):
+- Agrupa pelo cadastro: os 5 pais com filhos, cada um com o pai, todas as divisões e o `group:<chave>` da F4.
+- O link novo leva a CHAVE (o id, ou `group:<chave>`).
+- O link antigo abre por apelido: o slug de todo nome que o empreendimento já teve (C2X por id, cadastro, mercado, rótulos gravados e nomes anteriores do retrato da F3).
+- O que não casa, ou casa com mais de um, mostra o seletor, nunca o primeiro da lista.
+- Paridade real: 35 de 35 links de hoje abrem um empreendimento com TODOS os ids de antes. O seletor vai de 35 para 28 entradas, e as CADs de 845 para 849 (as 4 de `group:Lagoa Bonita`, que o `Number()` descartava).
+
+**Termo de empreendimento em ids** (`lib/apolo/empreendimento-do-termo.ts`, mais `-servidor.ts`):
+- O texto que a CACÁ, o relatório e o Asana usam vira os ids, com o grupo inteiro.
+- Casamento forte (igual, ou o nome contém o termo, como o `ilike`) e fraco (o termo contém o nome em palavras inteiras, só quando nada casa forte).
+- Paridade real sobre as 849 CADs, para 68 termos: 0 perdem linha, 42 iguais, 26 acham mais (o grupo inteiro, ou grafia diferente gravada). "Villa Paris" e "Residencial Villa Paris" dão as mesmas 64 CADs do 38.
+
+**Leitores trocados para `enterprise_id in (ids)`, com o texto de antes só de reserva:**
+- `cads-publico-resumo.ts` (2 leituras; a da CACÁ);
+- `relatorio-imobiliaria.ts`;
+- as rotas do Asana (comparativo e diagnóstico, com a reserva "igual sem caixa" de antes);
+- `cad-source.ts` (a CAD guarda o id, o nome é o de mercado, o filtro casa pelo id).
+
+**Termo livre ao C2X** (`loadC2xUnidade` e o motor `c2x-builder`): os ids que o cadastro dá ao termo entram em OU com a sigla e o nome do C2X. O nome renomeado no Panteon acha, e nada deixa de achar.
+
+**Fora do plano, achados pelo investigador:**
+- `cadastro-persist.ts`: o vínculo de empreendimento se reconhece também pelo id, para um renome não criar vínculo repetido;
+- disparo "cadastro aprovado": o nome sai do cadastro pelo id.
+- O arquivamento de vínculo NÃO mudou: a tela mostra e devolve o rótulo GRAVADO (`server.ts`, `label: row.label`), que casa mesmo depois de um renome.
+
+**Ficou de fora:**
+- o filtro do Board no navegador, por nome (`board-view.tsx`): o servidor já recorta por id, e mudar exige trocar o contrato da fila;
+- `loadC2xVendasPorEmpreendimento` e `displayEnterprise`, que agrupam pela lista fixa, vão para a F8b.
+
 ## Fatia 7: F7 · Catálogo e lista do Apolo tiram nome e grupo do cadastro (coração da etapa 3, sem migration)
 objetivo: **Catálogo** (lib/apolo/catalogo-empreendimentos.ts:106-172):
 - agrupa pela régua da F1, não mais pela sigla (:131-141);
