@@ -316,6 +316,24 @@ risco/rollback: Risco: uma proposta sumir da Mesa se o backfill errar. O OR com 
 Rollback: revert do código, que volta ao filtro por sigla. As colunas e os gatilhos ficam e não afetam nada. O SQL de desfazer vai no cabeçalho.
 OK do Lucas: Aplicar a 0195, fazer o deploy (conserto do escritor e leitores com OR) e depois aplicar o .dados.sql. É escrita em cerca de 4.950 propostas, 51 documentos e 8 envelopes. 
 
+### F5 na execução (01/10/2026, branch `feat/pan-124-cadastro-completo`, não publicada)
+
+Medido só com SELECT em 01/10/2026.
+
+- **Migration 0205, e não 0195** (a 0195 é o contrato que mora no Panteon). Ela traz a coluna, os índices e os gatilhos, e não escreve linha nenhuma. O preenchimento vai à parte, em `0205_...dados.sql`, numa transação que se desfaz sozinha se sobrar linha sem id, envelope com sigla ou id diferente do da unidade.
+- **O id vem da UNIDADE, não do segmento.** 366 propostas têm unidade com segmento, e em todas o id do segmento difere do da unidade (VLO 35 com VOC/VOL, LAB 31 com LBF/LBP/LBR), enquanto a sigla gravada aponta para a unidade. Seguir o segmento mudaria que sessão enxerga essas propostas. É a mesma conclusão da F3.
+- **Paridade.** A sigla gravada bate com o id da unidade em 4.899 de 4.899 propostas com cadastro e em 57 de 57 documentos. As 49 sem cadastro dão ACT 30 (31), SDT 2 (16) e TSC 34 (2), os mesmos ids do catálogo do C2X.
+- **Envelopes: 2.260, e não 24.** 2.251 já têm o id da unidade e 9 têm a sigla (VOC, VOL, VOR; o último de 29/09). O escritor (`lib/assinatura/envio-db.ts`) passa a gravar `idDaDivisaoDoEnvelope`: a unidade primeiro, depois o empreendimento, nunca a sigla. O gatilho da 0205 cobre o resto.
+- **Os leitores:**
+  - Lêem por `lib/hercules/filtro-por-divisao.ts`: duas consultas unidas pelo `id`, `enterprise_id in (ids)` e `enterprise_id is null and sigla in (codes)`. Não usam um `.or()` com `and(...)`; o precedente é `documentos.ts`.
+  - Os ids saem dos MESMOS codes (`idsDosCodigosNoCadastro` / `idsDosCodigosParaLer`): cadastro primeiro, catálogo de reserva, sem a trava do alcance, que tiraria o pai espelho.
+  - Sem a 0205, só a sigla, com memória de 60 s.
+  - Trocados `/venda`, `/venda/historico`, `lerPropostasVivasDoPanteon` e `lerDocumentosDaVenda`. `lerAssinaturasDoPanteon` também, mas está sem chamador.
+- **Os escritores de proposta e documento NÃO gravam a coluna no app.** O gatilho preenche pela unidade em todo INSERT, e gravar a coluna antes da migration derrubaria o INSERT.
+- **Ganho imediato:** a sessão que recebe do catálogo a sigla nova do C2X (o 43 é PTI lá e PDI aqui) passa a achar as propostas gravadas com a sigla antiga, pelo id.
+
+**OK do Lucas para a F5:** aplicar a 0205, fazer o deploy, e depois o `.dados.sql` (escrita em cerca de 4.950 propostas, 57 documentos e 9 envelopes).
+
 ## Fatia 6: F6 · Painel do coordenador, Board, esteira pública, CACÁ e relatórios comparam id, não nome (sem migration)
 objetivo: **Painel do coordenador (público, app/publico/painel/page.tsx:20-22).** Hoje o empreendimento é achado pelo slug do nome do C2X:
 - painel-coordenador.ts:252-260 monta o slug;

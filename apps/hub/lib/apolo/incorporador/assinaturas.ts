@@ -85,6 +85,7 @@ import { envelopeVigente } from "@/lib/assinatura/envelope-vigente";
 import { PAPEIS, type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
 import { getHadesDbPool } from "@/lib/guardian/db";
 import { apurarFatosDoContrato } from "@/lib/hercules/fatos-do-contrato";
+import { aplicarFiltroDaDivisao, lerPelaDivisao } from "@/lib/hercules/filtro-por-divisao";
 
 import {
   escolherEnvio,
@@ -1628,39 +1629,56 @@ const PAGINA_DO_PANTEON = 1000;
  * autoriza nada) e devolve as linhas da lista. Não fala com o C2X nem com a D4Sign.
  *
  * ⚠️ FALHA NÃO É "SEM CONTRATO": devolve `ok: false`, e a rota responde indisponível.
+ *
+ * ⚠️ PELO ID DA DIVISÃO (PAN-124 F5). `idsDaDivisao` são os ids do C2X dos MESMOS `codes`
+ * (`idsDosCodigosParaLer`, lib/apolo/incorporador/escopo.ts); a sigla vale só para a proposta ainda
+ * sem id. Sem nenhum chamador em 01/10/2026: quem a religar traz os ids junto.
  */
 export async function lerAssinaturasDoPanteon(
   admin: AdminDoApolo,
   codes: string[],
+  idsDaDivisao: readonly string[],
 ): Promise<{ error: string; ok: false } | { linhas: UnidadeDeAssinatura[]; ok: true }> {
   const codigos = [...new Set(codes.map((code) => limpo(code).toUpperCase()).filter(Boolean))];
 
   try {
-    const propostas: PropostaDoPanteonEmContrato[] = [];
-    for (let i = 0; i < codigos.length; i += LOTE_DO_PANTEON) {
-      const lote = codigos.slice(i, i + LOTE_DO_PANTEON);
-      for (let de = 0; ; de += PAGINA_DO_PANTEON) {
-        const { data, error } = await admin
-          .from("hercules_propostas")
-          .select(
-            "id,etapa,etapa_desde,unidade_id,unidade_nome,empreendimento_codigo,cliente_nome,imobiliaria_nome,valor,preco_tabela,data_assinatura,data_ato,data_faturamento",
+    const lidas = await lerPelaDivisao<PropostaDoPanteonEmContrato>(
+      { codes: codigos, ids: idsDaDivisao, lote: LOTE_DO_PANTEON },
+      async (filtro) => {
+        const saida: PropostaDoPanteonEmContrato[] = [];
+        for (let de = 0; ; de += PAGINA_DO_PANTEON) {
+          const { data, error } = await aplicarFiltroDaDivisao(
+            admin
+              .from("hercules_propostas")
+              .select(
+                "id,etapa,etapa_desde,unidade_id,unidade_nome,empreendimento_codigo,cliente_nome,imobiliaria_nome,valor,preco_tabela,data_assinatura,data_ato,data_faturamento",
+              )
+              .eq("workspace_id", "careli")
+              // Só a proposta NATIVA. A carga do C2X também vive nesta tabela (`origem = 'c2x'`), e o
+              // produto com dono (o Garden) soma esta leitura ao quadro do legado: sem o recorte, o
+              // mesmo contrato antigo entraria duas vezes (revisão do conjunto, 16/09/2026).
+              .eq("origem", "panteon"),
+            filtro,
           )
-          .eq("workspace_id", "careli")
-          // Só a proposta NATIVA. A carga do C2X também vive nesta tabela (`origem = 'c2x'`), e o
-          // produto com dono (o Garden) soma esta leitura ao quadro do legado: sem o recorte, o mesmo
-          // contrato antigo entraria duas vezes (revisão do conjunto, 16/09/2026).
-          .eq("origem", "panteon")
-          .in("empreendimento_codigo", lote)
-          .in("etapa", [...ETAPAS_COM_CONTRATO])
-          .order("id", { ascending: true })
-          .range(de, de + PAGINA_DO_PANTEON - 1)
-          .returns<PropostaDoPanteonEmContrato[]>();
-        if (error) throw new Error(error.message);
-        const pagina = data ?? [];
-        propostas.push(...pagina);
-        if (pagina.length < PAGINA_DO_PANTEON) break;
-      }
+            .in("etapa", [...ETAPAS_COM_CONTRATO])
+            .order("id", { ascending: true })
+            .range(de, de + PAGINA_DO_PANTEON - 1)
+            .returns<PropostaDoPanteonEmContrato[]>();
+          if (error) return { data: null, error };
+          const pagina = data ?? [];
+          saida.push(...pagina);
+          if (pagina.length < PAGINA_DO_PANTEON) break;
+        }
+        return { data: saida, error: null };
+      },
+    );
+    if (lidas.error) {
+      throw new Error(String((lidas.error as { message?: unknown }).message ?? "leitura das propostas falhou"));
     }
+    // A ordem de antes (por id), refeita depois de unir as duas partes.
+    const propostas: PropostaDoPanteonEmContrato[] = [...(lidas.data ?? [])].sort((a, b) =>
+      String(a.id).localeCompare(String(b.id)),
+    );
 
     const envelopes: EnvelopeDoPanteon[] = [];
     const ids = propostas.map((proposta) => proposta.id);

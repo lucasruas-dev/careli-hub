@@ -21,7 +21,10 @@ vi.mock("@/lib/apolo/server", () => ({
     },
   }),
 }));
-vi.mock("@/lib/apolo/incorporador/escopo", () => ({ codigosDaSessao: async () => [] }));
+vi.mock("@/lib/apolo/incorporador/escopo", () => ({
+  codigosDaSessao: async () => [],
+  idsDosCodigosParaLer: async () => [],
+}));
 
 import type { SessaoIncorporador } from "./sessao";
 

@@ -5,12 +5,14 @@ import { autorizarOperacaoDeVenda } from "@/lib/apolo/incorporador/board-do-port
 import {
   codigosDaSessao,
   idsDaSessao,
+  idsDosCodigosNoCadastro,
   linhasSoDoPanteon,
 } from "@/lib/apolo/incorporador/escopo";
 import { linhaDoTempoParaOPortal } from "@/lib/apolo/incorporador/historico-do-portal";
 import { ehPortalComercial } from "@/lib/apolo/incorporador/perfis-de-portal";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
+import { aplicarFiltroDaDivisao, lerPelaDivisao } from "@/lib/hercules/filtro-por-divisao";
 import {
   type EventoDaUnidade,
   type EventoImportado,
@@ -77,8 +79,9 @@ export async function GET(request: Request) {
     // ⚠️ A TRAVA DO LAB (onda 2, 16/09/2026): `linhasSoDoPanteon` é a tradução do escopo COM a
     // trava de `EXCLUDED_ENTERPRISE_IDS` (pelo id desde o PAN-124; antes, pela sigla). Com
     // `soDoPanteon` puro, uma sessão com o 31 lia o histórico do LAB como produto "próprio".
+    const cadastro = await carregarCadastroDeEmpreendimentos();
     const proprios = linhasSoDoPanteon({
-      cadastro: await carregarCadastroDeEmpreendimentos(),
+      cadastro,
       catalogo: catalogoDoC2x,
       permitidos: await idsDaSessao(auth.sessao),
     }).map((l) => ({ codigo: l.codigo, enterpriseId: String(l.c2xEnterpriseId) }));
@@ -87,26 +90,38 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Não foi possível carregar o histórico." }, { status: 503 });
     }
 
-    const { data: propostas, error: erroPropostas } = await supabase
-      .from("hercules_propostas")
-      // ⚠️ AS SEIS COLUNAS DA PROPOSTA NATIVA VÊM JUNTO, e não são luxo: sem `criado_em` ela não
-      // tem data (o `criado_em_c2x` dela é nulo) e o evento é DESCARTADO pela linha do tempo; sem
-      // `criado_por_nome` e `protocolo_numero` a linha nasce sem autor e sem COD, que é o que a
-      // reserva logo acima já mostra; sem plano e prazo o histórico não diz em que condições a
-      // proposta saiu. `contrato_parcelas` antes de `plano_parcelas`: um é a venda, o outro o molde.
-      // E `etapa_desde` é a hora em que a venda entrou na etapa atual: sem ela a linha do tempo não
-      // mostra o passo cujo movimento ninguém gravou — ver `ETAPA_DERIVADA` na montagem.
-      .select(
-        "id,codigo,cliente_nome,imobiliaria_nome,criado_em_c2x,criado_em,criado_por_nome,protocolo_numero,plano_nome,plano_parcelas,contrato_parcelas,observacao,etapa,etapa_desde,etapa_por,valor,data_faturamento,cancelada_em,cancelada_motivo,cancelada_por_nome,cancelamento_pedido_em,cancelamento_pedido_motivo,cancelamento_pedido_por,cancelamento_pedido_tipo",
-      )
-      .eq("workspace_id", "careli")
-      .eq("unidade_id", unidade)
-      .in("empreendimento_codigo", codes)
-      // A ordem daqui é só a da leitura: quem manda na linha do tempo é o `sort` por `quando` da
-      // montagem, que junta proposta, movimento, evento importado e reserva no mesmo eixo.
-      .order("criado_em_c2x", { ascending: false });
+    // PELO ID DA DIVISÃO, com a sigla só para a linha ainda sem id (PAN-124 F5,
+    // lib/hercules/filtro-por-divisao.ts). Os ids saem dos MESMOS codes.
+    const { data: propostas, error: erroPropostas } = await lerPelaDivisao<PropostaDoHistorico>(
+      { codes, ids: idsDosCodigosNoCadastro(cadastro, catalogoDoC2x, codes, null).ids },
+      async (filtro) => {
+        const { data, error } = await aplicarFiltroDaDivisao(
+          supabase
+            .from("hercules_propostas")
+            // ⚠️ AS SEIS COLUNAS DA PROPOSTA NATIVA VÊM JUNTO, e não são luxo: sem `criado_em` ela não
+            // tem data (o `criado_em_c2x` dela é nulo) e o evento é DESCARTADO pela linha do tempo; sem
+            // `criado_por_nome` e `protocolo_numero` a linha nasce sem autor e sem COD, que é o que a
+            // reserva logo acima já mostra; sem plano e prazo o histórico não diz em que condições a
+            // proposta saiu. `contrato_parcelas` antes de `plano_parcelas`: um é a venda, o outro o molde.
+            // E `etapa_desde` é a hora em que a venda entrou na etapa atual: sem ela a linha do tempo não
+            // mostra o passo cujo movimento ninguém gravou — ver `ETAPA_DERIVADA` na montagem.
+            .select(
+              "id,codigo,cliente_nome,imobiliaria_nome,criado_em_c2x,criado_em,criado_por_nome,protocolo_numero,plano_nome,plano_parcelas,contrato_parcelas,observacao,etapa,etapa_desde,etapa_por,valor,data_faturamento,cancelada_em,cancelada_motivo,cancelada_por_nome,cancelamento_pedido_em,cancelamento_pedido_motivo,cancelamento_pedido_por,cancelamento_pedido_tipo",
+            )
+            .eq("workspace_id", "careli")
+            .eq("unidade_id", unidade),
+          filtro,
+        )
+          // A ordem daqui é só a da leitura: quem manda na linha do tempo é o `sort` por `quando` da
+          // montagem, que junta proposta, movimento, evento importado e reserva no mesmo eixo.
+          .order("criado_em_c2x", { ascending: false });
+        return { data: (data ?? null) as unknown as PropostaDoHistorico[] | null, error };
+      },
+    );
 
-    if (erroPropostas) throw new Error(erroPropostas.message);
+    if (erroPropostas) {
+      throw new Error(String((erroPropostas as { message?: unknown }).message ?? "leitura das propostas falhou"));
+    }
 
     const daUnidade = (propostas ?? []) as PropostaDoHistorico[];
 

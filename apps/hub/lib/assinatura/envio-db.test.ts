@@ -10,6 +10,7 @@ import {
   type EnvelopeDaProposta,
   envelopeQueSegura,
   finalidadeDoEnvio,
+  idDaDivisaoDoEnvelope,
   impedimentoDeEnvelopeVivo,
 } from "./envio-db";
 import type { Signatario } from "./tipos";
@@ -472,5 +473,17 @@ describe("impedimentoDeEnvelopeVivo, por provedor", () => {
     const r = await impedimentoDeEnvelopeVivo(b.cliente, "venda-1");
     expect(r?.erro).toContain("Clicksign");
     expect(r?.erro).toContain("o webhook libera o reenvio aqui");
+  });
+});
+
+describe("idDaDivisaoDoEnvelope: o id que vai no envelope (PAN-124 F5)", () => {
+  it("a divisão da unidade vem primeiro: a venda importada aponta para o pai (35) com o lote no filho (37)", () => {
+    expect(idDaDivisaoDoEnvelope({ __empreendimento_id: "35", __unidade_enterprise_id: "37" })).toBe("37");
+  });
+
+  it("sem a unidade, o empreendimento; sem os dois, nulo, e NUNCA a sigla", () => {
+    expect(idDaDivisaoDoEnvelope({ __empreendimento_id: " 39 " })).toBe("39");
+    expect(idDaDivisaoDoEnvelope({ __empreendimento_id: "VOC", __unidade_enterprise_id: "" })).toBeNull();
+    expect(idDaDivisaoDoEnvelope({})).toBeNull();
   });
 });

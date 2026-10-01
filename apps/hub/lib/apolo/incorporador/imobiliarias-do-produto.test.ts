@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import type { ApoloVendaUnit } from "@/lib/apolo/vendas";
+import { limparMemoriaDaMigration0205 } from "@/lib/hercules/filtro-por-divisao";
 
 import type { LinhaEsteira } from "./crm";
 import {
@@ -369,17 +370,26 @@ describe("somarVendasPorImobiliaria", () => {
 });
 
 describe("lerPropostasVivasDoPanteon", () => {
-  function clienteFalso(paginas: PropostaDoPanteonDaImobiliaria[][], erro = false) {
-    const chamadas: Array<{ codigos: string[]; de: number; filtros: string[] }> = [];
+  beforeEach(() => limparMemoriaDaMigration0205());
+
+  function clienteFalso(
+    paginas: PropostaDoPanteonDaImobiliaria[][],
+    { erro = false, semColuna = false }: { erro?: boolean; semColuna?: boolean } = {},
+  ) {
+    const chamadas: Array<{ de: number; filtros: string[] }> = [];
     const from = (tabela: string) => {
-      const reg = { codigos: [] as string[], de: 0, filtros: [tabela] };
+      const reg = { de: 0, filtros: [tabela] };
       const cadeia = {
         eq: (coluna: string, valor: string) => {
           reg.filtros.push(`eq:${coluna}=${valor}`);
           return cadeia;
         },
-        in: (_coluna: string, valores: string[]) => {
-          reg.codigos = valores;
+        in: (coluna: string, valores: string[]) => {
+          reg.filtros.push(`in:${coluna}=${valores.join(",")}`);
+          return cadeia;
+        },
+        is: (coluna: string, valor: null) => {
+          reg.filtros.push(`is:${coluna}=${String(valor)}`);
           return cadeia;
         },
         not: (coluna: string, operador: string, valor: string) => {
@@ -393,9 +403,14 @@ describe("lerPropostasVivasDoPanteon", () => {
         },
         returns: () => {
           chamadas.push(reg);
-          return Promise.resolve(
-            erro ? { data: null, error: { message: "fora" } } : { data: paginas[reg.de / 1000] ?? [], error: null },
-          );
+          if (erro) return Promise.resolve({ data: null, error: { message: "fora" } });
+          if (semColuna && reg.filtros.some((f) => f.includes("enterprise_id"))) {
+            return Promise.resolve({
+              data: null,
+              error: { code: "42703", message: "column hercules_propostas.enterprise_id does not exist" },
+            });
+          }
+          return Promise.resolve({ data: paginas[reg.de / 1000] ?? [], error: null });
         },
         select: () => cadeia,
       };
@@ -404,33 +419,51 @@ describe("lerPropostasVivasDoPanteon", () => {
     return { chamadas, cliente: { from } as unknown as Parameters<typeof lerPropostasVivasDoPanteon>[0] };
   }
 
-  it("⚠️ pagina de 1.000 em 1.000, filtra o workspace, o código e as etapas vivas", async () => {
-    const cheia = Array.from({ length: 1000 }, (_, i) => ({
-      etapa: "proposta",
-      id: `p${i}`,
-      imobiliaria_entity_id: "imob-a",
-      unidade_id: `u${i}`,
-    }));
+  const cheia = Array.from({ length: 1000 }, (_, i) => ({
+    etapa: "proposta",
+    id: `p${i}`,
+    imobiliaria_entity_id: "imob-a",
+    unidade_id: `u${i}`,
+  }));
+
+  it("⚠️ PAN-124 F5: lê pelo id da divisão e, na transição, pela sigla só onde não há id; pagina de 1.000", async () => {
     const { chamadas, cliente } = clienteFalso([cheia, [cheia[0] as PropostaDoPanteonDaImobiliaria]]);
-    const lido = await lerPropostasVivasDoPanteon(cliente, ["jad", " JAD ", "rub"]);
-    expect(lido.ok && lido.propostas).toHaveLength(1001);
-    expect(chamadas.map((c) => c.de)).toEqual([0, 1000]);
-    expect(chamadas[0]?.codigos).toEqual(["JAD", "RUB"]);
-    expect(chamadas[0]?.filtros).toEqual([
+    const lido = await lerPropostasVivasDoPanteon(cliente, ["jad", " JAD ", "rub"], ["100000", "100001"]);
+
+    // As duas partes voltam as mesmas linhas no dublê: a união pelo id não repete nenhuma.
+    expect(lido.ok && lido.propostas).toHaveLength(1000);
+    expect(chamadas.map((c) => c.de)).toEqual([0, 1000, 0, 1000]);
+    const base = [
       "hercules_propostas",
       "eq:workspace_id=careli",
       // Só a venda nativa: a da carga do C2X já é contada pelo legado (revisão do conjunto, 16/09/2026).
       "eq:origem=panteon",
-      'not:etapa in ("cancelado","distrato")',
+    ];
+    const vivas = 'not:etapa in ("cancelado","distrato")';
+    expect(chamadas[0]?.filtros).toEqual([...base, "in:enterprise_id=100000,100001", vivas]);
+    expect(chamadas[2]?.filtros).toEqual([
+      ...base,
+      "is:enterprise_id=null",
+      "in:empreendimento_codigo=JAD,RUB",
+      vivas,
     ]);
+  });
+
+  it("sem a 0205 (coluna ausente), só a sigla, como antes", async () => {
+    const { chamadas, cliente } = clienteFalso([[cheia[0] as PropostaDoPanteonDaImobiliaria]], { semColuna: true });
+    const lido = await lerPropostasVivasDoPanteon(cliente, ["JAD"], ["100000"]);
+
+    expect(lido.ok && lido.propostas).toHaveLength(1);
+    expect(chamadas.at(-1)?.filtros).toContain("in:empreendimento_codigo=JAD");
+    expect(chamadas.at(-1)?.filtros.some((f) => f.includes("enterprise_id"))).toBe(false);
   });
 
   it("sem código não consulta; erro é ok: false (nunca 'ninguém vendeu')", async () => {
     const vazio = clienteFalso([]);
-    expect(await lerPropostasVivasDoPanteon(vazio.cliente, [])).toEqual({ ok: true, propostas: [] });
+    expect(await lerPropostasVivasDoPanteon(vazio.cliente, [], [])).toEqual({ ok: true, propostas: [] });
     expect(vazio.chamadas).toHaveLength(0);
 
-    const fora = clienteFalso([], true);
-    expect(await lerPropostasVivasDoPanteon(fora.cliente, ["JAD"])).toEqual({ ok: false });
+    const fora = clienteFalso([], { erro: true });
+    expect(await lerPropostasVivasDoPanteon(fora.cliente, ["JAD"], ["100000"])).toEqual({ ok: false });
   });
 });

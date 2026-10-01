@@ -73,6 +73,12 @@ export type PreparoDoEnvio = {
   /** O que falta e não impede o envio (a vendedora sem cadastro é o caso de hoje). */
   avisos: string[];
   contrato: ContratoParaAssinar;
+  /**
+   * O id do C2X da DIVISÃO onde a unidade mora (`__unidade_enterprise_id`), o que vai gravado em
+   * `temis_envelopes.enterprise_id` (PAN-124 F5). Antes ia a SIGLA (`identidade.empreendimento`):
+   * medido em 01/10/2026, 9 envelopes com VOC, VOL ou VOR, contra 2.251 com o id da unidade.
+   */
+  idDaDivisao: null | string;
   identidade: IdentidadeDoContrato;
   ok: true;
   /** De onde a ordem veio: categoria, empreendimento, ou o padrão da casa. */
@@ -87,6 +93,22 @@ export type PreparoDoEnvio = {
 };
 
 export type FalhaNoPreparo = { erro: string; ok: false; status: 404 | 409 | 503 };
+
+/**
+ * O id que vai em `temis_envelopes.enterprise_id`: o da DIVISÃO onde a unidade mora
+ * (`__unidade_enterprise_id`), e na falta dele o do empreendimento da proposta. NUNCA a sigla
+ * (PAN-124 F5). A venda importada aponta o empreendimento para o PAI (VLO 35) com o lote no filho
+ * (VOC 37): por isso a unidade vem primeiro, e é o que os envelopes bons já guardam.
+ */
+export function idDaDivisaoDoEnvelope(gerais: {
+  __empreendimento_id?: unknown;
+  __unidade_enterprise_id?: unknown;
+}): null | string {
+  const daUnidade = String(gerais.__unidade_enterprise_id ?? "").trim();
+  if (/^[0-9]+$/.test(daUnidade)) return daUnidade;
+  const doEmpreendimento = String(gerais.__empreendimento_id ?? "").trim();
+  return /^[0-9]+$/.test(doEmpreendimento) ? doEmpreendimento : null;
+}
 
 /**
  * Tudo que a tela de envio precisa mostrar ANTES de alguém confirmar.
@@ -197,6 +219,7 @@ export async function prepararEnvio(
   return {
     avisos: montagem.avisos,
     contrato: contrato.contrato,
+    idDaDivisao: idDaDivisaoDoEnvelope(resolvido.dados.gerais),
     identidade,
     // ⚠️ A CAD VEM PRIMEIRO ENTRE OS IMPEDIMENTOS, e isso é escolha. Um e-mail repetido entre titular
     // e cônjuge se conserta em trinta segundos na própria tela; uma CAD não aprovada é decisão de
@@ -311,7 +334,9 @@ export async function enviarContratoParaAssinatura(
   const destino = await finalidadeDoEnvio(sb, pedido.propostaId, pedido.trabalhoId ?? null);
   const registro = await abrirRegistro(sb, {
     documentoId: preparo.contrato.documentoId,
-    enterpriseId: preparo.identidade.empreendimento,
+    // O id da divisão, e não a sigla (PAN-124 F5). Sem ele, a sigla de antes: o gatilho da 0205 a
+    // troca pelo id da unidade na gravação.
+    enterpriseId: preparo.idDaDivisao ?? preparo.identidade.empreendimento,
     finalidade: destino.finalidade,
     nome: preparo.contrato.nome,
     ordenada: preparo.regra.ordenada,

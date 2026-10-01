@@ -158,18 +158,21 @@ export async function GET(request: Request) {
   // vendas antigas no C2X e as que a Cecílio faz agora no Panteon (que não são escritas no C2X). A
   // lista é a de Unidades e Resumo (`lidosDoPanteon`); a leitura do Panteon só traz proposta nativa.
   const codesDoC2x = codigosParaOC2x(codes, doPanteon.proprios);
-  const codesDoPanteon = lidosDoPanteon({
+  const lidos = lidosDoPanteon({
     cadastro: doPanteon.cadastro,
     codes,
     idsDaSessao: doPanteon.idsDaSessao,
     proprios: doPanteon.proprios,
-  }).map((produto) => produto.codigo);
+  });
+  const codesDoPanteon = lidos.map((produto) => produto.codigo);
+  // O id de cada código, para a leitura pelo id da divisão (PAN-124 F5).
+  const idsDoPanteon = lidos.map((produto) => String(produto.enterpriseId ?? "").trim()).filter(Boolean);
 
   // As fontes correm juntas: mesmo escopo, um fetch só na tela.
   const [vendas, propostasDoPanteon, esteira, vinculadas] = await Promise.all([
     codesDoC2x.length > 0 ? loadApoloEnterpriseVendas(codesDoC2x) : Promise.resolve(null),
     codesDoPanteon.length > 0
-      ? lerPropostasVivasDoPanteon(admin, codesDoPanteon)
+      ? lerPropostasVivasDoPanteon(admin, codesDoPanteon, idsDoPanteon)
       : Promise.resolve({ ok: true as const, propostas: [] }),
     lerEsteiraDoEscopo(admin, enterpriseIds),
     lerImobiliariasVinculadas(admin, enterpriseIds),

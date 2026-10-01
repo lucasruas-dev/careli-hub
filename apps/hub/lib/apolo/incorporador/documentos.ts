@@ -30,7 +30,12 @@ import { pessoaNoEscopo } from "./pessoa-no-escopo";
 import type { TipoDaFicha } from "./crm";
 import type { SessaoIncorporador } from "./sessao";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
-import { codigosDaSessao } from "@/lib/apolo/incorporador/escopo";
+import { codigosDaSessao, idsDosCodigosParaLer } from "@/lib/apolo/incorporador/escopo";
+import {
+  aplicarFiltroDaDivisao,
+  type FiltroDaDivisao,
+  lerPelaDivisao,
+} from "@/lib/hercules/filtro-por-divisao";
 
 // ── TIPOS DO PAYLOAD ────────────────────────────────────────────────────────
 
@@ -234,7 +239,7 @@ export async function montarDocumentos({
         }).catch(() => [])
       : Promise.resolve([]),
     lerAnexosDoC2x(c2xUserId),
-    admin ? lerDocumentosDaVenda(admin, pessoa.entityId, await codigosDaSessao(sessao)) : Promise.resolve([]),
+    admin ? documentosDaVendaDaSessao(admin, pessoa.entityId, sessao) : Promise.resolve([]),
   ]);
 
   return {
@@ -278,6 +283,12 @@ export async function lerDocumentosDaVenda(
    * enxerga a casa toda).
    */
   codigosPermitidos?: string[],
+  /**
+   * Os ids do C2X das divisões dos MESMOS `codigosPermitidos` (PAN-124 F5): o recorte passa a ser
+   * pelo id gravado no documento, e a sigla vale só para o documento ainda sem id. Sem eles (ou sem
+   * a 0205), o recorte é pela sigla, como antes.
+   */
+  idsPermitidos: readonly string[] = [],
 ): Promise<DocumentoDaVendaNoApolo[]> {
   try {
     const hashes = await hashesDaPessoa(admin, entityId);
@@ -287,29 +298,42 @@ export async function lerDocumentosDaVenda(
     // parêntese como sintaxe. Aqui os dois lados são valores controlados (um uuid e hashes hex),
     // mas o formato do filtro continua sendo texto — por isso a busca é feita em DUAS consultas
     // com `.eq`/`.in`, e o resultado é unido em memória. Uma dessas consultas não impede a outra.
-    const base = () => {
-      const consulta = admin
+    const semRecorte = () =>
+      admin
         .from("hercules_documentos")
         .select(CAMPOS_DO_DOCUMENTO_DA_VENDA)
         .eq("workspace_id", "careli")
         .is("removido_em", null);
-      return recortar
-        ? consulta.in("empreendimento_codigo", codigosPermitidos as string[])
-        : consulta;
+    type Base = ReturnType<typeof semRecorte>;
+
+    // Cada caminho (entidade, hash) lê pelo recorte: pelo id da divisão, e pela sigla só onde não há
+    // id (lib/hercules/filtro-por-divisao.ts). Sem recorte (o CRM interno), uma consulta só, como antes.
+    const pelo = async (caminho: (consulta: Base) => Base) => {
+      const ler = (consulta: Base) =>
+        caminho(consulta).order("criado_em", { ascending: false }).limit(200);
+      if (!recortar) {
+        const { data, error } = await ler(semRecorte());
+        return { data: (data ?? null) as DocumentoDaVendaNoApolo[] | null, error };
+      }
+      return lerPelaDivisao<DocumentoDaVendaNoApolo>(
+        { codes: codigosPermitidos as string[], ids: idsPermitidos },
+        async (filtro: FiltroDaDivisao) => {
+          const { data, error } = await ler(aplicarFiltroDaDivisao(semRecorte(), filtro));
+          return { data: (data ?? null) as DocumentoDaVendaNoApolo[] | null, error };
+        },
+      );
     };
 
     const [porEntidade, porDocumento] = await Promise.all([
-      base().eq("cliente_entity_id", entityId).order("criado_em", { ascending: false }).limit(200),
+      pelo((consulta) => consulta.eq("cliente_entity_id", entityId)),
       hashes.length > 0
-        ? base()
-            .in("cliente_documento_hash", hashes)
-            .order("criado_em", { ascending: false })
-            .limit(200)
-        : Promise.resolve({ data: [], error: null }),
+        ? pelo((consulta) => consulta.in("cliente_documento_hash", hashes))
+        : Promise.resolve({ data: [] as DocumentoDaVendaNoApolo[], error: null }),
     ]);
 
-    if (porEntidade.error) throw new Error(porEntidade.error.message);
-    if (porDocumento.error) throw new Error(porDocumento.error.message);
+    const mensagem = (erro: unknown) => String((erro as { message?: unknown }).message ?? "leitura falhou");
+    if (porEntidade.error) throw new Error(mensagem(porEntidade.error));
+    if (porDocumento.error) throw new Error(mensagem(porDocumento.error));
 
     // O mesmo documento pode vir pelos dois caminhos (entidade E hash): a união é por id.
     const porId = new Map<string, DocumentoDaVendaNoApolo>();
@@ -328,6 +352,16 @@ export async function lerDocumentosDaVenda(
 }
 
 const CAMPOS_DO_DOCUMENTO_DA_VENDA = "id,nome,tipo,protocolo_numero,criado_em";
+
+/** Os documentos da venda desta pessoa, no recorte da sessão do portal: siglas e os ids delas (F5). */
+async function documentosDaVendaDaSessao(
+  admin: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  entityId: string,
+  sessao: SessaoIncorporador,
+): Promise<DocumentoDaVendaNoApolo[]> {
+  const codigos = await codigosDaSessao(sessao);
+  return lerDocumentosDaVenda(admin, entityId, codigos, await idsDosCodigosParaLer(codigos));
+}
 
 /**
  * Os hashes de documento desta pessoa — as DUAS fontes.

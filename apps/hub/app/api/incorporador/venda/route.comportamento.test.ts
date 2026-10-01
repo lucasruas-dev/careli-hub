@@ -141,7 +141,7 @@ vi.mock("@/lib/apolo/server", () => {
         Promise.resolve(resposta()).then(ok, falha),
     };
     // `not` entrou com a régua da situação, que lê as linhas antigas do terreno por `espelho_de`.
-    for (const metodo of ["eq", "in", "not", "order", "range"]) cadeia[metodo] = () => cadeia;
+    for (const metodo of ["eq", "in", "is", "not", "order", "range"]) cadeia[metodo] = () => cadeia;
     cadeia.select = (lista: string) => {
       colunas = lista;
       if (tabela === "hercules_unidades") estado.selectsDeUnidade.push(lista);

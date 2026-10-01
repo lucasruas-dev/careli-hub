@@ -466,6 +466,29 @@ export function idsDosCodigosNoCadastro(
   return { ids: [...ids], semId };
 }
 
+/**
+ * Os ids do C2X das DIVISÕES dos códigos que uma leitura do portal JÁ USA, para o filtro de
+ * `hercules_propostas` e `hercules_documentos` pelo id (PAN-124 F5, lib/hercules/filtro-por-divisao.ts).
+ *
+ * ⚠️ SEM A TRAVA DO ALCANCE, E DE PROPÓSITO. Os `codes` já saíram do escopo da sessão (é com eles que a
+ * leitura filtrava), e a tradução é de UM PARA UM: a sigla do cadastro é única, e a do catálogo também.
+ * Medido em 01/10/2026: a sigla gravada de 4.899 de 4.899 propostas com cadastro casa com o id da
+ * unidade. Filtrar pelos ids traduzidos devolve as MESMAS linhas que filtrar pelos codes. Uma trava pelo
+ * `idsDaSessao` só poderia TIRAR ids, e tira o pai espelho (o VLO 35), que nem sempre vem nela: as
+ * propostas dele sumiriam depois do preenchimento.
+ *
+ * Cadastro primeiro, catálogo do C2X de reserva (é o que dá o id de ACT, SDT e TSC, que não têm
+ * cadastro). Uma fonte fora do ar não derruba: o código sem id fica só na parte da sigla.
+ */
+export async function idsDosCodigosParaLer(codes: readonly string[]): Promise<string[]> {
+  if (codes.length === 0) return [];
+  const [catalogo, cadastro] = await Promise.all([
+    catalogoDeEmpreendimentos(Date.now()).catch(() => [] as EmpreendimentoDoCatalogo[]),
+    cadastroDoPanteonOuNulo(),
+  ]);
+  return idsDosCodigosNoCadastro(cadastro, catalogo, codes, null).ids;
+}
+
 /** Para quem não tem o empreendimento, ele não existe. 404, nunca 403. */
 export function foraDoEscopo(): NextResponse {
   return NextResponse.json({ error: "Nao encontrado." }, { status: 404 });

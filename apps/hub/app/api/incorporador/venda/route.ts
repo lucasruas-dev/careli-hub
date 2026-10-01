@@ -11,6 +11,7 @@ import { autorizarOperacaoDeVenda } from "@/lib/apolo/incorporador/board-do-port
 import {
   codigosDaSessao,
   idsDaSessao,
+  idsDosCodigosNoCadastro,
   linhasSoDoPanteon,
 } from "@/lib/apolo/incorporador/escopo";
 import { podeEscreverNosEnterprises } from "@/lib/apolo/incorporador/operacao-do-produto";
@@ -23,6 +24,7 @@ import {
 } from "@/lib/hercules/sem-espelho-duplicado";
 import { lerCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
 import { expandirIdDoPainel } from "@/lib/hercules/expandir-id-do-painel";
+import { aplicarFiltroDaDivisao, lerPelaDivisao } from "@/lib/hercules/filtro-por-divisao";
 import {
   agregarFluxo,
   type CadsDoEscopo,
@@ -245,25 +247,45 @@ export async function GET(request: Request) {
     const idsDaConfiguracao = new Set([...idsDoEscopo, ...fora.idsDoC2x]);
 
     // ── As propostas do escopo, em páginas ────────────────────────────────
-    const propostas: PropostaDaCarga[] = [];
-    for (let de = 0; ; de += PAGINA) {
-      const { data, error } = await supabase
-        .from("hercules_propostas")
-        .select(COLUNAS_DA_PROPOSTA.join(","))
-        .eq("workspace_id", "careli")
-        .in("empreendimento_codigo", codes)
-        .order("etapa_desde", { ascending: false })
-        .range(de, de + PAGINA - 1);
+    //
+    // ⚠️ PELO ID DA DIVISÃO, E NÃO PELA SIGLA (PAN-124 F5). Os ids saem dos MESMOS `codes` (cadastro
+    // primeiro, catálogo de reserva), e a leitura une "id" e "sem id, pela sigla" (a transição até o
+    // preenchimento da 0205). Mesmo conjunto de hoje; no próximo renome no C2X, as antigas não somem.
+    const idsDasPropostas = idsDosCodigosNoCadastro(cadastro, catalogo, codes, null).ids;
+    const lidas = await lerPelaDivisao<PropostaDaCarga>({ codes, ids: idsDasPropostas }, async (filtro) => {
+      const saida: PropostaDaCarga[] = [];
+      for (let de = 0; ; de += PAGINA) {
+        const { data, error } = await aplicarFiltroDaDivisao(
+          supabase
+            .from("hercules_propostas")
+            .select(COLUNAS_DA_PROPOSTA.join(","))
+            .eq("workspace_id", "careli"),
+          filtro,
+        )
+          .order("etapa_desde", { ascending: false })
+          .range(de, de + PAGINA - 1);
 
-      if (error) throw new Error(error.message);
-      // ⚠️ O CAST PASSA POR `unknown` PORQUE A LISTA DE COLUNAS É UMA CONSTANTE. O supabase-js só
-      // infere a forma da linha quando o `select` é um literal escrito ali; com uma string montada
-      // ele devolve `GenericStringError[]`, e a conversão direta não compila. A garantia de que as
-      // colunas batem com `PropostaDaCarga` é o teste desta pasta, que recorta a linha pela mesma
-      // constante e faz a agregação rodar em cima do recorte.
-      propostas.push(...((data ?? []) as unknown as PropostaDaCarga[]));
-      if ((data?.length ?? 0) < PAGINA) break;
+        if (error) return { data: null, error };
+        // ⚠️ O CAST PASSA POR `unknown` PORQUE A LISTA DE COLUNAS É UMA CONSTANTE. O supabase-js só
+        // infere a forma da linha quando o `select` é um literal escrito ali; com uma string montada
+        // ele devolve `GenericStringError[]`, e a conversão direta não compila. A garantia de que as
+        // colunas batem com `PropostaDaCarga` é o teste desta pasta, que recorta a linha pela mesma
+        // constante e faz a agregação rodar em cima do recorte.
+        saida.push(...((data ?? []) as unknown as PropostaDaCarga[]));
+        if ((data?.length ?? 0) < PAGINA) break;
+      }
+      return { data: saida, error: null };
+    });
+    if (lidas.error) {
+      const mensagem = (lidas.error as { message?: unknown }).message;
+      throw new Error(String(mensagem ?? "leitura das propostas falhou"));
     }
+    // A ordem de antes (etapa_desde, da mais nova), refeita depois de unir as duas partes. Como no
+    // `order desc` do Postgres, a linha sem data vem PRIMEIRO (nulls first).
+    const chaveDaOrdem = (p: PropostaDaCarga) => String(p.etapa_desde ?? "￿");
+    const propostas: PropostaDaCarga[] = [...(lidas.data ?? [])].sort((a, b) =>
+      chaveDaOrdem(b).localeCompare(chaveDaOrdem(a)),
+    );
 
     // ⚠️ A MARCA DO PEDIDO QUE SOBROU NÃO APAGA O BOTÃO (18/09/2026). A tela lê
     // `cancelamento_pedido_em` como "já existe pedido" e apaga "Solicitar cancelamento"; com o card
