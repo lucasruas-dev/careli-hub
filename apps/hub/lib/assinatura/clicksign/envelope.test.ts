@@ -955,6 +955,27 @@ describe("acrescentar um signatário a um envelope que já roda", () => {
     ]);
   });
 
+  // ⚠️ O RECADASTRO NÃO MANDA `group`. Primeiro uso real da troca de e-mail (01/10/2026, envelope
+  // 0384000d da Maura, VOC0306): a Clicksign removeu a pessoa e recusou o cadastro novo com 400,
+  // "group não é permitido". O `group` só vale com `sequence_enabled`, que o envio nunca liga; no
+  // rascunho ele passa, no envelope ativado é recusado. O envio continua mandando (ver "a ordem vira
+  // `group`", acima).
+  it("o cadastro no envelope que já roda vai SEM `group`, e com o resto do signatário", async () => {
+    const { chamadas, porta } = duploComDelete();
+    const comOrdem = pessoa("Maura Maria Passos", "maura@x.com", "comprador", 3);
+    await acrescentarSignatario("env-22", { documentoId: "doc-9", pessoa: comOrdem, semCpf: true }, porta);
+
+    const cadastro = chamadas.find((c) => c.caminho === "/envelopes/env-22/signers");
+    const atributos = (cadastro?.corpo as { data: { attributes: Record<string, unknown> } }).data.attributes;
+    expect(atributos).not.toHaveProperty("group");
+    expect(atributos).toMatchObject({
+      email: "maura@x.com",
+      has_documentation: false,
+      name: "Maura Maria Passos",
+      refusable: true,
+    });
+  });
+
   it("os requisitos apontam para o documento e para o signatário novo", async () => {
     const { chamadas, porta } = duploComDelete();
     await acrescentarSignatario("env-22", { documentoId: "doc-9", pessoa: novo }, porta);

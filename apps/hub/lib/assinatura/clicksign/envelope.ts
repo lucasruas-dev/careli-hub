@@ -396,11 +396,12 @@ async function cadastrarSignatario(
   pessoa: Signatario,
   semCpf: boolean,
   porta: PortaDaClicksign,
+  comGrupo = true,
 ): Promise<string> {
   const criado = await porta<RespostaComId>(`/envelopes/${envelopeId}/signers`, {
     corpo: {
       data: {
-        attributes: atributosDoSignatario(pessoa, semCpf),
+        attributes: atributosDoSignatario(pessoa, semCpf, comGrupo),
         type: "signers",
       },
     },
@@ -992,7 +993,12 @@ export async function acrescentarSignatario(
 
   let signerId = "";
   try {
-    signerId = await cadastrarSignatario(envelope, alvo.pessoa, alvo.semCpf === true, porta);
+    // ⚠️ SEM `group` NO ENVELOPE QUE JÁ ESTÁ RODANDO. Primeiro uso real da troca de e-mail
+    // (01/10/2026, Maura Maria Passos, VOC0306, envelope 0384000d): a Clicksign removeu a pessoa e
+    // recusou o recadastro com 400, *"group não é permitido"*. A doc deles diz que `group` só vale
+    // com `sequence_enabled: true`, e o nosso envio nunca liga essa bandeira: no rascunho o campo
+    // passa, no envelope ativado é recusado. Sem ele a pessoa entra como as outras.
+    signerId = await cadastrarSignatario(envelope, alvo.pessoa, alvo.semCpf === true, porta, false);
   } catch (e) {
     const falha = e instanceof FalhaDaClicksign ? e : null;
     return {
@@ -1102,6 +1108,7 @@ function atributosDoEnvelope(nome: string, pedido: PedidoDeEnvio): Record<string
 function atributosDoSignatario(
   pessoa: Signatario,
   semCpf = false,
+  comGrupo = true,
 ): Record<string, unknown> {
   const digitos = semCpf ? "" : String(pessoa.cpf ?? "").replace(/\D/g, "");
   // ⚠️ SÓ CPF, NUNCA CNPJ. O campo `documentation` da Clicksign é o CPF de uma PESSOA; um comprador
@@ -1126,7 +1133,7 @@ function atributosDoSignatario(
     // `ordenarSignatarios` devolve 0 quando NINGUÉM espera ninguém (o padrão de hoje) e 1..N quando
     // a ordem está ligada; o default da Clicksign é 1. Mandar 0 seria um valor que a doc não prevê,
     // então o paralelo vira "todo mundo no grupo 1", que é exatamente o mesmo comportamento.
-    group: Math.max(1, pessoa.ordem),
+    ...(comGrupo ? { group: Math.max(1, pessoa.ordem) } : {}),
     // ⚠️ SEM CPF, `has_documentation: false` — e não "manda vazio". Com a bandeira ligada (o default
     // deles) a Clicksign PEDE CPF e data de nascimento na hora de assinar; um comprador cujo
     // cadastro não tem CPF ficaria travado na tela do provedor, sem ter o que digitar.
