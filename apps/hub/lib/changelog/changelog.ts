@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-10-01-chave-do-grupo",
+    deployedAt: "__HORA_REAL__",
+    internal: true,
+    modules: [
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**Renomear um empreendimento-pai no Panteon não desfaz mais os vínculos dele.** Lagoa Bonita, Vale do Ouro, Lavra do Ouro, Portal dos Vales e Rio de Pedras passam a ter uma chave fixa, separada do nome: CAD do contrato, anexos da Têmis e coordenador da habilitação continuam presos a ela mesmo que o nome mude.",
+              "**A lista da Têmis e o cabeçalho da CAD mostram o nome atual do pai.** Hoje nada muda na tela, porque nenhum pai foi renomeado.",
+            ],
+            screen: "Cadastro de empreendimentos",
+          },
+        ],
+      },
+    ],
+    rollback: "8928f8f8",
+    technical: {
+      done: "PAN-124 F4. Migration 0203: coluna `hercules_empreendimentos.chave_do_grupo`, preenchida nos 5 pais com filhos (LAB, VLO, LOX, PDX, RDX) com o nome de hoje, idêntico ao `ENTERPRISE_GROUPS.display` e às 33 linhas gravadas como `group:Lagoa Bonita`; índice único por workspace sem caixa; gatilho que impede mudar ou apagar a chave (salvo a correção assistida da 0192); gatilho que dá a chave ao pai no primeiro filho, com o nome do dia. `lib/hercules/chave-do-grupo.ts` novo; a régua do cadastro, o escopo da venda no contrato, os apelidos da cadeia da Têmis, as divisões do grupo e o coordenador montam e casam `group:<x>` pela chave; a lista da Têmis e o nome de mercado acham o pai pela chave e mostram o nome atual. Sem a coluna, as leituras usam o nome do pai, como antes. Entregue pela conta de construção e integrado por merge pela sessão Publicação.",
+      motivation: "PAN-124 (o Panteon dono do cadastro de empreendimentos): o nome do pai vai ser editável na tela (F10), e o id `group:<Nome>` gravado em vínculos, esteira, documentos e settings não pode depender dele. Renomear a Lagoa Bonita faria as 33 linhas gravadas deixarem de casar.",
+    },
+    title: "Chave do grupo separada do nome do empreendimento-pai",
+    type: "melhoria",
+    version: "1.403.0",
+  },
+  {
     buildTag: "2026-10-01-conferencia-da-corretagem",
     deployedAt: "2026-10-01T12:06:22-03:00",
     modules: [
