@@ -222,6 +222,8 @@ type Montagem = {
   carteiraVendas?: unknown;
   entidades?: Linhas[];
   esteira?: Linhas[];
+  /** A família do empreendimento (pai e filhos). Padrão: `FAMILIA_VLO`. */
+  familia?: Linhas[];
   links?: Linhas[];
   parcelas?: unknown;
   proposta?: Linhas;
@@ -281,7 +283,7 @@ function distrato(m: Montagem = {}, lidas?: string[]) {
         { entity_id: ESPELHO, source_id: "4880" },
         { entity_id: IMOBILIARIA, source_id: "2456" },
       ],
-      hercules_empreendimentos: (f: Filtros) => (f.or ? FAMILIA_VLO : EMPREENDIMENTO_VLO),
+      hercules_empreendimentos: (f: Filtros) => (f.or ? (m.familia ?? FAMILIA_VLO) : EMPREENDIMENTO_VLO),
       hercules_proposta_eventos: [],
       hercules_propostas: proposta,
       hercules_unidades: UNIDADE_VOC,
@@ -621,6 +623,35 @@ describe("D. o corretor e a imobiliária da venda importada, pelo Apolo", () => 
       }),
     ))!.dados.gerais;
     expect(g.corretor_nome).toBe("CORRETOR DA CAD");
+  });
+
+  it("🔴 F4: com o pai renomeado no Panteon, a CAD em `group:Vale do Ouro` continua entrando, pela CHAVE", async () => {
+    const naEsteira = [
+      {
+        corretor_entity_id: CORRETOR,
+        enterprise_id: "group:Vale do Ouro",
+        entity_id: CAD,
+        ficha: null,
+        imobiliaria_entity_id: IMOBILIARIA,
+      },
+    ];
+    const renomeado = (chave: null | string) =>
+      FAMILIA_VLO.map((l) =>
+        l.id === VLO ? { ...l, chave_do_grupo: chave, nome: "Vale do Ouro Premium" } : l,
+      );
+
+    const comChave = (await dadosDaProposta(
+      "p",
+      distrato({ esteira: naEsteira, familia: renomeado("Vale do Ouro") }),
+    ))!.dados.gerais;
+    expect(comChave.corretor_nome).toBe("CORRETOR DA CAD");
+
+    // Sem a coluna (0203 pendente), o renome tirava a CAD do contrato: é o risco que a F4 fecha.
+    const semChave = (await dadosDaProposta(
+      "p",
+      distrato({ esteira: naEsteira, familia: renomeado(null) }),
+    ))!.dados.gerais;
+    expect(semChave.corretor_nome).toBeUndefined();
   });
 
   it("a CAD de OUTRO empreendimento não entra — o corretor dela não vendeu este lote", async () => {

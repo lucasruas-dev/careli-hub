@@ -7,6 +7,7 @@ import {
   mapearLinhaDoCadastro,
   soDoPanteon,
 } from "./cadastro";
+import { limparMemoriaDaMigration0203 } from "./chave-do-grupo";
 
 // Client fake: builder encadeável e "thenable", no espírito de recepcao-portoes.test.ts.
 // `sem0170: true` simula o banco SEM a migration 0170: o select que pede as colunas novas devolve
@@ -16,6 +17,8 @@ const banco = vi.hoisted(() => ({
   linhas: [] as Record<string, unknown>[],
   selects: [] as string[],
   sem0170: false,
+  // `sem0203: true` simula o banco SEM a coluna `chave_do_grupo` (PAN-124 F4).
+  sem0203: false,
   // Os sinais que chegaram em `.abortSignal`, um por requisição (PAN-124: o prazo do cache).
   sinais: [] as AbortSignal[],
 }));
@@ -42,6 +45,14 @@ vi.mock("@/lib/apolo/server", () => ({
           if (banco.erroQualquer) {
             return Promise.resolve(
               resolver({ data: null, error: { code: "42501", message: "permission denied" } }),
+            );
+          }
+          if (banco.sem0203 && colunas.includes("chave_do_grupo")) {
+            return Promise.resolve(
+              resolver({
+                data: null,
+                error: { code: "42703", message: "column hercules_empreendimentos.chave_do_grupo does not exist" },
+              }),
             );
           }
           if (banco.sem0170 && /operado_por|tipo_produto/.test(colunas)) {
@@ -201,5 +212,53 @@ describe("soDoPanteon", () => {
   it("empreendimento sem id do C2X fica de fora", () => {
     // A Lavra do Ouro é pai de grupo sem espelho no legado: não tem id para casar com unidade.
     expect(soDoPanteon(CADASTRO, ["35", "9001", "LOX"], NO_C2X).map((p) => p.codigo)).toEqual(["TST"]);
+  });
+});
+
+describe("carregarCadastroDeEmpreendimentos · a chave do grupo (0203, PAN-124 F4)", () => {
+  beforeEach(() => {
+    banco.erroQualquer = false;
+    banco.linhas = [{ ...LINHA_DO_BANCO, chave_do_grupo: " Lagoa Bonita " }];
+    banco.selects = [];
+    banco.sem0170 = false;
+    banco.sem0203 = false;
+    limparMemoriaDaMigration0170();
+    limparMemoriaDaMigration0203();
+  });
+
+  it("com a 0203, a chave vem na mesma leitura, aparada", async () => {
+    const [linha] = await carregarCadastroDeEmpreendimentos();
+    expect(banco.selects).toHaveLength(1);
+    expect(banco.selects[0]).toContain("chave_do_grupo");
+    expect(linha?.chaveDoGrupo).toBe("Lagoa Bonita");
+  });
+
+  it("⚠️ sem a 0203, repete sem a coluna, NÃO derruba o cadastro, e a próxima já vai sem", async () => {
+    banco.sem0203 = true;
+    const [linha] = await carregarCadastroDeEmpreendimentos();
+    expect(banco.selects).toHaveLength(2);
+    expect(banco.selects[1]).not.toContain("chave_do_grupo");
+    expect(linha).toMatchObject({ chaveDoGrupo: null, codigo: "JAD", operadoPor: "inc-cecilio" });
+
+    banco.selects = [];
+    await carregarCadastroDeEmpreendimentos();
+    expect(banco.selects).toHaveLength(1);
+    expect(banco.selects[0]).not.toContain("chave_do_grupo");
+  });
+
+  it("⚠️ sem a 0203 E sem a 0170, as duas reservas valem na mesma leitura", async () => {
+    banco.sem0203 = true;
+    banco.sem0170 = true;
+    const leitura = await lerCadastroDeEmpreendimentos();
+    expect(banco.selects).toHaveLength(3);
+    expect(banco.selects[2]).not.toMatch(/chave_do_grupo|operado_por|tipo_produto/);
+    expect(leitura.com0170).toBe(false);
+    expect(leitura.linhas[0]).toMatchObject({ chaveDoGrupo: null, codigo: "JAD", tipoProduto: "loteamento" });
+  });
+
+  it("⚠️ erro que não é de coluna continua lançando, sem repetir", async () => {
+    banco.erroQualquer = true;
+    await expect(carregarCadastroDeEmpreendimentos()).rejects.toThrow("permission denied");
+    expect(banco.selects).toHaveLength(1);
   });
 });

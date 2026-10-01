@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { limparMemoriaDaMigration0203 } from "@/lib/hercules/chave-do-grupo";
+
 import {
   nomeDeMercado,
   nomeDeMercadoDoEmpreendimento,
@@ -64,6 +66,13 @@ describe("nomeDeMercado (puro)", () => {
     expect(nomeDeMercado(" group:Lagoa Bonita ", CADASTRO)).toBe("Lagoa Bonita");
   });
 
+  it("🔴 F4: grupo com o pai renomeado mostra o nome NOVO, achado pela chave", () => {
+    const renomeado = { ...LAB, chave_do_grupo: "Lagoa Bonita", nome: "Lagoa Bonita Residencial" };
+    expect(nomeDeMercado("group:Lagoa Bonita", [renomeado, LBF])).toBe("Lagoa Bonita Residencial");
+    // O nome novo não é id de grupo nenhum.
+    expect(nomeDeMercado("group:Lagoa Bonita Residencial", [renomeado])).toBe("Lagoa Bonita Residencial");
+  });
+
   it("filho com o pai AUSENTE nunca imprime a divisão", () => {
     const resultado = nomeDeMercado("37", [VOC]);
     expect(resultado).not.toBe("Vale do Ouro · VOC");
@@ -109,6 +118,8 @@ describe("nomeDeMercado (puro)", () => {
 // consulta). `respostas` responde por (coluna, valor) do `.eq`.
 function clienteFalso(respostas: {
   lanca?: boolean;
+  /** Os pais com chave (`pai_id is null` e `chave_do_grupo not null`), lidos para `group:<chave>`. */
+  porChave?: { data: LinhaDoCadastro[] | null; error: { code?: string; message: string } | null };
   porC2x?: { data: LinhaDoCadastro[] | null; error: { message: string } | null };
   porId?: { data: LinhaDoCadastro[] | null; error: { message: string } | null };
 }) {
@@ -121,10 +132,18 @@ function clienteFalso(respostas: {
           filtro = { coluna, valor };
           return builder;
         },
+        is(coluna: string, valor: unknown) {
+          filtro = { coluna, valor };
+          return builder;
+        },
+        not() {
+          return builder;
+        },
         async limit() {
           if (respostas.lanca) throw new Error("rede caiu");
           consultas.push({ ...filtro, tabela });
           const vazio = { data: [], error: null };
+          if (filtro.coluna === "pai_id") return respostas.porChave ?? vazio;
           return filtro.coluna === "c2x_enterprise_id"
             ? (respostas.porC2x ?? vazio)
             : (respostas.porId ?? vazio);
@@ -179,11 +198,31 @@ describe("nomeDeMercadoDoEmpreendimento (banco)", () => {
     await expect(nomeDeMercadoDoEmpreendimento(client, "37", "VALE DO OURO")).resolves.toBe("VALE DO OURO");
   });
 
-  it("grupo e id vazio não consultam o banco", async () => {
+  it("id vazio não consulta o banco", async () => {
     const { client, consultas } = clienteFalso({});
-    expect(await nomeDeMercadoDoEmpreendimento(client, "group:Lagoa Bonita")).toBe("Lagoa Bonita");
     expect(await nomeDeMercadoDoEmpreendimento(client, null)).toBe("");
     expect(consultas).toHaveLength(0);
+  });
+
+  it("🔴 F4: grupo lê só os pais com chave, uma vez, e mostra o nome NOVO do pai renomeado", async () => {
+    limparMemoriaDaMigration0203();
+    const renomeado = { ...LAB, chave_do_grupo: "Lagoa Bonita", nome: "Lagoa Bonita Residencial" };
+    const { client, consultas } = clienteFalso({ porChave: { data: [renomeado], error: null } });
+
+    expect(await nomeDeMercadoDoEmpreendimento(client, "group:Lagoa Bonita")).toBe("Lagoa Bonita Residencial");
+    expect(consultas).toEqual([{ coluna: "pai_id", tabela: "hercules_empreendimentos", valor: null }]);
+  });
+
+  it("grupo sem a 0203 (coluna ausente): o texto do id, como antes, e a próxima nem tenta", async () => {
+    limparMemoriaDaMigration0203();
+    const { client, consultas } = clienteFalso({
+      porChave: { data: null, error: { code: "42703", message: "column chave_do_grupo does not exist" } },
+    });
+
+    expect(await nomeDeMercadoDoEmpreendimento(client, "group:Lagoa Bonita")).toBe("Lagoa Bonita");
+    expect(await nomeDeMercadoDoEmpreendimento(client, "group:Lagoa Bonita")).toBe("Lagoa Bonita");
+    expect(consultas).toHaveLength(1);
+    limparMemoriaDaMigration0203();
   });
 
   it("id fora do cadastro com 'EMPREENDIMENTO 30' na esteira: vazio", async () => {

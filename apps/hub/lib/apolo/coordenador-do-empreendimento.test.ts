@@ -330,6 +330,18 @@ describe("idsDoC2xDoPedido", () => {
   it("grupo desconhecido não inventa divisão", () => {
     expect(idsDoC2xDoPedido("group:Qualquer", CADASTRO_LAGOA)).toEqual([]);
   });
+
+  it("🔴 F4: grupo fora da lista fixa se acha pela CHAVE, mesmo com o pai renomeado no Panteon", () => {
+    // A decisão 2 do Lucas: ACT (30) filho da ACP (42). Não está em ENTERPRISE_GROUPS, então sem a
+    // chave congelada (0203) o renome do pai deixaria a habilitação sem coordenador.
+    const aldeia: LinhaDoCadastroDoPanteon[] = [
+      { c2xEnterpriseId: "42", chaveDoGrupo: "Aldeia das Cachoeiras das Pedras", codigo: "ACP", id: "acp", nome: "Aldeia Brumadinho", paiId: null },
+      { c2xEnterpriseId: "30", codigo: "ACT", id: "act", nome: "Aldeia · ACT", paiId: "acp" },
+    ];
+
+    expect(idsDoC2xDoPedido("group:Aldeia das Cachoeiras das Pedras", aldeia)).toEqual(["30"]);
+    expect(idsDoC2xDoPedido("group:Aldeia Brumadinho", aldeia)).toEqual([]);
+  });
 });
 
 describe("coordenadorParaAviso", () => {

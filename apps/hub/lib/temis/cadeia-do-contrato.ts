@@ -40,6 +40,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { chaveDoGrupoDe, lerComChaveDoGrupo } from "@/lib/hercules/chave-do-grupo";
+
 const WORKSPACE = "careli";
 
 /** O prefixo da ficha CONSOLIDADA do Apolo. Ver `NivelDaCadeia.alias`. */
@@ -145,6 +147,8 @@ type LinhaDaCategoria = {
 
 type LinhaDoProduto = {
   c2x_enterprise_id: null | string;
+  // A chave congelada do grupo (0203, PAN-124 F4). Ausente sem a migration.
+  chave_do_grupo?: null | string;
   id: string;
   nome: null | string;
   pai_id: null | string;
@@ -260,9 +264,11 @@ export async function resolverCadeiaDoContrato(
     if (!id || jaNaCadeia.has(id)) continue;
     jaNaCadeia.add(id);
     const nome = texto(pai.nome);
+    const chave = chaveDoGrupoDe({ chaveDoGrupo: pai.chave_do_grupo, nome: pai.nome });
     niveis.push({
-      // O pai É a raiz da família: o consolidado do catálogo se chama pelo nome dele.
-      ...(nome ? { alias: `${PREFIXO_DO_CONSOLIDADO}${nome}` } : {}),
+      // O pai É a raiz da família: o consolidado do catálogo se chama pela CHAVE dele (0203, F4), que
+      // é o texto gravado nas peças; o rótulo continua sendo o nome.
+      ...(chave ? { alias: `${PREFIXO_DO_CONSOLIDADO}${chave}` } : {}),
       degrau: "pai",
       id,
       minutaId: null,
@@ -335,6 +341,8 @@ async function produtosDaCadeia(
 ): Promise<
   | { erro: string; ok: false }
   | {
+      /** `c2x_enterprise_id` → a chave do grupo (0203), ou o nome sem a coluna. Forma o `alias`. */
+      chavePorC2x: Map<string, string>;
       /** Os `c2x_enterprise_id` que são RAIZ de família (sem `pai_id`). Só eles têm consolidado. */
       ehRaizPorC2x: Set<string>;
       nomePorC2x: Map<string, string>;
@@ -349,16 +357,19 @@ async function produtosDaCadeia(
 > {
   const alvos = [...new Set(ids.map(texto).filter(Boolean))];
   const nomePorC2x = new Map<string, string>();
+  const chavePorC2x = new Map<string, string>();
   const raizPorC2x = new Map<string, string>();
   const ehRaizPorC2x = new Set<string>();
-  if (alvos.length === 0) return { ehRaizPorC2x, nomePorC2x, ok: true, pais: [], raizPorC2x };
+  if (alvos.length === 0) return { chavePorC2x, ehRaizPorC2x, nomePorC2x, ok: true, pais: [], raizPorC2x };
 
-  const { data, error } = await sb
-    .from("hercules_empreendimentos")
-    .select("c2x_enterprise_id, id, nome, pai_id")
-    .eq("workspace_id", WORKSPACE)
-    .in("c2x_enterprise_id", alvos)
-    .limit(50);
+  const { data, error } = await lerComChaveDoGrupo("c2x_enterprise_id, id, nome, pai_id", (selecao) =>
+    sb
+      .from("hercules_empreendimentos")
+      .select(selecao)
+      .eq("workspace_id", WORKSPACE)
+      .in("c2x_enterprise_id", alvos)
+      .limit(50),
+  );
 
   if (error) {
     console.error("[temis][cadeia] falha ao ler o cadastro dos produtos da venda", error);
@@ -370,18 +381,22 @@ async function produtosDaCadeia(
     const c2x = texto(l.c2x_enterprise_id);
     const nome = texto(l.nome);
     if (c2x && nome && !nomePorC2x.has(c2x)) nomePorC2x.set(c2x, nome);
+    const chave = chaveDoGrupoDe({ chaveDoGrupo: l.chave_do_grupo, nome: l.nome });
+    if (c2x && chave && !chavePorC2x.has(c2x)) chavePorC2x.set(c2x, chave);
     if (c2x && !raizPorC2x.has(c2x)) raizPorC2x.set(c2x, texto(l.pai_id) || texto(l.id));
     if (c2x && !texto(l.pai_id)) ehRaizPorC2x.add(c2x);
   }
 
   const paiIds = [...new Set(linhas.map((l) => texto(l.pai_id)).filter(Boolean))];
-  if (paiIds.length === 0) return { ehRaizPorC2x, nomePorC2x, ok: true, pais: [], raizPorC2x };
+  if (paiIds.length === 0) return { chavePorC2x, ehRaizPorC2x, nomePorC2x, ok: true, pais: [], raizPorC2x };
 
-  const doPai = await sb
-    .from("hercules_empreendimentos")
-    .select("c2x_enterprise_id, id, nome, pai_id")
-    .eq("workspace_id", WORKSPACE)
-    .in("id", paiIds);
+  const doPai = await lerComChaveDoGrupo("c2x_enterprise_id, id, nome, pai_id", (selecao) =>
+    sb
+      .from("hercules_empreendimentos")
+      .select(selecao)
+      .eq("workspace_id", WORKSPACE)
+      .in("id", paiIds),
+  );
 
   if (doPai.error) {
     console.error("[temis][cadeia] falha ao ler o pai dos produtos da venda", doPai.error);
@@ -389,6 +404,7 @@ async function produtosDaCadeia(
   }
 
   return {
+    chavePorC2x,
     ehRaizPorC2x,
     nomePorC2x,
     ok: true,
@@ -402,14 +418,17 @@ async function produtosDaCadeia(
  *
  * ⚠️ SÓ A RAIZ, porque só ela vira ficha consolidada. Dar alias a uma divisão faria o `.or()` da
  * leitura procurar `group:Lagoa Bonita · LBF`, que não existe em canto nenhum.
+ *
+ * ⚠️ PELA CHAVE, E NÃO PELO NOME (0203, PAN-124 F4). As peças estão gravadas em `group:<chave>`; o
+ * pai renomeado no Panteon continua achando as dele.
  */
 function aliasDoConsolidado(
-  produtos: { ehRaizPorC2x: Set<string>; nomePorC2x: Map<string, string> },
+  produtos: { chavePorC2x: Map<string, string>; ehRaizPorC2x: Set<string> },
   id: string,
 ): { alias?: string } {
   if (!produtos.ehRaizPorC2x.has(id)) return {};
-  const nome = produtos.nomePorC2x.get(id);
-  return nome ? { alias: `${PREFIXO_DO_CONSOLIDADO}${nome}` } : {};
+  const chave = produtos.chavePorC2x.get(id);
+  return chave ? { alias: `${PREFIXO_DO_CONSOLIDADO}${chave}` } : {};
 }
 
 function falhaNaHierarquia(): string {

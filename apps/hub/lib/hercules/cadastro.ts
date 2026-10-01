@@ -13,6 +13,11 @@
 // pode repetir ou pular linha entre páginas.
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
+import {
+  chaveDoGrupoPendente,
+  ehColunaDaChaveAusente,
+  marcarChaveDoGrupoPendente,
+} from "./chave-do-grupo";
 import type { LinhaDeEmpreendimento } from "./empreendimentos";
 import { ehColunaDoProdutoAusente, tipoProdutoDe, type TipoProduto } from "./produto-novo";
 
@@ -32,6 +37,12 @@ import { ehColunaDoProdutoAusente, tipoProdutoDe, type TipoProduto } from "./pro
  * `"loteamento"` (use `tipoProdutoDe`).
  */
 export type LinhaDoCadastro = LinhaDeEmpreendimento & {
+  /**
+   * A chave congelada do grupo (migration 0203, PAN-124 F4): só no pai de grupo. NÃO É O NOME: é o
+   * que forma `group:<chave>`. Nula sem a 0203, e aí quem monta ou casa `group:` usa o nome do pai
+   * (`chaveDoGrupoDe`, ./chave-do-grupo). Opcional no tipo pelo mesmo motivo de `operadoPor`.
+   */
+  chaveDoGrupo?: null | string;
   /** `apolo_incorporadores.id` de quem opera o produto. Nulo = a Careli. */
   operadoPor?: null | string;
   tipoProduto?: TipoProduto;
@@ -46,6 +57,8 @@ const COLUNAS_COM_0170 = `${COLUNAS_SEM_0170},operado_por,tipo_produto`;
 
 type LinhaCrua = {
   c2x_enterprise_id: null | string;
+  // Ausente quando a migration 0203 ainda não foi aplicada (select sem ela).
+  chave_do_grupo?: null | string;
   cidade: null | string;
   codigo: null | string;
   id: string;
@@ -70,6 +83,7 @@ export function mapearLinhaDoCadastro(crua: LinhaCrua): LinhaDoCadastro {
     // O id do C2X é `text` no banco; a sessão do portal compara como string ("35"). Trim para
     // um espaço digitado no cadastro não fazer o Vale do Ouro sumir do escopo.
     c2xEnterpriseId: texto(crua.c2x_enterprise_id),
+    chaveDoGrupo: texto(crua.chave_do_grupo),
     cidade: texto(crua.cidade),
     codigo: (texto(crua.codigo) ?? "").toUpperCase(),
     id: String(crua.id),
@@ -136,6 +150,7 @@ export async function lerCadastroDeEmpreendimentos(
 
   const saida: LinhaDoCadastro[] = [];
   let colunas = Date.now() < sem0170Ate ? COLUNAS_SEM_0170 : COLUNAS_COM_0170;
+  let comChave = !chaveDoGrupoPendente();
 
   for (let de = 0; ; de += PAGINA) {
     const ler = (selecao: string) => {
@@ -150,15 +165,25 @@ export async function lerCadastroDeEmpreendimentos(
       return opcoes.sinal ? consulta.abortSignal(opcoes.sinal) : consulta;
     };
 
-    let { data, error } = await ler(colunas);
+    const selecao = () => (comChave ? `${colunas},chave_do_grupo` : colunas);
+    let { data, error } = await ler(selecao());
 
-    // ⚠️ MIGRATION 0170 PENDENTE NÃO DERRUBA O CADASTRO. Painel, Venda e portal inteiro leem esta
-    // função; sem as colunas novas, a linha sai "Careli opera, loteamento", que é o que o sistema
-    // inteiro assume hoje. Só o erro de coluna DA 0170 cai aqui: qualquer outro continua lançando.
-    if (error && colunas === COLUNAS_COM_0170 && ehColunaDoProdutoAusente(error)) {
-      colunas = COLUNAS_SEM_0170;
-      sem0170Ate = Date.now() + MEMORIA_DA_0170_MS;
-      ({ data, error } = await ler(colunas));
+    // ⚠️ MIGRATION PENDENTE NÃO DERRUBA O CADASTRO. Painel, Venda e portal inteiro leem esta função.
+    //   • sem a 0203, a linha sai sem `chaveDoGrupo`, e o nome do pai vale como chave, como antes;
+    //   • sem a 0170, a linha sai "Careli opera, loteamento", que é o que o sistema inteiro assume.
+    // Só o erro de coluna DESSAS migrations cai aqui (o Postgres acusa uma coluna por vez, daí as duas
+    // voltas): qualquer outro continua lançando.
+    for (let volta = 0; volta < 2 && error; volta += 1) {
+      if (comChave && ehColunaDaChaveAusente(error)) {
+        comChave = false;
+        marcarChaveDoGrupoPendente();
+      } else if (colunas === COLUNAS_COM_0170 && ehColunaDoProdutoAusente(error)) {
+        colunas = COLUNAS_SEM_0170;
+        sem0170Ate = Date.now() + MEMORIA_DA_0170_MS;
+      } else {
+        break;
+      }
+      ({ data, error } = await ler(selecao()));
     }
 
     if (error) {

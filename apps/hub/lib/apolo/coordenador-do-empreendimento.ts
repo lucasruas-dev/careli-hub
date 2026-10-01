@@ -32,6 +32,7 @@ import { cadastroEfetivo } from "@/lib/apolo/cadastro-efetivo";
 import { loadApoloEnterpriseCadastroPorId } from "@/lib/apolo/empreendimentos";
 import { ENTERPRISE_GROUPS } from "@/lib/guardian/c2x-analytics";
 import { carregarCadastroDeEmpreendimentos, type LinhaDoCadastro } from "@/lib/hercules/cadastro";
+import { chaveCasa } from "@/lib/hercules/chave-do-grupo";
 import {
   type ContatoDoAviso,
   telefonesPorEntidade,
@@ -64,7 +65,7 @@ export type CadastroDoC2xPorId = {
 /** O pedaço do cadastro do Panteon que resolve um grupo nas suas divisões. */
 export type LinhaDoCadastroDoPanteon = Pick<
   LinhaDoCadastro,
-  "c2xEnterpriseId" | "codigo" | "id" | "nome" | "paiId"
+  "c2xEnterpriseId" | "chaveDoGrupo" | "codigo" | "id" | "nome" | "paiId"
 >;
 
 /** As duas leituras de fora do Supabase, trocáveis no teste. */
@@ -117,15 +118,17 @@ function unicos(lista: readonly (null | string | undefined)[]): string[] {
  * Os ids do C2X que respondem por um pedido: o próprio id, ou as divisões do grupo.
  *
  * ⚠️ O GRUPO SE RESOLVE PELO CADASTRO DO PANTEON, e não pelo catálogo do C2X: o catálogo junta as
- * divisões pela SIGLA do legado, que é justamente o que muda quando alguém renomeia lá. O pai tem o
- * nome do grupo (`group:Lagoa Bonita` -> o LAB, "Lagoa Bonita") e as divisões apontam para ele.
+ * divisões pela SIGLA do legado, que é justamente o que muda quando alguém renomeia lá. O pai tem a
+ * CHAVE do grupo (`group:Lagoa Bonita` -> o LAB, chave "Lagoa Bonita") e as divisões apontam para
+ * ele. A chave é a coluna congelada da 0203 (PAN-124 F4), e não o nome: o pai renomeado no Panteon
+ * continua achado. Sem a 0203, vale o nome, como antes.
  *
  * ⚠️ O PAI NÃO ENTRA, SÓ AS DIVISÕES. É a mesma composição de `ENTERPRISE_GROUPS` e da equivalência
  * (lib/apolo/empreendimento-equivalencia.ts), e não é detalhe: o LAB (31) tem no C2X a LUNA como
  * gerente, e as três glebas têm a MATHEUS GUEDES (medido em 24/09/2026). Com o pai junto, a
  * habilitação no Lagoa Bonita avisaria uma coordenadora que não é do produto.
  *
- * Se o pai não for achado pelo nome (renomeado no Panteon, por exemplo), `ENTERPRISE_GROUPS` dá as
+ * Se o pai não for achado pela chave (cadastro sem a 0203 e pai renomeado), `ENTERPRISE_GROUPS` dá as
  * siglas das divisões, casadas no CÓDIGO DO CADASTRO DO PANTEON (o nosso, não o do legado).
  *
  * Exportada (e pura) para o teste.
@@ -140,7 +143,7 @@ export function idsDoC2xDoPedido(
 
   const nome = normalizar(id.slice(PREFIXO_DO_GRUPO.length));
   const pais = new Set(
-    cadastro.filter((linha) => !linha.paiId && normalizar(linha.nome) === nome).map((l) => l.id),
+    cadastro.filter((linha) => !linha.paiId && chaveCasa(linha, nome)).map((l) => l.id),
   );
   const dasDivisoes = unicos(
     cadastro

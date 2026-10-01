@@ -158,6 +158,24 @@ describe("divisoesDoGrupo", () => {
     ]);
   });
 
+  it("🔴 F4: grupo que não está na lista fixa casa pela CHAVE, e o pai renomeado continua achado", () => {
+    // A decisão 2 do Lucas (26/09/2026): o ACT (30) vira filho da ACP (42). O grupo nasce no Panteon,
+    // fora de ENTERPRISE_GROUPS, com a chave do nome da ACP no dia do primeiro filho (0203).
+    const aldeia = [
+      { c2xEnterpriseId: "42", chaveDoGrupo: "Aldeia das Cachoeiras das Pedras", codigo: "ACP", id: "u-acp", nome: "Aldeia das Cachoeiras das Pedras", paiId: null },
+      { c2xEnterpriseId: "30", codigo: "ACT", id: "u-act", nome: "Aldeia · ACT", paiId: "u-acp" },
+    ];
+    const renomeado = aldeia.map((l) => (l.codigo === "ACP" ? { ...l, nome: "Aldeia Brumadinho" } : l));
+    const pedido = "group:Aldeia das Cachoeiras das Pedras";
+
+    expect(divisoesDoGrupo(pedido, { cadastro: aldeia })).toEqual([30]);
+    expect(divisoesDoGrupo(pedido, { cadastro: renomeado })).toEqual([30]);
+    expect(divisoesDoGrupo("group:Aldeia Brumadinho", { cadastro: renomeado })).toEqual([]);
+    // Sem a coluna (0203 pendente), o renome desfaria o grupo: é o risco que a F4 fecha.
+    const semChave = renomeado.map(({ chaveDoGrupo: _, ...l }) => l);
+    expect(divisoesDoGrupo(pedido, { cadastro: semChave })).toEqual([]);
+  });
+
   it("aceita o nome em outra caixa e sem acento; grupo desconhecido não tem divisão", () => {
     expect(divisoesDoGrupo("GROUP:lagoa bonita", { catalogo: CATALOGO })).toEqual([27, 32, 33]);
     expect(divisoesDoGrupo("group:Nao Existe", { cadastro: CADASTRO, catalogo: CATALOGO })).toEqual([]);

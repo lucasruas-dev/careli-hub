@@ -62,4 +62,15 @@ describe("listarEmpreendimentosDaTemis", () => {
       { code: "LBF + LBR + LBP", id: "group:Lagoa Bonita", name: "Lagoa Bonita" },
     ]);
   });
+
+  it("🔴 F4: com o pai renomeado no Panteon, o consolidado mostra o nome NOVO, achado pela chave", async () => {
+    estado.cadastro = [
+      { chaveDoGrupo: "Lagoa Bonita", c2xEnterpriseId: "31", codigo: "LAB", id: "lab", nome: "Lagoa Bonita Residencial", paiId: null },
+      { c2xEnterpriseId: "33", codigo: "LBF", id: "lbf", nome: "Lagoa Bonita Residencial · LBF", paiId: "lab" },
+    ];
+    estado.portoes = [{ code: "LBF + LBR + LBP", enterprise_id: "group:Lagoa Bonita" }];
+    expect(await linhas()).toEqual([
+      { code: "LBF + LBR + LBP", id: "group:Lagoa Bonita", name: "Lagoa Bonita Residencial" },
+    ]);
+  });
 });

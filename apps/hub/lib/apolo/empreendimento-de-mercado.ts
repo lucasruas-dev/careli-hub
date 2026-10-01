@@ -29,10 +29,18 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { normalizarEnterpriseId } from "@/lib/apolo/esteira-cad";
+import {
+  chaveDoGrupoPendente,
+  ehColunaDaChaveAusente,
+  marcarChaveDoGrupoPendente,
+  paiDaChave,
+} from "@/lib/hercules/chave-do-grupo";
 
 /** O pedaço de `hercules_empreendimentos` que a resolução usa. */
 export type LinhaDoCadastro = {
   c2x_enterprise_id: null | string;
+  // A chave congelada do grupo (0203, PAN-124 F4). Só é lida para resolver `group:<chave>`.
+  chave_do_grupo?: null | string;
   id: string;
   nome: null | string;
   pai_id: null | string;
@@ -42,8 +50,9 @@ type ClienteDoCadastro = Pick<SupabaseClient, "from">;
 
 const COLUNAS = "c2x_enterprise_id, id, nome, pai_id";
 
-// Id de GRUPO que o portal público grava ("group:Lagoa Bonita"). Para o mercado o grupo JÁ É o nome
-// ([[reference_empreendimento_grupo_vs_divisao_id]]).
+// Id de GRUPO que o portal público grava ("group:Lagoa Bonita"). Para o mercado o grupo é o NOME do
+// pai dono da chave ([[reference_empreendimento_grupo_vs_divisao_id]]). Desde a F4 do PAN-124 a chave
+// não é o nome (0203): com o pai renomeado, o nome é o novo e o id continua o de antes.
 const PREFIXO_GRUPO = "group:";
 
 // O separador que o cadastro põe entre o nome do pai e a sigla da divisão ("Vale do Ouro · VOC").
@@ -72,7 +81,14 @@ export function nomeDeMercado(
   reserva?: null | string,
 ): string {
   const id = normalizarEnterpriseId(enterpriseId);
-  if (id?.startsWith(PREFIXO_GRUPO)) return semDivisao(id.slice(PREFIXO_GRUPO.length));
+  if (id?.startsWith(PREFIXO_GRUPO)) {
+    const sufixo = id.slice(PREFIXO_GRUPO.length);
+    const pai = paiDaChave(
+      cadastro.map((l) => ({ chaveDoGrupo: l.chave_do_grupo, nome: l.nome, paiId: l.pai_id })),
+      sufixo,
+    );
+    return semDivisao(pai?.nome ?? sufixo);
+  }
 
   const linha = id ? cadastro.find((l) => (l.c2x_enterprise_id ?? "").trim() === id) : undefined;
   if (!linha) return daReserva(reserva);
@@ -105,7 +121,8 @@ export async function nomeDeMercadoDoEmpreendimento(
   reserva?: null | string,
 ): Promise<string> {
   const id = normalizarEnterpriseId(enterpriseId);
-  if (!id || id.startsWith(PREFIXO_GRUPO)) return nomeDeMercado(id, [], reserva);
+  if (!id) return nomeDeMercado(id, [], reserva);
+  if (id.startsWith(PREFIXO_GRUPO)) return nomeDoGrupo(client, id, reserva);
 
   try {
     const { data: proprio, error } = await client
@@ -129,6 +146,37 @@ export async function nomeDeMercadoDoEmpreendimento(
       if (!erroDoPai) linhas.push(...((pai ?? []) as LinhaDoCadastro[]));
     }
     return nomeDeMercado(id, linhas, reserva);
+  } catch {
+    return nomeDeMercado(id, [], reserva);
+  }
+}
+
+/**
+ * O nome de mercado de `group:<chave>`: o nome do pai dono da chave (0203, PAN-124 F4). Lê só os pais
+ * que têm chave (5 hoje). Sem a coluna, sem o cadastro ou sem pai com essa chave, vale o texto do id,
+ * que é o que se mostrava antes da F4 e é igual ao nome enquanto ninguém renomear o pai.
+ */
+async function nomeDoGrupo(
+  client: ClienteDoCadastro,
+  id: string,
+  reserva?: null | string,
+): Promise<string> {
+  if (chaveDoGrupoPendente()) return nomeDeMercado(id, [], reserva);
+
+  try {
+    const { data, error } = await client
+      .from("hercules_empreendimentos")
+      .select(`${COLUNAS}, chave_do_grupo`)
+      .is("pai_id", null)
+      .not("chave_do_grupo", "is", null)
+      .limit(200);
+
+    if (error) {
+      if (ehColunaDaChaveAusente(error)) marcarChaveDoGrupoPendente();
+      return nomeDeMercado(id, [], reserva);
+    }
+
+    return nomeDeMercado(id, (data ?? []) as LinhaDoCadastro[], reserva);
   } catch {
     return nomeDeMercado(id, [], reserva);
   }

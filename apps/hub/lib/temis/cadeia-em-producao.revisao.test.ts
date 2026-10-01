@@ -468,6 +468,42 @@ describe("o anexo cadastrado na ficha CONSOLIDADA", () => {
     // E ela se apresenta pelo nome do degrau, não pelo rótulo cru do catálogo.
     expect(lidos.ok && lidos.anexos[0]?.rotuloDoNivel).toBe("Lagoa Bonita");
   });
+
+  it("🔴 F4: com o pai renomeado no Panteon, a peça em group:Lagoa Bonita continua no contrato, pela CHAVE", async () => {
+    const lbf = RECORTES.find(
+      (r) => r.empC2x === "31" && r.uniC2x === "33" && r.cat === CAT_CONDOMINIO,
+    )!;
+    const anexosDepoisDoRenome = async (chave: null | string) => {
+      const estado = bancoDeProducao();
+      estado.tabelas.hercules_empreendimentos = estado.tabelas.hercules_empreendimentos!.map((e) =>
+        e.codigo === "LAB" ? { ...e, chave_do_grupo: chave, nome: "Lagoa Bonita Residencial" } : e,
+      );
+      estado.tabelas.temis_anexos = [
+        {
+          arquivo_bytes: 1024,
+          ativo: true,
+          categoria_id: null,
+          enterprise_id: "group:Lagoa Bonita",
+          id: "bbbbbbbb-0000-4000-8000-000000000002",
+          nome: "Convenção do condomínio",
+          posicao: 1,
+          storage_path: "temis-anexos/empreendimento/group:Lagoa Bonita/convencao.pdf",
+          unidade_id: null,
+        },
+      ];
+      const { cadeia } = await escolher(lbf, estado);
+      return lerAnexosDaVenda(clienteEmMemoria(estado) as never, cadeia);
+    };
+
+    const comChave = await anexosDepoisDoRenome("Lagoa Bonita");
+    expect(comChave.ok && comChave.anexos.map((a) => a.nome)).toEqual(["Convenção do condomínio"]);
+    // (O rótulo do degrau é o nome do empreendimento que a PROPOSTA guardou, `empreendimentoNome`,
+    // e não o cadastro: aqui é o "Lagoa Bonita" do recorte. A chave não entra no rótulo.)
+
+    // Sem a coluna (0203 pendente), o renome tirava a peça do contrato: é o risco que a F4 fecha.
+    const semChave = await anexosDepoisDoRenome(null);
+    expect(semChave.ok && semChave.anexos).toEqual([]);
+  });
 });
 
 describe("o marcador que promete uma peça", () => {

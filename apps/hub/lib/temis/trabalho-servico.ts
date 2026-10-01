@@ -49,7 +49,8 @@ import {
 } from "@/lib/assinatura/frase-para-o-portal";
 import type { EstadoDaAssinatura } from "@/lib/assinatura/tipos";
 import { rotuloDoEstado } from "@/lib/assinatura/traduzir";
-import { carregarCadastroDeEmpreendimentos } from "@/lib/hercules/cadastro";
+import { carregarCadastroDeEmpreendimentos, type LinhaDoCadastro } from "@/lib/hercules/cadastro";
+import { paiDaChave } from "@/lib/hercules/chave-do-grupo";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
 import { concluirCancelamentoDoCard } from "@/lib/hercules/concluir-cancelamento-server";
 import { ehIdDoPai, expandirIdDoPainel } from "@/lib/hercules/expandir-id-do-painel";
@@ -779,8 +780,10 @@ export async function listarEmpreendimentosDaTemis(ator: AtorDaTemis): Promise<N
   // (`c2x_enterprise_id`) não muda; o código fica de segunda chave, para linha sem id no cadastro.
   const nomePorCodigo = new Map<string, string>();
   const doCadastroPorId = new Map<string, { codigo: string; nome: string }>();
+  let cadastro: LinhaDoCadastro[] = [];
   try {
-    for (const e of await carregarCadastroDeEmpreendimentos()) {
+    cadastro = await carregarCadastroDeEmpreendimentos();
+    for (const e of cadastro) {
       if (e.codigo && e.nome) nomePorCodigo.set(e.codigo.toUpperCase(), e.nome);
       const id = e.c2xEnterpriseId?.trim();
       if (id && e.nome) doCadastroPorId.set(id, { codigo: e.codigo, nome: e.nome });
@@ -797,10 +800,13 @@ export async function listarEmpreendimentosDaTemis(ator: AtorDaTemis): Promise<N
     .map((l) => {
       const doCadastro = doCadastroPorId.get(l.enterprise_id.trim());
       const codigo = doCadastro?.codigo || (l.code ?? "").trim();
-      // O consolidado guarda "LBF + LBR + LBP" no código: o nome dele está no id (`group:Nome`).
-      const doGrupo = l.enterprise_id.startsWith("group:")
+      // O consolidado guarda "LBF + LBR + LBP" no código, e o id é `group:<chave>`. O nome é o do pai
+      // dono da chave (0203, PAN-124 F4): renomeado no Panteon, a lista mostra o nome novo. Sem o
+      // cadastro, ou sem pai com essa chave, vale o texto do id, como antes.
+      const sufixo = l.enterprise_id.startsWith("group:")
         ? l.enterprise_id.slice("group:".length)
         : null;
+      const doGrupo = sufixo === null ? null : (paiDaChave(cadastro, sufixo)?.nome ?? sufixo);
       return {
         code: codigo,
         id: l.enterprise_id,
