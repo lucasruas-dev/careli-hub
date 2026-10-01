@@ -950,27 +950,56 @@ describe("acrescentar um signatário a um envelope que já roda", () => {
     expect(r.signerId).toBe("sig_novo");
     expect(chamadas.map((c) => `${c.metodo} ${c.caminho}`)).toEqual([
       "POST /envelopes/env-22/signers",
-      "POST /envelopes/env-22/requirements",
-      "POST /envelopes/env-22/requirements",
+      "POST /envelopes/env-22/bulk_requirements",
     ]);
   });
 
-  it("os requisitos apontam para o documento e para o signatário novo", async () => {
+  // ⚠️ O RECADASTRO NÃO MANDA `group`. Primeiro uso real da troca de e-mail (01/10/2026, envelope
+  // 0384000d da Maura, VOC0306): a Clicksign removeu a pessoa e recusou o cadastro novo com 400,
+  // "group não é permitido". O `group` só vale com `sequence_enabled`, que o envio nunca liga; no
+  // rascunho ele passa, no envelope ativado é recusado. O envio continua mandando (ver "a ordem vira
+  // `group`", acima).
+  it("o cadastro no envelope que já roda vai SEM `group`, e com o resto do signatário", async () => {
+    const { chamadas, porta } = duploComDelete();
+    const comOrdem = pessoa("Maura Maria Passos", "maura@x.com", "comprador", 3);
+    await acrescentarSignatario("env-22", { documentoId: "doc-9", pessoa: comOrdem, semCpf: true }, porta);
+
+    const cadastro = chamadas.find((c) => c.caminho === "/envelopes/env-22/signers");
+    const atributos = (cadastro?.corpo as { data: { attributes: Record<string, unknown> } }).data.attributes;
+    expect(atributos).not.toHaveProperty("group");
+    expect(atributos).toMatchObject({
+      email: "maura@x.com",
+      has_documentation: false,
+      name: "Maura Maria Passos",
+      refusable: true,
+    });
+  });
+
+  // ⚠️ NO ENVELOPE QUE JÁ RODA, OS REQUISITOS VÃO EM MASSA. Segundo uso real da troca (01/10/2026,
+  // Maura, VOC0306): o cadastro passou e o POST /requirements voltou 403, "envelope não está com
+  // status draft". A doc da Clicksign manda os envelopes em andamento usarem
+  // POST /envelopes/{id}/bulk_requirements, com Atomic Operations do JSON:API.
+  it("os requisitos vão numa operação em massa, com os dois `add` apontando para o documento e o signatário novo", async () => {
     const { chamadas, porta } = duploComDelete();
     await acrescentarSignatario("env-22", { documentoId: "doc-9", pessoa: novo }, porta);
 
-    const requisitos = chamadas.filter((c) => c.caminho.endsWith("/requirements"));
-    for (const requisito of requisitos) {
-      expect(requisito.corpo).toMatchObject({
-        data: {
-          relationships: {
-            document: { data: { id: "doc-9", type: "documents" } },
-            signer: { data: { id: "sig_novo", type: "signers" } },
-          },
+    expect(chamadas.some((c) => c.caminho === "/envelopes/env-22/requirements")).toBe(false);
+    const emMassa = chamadas.find((c) => c.caminho === "/envelopes/env-22/bulk_requirements");
+    expect(emMassa?.metodo).toBe("POST");
+    const operacoes = (emMassa?.corpo as { "atomic:operations": Array<{ data: { attributes: unknown }; op: string }> })[
+      "atomic:operations"
+    ];
+    expect(operacoes.map((o) => o.op)).toEqual(["add", "add"]);
+    for (const operacao of operacoes) {
+      expect(operacao.data).toMatchObject({
+        relationships: {
+          document: { data: { id: "doc-9", type: "documents" } },
+          signer: { data: { id: "sig_novo", type: "signers" } },
         },
+        type: "requirements",
       });
     }
-    expect(requisitos.map((c) => (c.corpo as { data: { attributes: unknown } }).data.attributes)).toEqual([
+    expect(operacoes.map((o) => o.data.attributes)).toEqual([
       { action: "agree", role: "sign" },
       { action: "provide_evidence", auth: "email" },
     ]);
@@ -989,7 +1018,7 @@ describe("acrescentar um signatário a um envelope que já roda", () => {
   });
 
   it("falha nos requisitos volta com passo `requisitos` E o id de quem ficou pela metade", async () => {
-    const { porta } = duploComDelete({ "/requirements": falha("Clicksign devolveu 500.", 500) });
+    const { porta } = duploComDelete({ "/bulk_requirements": falha("Clicksign devolveu 500.", 500) });
     const r = await acrescentarSignatario("env-22", { documentoId: "doc-9", pessoa: novo }, porta);
 
     expect(r.ok).toBe(false);

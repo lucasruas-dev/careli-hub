@@ -36,6 +36,111 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-10-01-clicksign-requisitos-em-massa",
+    deployedAt: "2026-10-01T15:09:56-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Corrigir o e-mail num contrato em andamento passa a concluir a troca.** O cadastro novo já passava, mas a Clicksign recusava os requisitos de assinatura e a troca era desfeita.",
+            ],
+            screen: "Contrato · Em assinatura",
+          },
+        ],
+      },
+    ],
+    rollback: "f2df6d38",
+    technical: {
+      done: "`lib/assinatura/clicksign/envelope.ts`: os dois requisitos (agree com o papel e provide_evidence por e-mail) saem de `requisitosDaPessoa`. O envio normal continua com os dois POST /envelopes/{id}/requirements; o acréscimo em envelope ativado (`acrescentarSignatario`, só a troca de e-mail) passa a usar POST /envelopes/{id}/bulk_requirements com `atomic:operations` e dois `add`, no formato da página oficial da Clicksign (conferida em 01/10/2026). Testes ajustados em envelope.test.ts e trocar-signatario.test.ts. Sem migração. Integrado por merge pela sessão Publicação.",
+      motivation: "Segundo uso real da troca de e-mail (01/10/2026, Maura, VOC0306, envelope 0384000d), já com a 1.403.4: o cadastro passou e os requisitos voltaram 403 \"envelope não está com status draft\".",
+    },
+    title: "Troca de e-mail conclui os requisitos no envelope em andamento",
+    type: "correcao",
+    version: "1.403.5",
+  },
+  {
+    buildTag: "2026-10-01-clicksign-recadastro-sem-group",
+    deployedAt: "2026-10-01T14:48:17-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Corrigir o e-mail de quem ainda não assinou voltou a funcionar.** No primeiro uso real, a Clicksign tirava a pessoa do envelope e recusava o cadastro com o e-mail novo.",
+            ],
+            screen: "Contrato · Em assinatura",
+          },
+        ],
+      },
+    ],
+    rollback: "755d31a1",
+    technical: {
+      done: "`lib/assinatura/clicksign/envelope.ts`: `cadastrarSignatario` e `atributosDoSignatario` ganham `comGrupo` (padrão true); `acrescentarSignatario`, usado só pela troca de e-mail num envelope já ativado, passa false e não manda `group`. Pela doc da Clicksign, `group` só vale com `sequence_enabled`, que o envio nunca liga: no rascunho passa, no envelope ativado volta 400 \"group não é permitido\". O envio continua mandando `group` como antes. Na nova tentativa, a remoção de quem já saiu dá 404 e a troca segue para o cadastro (comportamento já existente em `trocarEmailDoSignatario`). Teste novo em envelope.test.ts. Sem migração. Integrado por merge pela sessão Publicação.",
+      motivation: "Primeiro uso real da troca de e-mail (01/10/2026, Maura Maria Passos, VOC0306, envelope 0384000d): a Clicksign removeu a pessoa e recusou o recadastro, deixando-a fora do envelope.",
+    },
+    title: "Troca de e-mail na assinatura sem o group que a Clicksign recusa",
+    type: "correcao",
+    version: "1.403.4",
+  },
+  {
+    buildTag: "2026-10-01-cobranca-variaveis-do-template",
+    deployedAt: "2026-10-01T14:38:56-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "**As mensagens de cobrança por WhatsApp voltam a trazer o empreendimento, a unidade e o saldo em aberto**, que estavam saindo com \"-\".",
+              "**A prévia do modal Abrir atendimento de cobrança mostra o texto exato que o cliente vai receber.**",
+            ],
+            screen: "Atendimento de cobrança",
+          },
+        ],
+      },
+    ],
+    rollback: "cff26fcf",
+    technical: {
+      done: "`modules/guardian/attendance/contexto-do-template.ts` (novo, com teste) monta os campos `relatedEnterprise`, `relatedUnit`, `relatedOpenBalance`, `relatedDueDate`, `relatedDaysLate`, `relatedBoletoLink` e `relatedInstallmentsTotal`, que `/api/iris/tickets` já lia para preencher {{empreendimento}}, {{unidade}}, {{saldo_aberto}} e afins. O `HadesAttendanceModal` mandava esses dados em `metadata.cobranca.*` e sem saldo, e o `WhatsAppConversationPanel` em `enterprise`/`unitCodes`; os dois passam a usar a função. O saldo é o total vencido do cliente pelas parcelas vivas do C2X, com o `saldoDevedor` da fila como reserva. A prévia resolve as variáveis por chave, como a rota. Sem migração e sem mudança na rota. Entregue por resumo de entrega e integrado por merge pela sessão Publicação.",
+      motivation: "Medido em 01/10/2026: desde 02/07, 2.004 mensagens (1.545 do template de parcelas, também com o saldo \"-\", e 459 do de titular; 1.990 vindas do modal do Hades) dos templates \"Confirmação de titular e pendência\" e \"Parcelas vencidas do empreendimento\" saíram com \"empreendimento -, unidade -\" e \"Saldo total em aberto: -\". O nome e as parcelas chegavam certos, e por isso o defeito passava por funcionando.",
+    },
+    title: "Variáveis dos templates de cobrança do Hades",
+    type: "correcao",
+    version: "1.403.3",
+  },
+  {
+    buildTag: "2026-10-01-temis-corrigir-email-sem-noticia",
+    deployedAt: "2026-10-01T14:27:36-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**No card em Em assinatura, quem ainda não assinou ganha o lápis Corrigir o e-mail também em Sem notícia**, e não só quando o convite voltou. Quem já assinou continua sem botão.",
+            ],
+            screen: "Contrato · Em assinatura",
+          },
+        ],
+      },
+    ],
+    rollback: "ecd57dd4",
+    technical: {
+      done: "`modules/temis/blocks/trabalho/tela-de-trabalho.tsx`, LinhaDoSignatario: o botão escrito \"Corrigir o e-mail\" segue só para convite não entregue; para quem não assinou e não teve o convite devolvido entra um ícone de lápis (Tooltip + aria-label) com a mesma ação (`abrirCorrecao`). A rota POST /api/temis/assinatura/signatario (acao trocar_email, portão `autorizarEmissaoDeContrato`) não mudou e já aceitava a troca sem olhar a situação do convite; a Clicksign continua recusando remover quem já assinou. Teste novo de comportamento com 3 casos. Sem migração. Integrado por merge pela sessão Publicação.",
+      motivation: "Lucas (01/10/2026), no contrato da Maura do VOC0306 em Sem notícia: \"preciso alterar o e-mail da Maura e reenviar\". Convite que não voltou não prova que o endereço está certo, e a tela só oferecia o reenvio.",
+    },
+    title: "Corrigir o e-mail de quem está sem notícia na assinatura",
+    type: "correcao",
+    version: "1.403.2",
+  },
+  {
     buildTag: "2026-10-01-conferencia-da-corretagem-acabamento",
     deployedAt: "2026-10-01T13:13:51-03:00",
     internal: true,

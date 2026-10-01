@@ -320,8 +320,9 @@ describe("a troca de e-mail, do começo ao fim", () => {
     expect(chamadas.map((c) => `${c.metodo} ${c.caminho}`)).toEqual([
       "DELETE /envelopes/env-30/signers/sig-conjuge",
       "POST /envelopes/env-30/signers",
-      "POST /envelopes/env-30/requirements",
-      "POST /envelopes/env-30/requirements",
+      // ⚠️ UMA chamada em massa, e não dois POST /requirements: no envelope já ativado a Clicksign
+      // recusa o POST /requirements com 403 "envelope não está com status draft" (Maura, 01/10/2026).
+      "POST /envelopes/env-30/bulk_requirements",
       "POST /envelopes/env-30/signers/sig-novo/notifications",
     ]);
 
@@ -391,7 +392,7 @@ describe("a troca de e-mail, do começo ao fim", () => {
   it("requisito que falha desfaz o cadastro novo, e a frase manda tentar de novo", async () => {
     const { atualizacoes, sb } = bancoDeTeste({ envelope: envelopeGravado });
     const { chamadas, porta } = portaDeTeste({
-      "POST /envelopes/env-30/requirements": new FalhaDaClicksign("Clicksign devolveu 500.", {
+      "POST /envelopes/env-30/bulk_requirements": new FalhaDaClicksign("Clicksign devolveu 500.", {
         detalhes: [],
         requestId: null,
         status: 500,
@@ -409,7 +410,7 @@ describe("a troca de e-mail, do começo ao fim", () => {
     expect(chamadas.map((c) => `${c.metodo} ${c.caminho}`)).toEqual([
       "DELETE /envelopes/env-30/signers/sig-conjuge",
       "POST /envelopes/env-30/signers",
-      "POST /envelopes/env-30/requirements",
+      "POST /envelopes/env-30/bulk_requirements",
       "DELETE /envelopes/env-30/signers/sig-novo",
     ]);
 

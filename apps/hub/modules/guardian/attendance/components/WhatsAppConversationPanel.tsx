@@ -34,6 +34,7 @@ import {
   mensagensDoAtendimento,
   resolverAtendimentoDoPainel,
 } from "@/lib/guardian/atendimento-existente";
+import { contextoDoTemplateDeCobranca } from "@/modules/guardian/attendance/contexto-do-template";
 import type {
   OperationalTimelineEvent,
   PortfolioUnit,
@@ -530,6 +531,19 @@ export function WhatsAppConversationPanel({
       normalizeAttendanceProtocol(ticket.attendanceProtocol) ??
       normalizeAttendanceProtocol(ticket.protocol) ??
       linkedAttendanceProtocol;
+    // Empreendimento, unidade, saldo... com os nomes que a rota le para preencher o template
+    // (ver contexto-do-template.ts). `enterprise`/`unitCodes` abaixo ficam como registro, mas a
+    // rota nao os usa nas variaveis — sozinhos, faziam o cliente receber "empreendimento -".
+    const parcelasDoCliente = client.c2xInstallments ?? [];
+    const idsSelecionados = new Set(
+      relatedInstallments.map((value) => value.split("|")[0]?.trim()).filter(Boolean),
+    );
+    const templateContext = contextoDoTemplateDeCobranca({
+      empreendimento: primaryUnit?.empreendimento ?? client.carteira.empreendimento,
+      saldoDevedor: client.saldoDevedor,
+      selecionadas: parcelasDoCliente.filter((item) => idsSelecionados.has(item.id)),
+      vencidas: parcelasDoCliente.filter((item) => item.status === "Vencida"),
+    });
     const response = await fetch("/api/iris/tickets", {
       body: JSON.stringify({
         channelId: channel.id,
@@ -537,6 +551,7 @@ export function WhatsAppConversationPanel({
         firstName: firstName(client.nome),
         linkedAttendanceProtocol: existingAttendanceProtocol,
         metadata: {
+          ...templateContext,
           attendanceProtocol: existingAttendanceProtocol,
           hadesClientId: client.id,
           linkedAttendanceProtocol: existingAttendanceProtocol,

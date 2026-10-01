@@ -95,6 +95,123 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Temis/Contrato em assinatura] Troca de e-mail sem o group que a Clicksign recusa (v1.403.4, interna, urgente)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; entregue por resumo de entrega.
+- Data e hora local: `2026-10-01 14:48:17 -03:00` (changelog); deploy pronto cerca de 4 min depois do push.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("pode publicar a 1.403.4"); branch fix/clicksign-recadastro-sem-group (09e2ff93) integrada por merge sobre a v1.403.3. Urgente: no primeiro uso real da troca de e-mail (Maura, VOC0306, envelope 0384000d) a Clicksign removeu a pessoa e recusou o recadastro com 400 "group nao e permitido", deixando-a fora do envelope`.
+- Escopo publicado: `lib/assinatura/clicksign/envelope.ts: acrescentarSignatario (so a troca de e-mail em envelope ativo) cadastra sem group; o envio normal segue com group`.
+- Commit publicado: `f2df6d382fceb95775ed710e87adb6bfcf734ba4`.
+- Deployment anterior: `dpl_GDbEaJoufptnpxnpD5VdvokVh3EG` (commit `755d31a1`, v1.403.3).
+- Deployment novo: `dpl_He2JXu9pJCghNZCfMCAGH4dLkRZG`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Banco: `sem migracao e sem escrita`.
+- Validacoes executadas:
+  - `leitura do diff pela Publicacao`: `so a troca de e-mail muda; na nova tentativa a remocao de quem ja saiu da 404 e trocarEmailDoSignatario segue para o cadastro, de proposito`;
+  - `vitest lib/assinatura, lib/temis, app/api/temis, app/api/incorporador/temis, app/api/guardian/termo-de-acordo`: `116 arquivos, 2.246 testes`;
+  - `hook de pre-push (typecheck e suite completa)`: `737 arquivos, 11.301 testes`;
+  - `revisao por workflow`: `NAO feita, pela urgencia e pelo tamanho (13 linhas num arquivo)`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.403.4 com buildTag 2026-10-01-clicksign-recadastro-sem-group; rota do signatario 401 sem sessao`.
+- Logs recentes: `sem erro em /api/temis/assinatura/signatario nos ultimos 15 min`.
+- Rollback definido: `Instant Rollback para dpl_GDbEaJoufptnpxnpD5VdvokVh3EG (v1.403.3) e seguro, mas volta a quebrar a troca de e-mail`.
+- Riscos conhecidos: `a sessao de plantao tem mudancas nao commitadas no mesmo arquivo envelope.ts`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas refazer a troca de e-mail da Maura no card do VOC0306 (lapis da linha dela)`.
+
+Registro de producao:
+
+- Assunto: `[Hades/Atendimento de cobranca] Variaveis dos templates de cobranca voltam a trazer empreendimento, unidade e saldo (v1.403.3, interna)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; entregue por resumo de entrega.
+- Data e hora local: `2026-10-01 14:38:56 -03:00` (changelog); deploy pronto cerca de 4 min depois do push.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("pode subir"); branch fix/cobranca-variaveis-do-template (5dcb16ad) integrada por merge sobre a v1.403.2. Nasceu como 1.403.2 e foi renumerada porque a correcao urgente da Temis passou na frente`.
+- Escopo publicado: `modules/guardian/attendance/contexto-do-template.ts (novo); HadesAttendanceModal e WhatsAppConversationPanel mandam relatedEnterprise, relatedUnit, relatedOpenBalance e afins, que /api/iris/tickets ja lia; previa resolve por chave como a rota`.
+- Commit publicado: `755d31a19c08f2dca3a756159647c47985829458`.
+- Deployment anterior: `dpl_6YV9ANTckaufPLfPXUZVg4R91V24` (commit `cff26fcf`, v1.403.2).
+- Deployment novo: `dpl_GDbEaJoufptnpxnpD5VdvokVh3EG`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Banco: `sem migracao e sem escrita`.
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `suite completa e hook de pre-push`: `737 arquivos, 11.300 testes`;
+  - `revisao independente por workflow (10 agentes, so leitura em producao e no C2X)`: `saldo da tela = overdue_amount da fila em 20 de 20 clientes (diferenca R$ 0,00); os 2 templates de cobranca ativos ficam com todas as chaves preenchidas; previa identica ao texto da rota nos templates usados; os campos related* nao sao lidos por mais ninguem; desde 02/07 sairam 2.004 mensagens com "-" (1.545 de parcelas, 459 de titular; 1.990 do modal do Hades)`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.403.3 com buildTag 2026-10-01-cobranca-variaveis-do-template; /api/iris/tickets 401 sem sessao`.
+- Logs recentes: `sem erro em /api/iris/tickets nos ultimos 15 min`.
+- Rollback definido: `Instant Rollback para dpl_6YV9ANTckaufPLfPXUZVg4R91V24 (v1.403.2) e seguro (volta o "-" nas mensagens)`.
+- Riscos conhecidos: `{{empreendimento}} sai com o rotulo do C2X (sem acento e, as vezes, com a sigla do filho) e {{unidade}} como codigo; Sinal do VDO e do LBR entra no saldo a ~65% com boleto e a 100% sem boleto (regra anterior, cerca de 16 clientes; decisao de negocio pendente); com uma unidade selecionada entre varias, o saldo soma todas; a Iris continua mandando "-" fora do contexto parcelas`.
+- Pendencias: `nome bonito do empreendimento e quadra/lote na unidade; decisao do Lucas sobre a base do Sinal; contexto da Iris fora de parcelas`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas ou o time abrirem um atendimento de cobranca com a janela de 24h fechada e o template "Parcelas vencidas do empreendimento", conferindo empreendimento, unidade e saldo na previa e na mensagem da Iris`.
+
+Registro de producao:
+
+- Assunto: `[Temis/Contrato em assinatura] Corrigir o e-mail de quem esta sem noticia (v1.403.2, interna, urgente)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; entregue por resumo de entrega.
+- Data e hora local: `2026-10-01 14:27:36 -03:00` (changelog); deploy pronto cerca de 3,5 min depois do push.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `pedido do Lucas ("eu preciso subir isso aqui urgente"); branch fix/temis-corrigir-email-sem-noticia (fffe108a) integrada por merge sobre a v1.403.1. Passou na frente da correcao do Hades, que estava em revisao e vira 1.403.3`.
+- Escopo publicado: `LinhaDoSignatario ganha o icone de lapis "Corrigir o e-mail" para quem nao assinou e nao teve o convite devolvido; a rota POST /api/temis/assinatura/signatario nao mudou`.
+- Commit publicado: `cff26fcfe4fc1ed5b2ada842ec2eea9804bf241d`.
+- Deployment anterior: `dpl_9ToC5itNZKcjUTSHdGKoVTe8GKGd` (commit `ecd57dd4`, v1.403.1).
+- Deployment novo: `dpl_6YV9ANTckaufPLfPXUZVg4R91V24`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Banco: `sem migracao e sem escrita`.
+- Validacoes executadas:
+  - `leitura do diff inteiro pela Publicacao`: `so tela; o servico consertarSignatario nao filtra pela situacao do convite (a troca ja era aceita), portao autorizarEmissaoDeContrato inalterado, Clicksign recusa remover quem ja assinou e a tela esconde o botao`;
+  - `vitest modules/temis, lib/temis, app/api/temis`: `88 arquivos, 1.591 testes`;
+  - `hook de pre-push (typecheck e suite completa)`: `736 arquivos, 11.293 testes`;
+  - `revisao por workflow`: `NAO feita, pela urgencia e pelo tamanho (tela de um componente)`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.403.2 com buildTag 2026-10-01-temis-corrigir-email-sem-noticia; rota do signatario 401 sem sessao`.
+- Logs recentes: `nao conferidos: a consulta de erros da Vercel estourou o tempo duas vezes`.
+- Rollback definido: `Instant Rollback para dpl_9ToC5itNZKcjUTSHdGKoVTe8GKGd (v1.403.1) e seguro`.
+- Riscos conhecidos: `a sessao de plantao tem mudancas nao commitadas no mesmo componente (reenvio pela Clicksign em LinhaDoSignatario); a proxima entrega dela pode conflitar nesse bloco`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas abrir o card do VOC0306 (Maura): lapis nas 3 pessoas em Sem noticia, nenhum nas 4 que assinaram; trocar o e-mail da Maura`.
+
+Registro de producao:
+
+- Assunto: `[Apolo/Financeiro/Extrato do cliente] Acabamento da conferencia da corretagem (v1.403.1, interna)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; construido pela conta de construcao (aba do termo de rescisao, PAN-130) e entregue por resumo de entrega.
+- Data e hora local: `2026-10-01 13:13:51 -03:00` (changelog); deploy pronto cerca de 3,5 min depois do push.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("pode publicar a 1.403.1"); branch fix/rescisao-conferencia-acabamento (d22f9b95, base v1.402.0) integrada por merge sobre a v1.403.0, sem arquivo em comum com a F4`.
+- Escopo publicado:
+  - `painel do extrato com key por c2xId (mensagem e formulario da conferencia nao vazam para o cliente seguinte)`;
+  - `"Ver ou corrigir" logo depois de registrar`;
+  - `rota da conferencia recusa observacao, resultado e ids de tipo errado com 400`;
+  - `costura de teste dependencias.montar em carregarTermoDeRescisao (unico chamador de producao nao a passa)`;
+  - `acessibilidade do formulario`.
+- Commit publicado: `ecd57dd41d399e00ee330b9cb9ff955d9581c19f`.
+- Deployment anterior: `dpl_6Rxswn13UvctP6Ye8UR56rp7b2Xf` (commit `f48fd60f`, v1.403.0).
+- Deployment novo: `dpl_9ToC5itNZKcjUTSHdGKoVTe8GKGd`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `deployment novo, por integracao git automatica`.
+- Banco: `sem migracao e sem escrita`.
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `suite completa e hook de pre-push`: `735 arquivos, 11.290 testes`;
+  - `revisao independente por workflow (5 agentes)`: `pendencias 1, 2, 4 e 5 provadas por mutacao; a 3 em parte (lista de frases proibidas por texto ainda passa nos 58 testes; o codigo de producao nao filtra); sem regressao no painel do extrato para quem nao usa a conferencia`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.403.1 com buildTag 2026-10-01-conferencia-da-corretagem-acabamento; PDF e conferencia 401 sem sessao`.
+- Logs recentes: `nenhum erro nos ultimos 20 min`.
+- Rollback definido: `Instant Rollback para dpl_6Rxswn13UvctP6Ye8UR56rp7b2Xf (v1.403.0) e seguro`.
+- Riscos conhecidos: `a rede de testes ainda nao pega um filtro que esconda por texto os avisos de multa, publicidade ou tributos; foco do teclado cai no body depois de gravar; falha de PDF que chega depois da troca de cliente nao aparece`.
+- Pendencias: `os tres riscos acima para a proxima entrega do PAN-130`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `nenhuma acao obrigatoria; conferir a conferencia do REPE186 no uso do dia`.
+
+Registro de producao:
+
 - Assunto: `[Hercules/Cadastro de empreendimentos] PAN-124 F4: chave do grupo separada do nome do pai (v1.403.0, interna)`.
 - Squad/agente responsavel: `Zeus (sessao Publicacao)`; construido pela conta de construcao (PAN-124) e entregue por resumo de entrega.
 - Data e hora local: `2026-10-01 12:47:23 -03:00` (changelog); deploy pronto cerca de 3,5 min depois do push.
