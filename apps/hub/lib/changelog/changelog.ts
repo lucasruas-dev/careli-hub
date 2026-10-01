@@ -37,7 +37,7 @@ export type ChangelogEntry = {
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
     buildTag: "2026-10-01-autonomo-link-publico",
-    deployedAt: "__HORA_REAL__",
+    deployedAt: "2026-10-01T16:18:48-03:00",
     modules: [
       {
         module: "Apolo",
