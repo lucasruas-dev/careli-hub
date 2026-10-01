@@ -547,6 +547,20 @@ describe("o GET", () => {
 // podia ser gravada como lixo. Texto é só `string`; id é só texto ou número; resultado é só uma das
 // duas strings do conjunto. Qualquer outra coisa recusa com 400, e nada é consultado nem gravado.
 describe("tipo errado no corpo", () => {
+  it("'não houve' com valor que não é texto vazio (lista, objeto, zero): 400, e nada é gravado", async () => {
+    for (const valor of [[], {}, 0, false]) {
+      const resposta = await PUT(pedido({ ...SEM_CORRETAGEM, valor }));
+      expect(resposta.status).toBe(400);
+      expect((await resposta.json()).error).toBe("Quando não houve corretagem, o valor não é informado.");
+    }
+    expect(estado.gravacoes).toHaveLength(0);
+  });
+
+  it("'não houve' sem valor, ou com texto vazio, continua gravando", async () => {
+    expect((await PUT(pedido({ ...SEM_CORRETAGEM, valor: "  " }))).status).toBe(200);
+    expect((await PUT(pedido(SEM_CORRETAGEM))).status).toBe(200);
+  });
+
   const tortos: Array<[string, unknown]> = [
     ["objeto", { a: 1 }],
     ["array de texto", ["a"]],

@@ -224,7 +224,13 @@ export async function PUT(request: Request) {
 
   // ⚠️ O VALOR É COERENTE COM O RESULTADO, igual ao CHECK da migration: "não houve" não leva valor
   // (mandar um seria a dúvida de qual dos dois vale) e "houve" exige um valor positivo.
-  const temValor = corpo.valor !== undefined && corpo.valor !== null && String(corpo.valor).trim() !== "";
+  // "Sem valor" é só ausência ou texto vazio. Antes, `String([])` também dava vazio e uma lista
+  // passava como "sem valor" (achado da revisão de 01/10/2026; sem efeito no gravado, mas o pedido
+  // torto tem de ser recusado e não interpretado).
+  const temValor =
+    corpo.valor !== undefined &&
+    corpo.valor !== null &&
+    !(typeof corpo.valor === "string" && corpo.valor.trim() === "");
   let valor: null | number = null;
   if (resultado === "sem_corretagem") {
     if (temValor) {
