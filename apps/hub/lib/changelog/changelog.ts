@@ -37,7 +37,7 @@ export type ChangelogEntry = {
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
     buildTag: "2026-10-01-cobranca-variaveis-do-template",
-    deployedAt: "__HORA_REAL__",
+    deployedAt: "2026-10-01T14:38:56-03:00",
     internal: true,
     modules: [
       {
