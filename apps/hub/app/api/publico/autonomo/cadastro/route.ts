@@ -1,40 +1,41 @@
 import {
-  registrarCadastroDoLink,
+  celularValido,
+  guardarDocumentosDoPedido,
+  propostaDoLink,
+  registrarPedidoDoLink,
   situacaoDoCpf,
-  MENSAGEM_DO_PORTAO,
-  type CadastroDoLink,
 } from "@/lib/apolo/autonomo-do-link";
 import {
   validarCamposMinimos,
   validarDocumentosObrigatorios,
 } from "@/lib/apolo/cadastro-obrigatorios";
-import { documentoTemArquivo } from "@/lib/apolo/cadastro-upload";
+import { documentoTemArquivo, type DocumentoEntrada } from "@/lib/apolo/cadastro-upload";
 import { listEmpreendimentosParaImobiliaria } from "@/lib/apolo/credenciamento";
 import {
   APOLO_DOC_MAX_BYTES,
   MENSAGEM_DOCUMENTO_GRANDE,
   caminhoUploadDiretoValido,
-  uploadApoloDocument,
 } from "@/lib/apolo/documentos";
 import { anotarContexto } from "@/lib/publico/cad/log-erros";
-import { normalizarCpf, recusaPublicaDoCorretor } from "@/lib/publico/cad/regras";
+import { normalizarCpf } from "@/lib/publico/cad/regras";
 import { erro, json, lerCorpo, prepararRota, recusar, responder } from "@/lib/publico/cad/rotas";
 import { donoUploadPreAutonomo, preSessaoAutonomoDoRequest } from "@/lib/publico/cad/sessao";
-import { montarCadPdf, type CadDoc } from "@/modules/apolo/blocks/cadastro/cad-pdf";
 
-// O CADASTRO DO CORRETOR AUTÔNOMO PELO LINK PÚBLICO. Espelho gated de /api/apolo/cadastro/salvar para
-// `role: "corretor"`, como /api/publico/imobiliaria/cadastro é para a imobiliária.
+// O ENVIO DO CADASTRO DO CORRETOR AUTÔNOMO PELO LINK PÚBLICO.
 //
-// ⚠️ A FICHA CAI NA MESMA ENTIDADE E NADA NASCE VALENDO. Quem grava é `registrarCadastroDoLink`
-// (lib/apolo/autonomo-do-link.ts): papel `corretor` em análise, SEM o código CA, e o pedido na trilha
-// que alimenta a fila do time. Sem código ele não abre CAD, não entra em reserva, não vai ao C2X nem ao
-// Asaas: tudo isso lê o autônomo por `lerAutonomo`, que exige o código. O código nasce na aprovação.
+// ⚠️ ESTA ROTA NÃO GRAVA FICHA. Grava só o PEDIDO (`registrarPedidoDoLink`, lib/apolo/autonomo-do-link.ts):
+// a proposta, os documentos no staging privado e o interesse. A ficha nasce, ou é acrescentada, só na
+// APROVAÇÃO, pela mesma porta do cadastro interno. Segunda rodada de revisão (01/10/2026): gravar no
+// envio punha o que um estranho digitou como dado real na ficha de quem já existia.
 //
-// ⚠️ ANTI-TROCA: o CPF autorizado sai do TOKEN do portão. Se o CPF do documento divergir, recusa —
-// senão o token de um CPF pagaria o OCR do cadastro de outra pessoa e gravaria a ficha errada.
+// ⚠️ ANTI-TROCA: o CPF autorizado sai do TOKEN do portão. Se o CPF do documento divergir, recusa.
 //
-// ⚠️ OS DOCUMENTOS DO LINK SÃO IDENTIDADE E COMPROVANTE DE ENDEREÇO (Lucas, 01/10/2026: *"os mesmos
-// sem a necessidade de certidão estado civil"*). A trava é aqui, no servidor; a tela só ajuda.
+// ⚠️ A RESPOSTA NÃO REVELA NADA DA BASE. Como nada é gravado em ficha aqui, não existe a recusa de
+// "e-mail em outro cadastro". E um CPF que virou autônomo ou entrou em análise depois do portão
+// recebe a MESMA resposta de sucesso, sem que um segundo pedido seja empilhado: o portão já disse o
+// que tinha a dizer, e o envio não vira um segundo oráculo.
+//
+// ⚠️ DOCUMENTOS DO LINK: identidade e comprovante de endereço, sem certidão (Lucas, 01/10/2026).
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -42,16 +43,25 @@ export const maxDuration = 120;
 const MAX_FILES = 20;
 const MAX_BASE64 = 20_000_000; // ~15MB por arquivo
 
-type Corpo = CadastroDoLink & {
-  cad?: Omit<CadDoc, "autenticacao"> | null;
+type Corpo = {
+  documentos?: DocumentoEntrada[];
   /** Os empreendimentos de INTERESSE, só ids. O rótulo sai da lista do servidor. */
   empreendimentosDeInteresse?: unknown;
+  endereco?: unknown;
+  identidade?: { cpf?: string; naturalidade?: string; nome?: string } & Record<string, unknown>;
+  perfil?: { estadoCivilId?: string; telefone?: string } & Record<string, unknown>;
   persona?: unknown;
   role?: unknown;
 };
 
 const MENSAGEM_SESSAO =
   "Sua sessão expirou. Abra o link de novo e informe o seu CPF para continuar.";
+
+const MENSAGEM_TETO =
+  "Recebemos muitos cadastros agora. Tente de novo em alguns minutos ou fale com a nossa central.";
+
+/** O mesmo corpo de sucesso para todo envio aceito: sem código, sem id, sem PDF. */
+const RECEBIDO = { autenticacao: "", cadBase64: null, recebido: true, savedDocs: [], warnings: [] };
 
 export async function POST(request: Request) {
   const pre = preSessaoAutonomoDoRequest(request);
@@ -83,6 +93,7 @@ export async function POST(request: Request) {
     );
   }
 
+  const dono = donoUploadPreAutonomo(pre.pre);
   const documentos = (corpo.documentos ?? []).filter(documentoTemArquivo);
   if (documentos.length > MAX_FILES) {
     return responder(request, inicio, erro(`Envie no máximo ${MAX_FILES} arquivos.`, 413));
@@ -91,7 +102,7 @@ export async function POST(request: Request) {
     const caminho = (doc.storagePath ?? "").trim();
     if (caminho) {
       // O caminho tem que ser um que ESTA pré-sessão recebeu para gravar (rota /upload-url).
-      if (!caminhoUploadDiretoValido(caminho, donoUploadPreAutonomo(pre.pre))) {
+      if (!caminhoUploadDiretoValido(caminho, dono)) {
         return responder(request, inicio, erro("Arquivo enviado não confere com esta sessão.", 400));
       }
       if ((doc.sizeBytes ?? 0) > APOLO_DOC_MAX_BYTES) {
@@ -104,11 +115,17 @@ export async function POST(request: Request) {
     }
   }
 
-  const campos = validarCamposMinimos({ identidade: corpo.identidade, persona: "pf" });
+  const campos = validarCamposMinimos({
+    identidade: {
+      cpf: corpo.identidade.cpf,
+      naturalidade: corpo.identidade.naturalidade,
+      nome: corpo.identidade.nome,
+    },
+    persona: "pf",
+  });
   if (!campos.ok) return responder(request, inicio, erro(campos.mensagem));
-  // O CELULAR É OBRIGATÓRIO NO LINK: é por ele que a Careli responde ao pedido (aprovação, correção ou
-  // recusa). Sem ele o pedido entraria na fila sem ter como avisar quem pediu.
-  if (String(corpo.perfil?.telefone ?? "").replace(/D/g, "").length < 10) {
+  // O CELULAR É OBRIGATÓRIO NO LINK: é por ele que a Careli responde ao pedido.
+  if (!celularValido(corpo.perfil?.telefone)) {
     return responder(request, inicio, erro("Informe o seu celular com DDD para enviar o cadastro."));
   }
   const obrigatorios = validarDocumentosObrigatorios({
@@ -120,17 +137,13 @@ export async function POST(request: Request) {
   if (!obrigatorios.ok) return responder(request, inicio, erro(obrigatorios.mensagem));
 
   try {
-    // O PORTÃO DE NOVO, no envio. O token vale 90 minutos: nesse meio-tempo o mesmo CPF pode ter sido
-    // aprovado pelo time, ou ter mandado outro cadastro numa segunda aba.
+    // O PORTÃO DE NOVO, no envio: o token vale 90 minutos. Quem não está mais liberado recebe a
+    // mesma resposta de sucesso, e nada é gravado (ver o cabeçalho).
     const situacao = await situacaoDoCpf(adminClient, pre.pre.cpf);
     if (!situacao.ok) return responder(request, inicio, erro(undefined, 503));
-    if (situacao.situacao !== "liberado") {
-      return responder(request, inicio, erro(MENSAGEM_DO_PORTAO[situacao.situacao], 409));
-    }
+    if (situacao.situacao !== "liberado") return responder(request, inicio, json(RECEBIDO, 201));
 
-    // O INTERESSE É LIDO CONTRA A VITRINE DO SERVIDOR (o mesmo portão da imobiliária: master +
-    // `recepcao_imobiliaria`). Id que não está lá é descartado em silêncio, e o rótulo sai da lista,
-    // nunca do corpo. É só um pedido: não vira vínculo, não habilita nada.
+    // O INTERESSE é lido contra a vitrine do servidor; o rótulo sai da lista, nunca do corpo.
     const vitrine = await listEmpreendimentosParaImobiliaria(adminClient).catch(() => []);
     const rotulos = new Map(vitrine.map((emp) => [String(emp.id), emp.name]));
     const pedidos = Array.isArray(corpo.empreendimentosDeInteresse)
@@ -141,85 +154,23 @@ export async function POST(request: Request) {
       .slice(0, 30)
       .map((id) => ({ id, label: rotulos.get(id) ?? "Empreendimento" }));
 
-    const gravado = await registrarCadastroDoLink(adminClient, {
-      corpo: {
-        conjuge: corpo.conjuge,
-        documentos,
-        endereco: corpo.endereco,
-        identidade: corpo.identidade,
-        perfil: corpo.perfil,
-      },
-      empreendimentosDeInteresse: interesse,
-    });
+    const guardados = await guardarDocumentosDoPedido(adminClient, { documentos, dono });
+    if (!guardados.ok) return responder(request, inicio, erro(undefined, 500));
 
-    if (!gravado.ok) {
-      // Só o que a pessoa consegue CONSERTAR ganha texto próprio (o e-mail em uso por outra pessoa),
-      // e sem dizer de quem é. O resto é o genérico, de propósito (ver lib/publico/cad/rotas.ts).
-      const traducao = recusaPublicaDoCorretor(gravado.recusa?.motivo);
+    const registrado = await registrarPedidoDoLink(adminClient, {
+      documentos: guardados.documentos,
+      empreendimentosDeInteresse: interesse,
+      proposta: propostaDoLink(corpo),
+    });
+    if (!registrado.ok) {
       return responder(
         request,
         inicio,
-        erro(traducao.mensagem, traducao.status),
-        { motivo: gravado.recusa?.motivo ?? "falha-ao-gravar" },
+        registrado.motivo === "teto" ? erro(MENSAGEM_TETO, 429) : erro(undefined, 500),
       );
     }
 
-    // A FICHA EM PDF com o código de autenticação, como a do cadastro interno. Best-effort.
-    const warnings = [...gravado.warnings];
-    const savedDocs = [...gravado.savedDocs];
-    let cadBase64: null | string = null;
-    const nome = String(corpo.identidade.nome ?? "").trim() || "Corretor";
-    // ⚠️ FICHA QUE JÁ EXISTIA NÃO DEVOLVE O CÓDIGO DELA, NEM O PDF COM ELE (revisão adversarial de
-    // 01/10/2026). O link não prova que quem digita é dono do CPF: devolver o código de autenticação
-    // da ficha de um comprador, num PDF montado com o que o corpo mandou, entregaria a um estranho a
-    // CAD "oficial" de outra pessoa. A ficha nova é de quem preencheu, e ali o PDF sai como sempre.
-    const cadStruct = !gravado.fichaExistia && corpo.cad?.secoes?.length ? corpo.cad : null;
-    if (cadStruct) {
-      try {
-        const bytes = await montarCadPdf({
-          ...cadStruct,
-          autenticacao: gravado.autenticacao,
-          // A ficha do corretor não tem "o" empreendimento, e o corpo não pode forjar a linha.
-          empreendimento: undefined,
-        });
-        cadBase64 = Buffer.from(bytes).toString("base64");
-        const cadUpload = await uploadApoloDocument({
-          adminClient,
-          documentType: "cad",
-          fileBase64: cadBase64,
-          fileName: `Corretor - ${nome}.pdf`,
-          label: `Corretor - ${nome}`,
-          mimeType: "application/pdf",
-          ownerId: gravado.entityId,
-          scope: "entidade",
-          uploadedByName: `${nome} (auto-cadastro)`,
-        });
-        if (cadUpload.ok) savedDocs.push("cad");
-        else warnings.push(`CAD: ${cadUpload.error}`);
-      } catch (falha) {
-        warnings.push(`CAD: falha ao gerar o PDF (${(falha as Error).message})`);
-      }
-    }
-
-    if (warnings.length) console.warn("[publico-autonomo-cadastro] avisos", warnings);
-
-    // ⚠️ SEM `entityId`: o id da ficha não sai para a rota pública. O wizard aceita o código de
-    // autenticação como comprovante (`salvarPublico` em cadastro-flow.tsx). Os avisos internos
-    // (`warnings`) também não saem: falam de Storage e de papel, que não são assunto de quem preencheu.
-    return responder(
-      request,
-      inicio,
-      json(
-        {
-          autenticacao: gravado.fichaExistia ? "" : gravado.autenticacao,
-          cadBase64,
-          recebido: true,
-          savedDocs,
-          warnings: [],
-        },
-        201,
-      ),
-    );
+    return responder(request, inicio, json(RECEBIDO, 201));
   } catch {
     return responder(request, inicio, erro(undefined, 500));
   }

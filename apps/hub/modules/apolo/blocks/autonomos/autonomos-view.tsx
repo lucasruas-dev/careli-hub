@@ -1,6 +1,14 @@
 "use client";
 
-import { AlertTriangle, Check, Copy, ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  Copy,
+  ExternalLink,
+  FileText,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
@@ -13,8 +21,12 @@ import { getApoloAccessToken } from "../../data/apolo-operations";
 // num empreendimento — que até aqui só existia no servidor
 // (`/api/apolo/corretores-autonomos/[id]/habilitar`), sem botão em tela nenhuma.
 //
-// ⚠️ OS DOCUMENTOS FICAM NA FICHA DO CRM, e o botão "Abrir ficha" leva até ela. Repetir aqui o leitor
-// de documentos seria uma segunda tela de documentos para manter.
+// ⚠️ ANTES DA APROVAÇÃO NÃO EXISTE FICHA (segunda rodada de revisão, 01/10/2026). O que a pessoa
+// digitou e os documentos que ela mandou ficam no PEDIDO, e é daqui que a coordenação os confere. A
+// ficha nasce, ou é acrescentada, na aprovação; só então o botão "Abrir ficha" aparece.
+//
+// ⚠️ SÓ A COORDENAÇÃO (admin e líder) lê a fila e decide. Para os outros papéis as rotas respondem 403,
+// e a tela mostra a frase do servidor.
 
 // O endereço que o time manda para o corretor. É o mesmo de LINK_DO_CADASTRO_DO_AUTONOMO
 // (lib/apolo/autonomo-do-link.ts), que é server-only; aqui vai como texto para não arrastar o
@@ -23,22 +35,25 @@ const LINK_PUBLICO = "https://c2x.app.br/publico/autonomo";
 
 type Estado = "aprovado" | "correcao" | "em-analise" | "indeferido";
 
+type Proposta = {
+  endereco: Record<string, string | undefined>;
+  identidade: Record<string, string | undefined>;
+  perfil: Record<string, string | undefined>;
+};
+
 type Item = {
   codigo: null | string;
-  contatoInformado: { email: null | string; telefone: null | string };
-  fichaExistia: boolean;
-  nomeInformado: null | string;
-  papelAntes: null | string;
   cpfMascarado: null | string;
   decididoEm: null | string;
-  email: null | string;
+  documentos: Array<{ categoria: string; fileName: string }>;
+  entityId: null | string;
   enviadoEm: string;
-  entityId: string;
   estado: Estado;
+  fichaExistente: boolean;
   interesse: Array<{ id: string; label: string }>;
   motivos: string[];
-  nome: string;
-  telefone: null | string;
+  pedidoId: string;
+  proposta: Proposta;
 };
 
 type Autonomo = { codigo: string; entityId: string; nome: string };
@@ -53,18 +68,16 @@ const ABAS: Array<{ id: Aba; label: string }> = [
   { id: "habilitacao", label: "Habilitação" },
 ];
 
-const ROTULO_DO_PAPEL: Record<string, string> = {
-  active: "ativo",
-  archived: "arquivado",
-  blocked: "bloqueado",
-  review: "em análise",
-};
-
 const ROTULO_DO_ESTADO: Record<Estado, string> = {
   aprovado: "Aprovado",
   correcao: "Em correção",
   "em-analise": "Em análise",
   indeferido: "Indeferido",
+};
+
+const ROTULO_DO_DOCUMENTO: Record<string, string> = {
+  comprovante_endereco: "Comprovante de endereço",
+  identificacao: "Identificação",
 };
 
 function quando(iso: null | string): string {
@@ -145,9 +158,9 @@ export function AutonomosView({
         <div className="min-w-0 flex-1">
           <h1 className="m-0 text-base font-bold text-ink">Corretores autônomos</h1>
           <p className="m-0 mt-0.5 text-xs text-ink-muted">
-            Quem se cadastrou pelo link público espera aqui. Aprovar dá o código CA e libera o
-            cadastro; os empreendimentos se liberam um a um, na aba Habilitação, e o coordenador de
-            cada um é avisado.
+            Quem se cadastrou pelo link público espera aqui, e nada vira cadastro antes da
+            aprovação. Aprovar cria a ficha e dá o código CA; os empreendimentos se liberam um a um,
+            na aba Habilitação, e o coordenador de cada um é avisado.
           </p>
         </div>
         <button
@@ -219,7 +232,7 @@ export function AutonomosView({
             {porAba[aba].map((item) => (
               <CartaoDoPedido
                 item={item}
-                key={item.entityId}
+                key={item.pedidoId}
                 onDecidido={() => void carregar()}
                 onOpenEntity={onOpenEntity}
               />
@@ -228,6 +241,15 @@ export function AutonomosView({
         )}
       </div>
     </div>
+  );
+}
+
+function Linha({ rotulo, valor }: { rotulo: string; valor?: string }) {
+  if (!valor) return null;
+  return (
+    <p className="m-0 text-xs text-ink-soft">
+      <span className="text-ink-muted">{rotulo}:</span> {valor}
+    </p>
   );
 }
 
@@ -246,6 +268,28 @@ function CartaoDoPedido({
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<null | string>(null);
   const [feito, setFeito] = useState<null | string>(null);
+  const [documentos, setDocumentos] = useState<
+    null | Array<{ categoria: string; fileName: string; url: null | string }>
+  >(null);
+  const [abrindoDocumentos, setAbrindoDocumentos] = useState(false);
+
+  const { endereco, identidade, perfil } = item.proposta;
+  const nome = identidade.nome || "Sem nome";
+
+  const abrirDocumentos = async () => {
+    setAbrindoDocumentos(true);
+    setErro(null);
+    try {
+      const dados = await chamar<{
+        documentos: Array<{ categoria: string; fileName: string; url: null | string }>;
+      }>(`/api/apolo/corretores-autonomos/pedidos/${encodeURIComponent(item.pedidoId)}/documentos`);
+      setDocumentos(dados?.documentos ?? []);
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setAbrindoDocumentos(false);
+    }
+  };
 
   const decidir = async (acao: "aprovar" | "correcao" | "indeferir") => {
     setSalvando(true);
@@ -254,7 +298,7 @@ function CartaoDoPedido({
       const resultado = await chamar<{
         aviso: { enviado: boolean; erro: null | string };
         codigo: null | string;
-      }>(`/api/apolo/corretores-autonomos/${encodeURIComponent(item.entityId)}/decisao`, {
+      }>(`/api/apolo/corretores-autonomos/pedidos/${encodeURIComponent(item.pedidoId)}/decisao`, {
         body: JSON.stringify({
           acao,
           motivos: acao === "aprovar" ? [] : [motivo.trim()].filter(Boolean),
@@ -263,7 +307,7 @@ function CartaoDoPedido({
       });
       const aviso = resultado?.aviso?.enviado
         ? "O corretor foi avisado no WhatsApp."
-        : `O aviso no WhatsApp não saiu (${resultado?.aviso?.erro ?? "sem motivo"}).`;
+        : `O aviso no WhatsApp não saiu (${resultado?.aviso?.erro ?? "sem motivo"}): avise por outro canal.`;
       setFeito(
         acao === "aprovar"
           ? `Aprovado com o código ${resultado?.codigo ?? ""}. ${aviso}`
@@ -280,17 +324,21 @@ function CartaoDoPedido({
   };
 
   const aberto = item.estado === "em-analise" || item.estado === "correcao";
+  const enderecoTexto = [
+    [endereco.logradouro, endereco.numero].filter(Boolean).join(", "),
+    endereco.bairro,
+    [endereco.cidade, endereco.uf].filter(Boolean).join("/"),
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <article className="rounded-2xl border border-line bg-surface p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="m-0 truncate text-sm font-semibold text-ink">{item.nome}</h2>
+          <h2 className="m-0 truncate text-sm font-semibold text-ink">{nome}</h2>
           <p className="m-0 mt-0.5 text-xs text-ink-muted">
             CPF {item.cpfMascarado ?? "não informado"} · enviado em {quando(item.enviadoEm)}
-          </p>
-          <p className="m-0 mt-0.5 text-xs text-ink-muted">
-            {[item.telefone, item.email].filter(Boolean).join(" · ") || "Sem contato informado"}
           </p>
         </div>
         <span className="shrink-0 rounded-full bg-subtle px-2.5 py-1 text-[11px] font-semibold text-ink-soft">
@@ -298,39 +346,69 @@ function CartaoDoPedido({
         </span>
       </div>
 
-      {/* ⚠️ O LINK NÃO PROVA QUE QUEM DIGITA É DONO DO CPF (revisão adversarial de 01/10/2026). Em
-          ficha que já existia, o que foi digitado não entrou na ficha: a tela mostra os dois lados
-          para o time conferir antes de aprovar. Contato ou nome diferentes = desconfie. */}
-      {item.fichaExistia ? (
-        <div className="mt-3 rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-          <p className="m-0 font-semibold">
-            Este CPF já tinha ficha na Careli
-            {item.papelAntes
-              ? `, e já era corretor (${ROTULO_DO_PAPEL[item.papelAntes] ?? item.papelAntes})`
-              : ""}
-            . Confira se quem pediu é mesmo a pessoa.
-          </p>
-          <p className="m-0 mt-1">
-            Digitado no link: {item.nomeInformado ?? "sem nome"}
-            {" · "}
-            {[item.contatoInformado.telefone, item.contatoInformado.email].filter(Boolean).join(" · ") ||
-              "sem contato"}
-          </p>
-          <p className="m-0 mt-0.5">
-            O aviso da decisão vai para o contato que já estava na ficha (acima), e não para o digitado.
-          </p>
-        </div>
+      {/* ⚠️ O LINK NÃO PROVA QUE QUEM DIGITA É DONO DO CPF. CPF que já tem ficha pode ser de outra
+          pessoa: a coordenação compara o que foi digitado com a ficha antes de aprovar. */}
+      {item.fichaExistente && aberto ? (
+        <p className="m-0 mt-3 rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          Este CPF já tem ficha na Careli. Compare os dados abaixo com a ficha no CRM antes de
+          aprovar: se não baterem, o pedido pode ser de outra pessoa.
+        </p>
       ) : null}
 
+      <div className="mt-3 grid gap-0.5">
+        <Linha rotulo="Celular" valor={perfil.telefone} />
+        <Linha rotulo="E-mail" valor={perfil.email} />
+        <Linha rotulo="Nascimento" valor={identidade.dataNascimento} />
+        <Linha rotulo="Naturalidade" valor={identidade.naturalidade} />
+        <Linha rotulo="Mãe" valor={identidade.nomeMae} />
+        <Linha rotulo="Endereço" valor={enderecoTexto} />
+        <Linha
+          rotulo="Interesse"
+          valor={
+            item.interesse.length
+              ? item.interesse.map((emp) => emp.label).join(", ")
+              : "não indicou empreendimento"
+          }
+        />
+      </div>
+
       <div className="mt-3">
-        <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-          Interesse
-        </p>
-        <p className="m-0 mt-1 text-xs text-ink-soft">
-          {item.interesse.length
-            ? item.interesse.map((emp) => emp.label).join(", ")
-            : "Não indicou empreendimento."}
-        </p>
+        {documentos === null ? (
+          <button
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-xs font-semibold text-ink-soft hover:bg-subtle disabled:opacity-50"
+            disabled={abrindoDocumentos || item.documentos.length === 0}
+            onClick={() => void abrirDocumentos()}
+            type="button"
+          >
+            {abrindoDocumentos ? (
+              <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+            ) : (
+              <FileText aria-hidden="true" className="size-3.5" />
+            )}
+            {item.documentos.length ? `Ver documentos (${item.documentos.length})` : "Sem documentos"}
+          </button>
+        ) : (
+          <ul className="m-0 grid gap-1 p-0">
+            {documentos.map((doc, indice) => (
+              <li className="list-none text-xs" key={`${doc.categoria}-${indice}`}>
+                {doc.url ? (
+                  <a
+                    className="font-semibold text-[#7a5e2c] underline dark:text-[#d9b877]"
+                    href={doc.url}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    {ROTULO_DO_DOCUMENTO[doc.categoria] ?? doc.categoria}: {doc.fileName}
+                  </a>
+                ) : (
+                  <span className="text-ink-muted">
+                    {ROTULO_DO_DOCUMENTO[doc.categoria] ?? doc.categoria}: não abriu
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {item.motivos.length ? (
@@ -345,14 +423,14 @@ function CartaoDoPedido({
 
       {pedindoMotivo ? (
         <div className="mt-3 grid gap-2">
-          <label className="text-xs font-semibold text-ink-soft" htmlFor={`motivo-${item.entityId}`}>
+          <label className="text-xs font-semibold text-ink-soft" htmlFor={`motivo-${item.pedidoId}`}>
             {pedindoMotivo === "correcao"
               ? "O que ele precisa corrigir? (ele lê esta frase no WhatsApp)"
               : "Por que o cadastro não foi aprovado? (ele lê esta frase no WhatsApp)"}
           </label>
           <textarea
             className="min-h-20 rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink"
-            id={`motivo-${item.entityId}`}
+            id={`motivo-${item.pedidoId}`}
             onChange={(event) => setMotivo(event.target.value)}
             value={motivo}
           />
@@ -393,14 +471,14 @@ function CartaoDoPedido({
       ) : null}
 
       <div className="mt-3 flex flex-wrap gap-2">
-        {onOpenEntity ? (
+        {onOpenEntity && item.entityId ? (
           <button
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-xs font-semibold text-ink-soft hover:bg-subtle"
-            onClick={() => onOpenEntity(item.nome, item.entityId)}
+            onClick={() => onOpenEntity(nome, String(item.entityId))}
             type="button"
           >
             <ExternalLink aria-hidden="true" className="size-3.5" />
-            Abrir ficha e documentos
+            Abrir ficha
           </button>
         ) : null}
         {aberto && !pedindoMotivo && !feito ? (
@@ -409,7 +487,7 @@ function CartaoDoPedido({
               className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
               disabled={salvando}
               onClick={() => {
-                if (window.confirm(`Aprovar ${item.nome} como corretor autônomo? Ele recebe o código CA.`)) {
+                if (window.confirm(`Aprovar ${nome} como corretor autônomo? A ficha é gravada e ele recebe o código CA.`)) {
                   void decidir("aprovar");
                 }
               }}
@@ -541,7 +619,6 @@ function LinhaDeHabilitacao({
         body: JSON.stringify({ enterpriseId: empreendimento.id, label: empreendimento.name }),
         method: "POST",
       });
-      // O POST de habilitar devolve o corpo na raiz (`{ data, ok }`), e `chamar` já tira o `data`.
       setMensagem({
         ok: true,
         texto: resposta?.jaHabilitado

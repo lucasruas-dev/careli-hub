@@ -1,18 +1,19 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { authorizeApoloWrite } from "@/lib/apolo/auth";
+import { authorizeApoloCoordenacao } from "@/lib/apolo/auth";
 import { decidirPedidoDoAutonomo, type AcaoDoTime } from "@/lib/apolo/autonomo-do-link";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
-// A DECISÃO DO TIME SOBRE O AUTÔNOMO QUE SE CADASTROU PELO LINK: aprovar, pedir correção ou indeferir.
+// A DECISÃO DO TIME SOBRE UM PEDIDO DO LINK DO CORRETOR AUTÔNOMO: aprovar, pedir correção ou indeferir.
 //
 // Lucas (01/10/2026) escolheu as MESMAS três ações da validação da imobiliária
-// ([[reference_apolo_validacao_imobiliaria_tres_acoes]]). Aprovar dá o código CA e o papel ativo, que
-// é o que o cadastro interno grava; a habilitação em empreendimento continua sendo a outra porta
-// (`/api/apolo/corretores-autonomos/[id]/habilitar`), produto a produto.
+// ([[reference_apolo_validacao_imobiliaria_tres_acoes]]). O `id` é o do PEDIDO (o evento
+// `corretor_autonomo_solicitado`), porque antes da aprovação não existe ficha. Aprovar grava a ficha
+// pela porta do cadastro interno, dá o código CA e o papel ativo; a habilitação em empreendimento
+// continua sendo a outra rota, produto a produto.
 //
-// ⚠️ `authorizeApoloWrite`: admin, leader e operator, os mesmos que validam a imobiliária. `viewer`
-// não decide nada.
+// ⚠️ SÓ A COORDENAÇÃO DECIDE (`authorizeApoloCoordenacao`: admin e líder). Segunda rodada de revisão
+// (01/10/2026): com `authorizeApoloWrite`, o operador, inclusive o externo, aprovava autônomo.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -25,12 +26,12 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
-  const auth = await authorizeApoloWrite(request);
+  const auth = await authorizeApoloCoordenacao(request);
   if (!auth.ok) return auth.response;
 
   const { id } = await context.params;
   if (!UUID_RE.test(String(id ?? ""))) {
-    return NextResponse.json({ error: "Ficha não encontrada." }, { status: 404 });
+    return NextResponse.json({ error: "Pedido não encontrado." }, { status: 404 });
   }
   const client = createApoloAdminClient();
   if (!client) {
@@ -53,9 +54,9 @@ export async function POST(
     acao,
     autorNome: auth.nome,
     autorUserId: auth.userId,
-    entityId: id,
     motivos: Array.isArray(corpo.motivos) ? corpo.motivos.map((m) => String(m ?? "")) : [],
     observacao: typeof corpo.observacao === "string" ? corpo.observacao : null,
+    pedidoId: id,
   });
 
   if (!resultado.ok) {

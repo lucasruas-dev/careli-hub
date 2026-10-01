@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { authorizeApoloWrite } from "@/lib/apolo/auth";
+import { authorizeApoloCoordenacao } from "@/lib/apolo/auth";
 import { habilitarAutonomoNoEmpreendimento } from "@/lib/apolo/autonomo-cadastro";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
@@ -15,7 +15,9 @@ import { createApoloAdminClient } from "@/lib/apolo/server";
 // SILÊNCIO, que é exatamente o que a decisão do Lucas de 24/09/2026 ("3 - Isso ae") proibiu depois de a
 // LUNA não saber de três imobiliárias habilitadas no 43 dela.
 //
-// ⚠️ `authorizeApoloWrite`: admin, leader e operator. `viewer` não habilita ninguém.
+// ⚠️ `authorizeApoloCoordenacao`: admin e líder (segunda rodada de revisão, 01/10/2026). Com o botão na
+// tela Autônomos, o operador, inclusive o externo, habilitaria autônomo em empreendimento; antes a rota
+// não tinha botão e ninguém dependia do recorte mais aberto. `viewer` e `operator` não habilitam.
 //
 // ⚠️ O QUE ESTA ROTA NÃO FAZ: desabilitar. Tirar a habilitação é arquivar o vínculo, pelo caminho que
 // já existe (`/api/apolo/relationships/archive`), e a leitura da habilitação só aceita `verified`.
@@ -28,7 +30,7 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
-  const auth = await authorizeApoloWrite(request);
+  const auth = await authorizeApoloCoordenacao(request);
   if (!auth.ok) return auth.response;
 
   const { id } = await context.params;

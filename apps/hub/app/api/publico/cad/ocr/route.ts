@@ -1,7 +1,6 @@
 import { enrichCompany, enrichPerson, extractDocument } from "@/lib/apolo/mostqi";
 import { anotarContexto } from "@/lib/publico/cad/log-erros";
 import { erro, json, lerCorpo, prepararRota, recusar, responder } from "@/lib/publico/cad/rotas";
-import { normalizarCpf } from "@/lib/publico/cad/regras";
 import {
   preSessaoAutonomoDoRequest,
   preSessaoImobDoRequest,
@@ -23,10 +22,12 @@ import {
 // o link dele, 01/10/2026). O CPF cadastrado / CNPJ conferido É a trava, somada ao teto diário por
 // IP (balde `ocr`).
 //
-// ⚠️ COM O TOKEN DO AUTÔNOMO, A CONSULTA POR CPF SÓ VALE PARA O CPF DELE, e a de CNPJ não vale. O
-// `enrich` devolve dados de uma pessoa (endereço, telefones): aberto para qualquer CPF, o link virava
-// um balcão de consulta de terceiros pago pela Careli. O cadastro do autônomo só precisa do próprio
-// CPF (o do cônjuge é best-effort no wizard e cai na digitação), e autônomo é pessoa física.
+// ⚠️ COM O TOKEN DO AUTÔNOMO, SÓ A LEITURA DA FOTO (`extract`). NENHUMA CONSULTA (`enrich`,
+// `enrich-company`), nem do próprio CPF. Segunda rodada de revisão (Publicação, 01/10/2026): o portão
+// emite token para QUALQUER CPF válido, então "só o CPF do token" era "qualquer CPF", e a consulta
+// devolve dados pessoais pagos (endereço, telefones, e com `query`/`datasets` vindos do corpo, até a
+// consulta GOLD). A leitura da foto só devolve o que está na imagem que a própria pessoa mandou. O
+// wizard do link não chama a consulta (`semEnriquecimento`), e a pessoa digita o que faltar.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 // O enrichment roda datasets on-demand e pode passar de 100s; damos folga (igual ao interno).
@@ -80,6 +81,14 @@ export async function POST(request: Request) {
   const corpo = await lerCorpo<Corpo>(request);
   const action = String(corpo?.action ?? "extract");
 
+  if (soAutonomo && action !== "extract") {
+    return responder(
+      request,
+      inicio,
+      erro("Esta consulta não está disponível neste cadastro. Preencha os campos na mão.", 403),
+    );
+  }
+
   if (action === "extract") {
     const fileBase64 = String(corpo?.fileBase64 ?? "");
     if (!fileBase64) return responder(request, inicio, erro("Anexe a foto do documento para continuar."));
@@ -111,13 +120,6 @@ export async function POST(request: Request) {
   }
 
   if (action === "enrich") {
-    if (soAutonomo && preAutonomo.ok && normalizarCpf(corpo?.cpf) !== preAutonomo.pre.cpf) {
-      return responder(
-        request,
-        inicio,
-        erro("Os dados deste CPF não podem ser completados aqui. Preencha os campos na mão.", 403),
-      );
-    }
     try {
       const enr = await enrichPerson(String(corpo?.cpf ?? ""), {
         datasets: Array.isArray(corpo?.datasets) ? corpo?.datasets : undefined,
@@ -134,9 +136,6 @@ export async function POST(request: Request) {
   }
 
   if (action === "enrich-company") {
-    if (soAutonomo) {
-      return responder(request, inicio, erro("Consulta indisponível neste cadastro.", 403));
-    }
     try {
       const enr = await enrichCompany(String(corpo?.cnpj ?? ""), {
         query: typeof corpo?.query === "string" ? corpo?.query : undefined,

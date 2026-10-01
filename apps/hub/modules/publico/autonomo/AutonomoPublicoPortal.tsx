@@ -58,6 +58,8 @@ export function AutonomoPublicoPortal({
           header: "x-autonomo-pre-sessao",
           salvarUrl: "/api/publico/autonomo/cadastro",
           semChecagemCpf: true,
+          // Só a leitura da foto: a consulta paga por CPF fica fora do link (ver /api/publico/cad/ocr).
+          semEnriquecimento: true,
           sessao: preSessao,
         }}
         tipo="corretor"

@@ -59,6 +59,7 @@ import {
 } from "@/lib/apolo/cadastro-obrigatorios";
 import {
   documentoDaIdentificacao,
+  ehAutonomoPublico,
   faltaNoVinculo,
   formatoDoCadastro,
   type FormatoDoCadastro,
@@ -911,6 +912,10 @@ export type PublicoConfig = {
   // Sem a conferência de CPF duplicado: ela fala da CAD do COMPRADOR por empreendimento, e a rota
   // dela só aceita o token da CAD. No link do autônomo o portão do CPF já fez a conferência dele.
   semChecagemCpf?: boolean;
+  // Sem a CONSULTA PAGA por CPF/CNPJ (`enrich`/`enrich-company`): só a leitura da foto. O link do
+  // autônomo emite token para qualquer CPF, e a consulta devolveria dados pessoais de terceiros. O
+  // servidor recusa de qualquer jeito (/api/publico/cad/ocr); aqui a tela nem pergunta.
+  semEnriquecimento?: boolean;
 };
 
 // O que o EMPREENDIMENTO desta CAD exige além do conjunto de sempre. Hoje só o comprovante de
@@ -1275,7 +1280,9 @@ function criarApiCadastro(publico?: PublicoConfig): ApiCadastro {
     exigencias: () => apiExigenciasPublico(headers()),
     imobiliarias: async () => [],
     ocr: <T,>(body: Record<string, unknown>) =>
-      postPublico<T>("/api/publico/cad/ocr", body, headers()),
+      publico.semEnriquecimento && String(body.action ?? "extract") !== "extract"
+        ? Promise.reject(new Error("Preencha os campos na mão."))
+        : postPublico<T>("/api/publico/cad/ocr", body, headers()),
     salvar: (body: Record<string, unknown>) =>
       salvarPublico(salvarUrl, { ...body, ...(publico.extrasDoEnvio ?? {}) }, headers()),
   };
@@ -1376,11 +1383,11 @@ export function CadastroFlow({
   const ctx = useMemo<CadastroCtx>(
     () => ({
       api: portal ? criarApiDoPortal(portal) : criarApiCadastro(publico),
-      autonomoPublico: Boolean(publico) && isCorretor,
+      autonomoPublico: ehAutonomoPublico({ publico: Boolean(publico), tipo }),
       modoPublico: Boolean(publico || portal),
       portal: portal ?? null,
     }),
-    [isCorretor, portal, publico],
+    [portal, publico, tipo],
   );
   const { api, autonomoPublico } = ctx;
   // Remontar tudo do zero: incrementar esta key recria o wizard (inclusive o estado interno dos
@@ -5100,11 +5107,13 @@ function StepRevisao({
               </p>
             ) : null}
 
-            <div className={`mt-5 grid gap-2 ${portal ? "" : "sm:grid-cols-2"}`}>
+            <div className={`mt-5 grid gap-2 ${portal || autonomoPublico ? "" : "sm:grid-cols-2"}`}>
               {/* Portal: o servidor não devolve o PDF nem o código (decisão de 16/09/2026: a CAD
                   pode ter entrado numa ficha que a Careli já tinha, e o código dela diria isso). A
                   CAD fica no drive da ficha e abre pelo board; um botão sempre desligado só confundia. */}
-              {portal ? null : (
+              {/* O link do autônomo não devolve PDF: o pedido ainda não tem ficha (ela nasce na
+                  aprovação), e um PDF sem código de autenticação seria uma CAD que não confere. */}
+              {portal || autonomoPublico ? null : (
                 <button
                   type="button"
                   disabled={!resultado?.cadBase64}

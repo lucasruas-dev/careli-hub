@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// AS DUAS ROTAS PÚBLICAS DO LINK DO CORRETOR AUTÔNOMO (01/10/2026): o portão do CPF e o cadastro.
+// AS DUAS ROTAS PÚBLICAS DO LINK DO CORRETOR AUTÔNOMO (01/10/2026): o portão do CPF e o envio.
 //
 // O que se trava aqui é a borda aberta ao mundo: sem a pré-sessão nada entra; o CPF do documento tem
-// de ser o do portão; os documentos do link são identidade e comprovante (sem certidão); a recusa
-// pública não diz de quem é o e-mail; e nenhuma resposta leva id de ficha ou dado de outra pessoa.
+// de ser o do portão; os documentos do link são identidade e comprovante (sem certidão); o celular é
+// obrigatório; e o ENVIO NÃO REVELA NADA DA BASE: CPF que virou autônomo ou entrou em análise recebe
+// a mesma resposta de quem foi aceito, e nenhuma resposta leva id, código ou PDF.
 
 const m = vi.hoisted(() => ({
-  pdf: vi.fn(),
+  guardar: vi.fn(),
   registrar: vi.fn(),
   situacao: vi.fn(),
-  upload: vi.fn(),
   vitrine: vi.fn(),
 }));
 
@@ -30,8 +30,16 @@ vi.mock("@/lib/publico/cad/rotas", () => ({
 }));
 vi.mock("@/lib/publico/cad/log-erros", () => ({ anotarContexto: () => undefined }));
 vi.mock("@/lib/apolo/autonomo-do-link", () => ({
+  // A mesma régua de lib/apolo/autonomo-do-link.ts (testada lá, com o caso do `/D/g`).
+  celularValido: (valor: unknown) => String(valor ?? "").replace(/\D/g, "").length >= 10,
+  guardarDocumentosDoPedido: m.guardar,
   MENSAGEM_DO_PORTAO: { "em-analise": "FRASE EM ANALISE", "ja-autonomo": "FRASE JA AUTONOMO" },
-  registrarCadastroDoLink: m.registrar,
+  propostaDoLink: (corpo: Record<string, unknown>) => ({
+    endereco: corpo.endereco ?? {},
+    identidade: corpo.identidade ?? {},
+    perfil: corpo.perfil ?? {},
+  }),
+  registrarPedidoDoLink: m.registrar,
   situacaoDoCpf: m.situacao,
 }));
 vi.mock("@/lib/apolo/credenciamento", () => ({ listEmpreendimentosParaImobiliaria: m.vitrine }));
@@ -42,11 +50,9 @@ vi.mock("@/lib/apolo/documentos", () => ({
   documentoTemArquivo: (doc: { fileBase64?: string; storagePath?: string } | null) =>
     Boolean(doc?.fileBase64?.trim() || doc?.storagePath?.trim()),
   MENSAGEM_DOCUMENTO_GRANDE: "GRANDE",
-  uploadApoloDocument: m.upload,
 }));
-vi.mock("@/modules/apolo/blocks/cadastro/cad-pdf", () => ({ montarCadPdf: m.pdf }));
 
-import { POST as cadastrar } from "./cadastro/route";
+import { POST as enviar } from "./cadastro/route";
 import { POST as iniciar } from "./iniciar/route";
 import {
   assinarPreSessaoAutonomo,
@@ -56,6 +62,7 @@ import {
 } from "@/lib/publico/cad/sessao";
 
 const CPF = "52998224725";
+const RECEBIDO = { autenticacao: "", cadBase64: null, recebido: true, savedDocs: [], warnings: [] };
 const original = process.env.SESSAO_CAD_SECRET;
 
 beforeEach(() => {
@@ -63,14 +70,11 @@ beforeEach(() => {
   process.env.SESSAO_CAD_SECRET = "segredo-de-teste";
   m.situacao.mockResolvedValue({ ok: true, situacao: "liberado" });
   m.vitrine.mockResolvedValue([{ id: "35", name: "Vale do Ouro" }]);
-  m.registrar.mockResolvedValue({
-    autenticacao: "CAD-2026-ABCDEF12",
-    entityId: "id-interno-da-ficha",
-    fichaExistia: false,
+  m.guardar.mockImplementation(async (_client: unknown, input: { documentos: unknown[] }) => ({
+    documentos: input.documentos,
     ok: true,
-    savedDocs: ["identificacao", "comprovante_endereco"],
-    warnings: ["papel: algo interno"],
-  });
+  }));
+  m.registrar.mockResolvedValue({ ok: true, pedidoId: "pedido-interno" });
 });
 
 afterEach(() => {
@@ -102,8 +106,7 @@ describe("o portão do CPF", () => {
   it("CPF JÁ CADASTRADO devolve só a frase fixa: sem nome, sem id, sem token", async () => {
     m.situacao.mockResolvedValue({ ok: true, situacao: "ja-autonomo" });
     const resposta = await iniciar(post("/api/publico/autonomo/iniciar", { cpf: CPF }));
-    const corpo = await resposta.json();
-    expect(corpo).toEqual({ mensagem: "FRASE JA AUTONOMO", status: "ja-autonomo" });
+    expect(await resposta.json()).toEqual({ mensagem: "FRASE JA AUTONOMO", status: "ja-autonomo" });
   });
 
   it("leitura que falha é indisponibilidade, e não liberação", async () => {
@@ -116,7 +119,6 @@ describe("o portão do CPF", () => {
 
 function corpoValido() {
   return {
-    cad: null,
     documentos: [
       { categoria: "identificacao", fileBase64: "QUJD", fileName: "rg.jpg" },
       { categoria: "comprovante_endereco", fileBase64: "QUJD", fileName: "luz.jpg" },
@@ -134,33 +136,26 @@ function token(cpf = CPF) {
   return { "x-autonomo-pre-sessao": emitido.token };
 }
 
-describe("o cadastro", () => {
+const enviarCorpo = (corpo: unknown, cabecalhos = token()) =>
+  enviar(post("/api/publico/autonomo/cadastro", corpo, cabecalhos));
+
+describe("o envio", () => {
   it("sem a pré-sessão não entra, nem com o token de outro link", async () => {
-    const semToken = await cadastrar(post("/api/publico/autonomo/cadastro", corpoValido()));
-    expect(semToken.status).toBe(401);
+    expect((await enviar(post("/api/publico/autonomo/cadastro", corpoValido()))).status).toBe(401);
     const imob = assinarPreSessaoImob({ cnpj: "12345678000195" });
     if (!imob.ok) throw new Error("não emitiu");
-    const comOutro = await cadastrar(
-      post("/api/publico/autonomo/cadastro", corpoValido(), { "x-autonomo-pre-sessao": imob.token }),
-    );
-    expect(comOutro.status).toBe(401);
+    expect((await enviarCorpo(corpoValido(), { "x-autonomo-pre-sessao": imob.token })).status).toBe(401);
     expect(m.registrar).not.toHaveBeenCalled();
   });
 
   it("ANTI-TROCA: o CPF do documento tem de ser o do portão", async () => {
-    const resposta = await cadastrar(
-      post("/api/publico/autonomo/cadastro", corpoValido(), token("11144477735")),
-    );
-    expect(resposta.status).toBe(400);
+    expect((await enviarCorpo(corpoValido(), token("11144477735"))).status).toBe(400);
     expect(m.registrar).not.toHaveBeenCalled();
   });
 
   it("corpo que tenta virar imobiliária ou pessoa jurídica é recusado", async () => {
     for (const forjado of [{ role: "imobiliaria" }, { persona: "pj" }]) {
-      const resposta = await cadastrar(
-        post("/api/publico/autonomo/cadastro", { ...corpoValido(), ...forjado }, token()),
-      );
-      expect(resposta.status).toBe(400);
+      expect((await enviarCorpo({ ...corpoValido(), ...forjado })).status).toBe(400);
     }
     expect(m.registrar).not.toHaveBeenCalled();
   });
@@ -170,97 +165,76 @@ describe("o cadastro", () => {
     semComprovante.documentos = semComprovante.documentos.filter(
       (doc) => doc.categoria !== "comprovante_endereco",
     );
-    const recusada = await cadastrar(post("/api/publico/autonomo/cadastro", semComprovante, token()));
+    const recusada = await enviarCorpo(semComprovante);
     expect(recusada.status).toBe(400);
     expect(((await recusada.json()) as { error: string }).error).toContain("comprovante de endereço");
+    expect((await enviarCorpo(corpoValido())).status).toBe(201);
+  });
 
-    const aceita = await cadastrar(post("/api/publico/autonomo/cadastro", corpoValido(), token()));
-    expect(aceita.status).toBe(201);
+  it("celular curto não passa (o caso que o `/D/g` deixava passar)", async () => {
+    for (const telefone of ["", "31 9999-000", "DDDDDDDDDDDD"]) {
+      const corpo = corpoValido();
+      corpo.perfil.telefone = telefone;
+      expect((await enviarCorpo(corpo)).status).toBe(400);
+    }
+    expect(m.registrar).not.toHaveBeenCalled();
   });
 
   it("arquivo grande só vale se foi o portão DESTE CPF que pediu o upload", async () => {
-    const corpo = corpoValido();
-    corpo.documentos[0] = {
+    const alheio = corpoValido();
+    alheio.documentos[0] = {
       categoria: "identificacao",
       fileName: "rg.pdf",
-      storagePath: "staging/a-de-outra-pessoa/rg.pdf",
+      storagePath: "entidade/_pendente/a-de-outra-pessoa/rg.pdf",
     } as never;
-    const resposta = await cadastrar(post("/api/publico/autonomo/cadastro", corpo, token()));
-    expect(resposta.status).toBe(400);
+    expect((await enviarCorpo(alheio)).status).toBe(400);
 
     const doDono = corpoValido();
     doDono.documentos[0] = {
       categoria: "identificacao",
       fileName: "rg.pdf",
-      storagePath: `staging/${donoUploadPreAutonomo({ cpf: CPF })}/rg.pdf`,
+      storagePath: `entidade/_pendente/${donoUploadPreAutonomo({ cpf: CPF })}/rg.pdf`,
     } as never;
-    expect((await cadastrar(post("/api/publico/autonomo/cadastro", doDono, token()))).status).toBe(201);
-  });
-
-  it("sem celular não grava: é por ele que a Careli responde", async () => {
-    const corpo = corpoValido();
-    corpo.perfil.telefone = "";
-    const resposta = await cadastrar(post("/api/publico/autonomo/cadastro", corpo, token()));
-    expect(resposta.status).toBe(400);
-    expect(m.registrar).not.toHaveBeenCalled();
-  });
-
-  it("FICHA QUE JÁ EXISTIA: nem o código de autenticação dela nem o PDF voltam para quem preencheu", async () => {
-    m.registrar.mockResolvedValue({
-      autenticacao: "CAD-2025-DAVITIMA",
-      entityId: "ficha-do-comprador",
-      fichaExistia: true,
-      ok: true,
-      savedDocs: [],
-      warnings: [],
-    });
-    const resposta = await cadastrar(
-      post("/api/publico/autonomo/cadastro", { ...corpoValido(), cad: { secoes: [{}] } }, token()),
-    );
-    expect(resposta.status).toBe(201);
-    const corpo = await resposta.json();
-    expect(corpo).toMatchObject({ autenticacao: "", cadBase64: null, recebido: true });
-    expect(JSON.stringify(corpo)).not.toContain("CAD-2025-DAVITIMA");
-    expect(m.pdf).not.toHaveBeenCalled();
+    expect((await enviarCorpo(doDono)).status).toBe(201);
+    expect(m.guardar.mock.calls[0]![1]).toMatchObject({ dono: donoUploadPreAutonomo({ cpf: CPF }) });
   });
 
   it("o interesse é lido contra a vitrine do servidor: id inventado cai e o rótulo é o do servidor", async () => {
-    await cadastrar(post("/api/publico/autonomo/cadastro", corpoValido(), token()));
+    await enviarCorpo(corpoValido());
     expect(m.registrar.mock.calls[0]![1].empreendimentosDeInteresse).toEqual([
       { id: "35", label: "Vale do Ouro" },
     ]);
   });
 
-  it("o sucesso não devolve o id da ficha nem os avisos internos", async () => {
-    const resposta = await cadastrar(post("/api/publico/autonomo/cadastro", corpoValido(), token()));
+  it("o sucesso é sempre o mesmo corpo: sem id, sem código, sem PDF", async () => {
+    const resposta = await enviarCorpo(corpoValido());
+    expect(resposta.status).toBe(201);
     const corpo = await resposta.json();
-    expect(corpo).not.toHaveProperty("entityId");
-    expect(JSON.stringify(corpo)).not.toContain("id-interno-da-ficha");
-    expect(corpo).toMatchObject({ autenticacao: "CAD-2026-ABCDEF12", warnings: [] });
+    expect(corpo).toEqual(RECEBIDO);
+    expect(JSON.stringify(corpo)).not.toContain("pedido-interno");
   });
 
-  it("CPF que virou autônomo ou entrou em análise depois do portão é recusado no envio", async () => {
-    m.situacao.mockResolvedValue({ ok: true, situacao: "em-analise" });
-    const resposta = await cadastrar(post("/api/publico/autonomo/cadastro", corpoValido(), token()));
-    expect(resposta.status).toBe(409);
+  it("O ENVIO NÃO REVELA: CPF que virou autônomo ou entrou em análise recebe a MESMA resposta, sem gravar", async () => {
+    for (const situacao of ["ja-autonomo", "em-analise"]) {
+      m.situacao.mockResolvedValue({ ok: true, situacao });
+      const resposta = await enviarCorpo(corpoValido());
+      expect(resposta.status).toBe(201);
+      expect(await resposta.json()).toEqual(RECEBIDO);
+    }
     expect(m.registrar).not.toHaveBeenCalled();
+    expect(m.guardar).not.toHaveBeenCalled();
   });
 
-  it("E-MAIL DE OUTRA PESSOA: 409 com o que fazer, sem dizer de quem é", async () => {
-    m.registrar.mockResolvedValue({
-      ok: false,
-      recusa: { error: "Este e-mail já está no cadastro de MARIA SOUZA", motivo: "email-repetido", ok: false },
-    });
-    const resposta = await cadastrar(post("/api/publico/autonomo/cadastro", corpoValido(), token()));
-    expect(resposta.status).toBe(409);
-    const texto = JSON.stringify(await resposta.json());
-    expect(texto).toContain("e-mail");
-    expect(texto).not.toContain("MARIA");
+  it("o teto geral por hora vira 429 com frase genérica", async () => {
+    m.registrar.mockResolvedValue({ motivo: "teto", ok: false });
+    const resposta = await enviarCorpo(corpoValido());
+    expect(resposta.status).toBe(429);
+    expect(JSON.stringify(await resposta.json())).not.toMatch(/\d/);
   });
 
   it("qualquer outra falha de gravação vira a frase genérica", async () => {
-    m.registrar.mockResolvedValue({ ok: false, recusa: null });
-    const resposta = await cadastrar(post("/api/publico/autonomo/cadastro", corpoValido(), token()));
+    m.registrar.mockResolvedValue({ motivo: "falha", ok: false });
+    const resposta = await enviarCorpo(corpoValido());
     expect(resposta.status).toBe(500);
     expect(await resposta.json()).toEqual({ error: "GENERICO" });
   });

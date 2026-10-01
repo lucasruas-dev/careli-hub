@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { authorizeApoloRead } from "@/lib/apolo/auth";
+import { authorizeApoloCoordenacao } from "@/lib/apolo/auth";
 import { filaDoLinkDoAutonomo } from "@/lib/apolo/autonomo-do-link";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
@@ -10,12 +10,13 @@ import { createApoloAdminClient } from "@/lib/apolo/server";
 // Board, para o time conferir o que acabou de fazer. A fila sai da trilha de `apolo_audit_events`
 // (lib/apolo/autonomo-do-link.ts), e não do `metadata` da ficha, que o sync do C2X reescreve.
 //
-// Só operador logado (`authorizeApoloRead`): é PII de quem pediu cadastro.
+// Só a COORDENAÇÃO (admin e líder, `authorizeApoloCoordenacao`): é PII de quem pediu cadastro, e o
+// operador externo não pode ler (segunda rodada de revisão, 01/10/2026).
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const auth = await authorizeApoloRead(request);
+  const auth = await authorizeApoloCoordenacao(request);
   if (!auth.ok) return auth.response;
 
   const client = createApoloAdminClient();
