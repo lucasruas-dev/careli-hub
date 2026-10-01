@@ -37,7 +37,7 @@ export type ChangelogEntry = {
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
     buildTag: "2026-10-01-conferencia-da-corretagem",
-    deployedAt: "__HORA_REAL__",
+    deployedAt: "2026-10-01T12:06:22-03:00",
     modules: [
       {
         module: "Apolo",
