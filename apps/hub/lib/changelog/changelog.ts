@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-10-01-conferencia-da-corretagem-acabamento",
+    deployedAt: "__HORA_REAL__",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**A mensagem e o formulário da conferência da corretagem não ficam mais presos ao trocar de cliente.**",
+              "**Ver ou corrigir aparece logo depois de registrar a conferência**, sem precisar gerar a simulação antes.",
+              "**O formulário ficou acessível:** rótulos nos campos, erro e confirmação anunciados e foco no lugar certo.",
+            ],
+            screen: "Financeiro · Extrato do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "f48fd60f",
+    technical: {
+      done: "PAN-130, acabamento da 1.402.0 a partir da segunda revisão da Publicação. Painel do extrato com key por c2xId (a mensagem e o formulário da conferência não vazam para o cliente seguinte) e \"Ver ou corrigir\" disponível logo após o PUT. A rota da conferência recusa com 400 observação, resultado e ids de tipo errado, em vez de converter (\"[object Object]\" não grava mais). `carregarTermoDeRescisao` ganha um segundo parâmetro opcional `dependencias.montar`, costura só de teste (o único chamador de produção, a rota do PDF, passa só o escopo), usada para injetar um aviso inventado pelo caminho real e derrubar qualquer filtro por texto na chamada de `recusaPorAvisos`, inclusive por lista de frases permitidas. Formulário com rótulos, alerta anunciado, região viva na confirmação e foco. Sem migração. Entregue pela conta de construção e integrado por merge pela sessão Publicação.",
+      motivation: "Pendências registradas na publicação da 1.402.0 (01/10/2026): mensagem presa ao trocar de cliente, correção só depois de gerar a simulação, testes de comportamento que não pegavam qualquer filtro por texto, observação de tipo errado gravada como texto e acessibilidade do formulário.",
+    },
+    title: "Acabamento da conferência da corretagem",
+    type: "correcao",
+    version: "1.403.1",
+  },
+  {
     buildTag: "2026-10-01-chave-do-grupo",
     deployedAt: "2026-10-01T12:47:23-03:00",
     internal: true,
