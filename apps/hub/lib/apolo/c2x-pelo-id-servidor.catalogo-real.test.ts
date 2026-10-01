@@ -98,8 +98,10 @@ describe("a releitura forçada não apaga o catálogo", () => {
     soltar();
     const [a, b, c] = await Promise.all(leituras);
     expect(c2x.consultasDoCatalogo).toBe(1);
-    expect(a).toBe(b);
-    expect(b).toBe(c);
+    // O mesmo CONTEÚDO, e não o mesmo objeto: desde a F7 do PAN-124 o cache é das linhas do C2X, e o
+    // agrupamento pelo cadastro roda a cada leitura (para o nome editado aparecer sem esperar 10 min).
+    expect(a).toEqual(b);
+    expect(b).toEqual(c);
   });
 
   it("a sigla da tela conferida no C2X não depende do catálogo", async () => {

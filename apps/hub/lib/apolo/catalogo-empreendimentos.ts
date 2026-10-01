@@ -1,6 +1,8 @@
 import { filtroSemExcluidos } from "@/lib/apolo/c2x-pelo-id";
 import { ENTERPRISE_GROUPS } from "@/lib/guardian/c2x-analytics";
 import { getHadesDbPool } from "@/lib/guardian/db";
+import { reguaEmCache } from "@/lib/hercules/cadastro-em-cache";
+import type { ReguaDoCadastro } from "@/lib/hercules/regua-do-cadastro";
 
 // CATÁLOGO ENXUTO: só id, código e nome do empreendimento, já AGRUPADO.
 //
@@ -67,14 +69,16 @@ export const GRUPOS_DO_CATALOGO: Array<Pick<EmpreendimentoDoCatalogo, "id" | "st
 
 type LinhaCrua = { code: null | string; id: number; name: null | string };
 
-// Cache de processo, curto. O catálogo muda quando nasce empreendimento novo — algumas vezes por
-// ANO —, então 10 minutos é folgado e ainda assim garante que uma correção de nome apareça no
-// mesmo turno de trabalho. Sem TTL infinito de propósito: nome errado preso até o próximo deploy
-// é o tipo de coisa que ninguém liga o motivo.
+// Cache de processo, curto, das LINHAS CRUAS do C2X (id, sigla, nome). O catálogo do C2X muda quando
+// nasce empreendimento novo, algumas vezes por ANO, e 10 minutos é folgado.
+//
+// ⚠️ O CACHE É DAS LINHAS, NÃO DO CATÁLOGO AGRUPADO (PAN-124 F7). Nome e grupo vêm do cadastro do
+// Panteon (a régua, renovada pelo carimbo em até 30 s), e o agrupamento roda a cada leitura: são 37
+// linhas. Guardar o agrupado prenderia por 10 minutos o nome que alguém acabou de editar (F10).
 const TTL_MS = 10 * 60 * 1000;
-let cache: { emMs: number; valor: EmpreendimentoDoCatalogo[] } | null = null;
+let cache: { emMs: number; linhas: LinhaCrua[] } | null = null;
 // A leitura que está em andamento, para quem chegar durante ela esperar a MESMA consulta.
-let emVoo: null | Promise<EmpreendimentoDoCatalogo[]> = null;
+let emVoo: null | Promise<LinhaCrua[] | null> = null;
 
 /**
  * Esquece o catálogo guardado. SÓ PARA TESTE E SCRIPT DE MEDIÇÃO.
@@ -104,7 +108,19 @@ export async function catalogoDeEmpreendimentos(
   agoraMs: number,
   opcoes: { forcar?: boolean } = {},
 ): Promise<EmpreendimentoDoCatalogo[]> {
-  if (!opcoes.forcar && cache && agoraMs - cache.emMs < TTL_MS) return cache.valor;
+  const linhas = await linhasDoC2x(agoraMs, opcoes);
+  if (!linhas) return [];
+  // O cadastro do Panteon dá nome e grupo (F7). Sem ele (partida a frio sem banco), a lista fixa de
+  // antes: o catálogo nunca fica vazio por causa do cadastro.
+  const regua = await reguaEmCache(agoraMs).catch(() => null);
+  return agrupar(linhas, regua);
+}
+
+async function linhasDoC2x(
+  agoraMs: number,
+  opcoes: { forcar?: boolean },
+): Promise<LinhaCrua[] | null> {
+  if (!opcoes.forcar && cache && agoraMs - cache.emMs < TTL_MS) return cache.linhas;
 
   // ⚠️ UMA CONSULTA POR VEZ POR INSTÂNCIA. A tela do Apolo abre as abas em paralelo e o pool do C2X
   // tem 5 conexões (lib/guardian/db.ts): com o cache vencido (ou uma releitura forçada), cada aba
@@ -119,9 +135,9 @@ export async function catalogoDeEmpreendimentos(
   }
 }
 
-async function lerDoC2x(agoraMs: number): Promise<EmpreendimentoDoCatalogo[]> {
+async function lerDoC2x(agoraMs: number): Promise<LinhaCrua[] | null> {
   const poolResult = getHadesDbPool();
-  if (!poolResult.ok) return cache?.valor ?? [];
+  if (!poolResult.ok) return cache?.linhas ?? null;
 
   // ⚠️ A EXCLUSÃO É PELO ID (`EXCLUDED_ENTERPRISE_IDS`: SDT, LAB, TSC), e não mais pela sigla
   // (PAN-124). É deste catálogo que a tradução sigla → id sai (lib/apolo/c2x-pelo-id.ts): um
@@ -143,19 +159,75 @@ async function lerDoC2x(agoraMs: number): Promise<EmpreendimentoDoCatalogo[]> {
   } catch {
     // Mantém o catálogo anterior se houver: um pico de indisponibilidade não deve apagar os nomes
     // da tela de quem já estava trabalhando.
-    return cache?.valor ?? [];
+    return cache?.linhas ?? null;
   }
 
-  const valor = agrupar(linhas);
-  cache = { emMs: agoraMs, valor };
-  return valor;
+  cache = { emMs: agoraMs, linhas };
+  return linhas;
 }
 
 /**
  * Junta as divisões num empreendimento só, pela regra do Lucas: "temos essas divisões por
  * particularidade de cada empreendimento (fases, sócios), mas o mercado vê UM empreendimento".
+ *
+ * ⚠️ PELO CADASTRO DO PANTEON, COM A LISTA FIXA SÓ DE RESERVA (PAN-124 F7). Com a régua:
+ *   • os grupos são os pais com filhos do cadastro (`pai_id`), e não `ENTERPRISE_GROUPS`; o id do grupo
+ *     é `group:<chave>` (a coluna congelada da F4), idêntico ao de hoje nos 5 grupos;
+ *   • as divisões saem na ordem do cadastro (ordem, sigla). A única mudança é a Lagoa Bonita: LBF, LBP,
+ *     LBR, a mesma do Hércules;
+ *   • o NOME é o do cadastro em caixa alta: o de mercado (o do pai, sem a divisão) para o grupo, e o
+ *     nome de mercado do id para o simples. Id sem cadastro (o 30) fica com o nome do C2X;
+ *   • o pai com id vivo (o VLO 35) continua entrada SIMPLES ao lado do grupo, e o 31 continua fora (a
+ *     consulta já o exclui pelo id), como antes;
+ *   • `codes` e `stageIds` continuam vindo do C2X, casados pelo id.
+ * Sem a régua (`null`), a regra de antes, pela lista fixa e pela sigla.
  */
-export function agrupar(linhas: LinhaCrua[]): EmpreendimentoDoCatalogo[] {
+export function agrupar(linhas: LinhaCrua[], regua: null | ReguaDoCadastro = null): EmpreendimentoDoCatalogo[] {
+  if (!regua) return agruparPelaListaFixa(linhas);
+
+  const porId = new Map<string, LinhaCrua>();
+  for (const linha of linhas) {
+    if ((linha.code ?? "").trim()) porId.set(String(linha.id), linha);
+  }
+
+  const saida: EmpreendimentoDoCatalogo[] = [];
+  const consumidos = new Set<string>();
+
+  for (const grupo of regua.grupos) {
+    const divisoes = grupo.divisoes
+      .map((divisao) => porId.get(String(divisao.c2xEnterpriseId ?? "").trim()))
+      .filter((linha): linha is LinhaCrua => Boolean(linha));
+
+    if (divisoes.length === 0) continue;
+    for (const divisao of divisoes) consumidos.add(String(divisao.id));
+
+    saida.push({
+      codes: divisoes.map((divisao) => (divisao.code ?? "").trim().toUpperCase()),
+      id: grupo.id,
+      name: (grupo.nomeDeMercado || grupo.chave).toLocaleUpperCase("pt-BR"),
+      stageIds: divisoes.map((divisao) => String(divisao.id)),
+    });
+  }
+
+  for (const linha of linhas) {
+    const code = (linha.code ?? "").trim().toUpperCase();
+    const id = String(linha.id);
+    if (!code || consumidos.has(id)) continue;
+
+    const doCadastro = regua.porId.get(id)?.nomeDeMercado;
+    saida.push({
+      codes: [code],
+      id,
+      name: (doCadastro || linha.name || code).trim().toLocaleUpperCase("pt-BR"),
+      stageIds: [id],
+    });
+  }
+
+  return saida.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+}
+
+/** A regra de antes da F7, pela lista fixa e pela sigla. É a reserva quando o cadastro não está. */
+function agruparPelaListaFixa(linhas: LinhaCrua[]): EmpreendimentoDoCatalogo[] {
   const porCodigo = new Map<string, LinhaCrua>();
   for (const linha of linhas) {
     const code = (linha.code ?? "").trim().toUpperCase();

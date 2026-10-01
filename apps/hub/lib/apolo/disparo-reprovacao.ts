@@ -29,6 +29,7 @@
 //    meta-inbound-processor já casa por wa_message_id.
 
 import { coordenadorParaAviso } from "@/lib/apolo/coordenador-do-empreendimento";
+import { idDoNomeNaLista } from "@/lib/apolo/empreendimento-do-termo-servidor";
 import { loadApoloEnterprises } from "@/lib/apolo/empreendimentos";
 import { montarCadDeEntidade } from "@/lib/apolo/cad-de-entidade";
 import { lerCadDaEsteira } from "@/lib/apolo/esteira-cad";
@@ -97,12 +98,16 @@ async function resolverIdEmpreendimento(
   const c2x = await loadApoloEnterprises({ comSituacao: false });
   if (!c2x.ok) return null;
 
+  const todos: Array<{ id: string }> = [];
   for (const row of c2x.data.rows) {
     const candidatos = row.stages.length ? row.stages : [row];
+    todos.push(...candidatos);
     const match = candidatos.find((c) => normalizarNome(c.name) === nomeAlvo);
     if (match) return String(match.id);
   }
-  return null;
+  // O texto gravado na esteira antiga traz o nome do C2X do dia, que não casa mais com o nome do
+  // cadastro: a reserva pelo resolvedor de termo (PAN-124 F7).
+  return idDoNomeNaLista(esteira?.empreendimento ?? "", todos);
 }
 
 type RegistroEnvio = {

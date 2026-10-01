@@ -44,3 +44,21 @@ export function aplicarFiltroDaEsteira<Q>(
   };
   return filtro.tipo === "ids" ? c.in("enterprise_id", filtro.ids) : c.ilike("empreendimento", filtro.padrao);
 }
+
+/**
+ * A RESERVA DE QUEM ACHA O ID PELO NOME NUMA LISTA (PAN-124 F7). O nome da lista do Apolo e do catálogo
+ * passou a vir do cadastro do Panteon, e um texto de fora com o nome ANTIGO do C2X (o Asana, a esteira
+ * legada, a bancada) deixaria de casar, calado: "RESIDENCIAL VILLA PARIS" virou "VILLA PARIS". Quando a
+ * comparação direta não acha nada, o resolvedor de termo diz que ids aquele texto nomeia (pelos nomes do
+ * C2X e do cadastro), e vale o PRIMEIRO candidato da lista, na ordem dela, que esteja entre eles. É a
+ * mesma resposta que a comparação dava antes da troca de fonte.
+ */
+export async function idDoNomeNaLista(
+  nome: string,
+  candidatos: ReadonlyArray<{ id: string }>,
+): Promise<null | string> {
+  const resolvido = await resolverTermoNoServidor(nome).catch(() => null);
+  if (!resolvido) return null;
+  const ids = new Set(resolvido.ids);
+  return candidatos.find((candidato) => ids.has(String(candidato.id)))?.id ?? null;
+}

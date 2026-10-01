@@ -463,6 +463,23 @@ risco/rollback: Risco médio: o catálogo tem cerca de 30 consumidores. A F6 já
 Rollback: revert do commit. Só há código.
 OK do Lucas: Deploy, com a mensagem pro grupo dizendo os nomes que mudam na tela (REP, VDP, RVP, ACP e LAB) e a ordem nova das glebas da Lagoa Bonita. 
 
+### F7 na execução (01/10/2026, branch `feat/pan-124-cadastro-completo`, não publicada; sem migration)
+
+Medido só com SELECT em 01/10/2026.
+
+- **Catálogo** (`agrupar(linhas, regua)`): grupos pelos pais do cadastro, `group:<chave>`, nome do cadastro em caixa alta; sem a régua, a lista fixa de antes.
+  - ⚠️ O cache passou a ser das LINHAS CRUAS do C2X, e o agrupamento roda a cada leitura. Guardar o agrupado prenderia por 10 min o nome editado na F10.
+  - Paridade real: os mesmos 26 ids de entrada, e codes e stageIds iguais como conjunto em todos. A ordem muda só na Lagoa Bonita (LBF, LBP, LBR).
+  - Mudam 5 nomes: 42, 20, 38, 28 e o 43 (PTI no C2X desde 28/09, "Portal do Ibituruna" no cadastro).
+- **Lista do Apolo** (`agruparPeloCadastro`): a mesma regra com a fonte trocada.
+  - O VLO 35 veste o grupo, e os números são a soma das divisões.
+  - Nome, cidade e UF vêm do cadastro, e o simples continua em caixa alta.
+  - Toda linha com cadastro leva o `panteonId` (24 de 24), inclusive o grupo sem pai no C2X.
+  - Paridade real: as mesmas 25 linhas; mudam os mesmos 5 nomes.
+- **Varredura dos usos do nome** (investigador): dois pontos acham o id pelo nome e perderiam o nome antigo do C2X. São `resolverEnterpriseIdPorNome` (importação do Asana, bancada, esteira legada) e `disparo-reprovacao`. Os dois ganharam a reserva pelo resolvedor de termo (`idDoNomeNaLista`).
+- **Pendência de baixo risco:** o rótulo de card do Board que vem de texto gravado (`metadata.cadastro.empreendimentos`, `esteira.empreendimento` sem id no catálogo) mantém o nome antigo e pode sair do filtro do recorte por nome. Só vale para ficha sem CAD e sem vínculo. A troca é rotular sempre pelo id.
+- **Daqui para frente, os textos gravados nascem com o nome novo:** `apolo_esteira.empreendimento`, `label` de vínculo, `temis_trabalhos.enterprise_nome`. As linhas antigas ficam com o nome velho; regravá-las é a F13.
+
 ## Fatia 8: F8a · Rótulos crus do C2X nas telas e PDFs do Apolo e do portal (sem migration)
 objetivo: Trocar e.name e divulgation_name pelo nome de mercado lido pelo id (régua da F1). O nome do C2X fica de reserva só para os ids sem cadastro.
 

@@ -42,6 +42,9 @@ import {
   findEnterpriseMirror,
 } from "@/lib/guardian/c2x-analytics";
 import { getHadesDbPool } from "@/lib/guardian/db";
+import type { LinhaDoCadastro } from "@/lib/hercules/cadastro";
+import { cacheDoCadastro } from "@/lib/hercules/cadastro-em-cache";
+import type { ReguaDoCadastro } from "@/lib/hercules/regua-do-cadastro";
 
 // (16/09/2026) O mapa `SALE_STATUS` que morava aqui saiu: ele não tinha mais leitor neste arquivo
 // (a régua do status virou `baldeDaUnidade`, e o vocabulário vive em lib/apolo/balde-da-unidade.ts,
@@ -138,6 +141,12 @@ export type ApoloEnterpriseRow = {
    */
   mirrorNote: string | null;
   name: string;
+  /**
+   * O uuid de `hercules_empreendimentos` (PAN-124 F7): do pai no grupo, da própria linha no simples.
+   * É a porta da tela de editar o cadastro (F10), inclusive para os pais que só existem como grupo
+   * (LOX, PDX, RDX e a Lagoa Bonita). Ausente quando o id não tem cadastro (o 30) ou sem o cadastro.
+   */
+  panteonId?: null | string;
   scenario: ApoloEnterpriseScenario;
   state: string | null;
   // Etapas do produto (só no grupo consolidado). Vazio = linha simples.
@@ -369,7 +378,15 @@ export async function loadApoloEnterprises(
     } as EnterpriseQueryRow);
   });
 
-  return { data: buildApoloEnterprisesData(mapped), ok: true };
+  // Nome, cidade, UF e grupo pelo cadastro do Panteon (PAN-124 F7). Sem ele, a regra de antes.
+  const doCadastro = await cacheDoCadastro.ler(Date.now()).catch(() => null);
+  return {
+    data: buildApoloEnterprisesData(
+      mapped,
+      doCadastro ? { linhas: doCadastro.linhas, regua: doCadastro.regua } : null,
+    ),
+    ok: true,
+  };
 }
 
 /**
@@ -385,9 +402,10 @@ export async function loadApoloEnterprises(
  */
 export function buildApoloEnterprisesData(
   rows: ApoloEnterpriseRow[],
+  cadastro: CadastroDaLista | null = null,
 ): ApoloEnterprisesData {
   return {
-    rows: groupEnterpriseRows(rows),
+    rows: cadastro ? agruparPeloCadastro(rows, cadastro) : groupEnterpriseRows(rows),
     totals: sumScenarios(rows.filter((row) => !row.mirror)),
   };
 }
@@ -1280,6 +1298,90 @@ function mapUnitRow(
     // reservado no tótem ganhava a cor âmbar e o texto "Disponível".
     status,
   };
+}
+
+/** O cadastro do Panteon que a lista usa: as linhas (cidade e UF) e a régua (grupos e nomes). */
+export type CadastroDaLista = {
+  linhas: readonly LinhaDoCadastro[];
+  regua: ReguaDoCadastro;
+};
+
+/**
+ * A lista do Apolo pelo CADASTRO DO PANTEON (PAN-124 F7). A MESMA regra de `groupEnterpriseRows`, com
+ * a fonte trocada:
+ *   • os grupos são os pais com filhos do cadastro, e não `ENTERPRISE_GROUPS`; as divisões, na ordem
+ *     do cadastro, casadas pelo id do C2X;
+ *   • o pai com id vivo (o VLO 35) VESTE o grupo, como antes: mesmo id e mesma sigla; os números
+ *     continuam sendo a soma das divisões, e `codes` só as divisões;
+ *   • nome, cidade e UF vêm do cadastro: o de mercado (o do pai) no grupo, o do id no simples, em
+ *     caixa alta como o simples sempre saiu. Id sem cadastro (o 30) fica com o do C2X;
+ *   • toda linha leva o `panteonId`, inclusive o grupo sem pai no C2X (LOX, PDX, RDX, Lagoa Bonita).
+ */
+export function agruparPeloCadastro(
+  rows: ApoloEnterpriseRow[],
+  cadastro: CadastroDaLista,
+): ApoloEnterpriseRow[] {
+  const porUuid = new Map(cadastro.linhas.map((linha) => [linha.id, linha]));
+  const doId = (id: string) => {
+    const resposta = cadastro.regua.porId.get(id);
+    return resposta ? { linha: porUuid.get(resposta.panteonId), resposta } : null;
+  };
+  const vestir = (row: ApoloEnterpriseRow): ApoloEnterpriseRow => {
+    const achado = doId(row.id);
+    if (!achado) return row;
+    return {
+      ...row,
+      city: achado.linha?.cidade ?? row.city,
+      // Em CAIXA ALTA, como a linha simples sempre saiu (era o nome do C2X): a fonte muda, a cara da
+      // tela não. Mudam de fato só os nomes que o cadastro escreve diferente (20, 28, 38, 42 e o 43).
+      name: (achado.resposta.nomeDeMercado || row.name).toLocaleUpperCase("pt-BR"),
+      panteonId: achado.resposta.panteonId,
+      state: achado.linha?.uf ?? row.state,
+    };
+  };
+
+  const porId = new Map(rows.map((row) => [row.id, row]));
+  const grouped: ApoloEnterpriseRow[] = [];
+  const consumed = new Set<string>();
+
+  for (const grupo of cadastro.regua.grupos) {
+    const stages = grupo.divisoes
+      .map((divisao) => porId.get(String(divisao.c2xEnterpriseId ?? "").trim()))
+      .filter((row): row is ApoloEnterpriseRow => Boolean(row))
+      .map(vestir);
+
+    if (!stages.length) continue;
+    for (const stage of stages) consumed.add(stage.id);
+
+    const first = stages[0];
+    const idDoPai = String(grupo.pai.c2xEnterpriseId ?? "").trim();
+    const linhaDoPai = idDoPai ? porId.get(idDoPai) : undefined;
+    if (linhaDoPai) consumed.add(linhaDoPai.id);
+    const doPai = porUuid.get(grupo.pai.panteonId);
+
+    grouped.push({
+      city: doPai?.cidade ?? linhaDoPai?.city ?? first?.city ?? null,
+      code: linhaDoPai?.code ?? stages.map((stage) => stage.code).join(" + "),
+      codes: stages.map((stage) => stage.code),
+      id: linhaDoPai?.id ?? grupo.id,
+      incorporador:
+        linhaDoPai?.incorporador ?? stages.find((stage) => stage.incorporador)?.incorporador ?? null,
+      mirror: false,
+      mirrorLabel: null,
+      mirrorNote: null,
+      name: grupo.nomeDeMercado || grupo.chave,
+      panteonId: grupo.pai.panteonId,
+      scenario: sumScenarios(stages.filter((stage) => !stage.mirror)),
+      state: doPai?.uf ?? linhaDoPai?.state ?? first?.state ?? null,
+      stages,
+    });
+  }
+
+  for (const row of rows) {
+    if (!consumed.has(row.id)) grouped.push(vestir(row));
+  }
+
+  return grouped.sort((left, right) => right.scenario.total.units - left.scenario.total.units);
 }
 
 // Consolida as etapas do mesmo produto numa linha só (regra ENTERPRISE_GROUPS); as etapas

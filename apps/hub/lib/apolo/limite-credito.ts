@@ -6,6 +6,7 @@
 // empreendimento tem limite abaixo de 1.000). Centralizar aqui garante que os dois usem o MESMO
 // limite.
 
+import { idDoNomeNaLista } from "@/lib/apolo/empreendimento-do-termo-servidor";
 import { loadApoloEnterprises } from "@/lib/apolo/empreendimentos";
 import { getLimiteCredito } from "@/lib/apolo/enterprise-settings";
 import { lerCadDaEsteira, normalizarEnterpriseId } from "@/lib/apolo/esteira-cad";
@@ -37,17 +38,21 @@ export async function resolverEnterpriseIdPorNome(nome: null | string): Promise<
     // as propostas e reservas do banco inteiro a cada chamada.
     const c2x = await loadApoloEnterprises({ comSituacao: false });
     if (!c2x.ok) return null;
+    const todos: Array<{ id: string }> = [];
     for (const row of c2x.data.rows) {
       // Produto consolidado tem id sintético ("group:..."): procura nas etapas, que carregam
       // o id REAL do C2X. Linha simples usa o próprio id.
       const candidatos = row.stages.length ? row.stages : [row];
+      todos.push(...candidatos);
       const match = candidatos.find(
         (candidato) =>
           normalizarNome(candidato.name) === alvoNome || candidato.code.toUpperCase() === alvoCode,
       );
       if (match) return match.id;
     }
-    return null;
+    // O nome antigo do C2X (o Asana guarda o texto do dia) não casa mais com o nome do cadastro:
+    // a reserva pelo resolvedor de termo (PAN-124 F7).
+    return await idDoNomeNaLista(bruto, todos);
   } catch {
     return null;
   }
