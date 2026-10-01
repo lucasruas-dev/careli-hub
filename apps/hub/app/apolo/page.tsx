@@ -13,13 +13,17 @@ export const dynamic = "force-dynamic";
 export default async function ApoloModulePage({
   searchParams,
 }: {
-  searchParams: Promise<{ entidade?: string; q?: string }>;
+  searchParams: Promise<{ entidade?: string; q?: string; tela?: string }>;
 }) {
-  const { entidade, q } = await searchParams;
+  const { entidade, q, tela } = await searchParams;
 
   return (
     <HubShell chrome="operational" layoutMode="module">
-      <ApoloPage buscaInicial={q ?? null} entidadeInicial={entidade ?? null} />
+      <ApoloPage
+        buscaInicial={q ?? null}
+        entidadeInicial={entidade ?? null}
+        telaInicial={tela ?? null}
+      />
     </HubShell>
   );
 }

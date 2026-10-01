@@ -76,6 +76,8 @@ function passoDaRota(rota: string): string {
   if (rota.includes("/imobiliaria/iniciar")) return "Credenciamento: CNPJ";
   if (rota.includes("/imobiliaria/cadastro")) return "Credenciamento: cadastro";
   if (rota.includes("/imobiliaria/credenciar")) return "Credenciamento: habilitar";
+  if (rota.includes("/autonomo/iniciar")) return "Autônomo: CPF";
+  if (rota.includes("/autonomo/cadastro")) return "Autônomo: cadastro";
   return rota;
 }
 

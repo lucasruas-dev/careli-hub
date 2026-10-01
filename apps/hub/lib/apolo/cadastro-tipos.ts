@@ -171,3 +171,15 @@ export function faltaNoVinculo(params: {
     params.vinculoOk ? null : autonomo ? "empreendimento" : "empreendimento e corretor",
   ].filter((item): item is string => item !== null);
 }
+
+/**
+ * O wizard está no modo do LINK PÚBLICO DO CORRETOR AUTÔNOMO (01/10/2026)?
+ *
+ * Só quando as duas coisas valem: é o modo público (`publico`, o adaptador de token) e o formato é o do
+ * corretor. A CAD do cliente (formato prospect), o auto-cadastro da imobiliária (formato imobiliária) e o
+ * portal do incorporador (`portal`, não `publico`) ficam de fora, e é isso que o teste trava: nada do
+ * que o modo muda (textos, sem certidão, sem cônjuge, sem consulta paga) alcança os outros fluxos.
+ */
+export function ehAutonomoPublico(input: { publico: boolean; tipo: null | string | undefined }): boolean {
+  return input.publico && formatoDoCadastro(input.tipo).papel === "corretor";
+}

@@ -1,7 +1,11 @@
 import { enrichCompany, enrichPerson, extractDocument } from "@/lib/apolo/mostqi";
 import { anotarContexto } from "@/lib/publico/cad/log-erros";
 import { erro, json, lerCorpo, prepararRota, recusar, responder } from "@/lib/publico/cad/rotas";
-import { preSessaoImobDoRequest, sessaoDoRequest } from "@/lib/publico/cad/sessao";
+import {
+  preSessaoAutonomoDoRequest,
+  preSessaoImobDoRequest,
+  sessaoDoRequest,
+} from "@/lib/publico/cad/sessao";
 
 // S6 — leitura/enriquecimento pela MOST (iOCR). Espelho público de /api/apolo/mostqi.
 //
@@ -14,8 +18,16 @@ import { preSessaoImobDoRequest, sessaoDoRequest } from "@/lib/publico/cad/sessa
 //
 // ⚠️ TORNEIRA PAGA: ~R$ 0,50 por imagem (extract) e ~R$ 1,60 por consulta (enrich). Por isso a
 // rota EXIGE sessão: a do CORRETOR (x-cad-sessao, CAD) OU a pré-sessão da IMOBILIÁRIA
-// (x-cad-pre-sessao-imob, auto-cadastro). O CPF cadastrado / CNPJ conferido É a trava, somada
-// ao teto diário por IP (balde `ocr`).
+// (x-cad-pre-sessao-imob, auto-cadastro) OU a pré-sessão do CORRETOR AUTÔNOMO (x-autonomo-pre-sessao,
+// o link dele, 01/10/2026). O CPF cadastrado / CNPJ conferido É a trava, somada ao teto diário por
+// IP (balde `ocr`).
+//
+// ⚠️ COM O TOKEN DO AUTÔNOMO, SÓ A LEITURA DA FOTO (`extract`). NENHUMA CONSULTA (`enrich`,
+// `enrich-company`), nem do próprio CPF. Segunda rodada de revisão (Publicação, 01/10/2026): o portão
+// emite token para QUALQUER CPF válido, então "só o CPF do token" era "qualquer CPF", e a consulta
+// devolve dados pessoais pagos (endereço, telefones, e com `query`/`datasets` vindos do corpo, até a
+// consulta GOLD). A leitura da foto só devolve o que está na imagem que a própria pessoa mandou. O
+// wizard do link não chama a consulta (`semEnriquecimento`), e a pessoa digita o que faltar.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 // O enrichment roda datasets on-demand e pode passar de 100s; damos folga (igual ao interno).
@@ -39,7 +51,8 @@ export async function POST(request: Request) {
   // cadastrado ou CNPJ conferido) — é a autorização que paga a consulta.
   const sessaoCorretor = sessaoDoRequest(request);
   const preImob = preSessaoImobDoRequest(request);
-  if (!sessaoCorretor.ok && !preImob.ok) {
+  const preAutonomo = preSessaoAutonomoDoRequest(request);
+  if (!sessaoCorretor.ok && !preImob.ok && !preAutonomo.ok) {
     return recusar(
       request,
       erro("Sua sessão expirou. Reabra o link e informe o seu CPF ou CNPJ de novo.", 401),
@@ -55,7 +68,11 @@ export async function POST(request: Request) {
     });
   } else if (preImob.ok) {
     anotarContexto(request, { imobiliariaCnpj: preImob.pre.cnpj });
+  } else if (preAutonomo.ok) {
+    anotarContexto(request, { corretorCpf: preAutonomo.pre.cpf });
   }
+  // Só o token do autônomo valeu: as outras sessões seguem com o que sempre puderam.
+  const soAutonomo = !sessaoCorretor.ok && !preImob.ok && preAutonomo.ok;
 
   const preparo = await prepararRota(request, "ocr");
   if (!preparo.ok) return preparo.response;
@@ -63,6 +80,14 @@ export async function POST(request: Request) {
 
   const corpo = await lerCorpo<Corpo>(request);
   const action = String(corpo?.action ?? "extract");
+
+  if (soAutonomo && action !== "extract") {
+    return responder(
+      request,
+      inicio,
+      erro("Esta consulta não está disponível neste cadastro. Preencha os campos na mão.", 403),
+    );
+  }
 
   if (action === "extract") {
     const fileBase64 = String(corpo?.fileBase64 ?? "");

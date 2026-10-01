@@ -179,12 +179,25 @@ export function ImobiliariaPublicoPortal({
 
 // Vitrine MULTI-SELECT dos empreendimentos ativos. Espelha a etapa 1 do CredenciamentoFlow
 // ("Quais empreendimentos você quer trabalhar? Selecione um ou mais"), com o visual público.
-function EscolhaEmpreendimentos({
+//
+// Exportada para o link do CORRETOR AUTÔNOMO (01/10/2026), que pergunta a mesma coisa como
+// INTERESSE. Os textos vêm de fora porque lá a escolha não habilita nada; os padrões são os da
+// imobiliária, e a tela dela não mudou.
+export function EscolhaEmpreendimentos({
   empreendimentos,
   onConfirmar,
+  subtitulo = "Selecione um ou mais. Depois você informa o CNPJ e completa o cadastro.",
+  textoVazio = "Nenhum empreendimento aberto para credenciamento no momento. Fale com a nossa central.",
+  titulo = "Quais empreendimentos você quer trabalhar?",
+  vazioSegue = false,
 }: {
   empreendimentos: EmpreendimentoPublico[];
   onConfirmar: (ids: string[]) => void;
+  subtitulo?: string;
+  textoVazio?: string;
+  titulo?: string;
+  /** Sem nenhum empreendimento na vitrine, o botão segue mesmo assim (o autônomo pode se cadastrar). */
+  vazioSegue?: boolean;
 }) {
   const [selecionados, setSelecionados] = useState<string[]>([]);
 
@@ -196,19 +209,19 @@ function EscolhaEmpreendimentos({
   return (
     <CascaPublica
       rodape={
-        <BotaoPrimario desabilitado={selecionados.length === 0} onClick={() => onConfirmar(selecionados)}>
+        <BotaoPrimario
+          desabilitado={
+            selecionados.length === 0 && !(vazioSegue && empreendimentos.length === 0)
+          }
+          onClick={() => onConfirmar(selecionados)}
+        >
           Continuar
         </BotaoPrimario>
       }
     >
-      <Cabecalho
-        subtitulo="Selecione um ou mais. Depois você informa o CNPJ e completa o cadastro."
-        titulo="Quais empreendimentos você quer trabalhar?"
-      />
+      <Cabecalho subtitulo={subtitulo} titulo={titulo} />
       {empreendimentos.length === 0 ? (
-        <p style={{ color: C.sub, fontSize: 14 }}>
-          Nenhum empreendimento aberto para credenciamento no momento. Fale com a nossa central.
-        </p>
+        <p style={{ color: C.sub, fontSize: 14 }}>{textoVazio}</p>
       ) : (
         <div style={{ display: "grid", gap: 12 }}>
           {empreendimentos.map((emp) => {

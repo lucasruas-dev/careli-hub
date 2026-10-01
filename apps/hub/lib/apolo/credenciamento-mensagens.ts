@@ -360,3 +360,84 @@ export function mensagemCoordenadorHabilitacaoDoAutonomo(input: {
 
   return linhas.join("\n");
 }
+
+// 5) PARA O PRÓPRIO CORRETOR AUTÔNOMO QUE SE CADASTROU PELO LINK (01/10/2026).
+//
+// Lucas escolheu, para a validação do autônomo, as MESMAS três ações da imobiliária (aprovar, pedir
+// correção, indeferir), e cada uma avisa quem se cadastrou, como a imobiliária é avisada.
+//
+// ⚠️ O CÓDIGO CA NÃO VAI AQUI. Lucas (27/09/2026): o código aparece *"somente no CRM"*. Ele serve à
+// Careli para achar o autônomo, não ao corretor.
+//
+// ⚠️ A APROVAÇÃO NÃO PROMETE EMPREENDIMENTO. Aprovar o cadastro não habilita venda em lugar nenhum: a
+// habilitação é outra decisão, produto a produto. Dizer "você já pode vender" seria prometer o que o
+// sistema não faz ([[feedback_vocabulario_do_corretor]]: nunca prometer o que o sistema não faz).
+export function mensagemAutonomoAprovado(input: { corretor?: null | string }): string {
+  const saudacao = input.corretor ? `Olá, ${primeiroNome(input.corretor)}!` : "Olá!";
+  return [
+    saudacao,
+    "",
+    "Seu cadastro de *corretor autônomo* com a Careli foi aprovado.",
+    "",
+    "Agora nossa equipe comercial entra em contato para combinar os empreendimentos em que você vai atuar.",
+    "",
+    "Qualquer dúvida, é só chamar por aqui mesmo.",
+  ].join("\n");
+}
+
+// A CORREÇÃO DO AUTÔNOMO DIZ COMO CORRIGIR SOZINHO: abrir o mesmo link e reenviar. O portão do link
+// reabre o cadastro para quem está em correção (lib/apolo/autonomo-do-link.ts), e a ficha é a mesma:
+// nada do que ele mandou se perde.
+export function mensagemAutonomoCorrecao(input: {
+  corretor?: null | string;
+  linkDoCadastro?: null | string;
+  motivos: string[];
+  observacao?: null | string;
+}): string {
+  const saudacao = input.corretor ? `Olá, ${primeiroNome(input.corretor)}!` : "Olá!";
+  const linhas = [
+    saudacao,
+    "",
+    "Estamos finalizando o seu cadastro de *corretor autônomo* e faltou um ajuste.",
+    "",
+    "O que precisamos:",
+    listaDeMotivos(input.motivos),
+  ];
+
+  if (input.observacao?.trim()) {
+    linhas.push("", input.observacao.trim());
+  }
+
+  linhas.push(
+    "",
+    input.linkDoCadastro
+      ? `Seu cadastro está guardado. É só abrir o link de novo, informar o seu CPF e reenviar com o ajuste: ${input.linkDoCadastro}`
+      : "Seu cadastro está guardado. É só abrir o link do cadastro de novo, informar o seu CPF e reenviar com o ajuste.",
+  );
+
+  return linhas.join("\n");
+}
+
+export function mensagemAutonomoIndeferido(input: {
+  corretor?: null | string;
+  motivos: string[];
+  observacao?: null | string;
+}): string {
+  const saudacao = input.corretor ? `Olá, ${primeiroNome(input.corretor)}!` : "Olá!";
+  const linhas = [
+    saudacao,
+    "",
+    "Seu cadastro de *corretor autônomo* não pôde ser aprovado por enquanto.",
+    "",
+    input.motivos.length === 1 ? "Motivo:" : "Motivos:",
+    listaDeMotivos(input.motivos),
+  ];
+
+  if (input.observacao?.trim()) {
+    linhas.push("", input.observacao.trim());
+  }
+
+  linhas.push("", "Qualquer dúvida, é só responder esta mensagem.");
+
+  return linhas.join("\n");
+}

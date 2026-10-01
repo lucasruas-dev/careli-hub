@@ -2,8 +2,10 @@ import { criarUrlDeUploadApoloDocument } from "@/lib/apolo/documentos";
 import { anotarContexto } from "@/lib/publico/cad/log-erros";
 import { erro, json, lerCorpo, prepararRota, recusar, responder } from "@/lib/publico/cad/rotas";
 import {
+  donoUploadPreAutonomo,
   donoUploadPreImob,
   donoUploadSessao,
+  preSessaoAutonomoDoRequest,
   preSessaoImobDoRequest,
   sessaoDoRequest,
 } from "@/lib/publico/cad/sessao";
@@ -18,6 +20,7 @@ import {
 // Aceita os DOIS tokens porque os dois fluxos usam o mesmo wizard e o mesmo bucket:
 //   • x-cad-sessao          → corretor enviando a CAD do cliente
 //   • x-cad-pre-sessao-imob → imobiliária no auto-cadastro
+//   • x-autonomo-pre-sessao → corretor autônomo no link dele (01/10/2026)
 // O caminho assinado é amarrado a quem pediu; a rota de salvar recusa caminho de outro dono.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -25,11 +28,14 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   const sessao = sessaoDoRequest(request);
   const preImob = preSessaoImobDoRequest(request);
+  const preAutonomo = preSessaoAutonomoDoRequest(request);
   const dono = sessao.ok
     ? donoUploadSessao(sessao.sessao)
     : preImob.ok
       ? donoUploadPreImob(preImob.pre)
-      : null;
+      : preAutonomo.ok
+        ? donoUploadPreAutonomo(preAutonomo.pre)
+        : null;
 
   if (!dono) {
     return recusar(
@@ -47,6 +53,8 @@ export async function POST(request: Request) {
     });
   } else if (preImob.ok) {
     anotarContexto(request, { imobiliariaCnpj: preImob.pre.cnpj });
+  } else if (preAutonomo.ok) {
+    anotarContexto(request, { corretorCpf: preAutonomo.pre.cpf });
   }
 
   const preparo = await prepararRota(request, "upload");
