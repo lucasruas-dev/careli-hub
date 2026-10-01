@@ -36,6 +36,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-10-01-clicksign-requisitos-em-massa",
+    deployedAt: "__HORA_REAL__",
+    internal: true,
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Corrigir o e-mail num contrato em andamento passa a concluir a troca.** O cadastro novo já passava, mas a Clicksign recusava os requisitos de assinatura e a troca era desfeita.",
+            ],
+            screen: "Contrato · Em assinatura",
+          },
+        ],
+      },
+    ],
+    rollback: "f2df6d38",
+    technical: {
+      done: "`lib/assinatura/clicksign/envelope.ts`: os dois requisitos (agree com o papel e provide_evidence por e-mail) saem de `requisitosDaPessoa`. O envio normal continua com os dois POST /envelopes/{id}/requirements; o acréscimo em envelope ativado (`acrescentarSignatario`, só a troca de e-mail) passa a usar POST /envelopes/{id}/bulk_requirements com `atomic:operations` e dois `add`, no formato da página oficial da Clicksign (conferida em 01/10/2026). Testes ajustados em envelope.test.ts e trocar-signatario.test.ts. Sem migração. Integrado por merge pela sessão Publicação.",
+      motivation: "Segundo uso real da troca de e-mail (01/10/2026, Maura, VOC0306, envelope 0384000d), já com a 1.403.4: o cadastro passou e os requisitos voltaram 403 \"envelope não está com status draft\".",
+    },
+    title: "Troca de e-mail conclui os requisitos no envelope em andamento",
+    type: "correcao",
+    version: "1.403.5",
+  },
+  {
     buildTag: "2026-10-01-clicksign-recadastro-sem-group",
     deployedAt: "2026-10-01T14:48:17-03:00",
     internal: true,
