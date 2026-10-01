@@ -36,6 +36,58 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-10-01-reenvio-usa-a-key-do-webhook",
+    deployedAt: "__HORA_REAL__",
+    internal: true,
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O botão de reenviar convite volta a funcionar nos contratos que estavam parados.** A mensagem que mandava procurar o envelope no painel da Clicksign some nesses casos: são 4 contratos enviados em 23/09 que ninguém conseguia mais cutucar.",
+              "**Quem já assinou não recebe convite de novo.** Antes isso dependia só de a tela esconder o botão.",
+              "**Quem recusou o documento também não recebe.** O reenvio passou a olhar a recusa, que antes era ignorada.",
+              "**Contrato cancelado, recusado ou já concluído não aceita mais convite nem troca de signatário.** Nada olhava o estado do envelope, e havia contrato cancelado com o botão aberto.",
+              "**A linha do signatário nunca mais fica sem nenhuma ação.** Havia um caso em que a faixa inteira sumia, sem botão, sem explicação e sem nem dizer o motivo.",
+              "**As duas telas de assinatura passaram a dizer a mesma coisa.** A do contrato e a do atendimento mostravam textos diferentes para a mesma situação, e agora a frase vem pronta do servidor.",
+            ],
+            screen: "Contrato em assinatura",
+          },
+        ],
+      },
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "**O reenvio do termo de acordo destravou junto:** 14 acordos enviados em 23 e 24/09 estavam sem caminho nenhum de reenvio, com 42 pessoas que nunca receberam o convite de novo.",
+              "**Corrigir o e-mail do signatário voltou a funcionar nesses acordos.** Ele recusava por um motivo que não tinha a ver com o acordo.",
+            ],
+            screen: "Termo de acordo",
+          },
+        ],
+      },
+    ],
+    rollback: "47e19c01",
+    technical: {
+      done:
+        "⚠️ O ID NUNCA FALTOU: QUEM ESTAVA ERRADO ERA A NOSSA RECUSA. A tela recusava o reenvio quando `temis_envelopes.signatarios` não tinha a `chave` do signatário, e mandava a operadora ao painel da Clicksign. MEDIDO EM PRODUÇÃO EM 01/10/2026 (só SELECT): a `signer.key` que vem no webhook é o MESMO valor que a Clicksign devolve no envio, ou seja é o id da API REST, em 54 de 54 pares idênticos, 8 envelopes, zero diferenças; e a tela já mandava exatamente esse valor. Nos 18 envelopes travados são 87 pessoas e as 70 sem marca de assinatura têm a key em forma de uuid no webhook. Vários comentários do código afirmavam o contrário disso POR DEDUÇÃO, e foram corrigidos com a medição escrita (`congelar-signatarios.ts`, `diario-do-envelope-db.ts`, `trocar-signatario.ts`, os dois `envio-db.ts`, `recusa-de-reenvio.ts` e as duas telas). O 422 de 24/09/2026, que esses comentários culpavam na `signer.key`, se explica pelo outro caso que o próprio código já descrevia: quando a pessoa só existe na lista congelada, a chave que a tela manda é O PRÓPRIO E-MAIL. " +
+        "⚠️ A PRIMEIRA VERSÃO DESTA CORREÇÃO FOI DESCARTADA, e vale registrar por quê: ela fazia `GET /envelopes/{id}/signers` na Clicksign e REESCREVIA `temis_envelopes.signatarios` para gravar o id. Duas rodadas de revisão adversarial foram gastas fechando o risco dessa reescrita (a chave `tmp:N` inventada fazia a função da 0195 casar por chave em vez de por e-mail e podia MOVER `assinado_em` de uma pessoa para outra), e uma terceira ainda achou duas falhas altas nela. Esta versão não chama nada novo na Clicksign e NÃO ESCREVE EM `temis_envelopes` no caminho do reenvio. " +
+        "O id vem do navegador, então `reenviarConvite` confere no servidor, nesta ordem, antes de qualquer chamada que custa: estado terminal recusa (409); e-mail, `tmp:` e `c2x:` não são id e recusam (400, e é o 422 de 24/09 que sobra); o id tem de constar no quadro congelado OU no payload de webhook DESTE envelope (`payloadMaisRecente` + `quemAssinou`, o mesmo par que o diário já usa, para não existirem duas réguas de \"de quem é esta key\"); e-mail repetido no quadro recusa em vez de escolher a primeira linha; quem assinou ou recusou recusa. O diário ficou com a MESMA régua e na MESMA ordem, para a tela nunca oferecer o gesto que o servidor recusa. " +
+        "⚠️ A TRAVA DE QUEM JÁ ASSINOU OLHA O PAYLOAD, NÃO SÓ O QUADRO, e isso achou uma divergência: o payload tem 19 eventos `sign` e o quadro só 17 `assinado_em` nessas 87 linhas. DUAS PESSOAS ASSINARAM E `temis_envelopes.signatarios` NÃO SABE (envelopes `9eafed62` e `f76d7af0`, assinaturas de 23 e 24/09). Sem essa trava elas receberiam convite de algo que já assinaram, e quem precisa de convite são 68, não 70. A divergência em si não foi corrigida aqui e merece olhada própria. " +
+        "TAMBÉM CORRIGIDO, E É ANTERIOR A ESTA FATIA: `quadroComATroca` inventava uma chave `tmp:N` POSICIONAL para a linha sem o campo `chave`. Como a função da 0195 casa a linha antiga pela chave ANTES de casar pelo e-mail, essa chave podia mover `assinado_em` para outra pessoa numa reescrita seguinte. Medido: 104 das 159 linhas de signatário dos 29 envelopes da Clicksign não têm o campo `chave`, e a 0195 as reencontra pelo e-mail único. Agora o campo só é emitido quando existe (`ItemParaGravar`, chave opcional na escrita), e a troca mexe em UMA linha só. ⚠️ FORA DE ESCOPO e NÃO mexido: `quadroDoEnvio` continua cunhando `tmp:<posição>` no ENVIO, ali por desenho. " +
+        "A régua do \"@\" saiu do `podeMexer` da tela (que envolvia a faixa de ações INTEIRA e deixava a linha muda) e desceu para `chaveDaClicksign`, no servidor, onde o pedido chega por HTTP; com isso o e-mail também deixa de alcançar o `DELETE /signers/{id}` da troca. `reenvioIndisponivel` deixou de ser boolean e passou a ser `null | { frase, motivo }`, com três motivos e uma tradução única, para as duas telas mostrarem literalmente a mesma string. " +
+        "⚠️ MEDIÇÃO QUE MUDA CONTAGEM FUTURA: `temis_envelopes` tem 2.260 linhas, mas 2.231 são espelho da D4Sign com chave `c2x:`. Da Clicksign são 29, e 21 delas estavam sem id nenhum. Contar as duas famílias juntas inverte qualquer porcentagem. " +
+        "Suíte na base do plantão (29/09): 716 arquivos, 10.689 testes. Integrado por merge pela sessão Publicação sobre a 1.404.0, com o conflito do card da Têmis resolvido juntando o lápis de Sem notícia (1.403.2) e a trava podeTrocarEmail nos dois botões de corrigir. Nada chamou a API da Clicksign: tudo por porta dublada. Sem migração.",
+      motivation:
+        "Nívea, pela Têmis, 01/10/2026: \"Não consigo reenviar os contratos. Precisamos sentar e resolver os pontos pendentes da Temis.\" Lucas, no mesmo dia: \"olha e resolve isso para mim\" e, depois da medição que mostrou que o id já estava no nosso banco, escolheu o caminho simples em vez de terminar a versão que buscava o id na Clicksign.",
+    },
+    title: "O reenvio do convite de assinatura volta a funcionar",
+    type: "correcao",
+    version: "1.404.1",
+  },
+  {
     buildTag: "2026-10-01-autonomo-link-publico",
     deployedAt: "2026-10-01T16:18:48-03:00",
     modules: [
