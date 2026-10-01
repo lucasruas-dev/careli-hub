@@ -62,7 +62,6 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
           {
             items: [
               "**O reenvio do termo de acordo destravou junto:** 14 acordos enviados em 23 e 24/09 estavam sem caminho nenhum de reenvio, com 42 pessoas que nunca receberam o convite de novo.",
-              "**Corrigir o e-mail do signatário voltou a funcionar nesses acordos.** Ele recusava por um motivo que não tinha a ver com o acordo.",
             ],
             screen: "Termo de acordo",
           },
