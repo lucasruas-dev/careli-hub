@@ -22,6 +22,9 @@ type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
 export type Balde =
   | "assistente"
   | "autonomo"
+  | "autonomoCpf"
+  | "autonomoEnvio"
+  | "autonomoGeral"
   | "creci"
   | "enviar"
   | "exigencias"
@@ -46,6 +49,19 @@ const REGRAS: Record<Balde, Regra> = {
   // mesmo teto curto e o mesmo atraso progressivo. Balde PRÓPRIO: no `imobiliaria` ele gastaria o
   // teto do escritório que credencia imobiliária no mesmo Wi-Fi.
   autonomo: { janelaSegundos: 10 * 60, teto: 24 },
+  // O ENVIO DO LINK DO AUTÔNOMO (terceira rodada de revisão, 01/10/2026; Lucas decidiu ir SEM captcha).
+  // Três freios, todos no contador atômico daqui (o "compara e troca" do `consumir`), nenhum por
+  // contagem solta de eventos:
+  //   • por IP (`autonomoEnvio`): o autônomo se cadastra uma vez; 10 envios por hora sobram para quem
+  //     erra e corrige, e seguram o robô de um IP só;
+  //   • por CPF (`autonomoCpf`, a chave é o resumo do CPF): 5 por dia. Quem roda vários IPs com o MESMO
+  //     CPF para de empilhar pedidos;
+  //   • GERAL (`autonomoGeral`, uma chave só): FREIO DE EMERGÊNCIA, alto de propósito. O de 40/h da versão
+  //     anterior era negação de serviço barata: um IP enchia a hora e barrava todo cadastro legítimo.
+  //     Com os dois freios de cima, só uma inundação de muitos IPs e muitos CPFs chega a 300 por hora.
+  autonomoCpf: { janelaSegundos: 24 * 60 * 60, teto: 5 },
+  autonomoEnvio: { janelaSegundos: 60 * 60, teto: 10 },
+  autonomoGeral: { janelaSegundos: 60 * 60, teto: 300 },
   // Torneiras PAGAS: teto diário e 429 seco, sem atraso progressivo (atrasar não economiza).
   creci: { janelaSegundos: 24 * 60 * 60, teto: 60 },
   enviar: { janelaSegundos: 60 * 60, teto: 60 },

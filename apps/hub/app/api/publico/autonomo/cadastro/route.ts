@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   celularValido,
   guardarDocumentosDoPedido,
@@ -17,6 +19,7 @@ import {
   caminhoUploadDiretoValido,
 } from "@/lib/apolo/documentos";
 import { anotarContexto } from "@/lib/publico/cad/log-erros";
+import { consumir } from "@/lib/publico/cad/rate-limit";
 import { normalizarCpf } from "@/lib/publico/cad/regras";
 import { erro, json, lerCorpo, prepararRota, recusar, responder } from "@/lib/publico/cad/rotas";
 import { donoUploadPreAutonomo, preSessaoAutonomoDoRequest } from "@/lib/publico/cad/sessao";
@@ -24,16 +27,17 @@ import { donoUploadPreAutonomo, preSessaoAutonomoDoRequest } from "@/lib/publico
 // O ENVIO DO CADASTRO DO CORRETOR AUTÔNOMO PELO LINK PÚBLICO.
 //
 // ⚠️ ESTA ROTA NÃO GRAVA FICHA. Grava só o PEDIDO (`registrarPedidoDoLink`, lib/apolo/autonomo-do-link.ts):
-// a proposta, os documentos no staging privado e o interesse. A ficha nasce, ou é acrescentada, só na
-// APROVAÇÃO, pela mesma porta do cadastro interno. Segunda rodada de revisão (01/10/2026): gravar no
-// envio punha o que um estranho digitou como dado real na ficha de quem já existia.
+// a proposta, os documentos no staging privado e o interesse. A ficha nasce, ou recebe papel e código,
+// só na APROVAÇÃO da coordenação.
 //
 // ⚠️ ANTI-TROCA: o CPF autorizado sai do TOKEN do portão. Se o CPF do documento divergir, recusa.
 //
-// ⚠️ A RESPOSTA NÃO REVELA NADA DA BASE. Como nada é gravado em ficha aqui, não existe a recusa de
-// "e-mail em outro cadastro". E um CPF que virou autônomo ou entrou em análise depois do portão
-// recebe a MESMA resposta de sucesso, sem que um segundo pedido seja empilhado: o portão já disse o
-// que tinha a dizer, e o envio não vira um segundo oráculo.
+// ⚠️ A RESPOSTA NÃO REVELA NADA DA BASE: CPF que virou autônomo ou entrou em análise depois do portão
+// recebe a MESMA resposta de sucesso, sem que um segundo pedido seja empilhado.
+//
+// ⚠️ SEM CAPTCHA (decisão do Lucas, 01/10/2026), A DEFESA SÃO TRÊS FREIOS ATÔMICOS, todos ANTES de
+// guardar qualquer documento (terceira rodada de revisão): por IP (`autonomoEnvio`, no `prepararRota`),
+// por CPF (`autonomoCpf`) e o geral de emergência (`autonomoGeral`). Ver lib/publico/cad/rate-limit.ts.
 //
 // ⚠️ DOCUMENTOS DO LINK: identidade e comprovante de endereço, sem certidão (Lucas, 01/10/2026).
 export const dynamic = "force-dynamic";
@@ -57,11 +61,19 @@ type Corpo = {
 const MENSAGEM_SESSAO =
   "Sua sessão expirou. Abra o link de novo e informe o seu CPF para continuar.";
 
+const MENSAGEM_MUITOS_ENVIOS =
+  "Recebemos vários envios deste cadastro. Aguarde a nossa análise ou fale com a nossa central.";
+
 const MENSAGEM_TETO =
   "Recebemos muitos cadastros agora. Tente de novo em alguns minutos ou fale com a nossa central.";
 
 /** O mesmo corpo de sucesso para todo envio aceito: sem código, sem id, sem PDF. */
 const RECEBIDO = { autenticacao: "", cadBase64: null, recebido: true, savedDocs: [], warnings: [] };
+
+/** A chave do freio por CPF: o resumo, nunca o CPF em claro (a tabela do contador guarda a chave). */
+function chaveDoCpf(cpf: string): string {
+  return createHash("sha256").update(`autonomo-envio-cpf:${cpf}`).digest("hex");
+}
 
 export async function POST(request: Request) {
   const pre = preSessaoAutonomoDoRequest(request);
@@ -69,7 +81,8 @@ export async function POST(request: Request) {
 
   anotarContexto(request, { corretorCpf: pre.pre.cpf });
 
-  const preparo = await prepararRota(request, "enviar");
+  // Freio 1, POR IP.
+  const preparo = await prepararRota(request, "autonomoEnvio");
   if (!preparo.ok) return preparo.response;
   const { adminClient, inicio } = preparo;
 
@@ -137,8 +150,14 @@ export async function POST(request: Request) {
   if (!obrigatorios.ok) return responder(request, inicio, erro(obrigatorios.mensagem));
 
   try {
+    // Freio 2, POR CPF, e freio 3, o GERAL de emergência. Atômicos, e ANTES de guardar arquivo.
+    const porCpf = await consumir(adminClient, "autonomoCpf", chaveDoCpf(pre.pre.cpf));
+    if (!porCpf.permitido) return responder(request, inicio, erro(MENSAGEM_MUITOS_ENVIOS, 429));
+    const geral = await consumir(adminClient, "autonomoGeral", "geral");
+    if (!geral.permitido) return responder(request, inicio, erro(MENSAGEM_TETO, 429));
+
     // O PORTÃO DE NOVO, no envio: o token vale 90 minutos. Quem não está mais liberado recebe a
-    // mesma resposta de sucesso, e nada é gravado (ver o cabeçalho).
+    // mesma resposta de sucesso, e nada é gravado.
     const situacao = await situacaoDoCpf(adminClient, pre.pre.cpf);
     if (!situacao.ok) return responder(request, inicio, erro(undefined, 503));
     if (situacao.situacao !== "liberado") return responder(request, inicio, json(RECEBIDO, 201));
@@ -162,13 +181,7 @@ export async function POST(request: Request) {
       empreendimentosDeInteresse: interesse,
       proposta: propostaDoLink(corpo),
     });
-    if (!registrado.ok) {
-      return responder(
-        request,
-        inicio,
-        registrado.motivo === "teto" ? erro(MENSAGEM_TETO, 429) : erro(undefined, 500),
-      );
-    }
+    if (!registrado.ok) return responder(request, inicio, erro(undefined, 500));
 
     return responder(request, inicio, json(RECEBIDO, 201));
   } catch {

@@ -1,141 +1,120 @@
-# Link público do corretor autônomo (desenho de 01/10/2026, segunda versão)
+# Link público do corretor autônomo (desenho de 01/10/2026, terceira versão)
 
 > Pedido do Lucas, 01/10/2026: *"fizemos o processo de cadastro de corretor autonomo, mas ele seria para o time interno, preciso criar o link publico igual temos da cad, imobiliaria"*.
 > Branch `feat/autonomo-link-publico`. Sem migration.
-> A segunda versão responde à revisão da Publicação (versão 1.404.0, não publicada).
+> A segunda versão está no ar (1.404.0, commit `47e19c01`). Esta terceira versão responde à segunda revisão da Publicação.
 
 ## A regra que não pode quebrar
 
 O cadastro feito pelo link cai na **mesma entidade** e na **mesma validação** que o time já usa. Nada de cadastro paralelo.
 
-**Nada do que chega pelo link vira dado antes de uma pessoa da coordenação aprovar.** Isso vale para:
+**Nada do que chega pelo link vira dado antes de uma pessoa da coordenação aprovar.** E, numa ficha que já existe, **nem depois**: a aprovação grava só o papel, o código CA e os documentos. Isso vale para:
 - ficha, papel, contato, endereço e documento na ficha;
 - código CA e habilitação;
 - C2X e Asaas.
 
-## Por que a segunda versão
-
-A primeira versão gravava a ficha no envio: criava a ficha nova ou acrescentava na que já existia. A revisão da Publicação provou que acrescentar ainda é gravar.
-
-Em ficha que já existe, o cadastro preenche os campos **vazios** com o que foi digitado: qualificação, endereço primário e cônjuge `verified`. Esses campos alimentam o contrato da Têmis, a CAD, o C2X e o Board. Indeferir não desfazia. E o link não prova que quem digita é dono do CPF.
-
-## O desenho
-
-### O envio grava só o pedido
+## O envio grava só o pedido
 
 `POST /api/publico/autonomo/cadastro` → `registrarPedidoDoLink` (`lib/apolo/autonomo-do-link.ts`).
 
 O pedido é um evento `corretor_autonomo_solicitado` em `apolo_audit_events`, **sem ficha** (`entity_id` nulo). O `metadata` leva:
-- o resumo do CPF (`cpfHash`, o mesmo hash de `document_hash`) e o CPF mascarado;
+- o resumo do CPF (`cpfHash`, o mesmo hash de `document_hash` e de `apolo_entity_identifiers.value_hash`) e o CPF mascarado;
 - a proposta, por lista de inclusão:
   - `identidade`: nome, CPF, nascimento, naturalidade, filiação, órgão emissor;
   - `perfil`: e-mail, celular, sexo, estado civil, escolaridade, renda, profissão;
   - `endereco`.
 
-  Cada campo tem teto de 200 caracteres. Não entram cônjuge, empreendimentos, empresa, vínculo, imobiliária nem o texto livre "lido do documento".
-- os documentos no **staging privado** do bucket (`entidade/_pendente/a-<resumo do CPF>/`), só identidade e comprovante;
+  Cada campo tem teto de 200 caracteres. Não entram cônjuge, empreendimentos, empresa, vínculo, imobiliária nem o texto "lido do documento".
+- os documentos no **staging privado** do bucket, só identidade e comprovante;
 - os empreendimentos de interesse, conferidos contra a vitrine do servidor.
 
-Nenhuma tabela de ficha é lida ou escrita no envio. O teste `NÃO ENCOSTA EM FICHA` cobre as sete tabelas.
+O envio não lê nem escreve nenhuma das tabelas da ficha (o teste `NÃO ENCOSTA EM FICHA` cobre as sete). Sem migration: `entity_id` aceita nulo e `action` é texto sem CHECK. A tabela tem RLS, e só a leitura de usuário do hub passa.
 
-Sem migration: `apolo_audit_events.entity_id` aceita nulo e `action` é texto sem CHECK (medido em 01/10/2026). A tabela tem RLS, e só a leitura de `authenticated` (usuário do hub) passa, o mesmo nível das fichas. O anônimo não lê.
+**O reenvio** (depois de "pedir correção") é um pedido novo com a proposta inteira. Ele substitui o anterior na fila e **apaga do staging os documentos do pedido substituído**.
 
-### A aprovação grava pela porta do cadastro interno
+## Os freios, sem captcha
 
-`POST /api/apolo/corretores-autonomos/pedidos/[id]/decisao` com `acao: "aprovar"` → `aprovarPedido`. Nesta ordem:
+O Lucas decidiu, em 01/10/2026, não ter captcha nos links públicos. São três contadores **atômicos** (o "compara e troca" de `consumir`, `lib/publico/cad/rate-limit.ts`), todos conferidos **antes de qualquer documento ser guardado**:
 
-1. **Confere no momento da decisão.** Recusa se:
-   - alguma ficha do CPF já tem código CA (uma pessoa, um código);
-   - alguma ficha do CPF é PJ ou tem o papel imobiliária (*"nao quero ter a informacao que pode ter pessoa fisica como imobiliaria"*);
+| Freio | Balde | Teto |
+|---|---|---|
+| Por IP | `autonomoEnvio` | 10 envios por hora |
+| Por CPF | `autonomoCpf` (chave: resumo do CPF, nunca o CPF) | 5 por dia |
+| Geral, de emergência | `autonomoGeral` | 300 por hora |
+
+O portão do CPF tem o seu (`autonomo`, 24 por 10 min, com atraso progressivo).
+
+O teto de 40 por hora da segunda versão saiu. Ele era uma contagem de eventos, sem atomicidade, e virava negação de serviço barata: um IP enchia a hora e barrava todo cadastro legítimo.
+
+## A aprovação
+
+`POST /api/apolo/corretores-autonomos/pedidos/[id]/decisao`, `acao: "aprovar"` → `aprovarPedido`.
+
+1. **Lê as fichas do CPF nas duas fontes** (`fichasDoDocumento`: `document_hash` e o identificador do sync do C2X). Recusa se:
+   - alguma ficha já tem código CA (uma pessoa, um código);
+   - alguma é PJ ou tem o papel imobiliária;
    - o pedido não é o mais recente do CPF.
-2. **`createApoloEntity`** com `role: corretor`, `persona: pf`, `dedupPorDocumento` e `fichaExistente: "acrescentar"`:
-   - CPF novo nasce inteiro, como no cadastro interno;
-   - CPF com ficha só é acrescentado, sem trocar nada; telefone e e-mail não entram (são chave da Iris e assinatura do D4Sign) e ficam como pendência na ficha.
-3. **Papel `corretor` ativo** (upsert): é a decisão de quem aprovou.
-4. **Código CA** da sequência do banco, gravado com `broker_code is null` no UPDATE, então dois cliques não dão dois códigos.
-5. **Documentos** do staging vão para o drive da ficha (`agruparEUploadDocumentos`).
-6. **Evento `corretor_autonomo_aprovado`**, com a ficha e o código.
+2. **CPF novo:** a ficha nasce pela porta do cadastro interno (`createApoloEntity`, `role: corretor`, `dedupPorDocumento`), inteira.
+3. **CPF que já tem ficha:** `createApoloEntity` **não é chamado**. A ficha usada é a que tem o papel `corretor`, senão a mais antiga (`escolherFicha`, a mesma régua que a tela mostra). Ela recebe só:
+   - o papel `corretor` ativo;
+   - o código CA;
+   - os documentos.
+
+   Qualificação, endereço, contato e cônjuge digitados **não entram**. A versão anterior, no modo que acrescenta, preenchia os campos vazios, e eles chegavam ao contrato da Têmis. O que foi digitado fica no evento da aprovação (`propostaNaoGravada`), no histórico da ficha, como pendência.
+4. **Código CA** da sequência do banco, gravado com `broker_code is null` no UPDATE.
+5. **Documentos** do staging vão para o drive da ficha. **A falha não é descartada:** volta na resposta (a tela pede para anexar pela ficha) e fica no evento (`documentosComFalha`).
 
 Nenhuma habilitação nasce da aprovação.
 
-### Pedir correção e indeferir não encostam em ficha
+## Pedir correção e indeferir
 
-Os dois só gravam o evento (`pedidoId` no `metadata`) e avisam a pessoa. A correção diz para abrir o link de novo. O reenvio é um **pedido novo, com a proposta inteira**, e substitui o anterior na fila. Antes, o reenvio caía em "acrescentar" e não atualizava nada.
+Os dois só gravam o evento e não encostam em ficha.
+- **Pedir correção:** avisa o celular digitado, com o link para reenviar.
+- **Indeferir:** **não manda WhatsApp.** O número foi digitado num formulário aberto e pode ser de qualquer pessoa, e uma recusa não tem o que pedir de volta. Os documentos do pedido saem do staging. A tela diz que ninguém foi avisado.
 
-### Avisos
+## A tela do time (Apolo > Autônomos)
 
-- **Ao corretor:** vão para o celular **digitado** no pedido, porque é quem pediu.
-  - Na aprovação, saem por `enviarPeloRelacionamento` e ficam registrados em `apolo_disparos`.
-  - Na correção e no indeferimento, a pessoa ainda não tem ficha e `apolo_disparos.entity_id` é NOT NULL. Por isso saem direto pelo gateway, e o resultado aparece na tela.
-  - O código CA nunca vai na mensagem.
-- **Ao time:** o sino toca para administradores e líderes. Com mais de 5 pedidos em 15 minutos, ele para de tocar a cada um.
+Só a coordenação (admin e líder) lê, decide e habilita. Antes de aprovar, o cartão mostra:
+- os dados digitados e os documentos do pedido, por URL assinada de 10 minutos;
+- **"Este CPF já tem ficha na Careli"**, com o nome, os papéis e o botão para abrir a ficha. A ficha é achada nas duas fontes, inclusive a do sync do C2X que só tem o identificador. A versão anterior olhava só `document_hash`, e 20 CPFs escapavam;
+- **"Se aprovar, fica gravado:"**, a lista que sai de `oQueSeraGravado`, a mesma régua da aprovação.
 
-## Segurança
+**A fila não tem teto escondido.** Os pedidos são paginados (páginas de 1.000, até 20 mil) e as decisões são lidas pelo id de cada pedido. Se o teto for atingido, a tela avisa. A versão anterior lia os 1.000 eventos mais recentes, e sob inundação o pedido legítimo sumia.
 
-- **Proxy:** só `/api/publico/autonomo` é público. A fila, a decisão, os documentos do pedido e a habilitação ficam em `/api/apolo/corretores-autonomos/*`, com Bearer.
-- **Só a coordenação** (`authorizeApoloCoordenacao`: admin e líder) lê a fila, vê os documentos, decide e habilita. Antes, `authorizeApoloWrite` deixava o operador, inclusive o externo, decidir.
-- **Pré-sessão própria** amarrada ao CPF (`preAutonomo`), que não vale nos outros links. **Anti-troca:** o CPF do documento tem de ser o do token.
-- **Consulta paga fechada:** com o token do autônomo, `/api/publico/cad/ocr` só lê a foto (`extract`). `enrich` e `enrich-company` dão 403, mesmo para o CPF do próprio token, porque o portão emite token para qualquer CPF. O wizard do link nem pergunta (`semEnriquecimento`).
-- **A resposta do envio não revela nada.** O sucesso é sempre `{ recebido: true }`, sem id, código ou PDF. CPF que virou autônomo ou entrou em análise depois do portão recebe a **mesma** resposta, sem gravar. Como nada é gravado em ficha, não existe recusa de "e-mail em outro cadastro".
-- **Tetos:**
-  - por IP: portão (balde `autonomo`, 24 por 10 min, com atraso progressivo), envio (`enviar`) e leitura (`ocr`);
-  - teto **geral** de 40 pedidos por hora.
-- **Celular obrigatório,** conferido por dígitos (`/\D/g`).
+## Segurança da borda (sem mudança desde a segunda versão)
 
-## O que não mudou (com teste)
+- **Proxy:** só `/api/publico/autonomo` é público.
+- **Pré-sessão** própria amarrada ao CPF, com anti-troca.
+- **Consulta paga fechada:** com o token do autônomo, `/api/publico/cad/ocr` só lê a foto.
+- **A resposta do envio é sempre a mesma** (`{ recebido: true }`), inclusive para CPF que já é autônomo ou está em análise.
+- **Celular obrigatório,** conferido por dígitos.
 
-- **CAD do cliente:** consulta CPF com `query`/`datasets` como antes. Dono do upload `s-<sessão>`. Não entra no modo do autônomo.
-- **Imobiliária:** consulta CNPJ e CPF dos sócios como antes. Dono do upload `c-<CNPJ>`. Não entra no modo do autônomo.
-- **Portal do incorporador e cadastro interno:** não entram no modo do autônomo (`ehAutonomoPublico`).
-- **Certidão e cônjuge** continuam obrigatórios fora do link.
-- **O papel `corretor` da ficha não muda antes da aprovação**, então a resposta da CAD pública para aquele CPF continua a mesma.
+## Testes
 
-## Decisões do Lucas (01/10/2026)
-
-| Pergunta | Decisão |
-|---|---|
-| Onde validar | Tela nova no Apolo (Autônomos), com aprovar, pedir correção e indeferir, e a aba Habilitação |
-| Empreendimentos | O autônomo indica interesse; quem habilita é o time |
-| Documentos | Identidade e comprovante de endereço, sem certidão |
-| Aviso | Sino do hub |
-| Captcha | Ir ao ar sem captcha, com teto geral por hora; captcha numa segunda entrega |
-
-## Arquivos
-
-- **Público:**
-  - `app/publico/autonomo/page.tsx`
-  - `modules/publico/autonomo/AutonomoPublicoPortal.tsx`
-  - `app/api/publico/autonomo/{iniciar,cadastro}/route.ts`
-- **Compartilhado:**
-  - `lib/publico/cad/sessao.ts`
-  - `lib/publico/cad/rate-limit.ts`
-  - `app/api/publico/cad/{ocr,upload-url}/route.ts`
-  - `proxy.ts`
-- **Domínio:**
-  - `lib/apolo/autonomo-do-link.ts`
-  - `lib/apolo/credenciamento-mensagens.ts`
-  - `lib/apolo/cadastro-obrigatorios.ts` (`semEstadoCivil`)
-  - `lib/apolo/cadastro-tipos.ts` (`ehAutonomoPublico`)
-- **Interno:**
-  - `app/api/apolo/corretores-autonomos/fila/route.ts`
-  - `app/api/apolo/corretores-autonomos/pedidos/[id]/{decisao,documentos}/route.ts`
-  - `app/api/apolo/corretores-autonomos/[id]/habilitar/route.ts` (agora só a coordenação)
-  - `modules/apolo/blocks/autonomos/autonomos-view.tsx`
-  - `lib/apolo/catalog.ts`
-  - `modules/apolo/ApoloPage.tsx`
-- **Assistente:** `modules/apolo/blocks/cadastro/cadastro-flow.tsx`
-- **Testes:**
-  - `lib/apolo/autonomo-do-link.test.ts`
-  - `app/api/publico/autonomo/rotas.test.ts`
+- **Regra principal** (`lib/apolo/autonomo-do-link.test.ts`):
+  - o envio não encosta em ficha;
+  - o reenvio apaga os documentos antigos;
+  - aprovar CPF novo e CPF com ficha (só papel, código e documentos);
+  - a falha de documento aparece;
+  - indeferir não manda WhatsApp e apaga os documentos;
+  - a fila acha a ficha do sync pelo identificador e pagina.
+- **Rotas** (`app/api/publico/autonomo/rotas.test.ts`): os três freios na ordem, antes de guardar documento, e a chave do CPF sem o CPF.
+- **Telas montadas de verdade** (`modules/publico/autonomo/telas-publicas.test.tsx`):
+  - a vitrine da imobiliária e a do autônomo;
+  - o wizard nos três links (CAD do cliente, imobiliária, autônomo).
+- **Adaptador do wizard** (`modules/apolo/blocks/cadastro/cadastro-flow.adaptador.test.ts`): o que cada link manda para o servidor e como a resposta é lida.
+- **Mutação conferida:** três quebras de propósito ficaram vermelhas:
+  - o modo do autônomo vazando para os outros links;
+  - a consulta paga liberada;
+  - a imobiliária seguindo sem empreendimento.
+- **Já existentes e mantidos:**
   - `app/api/publico/cad/{ocr,upload-url}/tokens.test.ts`
   - `lib/apolo/cadastro-autonomo-publico.test.ts`
-  - `lib/publico/cad/sessao.autonomo.test.ts`
-  - `lib/publico/cad/proxy-autonomo.test.ts`
+  - `lib/publico/cad/{sessao.autonomo,proxy-autonomo}.test.ts`
 
 ## Pendências
 
-- **Captcha (Turnstile):** decidido para depois de ir ao ar.
-- **Link fora da aba Links do empreendimento,** porque a aba aparece no portal da Gurgel. O time copia o link na tela Autônomos.
-- **Corretor de imobiliária que também vira autônomo** fica com as duas coisas: falta a decisão do Lucas.
-- **Documentos de pedido indeferido** ficam no staging. Não há limpeza automática.
-- **Cópia do token da imobiliária:** a correção do enrich do token da imobiliária está sendo feita em separado. Aqui o token do autônomo não consulta nada.
+- O link fica fora da aba Links do empreendimento, porque essa aba aparece no portal da Gurgel.
+- Falta a decisão do Lucas sobre o corretor de imobiliária que também vira autônomo.
+- Arquivo que sobe pelo upload direto e cujo envio nunca acontece fica no staging. É o mesmo comportamento da CAD pública.
+- A correção do enrich do token da imobiliária está sendo feita em separado. O token do autônomo não consulta nada.

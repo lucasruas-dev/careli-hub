@@ -8,12 +8,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // a mesma resposta de quem foi aceito, e nenhuma resposta leva id, código ou PDF.
 
 const m = vi.hoisted(() => ({
+  baldes: [] as string[],
+  consumir: vi.fn(),
   guardar: vi.fn(),
+  preparar: vi.fn(),
   registrar: vi.fn(),
   situacao: vi.fn(),
   vitrine: vi.fn(),
 }));
 
+vi.mock("@/lib/publico/cad/rate-limit", () => ({ consumir: m.consumir }));
 vi.mock("@/lib/publico/cad/rotas", () => ({
   erro: (mensagem = "GENERICO", status = 400) => Response.json({ error: mensagem }, { status }),
   json: (body: unknown, status = 200) => Response.json(body, { status }),
@@ -24,7 +28,7 @@ vi.mock("@/lib/publico/cad/rotas", () => ({
       return null;
     }
   },
-  prepararRota: async () => ({ adminClient: {}, inicio: 0, ok: true }),
+  prepararRota: m.preparar,
   recusar: async (_request: Request, response: Response) => response,
   responder: async (_request: Request, _inicio: number, response: Response) => response,
 }));
@@ -75,6 +79,15 @@ beforeEach(() => {
     ok: true,
   }));
   m.registrar.mockResolvedValue({ ok: true, pedidoId: "pedido-interno" });
+  m.baldes.length = 0;
+  m.preparar.mockImplementation(async (_request: Request, balde: string) => {
+    m.baldes.push(balde);
+    return { adminClient: {}, inicio: 0, ok: true };
+  });
+  m.consumir.mockImplementation(async (_client: unknown, balde: string) => {
+    m.baldes.push(balde);
+    return { esperaMs: 0, permitido: true, teto: 1 };
+  });
 });
 
 afterEach(() => {
@@ -225,12 +238,28 @@ describe("o envio", () => {
     expect(m.guardar).not.toHaveBeenCalled();
   });
 
-  it("o teto geral por hora vira 429 com frase genérica", async () => {
-    m.registrar.mockResolvedValue({ motivo: "teto", ok: false });
-    const resposta = await enviarCorpo(corpoValido());
-    expect(resposta.status).toBe(429);
-    expect(JSON.stringify(await resposta.json())).not.toMatch(/\d/);
+  it("SEM CAPTCHA, TRÊS FREIOS ATÔMICOS: por IP, por CPF (pelo resumo) e o geral", async () => {
+    await enviarCorpo(corpoValido());
+    expect(m.baldes).toEqual(["autonomoEnvio", "autonomoCpf", "autonomoGeral"]);
+    const chaveDoCpf = m.consumir.mock.calls.find((chamada) => chamada[1] === "autonomoCpf")![2];
+    expect(chaveDoCpf).not.toContain(CPF);
+    expect(chaveDoCpf).toMatch(/^[0-9a-f]{64}$/);
   });
+
+  for (const balde of ["autonomoCpf", "autonomoGeral"]) {
+    it(`freio ${balde} puxado: 429 com frase genérica, e NENHUM documento guardado`, async () => {
+      m.consumir.mockImplementation(async (_client: unknown, nome: string) => ({
+        esperaMs: 0,
+        permitido: nome !== balde,
+        teto: 1,
+      }));
+      const resposta = await enviarCorpo(corpoValido());
+      expect(resposta.status).toBe(429);
+      expect(JSON.stringify(await resposta.json())).not.toMatch(/\d/);
+      expect(m.guardar).not.toHaveBeenCalled();
+      expect(m.registrar).not.toHaveBeenCalled();
+    });
+  }
 
   it("qualquer outra falha de gravação vira a frase genérica", async () => {
     m.registrar.mockResolvedValue({ motivo: "falha", ok: false });

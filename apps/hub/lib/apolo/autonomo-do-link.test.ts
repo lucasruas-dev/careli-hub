@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // O LINK PÚBLICO DO CORRETOR AUTÔNOMO (01/10/2026). O que este arquivo trava é a regra que não pode
-// quebrar, no desenho da segunda rodada de revisão: o envio pelo link NÃO ENCOSTA EM FICHA NENHUMA. Ele
-// grava só o pedido; a ficha nasce, ou é acrescentada, na aprovação de uma pessoa da coordenação, pela
-// mesma porta do cadastro interno.
+// quebrar: o envio pelo link NÃO ENCOSTA EM FICHA NENHUMA, e a aprovação da coordenação grava só o que
+// pode. CPF novo nasce pela porta do cadastro interno; CPF que já tem ficha recebe SÓ papel, código CA e
+// documentos, e o que foi digitado fica como pendência (terceira rodada de revisão da Publicação).
 
 const m = vi.hoisted(() => ({
   agrupar: vi.fn(),
@@ -36,17 +36,19 @@ import {
   celularValido,
   decidirPedidoDoAutonomo,
   entradaDaAprovacao,
+  escolherFicha,
   estadoDoPedido,
+  filaDoLinkDoAutonomo,
   guardarDocumentosDoPedido,
   MENSAGEM_DO_PORTAO,
   montarFila,
+  oQueSeraGravado,
   propostaDoLink,
   recusaDaDecisao,
   registrarPedidoDoLink,
   resumoDoCpf,
   situacaoDoCpf,
   situacaoNoPortao,
-  TETO_DE_PEDIDOS_POR_HORA,
 } from "./autonomo-do-link";
 
 // ---------------------------------------------------------------------------
@@ -56,6 +58,7 @@ type Operacao = {
   acao: "insert" | "select" | "update" | "upsert";
   contagem: boolean;
   filtros: Array<[string, string, unknown]>;
+  intervalo?: [number, number];
   tabela: string;
   valores?: unknown;
 };
@@ -63,6 +66,7 @@ type Operacao = {
 function banco(responder: (op: Operacao) => { count?: number; data?: unknown; error?: unknown }) {
   const feitas: Operacao[] = [];
   const subidas: Array<{ caminho: string; opcoes: unknown }> = [];
+  const apagados: string[] = [];
   const client = {
     from(tabela: string) {
       const op: Operacao = { acao: "select", contagem: false, filtros: [], tabela };
@@ -89,6 +93,10 @@ function banco(responder: (op: Operacao) => { count?: number; data?: unknown; er
         limit: () => cadeia,
         maybeSingle: resolver,
         order: () => cadeia,
+        range: (de: number, ate: number) => {
+          op.intervalo = [de, ate];
+          return cadeia;
+        },
         select: (_colunas?: string, opcoes?: { count?: string; head?: boolean }) => {
           if (opcoes?.head) op.contagem = true;
           return cadeia;
@@ -112,6 +120,10 @@ function banco(responder: (op: Operacao) => { count?: number; data?: unknown; er
     storage: {
       from: () => ({
         createSignedUrl: async (caminho: string) => ({ data: { signedUrl: `https://x/${caminho}` }, error: null }),
+        remove: async (caminhos: string[]) => {
+          apagados.push(...caminhos);
+          return { data: null, error: null };
+        },
         upload: async (caminho: string, _bytes: unknown, opcoes: unknown) => {
           subidas.push({ caminho, opcoes });
           return { data: { path: caminho }, error: null };
@@ -119,7 +131,7 @@ function banco(responder: (op: Operacao) => { count?: number; data?: unknown; er
       }),
     },
   };
-  return { client: client as never, feitas, subidas };
+  return { apagados, client: client as never, feitas, subidas };
 }
 
 const filtroDe = (op: Operacao, coluna: string) => op.filtros.find(([, c]) => c === coluna)?.[2];
@@ -139,7 +151,7 @@ const CPF = "52998224725";
 const PROPOSTA = propostaDoLink({
   endereco: { cidade: "Belo Horizonte", logradouro: "Rua A", numero: "10", uf: "MG" },
   identidade: { cpf: CPF, naturalidade: "Belo Horizonte - MG", nome: "JOANA DA SILVA" },
-  perfil: { email: "joana@email.com", estadoCivilId: "2", telefone: "31999990000" },
+  perfil: { email: "joana@email.com", estadoCivilId: "2", profissaoId: "12", telefone: "31999990000" },
 });
 
 beforeEach(() => {
@@ -226,7 +238,7 @@ describe("a proposta e o celular", () => {
     expect(proposta.identidade.nome?.length).toBe(200);
   });
 
-  it("a entrada da APROVAÇÃO é o cadastro interno do autônomo: corretor, PF, um CPF uma ficha, sem vínculo", () => {
+  it("a entrada da APROVAÇÃO de CPF novo é o cadastro interno do autônomo", () => {
     const entrada = entradaDaAprovacao(PROPOSTA, "u-1");
     expect(entrada).toMatchObject({
       conjuge: null,
@@ -289,24 +301,31 @@ describe("o envio pelo link", () => {
     });
   });
 
-  it("TETO GERAL: com a hora cheia de pedidos, recusa sem gravar nada", async () => {
-    const { client, feitas } = banco((op) => (op.contagem ? { count: TETO_DE_PEDIDOS_POR_HORA } : { data: [] }));
-    const resultado = await registrarPedidoDoLink(client, {
-      documentos: [],
-      empreendimentosDeInteresse: [],
-      proposta: PROPOSTA,
+  it("o REENVIO apaga do staging os documentos do pedido que ele substitui", async () => {
+    const { apagados, client } = banco((op) => {
+      if (op.contagem) return { count: 0 };
+      if (op.tabela === "apolo_audit_events" && op.acao === "insert") return { data: { id: "p-novo" } };
+      if (op.tabela === "apolo_audit_events" && filtroDe(op, "metadata->>cpfHash")) {
+        return {
+          data: [
+            {
+              action: ACOES_DO_PEDIDO.solicitado,
+              created_at: "2026-10-01T10:00:00Z",
+              id: "p-velho",
+              metadata: { documentos: [{ storagePath: "entidade/_pendente/a-x/velho.jpg" }] },
+            },
+          ],
+        };
+      }
+      return { data: [] };
     });
-    expect(resultado).toEqual({ motivo: "teto", ok: false });
-    expect(feitas.some((op) => op.acao !== "select")).toBe(false);
+    await registrarPedidoDoLink(client, { documentos: [], empreendimentosDeInteresse: [], proposta: PROPOSTA });
+    expect(apagados).toEqual(["entidade/_pendente/a-x/velho.jpg"]);
   });
 
   it("o sino não inunda: com muitos pedidos em 15 minutos, ele para de tocar a cada um", async () => {
-    let contagens = 0;
     const { client } = banco((op) => {
-      if (op.contagem) {
-        contagens += 1;
-        return { count: contagens === 1 ? 10 : 6 };
-      }
+      if (op.contagem) return { count: 10 };
       if (op.acao === "insert") return { data: { id: "p" } };
       return { data: [{ id: "u" }] };
     });
@@ -370,6 +389,54 @@ describe("a fila do time", () => {
     expect(fila[0]!.interesse).toEqual([{ id: "35", label: "Vale do Ouro" }]);
     expect(fila[1]!.motivos).toEqual(["CRECI cancelado"]);
   });
+
+  it("a ficha da aprovação: a que tem papel de corretor; senão a mais antiga", () => {
+    const fichas = [
+      { createdAt: "2026-05-01T00:00:00Z", entityId: "copia-asana", papeis: [] },
+      { createdAt: "2026-01-01T00:00:00Z", entityId: "original", papeis: ["prospect (active)"] },
+      { createdAt: "2026-06-01T00:00:00Z", entityId: "da-imobiliaria", papeis: ["corretor (active)"] },
+    ];
+    expect(escolherFicha(fichas)?.entityId).toBe("da-imobiliaria");
+    expect(escolherFicha(fichas.slice(0, 2))?.entityId).toBe("original");
+    expect(escolherFicha([])).toBeNull();
+  });
+
+  it("o que a aprovação grava é dito antes: em ficha existente, NADA do que foi digitado", () => {
+    const existente = oQueSeraGravado({ documentos: 2, fichaExistente: true });
+    expect(existente.join(" ")).toMatch(/NÃO entram/);
+    expect(existente.join(" ")).not.toMatch(/Ficha nova/);
+    expect(oQueSeraGravado({ documentos: 1, fichaExistente: false })[0]).toMatch(/Ficha nova/);
+  });
+
+  it("acha a ficha também pelo IDENTIFICADOR do sync do C2X, e pagina os pedidos", async () => {
+    const resumo = resumoDoCpf(CPF);
+    const { client, feitas } = banco((op) => {
+      if (op.tabela === "apolo_audit_events" && filtroDe(op, "action") === ACOES_DO_PEDIDO.solicitado) {
+        // Primeira página cheia de 1000? Não: uma página só, curta.
+        return { data: [pedido("p1", resumo, "2026-10-01T10:00:00Z", { documentos: [{}, {}] })] };
+      }
+      if (op.tabela === "apolo_entities" && filtroDe(op, "document_hash")) return { data: [] };
+      if (op.tabela === "apolo_entity_identifiers") return { data: [{ entity_id: "do-c2x", value_hash: resumo }] };
+      if (op.tabela === "apolo_entities" && filtroDe(op, "id")) {
+        return { data: [{ created_at: "2025-01-01T00:00:00Z", display_name: "JOANA DO C2X", id: "do-c2x" }] };
+      }
+      if (op.tabela === "apolo_entity_profiles") return { data: [{ entity_id: "do-c2x", profile: "usuario", status: "active" }] };
+      return { data: [] };
+    });
+
+    const fila = await filaDoLinkDoAutonomo(client);
+    expect(fila.ok).toBe(true);
+    if (!fila.ok) return;
+    expect(fila.truncado).toBe(false);
+    expect(fila.itens[0]!.fichaExistente).toEqual({
+      entityId: "do-c2x",
+      nome: "JOANA DO C2X",
+      papeis: ["usuario (active)"],
+    });
+    expect(fila.itens[0]!.seraGravado.join(" ")).toMatch(/NÃO entram/);
+    // A página tem intervalo explícito: nada de `limit(1000)` escondido.
+    expect(feitas.find((op) => filtroDe(op, "action") === ACOES_DO_PEDIDO.solicitado)?.intervalo).toEqual([0, 999]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -390,7 +457,9 @@ describe("as três decisões do time", () => {
     { categoria: "identificacao", fileName: "rg.jpg", mimeType: "image/jpeg", sizeBytes: 10, storagePath: "entidade/_pendente/a-x/rg.jpg" },
   ];
 
-  function bancoDaDecisao(extra: { fichaComCodigo?: boolean; fichaPj?: boolean; outroMaisRecente?: boolean } = {}) {
+  function bancoDaDecisao(
+    extra: { fichaComCodigo?: boolean; fichaPj?: boolean; outroMaisRecente?: boolean; papeis?: Array<Record<string, string>> } = {},
+  ) {
     return banco((op) => {
       if (op.tabela === "apolo_audit_events" && op.acao === "select" && filtroDe(op, "id") === "p1") {
         return {
@@ -405,7 +474,7 @@ describe("as três decisões do time", () => {
       if (op.tabela === "apolo_audit_events" && op.acao === "select" && filtroDe(op, "metadata->>cpfHash")) {
         return { data: [{ action: ACOES_DO_PEDIDO.solicitado, created_at: "x", id: extra.outroMaisRecente ? "p2" : "p1" }] };
       }
-      if (op.tabela === "apolo_entities" && op.acao === "select" && filtroDe(op, "id") === "ficha-nova") {
+      if (op.tabela === "apolo_entities" && op.acao === "select" && op.filtros.some(([t, c]) => t === "eq" && c === "id")) {
         return { data: { broker_code: "CA-0001" } };
       }
       if (op.tabela === "apolo_entities" && op.acao === "select") {
@@ -413,17 +482,19 @@ describe("as três decisões do time", () => {
           data: [
             {
               broker_code: extra.fichaComCodigo ? "CA-0004" : null,
+              created_at: "2025-01-01T00:00:00Z",
               entity_kind: extra.fichaPj ? "pj" : "pf",
               id: "existente",
             },
           ],
         };
       }
+      if (op.tabela === "apolo_entity_profiles" && op.acao === "select") return { data: extra.papeis ?? [] };
       return { data: [] };
     });
   }
 
-  it("APROVAR grava pela porta do cadastro interno, acrescentando, com papel ativo, código e documentos", async () => {
+  it("APROVAR CPF NOVO grava pela porta do cadastro interno, com papel ativo, código e documentos", async () => {
     m.fichas.mockResolvedValue({ falhou: false, ids: [] });
     m.criar.mockResolvedValue({ autenticacao: "CAD-2026-X", entityId: "ficha-nova", ok: true, warnings: [] });
     m.sequencia.mockResolvedValue({ codigo: "CA-0001", ok: true });
@@ -436,18 +507,14 @@ describe("as três decisões do time", () => {
       pedidoId: "p1",
     });
 
-    expect(feita).toMatchObject({ codigo: "CA-0001", estado: "aprovado", ok: true });
-    const [, entrada, opcoes] = m.criar.mock.calls[0]!;
+    expect(feita).toMatchObject({ codigo: "CA-0001", entityId: "ficha-nova", estado: "aprovado", ok: true });
+    const [, entrada] = m.criar.mock.calls[0]!;
     expect(entrada).toEqual(entradaDaAprovacao(PROPOSTA, "u-1"));
-    // Ficha que já existe só é ACRESCENTADA, e sem gerador: o código é gravado à parte.
-    expect(opcoes).toEqual({ cadastroDeCorretorAutonomo: true, fichaExistente: "acrescentar" });
-
     const papel = feitas.find((op) => op.tabela === "apolo_entity_profiles" && op.acao === "upsert");
     expect(papel?.valores).toEqual({ entity_id: "ficha-nova", profile: "corretor", status: "active" });
     const codigo = feitas.find((op) => op.tabela === "apolo_entities" && op.acao === "update");
     expect(codigo?.valores).toMatchObject({ broker_code: "CA-0001" });
     expect(codigo?.filtros).toContainEqual(["is", "broker_code", null]);
-
     expect(m.agrupar.mock.calls[0]![1]).toMatchObject({
       documentos: [{ categoria: "identificacao", storagePath: "entidade/_pendente/a-x/rg.jpg" }],
       entityId: "ficha-nova",
@@ -455,15 +522,61 @@ describe("as três decisões do time", () => {
     const evento = feitas.find((op) => op.tabela === "apolo_audit_events" && op.acao === "insert");
     expect(evento?.valores).toMatchObject({
       action: ACOES_DO_PEDIDO.aprovado,
-      actor_user_id: "u-1",
       entity_id: "ficha-nova",
-      metadata: { codigo: "CA-0001", pedidoId: "p1" },
+      metadata: { codigo: "CA-0001", fichaJaExistia: false, pedidoId: "p1" },
     });
-    // Nenhuma habilitação nasce da aprovação.
     expect(feitas.some((op) => op.tabela === "apolo_relationships")).toBe(false);
-    // O aviso vai para o celular DIGITADO, sem o código ("somente no CRM").
     expect(m.enviar.mock.calls[0]![1]).toMatchObject({ telefone: "31999990000" });
     expect(String(m.enviar.mock.calls[0]![1].texto)).not.toContain("CA-0001");
+  });
+
+  it("APROVAR CPF QUE JÁ TEM FICHA grava SÓ papel, código e documentos; o digitado vira pendência", async () => {
+    m.fichas.mockResolvedValue({ falhou: false, ids: ["existente"] });
+    m.sequencia.mockResolvedValue({ codigo: "CA-0002", ok: true });
+    const { client, feitas } = bancoDaDecisao({
+      papeis: [{ entity_id: "existente", profile: "prospect", status: "active" }],
+    });
+
+    const feita = await decidirPedidoDoAutonomo(client, {
+      acao: "aprovar",
+      autorNome: null,
+      autorUserId: "u-1",
+      pedidoId: "p1",
+    });
+
+    expect(feita).toMatchObject({ entityId: "existente", estado: "aprovado", ok: true });
+    // A porta do cadastro NÃO é chamada: nada de qualificação, endereço, contato ou cônjuge na ficha.
+    expect(m.criar).not.toHaveBeenCalled();
+    const escritas = feitas.filter((op) => op.acao !== "select");
+    expect(escritas.map((op) => op.tabela).sort()).toEqual([
+      "apolo_audit_events",
+      "apolo_entities",
+      "apolo_entity_profiles",
+    ]);
+    const naFicha = escritas.find((op) => op.tabela === "apolo_entities");
+    expect(Object.keys(naFicha?.valores as object).sort()).toEqual(["broker_code", "updated_at"]);
+    expect(m.agrupar.mock.calls[0]![1]).toMatchObject({ entityId: "existente" });
+    const evento = escritas.find((op) => op.tabela === "apolo_audit_events");
+    expect(evento?.valores).toMatchObject({
+      entity_id: "existente",
+      metadata: { fichaJaExistia: true, propostaNaoGravada: PROPOSTA },
+    });
+  });
+
+  it("a FALHA DE DOCUMENTO não some: volta na resposta e fica no evento", async () => {
+    m.fichas.mockResolvedValue({ falhou: false, ids: ["existente"] });
+    m.sequencia.mockResolvedValue({ codigo: "CA-0003", ok: true });
+    m.agrupar.mockResolvedValue({ savedDocs: [], warnings: ["documento identificacao: arquivo não encontrado"] });
+    const { client, feitas } = bancoDaDecisao();
+    const feita = await decidirPedidoDoAutonomo(client, { acao: "aprovar", autorNome: null, autorUserId: "u", pedidoId: "p1" });
+    expect(feita).toMatchObject({
+      documentos: { falhas: ["documento identificacao: arquivo não encontrado"], salvos: 0 },
+      ok: true,
+    });
+    const evento = feitas.find((op) => op.tabela === "apolo_audit_events" && op.acao === "insert");
+    expect(evento?.valores).toMatchObject({
+      metadata: { documentosComFalha: ["documento identificacao: arquivo não encontrado"] },
+    });
   });
 
   it("uma pessoa, um código: CPF que já é autônomo não é aprovado de novo", async () => {
@@ -471,16 +584,20 @@ describe("as três decisões do time", () => {
     const { client, feitas } = bancoDaDecisao({ fichaComCodigo: true });
     const feita = await decidirPedidoDoAutonomo(client, { acao: "aprovar", autorNome: null, autorUserId: "u", pedidoId: "p1" });
     expect(feita).toMatchObject({ ok: false, status: 409 });
-    expect(m.criar).not.toHaveBeenCalled();
     expect(feitas.some((op) => op.acao !== "select")).toBe(false);
   });
 
-  it("ficha de empresa nunca vira autônomo", async () => {
+  it("ficha de empresa ou de imobiliária nunca vira autônomo", async () => {
     m.fichas.mockResolvedValue({ falhou: false, ids: ["existente"] });
-    const { client } = bancoDaDecisao({ fichaPj: true });
-    const feita = await decidirPedidoDoAutonomo(client, { acao: "aprovar", autorNome: null, autorUserId: "u", pedidoId: "p1" });
-    expect(feita).toMatchObject({ ok: false, status: 409 });
-    expect(m.criar).not.toHaveBeenCalled();
+    for (const extra of [
+      { fichaPj: true },
+      { papeis: [{ entity_id: "existente", profile: "imobiliaria", status: "active" }] },
+    ]) {
+      const { client, feitas } = bancoDaDecisao(extra);
+      const feita = await decidirPedidoDoAutonomo(client, { acao: "aprovar", autorNome: null, autorUserId: "u", pedidoId: "p1" });
+      expect(feita).toMatchObject({ ok: false, status: 409 });
+      expect(feitas.some((op) => op.acao !== "select")).toBe(false);
+    }
   });
 
   it("pedido substituído por um reenvio mais novo não se decide", async () => {
@@ -489,27 +606,36 @@ describe("as três decisões do time", () => {
     expect(feita).toMatchObject({ ok: false, status: 409 });
   });
 
-  for (const acao of ["correcao", "indeferir"] as const) {
-    it(`${acao.toUpperCase()} não encosta em ficha: só a trilha, e o aviso vai ao celular digitado`, async () => {
-      const { client, feitas } = bancoDaDecisao();
-      const feita = await decidirPedidoDoAutonomo(client, {
-        acao,
-        autorNome: null,
-        autorUserId: "u-1",
-        motivos: ["Comprovante vencido"],
-        pedidoId: "p1",
-      });
-      expect(feita).toMatchObject({ estado: acao === "correcao" ? "correcao" : "indeferido", ok: true });
-      expect(m.criar).not.toHaveBeenCalled();
-      expect(feitas.filter((op) => op.acao !== "select").map((op) => op.tabela)).toEqual(["apolo_audit_events"]);
-      const evento = feitas.find((op) => op.acao === "insert");
-      expect(evento?.valores).toMatchObject({ entity_id: null, metadata: { pedidoId: "p1" } });
-      expect(m.evolution).toHaveBeenCalledWith(
-        expect.objectContaining({ telefone: "5531999990000", text: expect.stringContaining("Comprovante vencido") }),
-      );
-      if (acao === "correcao") {
-        expect(m.evolution.mock.calls[0]![0].text).toContain("https://c2x.app.br/publico/autonomo");
-      }
+  it("PEDIR CORREÇÃO não encosta em ficha e avisa o celular digitado com o link", async () => {
+    const { client, feitas } = bancoDaDecisao();
+    const feita = await decidirPedidoDoAutonomo(client, {
+      acao: "correcao",
+      autorNome: null,
+      autorUserId: "u-1",
+      motivos: ["Comprovante vencido"],
+      pedidoId: "p1",
     });
-  }
+    expect(feita).toMatchObject({ estado: "correcao", ok: true });
+    expect(feitas.filter((op) => op.acao !== "select").map((op) => op.tabela)).toEqual(["apolo_audit_events"]);
+    expect(m.evolution).toHaveBeenCalledWith(
+      expect.objectContaining({ telefone: "5531999990000", text: expect.stringContaining("Comprovante vencido") }),
+    );
+    expect(m.evolution.mock.calls[0]![0].text).toContain("https://c2x.app.br/publico/autonomo");
+  });
+
+  it("INDEFERIR não encosta em ficha, NÃO manda WhatsApp e apaga os documentos do pedido", async () => {
+    const { apagados, client, feitas } = bancoDaDecisao();
+    const feita = await decidirPedidoDoAutonomo(client, {
+      acao: "indeferir",
+      autorNome: null,
+      autorUserId: "u-1",
+      motivos: ["CRECI cancelado"],
+      pedidoId: "p1",
+    });
+    expect(feita).toMatchObject({ aviso: { enviado: false }, estado: "indeferido", ok: true });
+    expect(feitas.filter((op) => op.acao !== "select").map((op) => op.tabela)).toEqual(["apolo_audit_events"]);
+    expect(m.evolution).not.toHaveBeenCalled();
+    expect(m.enviar).not.toHaveBeenCalled();
+    expect(apagados).toEqual(["entidade/_pendente/a-x/rg.jpg"]);
+  });
 });

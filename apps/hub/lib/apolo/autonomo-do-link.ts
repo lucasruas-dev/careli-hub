@@ -40,13 +40,16 @@ import { proximoCodigoDoCorretor } from "@/lib/apolo/codigo-do-corretor";
 import {
   mensagemAutonomoAprovado,
   mensagemAutonomoCorrecao,
-  mensagemAutonomoIndeferido,
 } from "@/lib/apolo/credenciamento-mensagens";
 import {
   enviarPeloRelacionamento,
   telefoneParaEnvio,
 } from "@/lib/apolo/disparo-credenciamento";
-import { APOLO_DOCS_BUCKET, prefixoUploadDireto } from "@/lib/apolo/documentos";
+import {
+  APOLO_DOCS_BUCKET,
+  prefixoUploadDireto,
+  removerDocumentoDoStorage,
+} from "@/lib/apolo/documentos";
 import type { createApoloAdminClient } from "@/lib/apolo/server";
 import { sendEvolutionDirectText } from "@/lib/iris/evolution-api";
 import { publishHubNotification } from "@/lib/notifications/publish";
@@ -90,8 +93,12 @@ const ESTADO_DA_DECISAO: Record<string, EstadoDoPedido> = {
 const PAPEL_DO_AUTONOMO = "corretor";
 const PAPEL_DE_IMOBILIARIA = "imobiliaria";
 
-/** Teto GERAL de pedidos novos por hora (todas as origens somadas). Ver `registrarPedidoDoLink`. */
-export const TETO_DE_PEDIDOS_POR_HORA = 40;
+// ⚠️ OS FREIOS DO ENVIO NÃO MORAM AQUI (terceira rodada de revisão, 01/10/2026). A versão anterior
+// contava os pedidos da última hora e recusava acima de 40: não era atômico, e um IP só enchia a hora e
+// barrava todo cadastro legítimo. Agora são três contadores atômicos na rota de envio, por IP, por CPF e
+// o geral de emergência (lib/publico/cad/rate-limit.ts, `autonomoEnvio`, `autonomoCpf`, `autonomoGeral`),
+// conferidos ANTES de qualquer documento ser guardado.
+
 /** Acima disto, em 15 minutos, o sino para de tocar a cada pedido (a fila continua mostrando). */
 const TETO_DO_SINO_EM_15_MIN = 5;
 
@@ -413,14 +420,27 @@ export async function guardarDocumentosDoPedido(
 
 export type ResultadoDoPedido =
   | { ok: true; pedidoId: string }
-  | { motivo: "falha" | "teto"; ok: false };
+  | { motivo: "falha"; ok: false };
+
+/** Apaga do staging os documentos de um pedido (best-effort: arquivo que sobra não abre porta). */
+async function apagarDocumentosDoPedido(
+  client: AdminClient,
+  documentos: unknown,
+): Promise<void> {
+  for (const doc of (Array.isArray(documentos) ? documentos : []) as DocumentoDoPedido[]) {
+    const caminho = String(doc?.storagePath ?? "").trim();
+    if (!caminho.startsWith("entidade/_pendente/")) continue;
+    try {
+      await removerDocumentoDoStorage(client, caminho);
+    } catch (erro) {
+      console.error("[apolo][autonomo-link] falha ao apagar documento do pedido", erro);
+    }
+  }
+}
 
 /**
- * REGISTRA O PEDIDO. Não lê nem escreve ficha: só o evento `corretor_autonomo_solicitado`.
- *
- * ⚠️ O TETO GERAL POR HORA (revisão de 01/10/2026): sem captcha (decisão do Lucas para ir ao ar), o
- * limite por IP não segura quem roda vários IPs. Acima de `TETO_DE_PEDIDOS_POR_HORA` pedidos na última
- * hora, somados de todo mundo, o link recusa com a frase genérica e a fila não incha.
+ * REGISTRA O PEDIDO. Não lê nem escreve ficha: só o evento `corretor_autonomo_solicitado`. Os freios
+ * (IP, CPF e geral) já foram conferidos pela rota, antes de qualquer documento ser guardado.
  */
 export async function registrarPedidoDoLink(
   client: AdminClient,
@@ -430,17 +450,10 @@ export async function registrarPedidoDoLink(
     proposta: PropostaDoLink;
   },
 ): Promise<ResultadoDoPedido> {
-  const umaHoraAtras = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const { count, error: erroDoTeto } = await client
-    .from("apolo_audit_events")
-    .select("id", { count: "exact", head: true })
-    .eq("action", ACOES_DO_PEDIDO.solicitado)
-    .gte("created_at", umaHoraAtras);
-  if (erroDoTeto) return { motivo: "falha", ok: false };
-  if ((count ?? 0) >= TETO_DE_PEDIDOS_POR_HORA) return { motivo: "teto", ok: false };
-
   const cpf = String(input.proposta.identidade.cpf ?? "").replace(/\D/g, "");
   const nome = input.proposta.identidade.nome || "Corretor";
+  // O pedido que este SUBSTITUI (o reenvio depois de "pedir correção", por exemplo).
+  const anterior = await ultimoPedidoDoCpf(client, resumoDoCpf(cpf));
   const { data, error } = await client
     .from("apolo_audit_events")
     .insert({
@@ -463,6 +476,12 @@ export async function registrarPedidoDoLink(
   if (error || !data?.id) {
     console.error("[apolo][autonomo-link] falha ao registrar o pedido", error?.message);
     return { motivo: "falha", ok: false };
+  }
+
+  // ⚠️ OS DOCUMENTOS DO PEDIDO SUBSTITUÍDO SAEM DO STAGING (terceira rodada de revisão): o pedido novo
+  // traz a proposta inteira, e o antigo não será mais decidido (`recusaDaDecisao`, "mais recente").
+  if (anterior.ok && anterior.pedido && anterior.estado !== "aprovado") {
+    await apagarDocumentosDoPedido(client, anterior.pedido.metadata?.documentos);
   }
 
   await avisarPedidoNovo(client, {
@@ -538,13 +557,61 @@ export type ItemDaFilaDoAutonomo = {
   entityId: null | string;
   enviadoEm: string;
   estado: EstadoDoPedido;
-  /** O CPF já tem ficha na Careli (comprador, corretor de imobiliária, cópia do sync). */
-  fichaExistente: boolean;
+  /**
+   * A ficha que o CPF JÁ TEM e que a aprovação vai usar, com os papéis dela (null = CPF novo). Achada
+   * pelas DUAS fontes (`document_hash` e o identificador do sync do C2X): a primeira versão olhava só a
+   * primeira, e 20 CPFs com ficha só no identificador passavam como "novos".
+   */
+  fichaExistente: FichaDoCpf | null;
   interesse: EmpreendimentoDeInteresse[];
   motivos: string[];
   pedidoId: string;
   proposta: PropostaDoLink;
+  /** O que a aprovação vai gravar, dito ANTES do clique. Ver `oQueSeraGravado`. */
+  seraGravado: string[];
 };
+
+export type FichaDoCpf = { entityId: string; nome: string; papeis: string[] };
+
+/**
+ * Entre as fichas do mesmo CPF (as cópias do Asana existem), qual a aprovação usa. Pura.
+ *
+ * A que já tem o papel `corretor` (é onde o código faz sentido); senão a mais antiga, que é a original.
+ */
+export function escolherFicha<T extends { createdAt: string; entityId: string; papeis: string[] }>(
+  fichas: T[],
+): T | null {
+  if (fichas.length === 0) return null;
+  const ordenadas = [...fichas].sort(
+    (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.entityId.localeCompare(b.entityId),
+  );
+  return ordenadas.find((ficha) => ficha.papeis.some((papel) => papel.startsWith("corretor"))) ?? ordenadas[0]!;
+}
+
+/**
+ * O que a aprovação grava, em frases para a tela. Pura, e é a MESMA régua de `aprovarPedido`.
+ *
+ * ⚠️ EM FICHA QUE JÁ EXISTE, O QUE FOI DIGITADO NÃO ENTRA (terceira rodada de revisão, 01/10/2026). A
+ * versão anterior acrescentava os campos vazios, e qualificação e endereço chegavam ao contrato da Têmis.
+ */
+export function oQueSeraGravado(input: { documentos: number; fichaExistente: boolean }): string[] {
+  const documentos =
+    input.documentos === 1 ? "1 documento no drive da ficha" : `${input.documentos} documentos no drive da ficha`;
+  if (input.fichaExistente) {
+    return [
+      "Papel de corretor autônomo ativo, na ficha que já existe",
+      "Código CA",
+      documentos,
+      "Os dados digitados NÃO entram na ficha: ficam aqui, como pendência",
+    ];
+  }
+  return [
+    "Ficha nova com os dados digitados (identificação, contato, endereço e qualificação)",
+    "Papel de corretor autônomo ativo",
+    "Código CA",
+    documentos,
+  ];
+}
 
 /** Quantos dias o que já foi DECIDIDO continua na tela (o mesmo corte do Board). */
 const JANELA_DOS_DECIDIDOS_DIAS = 30;
@@ -560,13 +627,13 @@ const JANELA_DOS_DECIDIDOS_DIAS = 30;
 export function montarFila(
   eventos: EventoDoPedido[],
   agora: Date = new Date(),
-): Array<Omit<ItemDaFilaDoAutonomo, "fichaExistente">> {
+): Array<Omit<ItemDaFilaDoAutonomo, "fichaExistente" | "seraGravado">> {
   const pedidos = eventos
     .filter((evento) => evento.action === ACOES_DO_PEDIDO.solicitado && evento.id)
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
   const vistos = new Set<string>();
   const corte = agora.getTime() - JANELA_DOS_DECIDIDOS_DIAS * 24 * 60 * 60 * 1000;
-  const itens: Array<Omit<ItemDaFilaDoAutonomo, "fichaExistente">> = [];
+  const itens: Array<Omit<ItemDaFilaDoAutonomo, "fichaExistente" | "seraGravado">> = [];
 
   for (const pedido of pedidos) {
     const chave = String(pedido.metadata?.cpfHash ?? pedido.id);
@@ -621,51 +688,144 @@ export function montarFila(
   return itens;
 }
 
-export async function filaDoLinkDoAutonomo(
-  client: AdminClient,
-): Promise<{ itens: ItemDaFilaDoAutonomo[]; ok: true } | { ok: false }> {
-  const { data: eventos, error } = await client
-    .from("apolo_audit_events")
-    .select("id, action, created_at, entity_id, metadata")
-    .in("action", ACOES)
-    .order("created_at", { ascending: false })
-    .limit(1000);
-  if (error) return { ok: false };
+const PAGINA_DA_FILA = 1000;
+const TETO_DE_PAGINAS_DA_FILA = 20;
 
-  const base = montarFila((eventos ?? []) as EventoDoPedido[]);
-  // "A ficha já existia": sinal para o time desconfiar de CPF de outra pessoa, lido pelo resumo do CPF.
-  const resumos = [
-    ...new Set(
-      ((eventos ?? []) as EventoDoPedido[])
-        .filter((evento) => base.some((item) => item.pedidoId === evento.id))
-        .map((evento) => String(evento.metadata?.cpfHash ?? ""))
-        .filter(Boolean),
-    ),
-  ];
-  const comFicha = new Set<string>();
+/**
+ * As fichas de cada CPF (pelo resumo), nas DUAS fontes: `apolo_entities.document_hash` (quem nasce no
+ * Apolo) e `apolo_entity_identifiers` (quem veio do sync do C2X). O resumo é o mesmo hash nas duas.
+ */
+async function fichasPorResumo(
+  client: AdminClient,
+  resumos: string[],
+): Promise<
+  | { ok: false }
+  | {
+      ok: true;
+      porResumo: Map<string, Array<FichaDoCpf & { createdAt: string }>>;
+    }
+> {
+  const resumoDaFicha = new Map<string, string>();
   for (let i = 0; i < resumos.length; i += 100) {
-    const { data, error: erroDasFichas } = await client
-      .from("apolo_entities")
-      .select("document_hash")
-      .in("document_hash", resumos.slice(i, i + 100));
-    if (erroDasFichas) return { ok: false };
-    for (const linha of (data ?? []) as Array<{ document_hash: null | string }>) {
-      if (linha.document_hash) comFicha.add(linha.document_hash);
+    const lote = resumos.slice(i, i + 100);
+    const [porHash, porIdentificador] = await Promise.all([
+      client.from("apolo_entities").select("id, document_hash").in("document_hash", lote),
+      client
+        .from("apolo_entity_identifiers")
+        .select("entity_id, value_hash")
+        .eq("identifier_type", "cpf")
+        .in("value_hash", lote),
+    ]);
+    if (porHash.error || porIdentificador.error) return { ok: false };
+    for (const linha of (porHash.data ?? []) as Array<{ document_hash: string; id: string }>) {
+      resumoDaFicha.set(linha.id, linha.document_hash);
+    }
+    for (const linha of (porIdentificador.data ?? []) as Array<{ entity_id: string; value_hash: string }>) {
+      resumoDaFicha.set(linha.entity_id, linha.value_hash);
     }
   }
+
+  const ids = [...resumoDaFicha.keys()];
+  const porResumo = new Map<string, Array<FichaDoCpf & { createdAt: string }>>();
+  for (let i = 0; i < ids.length; i += 100) {
+    const lote = ids.slice(i, i + 100);
+    const [fichas, papeis] = await Promise.all([
+      client.from("apolo_entities").select("id, display_name, created_at").in("id", lote),
+      client.from("apolo_entity_profiles").select("entity_id, profile, status").in("entity_id", lote),
+    ]);
+    if (fichas.error || papeis.error) return { ok: false };
+    const papeisDaFicha = new Map<string, string[]>();
+    for (const linha of (papeis.data ?? []) as Array<{ entity_id: string; profile: string; status: string }>) {
+      papeisDaFicha.set(linha.entity_id, [
+        ...(papeisDaFicha.get(linha.entity_id) ?? []),
+        `${linha.profile} (${linha.status})`,
+      ]);
+    }
+    for (const linha of (fichas.data ?? []) as Array<{ created_at: string; display_name: null | string; id: string }>) {
+      const resumo = resumoDaFicha.get(linha.id);
+      if (!resumo) continue;
+      porResumo.set(resumo, [
+        ...(porResumo.get(resumo) ?? []),
+        {
+          createdAt: linha.created_at,
+          entityId: linha.id,
+          nome: String(linha.display_name ?? "").trim() || "Sem nome",
+          papeis: papeisDaFicha.get(linha.id) ?? [],
+        },
+      ]);
+    }
+  }
+  return { ok: true, porResumo };
+}
+
+/**
+ * A FILA, sem teto escondido (terceira rodada de revisão).
+ *
+ * A primeira versão lia os 1.000 eventos mais recentes de todas as ações juntas: sob inundação, o pedido
+ * legítimo de ontem saía da tela calado. Agora os PEDIDOS são paginados (até 20 mil) e as decisões são
+ * lidas pelo id de cada pedido. Se o teto de páginas for atingido, a resposta diz (`truncado`).
+ */
+export async function filaDoLinkDoAutonomo(
+  client: AdminClient,
+): Promise<{ itens: ItemDaFilaDoAutonomo[]; ok: true; truncado: boolean } | { ok: false }> {
+  const pedidos: EventoDoPedido[] = [];
+  let truncado = false;
+  for (let pagina = 0; ; pagina += 1) {
+    if (pagina >= TETO_DE_PAGINAS_DA_FILA) {
+      truncado = true;
+      break;
+    }
+    const { data, error } = await client
+      .from("apolo_audit_events")
+      .select("id, action, created_at, entity_id, metadata")
+      .eq("action", ACOES_DO_PEDIDO.solicitado)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(pagina * PAGINA_DA_FILA, pagina * PAGINA_DA_FILA + PAGINA_DA_FILA - 1);
+    if (error) return { ok: false };
+    const lidos = (data ?? []) as EventoDoPedido[];
+    pedidos.push(...lidos);
+    if (lidos.length < PAGINA_DA_FILA) break;
+  }
+
+  const idsDosPedidos = pedidos.map((pedido) => String(pedido.id)).filter(Boolean);
+  const decisoes: EventoDoPedido[] = [];
+  for (let i = 0; i < idsDosPedidos.length; i += 100) {
+    const { data, error } = await client
+      .from("apolo_audit_events")
+      .select("id, action, created_at, entity_id, metadata")
+      .in("action", ACOES_DE_DECISAO)
+      .in("metadata->>pedidoId", idsDosPedidos.slice(i, i + 100));
+    if (error) return { ok: false };
+    decisoes.push(...((data ?? []) as EventoDoPedido[]));
+  }
+
+  const base = montarFila([...pedidos, ...decisoes]);
   const resumoDoPedido = new Map(
-    ((eventos ?? []) as EventoDoPedido[]).map((evento) => [
-      String(evento.id),
-      String(evento.metadata?.cpfHash ?? ""),
-    ]),
+    pedidos.map((pedido) => [String(pedido.id), String(pedido.metadata?.cpfHash ?? "")]),
   );
+  const resumos = [
+    ...new Set(base.map((item) => resumoDoPedido.get(item.pedidoId) ?? "").filter(Boolean)),
+  ];
+  const fichas = await fichasPorResumo(client, resumos);
+  if (!fichas.ok) return { ok: false };
 
   return {
-    itens: base.map((item) => ({
-      ...item,
-      fichaExistente: comFicha.has(resumoDoPedido.get(item.pedidoId) ?? ""),
-    })),
+    itens: base.map((item) => {
+      const escolhida = escolherFicha(fichas.porResumo.get(resumoDoPedido.get(item.pedidoId) ?? "") ?? []);
+      return {
+        ...item,
+        fichaExistente: escolhida
+          ? { entityId: escolhida.entityId, nome: escolhida.nome, papeis: escolhida.papeis }
+          : null,
+        seraGravado: oQueSeraGravado({
+          documentos: item.documentos.length,
+          fichaExistente: Boolean(escolhida),
+        }),
+      };
+    }),
     ok: true,
+    truncado,
   };
 }
 
@@ -711,7 +871,11 @@ export type AcaoDoTime = "aprovar" | "correcao" | "indeferir";
 export type DecisaoFeita = {
   aviso: { enviado: boolean; erro: null | string };
   codigo: null | string;
+  /** Na aprovação: o que foi para o drive da ficha e o que falhou (para o time anexar pela ficha). */
+  documentos: { falhas: string[]; salvos: number };
   estado: EstadoDoPedido;
+  /** A ficha usada: a nova, ou a que o CPF já tinha. */
+  entityId: null | string;
   ok: true;
 };
 
@@ -726,7 +890,7 @@ const MENSAGEM_FALHA_DA_DECISAO =
  *   • decidido não se decide de novo (aprovado já tem código; indeferido volta pelo link);
  *   • só o pedido MAIS RECENTE do CPF se decide: um mais novo substitui o anterior;
  *   • pedir correção só vale para quem está em análise;
- *   • correção e indeferimento exigem motivo (é o que o corretor lê).
+ *   • correção e indeferimento exigem motivo.
  */
 export function recusaDaDecisao(input: {
   acao: AcaoDoTime;
@@ -752,7 +916,7 @@ export function recusaDaDecisao(input: {
     };
   }
   if (input.acao !== "aprovar" && input.motivos.length === 0) {
-    return { mensagem: "Diga o motivo: é o que o corretor vai ler.", ok: false, status: 400 };
+    return { mensagem: "Diga o motivo: fica registrado no pedido.", ok: false, status: 400 };
   }
   return null;
 }
@@ -760,13 +924,12 @@ export function recusaDaDecisao(input: {
 /**
  * APLICA A DECISÃO DO TIME.
  *
- * APROVAR é o cadastro do autônomo feito agora por quem aprovou, pela MESMA porta do cadastro interno
- * (`createApoloEntity`, papel `corretor`, `dedupPorDocumento`), mais o código CA (sequência do banco,
- * nunca inventado) e o papel ativo. Em ficha que já existe, a porta só ACRESCENTA (ver `aprovarPedido`).
- * Depois, os documentos do staging vão para o drive da ficha. Nenhuma habilitação nasce aqui.
- *
- * ⚠️ AS RECUSAS DA PORTA DO CADASTRO VOLTAM COM A FRASE INTERNA (e-mail de outra pessoa, ficha de
- * imobiliária): quem lê é a coordenação, que precisa saber o que resolver.
+ *   • APROVAR (`aprovarPedido`): CPF novo nasce pela porta do cadastro interno; CPF que já tem ficha
+ *     recebe SÓ papel, código CA e documentos. Nenhuma habilitação nasce aqui.
+ *   • PEDIR CORREÇÃO: só a trilha, e o aviso ao celular digitado com o link para reenviar.
+ *   • INDEFERIR: só a trilha, e os documentos do pedido saem do staging. SEM WhatsApp (terceira rodada de
+ *     revisão, 01/10/2026): o número foi digitado num formulário aberto e pode ser de qualquer pessoa, e
+ *     uma recusa não tem o que pedir de volta. A tela diz que ninguém foi avisado.
  */
 export async function decidirPedidoDoAutonomo(
   client: AdminClient,
@@ -819,23 +982,27 @@ export async function decidirPedidoDoAutonomo(
   if (recusa) return recusa;
 
   const proposta = propostaDoLink((pedido.metadata?.proposta ?? {}) as Record<string, unknown>);
+  const documentosDoPedido = (Array.isArray(pedido.metadata?.documentos)
+    ? pedido.metadata.documentos
+    : []) as DocumentoDoPedido[];
   const nome = proposta.identidade.nome || null;
-  const telefone = proposta.perfil.telefone || null;
   let codigo: null | string = null;
   let entityId: null | string = null;
+  let fichaJaExistia = false;
+  let documentos: DecisaoFeita["documentos"] = { falhas: [], salvos: 0 };
   let novoEstado: EstadoDoPedido;
 
   if (input.acao === "aprovar") {
     const aprovado = await aprovarPedido(client, {
       autorUserId: input.autorUserId,
-      documentos: (Array.isArray(pedido.metadata?.documentos)
-        ? pedido.metadata.documentos
-        : []) as DocumentoDoPedido[],
+      documentos: documentosDoPedido,
       proposta,
     });
     if (!aprovado.ok) return aprovado;
     codigo = aprovado.codigo;
     entityId = aprovado.entityId;
+    fichaJaExistia = aprovado.fichaJaExistia;
+    documentos = aprovado.documentos;
     novoEstado = "aprovado";
   } else {
     novoEstado = input.acao === "indeferir" ? "indeferido" : "correcao";
@@ -854,6 +1021,15 @@ export async function decidirPedidoDoAutonomo(
     metadata: {
       autor: input.autorNome,
       ...(codigo ? { codigo } : {}),
+      ...(novoEstado === "aprovado"
+        ? {
+            documentosComFalha: documentos.falhas,
+            fichaJaExistia,
+            // Em ficha que já existia, o que foi digitado NÃO entrou: fica aqui, no histórico da ficha,
+            // como pendência para o time conferir e atualizar à mão se for o caso.
+            ...(fichaJaExistia ? { propostaNaoGravada: proposta } : {}),
+          }
+        : {}),
       motivos,
       observacao,
       origem: ORIGEM_DO_LINK_DO_AUTONOMO,
@@ -868,54 +1044,91 @@ export async function decidirPedidoDoAutonomo(
     return { mensagem: MENSAGEM_FALHA_DA_DECISAO, ok: false, status: 503 };
   }
 
+  if (novoEstado === "indeferido") {
+    await apagarDocumentosDoPedido(client, documentosDoPedido);
+    return {
+      aviso: { enviado: false, erro: "indeferimento não é avisado pelo WhatsApp" },
+      codigo: null,
+      documentos,
+      entityId: null,
+      estado: novoEstado,
+      ok: true,
+    };
+  }
+
   // O AVISO vai para o celular DIGITADO no pedido: é quem pediu. Best-effort, com o resultado na tela.
   const texto =
     novoEstado === "aprovado"
       ? mensagemAutonomoAprovado({ corretor: nome })
-      : novoEstado === "indeferido"
-        ? mensagemAutonomoIndeferido({ corretor: nome, motivos, observacao })
-        : mensagemAutonomoCorrecao({
-            corretor: nome,
-            linkDoCadastro: LINK_DO_CADASTRO_DO_AUTONOMO,
-            motivos,
-            observacao,
-          });
-  const aviso = await avisarCorretor(client, { entityId, nome, telefone, texto, tipo: novoEstado });
+      : mensagemAutonomoCorrecao({
+          corretor: nome,
+          linkDoCadastro: LINK_DO_CADASTRO_DO_AUTONOMO,
+          motivos,
+          observacao,
+        });
+  const aviso = await avisarCorretor(client, {
+    entityId,
+    nome,
+    telefone: proposta.perfil.telefone || null,
+    texto,
+    tipo: novoEstado,
+  });
 
-  return { aviso, codigo, estado: novoEstado, ok: true };
+  return { aviso, codigo, documentos, entityId, estado: novoEstado, ok: true };
 }
 
 async function aprovarPedido(
   client: AdminClient,
   input: { autorUserId: null | string; documentos: DocumentoDoPedido[]; proposta: PropostaDoLink },
-): Promise<{ codigo: string; entityId: string; ok: true } | RecusaDaDecisao> {
+): Promise<
+  | {
+      codigo: string;
+      documentos: DecisaoFeita["documentos"];
+      entityId: string;
+      fichaJaExistia: boolean;
+      ok: true;
+    }
+  | RecusaDaDecisao
+> {
   const cpf = String(input.proposta.identidade.cpf ?? "").replace(/\D/g, "");
   if (cpf.length !== 11) {
     return { mensagem: "O pedido não tem um CPF válido.", ok: false, status: 409 };
   }
 
-  // ⚠️ UMA PESSOA, UM CÓDIGO, e nunca uma ficha de imobiliária. Medido no momento da decisão: a pessoa
-  // pode ter virado autônomo pelo cadastro interno depois de pedir pelo link, e uma ficha PJ ou com o
-  // papel `imobiliaria` nunca vira autônomo (*"nao quero ter a informacao que pode ter pessoa fisica
-  // como imobiliaria"*).
+  // As fichas do CPF nas DUAS fontes (`fichasDoDocumento`: document_hash e identificador do sync).
   const fichas = await fichasDoDocumento(client, "cpf", cpf);
   if (fichas.falhou) return { mensagem: MENSAGEM_FALHA_DA_DECISAO, ok: false, status: 503 };
+
+  let entityId: string;
+  let fichaJaExistia = false;
   if (fichas.ids.length > 0) {
     const [entidades, papeis] = await Promise.all([
-      client.from("apolo_entities").select("id, broker_code, entity_kind").in("id", fichas.ids.slice(0, 100)),
+      client
+        .from("apolo_entities")
+        .select("id, broker_code, created_at, entity_kind")
+        .in("id", fichas.ids.slice(0, 100)),
       client
         .from("apolo_entity_profiles")
-        .select("entity_id, profile")
-        .in("entity_id", fichas.ids.slice(0, 100))
-        .eq("profile", PAPEL_DE_IMOBILIARIA),
+        .select("entity_id, profile, status")
+        .in("entity_id", fichas.ids.slice(0, 100)),
     ]);
     if (entidades.error || papeis.error) {
       return { mensagem: MENSAGEM_FALHA_DA_DECISAO, ok: false, status: 503 };
     }
     const linhas = (entidades.data ?? []) as Array<{
       broker_code: null | string;
+      created_at: string;
       entity_kind: null | string;
+      id: string;
     }>;
+    const linhasDePapel = (papeis.data ?? []) as Array<{
+      entity_id: string;
+      profile: string;
+      status: string;
+    }>;
+
+    // ⚠️ UMA PESSOA, UM CÓDIGO, e nunca uma ficha de imobiliária (*"nao quero ter a informacao que pode
+    // ter pessoa fisica como imobiliaria"*). Medido no momento da decisão.
     const comCodigo = linhas.find((linha) => String(linha.broker_code ?? "").trim());
     if (comCodigo) {
       return {
@@ -924,7 +1137,10 @@ async function aprovarPedido(
         status: 409,
       };
     }
-    if (linhas.some((linha) => String(linha.entity_kind ?? "") !== "pf") || (papeis.data ?? []).length > 0) {
+    if (
+      linhas.some((linha) => String(linha.entity_kind ?? "") !== "pf") ||
+      linhasDePapel.some((linha) => linha.profile === PAPEL_DE_IMOBILIARIA)
+    ) {
       return {
         mensagem:
           "Este CPF está numa ficha que não pode virar corretor autônomo (empresa ou imobiliária). Indefira este pedido.",
@@ -932,24 +1148,38 @@ async function aprovarPedido(
         status: 409,
       };
     }
+
+    // ⚠️ FICHA QUE JÁ EXISTE NÃO RECEBE NADA DO QUE FOI DIGITADO (terceira rodada de revisão,
+    // 01/10/2026). Nem pelo modo que acrescenta: ele preenchia os campos VAZIOS (qualificação, endereço),
+    // e eles chegam ao contrato da Têmis. Aqui a ficha recebe só papel, código e documentos; a proposta
+    // fica no evento da aprovação, como pendência. A ficha é a mesma que a tela mostrou antes do clique
+    // (`escolherFicha`, a mesma régua da fila).
+    const escolhida = escolherFicha(
+      linhas.map((linha) => ({
+        createdAt: linha.created_at,
+        entityId: linha.id,
+        papeis: linhasDePapel
+          .filter((papel) => papel.entity_id === linha.id)
+          .map((papel) => `${papel.profile} (${papel.status})`),
+      })),
+    );
+    if (!escolhida) return { mensagem: MENSAGEM_FALHA_DA_DECISAO, ok: false, status: 503 };
+    entityId = escolhida.entityId;
+    fichaJaExistia = true;
+  } else {
+    // CPF NOVO: a ficha nasce pela porta do cadastro interno, inteira. O modo que acrescenta é só a rede
+    // para a corrida em que outra ficha deste CPF nasce entre a leitura acima e esta gravação.
+    const criado = await createApoloEntity(client, entradaDaAprovacao(input.proposta, input.autorUserId), {
+      cadastroDeCorretorAutonomo: true,
+      fichaExistente: "acrescentar",
+    });
+    if (!criado.ok) {
+      return { mensagem: criado.error || MENSAGEM_FALHA_DA_DECISAO, ok: false, status: 409 };
+    }
+    entityId = criado.entityId;
   }
 
-  // A FICHA. CPF novo nasce inteiro, como no cadastro interno. CPF que já tem ficha só é ACRESCENTADO
-  // (o modo do portal do incorporador): nada do que a ficha tem é trocado, e telefone e e-mail digitados
-  // não entram, porque são chave de identidade da Iris e assinatura do D4Sign. Ficam como pendência na
-  // ficha (`metadata.cadsAcrescentadas`) e no pedido, para o time atualizar pela ficha se for o caso.
-  const criado = await createApoloEntity(client, entradaDaAprovacao(input.proposta, input.autorUserId), {
-    cadastroDeCorretorAutonomo: true,
-    fichaExistente: "acrescentar",
-  });
-  if (!criado.ok) {
-    return { mensagem: criado.error || MENSAGEM_FALHA_DA_DECISAO, ok: false, status: 409 };
-  }
-  const entityId = criado.entityId;
-
-  // O PAPEL ATIVO é a decisão de quem aprovou. No modo que acrescenta o persist não toca o papel que já
-  // existe, então quem estava `review` ou `blocked` precisa desta gravação para virar autônomo
-  // (`lerAutonomo` exige `corretor` ativo).
+  // O PAPEL ATIVO é a decisão de quem aprovou (`lerAutonomo` exige `corretor` ativo).
   const { error: erroDoPapel } = await client
     .from("apolo_entity_profiles")
     .upsert(
@@ -978,31 +1208,37 @@ async function aprovarPedido(
     return { mensagem: MENSAGEM_FALHA_DA_DECISAO, ok: false, status: 503 };
   }
 
-  // Os documentos do staging vão para o drive da ficha. Best-effort: a aprovação já vale, e o que
-  // falhar aparece na resposta para o time anexar pela ficha.
+  // OS DOCUMENTOS vão do staging para o drive da ficha. A falha NÃO É DESCARTADA (terceira rodada de
+  // revisão): volta na resposta e fica no evento, para o time anexar pela ficha.
   const nome = input.proposta.identidade.nome || "Corretor";
-  await agruparEUploadDocumentos(client, {
-    documentos: input.documentos.map((doc) => ({
-      categoria: doc.categoria,
-      fileName: doc.fileName,
-      mimeType: doc.mimeType ?? undefined,
-      sizeBytes: doc.sizeBytes ?? undefined,
-      storagePath: doc.storagePath,
-    })),
-    entityId,
-    nomeCliente: nome,
-    uploadedByName: `${nome} (link público)`,
-  });
+  let documentos: DecisaoFeita["documentos"] = { falhas: [], salvos: 0 };
+  try {
+    const enviados = await agruparEUploadDocumentos(client, {
+      documentos: input.documentos.map((doc) => ({
+        categoria: doc.categoria,
+        fileName: doc.fileName,
+        mimeType: doc.mimeType ?? undefined,
+        sizeBytes: doc.sizeBytes ?? undefined,
+        storagePath: doc.storagePath,
+      })),
+      entityId,
+      nomeCliente: nome,
+      uploadedByName: `${nome} (link público)`,
+    });
+    documentos = { falhas: enviados.warnings, salvos: enviados.savedDocs.length };
+  } catch (erro) {
+    documentos = { falhas: [`documentos: ${(erro as Error).message}`], salvos: 0 };
+  }
 
-  return { codigo, entityId, ok: true };
+  return { codigo, documentos, entityId, fichaJaExistia, ok: true };
 }
 
 /**
  * O aviso ao corretor pelo celular do Relacionamento.
  *
  * Com ficha (aprovação), pelo `enviarPeloRelacionamento`, que registra em `apolo_disparos`. Sem ficha
- * (correção e indeferimento), direto pelo gateway: `apolo_disparos.entity_id` é NOT NULL, e o resultado
- * fica na resposta para a tela mostrar.
+ * (pedido de correção), direto pelo gateway: `apolo_disparos.entity_id` é NOT NULL, e o resultado fica na
+ * resposta para a tela mostrar.
  */
 async function avisarCorretor(
   client: AdminClient,
@@ -1016,16 +1252,13 @@ async function avisarCorretor(
 ): Promise<DecisaoFeita["aviso"]> {
   try {
     if (input.entityId) {
-      const envio = await enviarPeloRelacionamento(
-        client,
-        {
-          destinatario: `autonomo:${input.nome ?? input.entityId}`,
-          entityId: input.entityId,
-          telefone: input.telefone,
-          texto: input.texto,
-          tipo: `autonomo_link_${input.tipo}`,
-        },
-      );
+      const envio = await enviarPeloRelacionamento(client, {
+        destinatario: `autonomo:${input.nome ?? input.entityId}`,
+        entityId: input.entityId,
+        telefone: input.telefone,
+        texto: input.texto,
+        tipo: `autonomo_link_${input.tipo}`,
+      });
       return envio.ok ? { enviado: true, erro: null } : { enviado: false, erro: envio.erro ?? null };
     }
     const numero = telefoneParaEnvio(input.telefone);

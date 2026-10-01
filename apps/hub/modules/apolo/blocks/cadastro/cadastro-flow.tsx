@@ -907,8 +907,9 @@ export type PublicoConfig = {
   // resolução de rótulos, já que NÃO há rota pública que os liste. Vem do server component.
   empreendimentos?: SelectOption[];
   // Campos que a PORTA acrescenta ao corpo do envio (o link do autônomo manda os empreendimentos de
-  // interesse escolhidos antes do wizard). O servidor confere cada um contra a lista dele.
-  extrasDoEnvio?: Record<string, unknown>;
+  // interesse escolhidos antes do wizard). O servidor confere cada um. Pode ser
+  // FUNÇÃO, lida na hora do envio, para o que a porta só sabe no momento de enviar.
+  extrasDoEnvio?: (() => Record<string, unknown>) | Record<string, unknown>;
   // Sem a conferência de CPF duplicado: ela fala da CAD do COMPRADOR por empreendimento, e a rota
   // dela só aceita o token da CAD. No link do autônomo o portão do CPF já fez a conferência dele.
   semChecagemCpf?: boolean;
@@ -1094,7 +1095,8 @@ async function postPublico<T>(
 
 // Espelho público de `apiSalvarCadastro`: mesmo shape de resposta (`entityId`/`autenticacao`/
 // `cadBase64`/`savedDocs`/`warnings`), para o modal de sucesso do wizard funcionar sem mudar.
-async function salvarPublico(
+// Exportada para o mesmo teste.
+export async function salvarPublico(
   url: string,
   body: Record<string, unknown>,
   headers: Record<string, string>,
@@ -1234,7 +1236,9 @@ function criarApiDoPortal(portal: PortalConfig): ApiCadastro {
 // INTERNO: os 4 helpers de hoje, sem mudança. PÚBLICO: mesmas formas, outra rota + outro header.
 // No público a imobiliária e o empreendimento vêm FIXOS do token (antessala), então as listas
 // devolvem `[]` e os seletores somem — não há rota pública para enumerar parceiros.
-function criarApiCadastro(publico?: PublicoConfig): ApiCadastro {
+// Exportada para o teste do adaptador (cadastro-flow.adaptador.test.ts): é aqui que os modos públicos se
+// separam, e uma troca aqui muda a CAD do cliente e a imobiliária sem tela nenhuma acusar.
+export function criarApiCadastro(publico?: PublicoConfig): ApiCadastro {
   if (!publico) {
     return {
       assinarUpload: apiAssinarUploadCadastro,
@@ -1284,7 +1288,16 @@ function criarApiCadastro(publico?: PublicoConfig): ApiCadastro {
         ? Promise.reject(new Error("Preencha os campos na mão."))
         : postPublico<T>("/api/publico/cad/ocr", body, headers()),
     salvar: (body: Record<string, unknown>) =>
-      salvarPublico(salvarUrl, { ...body, ...(publico.extrasDoEnvio ?? {}) }, headers()),
+      salvarPublico(
+        salvarUrl,
+        {
+          ...body,
+          ...(typeof publico.extrasDoEnvio === "function"
+            ? publico.extrasDoEnvio()
+            : (publico.extrasDoEnvio ?? {})),
+        },
+        headers(),
+      ),
   };
 }
 

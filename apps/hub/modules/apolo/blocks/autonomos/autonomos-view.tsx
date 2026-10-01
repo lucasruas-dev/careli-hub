@@ -49,11 +49,14 @@ type Item = {
   entityId: null | string;
   enviadoEm: string;
   estado: Estado;
-  fichaExistente: boolean;
+  /** A ficha que o CPF já tem e que a aprovação usaria (null = CPF novo). */
+  fichaExistente: null | { entityId: string; nome: string; papeis: string[] };
   interesse: Array<{ id: string; label: string }>;
   motivos: string[];
   pedidoId: string;
   proposta: Proposta;
+  /** O que a aprovação grava, dito pelo servidor com a mesma régua da aprovação. */
+  seraGravado: string[];
 };
 
 type Autonomo = { codigo: string; entityId: string; nome: string };
@@ -114,6 +117,7 @@ export function AutonomosView({
   const [itens, setItens] = useState<Item[]>([]);
   const [erro, setErro] = useState<null | string>(null);
   const [carregando, setCarregando] = useState(true);
+  const [truncado, setTruncado] = useState(false);
   const [copiado, setCopiado] = useState(false);
 
   const copiarLink = async () => {
@@ -130,8 +134,11 @@ export function AutonomosView({
     setCarregando(true);
     setErro(null);
     try {
-      const dados = await chamar<{ itens: Item[] }>("/api/apolo/corretores-autonomos/fila");
+      const dados = await chamar<{ itens: Item[]; truncado?: boolean }>(
+        "/api/apolo/corretores-autonomos/fila",
+      );
       setItens(dados?.itens ?? []);
+      setTruncado(Boolean(dados?.truncado));
     } catch (e) {
       setErro((e as Error).message);
     } finally {
@@ -211,6 +218,13 @@ export function AutonomosView({
         <p className="m-0 flex items-start gap-2 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
           <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
           {erro}
+        </p>
+      ) : null}
+
+      {truncado ? (
+        <p className="m-0 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          Há pedidos demais para mostrar de uma vez: os mais antigos ficaram de fora desta tela. Fale com a
+          equipe do Panteon.
         </p>
       ) : null}
 
@@ -298,6 +312,7 @@ function CartaoDoPedido({
       const resultado = await chamar<{
         aviso: { enviado: boolean; erro: null | string };
         codigo: null | string;
+        documentos: { falhas: string[]; salvos: number };
       }>(`/api/apolo/corretores-autonomos/pedidos/${encodeURIComponent(item.pedidoId)}/decisao`, {
         body: JSON.stringify({
           acao,
@@ -308,10 +323,16 @@ function CartaoDoPedido({
       const aviso = resultado?.aviso?.enviado
         ? "O corretor foi avisado no WhatsApp."
         : `O aviso no WhatsApp não saiu (${resultado?.aviso?.erro ?? "sem motivo"}): avise por outro canal.`;
+      const falhas = resultado?.documentos?.falhas ?? [];
       setFeito(
         acao === "aprovar"
-          ? `Aprovado com o código ${resultado?.codigo ?? ""}. ${aviso}`
-          : `${acao === "correcao" ? "Correção pedida" : "Indeferido"}. ${aviso}`,
+          ? `Aprovado com o código ${resultado?.codigo ?? ""}. ${aviso}` +
+              (falhas.length
+                ? ` ATENÇÃO: ${falhas.length} documento(s) não foram para a ficha; anexe pela ficha (${falhas.join("; ")}).`
+                : "")
+          : acao === "correcao"
+            ? `Correção pedida. ${aviso}`
+            : "Indeferido. A pessoa não é avisada pelo WhatsApp, e os documentos do pedido foram apagados.",
       );
       setPedindoMotivo(null);
       setMotivo("");
@@ -347,12 +368,39 @@ function CartaoDoPedido({
       </div>
 
       {/* ⚠️ O LINK NÃO PROVA QUE QUEM DIGITA É DONO DO CPF. CPF que já tem ficha pode ser de outra
-          pessoa: a coordenação compara o que foi digitado com a ficha antes de aprovar. */}
+          pessoa: a coordenação abre a ficha e compara com o que foi digitado antes de aprovar. */}
       {item.fichaExistente && aberto ? (
-        <p className="m-0 mt-3 rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-          Este CPF já tem ficha na Careli. Compare os dados abaixo com a ficha no CRM antes de
-          aprovar: se não baterem, o pedido pode ser de outra pessoa.
-        </p>
+        <div className="mt-3 rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          <p className="m-0 font-semibold">
+            Este CPF já tem ficha na Careli: {item.fichaExistente.nome}
+            {item.fichaExistente.papeis.length ? ` (${item.fichaExistente.papeis.join(", ")})` : " (sem papel)"}.
+          </p>
+          <p className="m-0 mt-0.5">
+            Compare com os dados digitados abaixo antes de aprovar: se não baterem, o pedido pode ser de
+            outra pessoa. Os dados digitados NÃO entram nessa ficha.
+          </p>
+          {onOpenEntity ? (
+            <button
+              className="mt-1.5 inline-flex h-7 items-center gap-1.5 rounded-lg border border-amber-400/60 px-2.5 text-[11px] font-semibold hover:bg-amber-100 dark:hover:bg-amber-500/20"
+              onClick={() => onOpenEntity(item.fichaExistente!.nome, item.fichaExistente!.entityId)}
+              type="button"
+            >
+              <ExternalLink aria-hidden="true" className="size-3" />
+              Abrir a ficha existente
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {aberto && item.seraGravado.length ? (
+        <div className="mt-3 rounded-lg bg-subtle px-3 py-2 text-xs text-ink-soft">
+          <p className="m-0 font-semibold text-ink">Se aprovar, fica gravado:</p>
+          <ul className="m-0 mt-1 grid gap-0.5 pl-4">
+            {item.seraGravado.map((linha) => (
+              <li key={linha}>{linha}</li>
+            ))}
+          </ul>
+        </div>
       ) : null}
 
       <div className="mt-3 grid gap-0.5">
@@ -426,7 +474,7 @@ function CartaoDoPedido({
           <label className="text-xs font-semibold text-ink-soft" htmlFor={`motivo-${item.pedidoId}`}>
             {pedindoMotivo === "correcao"
               ? "O que ele precisa corrigir? (ele lê esta frase no WhatsApp)"
-              : "Por que o cadastro não foi aprovado? (ele lê esta frase no WhatsApp)"}
+              : "Por que o cadastro não foi aprovado? (fica registrado; a pessoa não é avisada pelo WhatsApp)"}
           </label>
           <textarea
             className="min-h-20 rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink"
