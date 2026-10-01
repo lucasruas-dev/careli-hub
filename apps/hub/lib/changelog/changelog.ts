@@ -36,6 +36,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-10-01-clicksign-recadastro-sem-group",
+    deployedAt: "__HORA_REAL__",
+    internal: true,
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Corrigir o e-mail de quem ainda não assinou voltou a funcionar.** No primeiro uso real, a Clicksign tirava a pessoa do envelope e recusava o cadastro com o e-mail novo.",
+            ],
+            screen: "Contrato · Em assinatura",
+          },
+        ],
+      },
+    ],
+    rollback: "755d31a1",
+    technical: {
+      done: "`lib/assinatura/clicksign/envelope.ts`: `cadastrarSignatario` e `atributosDoSignatario` ganham `comGrupo` (padrão true); `acrescentarSignatario`, usado só pela troca de e-mail num envelope já ativado, passa false e não manda `group`. Pela doc da Clicksign, `group` só vale com `sequence_enabled`, que o envio nunca liga: no rascunho passa, no envelope ativado volta 400 \"group não é permitido\". O envio continua mandando `group` como antes. Na nova tentativa, a remoção de quem já saiu dá 404 e a troca segue para o cadastro (comportamento já existente em `trocarEmailDoSignatario`). Teste novo em envelope.test.ts. Sem migração. Integrado por merge pela sessão Publicação.",
+      motivation: "Primeiro uso real da troca de e-mail (01/10/2026, Maura Maria Passos, VOC0306, envelope 0384000d): a Clicksign removeu a pessoa e recusou o recadastro, deixando-a fora do envelope.",
+    },
+    title: "Troca de e-mail na assinatura sem o group que a Clicksign recusa",
+    type: "correcao",
+    version: "1.403.4",
+  },
+  {
     buildTag: "2026-10-01-cobranca-variaveis-do-template",
     deployedAt: "2026-10-01T14:38:56-03:00",
     internal: true,
