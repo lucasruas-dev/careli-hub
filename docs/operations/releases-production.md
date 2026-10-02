@@ -95,6 +95,31 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Apolo/Politicas comerciais + Hercules/proposta] Dias de vencimento da parcela por empreendimento (v1.406.0)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; entregue por resumo de entrega.
+- Data e hora local: `2026-10-02 11:44:54 -03:00` (changelog); deploy pronto cerca de 3,5 min depois do push.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("pode aplicar a 0210 e publicar a 1.406.0"); branch feat/dias-de-vencimento-por-empreendimento (b046cc42, base 1.404.1) integrada por merge sobre a 1.405.0, sem conflito`.
+- Escopo publicado: `dias de vencimento (1 a 28) cadastrados por empreendimento no Apolo; a proposta oferece esses dias e calcula a 1a parcela pelo primeiro (sem cadastro, 10 e 20 com aviso); filho herda do pai; espelho publico usa o primeiro dia cadastrado (antes 10 fixo); portal mostra os dias; conferirProposta aceita 1 a 28 como antes`.
+- Commit publicado: `61a9fdafaf145b5dd1cb1e2c0ffef9a3299efcf6`.
+- Deployment anterior: `dpl_24eLBoERSFpHnggaygCZkEtT9bYz` (commit `f62ee398`, v1.405.0).
+- Deployment novo: `dpl_DAQ5rFnmpePQ8jR7JJXWCyjao5Yu`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Banco: `migration 0210 aplicada antes do push (supabase_migrations 20261002144454): apolo_enterprise_settings.dias_vencimento smallint[] com CHECK; 40 linhas, 0 com dias; certidao (0 ligadas) e comprovante de renda (3 ligados) intactos`.
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `suite completa e hook de pre-push`: `754 arquivos, 11.522 testes`;
+  - `revisao por workflow (10 agentes)`: `sem migration e sem cadastro, proposta, cronograma e conferencia identicos ao antigo em 17 instantes dificeis (fim de mes, 29/02, virada de ano, noite em UTC); com dias, 1a parcela no dia certo pelo calendario de Brasilia; contratos e propostas existentes intocados; migration segura`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.406.0 com buildTag 2026-10-02-dias-de-vencimento-por-empreendimento; rotas dos dias e da proposta 401 sem sessao`.
+- Logs recentes: `sem erro nas rotas tocadas nos ultimos 15 min`.
+- Rollback definido: `Instant Rollback para dpl_24eLBoERSFpHnggaygCZkEtT9bYz (v1.405.0) e seguro; a coluna da 0210 fica sem uso`.
+- Riscos conhecidos: `nos grupos (VLO e LAB) o espelho publico ignora os dias proprios da divisao e usa os do principal (ou 10): cadastrar os dias no principal; com dias cadastrados a tela da proposta mostra so esses dias (para manter o 10 como opcao, cadastrar junto); o dia padrao e o menor cadastrado, nao o primeiro digitado; a trilha dos dias e so o updated_by/updated_at da linha`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `cadastrar os dias no Apolo, empreendimento principal primeiro`.
+
+Registro de producao:
+
 - Assunto: `[Apolo/Setup e CAD] Certidao de nascimento do cliente solteiro, ligada por empreendimento (v1.405.0)`.
 - Squad/agente responsavel: `Zeus (sessao Publicacao)`; entregue por resumo de entrega.
 - Data e hora local: `2026-10-02 11:15:58 -03:00` (changelog); deploy pronto cerca de 3 min depois do push.
