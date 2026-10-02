@@ -95,6 +95,30 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Temis] Pre-faturamento entra quando os compradores assinam (v1.406.2, interna)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; entregue por resumo de entrega.
+- Data e hora local: `2026-10-02 15:16:59 -03:00` (changelog); deploy pronto as 15:23, cerca de 4 min depois do push.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("pode publicar a 1.406.2"); branch fix/temis-pre-faturamento-pelos-compradores (58d20985 e 7e0dbd8e, base 1.406.0) integrada por merge sobre a 1.406.1, sem conflito`.
+- Escopo publicado: `card de contrato vai de Em assinatura ao Pre-faturamento quando todos os compradores assinam (regua unica em lib/assinatura/compradores-do-quadro.ts); 7 dias contam da ultima assinatura de comprador; contador do card so dos compradores; reconciliacao do espelho (minutos 7 e 37) com o alvo "compradores"; Faturado recusa com envelope vivo (409) ou leitura falha (503)`.
+- Commit publicado: `ecb1ee7359dc12e876dd7d6d742bb498c390e033`.
+- Deployment anterior: `dpl_DPbjwCMhaecXeoTvzwunBDDJm492` (commit `1f6b574f`, v1.406.1).
+- Deployment novo: `dpl_A2rD8Q2aypHw6psdyYGSgqaPN1z1`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Banco: `sem migracao; a rotina passou a escrever em temis_trabalhos (estagio e arrependimento_inicio) e temis_trabalho_etapas`.
+- Validacoes executadas:
+  - `revisao por workflow (4 lentes e 2 refutadores por achado, 10 agentes)`: `2 achados medios confirmados, nenhum bloqueante e nenhum alcanca os cards de hoje; 1 refutado`;
+  - `hook de pre-push`: `756 arquivos, 11.586 testes`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.406.2 com buildTag 2026-10-02-pre-faturamento-pelos-compradores; /api/temis/trabalhos e /api/assinatura/d4sign/espelho 401 sem sessao`;
+  - `primeira rodada (15:37)`: `exatamente os 6 previstos foram ao Pre-faturamento as 15:38 (REP Q.D L163, VAL Q.C L22, VOL Q03 L07, VOL Q03 L11, VOL Q07 L10, VOL Q11 L07), com arrependimento_inicio na ultima assinatura de comprador; os outros 6 continuam em Em assinatura; nenhum em Faturado`.
+- Rollback definido: `Instant Rollback para dpl_DPbjwCMhaecXeoTvzwunBDDJm492 (v1.406.1). Os 6 cards ja movidos continuam no Pre-faturamento: voltar o codigo nao devolve o card`.
+- Riscos conhecidos: `(1) contrato que fecha com um comprador sem marca no quadro conta os 7 dias do comprador anterior (I12 da D4Sign); conserto: usar a ultima marca so quando assinaram === total. (2) cancelamento ou distrato concluido com o card no Pre-faturamento e o envelope ja morto deixa o card pendurado e grava "o contrato foi assinado" no historico. Os dois vao para a frente corrigir`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `consertos (1) e (2) numa proxima versao`.
+
+Registro de producao:
+
 - Assunto: `[Boletos] Boletos com multa de 2% e juros de 1% ao mes, sem os avisos do Asaas (v1.406.1, interna, urgente)`.
 - Squad/agente responsavel: `Zeus (sessao Publicacao)`; entregue por resumo de entrega.
 - Data e hora local: `2026-10-02 14:54:27 -03:00` (changelog); deploy pronto cerca de 4 min depois do push.
