@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-10-02-pre-faturamento-pelos-compradores",
+    deployedAt: "__HORA_REAL__",
+    internal: true,
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O card de contrato vai sozinho de Em assinatura para o Pré-faturamento assim que todos os compradores assinam** (comprador e cônjuge; na D4Sign, o perfil Comprador). Os 7 dias contam da última assinatura de comprador.",
+              "**O contador do card em Em assinatura mostra só os compradores** (\"1/2 compradores\"); no Pré-faturamento, o quadro inteiro. O painel de assinatura, com reenvio e troca de e-mail, continua no Pré-faturamento.",
+              "**O card não vai para Faturado enquanto faltar assinatura no contrato**, nem quando o envelope morreu sem todos assinarem: aí a mensagem manda voltar para a análise.",
+            ],
+            screen: "Board da Têmis",
+          },
+        ],
+      },
+    ],
+    rollback: "1f6b574f",
+    technical: {
+      done: "`lib/assinatura/compradores-do-quadro.ts` (novo, puro): `ehCompradorNoQuadro` (papel comprador/cônjuge, ou papel vazio com perfil Comprador na D4Sign), `compradoresDoQuadro` e `todosOsCompradoresAssinaram`, régua única da porta, do início dos 7 dias e do selo. `aplicarEnvelopeNaVenda` leva o card ao Pré-faturamento no fechamento OU com o envelope aguardando/parcial e todos os compradores assinados; a data_assinatura da venda no Hércules continua só no fechamento. `inicioDoArrependimento` = última assinatura de comprador. Webhook da Clicksign chama a porta também sem mudança de estado; a reconciliação do espelho (rotina dos minutos 7 e 37) ganha o alvo \"compradores\", que move os cards já parados na primeira rodada. `marcarAtividade` recusa Pré-faturamento → Faturado (409) com envelope vivo e (503) se a leitura falhar; cancelamento ou distrato concluído no Pré-faturamento com envelope aberto indefere o card. Sem migration. Integrado por merge pela sessão Publicação.",
+      motivation: "Lucas (02/10/2026): \"acho que a regra de negocio para andar de em assinatura para pre-faturamento nao esta acontecendo pois eu nao tenho nenhum em pre-faturamento\". Medido: 12 contratos em assinatura, nenhum em pré-faturamento e 6 já com todos os compradores assinados; o card só andava com o envelope inteiro fechado, contra a regra escrita em 29/09 (F8).",
+    },
+    title: "Pré-faturamento entra quando os compradores assinam",
+    type: "correcao",
+    version: "1.406.2",
+  },
+  {
     buildTag: "2026-10-02-boletos-multa-juros-sem-aviso-asaas",
     deployedAt: "2026-10-02T14:54:27-03:00",
     internal: true,
