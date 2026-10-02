@@ -36,6 +36,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-10-02-temis-nome-caixa-alta",
+    deployedAt: "__HORA_REAL__",
+    internal: true,
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O nome do cliente aparece sempre em caixa alta**, no card do quadro e no título da tela de trabalho. Antes vinha do jeito que foi digitado em cada origem, e a mesma pessoa aparecia em minúsculas num card e em maiúsculas no outro.",
+            ],
+            screen: "Board e tela de trabalho da Têmis",
+          },
+        ],
+      },
+    ],
+    rollback: "ecb1ee73",
+    technical: {
+      done: "Regra só de tela, com `toLocaleUpperCase(\"pt-BR\")`: `Card` em `modules/temis/blocks/board/temis-kanban.tsx` (vale para o quadro do hub e para o do portal do incorporador, que usam o mesmo TemisKanban) e o `h2` de `TelaDeTrabalho` em `tela-de-trabalho.tsx`. O dado gravado (`temis_trabalhos.cliente_nome`) não muda. Os testes de tela (`temis-kanban.supervisao` e `ContratosDaCecilio`) passam a procurar o card pelo nome em caixa alta. Sem migration. Branch fix/temis-nome-caixa-alta (449c56a8, base 1.406.0) integrada por merge pela sessão Publicação.",
+      motivation: "Lucas (02/10/2026): \"vamos deixar o nome em caixa alta de todos, estão vindo uns com e outros sem\". No quadro, a mesma Maura aparecia \"maura maria passos\" e \"MAURA MARIA PASSOS\" na coluna Indeferido.",
+    },
+    title: "Nome do cliente em caixa alta na Têmis",
+    type: "correcao",
+    version: "1.406.3",
+  },
+  {
     buildTag: "2026-10-02-pre-faturamento-pelos-compradores",
     deployedAt: "2026-10-02T15:16:59-03:00",
     internal: true,
