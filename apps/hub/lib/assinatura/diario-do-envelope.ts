@@ -182,6 +182,47 @@ export function quemAssinou(payload: unknown): SignatarioDoEnvelope[] {
   return [...porChave.values()];
 }
 
+/** A folga entre o lote de cadastro do envio e o `enviado_em` que nós gravamos (medido: até 1,1 s). */
+const FOLGA_DO_ENVIO_MS = 60_000;
+
+/**
+ * QUEM FOI RECADASTRADO DEPOIS DO ENVIO — e por isso está no fim da fila de assinatura.
+ *
+ * ⚠️ A CLICKSIGN PÕE NO ÚLTIMO DEGRAU + 1 QUEM ENTRA NUM ENVELOPE JÁ ENVIADO (lido por GET em
+ * 02/10/2026: a Maura do VOC0306 foi do degrau 3 para o 6; a Rita do VOL, do 4 para o 5), e o
+ * webhook nunca traz o degrau. O que ele traz é o histórico inteiro, com o `add_signer` de cada
+ * pessoa: quem tem `add_signer` DEPOIS do envio foi recadastrado, e está no fim. Lucas, 02/10/2026:
+ * *"vamos informar (na ordem da tela) que aquele cadastro foi para ultima posição"*.
+ *
+ * ⚠️ MEDIDO ANTES DE CONFIAR (02/10/2026, só SELECT, os 29 envelopes da Clicksign): 163
+ * `add_signer`, 159 do lote do envio (todos até 1,1 s antes do nosso `enviado_em`) e 4 tardios, que
+ * são exatamente a Maura e as três Ritas. Zero falso positivo, zero falso negativo. A folga de 1
+ * minuto não muda o resultado e protege do relógio.
+ *
+ * ⚠️ DERIVAR EM VEZ DE GRAVAR É O QUE ACERTA O PASSADO SEM ESCREVER NO BANCO: os 4 envelopes
+ * trocados antes desta regra aparecem certos sem UPDATE nenhum.
+ *
+ * Devolve `key → quando foi recadastrado` (ISO). `enviadoEm` nulo ou ilegível devolve vazio.
+ */
+export function recadastrosDepoisDoEnvio(payload: unknown, enviadoEm: null | string): Map<string, string> {
+  const saida = new Map<string, string>();
+  const envio = enviadoEm ? Date.parse(enviadoEm) : Number.NaN;
+  if (Number.isNaN(envio)) return saida;
+
+  for (const evento of eventosDoDocumento(payload)) {
+    if (evento.nome !== "add_signer") continue;
+    const quando = Date.parse(evento.quando);
+    if (Number.isNaN(quando) || quando <= envio + FOLGA_DO_ENVIO_MS) continue;
+    for (const bruto of pessoasDoEvento(evento.dados)) {
+      const chave = texto(objeto(bruto).key);
+      if (!chave) continue;
+      const anterior = saida.get(chave);
+      if (anterior === undefined || Date.parse(anterior) < quando) saida.set(chave, evento.quando);
+    }
+  }
+  return saida;
+}
+
 /**
  * O que este evento diz sobre o CONVITE de quem assina — ou nada.
  *

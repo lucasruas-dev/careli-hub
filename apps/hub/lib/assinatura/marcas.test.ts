@@ -12,6 +12,8 @@ import {
   fechadoEmDoPayload,
   fechouComTodosNoPayload,
   idComFormaDaClicksign,
+  linkDeAssinaturaNoPayload,
+  linkDeAssinaturaValido,
   marcasDoPayloadDaClicksign,
   payloadReduzidoDaClicksign,
 } from "./marcas";
@@ -322,5 +324,96 @@ describe("o que mais o não conferido pode guardar", () => {
     // E aceita o `Headers` do pedido direto, com o valor cortado.
     const doPedido = new Headers({ "User-Agent": "u".repeat(2000) });
     expect(cabecalhosParaGuardar(doPedido, true)["user-agent"]).toHaveLength(512);
+  });
+});
+
+// ── O LINK DE ASSINATURA (02/10/2026) ───────────────────────────────────────
+//
+// ⚠️ ELE VAI PARA O CLIENTE PELA MÃO DO NOSSO ATENDIMENTO. Lucas: *"quero ter esse link para mandar
+// para o cliente, tem hora que ele não acha o link no e-mail"*. Por isso a régua do que entra é
+// estreita, e o link só sai da `key` da pessoa, nunca do e-mail.
+describe("o link de assinatura", () => {
+  const LINK = (id: string) => `https://app.clicksign.com/notarial/widget/signatures/${id}/redirect`;
+
+  it("só aceita link da Clicksign, no caminho da assinatura", () => {
+    expect(linkDeAssinaturaValido(LINK(MARIANA))).toBe(LINK(MARIANA));
+    expect(linkDeAssinaturaValido("https://app.clicksign.com/sign/abc-123")).toBe("https://app.clicksign.com/sign/abc-123");
+    for (const ruim of [
+      `http://app.clicksign.com/notarial/widget/signatures/${MARIANA}/redirect`,
+      `https://app.clicksign.com.golpe.com/notarial/widget/signatures/${MARIANA}/redirect`,
+      `https://golpe.com/notarial/widget/signatures/${MARIANA}/redirect`,
+      `https://x:y@app.clicksign.com/notarial/widget/signatures/${MARIANA}/redirect`,
+      `https://app.clicksign.com:8443/notarial/widget/signatures/${MARIANA}/redirect`,
+      `${LINK(MARIANA)}?next=https://golpe.com`,
+      "https://app.clicksign.com",
+      "https://app.clicksign.com/accounts/download/arquivo.pdf",
+      "javascript:alert(1)",
+      `https://app.clicksign.com/sign/${"a".repeat(400)}`,
+      "",
+      null,
+      42,
+    ]) {
+      expect(linkDeAssinaturaValido(ruim), String(ruim)).toBeNull();
+    }
+  });
+
+  it("o redutor guarda o link de cada pessoa, e deixa de fora o endereço do site deles", () => {
+    const reduzido = payloadReduzidoDaClicksign(payloadReal) as { event: { data: Record<string, unknown> } };
+
+    expect(reduzido.event.data.url).toBeUndefined();
+    expect((reduzido.event.data.signer as { url?: string }).url).toBe(LINK(MARIANA));
+    expect(linkDeAssinaturaNoPayload(reduzido, MARIANA)).toBe(LINK(MARIANA));
+    expect(linkDeAssinaturaNoPayload(reduzido, OTAVIO)).toBe(LINK(OTAVIO));
+  });
+
+  it("link de outro endereço não sobrevive ao redutor", () => {
+    const forjado = {
+      event: {
+        data: { signer: { email: "a@x.com", key: "k-a", url: "https://golpe.com/assinar" } },
+        name: "sign",
+        occurred_at: "2026-09-12T10:00:00-03:00",
+      },
+    };
+    expect(JSON.stringify(payloadReduzidoDaClicksign(forjado))).not.toContain("golpe.com");
+  });
+
+  const evento = (name: string, quando: string, signers: Array<Record<string, unknown>>) => ({
+    data: { signers },
+    name,
+    occurred_at: quando,
+  });
+
+  it("quem foi recadastrado tem o link NOVO, e não o da primeira vez", () => {
+    const payload = {
+      document: {
+        events: [
+          evento("add_signer", "2026-10-02T09:16:43-03:00", [{ key: "k-a", url: LINK("bbbb-2") }]),
+          evento("add_signer", "2026-09-23T03:04:10-03:00", [{ key: "k-a", url: LINK("aaaa-1") }]),
+        ],
+      },
+    };
+    expect(linkDeAssinaturaNoPayload(payload, "k-a")).toBe(LINK("bbbb-2"));
+  });
+
+  it("quem saiu do envelope não tem link, porque o antigo abre um convite morto", () => {
+    const payload = {
+      document: {
+        events: [
+          evento("remove_signer", "2026-10-02T09:16:42-03:00", [{ key: "k-a", url: LINK("aaaa-1") }]),
+          evento("add_signer", "2026-09-23T03:04:10-03:00", [{ key: "k-a", url: LINK("aaaa-1") }]),
+        ],
+      },
+    };
+    expect(linkDeAssinaturaNoPayload(payload, "k-a")).toBeNull();
+  });
+
+  it("casa só pela key: outra pessoa, key vazia ou payload sem link devolvem nada", () => {
+    const payload = {
+      document: { events: [evento("add_signer", "2026-09-23T03:04:10-03:00", [{ email: "a@x.com", key: "k-a", url: LINK("aaaa-1") }])] },
+    };
+    expect(linkDeAssinaturaNoPayload(payload, "k-b")).toBeNull();
+    expect(linkDeAssinaturaNoPayload(payload, "a@x.com")).toBeNull();
+    expect(linkDeAssinaturaNoPayload(payload, "  ")).toBeNull();
+    expect(linkDeAssinaturaNoPayload(null, "k-a")).toBeNull();
   });
 });

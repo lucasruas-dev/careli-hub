@@ -6,6 +6,7 @@ import { atorDoHub } from "@/lib/temis/ator";
 //
 //   POST { acao: "reenviar",     envelopeId, signerId }
 //   POST { acao: "trocar_email", email, envelopeId, signerId }
+//   POST { acao: "link",         envelopeId, signerId }  → { data: { link } }, o link do convite
 //
 // ⚠️ ISTO EXISTE PORQUE UMA ASSINATURA MORREU POR UMA LETRA. Medido em produção (12/09/2026,
 // envelope `3e9a331d-ec2f-4eb5-9ae1-aafbeae8b395`): o contrato saiu para dois signatários, o

@@ -7,9 +7,11 @@ import {
   diarioDoEnvelope,
   type FatoDoEnvelope,
   quemAssinou,
+  recadastrosDepoisDoEnvio,
   type SignatarioDoEnvelope,
 } from "./diario-do-envelope";
 import {
+  fraseDaTrocaQueVaiParaOFim,
   fraseDoReenvioBloqueado,
   type MotivoDoReenvioBloqueado,
 } from "./recusa-de-reenvio";
@@ -31,6 +33,11 @@ import {
 
 /** Como a tela recebe cada pessoa: o que os eventos contaram, mais o papel que NÓS congelamos. */
 export type SignatarioDaProposta = SignatarioDoEnvelope & {
+  /**
+   * Quando esta pessoa foi recadastrada com o envelope já enviado (e por isso foi para o FIM da fila
+   * de assinatura). `null` = não foi. Ver `recadastrosDepoisDoEnvio`.
+   */
+  foiParaOFimEm: null | string;
   /**
    * `comprador`, `conjuge`, `vendedora`… vindo de `temis_envelopes.signatarios`.
    *
@@ -67,6 +74,11 @@ export type SignatarioDaProposta = SignatarioDoEnvelope & {
    * no painel do Hades: *"O BOTÃO QUE TENTA E FALHA É PIOR DO QUE O BOTÃO DESABILITADO"*.
    */
   reenvioIndisponivel: null | { frase: string; motivo: MotivoDoReenvioBloqueado };
+  /**
+   * O aviso de que corrigir o e-mail desta pessoa a manda para o fim da fila. `null` = não muda nada
+   * (ela já é a última, já assinou, ou o envelope terminou). Ver `fraseDaTrocaQueVaiParaOFim`.
+   */
+  trocaVaiParaOFim: null | string;
 };
 
 export type EnvelopeDoDiario = {
@@ -132,6 +144,8 @@ export type DiarioDaProposta = DiarioDaAssinatura;
 type LinhaDoEnvelope = {
   atualizado_em: null | string;
   documento_id: null | string;
+  /** Quando NÓS carimbamos o envio: o marco que separa o cadastro do envio de um recadastro. */
+  enviado_em?: null | string;
   envelope_id: null | string;
   estado: null | string;
   estado_cru: null | string;
@@ -200,13 +214,16 @@ async function diarioDaLinha(
   const congelados = signatariosCongelados(envelope.signatarios);
 
   const doPayload = payload === null ? [] : quemAssinou(payload);
+  const recadastros = payload === null ? new Map<string, string>() : recadastrosDepoisDoEnvio(payload, envelope.enviado_em ?? null);
   // ⚠️ O ESTADO VAI JUNTO PARA A TELA NÃO OFERECER O QUE O SERVIDOR RECUSA. `reenviarConvite` recusa
   // envelope terminal com 409 (medido: 3 envelopes `cancelado` sem chave, 16 linhas que ficariam com
   // o botão habilitado), e a régua do botão é esta junção.
-  const signatarios = juntarComOsCongelados(doPayload, congelados, {
-    envelopeId: envelope.envelope_id,
-    estado: envelope.estado,
-  });
+  const signatarios = juntarComOsCongelados(
+    doPayload,
+    congelados,
+    { envelopeId: envelope.envelope_id, estado: envelope.estado },
+    recadastros,
+  );
 
   return {
     assinaram: signatarios.filter((s) => s.assinouEm !== null).length,
@@ -245,7 +262,7 @@ async function envelopeMaisRecente(
   const { data, error } = await sb
     .from("temis_envelopes")
     .select(
-      "id, provedor, envelope_id, provedor_documento_id, documento_id, estado, estado_cru, atualizado_em, signatarios",
+      "id, provedor, envelope_id, provedor_documento_id, documento_id, estado, estado_cru, atualizado_em, enviado_em, signatarios",
     )
     .eq("provedor", "clicksign")
     .eq("proposta_id", propostaId)
@@ -275,7 +292,7 @@ async function envelopeMaisRecenteDoCompromisso(
   const { data, error } = await sb
     .from("temis_envelopes")
     .select(
-      "id, provedor, envelope_id, provedor_documento_id, documento_id, estado, estado_cru, atualizado_em, signatarios",
+      "id, provedor, envelope_id, provedor_documento_id, documento_id, estado, estado_cru, atualizado_em, enviado_em, signatarios",
     )
     .eq("provedor", "clicksign")
     .eq("compromisso_id", compromissoId)
@@ -353,6 +370,11 @@ export type SignatarioCongelado = {
   chave: null | string;
   email: string;
   nome: string;
+  /**
+   * O degrau de assinatura que o envio mandou (o `group` da Clicksign). `0` = envelope sem ordem.
+   * Opcional só para quem monta a lista à mão (os testes); quem lê o quadro sempre preenche.
+   */
+  ordem?: number;
   papel: null | string;
 };
 
@@ -369,6 +391,7 @@ function signatariosCongelados(bruto: unknown): SignatarioCongelado[] {
       chave: chaveDaClicksign(pessoa.chave),
       email: typeof pessoa.email === "string" ? pessoa.email.trim() : "",
       nome: typeof pessoa.nome === "string" ? pessoa.nome.trim() : "",
+      ordem: typeof pessoa.ordem === "number" && Number.isFinite(pessoa.ordem) ? pessoa.ordem : 0,
       papel: typeof pessoa.papel === "string" ? pessoa.papel : null,
     });
   }
@@ -392,6 +415,7 @@ export function juntarComOsCongelados(
   doPayload: SignatarioDoEnvelope[],
   congelados: SignatarioCongelado[],
   envelope: { envelopeId?: null | string; estado?: null | string } = {},
+  recadastros: ReadonlyMap<string, string> = new Map(),
 ): SignatarioDaProposta[] {
   const congeladoPorEmail = new Map<string, SignatarioCongelado>();
   for (const c of congelados) {
@@ -444,6 +468,7 @@ export function juntarComOsCongelados(
     return {
       ...s,
       chave,
+      foiParaOFimEm: recadastros.get(chave) ?? recadastros.get(s.chave) ?? null,
       papel: congelado?.papel ?? null,
       // ⚠️ A RÉGUA É A DO SERVIDOR, LINHA POR LINHA: o envelope não pode estar encerrado, a `chave`
       // tem de servir para falar com a Clicksign (e-mail, `tmp:` e `c2x:` não servem) E a pessoa tem
@@ -451,6 +476,8 @@ export function juntarComOsCongelados(
       // qualquer uma, `reenviarConvite` recusa — e oferecer o botão ali seria mandar o operador
       // clicar para ver a faixa vermelha.
       reenvioIndisponivel: bloqueio(chave, congelado !== undefined),
+      // Calculado depois, com a lista inteira na ordem da fila: ver `naOrdemDaFila`.
+      trocaVaiParaOFim: null,
     };
   });
 
@@ -467,12 +494,73 @@ export function juntarComOsCongelados(
       conviteDetalhe: null,
       conviteQuando: null,
       email: c.email,
+      foiParaOFimEm: c.chave === null ? null : (recadastros.get(c.chave) ?? null),
       nome: c.nome,
       papel: c.papel,
       // Quem está aqui TEM linha no quadro (ele É a linha), então decidem o estado do envelope e a chave.
       reenvioIndisponivel: bloqueio(c.chave ?? c.email, true),
+      trocaVaiParaOFim: null,
     });
   }
 
-  return juntos;
+  return naOrdemDaFila(juntos, congeladoPorEmail, encerrado !== null);
+}
+
+/**
+ * A LISTA NA ORDEM EM QUE AS PESSOAS ASSINAM — e, no empate, em ordem alfabética.
+ *
+ * Lucas, 02/10/2026: *"Temos que mostrar os assinantes por ordem de assinatura se não tiver ordem de
+ * assinatura ordem alfabetica"* e *"vamos informar (na ordem da tela) que aquele cadastro foi para
+ * ultima posição"*.
+ *
+ * ⚠️ TRÊS FASES, PORQUE A ORDEM DO QUADRO NÃO BASTA. (0) quem está no quadro e não foi recadastrado:
+ * pelo degrau do envio (`max(1, ordem)`, o mesmo `group` que `envelope.ts` manda), depois nome; (1)
+ * quem foi recadastrado com o envelope rodando: no FIM, na ordem em que entrou (cada recadastro vai
+ * para o último degrau + 1 daquela hora); (2) quem não está no quadro: por nome, no fim. Envelope sem
+ * ordem (todo mundo `0`) sai inteiro em ordem alfabética, e o recadastrado depois dele.
+ *
+ * ⚠️ ATÉ 02/10/2026 A TELA PUNHA "QUEM PRECISA DE CONSERTO" PRIMEIRO, e a ordem do envelope não
+ * importava. A barra de destaque da linha continua apontando quem precisa de gesto; a posição agora
+ * é a da fila, que é o que o Lucas pediu.
+ *
+ * ⚠️ E O AVISO DA TROCA SAI DAQUI, porque só a lista inteira sabe quantos ficam antes: corrigir o
+ * e-mail de quem tem gente sem assinar na mesma posição ou depois dela a manda para trás dessa gente.
+ */
+function naOrdemDaFila(
+  juntos: SignatarioDaProposta[],
+  congeladoPorEmail: ReadonlyMap<string, SignatarioCongelado>,
+  encerrado: boolean,
+): SignatarioDaProposta[] {
+  const fichas = juntos.map((linha) => {
+    const congelado = congeladoPorEmail.get(linha.email.toLowerCase());
+    const fase = congelado === undefined ? 2 : linha.foiParaOFimEm ? 1 : 0;
+    return { degrau: Math.max(1, congelado?.ordem ?? 0), fase, linha };
+  });
+
+  fichas.sort((a, b) => {
+    if (a.fase !== b.fase) return a.fase - b.fase;
+    if (a.fase === 0 && a.degrau !== b.degrau) return a.degrau - b.degrau;
+    if (a.fase === 1) {
+      const diferenca = Date.parse(a.linha.foiParaOFimEm ?? "") - Date.parse(b.linha.foiParaOFimEm ?? "");
+      if (diferenca) return diferenca;
+    }
+    return a.linha.nome.localeCompare(b.linha.nome, "pt-BR", { sensitivity: "base" });
+  });
+
+  // A posição na fila: o degrau na fase 0; na fase 1, depois do maior degrau, um por recadastro.
+  const maior = Math.max(0, ...fichas.filter((f) => f.fase === 0).map((f) => f.degrau));
+  let recadastrados = 0;
+  const posicoes = fichas.map((f) => (f.fase === 0 ? f.degrau : f.fase === 1 ? maior + ++recadastrados : null));
+
+  return fichas.map((f, i) => {
+    const posicao = posicoes[i] ?? null;
+    if (encerrado || posicao === null || f.linha.assinouEm !== null) return f.linha;
+    const passamAFrente = fichas.filter((outra, j) => {
+      const dela = posicoes[j] ?? null;
+      return j !== i && outra.linha.assinouEm === null && dela !== null && dela >= posicao;
+    }).length;
+    return passamAFrente > 0
+      ? { ...f.linha, trocaVaiParaOFim: fraseDaTrocaQueVaiParaOFim(f.linha.nome, passamAFrente) }
+      : f.linha;
+  });
 }

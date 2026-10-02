@@ -20,7 +20,7 @@ import {
   registrarAtoDoPortal,
   respostaDoAlcance,
 } from "./contrato-servico";
-import { reenviarConvite, trocarEmailDoSignatario } from "./trocar-signatario";
+import { linkDeAssinatura, reenviarConvite, trocarEmailDoSignatario } from "./trocar-signatario";
 
 // A ASSINATURA DO CONTRATO, PARA QUEM ESTIVER OPERANDO — preparar, enviar e consertar signatário.
 //
@@ -344,6 +344,25 @@ export async function consertarSignatario(
     return NextResponse.json({
       data: { aviso: troca.aviso, email: troca.email, nome: troca.nome, signerId: troca.signerId },
     });
+  }
+
+  if (corpo.acao === "link") {
+    // ⚠️ O LINK É BUSCADO NO CLIQUE, E NÃO VEM NA LISTA DA TELA. Ele abre a assinatura do cliente, e
+    // por isso só sai para quem pediu, uma pessoa por vez, depois do mesmo portão de escrita das
+    // outras duas ações. E todo pedido fica no log, com quem pediu e de qual envelope.
+    const achado = await linkDeAssinatura(sb, { envelopeId, signerId });
+    console.info("[temis][link de assinatura] pedido", {
+      achou: achado.ok,
+      envelopeId,
+      origem: ator.tipo,
+      quem: ator.tipo === "hub" ? ator.userId : ator.usuarioId,
+      signerId,
+    });
+    if (!achado.ok) {
+      return NextResponse.json({ erro: achado.erro }, { status: achado.status });
+    }
+    registrarAtoDoPortal(ator, "pegou o link de assinatura", { envelopeId, signerId });
+    return NextResponse.json({ data: { link: achado.link, signerId } });
   }
 
   return NextResponse.json({ erro: "Ação desconhecida." }, { status: 400 });

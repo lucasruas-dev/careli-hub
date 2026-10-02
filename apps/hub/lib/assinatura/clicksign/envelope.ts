@@ -590,13 +590,14 @@ const SIGNATARIOS_POR_PAGINA = 50;
  * EM QUE DEGRAU CADA SIGNATÁRIO ESTÁ, PERGUNTADO À CLICKSIGN — `GET /envelopes/{id}/signers`.
  *
  * ⚠️ A NOSSA `ordem` NÃO SERVE PARA ISTO, E O WEBHOOK NUNCA TRAZ O DEGRAU. A `ordem` de
- * `temis_envelopes.signatarios` é a que o envio mandou; quem foi recadastrado depois está em outro
- * degrau na Clicksign e o quadro não sabe (a Maura do VOC0306 é ordem 3 no quadro e degrau 6 lá,
- * lido em 02/10/2026). E o payload do webhook não tem `group` em nenhuma das 2.244 linhas de
+ * `temis_envelopes.signatarios` é a que o envio mandou; quem foi recadastrado antes de 02/10/2026
+ * está em outro degrau na Clicksign e o quadro não sabe (a Maura do VOC0306 é ordem 3 no quadro e
+ * degrau 6 lá, lido em 02/10/2026). Desde então a troca grava o degrau novo, mas o quadro só sabe o
+ * que o Panteon fez: uma mudança pelo painel da Clicksign continua invisível para ele. E o payload do webhook não tem `group` em nenhuma das 2.244 linhas de
  * signatário medidas. A única fonte do degrau real é esta leitura.
  *
- * ⚠️ LISTA INCOMPLETA É FALHA. Se a página vier cheia, pode haver mais gente, e decidir "esta pessoa
- * está no último degrau" sem ver todo mundo é justamente o erro que esta leitura existe para evitar.
+ * ⚠️ LISTA INCOMPLETA É FALHA. Se a página vier cheia, pode haver mais gente, e decidir "qual é o
+ * último degrau" sem ver todo mundo gravaria no quadro uma posição que não é a dela.
  *
  * ⚠️ NUNCA LANÇA, e quem chama RECUSA quando ela falha: sem o degrau, a troca não começa.
  */
@@ -1089,9 +1090,10 @@ export async function acrescentarSignatario(
     // ⚠️ E SEM `group` A PESSOA NÃO ENTRA "COMO AS OUTRAS": ENTRA NO FIM DA FILA. Lido por GET na
     // Clicksign em 02/10/2026, com autorização do Lucas: a Maura, que era do degrau 3 (compradora),
     // voltou no degrau 6, depois das testemunhas e das vendedoras; a Rita, vendedora do degrau 4 em
-    // três envelopes do VOL, voltou no degrau 5. É sempre o maior degrau do envelope + 1. Por isso
-    // quem chama confere ANTES que a pessoa já está no último degrau: ver `conferirDegrauDaTroca`,
-    // em `lib/temis/trocar-signatario.ts`.
+    // três envelopes do VOL, voltou no degrau 5. É sempre o maior degrau do envelope + 1, e o Lucas
+    // aceitou (02/10/2026: *"não tem problema da pessoa ir para o ultimo degrau"*): quem chama lê o
+    // último degrau antes e grava o novo no quadro (`conferirDegrauDaTroca`, em
+    // `lib/temis/trocar-signatario.ts`).
     signerId = await cadastrarSignatario(envelope, alvo.pessoa, alvo.semCpf === true, porta, false);
   } catch (e) {
     const falha = e instanceof FalhaDaClicksign ? e : null;

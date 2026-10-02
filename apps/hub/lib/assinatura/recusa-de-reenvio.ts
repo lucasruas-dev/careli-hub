@@ -134,3 +134,22 @@ export function fraseDoReenvioBloqueado(
   if (motivo === "fora_do_quadro") return RECUSA_DE_QUEM_NAO_ESTA_NO_QUADRO;
   return RECUSA_DE_REENVIO_SEM_ID;
 }
+
+/**
+ * O AVISO ANTES DE CORRIGIR O E-MAIL: a pessoa vai para o fim da fila.
+ *
+ * ⚠️ É AVISO, NÃO RECUSA. A Clicksign põe no último degrau + 1 quem é recadastrado num envelope já
+ * enviado, e o Lucas aceitou (02/10/2026: *"não tem problema da pessoa ir para o ultimo degrau"*). A
+ * frase só existe para ninguém se surpreender depois: ela aparece quando há gente sem assinar que
+ * hoje vem DEPOIS desta pessoa (ou junto com ela) e que passa a vir antes. Mora aqui, e não na tela,
+ * porque é o diário (`diario-do-envelope-db.ts`) que sabe quantas são.
+ */
+export function fraseDaTrocaQueVaiParaOFim(nome: string, quantos: number): string {
+  const quem = nome.trim() || "Esta pessoa";
+  const esperando =
+    quantos === 1 ? "1 pessoa que ainda não assinou" : `${quantos} pessoas que ainda não assinaram`;
+  return (
+    `Ao corrigir o e-mail, ${quem} vai para o fim da fila de assinatura (a Clicksign põe quem é recadastrado depois de todos) ` +
+    `e passa a esperar ${esperando}.`
+  );
+}

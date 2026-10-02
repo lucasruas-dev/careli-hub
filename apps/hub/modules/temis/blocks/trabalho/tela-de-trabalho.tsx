@@ -9,6 +9,7 @@ import {
   FilePlus2,
   FileText,
   FileX2,
+  Link2,
   Loader2,
   Mail,
   MailCheck,
@@ -216,6 +217,11 @@ type SignatarioNaTela = {
   conviteDetalhe: null | string;
   conviteQuando: null | string;
   email: null | string;
+  /**
+   * Quando esta pessoa foi recadastrada com o envelope já enviado, e por isso está no FIM da fila de
+   * assinatura. Vem do servidor (`recadastrosDepoisDoEnvio`); ausente ou `null` = não foi.
+   */
+  foiParaOFimEm?: null | string;
   nome: string;
   /**
    * `comprador`, `conjuge`, `vendedora`… como o envio congelou em `temis_envelopes.signatarios`.
@@ -244,6 +250,11 @@ type SignatarioNaTela = {
    * envelope encerrou (e aí a troca de e-mail também não vale).
    */
   reenvioIndisponivel?: null | { frase: string; motivo: string };
+  /**
+   * O aviso de que corrigir o e-mail manda esta pessoa para o fim da fila (a frase vem pronta do
+   * servidor, que vê a lista inteira). Ausente ou `null` = a troca não muda a posição de ninguém.
+   */
+  trocaVaiParaOFim?: null | string;
 };
 
 type Card = {
@@ -2816,19 +2827,15 @@ function PainelDaAssinatura({
   const desdeEscrito = Number.isNaN(entrada.getTime()) ? desde : entrada.toLocaleString("pt-BR");
 
   /**
-   * ⚠️ QUEM PRECISA DE GESTO VEM PRIMEIRO, e a ordem do envelope não serve para isso. A
-   * Clicksign devolve os signatários na ordem em que foram cadastrados, que é inútil para quem
-   * abriu o card perguntando "o que travou?". Num contrato de cinco pessoas, a única que pede
-   * conserto pode estar em quinto lugar, embaixo de quatro linhas verdes.
+   * ⚠️ A LISTA VEM NA ORDEM DE ASSINATURA, E A TELA NÃO A REORDENA. Lucas, 02/10/2026: *"Temos que
+   * mostrar os assinantes por ordem de assinatura se não tiver ordem de assinatura ordem
+   * alfabetica"*. Quem ordena é o servidor (`naOrdemDaFila`, em `diario-do-envelope-db.ts`), porque
+   * só ele sabe o degrau do envio e quem foi recadastrado no fim da fila.
    *
-   * ⚠️ E A ORDENAÇÃO É ESTÁVEL: `sort` numa CÓPIA, e o critério é só "precisa de conserto",
-   * então quem empata fica como veio. Sem isso a lista dançaria a cada recarga.
+   * ⚠️ ATÉ AQUI QUEM PRECISAVA DE CONSERTO VINHA PRIMEIRO. A barra de destaque da linha continua
+   * apontando essa pessoa; a posição dela agora é a da fila.
    */
-  const signatarios = [...assinatura.envelope.signatarios].sort((a, b) => {
-    const pesoA = a.convite === "nao_entregue" && !a.assinouEm ? 0 : 1;
-    const pesoB = b.convite === "nao_entregue" && !b.assinouEm ? 0 : 1;
-    return pesoA - pesoB;
-  });
+  const signatarios = assinatura.envelope.signatarios;
 
   /**
    * ⚠️ DO MAIS RECENTE PARA O MAIS ANTIGO, E A ORDEM É FEITA AQUI. O `document.events[]` da
@@ -3013,7 +3020,12 @@ function LinhaDoSignatario({
    * faria a REMOÇÃO acontecer duas vezes: a segunda passada apagaria o signatário que a primeira
    * acabou de criar.
    */
-  const [acaoNoAr, setAcaoNoAr] = useState<null | "reenviar" | "trocar">(null);
+  const [acaoNoAr, setAcaoNoAr] = useState<null | "link" | "reenviar" | "trocar">(null);
+  /**
+   * O link de assinatura, quando a cópia automática não pôde ser feita (o navegador negou a área de
+   * transferência). Aí ele aparece num campo para copiar à mão.
+   */
+  const [linkParaCopiar, setLinkParaCopiar] = useState<null | string>(null);
   /**
    * A MESMA TRAVA, AGORA SEM DEPENDER DO RENDER.
    *
@@ -3078,7 +3090,7 @@ function LinhaDoSignatario({
   const fraseDaTroca = envelopeEncerrado
     ? (signatario.reenvioIndisponivel?.frase ?? RECUSA_DE_CHAVE_QUE_NAO_E_DA_CLICKSIGN)
     : podeTrocarEmail
-      ? "Remove esta pessoa do envelope e a recria com o e-mail corrigido."
+      ? (signatario.trocaVaiParaOFim ?? "Corrige o e-mail desta pessoa no envelope e manda o convite só para ela.")
       : RECUSA_DE_CHAVE_QUE_NAO_E_DA_CLICKSIGN;
   /**
    * Esta linha PEDE alguma coisa de quem está olhando?
@@ -3154,10 +3166,14 @@ function LinhaDoSignatario({
         // frase o operador leria "convite mandado" sobre um e-mail que não foi. Ele não é erro: o
         // caminho é o botão de reenviar, não o de trocar de novo.
         const aviso = j.data?.aviso ?? null;
+        // A posição nova também é dita: a Clicksign põe quem é recadastrado no fim da fila.
+        const fila = signatario.trocaVaiParaOFim
+          ? ` ${signatario.nome || "A pessoa"} foi para o fim da fila de assinatura.`
+          : "";
         setRecado(
           aviso
-            ? `E-mail corrigido no envelope. ${aviso}`
-            : "E-mail corrigido e convite mandado para o endereço novo.",
+            ? `E-mail corrigido no envelope.${fila} ${aviso}`
+            : `E-mail corrigido e convite mandado para o endereço novo.${fila}`,
         );
         setCorrigindo(false);
       }
@@ -3178,6 +3194,59 @@ function LinhaDoSignatario({
           : "Não consegui falar com o servidor, e a troca pode ter começado do lado da Clicksign. NÃO clique de novo: atualize a tela e confira a lista de signatários antes de tentar outra vez.",
       );
       if (corpo.acao === "trocar_email") await aoRecarregar();
+    } finally {
+      noArRef.current = false;
+      setAcaoNoAr(null);
+    }
+  };
+
+  /**
+   * PEGA O LINK DE ASSINATURA E COPIA, para o atendimento mandar ao cliente.
+   *
+   * Lucas, 02/10/2026: *"quero ter esse link para mandar para o cliente, tem hora que ele não acha o
+   * link no e-mail ae mandando fica mais facil"*. É o MESMO link do convite por e-mail.
+   *
+   * ⚠️ O LINK VEM NO CLIQUE, UMA PESSOA POR VEZ, e não na lista: ele abre a assinatura do cliente, e o
+   * servidor registra quem pediu. E o 404 aqui não é erro: é o link que ainda não chegou ao Panteon
+   * (envelope enviado antes de 02/10/2026, até o próximo aviso da Clicksign), e a frase do servidor
+   * diz o que fazer enquanto isso.
+   */
+  const copiarLink = async (): Promise<void> => {
+    if (envelopeId === null) return;
+    if (noArRef.current) return;
+    noArRef.current = true;
+    setErro(null);
+    setRecado(null);
+    setLinkParaCopiar(null);
+    setAcaoNoAr("link");
+    try {
+      const r = await temisFetch("/assinatura/signatario", {
+        body: JSON.stringify({ acao: "link", envelopeId, signerId }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const j = (await r.json().catch(() => ({}))) as { data?: { link?: string }; erro?: string };
+      const link = j.data?.link ?? "";
+      if (!r.ok || !link) {
+        if (r.status === 404 && j.erro) {
+          setRecado(j.erro);
+          return;
+        }
+        setErro(j.erro ?? `Não consegui pegar o link (${r.status}).`);
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(link);
+        setRecado(
+          "Link de assinatura copiado. Mande só para o contato da ficha do cliente; para assinar, ele ainda confirma pelo código que chega no e-mail.",
+        );
+      } catch {
+        // O navegador pode negar a área de transferência: aí o link aparece para copiar à mão.
+        setLinkParaCopiar(link);
+        setRecado("O navegador não deixou copiar sozinho: copie o link abaixo.");
+      }
+    } catch {
+      setErro("Não consegui falar com o servidor. Nada foi mexido: tente de novo.");
     } finally {
       noArRef.current = false;
       setAcaoNoAr(null);
@@ -3221,6 +3290,15 @@ function LinhaDoSignatario({
               <span className="text-ink-soft"> · {momento(signatario.assinouEm)}</span>
             ) : null}
           </p>
+          {/* ⚠️ QUEM FOI RECADASTRADO ESTÁ NO FIM DA FILA, E A LINHA DIZ ISSO (Lucas, 02/10/2026:
+              *"vamos informar (na ordem da tela) que aquele cadastro foi para ultima posição"*). A
+              posição já está certa na lista; a frase explica por que uma compradora aparece depois
+              das testemunhas. */}
+          {signatario.foiParaOFimEm ? (
+            <p className="m-0 text-[10.5px] font-medium text-amber-700 dark:text-amber-300">
+              Foi para o fim da fila ao corrigir o e-mail ({momento(signatario.foiParaOFimEm)})
+            </p>
+          ) : null}
         </div>
 
         <span
@@ -3250,9 +3328,14 @@ function LinhaDoSignatario({
                   a pessoa é REMOVIDA do envelope de produção e recriada. Quem lê "editar e-mail"
                   imagina um UPDATE; o que existe do lado de lá é um DELETE seguido de um POST. */}
               <p className="m-0 text-[10.5px] text-ink-soft">
-                O signatário atual sai do envelope e entra de novo com o e-mail corrigido, e só ele
-                recebe o convite. Quem já assinou não é tocado.
+                O e-mail corrigido entra no envelope antes de o antigo sair, e só ele recebe o
+                convite. Quem já assinou não é tocado.
               </p>
+              {signatario.trocaVaiParaOFim ? (
+                <p className="m-0 text-[10.5px] font-medium text-amber-700 dark:text-amber-300">
+                  {signatario.trocaVaiParaOFim}
+                </p>
+              ) : null}
               <input
                 autoComplete="off"
                 className="w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-[11px] text-ink outline-none focus:border-line-strong"
@@ -3394,11 +3477,44 @@ function LinhaDoSignatario({
                   </button>
                 </Tooltip>
               )}
+
+              {/* ⚠️ O LINK SEGUE A RÉGUA DO REENVIO: o envelope vivo, a chave da Clicksign e a linha
+                  no quadro. Desabilitado, ele mostra o mesmo motivo; e some para quem já assinou. */}
+              {signatario.assinouEm ? null : (
+                <Tooltip
+                  content={podeReenviar ? "Copiar o link de assinatura (o mesmo do convite por e-mail)" : fraseDoReenvio}
+                  placement="top"
+                >
+                  <button
+                    aria-label="Copiar o link de assinatura"
+                    className="grid size-7 shrink-0 place-items-center rounded-lg border border-line text-ink-muted transition-colors hover:bg-subtle hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={acaoNoAr !== null || !podeReenviar}
+                    onClick={() => void copiarLink()}
+                    title={podeReenviar ? "Copiar o link de assinatura" : fraseDoReenvio}
+                    type="button"
+                  >
+                    {acaoNoAr === "link" ? (
+                      <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+                    ) : (
+                      <Link2 aria-hidden="true" className="size-3.5" />
+                    )}
+                  </button>
+                </Tooltip>
+              )}
             </div>
           )}
 
           {recado ? (
             <p className="m-0 break-words text-[10.5px] font-medium text-ink-soft">{recado}</p>
+          ) : null}
+          {linkParaCopiar ? (
+            <input
+              aria-label="Link de assinatura"
+              className="w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-[11px] text-ink outline-none focus:border-line-strong"
+              onFocus={(e) => e.currentTarget.select()}
+              readOnly
+              value={linkParaCopiar}
+            />
           ) : null}
           {erro ? (
             <p className="m-0 break-words text-[10.5px] font-medium text-rose-700 dark:text-rose-300">
