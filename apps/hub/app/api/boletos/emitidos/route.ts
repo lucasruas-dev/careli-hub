@@ -151,7 +151,8 @@ export async function GET(request: Request) {
         sequencia: ref.sequencia,
         situacao: c.status,
         unidade: ref.unidade,
-        valor: c.value,
+        // O valor de face: pago com atraso, o `value` traz a multa e os juros.
+        valor: c.originalValue ?? c.value,
         vencido: estaVencido(c.status, c.dueDate, pagamento),
         vencimento: c.dueDate,
       });

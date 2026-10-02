@@ -5,6 +5,7 @@ import { authorizeApoloAdmin } from "@/lib/apolo/auth";
 import { documentosDoEmpreendimento } from "@/lib/apolo/boletos/documentos";
 import {
   acharOuCriarCliente,
+  calarNotificacoesDoCliente,
   cobrancasDaReferencia,
   criarBoleto,
   impedimentosDaConta,
@@ -190,9 +191,17 @@ export async function POST(request: Request) {
     const jaEmitido = await cobrancasDaReferencia(conta, item.referencia);
     if (jaEmitido.ok && (jaEmitido.data.data?.length ?? 0) > 0) {
       const existente = jaEmitido.data.data[0]!;
+      // O boleto já existe, mas o cliente pode estar com a notificação do Asaas ligada (emitido
+      // antes de 02/10). Cala aqui também, e o erro aparece em vez de sumir.
+      const calado = existente.customer
+        ? await calarNotificacoesDoCliente(conta, { id: existente.customer })
+        : null;
       resultados.push({
         ...base,
         cobranca: existente.id,
+        ...(calado && !calado.ok
+          ? { erro: `já existia, mas as notificações do Asaas não foram desligadas: ${calado.erro}` }
+          : {}),
         ja_existia: true,
         link: existente.bankSlipUrl ?? existente.invoiceUrl ?? null,
       });

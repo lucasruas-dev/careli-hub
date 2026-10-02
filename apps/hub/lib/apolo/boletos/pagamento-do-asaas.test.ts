@@ -85,6 +85,24 @@ describe("a cobrança virando linha nossa", () => {
     expect(linha?.pago_em_informado).toBe("2026-09-05");
   });
 
+  it("pago com atraso: o cobrado é o valor de face, o pago inclui a multa e os juros", () => {
+    // ⚠️ Desde 02/10/2026 toda cobrança sai com multa de 2% e juros de 1% ao mês. Paga com atraso,
+    // o Asaas devolve em `value` o que entrou (face + encargos) e o valor de face em
+    // `originalValue`. Gravar o `value` como cobrado faria o boleto parecer emitido com valor errado.
+    const linha = pagamentoDoAsaas(
+      cobranca({ originalValue: 2711.53, paymentDate: "2026-09-20", status: "RECEIVED", value: 2775.69 }),
+      { conta: "garden" },
+    );
+    expect(linha?.valor_cobrado).toBe(2711.53);
+    expect(linha?.valor_pago).toBe(2775.69);
+  });
+
+  it("sem `originalValue` (pago em dia ou em aberto), o cobrado continua sendo o `value`", () => {
+    expect(pagamentoDoAsaas(cobranca({ originalValue: null }), { conta: "garden" })?.valor_cobrado).toBe(
+      2711.53,
+    );
+  });
+
   it("⚠️ devolvido: a data do pagamento NÃO fica, senão a conciliação lê como quitada", () => {
     // O Asaas mantém `paymentDate` preenchido depois do estorno.
     const linha = pagamentoDoAsaas(
