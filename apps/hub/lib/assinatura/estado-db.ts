@@ -15,6 +15,7 @@ import type { EstagioDoTrabalho, TipoDeTrabalho } from "@/lib/temis/trabalhos";
 import { estagiosDoTipo } from "@/lib/temis/trabalhos";
 
 import type { EventoDaClicksign } from "./clicksign/webhook";
+import { compradoresDoQuadro, todosOsCompradoresAssinaram } from "./compradores-do-quadro";
 // ⚠️ IMPORT EM CÍRCULO, CONSCIENTE: `envelope-na-venda.ts` usa `moverCardDaTemis` e
 // `concluirAssinaturaDoCard` daqui, e o webhook daqui usa `aplicarEnvelopeNaVenda` de lá. Os dois
 // lados só usam o outro DENTRO de funções (nenhuma constante de topo depende do outro módulo), e é
@@ -136,11 +137,18 @@ export async function aplicarEventoDaClicksign(
       };
     }
 
-    // ⚠️ O CARD SÓ ANDA NA BORDA. `mudouEstado` é o que impede o reenvio do mesmo webhook de mover o
-    // card de novo: a segunda chamada encontra "assinado" e não muda nada. E a data do prazo sai do
-    // QUADRO que a função devolveu (bug 8.3), não de uma segunda leitura de eventos.
+    // ⚠️ O CARD ANDA NA BORDA DO ESTADO OU QUANDO O ÚLTIMO COMPRADOR ASSINA (02/10/2026). Lucas:
+    // *"acho que a regra de negocio para andar de em assinatura para pre-faturamento nao esta
+    // acontecendo pois eu nao tenho nenhum em pre-faturamento"*. O `sign` do segundo comprador num
+    // envelope já `parcial` é `parcial → parcial`: `mudouEstado` é falso e, só com ele, a porta nunca
+    // era chamada, e o card esperava o envelope inteiro. Chamar de novo não move nada duas vezes: a
+    // conclusão compara e troca com `.eq("estagio", "assinatura")`, e o card que já está no
+    // Pré-faturamento devolve "já estava". Só o CONTRATO conta compradores (cessão e cancelamento por
+    // correção continuam só no fechamento). E a data do prazo sai do QUADRO que a função devolveu
+    // (bug 8.3), não de uma segunda leitura de eventos.
+    const compradoresFecharam = linha.finalidade === "contrato" && todosOsCompradoresAssinaram(registro.signatarios);
     const efeito =
-      registro.mudouEstado && linha.proposta_id
+      (registro.mudouEstado || compradoresFecharam) && linha.proposta_id
         ? await efeitoDoWebhookNaVenda(sb, linha, linha.proposta_id, registro)
         : null;
 
@@ -161,12 +169,15 @@ export async function aplicarEventoDaClicksign(
 }
 
 /**
- * O que o webhook da Clicksign faz na venda e no card quando o estado do envelope MUDOU.
+ * O que o webhook da Clicksign faz na venda e no card quando o estado do envelope MUDOU, ou quando o
+ * quadro passou a ter todos os compradores assinados.
  *
  * ⚠️ O CONTRATO VAI PELA PORTA ÚNICA (`aplicarEnvelopeNaVenda`, F2 da fonte única): a mesma regra
  * que o espelho da D4Sign usa, com as guardas dela (só venda nativa e viva, sem pedido de
- * cancelamento aberto, só com data real). Na Clicksign `aguardando`/`parcial` não fazem nada (o
- * envio da Têmis já moveu o card); só o `assinado` conclui.
+ * cancelamento aberto, só com data real). Na Clicksign `aguardando`/`parcial` só fazem alguma coisa
+ * quando todos os compradores já assinaram (o card vai ao Pré-faturamento, decisão do Lucas de
+ * 02/10/2026); antes disso, nada (o envio da Têmis já moveu o card). O `assinado` conclui, e é só
+ * nele que a data de assinatura da venda é gravada.
  *
  * ⚠️ `moverVendas: true` AQUI, E NÃO A CONSTANTE `MOVER_VENDAS`. A constante é a chave do ESPELHO
  * (o contrato que o C2X mandou para a D4Sign), que nasce desligada até a prova da F3. O envelope da
@@ -178,10 +189,11 @@ export async function aplicarEventoDaClicksign(
  * Distrato, acordo e finalidade nula: nada (o pedido tem ação própria; nulo é "não se sabe").
  *
  * ⚠️ NUNCA LANÇA: roda dentro do `after()` do webhook. Falha aqui não desfaz o estado já gravado.
- * Quem refaz o efeito do contrato que ficou para trás é `reconciliarVendasAssinadas`, e ⚠️ ATÉ A F3
- * NINGUÉM A CHAMA (ela roda na rodada do espelho da D4Sign, que ainda não existe). Por isso todo
- * `assinado` cujo efeito não andou vai para o log COM OS IDS, e volta no `motivo` que a rota loga: é
- * por ali que alguém acha, e conclui à mão, um contrato assinado parado em "Em assinatura".
+ * Quem refaz o efeito do contrato que ficou para trás é `reconciliarVendasAssinadas`, na rodada do
+ * espelho da D4Sign (o cron `7,37 * * * *` do `vercel.json`, desde 30/09/2026), com limite de 20 por
+ * rodada. Mesmo assim todo contrato que devia andar (assinado, ou com todos os compradores assinados)
+ * e não andou vai para o log COM OS IDS, e volta no `motivo` que a rota loga: a reconciliação refaz o
+ * que é tropeço, mas não o que uma guarda recusou (pedido de cancelamento aberto, venda desfeita).
  *
  * Devolve o resumo do efeito para o `motivo` (só ids e regra), ou `null` quando não houve o que fazer.
  */
@@ -213,14 +225,16 @@ async function efeitoDoWebhookNaVenda(
         { moverVendas: true },
       );
       const resumo = `card ${efeito.card}, data ${efeito.dataDeAssinatura}`;
-      // ⚠️ TODO ASSINADO QUE NÃO ANDOU É LOGADO, inclusive o "não" das guardas (pedido de cancelamento
-      // aberto, venda desfeita, sem data real): na F1 esse card ia ao Pré-faturamento, e agora ele fica
-      // em "Em assinatura" de propósito. Sem a linha no log, seria um contrato assinado parado sem aviso.
+      // ⚠️ TODO CONTRATO QUE DEVIA ANDAR E NÃO ANDOU É LOGADO, inclusive o "não" das guardas (pedido de
+      // cancelamento aberto, venda desfeita, sem data real): na F1 esse card ia ao Pré-faturamento, e
+      // agora ele fica em "Em assinatura" de propósito. "Devia andar" é o assinado OU o quadro com todos
+      // os compradores assinados (02/10/2026). Sem a linha no log, seria um contrato parado sem aviso.
       const andou = efeito.card === "andou" || efeito.card === "ja_estava";
       const incompleto = efeito.dataDeAssinatura === "falhou" || efeito.dataDeAssinatura === "sem_data_real";
-      if (registro.estadoDepois === "assinado" && (!andou || incompleto)) {
+      const deviaAndar = registro.estadoDepois === "assinado" || todosOsCompradoresAssinaram(registro.signatarios);
+      if (deviaAndar && (!andou || incompleto)) {
         console.warn(
-          `[clicksign][webhook] contrato assinado sem o efeito completo na venda ${propostaId} (${resumo}): ${efeito.motivo}. Ninguém refaz sozinho até o espelho da D4Sign (F3) rodar a reconciliação; conferir o card à mão.`,
+          `[clicksign][webhook] contrato ${registro.estadoDepois === "assinado" ? "assinado" : "assinado pelos compradores"} sem o efeito completo na venda ${propostaId} (${resumo}): ${efeito.motivo}. A reconciliação do espelho refaz o tropeço na próxima rodada; o "não" de uma guarda fica como está, e o card se confere à mão.`,
         );
       } else if (efeito.card === "recusado") {
         console.warn(`[clicksign][webhook] o efeito do envelope ${linha.id} na venda foi recusado: ${efeito.motivo}`);
@@ -658,7 +672,14 @@ export function cardAndouDepoisDe(
 }
 
 /**
- * O QUE ACONTECE COM O CARD QUANDO O ENVELOPE FECHA — e isto MUDOU com as cinco etapas.
+ * O QUE ACONTECE COM O CARD QUANDO O ENVELOPE FECHA (ou, no contrato, quando o último comprador
+ * assina). E isto MUDOU com as cinco etapas.
+ *
+ * ⚠️ NO CONTRATO, QUEM CHAMA É A PORTA (`aplicarEnvelopeNaVenda`), E ELA CHAMA JÁ NA ÚLTIMA
+ * ASSINATURA DE COMPRADOR, com o envelope ainda `parcial` (Lucas, 02/10/2026: *"vamos mudar esse 3/11
+ * eu preciso ver somente dos compradores"*). Esta função não olha o estado do envelope: ela leva o card
+ * de "Em assinatura" ao Pré-faturamento com o início dos 7 dias. Quando o envelope fechar depois, a
+ * chamada de novo acha o card adiante e devolve "já estava", SEM regravar `arrependimento_inicio`.
  *
  * ⚠️ CONTRATO ASSINADO NÃO É CONTRATO PRONTO. Antes o card ia direto para "finalizado"; agora
  * assinar é o fim da etapa 3, e sobram duas condições que ninguém dentro do provedor conhece:
@@ -669,10 +690,11 @@ export function cardAndouDepoisDe(
  * Lucas (10/09/2026) — *"Caminho próprio, mais curto"*. Não há arrependimento nem entrada.
  *
  * ⚠️ E É AQUI QUE NASCE A CONTAGEM DOS 7 DIAS, e desde a F2 da fonte única ela sai de
- * `inicioDoArrependimento` (`envelope-na-venda.ts`): Clicksign, a última assinatura de comprador ou
- * cônjuge do QUADRO que a função da 0195 devolveu; D4Sign, o fechamento. SEM DATA REAL O CARD NÃO
- * ANDA (`sem_data_real`): o "agora" de antes congelava a hora do webhook, ou do cron, como começo de
- * um prazo que é do cliente. A reconciliação (`reconciliarVendasAssinadas`, que só roda a partir da F3) refaz quando a data chega.
+ * `inicioDoArrependimento` (`envelope-na-venda.ts`): a última assinatura de comprador do QUADRO que a
+ * função da 0195 devolveu, nos dois provedores desde 02/10/2026 (na D4Sign, pelo perfil "Comprador");
+ * só sem comprador marcado, o fechamento. SEM DATA REAL O CARD NÃO ANDA (`sem_data_real`): o "agora"
+ * de antes congelava a hora do webhook, ou do cron, como começo de um prazo que é do cliente. A
+ * reconciliação (`reconciliarVendasAssinadas`, na rodada do espelho) refaz quando a data chega.
  *
  * ⚠️ QUEM CONCLUI É O CARD DA FINALIDADE DO ENVELOPE (0195), e não "o primeiro card em assinatura". O
  * envelope de contrato conclui o card de contrato; o de cessão, o de cessão. Antes, com dois cards na
@@ -738,7 +760,7 @@ export async function concluirAssinaturaDoCard(
     const inicio = inicioDoArrependimento(envelope.provedor, envelope.signatarios, envelope.fechadoEm);
     if (!inicio) {
       console.warn(
-        `[temis][card] card ${card.id} não vai para o Pré-faturamento: o contrato fechou sem data real (nem do comprador, nem do provedor). Ninguém refaz sozinho até o espelho da D4Sign (F3) rodar a reconciliação; conferir o card à mão.`,
+        `[temis][card] card ${card.id} não vai para o Pré-faturamento: o contrato fechou sem data real (nem do comprador, nem do provedor). A reconciliação do espelho refaz quando a data chegar; até lá, conferir o card à mão.`,
       );
       return "sem_data_real";
     }
@@ -825,9 +847,6 @@ const TIPO_DO_CARD_POR_FINALIDADE: Record<FinalidadeDoEnvelope, TipoDeTrabalho |
   distrato: null,
 };
 
-/** Os papéis cuja assinatura conta o prazo de arrependimento (é do cliente). */
-const PAPEIS_DO_COMPRADOR = new Set(["comprador", "conjuge"]);
-
 /**
  * Quando o ÚLTIMO comprador assinou, lido do QUADRO (a marca `assinado_em` de cada pessoa).
  *
@@ -836,18 +855,15 @@ const PAPEIS_DO_COMPRADOR = new Set(["comprador", "conjuge"]);
  * último, os 7 dias começavam com ela. O papel vem congelado no envio e nunca é nulo na Clicksign
  * (medido em 8 de 8 contratos, 28/09/2026).
  *
+ * ⚠️ E NA D4SIGN, ONDE O PAPEL VEM NULO, COMPRADOR É O PERFIL "Comprador" (02/10/2026). A régua saiu
+ * para `compradores-do-quadro.ts` porque a porta do envelope na venda e o selo do card fazem a mesma
+ * pergunta; antes, só o papel contava, e a D4Sign nunca tinha comprador nenhum aqui.
+ *
  * ⚠️ COMPARA COMO DATA, E DEVOLVE O TEXTO COMO FOI GUARDADO (`-03:00`, de `emBrasilia`). `null`
  * quando nenhum comprador tem marca: quem chama decide (o fechamento é o lado seguro).
  */
 export function ultimaAssinaturaDoComprador(quadro: readonly ItemDoQuadro[]): null | string {
-  let ultima: null | string = null;
-  for (const item of quadro) {
-    if (!PAPEIS_DO_COMPRADOR.has(String(item.papel ?? "").toLowerCase())) continue;
-    const quando = item.assinado_em;
-    if (!quando || Number.isNaN(Date.parse(quando))) continue;
-    if (ultima === null || Date.parse(quando) > Date.parse(ultima)) ultima = quando;
-  }
-  return ultima;
+  return compradoresDoQuadro(quadro).ultima;
 }
 
 /**

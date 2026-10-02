@@ -185,3 +185,106 @@ describe("o pedido de cancelamento ou de distrato não chega a Concluído pela m
     expect(banco.linha("hercules_propostas", "venda-1")?.etapa).toBe("contrato");
   });
 });
+
+// ── O FATURADO NÃO SAI COM O CONTRATO AINDA POR ASSINAR (02/10/2026) ──────────────────────────────
+//
+// Lucas: *"vamos mudar esse 3/11 eu preciso ver somente dos compradores"*. O card passou a entrar no
+// Pré-faturamento quando os COMPRADORES assinam, com a vendedora ou a testemunha ainda por assinar. A
+// marcação levava o card a Faturado sem olhar envelope nenhum; agora o envelope de contrato vivo segura.
+
+/** O envelope de contrato da venda: a compradora assinou, a testemunha não. */
+function envelopeDoContrato(patch: Linha = {}): Linha {
+  return {
+    criado_em: "2026-09-20T12:00:00.000Z",
+    enviado_em: "2026-09-20T12:01:00.000Z",
+    envelope_id: "env-1",
+    estado: "parcial",
+    falha: null,
+    finalidade: "contrato",
+    id: "reg-1",
+    proposta_id: "venda-1",
+    provedor: "clicksign",
+    signatarios: [
+      { assinado_em: "2026-09-26T10:00:00.000-03:00", chave: "k1", email: "c@x.com", nome: "C", ordem: 1, papel: "comprador" },
+      { chave: "k2", email: "t@x.com", nome: "T", ordem: 2, papel: "testemunha" },
+    ],
+    workspace_id: "careli",
+    ...patch,
+  };
+}
+
+describe("a última atividade do Pré-faturamento confere o envelope do contrato", () => {
+  it("⚠️ envelope de contrato vivo (1 de 2 assinaram): RECUSADO com 409, a conta na frase, e nada escrito", async () => {
+    const { antes, ultima } = doEstagio("contrato", "prazo_legal");
+    montar({ atividades_feitas: antes });
+    banco.semear("temis_envelopes", envelopeDoContrato());
+
+    const r = await marcarAtividade({ atividade: ultima, feita: true, id: "card-1", quemNome: "Nivea" });
+
+    expect(r).toMatchObject({ ok: false, status: 409 });
+    if (r.ok) return;
+    expect(r.erro).toContain("faltam assinaturas no contrato: 1 de 2 assinaram");
+    // A frase dá a conta, e não os nomes nem os e-mails de quem falta.
+    expect(r.erro).not.toMatch(/@|\bT\b/);
+    expect(banco.linha("temis_trabalhos", "card-1")?.estagio).toBe("prazo_legal");
+    expect(banco.linha("hercules_propostas", "venda-1")?.etapa).toBe("assinatura");
+    expect(banco.consultas.filter((c) => c.operacao !== "select")).toEqual([]);
+  });
+
+  it("envelope de contrato assinado: o card vai a Faturado como sempre", async () => {
+    const { antes, ultima } = doEstagio("contrato", "prazo_legal");
+    montar({ atividades_feitas: antes });
+    banco.semear("temis_envelopes", envelopeDoContrato({ estado: "assinado", fechado_em: "2026-09-27T09:00:00.000-03:00" }));
+
+    const r = await marcarAtividade({ atividade: ultima, feita: true, id: "card-1" });
+
+    expect(r).toMatchObject({ andou: true, estagio: "faturado", ok: true });
+  });
+
+  it("o assinado vence o vivo mais novo (a régua do vigente): passa", async () => {
+    const { antes, ultima } = doEstagio("contrato", "prazo_legal");
+    montar({ atividades_feitas: antes });
+    banco.semear("temis_envelopes", envelopeDoContrato({ estado: "assinado", fechado_em: "2026-09-27T09:00:00.000-03:00" }));
+    banco.semear(
+      "temis_envelopes",
+      envelopeDoContrato({ criado_em: "2026-09-28T12:00:00.000Z", envelope_id: "env-2", id: "reg-2" }),
+    );
+
+    const r = await marcarAtividade({ atividade: ultima, feita: true, id: "card-1" });
+
+    expect(r).toMatchObject({ estagio: "faturado", ok: true });
+  });
+
+  it("sem envelope (o card antigo, a marcação humana): passa, a regra nova não alcança o passado", async () => {
+    const { antes, ultima } = doEstagio("contrato", "prazo_legal");
+    montar({ atividades_feitas: antes });
+    // Um envelope de OUTRA finalidade (o distrato) na mesma venda não é o contrato.
+    banco.semear("temis_envelopes", envelopeDoContrato({ finalidade: "distrato" }));
+
+    const r = await marcarAtividade({ atividade: ultima, feita: true, id: "card-1" });
+
+    expect(r).toMatchObject({ estagio: "faturado", ok: true });
+  });
+
+  it("a leitura do envelope falhou: RECUSADO com 503 (não consegui perguntar não é 'assinado')", async () => {
+    const { antes, ultima } = doEstagio("contrato", "prazo_legal");
+    montar({ atividades_feitas: antes });
+    banco.falhar((c) => c.tabela === "temis_envelopes");
+
+    const r = await marcarAtividade({ atividade: ultima, feita: true, id: "card-1" });
+
+    expect(r).toMatchObject({ ok: false, status: 503 });
+    expect(banco.linha("temis_trabalhos", "card-1")?.estagio).toBe("prazo_legal");
+  });
+
+  it("marcar uma atividade do Pré-faturamento SEM fechar a etapa não confere envelope nenhum", async () => {
+    const { antes } = doEstagio("contrato", "prazo_legal");
+    montar({ atividades_feitas: [] });
+    banco.semear("temis_envelopes", envelopeDoContrato());
+
+    const r = await marcarAtividade({ atividade: antes[0] ?? "", feita: true, id: "card-1" });
+
+    expect(r).toMatchObject({ andou: false, ok: true });
+    expect(banco.consultas.some((c) => c.tabela === "temis_envelopes")).toBe(false);
+  });
+});

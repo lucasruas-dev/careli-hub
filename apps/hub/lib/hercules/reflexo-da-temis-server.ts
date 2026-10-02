@@ -195,15 +195,20 @@ export function registrarReflexoQueNaoAndou(
  * "Envio para assinatura na Têmis" diria que a Têmis enviou um contrato que ela nunca viu. A frase não
  * cita provedor nem sistema antigo: o histórico da venda aparece no portal, e o vocabulário de lá não
  * tem essas palavras (Lucas, 18/08).
+ *
+ * ⚠️ O PRÉ-FATURAMENTO É "ASSINADO PELOS COMPRADORES", E NÃO MAIS "POR TODOS" (02/10/2026). O card
+ * passou a entrar lá quando o último comprador assina, com a testemunha ou a vendedora ainda por
+ * assinar (Lucas: *"vamos mudar esse 3/11 eu preciso ver somente dos compradores"*). A frase antiga
+ * ficaria no histórico da venda afirmando um contrato fechado que ainda não fechou.
  */
 export function motivoDoReflexo(de: string, para: EstagioDoTrabalho, origem?: null | OrigemDaPassagem): string {
   if (origem === "espelho_d4sign") {
     if (para === "assinatura") return "Contrato enviado para assinatura";
-    if (para === "prazo_legal") return "Contrato assinado por todos";
+    if (para === "prazo_legal") return "Contrato assinado pelos compradores";
   }
   if (para === "assinatura") return "Envio para assinatura na Têmis";
   if (para === "analise") return "Contrato voltou para correção na Têmis";
   if (para === "faturado") return "Contrato faturado na Têmis";
-  if (para === "prazo_legal") return "Contrato assinado por todos na Têmis";
+  if (para === "prazo_legal") return "Contrato assinado pelos compradores na Têmis";
   return `Card de contrato andou de ${de} para ${para} na Têmis`;
 }

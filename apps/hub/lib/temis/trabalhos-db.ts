@@ -12,6 +12,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createApoloAdminClient } from "@/lib/apolo/server";
+import { compradoresDoQuadro } from "@/lib/assinatura/compradores-do-quadro";
+import { envelopeVigente } from "@/lib/assinatura/envelope-vigente";
 import { type EnvelopeDaProposta, envelopeQueSegura } from "@/lib/assinatura/envio-db";
 import { lerQuadro } from "@/lib/assinatura/registro-db";
 // A régua de "esta venda está morta" mora num lugar só, e é pura — ver `VENDA_DESFEITA`.
@@ -83,6 +85,20 @@ export type ContagemDeAssinaturas = {
   /** Quantos dos convidados já assinaram. */
   assinaram: number;
   /**
+   * Quantos dos COMPRADORES já assinaram, de quantos. `null` = o quadro não tem comprador marcado.
+   *
+   * Lucas (02/10/2026): *"vamos mudar esse 3/11 eu preciso ver somente dos compradores. se tiver um
+   * comprador 1/1 ou 0/1 se tiver mais a mesma logica"*. É o número que decide se o card vai ao
+   * Pré-faturamento, e por isso sai da MESMA régua da porta (`compradoresDoQuadro`,
+   * `lib/assinatura/compradores-do-quadro.ts`): o selo nunca diz "1/1" num card que não anda.
+   *
+   * ⚠️ O CARD EM "Em assinatura" MOSTRA ESTE; O CARD NO PRÉ-FATURAMENTO MOSTRA O TOTAL. Lucas, no
+   * mesmo dia: *"quando mover para o pre-faturamento mostrar o quadro real de assinatura, ae vale
+   * trazer a visao que temos hoje do 3/11 pois se esta no prefaturamento eu sei que os compradores ja
+   * assinaram"*. Quem escolhe é a tela (`seloDeAssinaturaDoCard`, `lib/temis/selo-do-card.ts`).
+   */
+  compradores: null | { assinaram: number; total: number };
+  /**
    * Algum convite voltou sem ser entregue?
    *
    * ⚠️ É O SINAL DE QUE NÃO ADIANTA ESPERAR. Um contrato "parcialmente assinado" cujo convite
@@ -97,7 +113,7 @@ export type ContagemDeAssinaturas = {
 
 export type TrabalhoDoBoard = Trabalho & {
   /**
-   * O contador de assinaturas, quando o card está em "Em assinatura".
+   * O contador de assinaturas, quando o card está em "Em assinatura" ou no Pré-faturamento.
    *
    * ⚠️ `null` É O NORMAL, E DIZ APENAS "SEM CONTADOR". Card em outra etapa, card que não é de
    * contrato, proposta sem envelope, leitura que falhou — os quatro chegam aqui como `null`, e o
@@ -285,7 +301,8 @@ function mapear(l: LinhaCrua): TrabalhoDoBoard {
  * regra é lote de 100). Aqui são os empreendimentos de UMA pessoa — uns 15 no máximo —, então a
  * lista passa inteira. Se um dia a fonte mudar para algo maior, lotear.
  *
- * `comAssinaturas` liga o contador "1/5" dos cards em "Em assinatura".
+ * `comAssinaturas` liga o contador "1/5" dos cards de contrato em "Em assinatura" e no
+ * Pré-faturamento (este desde 02/10/2026).
  *
  * ⚠️ ELE É OPCIONAL PORQUE CUSTA DUAS CONSULTAS, e nem todo leitor deste board as quer. Quem chama
  * são dois: o quadro da Têmis (que recarrega sozinho a cada minuto desde 11/09/2026 e pediu o
@@ -419,7 +436,7 @@ export async function trabalhosDoBoard(input?: {
     // sozinho a cada minuto; uma consulta por card multiplicaria essa conta pelo tamanho da fila,
     // e é exatamente o tipo de gasto que só aparece na fatura. A leitura é em lote, o cruzamento é
     // em memória.
-    const esperando = trabalhos.filter(cardEsperaAssinatura);
+    const esperando = trabalhos.filter(cardTemSeloDeAssinatura);
     const contagens = await contarAssinaturasDasPropostas(
       supabase,
       esperando.map((t) => t.propostaId ?? ""),
@@ -447,10 +464,15 @@ export async function trabalhosDoBoard(input?: {
  * (`EXIGE_ASSINATURA`). É a resposta honesta enquanto o envelope não souber de que card ele é: o
  * dia em que `temis_envelopes` ganhar `trabalho_id`, o portão vira esse elo e os três passam a
  * contar.
+ *
+ * ⚠️ O PRÉ-FATURAMENTO TAMBÉM TEM SELO DESDE 02/10/2026. O card passou a chegar lá quando os
+ * compradores assinam, com o resto do contrato ainda por assinar, e o Lucas pediu ver ali o quadro
+ * inteiro: *"ae vale trazer a visao que temos hoje do 3/11"*. Custa mais cards na leitura dos payloads
+ * (a consulta cara de `contarAssinaturasDasPropostas`), que continua uma só por carga do quadro.
  */
-function cardEsperaAssinatura(trabalho: TrabalhoDoBoard): boolean {
+function cardTemSeloDeAssinatura(trabalho: TrabalhoDoBoard): boolean {
   return (
-    trabalho.estagio === "assinatura" &&
+    (trabalho.estagio === "assinatura" || trabalho.estagio === "prazo_legal") &&
     trabalho.tipo === "contrato" &&
     Boolean(trabalho.propostaId)
   );
@@ -560,8 +582,17 @@ export function contagemDoSelo(
       ? total
       : Math.min(Math.max(pelasMarcas, historico?.assinaram ?? 0), total);
 
+  // ⚠️ OS COMPRADORES SAEM SÓ DO QUADRO, PELA RÉGUA DA PORTA (`compradoresDoQuadro`): o histórico dos
+  // payloads só sabe "quantos", e não "quem". Envelope fechado: todos assinaram, compradores inclusive.
+  const doQuadro = compradoresDoQuadro(quadro);
+  const compradores =
+    doQuadro.total === 0
+      ? null
+      : { assinaram: envelope.estado === "assinado" ? doQuadro.total : doQuadro.assinaram, total: doQuadro.total };
+
   return {
     assinaram,
+    compradores,
     conviteNaoEntregue: (historico?.conviteNaoEntregue ?? false) || conviteVoltou,
     estado: envelope.estado,
     total,
@@ -1111,6 +1142,22 @@ export async function marcarAtividade(input: {
     };
   }
 
+  // ── O CONTRATO NÃO VAI A FATURADO COM O ENVELOPE AINDA POR ASSINAR ──
+  //
+  // ⚠️ DESDE 02/10/2026 O PRÉ-FATURAMENTO NÃO PROVA MAIS O CONTRATO FECHADO. O card entra lá quando os
+  // COMPRADORES assinam (Lucas: *"vamos mudar esse 3/11 eu preciso ver somente dos compradores"*), com a
+  // vendedora ou a testemunha ainda por assinar. A assinatura de todos virou a condição 1 da etapa
+  // (`lib/temis/trabalhos.ts`, as três condições de 11/09/2026), e esta é a porta que a marcação tinha
+  // aberta: a última atividade levava o card a Faturado, e a venda junto, sem olhar envelope nenhum.
+  //
+  // ⚠️ SÓ COM O ENVELOPE DE CONTRATO VIGENTE VIVO E NÃO ASSINADO. Sem envelope (o card antigo, o caso
+  // do Henrique), ou com o contrato já assinado, a marcação segue como sempre: a regra nova não alcança
+  // o passado, e a trava não inventa um envelope que ninguém mandou.
+  if (seguinte === "faturado" && depois.tipo === "contrato" && trabalho.propostaId) {
+    const recusaDoEnvelope = await recusaPorContratoPorAssinar(supabase, trabalho.propostaId);
+    if (recusaDoEnvelope) return recusaDoEnvelope;
+  }
+
   // ── O CARD NÃO ENTRA EM CONTRATO NEM EM ASSINATURA SEM A CAD APROVADA ──
   //
   // Lucas (26/09/2026): *"faz uma barra, para enviar para contrato precisa da cad validada"*.
@@ -1215,6 +1262,58 @@ export async function marcarAtividade(input: {
   }
 
   return { andou: Boolean(seguinte), estagio: seguinte ?? trabalho.estagio, ok: true };
+}
+
+/**
+ * O ENVELOPE DE CONTRATO DESTA VENDA AINDA ESTÁ POR ASSINAR? Se estiver, a recusa do Faturado.
+ *
+ * ⚠️ A RÉGUA É `envelopeVigente`, A MESMA DA VENDA, DO ESPELHO E DA RECONCILIAÇÃO: o assinado vence o
+ * vivo mais novo, e o vivo só vale se já saiu para o provedor. Uma segunda escrita de "qual envelope
+ * vale" aqui divergiria no primeiro reenvio.
+ *
+ * ⚠️ LEITURA QUE FALHA RECUSA, com 503, como `recusaPorVendaDesfeita`: "não consegui perguntar" não é
+ * "o contrato está assinado", e o preço é assimétrico (um clique repetido contra uma venda faturada
+ * com o contrato pela metade).
+ *
+ * ⚠️ A FRASE DÁ A CONTA, E NÃO OS NOMES. Ela volta pela rota, que serve também o portal do incorporador;
+ * quem falta está no painel da assinatura da própria etapa, que é onde se reenvia e se corrige e-mail.
+ */
+async function recusaPorContratoPorAssinar(
+  supabase: SupabaseClient,
+  propostaId: string,
+): Promise<null | { erro: string; ok: false; status: 409 | 503 }> {
+  const { data, error } = await supabase
+    .from("temis_envelopes")
+    // As colunas da régua do vigente, mais o quadro (a conta de quem assinou).
+    .select("criado_em, envelope_id, enviado_em, estado, falha, id, provedor, signatarios")
+    .eq("proposta_id", propostaId)
+    .eq("finalidade", "contrato");
+
+  if (error) {
+    console.error("[temis] não foi possível conferir o envelope do contrato antes do Faturado", {
+      code: (error as { code?: string }).code ?? null,
+      message: error.message ?? null,
+      proposta: propostaId,
+    });
+    return {
+      erro: "não foi possível conferir agora se o contrato está assinado por todos; nada foi marcado, tente de novo em instantes",
+      ok: false,
+      status: 503,
+    };
+  }
+
+  const linhas = (data ?? []) as Array<EnvelopeDaProposta & { enviado_em: null | string; signatarios: unknown }>;
+  const vigente = envelopeVigente(linhas).vigente;
+  if (!vigente || vigente.estado === "assinado") return null;
+
+  const quadro = lerQuadro(vigente.signatarios);
+  const assinaram = quadro.filter((item) => Boolean(item.assinado_em)).length;
+  const conta = quadro.length > 0 ? `${assinaram} de ${quadro.length} assinaram` : "o envelope ainda não fechou";
+  return {
+    erro: `faltam assinaturas no contrato: ${conta}. O card só vai para Faturado com o contrato assinado por todos. Veja quem falta no painel da assinatura, nesta etapa; nada foi marcado.`,
+    ok: false,
+    status: 409,
+  };
 }
 
 /**

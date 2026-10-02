@@ -14,10 +14,11 @@ import { getHadesDbPool } from "@/lib/guardian/db";
 // POST = o admin do Hub, à mão. ENSAIO por padrão; grava só com `?gravar=1`. Recusa `refazer` e teto
 //        infinito (são do script, de madrugada, com OK); `so` só inteiros, até 50; registra QUEM disparou.
 //
-// ⚠️ O CRON NÃO ESTÁ NO `vercel.json` AINDA (plano, F3, "Ordem": ensaio → OK → `--gravar` → prova → OK →
-// cron). A linha a acrescentar, com OK do Lucas:
+// ⚠️ O CRON ESTÁ NO `vercel.json` DESDE 30/09/2026 (commit 1ce89560, com OK do Lucas), na linha
 //   { "path": "/api/assinatura/d4sign/espelho", "schedule": "7,37 * * * *" }
-// E antes de ligar: conferir no log de UMA rodada que a chamada da Vercel chegou com o Bearer.
+// e é a rodada dele que roda a reconciliação (`reconciliarVendasAssinadas`, passo 6). Desde 02/10/2026
+// é ela que leva ao Pré-faturamento o contrato cujos compradores já assinaram e cujo card ficou em "Em
+// assinatura" (o alvo compradores): os cards parados no dia da mudança andam na primeira rodada.
 //
 // ⚠️ A RESPOSTA É O RELATÓRIO, QUE SÓ TEM IDS E CONTAGENS (nunca nome, e-mail ou documento).
 

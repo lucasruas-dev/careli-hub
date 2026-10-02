@@ -536,15 +536,83 @@ describe("o webhook aplica pela função da 0195", () => {
     expect(card?.arrependimento_inicio).toBe("2026-09-26T10:00:00.000-03:00");
   });
 
-  it("o reenvio do mesmo webhook de fechamento não move o card de novo (só a borda move)", async () => {
-    const b = bancoDaVitoria({ card: { estagio: "prazo_legal" }, venda: { etapa: "assinatura" } });
-    b.semear("temis_envelopes", envelopeDaVitoria({ estado: "assinado", fechado_em: "2026-09-26T12:00:00.000-03:00" }));
+  it("o reenvio do mesmo webhook de fechamento não move o card de novo nem regrava o início dos 7 dias", async () => {
+    // ⚠️ Desde 02/10/2026 o webhook chama a porta também SEM mudança de estado quando todos os
+    // compradores do quadro assinaram: a porta é chamada de novo, e o comparar-e-trocar não a deixa
+    // mover nada (o card já está no Pré-faturamento).
+    const b = bancoDaVitoria({
+      card: { arrependimento_inicio: "2026-09-26T10:00:00.000-03:00", estagio: "prazo_legal" },
+      venda: { data_assinatura: "2026-09-26", etapa: "assinatura" },
+    });
+    const assinados = (envelopeDaVitoria().signatarios as Array<Record<string, unknown>>).map((item) => ({
+      ...item,
+      assinado_em: "2026-09-26T10:00:00.000-03:00",
+    }));
+    b.semear(
+      "temis_envelopes",
+      envelopeDaVitoria({ estado: "assinado", fechado_em: "2026-09-26T12:00:00.000-03:00", signatarios: assinados }),
+    );
     comAFuncaoDa0195(b);
 
     const payload = payloadDoDocumento({ evento: "auto_close", eventos: [], status: "closed" });
-    await aplicarEventoDaClicksign(b.cliente, lerEventoDoWebhook(JSON.stringify(payload)), payload);
+    const r = await aplicarEventoDaClicksign(b.cliente, lerEventoDoWebhook(JSON.stringify(payload)), payload);
 
+    expect(r.motivo).toContain("card ja_estava");
     expect(b.consultas.some((q) => q.tabela === "temis_trabalhos" && q.operacao === "update")).toBe(false);
+    expect(b.consultas.some((q) => q.tabela === "hercules_propostas" && q.operacao === "update")).toBe(false);
+    expect(b.linha("temis_trabalhos", "card-vitoria")?.arrependimento_inicio).toBe("2026-09-26T10:00:00.000-03:00");
+  });
+
+  // ── O SIGN DO ÚLTIMO COMPRADOR NUM ENVELOPE JÁ PARCIAL (02/10/2026) ───────────────────────────
+  //
+  // Lucas: *"acho que a regra de negocio para andar de em assinatura para pre-faturamento nao esta
+  // acontecendo pois eu nao tenho nenhum em pre-faturamento"*. O `sign` da compradora depois do da
+  // vendedora é `parcial → parcial`: `mudouEstado` é falso, e a porta nunca era chamada.
+
+  it("⚠️ sign parcial → parcial com o último comprador: o card vai ao Pré-faturamento, e a venda fica sem data", async () => {
+    const b = bancoDaVitoria({ card: { estagio: "assinatura" }, venda: { etapa: "assinatura" } });
+    // A vendedora já tinha assinado: o envelope está `parcial`.
+    const comVendedora = (envelopeDaVitoria().signatarios as Array<Record<string, unknown>>).map((item) =>
+      item.chave === "k-vendedora" ? { ...item, assinado_em: "2026-09-26T09:00:00.000-03:00" } : item,
+    );
+    b.semear("temis_envelopes", envelopeDaVitoria({ estado: "parcial", signatarios: comVendedora }));
+    comAFuncaoDa0195(b);
+
+    // Agora a compradora assina; a testemunha continua por assinar.
+    const payload = payloadDoDocumento({
+      evento: "sign",
+      eventos: [
+        { chave: "k-comprador", email: "compradora@x.com", nome: "Vitória", quando: "2026-09-26T13:00:00Z" },
+        { chave: "k-vendedora", email: "vendedora@x.com", nome: "Vendedora", quando: "2026-09-26T12:00:00Z" },
+      ],
+    });
+    const r = await aplicarEventoDaClicksign(b.cliente, lerEventoDoWebhook(JSON.stringify(payload)), payload);
+
+    expect(r).toMatchObject({ aplicado: true, estado: "parcial" });
+    expect(r.motivo).toContain("parcial → parcial");
+    expect(r.motivo).toContain("card andou");
+    const card = b.linha("temis_trabalhos", "card-vitoria");
+    expect(card).toMatchObject({ arrependimento_inicio: "2026-09-26T10:00:00.000-03:00", estagio: "prazo_legal" });
+    expect(b.linha("hercules_propostas", "venda-vitoria")).toMatchObject({ data_assinatura: null, etapa: "assinatura" });
+  });
+
+  it("sign parcial → parcial de quem NÃO é comprador (a testemunha), com a compradora por assinar: a porta nem é chamada", async () => {
+    const b = bancoDaVitoria({ card: { estagio: "assinatura" }, venda: { etapa: "assinatura" } });
+    const comVendedora = (envelopeDaVitoria().signatarios as Array<Record<string, unknown>>).map((item) =>
+      item.chave === "k-vendedora" ? { ...item, assinado_em: "2026-09-26T09:00:00.000-03:00" } : item,
+    );
+    b.semear("temis_envelopes", envelopeDaVitoria({ estado: "parcial", signatarios: comVendedora }));
+    comAFuncaoDa0195(b);
+
+    const payload = payloadDoDocumento({
+      evento: "sign",
+      eventos: [{ chave: "k-testemunha", email: "testemunha@x.com", nome: "Testemunha", quando: "2026-09-26T14:00:00Z" }],
+    });
+    const r = await aplicarEventoDaClicksign(b.cliente, lerEventoDoWebhook(JSON.stringify(payload)), payload);
+
+    expect(r).toMatchObject({ aplicado: true, estado: "parcial" });
+    expect(b.consultas.some((q) => q.tabela === "hercules_propostas")).toBe(false);
+    expect(b.linha("temis_trabalhos", "card-vitoria")?.estagio).toBe("assinatura");
   });
 });
 
@@ -562,6 +630,15 @@ describe("ultimaAssinaturaDoComprador (bug 8.3)", () => {
 
   it("comprador sem marca: nulo (quem chama cai no fechamento)", () => {
     expect(ultimaAssinaturaDoComprador([{ chave: "a", email: "", nome: "", ordem: 1, papel: "comprador" }])).toBeNull();
+  });
+
+  it("⚠️ D4Sign (papel nulo): o comprador é o perfil 'Comprador' (02/10/2026); 'Sem perfil' não conta", () => {
+    const quadro: ItemDoQuadro[] = [
+      { assinado_em: "2026-09-26T10:00:00.000-03:00", chave: "c2x:1", email: "", nome: "", ordem: 1, papel: null, perfil: "Comprador" },
+      { assinado_em: "2026-09-26T11:00:00.000-03:00", chave: "c2x:2", email: "", nome: "", ordem: 1, papel: null, perfil: "Sem perfil" },
+      { assinado_em: "2026-09-26T12:00:00.000-03:00", chave: "c2x:3", email: "", nome: "", ordem: 2, papel: null, perfil: "Coordenadora de venda" },
+    ];
+    expect(ultimaAssinaturaDoComprador(quadro)).toBe("2026-09-26T10:00:00.000-03:00");
   });
 });
 

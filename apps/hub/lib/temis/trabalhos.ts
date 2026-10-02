@@ -65,7 +65,10 @@ export const ESTAGIOS: {
     nome: "Em assinatura",
   },
   {
-    descricao: "Assinado por todos, 7 dias corridos e a entrada paga.",
+    // ⚠️ "PELOS COMPRADORES", E NÃO "POR TODOS" (02/10/2026): o card entra aqui quando o último
+    // comprador assina, e as demais assinaturas viram uma condição a cumprir dentro da etapa. Lucas:
+    // *"quando mover para o pre-faturamento mostrar o quadro real de assinatura"*.
+    descricao: "Assinado pelos compradores. Faltam os 7 dias, a entrada e as demais assinaturas.",
     id: "prazo_legal",
     // ⚠️ O VALOR NO BANCO CONTINUA `prazo_legal`, e só o rótulo muda. Trocar o id exigiria migration,
     // mexer no check da 0150 e reescrever as linhas existentes, para render a mesma palavra na tela.
@@ -89,12 +92,14 @@ export const ESTAGIOS: {
     // Elas fecham em ORDEM QUALQUER, e por isso a etapa é gestão: o cliente pode pagar a entrada e
     // não assinar, assinar e não pagar, ou fazer as duas e ainda estar dentro dos 7 dias.
     //
-    // ⚠️ A CONDIÇÃO 1 JÁ É O PORTÃO DE ENTRADA HOJE — `concluirAssinaturaDoCard` só traz o card
-    // para cá quando o envelope FECHA na Clicksign, que é quando todos assinaram. Mas ela não é
-    // garantida: `marcarAtividade` avança o card por marcação humana, sem consultar envelope nenhum,
-    // e foi assim que o card do Henrique chegou a "finalizado" sem contrato e sem envelope
-    // (medido em 09/09/2026). Enquanto essa porta existir, a tela precisa CONFERIR as três, e não
-    // supor que quem chegou aqui cumpriu a primeira.
+    // ⚠️ A CONDIÇÃO 1 DEIXOU DE SER O PORTÃO DE ENTRADA EM 02/10/2026. O card entra aqui quando
+    // TODOS OS COMPRADORES assinaram (`aplicarEnvelopeNaVenda`, com o envelope ainda vivo), e é dali
+    // que os 7 dias contam; a assinatura de todos os signatários virou condição a cumprir DENTRO da
+    // etapa. Medido no dia: 12 contratos em assinatura, nenhum jamais passou para cá, porque o card só
+    // andava com o envelope inteiro fechado. Quem segura o Faturado sem o envelope fechado é
+    // `marcarAtividade` (a trava do envelope vivo). E a entrada continua não provando nada sozinha: a
+    // marcação humana também traz card para cá sem consultar envelope (o caso do Henrique, 09/09/2026),
+    // e por isso a tela CONFERE as três, sem supor nenhuma.
     //
     // Mostrar as três, cada uma com o próprio estado, é o que falta do PAN-024.
     nome: "Pré-faturamento",

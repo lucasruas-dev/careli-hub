@@ -2,9 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { VENDA_DESFEITA } from "@/lib/hercules/acao-de-cancelamento";
 
+import { compradoresDoQuadro, todosOsCompradoresAssinaram } from "./compradores-do-quadro";
 // ⚠️ IMPORT EM CÍRCULO, CONSCIENTE: `estado-db.ts` (o webhook) chama `aplicarEnvelopeNaVenda` daqui,
 // e daqui se usam as funções de card de lá. Os dois lados só usam o outro DENTRO de funções.
-import { concluirAssinaturaDoCard, moverCardDaTemis, ultimaAssinaturaDoComprador } from "./estado-db";
+import { concluirAssinaturaDoCard, moverCardDaTemis } from "./estado-db";
 import { ESTADOS_QUE_LIBERAM_REENVIO, envelopeVigente } from "./envelope-vigente";
 import { diaEmBrasilia } from "./instante";
 import { type ItemDoQuadro, lerQuadro } from "./registro-db";
@@ -103,13 +104,27 @@ type VendaLida = {
  *   • D4Sign entrando em assinatura (antes `novo`/`rascunho`/`desconhecido`, depois `aguardando`/
  *     `parcial`): o card de contrato antes de "Em assinatura" vai para lá (origem `espelho_d4sign`)
  *     e o reflexo leva a venda `contrato → assinatura`. Card já lá ou adiante: nada é regravado.
- *   • Clicksign `aguardando`/`parcial`, e qualquer mudança que não seja borda: nada (o envio da Têmis
- *     já moveu o card).
+ *   • Clicksign `aguardando`/`parcial` com algum comprador por assinar, e qualquer mudança que não
+ *     seja borda: nada (o envio da Têmis já moveu o card).
+ *   • Qualquer provedor `aguardando`/`parcial` com TODOS OS COMPRADORES assinados (02/10/2026): o
+ *     card vai ao Pré-faturamento como no assinado (D4Sign passa antes por "Em assinatura"), com os 7
+ *     dias contando do último comprador. A `data_assinatura` da venda NÃO é gravada aqui: o contrato
+ *     ainda não fechou (`nao_se_aplica`).
  *   • Qualquer provedor → `assinado` COM DATA REAL: D4Sign leva o card a "Em assinatura" se ainda não
  *     estava; depois o card vai ao Pré-faturamento (`concluirAssinaturaDoCard`) com o início dos 7
- *     dias; depois `data_assinatura` = o dia em Brasília DO MESMO INSTANTE, só se nula e só na nativa.
+ *     dias (ou devolve "já estava", sem regravar o início, se os compradores já o tinham levado);
+ *     depois `data_assinatura` = o dia em Brasília DO MESMO INSTANTE, só se nula e só na nativa.
  *   • `assinado` sem data real: nada (`sem_data_real`); a reconciliação pega quando a data chegar.
  *   • `cancelado`/`expirado`/`recusado`: nada no card.
+ *
+ * ⚠️ OS COMPRADORES MOVEM O CARD, O FECHAMENTO MOVE A DATA. Lucas, 02/10/2026: *"acho que a regra de
+ * negocio para andar de em assinatura para pre-faturamento nao esta acontecendo pois eu nao tenho
+ * nenhum em pre-faturamento"*. Medido no mesmo dia: 12 contratos em assinatura, 0 no Pré-faturamento,
+ * nunca uma passagem, e 6 já com todos os compradores assinados. A regra escrita
+ * (docs/operations/temis-redesenho-decisoes.md) sempre foi "entra no prazo legal quando os
+ * compradores assinam"; o código só olhava o envelope inteiro. A `data_assinatura` continua sendo a do
+ * contrato fechado (decisão de 28/09): gravá-la com uma testemunha ainda por assinar diria que o
+ * contrato está assinado, e quem lê a venda no Hércules não teria como saber que não está.
  */
 export async function aplicarEnvelopeNaVenda(
   sb: SupabaseClient,
@@ -130,7 +145,15 @@ export async function aplicarEnvelopeNaVenda(
   const propostaId = String(envelope.propostaId ?? "").trim();
   if (!propostaId) return nada("sem venda ligada");
 
-  const assinou = estadoDepois === "assinado";
+  // ⚠️ `fechou` É O ENVELOPE INTEIRO; `assinou` É O CARD PODER IR AO PRÉ-FATURAMENTO. Os dois eram a
+  // mesma coisa até 02/10/2026. Agora o card anda também com o envelope ainda vivo, quando todos os
+  // compradores do quadro já assinaram, e só a data da venda espera o fechamento. A finalidade já foi
+  // conferida acima: cessão e cancelamento por correção nem chegam aqui (o webhook os conclui só no
+  // assinado), então os compradores só movem o card de CONTRATO.
+  const fechou = estadoDepois === "assinado";
+  const pelosCompradores =
+    !fechou && ESTADOS_EM_ASSINATURA.has(estadoDepois) && todosOsCompradoresAssinaram(envelope.signatarios);
+  const assinou = fechou || pelosCompradores;
   const entrou =
     envelope.provedor === "d4sign" && ESTADOS_ANTES_DE_ENTRAR.has(estadoAntes) && ESTADOS_EM_ASSINATURA.has(estadoDepois);
   if (!assinou && !entrou) return nada(`${estadoAntes} → ${estadoDepois} não é borda que mova a venda`);
@@ -140,7 +163,7 @@ export async function aplicarEnvelopeNaVenda(
     if (!leitura.ok) {
       return {
         card: "recusado",
-        dataDeAssinatura: assinou ? "falhou" : "nao_se_aplica",
+        dataDeAssinatura: fechou ? "falhou" : "nao_se_aplica",
         motivo: `envelope ${envelope.id}: não deu para ler a venda ${propostaId}`,
       };
     }
@@ -188,11 +211,11 @@ export async function aplicarEnvelopeNaVenda(
       };
     }
 
-    // ── ASSINADO ────────────────────────────────────────────────────────────
+    // ── ASSINADO (o envelope inteiro, ou todos os compradores) ─────────────
     const instante = inicioDoArrependimento(envelope.provedor, envelope.signatarios, envelope.fechadoEm);
     const dia = diaDaAssinatura(instante);
     if (!instante || !dia) {
-      return nada("assinado sem data real (nem do comprador, nem do provedor)", "sem_data_real");
+      return nada("assinado sem data real (nem do comprador, nem do provedor)", fechou ? "sem_data_real" : "nao_se_aplica");
     }
 
     // ⚠️ A D4SIGN PODE FECHAR ANTES DE O CARD TER ENTRADO EM ASSINATURA (o espelho viu o documento
@@ -213,12 +236,17 @@ export async function aplicarEnvelopeNaVenda(
       trabalhoId: envelope.trabalhoId ?? null,
     });
 
-    const dataDeAssinatura = await gravarDataDeAssinatura(sb, venda, dia);
+    // ⚠️ A DATA DA VENDA SÓ NO FECHAMENTO. Com o envelope ainda vivo (só os compradores assinaram) ela
+    // fica `nao_se_aplica`, e é gravada quando o envelope fechar: aí a conclusão do card devolve "já
+    // estava" (sem mexer no início dos 7 dias) e esta linha grava o dia, só se nula.
+    const dataDeAssinatura = fechou ? await gravarDataDeAssinatura(sb, venda, dia) : "nao_se_aplica";
 
     return {
       card: conclusao === "andou" ? "andou" : conclusao === "ja_estava" ? "ja_estava" : "nada",
       dataDeAssinatura,
-      motivo: `envelope ${envelope.id}: venda ${propostaId} assinada em ${dia} (card ${conclusao}, data ${dataDeAssinatura})`,
+      motivo: fechou
+        ? `envelope ${envelope.id}: venda ${propostaId} assinada em ${dia} (card ${conclusao}, data ${dataDeAssinatura})`
+        : `envelope ${envelope.id}: venda ${propostaId} assinada pelos compradores em ${dia}, envelope ainda ${estadoDepois} (card ${conclusao})`,
     };
   } catch (falha) {
     console.error("[assinatura][venda] falha inesperada ao levar o envelope à venda", {
@@ -227,7 +255,7 @@ export async function aplicarEnvelopeNaVenda(
     });
     return {
       card: "recusado",
-      dataDeAssinatura: assinou ? "falhou" : "nao_se_aplica",
+      dataDeAssinatura: fechou ? "falhou" : "nao_se_aplica",
       motivo: `envelope ${envelope.id}: falha inesperada`,
     };
   }
@@ -306,25 +334,27 @@ function instanteLegivel(valor: null | string | undefined): null | string {
 /**
  * QUANDO COMEÇAM OS 7 DIAS DE ARREPENDIMENTO. Puro.
  *
- * ⚠️ CLICKSIGN: a última assinatura de comprador ou cônjuge do QUADRO (o papel é congelado no envio e
- * nunca é nulo lá, medido em 8 de 8), senão o fechamento. Lucas: os 7 dias contam da última
- * assinatura do COMPRADOR, e a vendedora não entra.
+ * ⚠️ A ÚLTIMA ASSINATURA DE COMPRADOR DO QUADRO, NOS DOIS PROVEDORES; SÓ SEM COMPRADOR MARCADO, O
+ * FECHAMENTO. Lucas: os 7 dias contam da última assinatura do COMPRADOR, e a vendedora não entra. Na
+ * Clicksign o comprador é o papel `comprador`/`conjuge` (congelado no envio e nunca nulo lá, medido em
+ * 8 de 8); na D4Sign, onde o papel vem nulo, é o perfil "Comprador" (`compradores-do-quadro.ts`).
  *
- * ⚠️ D4SIGN: SEMPRE O FECHAMENTO (a última assinatura de todos). Lá só o perfil "Cliente" vira
- * Comprador, comprador sem usuário vira "Sem perfil" e corretor que compra vira "Imobiliária":
- * escolher "o último comprador" poderia começar o prazo cedo demais. Começar no fechamento nunca
- * encurta um prazo que é do cliente (plano, seção 7, Integridade I12).
+ * ⚠️ ATÉ 02/10/2026 A D4SIGN CONTAVA SEMPRE DO FECHAMENTO (plano, seção 7, Integridade I12), pelo medo
+ * do comprador "Sem perfil" assinar depois do último "Comprador" e o prazo começar cedo demais. Mudou
+ * porque o card passou a entrar no Pré-faturamento quando os compradores assinam (decisão do Lucas de
+ * 02/10/2026: *"vamos mudar esse 3/11 eu preciso ver somente dos compradores"*), e o card não pode
+ * entrar no prazo sem o prazo ter começado. O limite do "Sem perfil" continua, escrito em
+ * `ehCompradorNoQuadro`; o que segura o Faturado é o envelope inteiro assinado.
  *
- * `null` = sem data real. Quem chama NÃO inventa "agora".
+ * `null` = sem data real. Quem chama NÃO inventa "agora". (`provedor` fica na assinatura para os
+ * chamadores e para o dia em que os dois voltarem a divergir.)
  */
 export function inicioDoArrependimento(
-  provedor: Provedor,
+  _provedor: Provedor,
   signatarios: readonly ItemDoQuadro[],
   fechadoEm: null | string,
 ): null | string {
-  const fechamento = instanteLegivel(fechadoEm);
-  if (provedor === "d4sign") return fechamento;
-  return ultimaAssinaturaDoComprador(signatarios) ?? fechamento;
+  return compradoresDoQuadro(signatarios).ultima ?? instanteLegivel(fechadoEm);
 }
 
 /**
@@ -378,8 +408,12 @@ type EnvelopeLido = {
 
 /** Uma venda que a rodada vai refazer, já decidida ANTES de gastar o limite. */
 type AlvoDaReconciliacao = {
-  /** `conclusao` = o assinado que ficou para trás; `entrada` = a D4Sign em assinatura cujo card não entrou. */
-  tipo: "conclusao" | "entrada";
+  /**
+   * `conclusao` = o assinado que ficou para trás; `entrada` = a D4Sign em assinatura cujo card não
+   * entrou; `compradores` = o envelope vivo com todos os compradores assinados e o card ainda em "Em
+   * assinatura" (02/10/2026).
+   */
+  tipo: "compradores" | "conclusao" | "entrada";
   venda: VendaLida;
   vigente: EnvelopeLido;
 };
@@ -412,10 +446,10 @@ export type OpcoesDaReconciliacao = OpcoesDoEfeito & {
  * data da venda ficariam para trás para sempre. Roda em toda rodada do espelho (F3), com `limite`.
  *
  * ⚠️ QUEM A CHAMA É O ESPELHO DA D4SIGN (F3, `espelho-d4sign/espelho.ts`, passo 6), em toda rodada, com
- * limite 20. Enquanto o cron do espelho não estiver no `vercel.json` (pendente de OK), ela só roda pelo
- * script ou pelo POST manual, e o efeito que falhar no webhook fica para trás até lá (o log diz isso).
+ * limite 20. O cron do espelho está no `vercel.json` (`7,37 * * * *`) desde 30/09/2026; o script e o
+ * POST manual continuam podendo chamá-la.
  *
- * Os dois alvos, só de venda NATIVA viva e sem pedido de cancelamento:
+ * Os três alvos, só de venda NATIVA viva e sem pedido de cancelamento:
  *   • CONCLUSÃO: o envelope de contrato vigente está `assinado` COM `fechado_em` (plano, seção 7), e
  *     o card de contrato ainda está antes do Pré-faturamento OU a `data_assinatura` está nula;
  *   • ENTRADA (só D4Sign, só com `moverVendas`): o vigente é da D4Sign e está `aguardando`/`parcial`,
@@ -425,11 +459,25 @@ export type OpcoesDaReconciliacao = OpcoesDoEfeito & {
  *     liga, só esta varredura leva esses cards a "Em assinatura" (o "anda sozinho" do Lucas nas
  *     nativas já conhecidas: ACP, REP, VAL×2). Chama a porta com `estadoAntes: "desconhecido"`: o
  *     `somenteSeAndar` e o comparar-e-trocar deixam a chamada idempotente.
+ *   • COMPRADORES (02/10/2026, dos dois provedores): o vigente está `aguardando`/`parcial`, o card de
+ *     contrato está em "Em assinatura" e o quadro tem TODOS os compradores assinados. ⚠️ É ESTE ALVO
+ *     QUE MOVE OS CARDS QUE JÁ ESTAVAM PARADOS no dia da mudança (6 dos 12 em assinatura, medido em
+ *     02/10/2026): a última assinatura de comprador deles já passou, e o webhook (`parcial → parcial`)
+ *     e o espelho (que só chama a porta na borda do estado) não voltam a ela. Também é a rede do
+ *     webhook da Clicksign que morreu entre a RPC e a porta. Chama a porta com o estado de antes e o
+ *     de depois iguais ao vigente: quem decide é o quadro, e o comparar-e-trocar deixa a chamada
+ *     idempotente.
  *
  * ⚠️ DECIDE ANTES DE CONTAR. O caso que nunca se resolve não gasta o limite (vai para `puladas`): a
  * Clicksign assinada com o card fora de "Em assinatura" e a data já gravada (a Clicksign não leva o
  * card até lá, então a conclusão não teria o que fazer) e o assinado sem `fechado_em`. Sem isso, mais
  * travados que o limite, sempre na mesma ordem, e as vendas seguintes nunca seriam refeitas.
+ *
+ * ⚠️ E O ALVO COMPRADORES SÓ É DECIDIDO COM O QUADRO NA MÃO. Por isso o quadro dos CANDIDATOS a ele (o
+ * vigente vivo com o card em "Em assinatura", uma mão-cheia) é lido antes da decisão, e não só o de
+ * quem vai ser refeito: contar no limite um envelope em que algum comprador ainda falta gastaria a
+ * vez de uma venda que se resolve, toda rodada. A leitura continua estreita (Segurança 16): o jsonb só
+ * dos candidatos, nunca de toda venda em curso.
  *
  * ⚠️ LEITURA PAGINADA COM ORDEM, `.in()` EM LOTES DE 100: sem ordem, a paginação perde linha e o total
  * ainda bate; `.in()` grande estoura a URL (medido na casa, 700 ids deram 400).
@@ -504,23 +552,67 @@ export async function reconciliarVendasAssinadas(
       cards.push(...cardsDoLote);
     }
 
-    // ── 1. DECIDE (sem escrever e sem gastar o limite com o que não se resolve) ──
-    const alvos: AlvoDaReconciliacao[] = [];
-    for (const venda of vendas) {
+    // O vigente e os estágios do card de contrato de cada venda, uma vez só.
+    const situacoes = vendas.flatMap((venda) => {
       const vigente = envelopeVigente(envelopes.filter((e) => e.proposta_id === venda.id)).vigente;
-      if (!vigente) continue;
+      if (!vigente) return [];
       const estagios = cards.filter((c) => c.proposta_id === venda.id).map((c) => String(c.estagio));
       const provedor: Provedor = vigente.provedor === "d4sign" ? "d4sign" : "clicksign";
+      return [{ estagios, provedor, venda, vigente }];
+    });
 
+    // ── 1. O QUADRO DOS CANDIDATOS AO ALVO COMPRADORES (antes de decidir e de gastar o limite) ──
+    //
+    // ⚠️ CANDIDATO É O QUE SÓ O QUADRO DECIDE: vigente vivo, venda antes do faturado, card de contrato em
+    // "Em assinatura" e nenhum card antes dele na D4Sign (esse é o alvo entrada, que vem primeiro). O que
+    // uma guarda recusaria de todo jeito (pedido de cancelamento, D4Sign com a chave desligada) não tem o
+    // quadro lido: seria jsonb com nome e e-mail lido para nada.
+    const candidatosAosCompradores = situacoes.filter(
+      ({ estagios, provedor, venda, vigente }) =>
+        ESTADOS_EM_ASSINATURA.has(vigente.estado) &&
+        VENDA_ANTES_DO_FATURADO.has(String(venda.etapa ?? "")) &&
+        estagios.includes("assinatura") &&
+        !(provedor === "d4sign" && estagios.some((e) => CARD_ANTES_DA_ASSINATURA.has(e))) &&
+        !venda.cancelamento_pedido_em &&
+        !(provedor === "d4sign" && !opcoes.moverVendas),
+    );
+    const quadros = new Map<string, unknown>();
+    const lerQuadros = async (ids: readonly string[]): Promise<boolean> => {
+      for (let i = 0; i < ids.length; i += LOTE) {
+        const lote = ids.slice(i, i + LOTE);
+        const { data, error } = await sb.from("temis_envelopes").select("id, signatarios").in("id", lote);
+        if (error) {
+          console.error("[assinatura][reconciliacao] falha ao ler o quadro", {
+            code: error.code ?? null,
+            message: error.message ?? null,
+          });
+          return false;
+        }
+        for (const l of (data ?? []) as Array<{ id: string; signatarios: unknown }>) quadros.set(l.id, l.signatarios);
+      }
+      return true;
+    };
+    if (!(await lerQuadros(candidatosAosCompradores.map((c) => c.vigente.id)))) {
+      return { planejadas: 0, puladas: { ...puladas, leitura_falhou: 1 }, refeitas };
+    }
+
+    // ── 2. DECIDE (sem escrever e sem gastar o limite com o que não se resolve) ──
+    const alvos: AlvoDaReconciliacao[] = [];
+    for (const { estagios, provedor, venda, vigente } of situacoes) {
       let tipo: AlvoDaReconciliacao["tipo"];
       if (vigente.estado === "assinado") {
         const cardAtrasado = estagios.some((e) => CARD_ANTES_DO_PRAZO.has(e));
         if (!cardAtrasado && venda.data_assinatura) continue;
         tipo = "conclusao";
-      } else if (provedor === "d4sign" && ESTADOS_EM_ASSINATURA.has(vigente.estado)) {
-        if (!VENDA_ANTES_DO_FATURADO.has(String(venda.etapa ?? ""))) continue;
-        if (!estagios.some((e) => CARD_ANTES_DA_ASSINATURA.has(e))) continue;
-        tipo = "entrada";
+      } else if (ESTADOS_EM_ASSINATURA.has(vigente.estado) && VENDA_ANTES_DO_FATURADO.has(String(venda.etapa ?? ""))) {
+        if (provedor === "d4sign" && estagios.some((e) => CARD_ANTES_DA_ASSINATURA.has(e))) {
+          tipo = "entrada";
+        } else if (quadros.has(vigente.id) && todosOsCompradoresAssinaram(lerQuadro(quadros.get(vigente.id)))) {
+          // Só os candidatos têm o quadro lido: o card está em "Em assinatura" e as guardas já passaram.
+          tipo = "compradores";
+        } else {
+          continue;
+        }
       } else {
         continue;
       }
@@ -555,23 +647,15 @@ export async function reconciliarVendasAssinadas(
 
     if (!opcoes.gravar) return { planejadas: alvos.length, puladas, refeitas: 0 };
 
-    // ── 2. O QUADRO, SÓ DE QUEM VAI SER CONCLUÍDO ──
-    const quadros = new Map<string, unknown>();
-    const precisamDoQuadro = alvos.filter((a) => a.tipo === "conclusao").map((a) => a.vigente.id);
-    for (let i = 0; i < precisamDoQuadro.length; i += LOTE) {
-      const lote = precisamDoQuadro.slice(i, i + LOTE);
-      const { data, error } = await sb.from("temis_envelopes").select("id, signatarios").in("id", lote);
-      if (error) {
-        console.error("[assinatura][reconciliacao] falha ao ler o quadro", {
-          code: error.code ?? null,
-          message: error.message ?? null,
-        });
-        return { planejadas: alvos.length, puladas: { ...puladas, leitura_falhou: 1 }, refeitas };
-      }
-      for (const l of (data ?? []) as Array<{ id: string; signatarios: unknown }>) quadros.set(l.id, l.signatarios);
+    // ── 3. O QUADRO DE QUEM VAI SER CONCLUÍDO (o dos compradores já foi lido no passo 1) ──
+    const precisamDoQuadro = alvos
+      .filter((a) => a.tipo === "conclusao" && !quadros.has(a.vigente.id))
+      .map((a) => a.vigente.id);
+    if (!(await lerQuadros(precisamDoQuadro))) {
+      return { planejadas: alvos.length, puladas: { ...puladas, leitura_falhou: 1 }, refeitas };
     }
 
-    // ── 3. REFAZ ──
+    // ── 4. REFAZ ──
     for (const { tipo, venda, vigente } of alvos) {
       const provedor: Provedor = vigente.provedor === "d4sign" ? "d4sign" : "clicksign";
       const efeito = await aplicarEnvelopeNaVenda(
@@ -584,12 +668,19 @@ export async function reconciliarVendasAssinadas(
             origem: vigente.origem === "c2x" ? "c2x" : "panteon",
             propostaId: venda.id,
             provedor,
-            signatarios: tipo === "conclusao" ? lerQuadro(quadros.get(vigente.id)) : [],
+            signatarios: tipo === "entrada" ? [] : lerQuadro(quadros.get(vigente.id)),
             trabalhoId: vigente.trabalho_id,
           },
           // ⚠️ NA ENTRADA, "desconhecido" é a verdade: a borda passou com a chave desligada e ninguém
           // sabe de onde o envelope veio. É um dos estados de onde a D4Sign "entra" (a porta confere).
-          estadoAntes: tipo === "conclusao" ? "assinado" : "desconhecido",
+          // ⚠️ NOS COMPRADORES, antes e depois são o próprio estado vigente: não há borda nenhuma, e
+          // quem decide na porta é o quadro (todos os compradores assinados).
+          estadoAntes:
+            tipo === "conclusao"
+              ? "assinado"
+              : tipo === "compradores"
+                ? (vigente.estado as EstadoDaAssinatura)
+                : "desconhecido",
           estadoDepois: vigente.estado as EstadoDaAssinatura,
         },
         // A chave já foi conferida acima (a D4Sign só chega aqui com `moverVendas`).
