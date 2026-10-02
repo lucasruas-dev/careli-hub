@@ -121,6 +121,35 @@ describe("TemisKanban — supervisão dos cards do incorporador", () => {
     expect(cardDe("CLIENTE DA CARELI")?.textContent).not.toContain("Incorporador");
   });
 
+  it("o card mostra o nome do empreendimento, e não a sigla", async () => {
+    await montar(<TemisKanban enterpriseId={null} />);
+
+    expect(cardDe("CLIENTE DA CARELI")?.textContent).toContain("Garden · Q01 L01");
+    expect(cardDe("CLIENTE DA CARELI")?.textContent).not.toContain("GDN");
+  });
+
+  it("sem o nome gravado, o card cai na sigla", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              data: {
+                estagios: ESTAGIOS,
+                trabalhos: [{ ...card("t-sem-nome", "Cliente sem nome de produto", null), empreendimentoNome: " " }],
+              },
+            }),
+            { headers: { "content-type": "application/json" }, status: 200 },
+          ),
+        ),
+      ),
+    );
+    await montar(<TemisKanban enterpriseId={null} />);
+
+    expect(cardDe("CLIENTE SEM NOME DE PRODUTO")?.textContent).toContain("GDN · Q01 L01");
+  });
+
   it("o parâmetro soma ao filtro de empreendimento", async () => {
     await montar(<TemisKanban enterpriseId="39" incluirIncorporadores />);
     expect(urls).toEqual(["/api/temis/trabalhos?empreendimento=39&incluir=incorporadores"]);
