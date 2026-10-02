@@ -4,6 +4,7 @@ import { perfilDaPessoa } from "./contratos-do-panteon-montagem";
 import type { DiarioDaAssinatura, SignatarioDaProposta } from "./diario-do-envelope-db";
 import { envelopeVigente } from "./envelope-vigente";
 import { naOrdemDaFila } from "./fila-de-assinatura";
+import { GESTOS_POR_OUTRO_CANAL, PROVEDOR_DE_OUTRO_CANAL } from "./frase-para-o-portal";
 import { ACOES_DA_D4SIGN_FICAM_NO_C2X } from "./recusa-de-reenvio";
 import { lerQuadro } from "./registro-db";
 import { ehTerminal, type EstadoDaAssinatura } from "./tipos";
@@ -171,9 +172,12 @@ export function diarioDoQuadroDaD4Sign(linhas: readonly LinhaDaD4Sign[]): Diario
 /** Uma pessoa do quadro da D4Sign como o PORTAL a recebe: sem e-mail e sem a chave do C2X. */
 type SignatarioNoPortal = Omit<SignatarioDaProposta, "chave" | "email"> & { chave: string; email: null };
 
-/** O quadro da D4Sign como o PORTAL o recebe. */
+/** O quadro da D4Sign como o PORTAL o recebe: sem o id da nossa linha, com o provedor neutro. */
 export type DiarioDaD4SignNoPortal = Omit<DiarioDaAssinatura, "envelope"> & {
-  envelope: Omit<DiarioDaAssinatura["envelope"], "signatarios"> & { signatarios: SignatarioNoPortal[] };
+  envelope: Omit<DiarioDaAssinatura["envelope"], "id" | "provedor" | "signatarios"> & {
+    provedor: typeof PROVEDOR_DE_OUTRO_CANAL;
+    signatarios: SignatarioNoPortal[];
+  };
 };
 
 /**
@@ -184,6 +188,14 @@ export type DiarioDaD4SignNoPortal = Omit<DiarioDaAssinatura, "envelope"> & {
  * linha de `contract_signature_signers` do C2X; e o `provedor_documento_id` é o `uuidDoc` do C2X, que a
  * casa nunca deixa atravessar para o portal (`envelopeVivoParaOPortal`). A chave vira a posição da
  * pessoa na lista, que só serve de `key` na tela.
+ *
+ * ⚠️ E SEM A PALAVRA "D4Sign" NEM "C2X" (revisão de 02/10/2026). O corte deixava passar o provedor
+ * `"d4sign"` e a frase dos gestos (`ACOES_DA_D4SIGN_FICAM_NO_C2X`), e a tela, que é a mesma nos dois
+ * lados, escrevia "Conferido com a D4Sign" no portal. É a regra do Lucas (18/08/2026, em
+ * `frase-para-o-portal.ts`): o portal nunca vê "C2X" nem "D4Sign". O provedor vira
+ * `PROVEDOR_DE_OUTRO_CANAL`, que liga na tela o MESMO modo do quadro (sem botão, sem log, perfil na
+ * linha) com as frases neutras; mandar `null` derrubaria o modo, e a tela passaria a falar da
+ * Clicksign. O `id` da nossa linha sai também: a tela não o lê, e o que ela não lê não atravessa.
  */
 export function quadroDaD4SignParaOPortal(diario: DiarioDaAssinatura): DiarioDaD4SignNoPortal {
   const { envelope } = diario;
@@ -197,8 +209,7 @@ export function quadroDaD4SignParaOPortal(diario: DiarioDaAssinatura): DiarioDaD
       envelopeId: null,
       estado: envelope.estado,
       estadoCru: null,
-      id: envelope.id,
-      provedor: envelope.provedor,
+      provedor: PROVEDOR_DE_OUTRO_CANAL,
       provedorDocumentoId: null,
       signatarios: envelope.signatarios.map((s, i) => ({
         assinouEm: s.assinouEm,
@@ -213,7 +224,10 @@ export function quadroDaD4SignParaOPortal(diario: DiarioDaAssinatura): DiarioDaD
         papel: s.papel,
         perfil: s.perfil ?? null,
         posicao: s.posicao,
-        reenvioIndisponivel: s.reenvioIndisponivel,
+        // O motivo fica; a frase vira a neutra (a interna diz "C2X").
+        reenvioIndisponivel: s.reenvioIndisponivel
+          ? { frase: GESTOS_POR_OUTRO_CANAL, motivo: s.reenvioIndisponivel.motivo }
+          : null,
         trocaVaiParaOFim: null,
       })),
       venceEm: null,

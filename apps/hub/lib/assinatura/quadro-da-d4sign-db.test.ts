@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { type Banco, criarBanco, type Linha } from "@/lib/hercules/banco-em-memoria.para-teste";
 
+import { GESTOS_POR_OUTRO_CANAL, PROVEDOR_DE_OUTRO_CANAL } from "./frase-para-o-portal";
 import { diarioDoQuadroDaD4Sign, quadroDaD4SignDaProposta, quadroDaD4SignParaOPortal } from "./quadro-da-d4sign-db";
 import { ACOES_DA_D4SIGN_FICAM_NO_C2X } from "./recusa-de-reenvio";
 
@@ -162,8 +163,27 @@ describe("quadroDaD4SignParaOPortal", () => {
       ["pessoa-1", null, "Ana Compradora", null, "Comprador"],
       ["pessoa-2", null, "Zilda Testemunha", "testemunha", "Backoffice"],
     ]);
-    expect(portal.envelope).toMatchObject({ envelopeId: null, estadoCru: null, provedor: "d4sign", provedorDocumentoId: null });
+    expect(portal.envelope).toMatchObject({ envelopeId: null, estadoCru: null, provedorDocumentoId: null });
     expect([portal.assinaram, portal.total]).toEqual([0, 2]);
+  });
+
+  it("sem \"D4Sign\" nem \"C2X\": o provedor vai neutro, a frase dos gestos é a do portal, e o id da nossa linha não vai", () => {
+    // Revisão de 02/10/2026: o corte deixava passar `provedor: "d4sign"` e a frase "são feitos no C2X",
+    // e a tela, a mesma nos dois lados, escrevia "Conferido com a D4Sign" no portal.
+    const diario = diarioDoQuadroDaD4Sign([
+      linha({
+        id: "env-interno",
+        signatarios: [item("c2x:45386", { nome: "Zilda Testemunha", testemunha: true }), item("c2x:45387", { nome: "Ana Compradora" })],
+      }),
+    ]);
+    const portal = quadroDaD4SignParaOPortal(diario as NonNullable<typeof diario>);
+    expect(JSON.stringify(portal)).not.toMatch(/d4sign|c2x/i);
+    expect(JSON.stringify(portal)).not.toContain("env-interno");
+    expect(portal.envelope.provedor).toBe(PROVEDOR_DE_OUTRO_CANAL);
+    expect(portal.envelope).not.toHaveProperty("id");
+    for (const s of portal.envelope.signatarios) {
+      expect(s.reenvioIndisponivel).toEqual({ frase: GESTOS_POR_OUTRO_CANAL, motivo: "sem_id_na_clicksign" });
+    }
   });
 });
 

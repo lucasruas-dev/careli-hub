@@ -46,7 +46,7 @@ import {
   quadroDaD4SignDaProposta,
   quadroDaD4SignParaOPortal,
 } from "@/lib/assinatura/quadro-da-d4sign-db";
-import { envelopeVigente } from "@/lib/assinatura/envelope-vigente";
+import { type EnvelopeParaEscolher, envelopeVigente } from "@/lib/assinatura/envelope-vigente";
 import {
   fraseParaOAtor,
   INDEFERIMENTO_POR_OUTRO_CANAL,
@@ -941,7 +941,8 @@ export async function abrirCardDoTrabalho(
       data: {
         analise,
         // ⚠️ O QUADRO DA D4SIGN SAI CORTADO PARA O PORTAL (sem e-mail, sem a chave do C2X, sem o uuid do
-        // documento); o diário da Clicksign continua como estava nos dois lados.
+        // documento, e sem "D4Sign" nem "C2X": o provedor vai neutro); o diário da Clicksign continua
+        // como estava nos dois lados.
         assinatura: ator.tipo === "hub" ? assinatura : assinaturaParaOPortal(assinatura),
         card: { ...card, contratos },
         // ⚠️ O PORTAL RECEBE O ENVELOPE SEM O VOCABULÁRIO INTERNO (plano, seções 4 e 5): o aviso de
@@ -958,30 +959,72 @@ export async function abrirCardDoTrabalho(
 }
 
 /**
- * O PAINEL DE ASSINATURA DO CARD DE CONTRATO: o diário da Clicksign e, sem ele, o quadro da D4Sign.
+ * O PAINEL DE ASSINATURA DO CARD DE CONTRATO: o diário da Clicksign ou o quadro da D4Sign, o do
+ * envelope que VALE para a venda.
  *
  * Lucas, 02/10/2026: *"tem com a gente trazer o esquema de assinatura que e criado pelo c2x? os card
  * que estao pelo c2x nao tem nada na tela de assinatura"*. O diário lê SÓ a Clicksign (é a narração
  * do webhook dela), e os 5 cards de contrato que tinham só envelope da D4Sign (medido no mesmo dia)
- * caíam no aviso "Não há signatários para mostrar". Agora, sem diário da Clicksign, vale o QUADRO que
- * o espelho grava (`quadroDaD4SignDaProposta`), sem botão nenhum: os gestos ficam no C2X.
+ * caíam no aviso "Não há signatários para mostrar". Agora o card do C2X recebe o QUADRO que o espelho
+ * grava (`quadroDaD4SignDaProposta`), sem botão nenhum: os gestos ficam no C2X.
  *
- * ⚠️ A CLICKSIGN VEM PRIMEIRO, e o card dela não muda nada: o quadro da D4Sign só é lido quando o
- * diário não existe. Medido em 02/10/2026 (só SELECT): nenhuma proposta tem envelope dos dois
- * provedores, então a ordem não esconde contrato vivo de ninguém hoje.
+ * ⚠️ QUEM ESCOLHE O PROVEDOR É O VIGENTE (`envelopeVigente`), A MESMA RÉGUA DA TRAVA DO FATURADO
+ * (revisão de 02/10/2026). Antes a Clicksign vinha primeiro sempre que tinha envelope, e o diário
+ * dela lê o mais recente SEM olhar o estado: um envelope da Clicksign cancelado escondia o quadro vivo
+ * da D4Sign, e o painel mostrava a gente do envelope morto enquanto a trava
+ * (`recusaPorContratoPorAssinar`, que decide pelo vigente) mandava "Veja quem falta no painel da
+ * assinatura". Medido no mesmo dia (só SELECT): nenhuma proposta tem envelope dos dois provedores,
+ * então hoje a escolha não muda a tela de ninguém; ela vale para o primeiro caso que aparecer.
  *
- * ⚠️ OS DOIS `catch` SÃO A REDE DO INESPERADO: um erro solto derrubaria o GET inteiro por um painel.
+ * ⚠️ SEM VIGENTE DA D4SIGN, A ORDEM DE ANTES: o diário da Clicksign primeiro (ele narra também o
+ * envelope que morreu), e o quadro da D4Sign só sem ele. A leitura do vigente que falha cai aqui
+ * também: "não consegui perguntar" não pode apagar o painel da Clicksign. E o vigente da D4Sign com o
+ * quadro vazio devolve a vez ao diário da Clicksign, em vez de deixar o painel em branco.
+ *
+ * ⚠️ OS `catch` SÃO A REDE DO INESPERADO: um erro solto derrubaria o GET inteiro por um painel.
  */
 async function assinaturaDoContrato(sb: SupabaseClient, propostaId: string): Promise<DiarioDaAssinatura | null> {
-  const daClicksign = await diarioDaProposta(sb, propostaId).catch((e: unknown) => {
-    console.error("[temis][trabalho] falha ao montar o diário do envelope", e);
+  const daClicksign = () =>
+    diarioDaProposta(sb, propostaId).catch((e: unknown) => {
+      console.error("[temis][trabalho] falha ao montar o diário do envelope", e);
+      return null;
+    });
+  const daD4Sign = () =>
+    quadroDaD4SignDaProposta(sb, propostaId).catch((e: unknown) => {
+      console.error("[temis][trabalho] falha ao montar o quadro da D4Sign", e instanceof Error ? e.name : "erro");
+      return null;
+    });
+
+  const [primeiro, segundo] =
+    (await provedorDoContratoVigente(sb, propostaId)) === "d4sign" ? [daD4Sign, daClicksign] : [daClicksign, daD4Sign];
+  return (await primeiro()) ?? segundo();
+}
+
+/**
+ * DE QUE PROVEDOR É O ENVELOPE DE CONTRATO QUE VALE PARA A VENDA (`envelopeVigente`, sobre os
+ * envelopes de contrato dos dois provedores, como a trava do Faturado). `null` = nenhum vigente, ou a
+ * leitura falhou. Nunca lança.
+ *
+ * ⚠️ É UMA LEITURA A MAIS NA ABERTURA DO CARD DE CONTRATO, E SÓ ELA: sem polling, só as colunas da
+ * régua (o quadro fica para quem desenha o painel).
+ */
+async function provedorDoContratoVigente(sb: SupabaseClient, propostaId: string): Promise<null | string> {
+  try {
+    const { data, error } = await sb
+      .from("temis_envelopes")
+      // As colunas da régua do vigente, as mesmas que `recusaPorContratoPorAssinar` lê.
+      .select("criado_em, envelope_id, enviado_em, estado, falha, id, provedor")
+      .eq("proposta_id", propostaId)
+      .eq("finalidade", "contrato");
+    if (error) {
+      console.error("[temis][trabalho] falha ao ler o envelope vigente do contrato", { code: error.code ?? null });
+      return null;
+    }
+    return envelopeVigente((data ?? []) as EnvelopeParaEscolher[]).vigente?.provedor ?? null;
+  } catch (e) {
+    console.error("[temis][trabalho] falha inesperada no envelope vigente", e instanceof Error ? e.name : "erro");
     return null;
-  });
-  if (daClicksign) return daClicksign;
-  return quadroDaD4SignDaProposta(sb, propostaId).catch((e: unknown) => {
-    console.error("[temis][trabalho] falha ao montar o quadro da D4Sign", e instanceof Error ? e.name : "erro");
-    return null;
-  });
+  }
 }
 
 /**

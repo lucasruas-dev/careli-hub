@@ -59,6 +59,7 @@ import {
 import { contratoVigente } from "@/lib/temis/contrato-guardado";
 import { MOTIVOS } from "@/lib/temis/indeferimento";
 import { recadoDaGeracao } from "@/lib/temis/minuta-da-cadeia";
+import { GESTOS_POR_OUTRO_CANAL, PROVEDOR_DE_OUTRO_CANAL } from "@/lib/assinatura/frase-para-o-portal";
 import {
   ACOES_DA_D4SIGN_FICAM_NO_C2X,
   RECUSA_DE_CHAVE_QUE_NAO_E_DA_CLICKSIGN,
@@ -207,8 +208,10 @@ type AssinaturaDoCard = {
     envelopeId: null | string;
     estado: string;
     /**
-     * `clicksign` ou `d4sign`. ⚠️ Na D4Sign (o contrato que o C2X mandou, 02/10/2026) o painel é o
-     * QUADRO do espelho: sem log, sem botão, com o perfil na linha e a hora da última conferência.
+     * `clicksign`, `d4sign` ou `outro_canal`. ⚠️ Na D4Sign (o contrato que o C2X mandou, 02/10/2026) o
+     * painel é o QUADRO do espelho: sem log, sem botão, com o perfil na linha e a hora da última
+     * conferência. `outro_canal` é o MESMO quadro no portal, que não pode ler "D4Sign" nem "C2X"
+     * (`PROVEDOR_DE_OUTRO_CANAL`): o mesmo modo, com as frases neutras. Ver `quadroDeFora`.
      */
     provedor?: string;
     signatarios: SignatarioNaTela[];
@@ -1208,6 +1211,7 @@ export function TelaDeTrabalho({
                     ehContrato ? (
                       <ContratoParaConferir
                         contratos={card.contratos}
+                        deFora={quadroDeFora(assinatura.envelope.provedor)}
                         documentoDoEnvelope={assinatura.envelope.documentoId}
                         onAbrir={abrirContrato}
                       />
@@ -1260,6 +1264,7 @@ export function TelaDeTrabalho({
                   contrato={
                     <ContratoParaConferir
                       contratos={card.contratos}
+                      deFora={quadroDeFora(assinaturaNoPreFaturamento.envelope.provedor)}
                       documentoDoEnvelope={assinaturaNoPreFaturamento.envelope.documentoId}
                       onAbrir={abrirContrato}
                     />
@@ -1284,6 +1289,7 @@ export function TelaDeTrabalho({
               {ehContrato && !assinaturaNoPreFaturamento ? (
                 <ContratoParaConferir
                   contratos={card.contratos}
+                  deFora={quadroDeFora(assinatura?.envelope.provedor)}
                   documentoDoEnvelope={assinatura?.envelope.documentoId ?? null}
                   onAbrir={abrirContrato}
                 />
@@ -1331,6 +1337,7 @@ export function TelaDeTrabalho({
               {ehContrato ? (
                 <ContratoParaConferir
                   contratos={card.contratos}
+                  deFora={quadroDeFora(assinatura?.envelope.provedor)}
                   documentoDoEnvelope={assinatura?.envelope.documentoId ?? null}
                   onAbrir={abrirContrato}
                 />
@@ -1356,6 +1363,7 @@ export function TelaDeTrabalho({
               {ehContrato ? (
                 <ContratoParaConferir
                   contratos={card.contratos}
+                  deFora={quadroDeFora(assinatura?.envelope.provedor)}
                   documentoDoEnvelope={assinatura?.envelope.documentoId ?? null}
                   onAbrir={abrirContrato}
                 />
@@ -2758,10 +2766,16 @@ function EtapaDoPrazoLegal({ inicio }: { inicio: null | string }) {
  */
 function ContratoParaConferir({
   contratos,
+  deFora = null,
   documentoDoEnvelope,
   onAbrir,
 }: {
   contratos: ContratoNoCard[];
+  /**
+   * O contrato está no quadro da D4Sign (`quadroDeFora` do provedor do painel): sem versão guardada,
+   * a frase diz que ele foi gerado fora do Panteon, e não que o card chegou sem contrato.
+   */
+  deFora?: QuadroDeFora;
   /** `assinatura.envelope.documentoId`. `null` = envelope antigo, ou card sem envelope. */
   documentoDoEnvelope: null | string;
   onAbrir: (documentoId: string) => void;
@@ -2789,9 +2803,17 @@ function ContratoParaConferir({
         <FileText aria-hidden="true" className="size-3.5" />O contrato
       </h3>
 
+      {/* ⚠️ NO CARD DO C2X A FRASE DE SEMPRE ERA FALSA (revisão de 02/10/2026). Medido no mesmo dia (só
+          SELECT): os 5 cards com quadro da D4Sign têm 0 contratos em `hercules_documentos`, porque o
+          contrato foi gerado e mandado pelo C2X. "Chegou sem contrato gerado", colada no painel que
+          mostra o contrato em assinatura, contradizia o painel. No portal, sem o nome "C2X". */}
       {!paraAbrir ? (
         <p className="m-0 mt-2 text-xs text-ink-muted">
-          Não há versão guardada nesta venda. O card chegou a esta etapa sem contrato gerado.
+          {deFora === "d4sign"
+            ? "Este contrato foi gerado e enviado pelo C2X. O Panteon não guarda cópia dele."
+            : deFora === "outro_canal"
+              ? "Este contrato foi gerado e enviado por outro canal. O Panteon não guarda cópia dele."
+              : "Não há versão guardada nesta venda. O card chegou a esta etapa sem contrato gerado."}
         </p>
       ) : (
         <>
@@ -2981,8 +3003,14 @@ function PainelDaAssinatura({
   /**
    * O contrato que o C2X mandou pela D4Sign (02/10/2026): o painel é o QUADRO do espelho, sem log (não
    * há evento), sem botão (os gestos ficam no C2X) e com a hora da última conferência no rodapé.
+   *
+   * ⚠️ NO PORTAL O MESMO QUADRO CHEGA COM O PROVEDOR NEUTRO (revisão de 02/10/2026), e `canalNeutro`
+   * troca as frases que dizem "D4Sign" e "C2X" pelas neutras: o portal nunca lê esses nomes (Lucas,
+   * 18/08/2026, `frase-para-o-portal.ts`).
    */
-  const daD4Sign = assinatura.envelope.provedor === "d4sign";
+  const deFora = quadroDeFora(assinatura.envelope.provedor);
+  const daD4Sign = deFora !== null;
+  const canalNeutro = deFora === "outro_canal";
 
   /**
    * ⚠️ COMPRADOR PELA RÉGUA DO QUADRO (`ehCompradorNoQuadro`): é ela que decide quando o card entra no
@@ -3131,7 +3159,9 @@ function PainelDaAssinatura({
               ? `Não deu para conferir o envelope agora · nesta etapa desde ${desdeEscrito}`
               : `Nesta etapa desde ${desdeEscrito}`}
           </p>
-          {daD4Sign ? <ConferenciaDaD4Sign conferidoEm={assinatura.envelope.conferidoEm ?? null} /> : null}
+          {daD4Sign ? (
+            <ConferenciaDaD4Sign canalNeutro={canalNeutro} conferidoEm={assinatura.envelope.conferidoEm ?? null} />
+          ) : null}
         </header>
 
         {trocaFeita ? (
@@ -3147,6 +3177,7 @@ function PainelDaAssinatura({
               aoAlternar={() => alternar(degrau.chave)}
               aoRecarregar={aoRecarregar}
               aoTrocar={(chaveAntiga, recado) => setTrocaFeita({ chaveAntiga, recado })}
+              canalNeutro={canalNeutro}
               daD4Sign={daD4Sign}
               degrau={degrau}
               envelopeId={assinatura.envelope.envelopeId}
@@ -3247,17 +3278,19 @@ const CONFERENCIA_ATRASADA_MS = 2 * 60 * 60 * 1000;
  * ⚠️ PASSOU DE 2 H, UM AVISO DISCRETO, E NÃO VERMELHO: conferência atrasada não é contrato com problema,
  * é só um retrato mais velho. E a frase dos gestos é a mesma do servidor (`ACOES_DA_D4SIGN_FICAM_NO_C2X`):
  * reenvio e troca de e-mail desse contrato são feitos no C2X.
+ *
+ * ⚠️ NO PORTAL (`canalNeutro`), SEM "D4Sign" E SEM "C2X" (revisão de 02/10/2026): "Conferido em" e a
+ * frase neutra dos gestos (`GESTOS_POR_OUTRO_CANAL`, a mesma que o servidor põe na linha do portal).
  */
-function ConferenciaDaD4Sign({ conferidoEm }: { conferidoEm: null | string }) {
+function ConferenciaDaD4Sign({ canalNeutro, conferidoEm }: { canalNeutro: boolean; conferidoEm: null | string }) {
   const quando = conferidoEm ? Date.parse(conferidoEm) : Number.NaN;
   const legivel = !Number.isNaN(quando);
   const atrasada = legivel && Date.now() - quando > CONFERENCIA_ATRASADA_MS;
+  const com = canalNeutro ? "" : " com a D4Sign";
   return (
     <div className="grid gap-0.5 text-[11px] text-ink-muted">
       <p className="m-0">
-        {legivel
-          ? `Conferido com a D4Sign em ${momentoCurto(conferidoEm as string)}`
-          : "Ainda sem conferência com a D4Sign"}
+        {legivel ? `Conferido${com} em ${momentoCurto(conferidoEm as string)}` : `Ainda sem conferência${com}`}
         {atrasada ? (
           <span className="text-amber-700 dark:text-amber-300">
             {" "}
@@ -3265,9 +3298,22 @@ function ConferenciaDaD4Sign({ conferidoEm }: { conferidoEm: null | string }) {
           </span>
         ) : null}
       </p>
-      <p className="m-0">{ACOES_DA_D4SIGN_FICAM_NO_C2X}</p>
+      <p className="m-0">{canalNeutro ? GESTOS_POR_OUTRO_CANAL : ACOES_DA_D4SIGN_FICAM_NO_C2X}</p>
     </div>
   );
+}
+
+/**
+ * DE ONDE VEIO O QUADRO DESTE PAINEL. `null` = a Clicksign, o painel de sempre; `"d4sign"` = o contrato
+ * que o C2X mandou, no hub; `"outro_canal"` = o mesmo contrato no portal (`PROVEDOR_DE_OUTRO_CANAL`),
+ * que liga o mesmo modo (sem botão, sem log, perfil na linha) sem escrever "D4Sign" nem "C2X".
+ */
+type QuadroDeFora = null | "d4sign" | "outro_canal";
+
+function quadroDeFora(provedor: null | string | undefined): QuadroDeFora {
+  if (provedor === "d4sign") return "d4sign";
+  if (provedor === PROVEDOR_DE_OUTRO_CANAL) return "outro_canal";
+  return null;
 }
 
 /** Um número do cabeçalho do painel: compradores, contrato ou vencimento. */
@@ -3401,16 +3447,43 @@ const NOME_DO_DEGRAU: Record<string, readonly [string, string]> = {
 };
 
 /**
+ * O nome do degrau pelo PERFIL, no quadro da D4Sign, onde o papel é nulo: [uma pessoa, várias]. Perfil
+ * fora da lista dá nome a si mesmo ("Backoffice"); "Sem perfil" não dá nome nenhum.
+ */
+const NOME_DO_DEGRAU_PELO_PERFIL: Record<string, readonly [string, string]> = {
+  Comprador: ["Comprador", "Compradores"],
+  "Coordenadora de venda": ["Coordenação", "Coordenação"],
+  Imobiliária: ["Imobiliária", "Imobiliárias"],
+  Incorporador: ["Incorporador", "Incorporadores"],
+};
+
+/**
  * O RÓTULO DO DEGRAU — o papel de quem está nele. Comprador e cônjuge são o mesmo lado e viram
  * "Compradores"; papéis diferentes no mesmo degrau (o envelope sem ordem) viram "Assinam juntos".
+ *
+ * ⚠️ SEM PAPEL NENHUM, O NOME VEM DO PERFIL (revisão de 02/10/2026). No quadro da D4Sign o papel é
+ * sempre nulo (só a testemunha ganha papel, pela marca do C2X), e com a marca de ordem cada degrau
+ * caía em "Assinam juntos", até o de uma pessoa só, no cabeçalho do degrau e na faixa "Na vez". Medido
+ * no mesmo dia (só SELECT): 18 dos 42 envelopes de contrato vivos da D4Sign têm a ordem marcada, com
+ * 143 degraus, 90 deles de uma pessoa só, e nenhum mistura perfis. "Assinam juntos" fica para quando
+ * os perfis diferem. Na Clicksign nada muda: lá não há perfil, e o papel já dá o nome.
  */
 function rotuloDoDegrau(pessoas: SignatarioNaTela[]): string {
   const papeis = new Set(pessoas.map((p) => (p.papel === "conjuge" ? "comprador" : (p.papel ?? ""))));
   if (papeis.size !== 1) return "Assinam juntos";
   const papel = pessoas[0]?.papel ?? "";
-  const nomes = NOME_DO_DEGRAU[papel];
+  const nomes = papel ? NOME_DO_DEGRAU[papel] : nomesPeloPerfil(pessoas);
   if (!nomes) return "Assinam juntos";
   return pessoas.length === 1 ? nomes[0] : nomes[1];
+}
+
+/** O nome do degrau quando todos nele têm o MESMO perfil. `null` = perfis diferentes, ou nenhum. */
+function nomesPeloPerfil(pessoas: SignatarioNaTela[]): null | readonly [string, string] {
+  const perfis = new Set(pessoas.map((p) => (p.perfil ?? "").trim()));
+  if (perfis.size !== 1) return null;
+  const perfil = [...perfis][0] ?? "";
+  if (!perfil || perfil === "Sem perfil") return null;
+  return NOME_DO_DEGRAU_PELO_PERFIL[perfil] ?? [perfil, perfil];
 }
 
 /** "MAURA MARIA PASSOS" → "Maura": a faixa "Na vez" cabe numa linha. */
@@ -3450,6 +3523,7 @@ function DegrauDaFila({
   aoAlternar,
   aoRecarregar,
   aoTrocar,
+  canalNeutro = false,
   daD4Sign = false,
   degrau,
   envelopeId,
@@ -3459,6 +3533,8 @@ function DegrauDaFila({
   aoAlternar: () => void;
   aoRecarregar: () => Promise<void>;
   aoTrocar: (chaveAntiga: string, recado: string) => void;
+  /** O quadro da D4Sign no portal: a linha não escreve "D4Sign" (ver `quadroDeFora`). */
+  canalNeutro?: boolean;
   /** O quadro é o da D4Sign: a linha mostra o perfil e fala da D4Sign, e não da Clicksign. */
   daD4Sign?: boolean;
   degrau: DegrauNaTela;
@@ -3572,6 +3648,7 @@ function DegrauDaFila({
               aguardaAVez={degrau.estado === "aguardando"}
               aoRecarregar={aoRecarregar}
               aoTrocar={aoTrocar}
+              canalNeutro={canalNeutro}
               daD4Sign={daD4Sign}
               // ⚠️ O ENVELOPE VEM DE CIMA, E É O DA CLICKSIGN. É o id que as rotas de conserto pedem;
               // o uuid da nossa linha de `temis_envelopes` não serve para nada do lado de lá. Quando
@@ -3617,6 +3694,7 @@ function LinhaDoSignatario({
   aguardaAVez = false,
   aoRecarregar,
   aoTrocar,
+  canalNeutro = false,
   daD4Sign = false,
   envelopeId,
   mostrarPapel = true,
@@ -3627,6 +3705,8 @@ function LinhaDoSignatario({
   aoRecarregar: () => Promise<void>;
   /** A troca deu certo: o painel guarda o recado e esconde a chave antiga (ver `trocaFeita`). */
   aoTrocar?: (chaveAntiga: string, recado: string) => void;
+  /** O quadro da D4Sign no portal: o estado da linha não escreve "D4Sign" (ver `quadroDeFora`). */
+  canalNeutro?: boolean;
   /** O quadro é o da D4Sign (o contrato que o C2X mandou): perfil na linha, e nenhum texto da Clicksign. */
   daD4Sign?: boolean;
   envelopeId: null | string;
@@ -3644,7 +3724,7 @@ function LinhaDoSignatario({
     : mostrarPapel
       ? papelNaLinha(signatario.papel)
       : null;
-  const estado = estadoDoSignatario(signatario, aguardaAVez, daD4Sign);
+  const estado = estadoDoSignatario(signatario, aguardaAVez, daD4Sign, canalNeutro);
   const Icone = estado.icone;
 
   /**
@@ -3926,9 +4006,17 @@ function LinhaDoSignatario({
           quebrar, e sem os dois ele escreve por cima do estado à direita — logo aqui, onde o e-mail é
           justamente o que costuma estar errado. */}
       <div className="min-w-0">
-        <p className="m-0 truncate text-[12.5px] font-semibold text-ink">
-          {signatario.nome}
-          {papel ? <span className="font-normal text-ink-muted"> · {papel}</span> : null}
+        {/* ⚠️ SÓ O NOME É CORTADO; O PAPEL FICA INTEIRO AO LADO (revisão de 02/10/2026). Os dois moravam
+            no mesmo `truncate`, e o nome longo levava o papel junto: na D4Sign sem a marca de ordem
+            todos caem em "Quem assina", e o perfil da linha é o único que diz quem é a pessoa. Medido
+            no mesmo dia (só SELECT): nos 5 cards do C2X os 40 nomes estão em caixa alta, a mediana tem
+            29 caracteres e o maior tem 65, o que já passa da largura do painel no hub. O nome inteiro
+            fica no `title`. */}
+        <p className="m-0 flex min-w-0 text-[12.5px] font-semibold text-ink">
+          <span className="min-w-0 truncate" title={signatario.nome}>
+            {signatario.nome}
+          </span>
+          {papel ? <span className="shrink-0 whitespace-pre font-normal text-ink-muted"> · {papel}</span> : null}
         </p>
         {/* ⚠️ O E-MAIL APARECE SEMPRE, e é o ponto do painel inteiro: foi um e-mail inexistente que
             derrubou o envelope da Beatriz. Escondê-lo obrigaria a abrir a Clicksign para descobrir o
@@ -4210,6 +4298,11 @@ function estadoDoSignatario(
    * só sabe quem assinou), e as frases da Clicksign ("A Clicksign só avisa…") seriam falsas aqui.
    */
   daD4Sign = false,
+  /**
+   * O quadro da D4Sign no portal (revisão de 02/10/2026): a mesma frase, sem o nome "D4Sign", que o
+   * portal nunca lê (Lucas, 18/08/2026, `frase-para-o-portal.ts`).
+   */
+  canalNeutro = false,
 ): {
   cor: string;
   detalhe: null | string;
@@ -4289,8 +4382,9 @@ function estadoDoSignatario(
   if (daD4Sign) {
     return {
       cor: "text-ink-muted",
-      detalhe:
-        "A D4Sign não conta ao Panteon se o convite chegou: o que se sabe é que esta pessoa ainda não assinou.",
+      detalhe: canalNeutro
+        ? "Não há notícia de entrega do convite: o que se sabe é que esta pessoa ainda não assinou."
+        : "A D4Sign não conta ao Panteon se o convite chegou: o que se sabe é que esta pessoa ainda não assinou.",
       icone: Clock,
       quando: null,
       texto: "Falta assinar",

@@ -5,6 +5,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { GESTOS_POR_OUTRO_CANAL, PROVEDOR_DE_OUTRO_CANAL } from "@/lib/assinatura/frase-para-o-portal";
 import { ACOES_DA_D4SIGN_FICAM_NO_C2X } from "@/lib/assinatura/recusa-de-reenvio";
 
 // O PAINEL DE ASSINATURA DO CARD QUE O C2X MANDOU PELA D4SIGN (02/10/2026).
@@ -235,6 +236,74 @@ describe("o painel da D4Sign em Em assinatura", () => {
 
     expect(painel().textContent).toContain("há mais de 2 h");
   });
+
+  it("a caixa do contrato diz que ele foi gerado pelo C2X, e não que o card chegou sem contrato", async () => {
+    // Revisão de 02/10/2026: os 5 cards do C2X têm 0 contratos guardados, e a frase de sempre ("chegou
+    // a esta etapa sem contrato gerado") contradizia o painel logo acima.
+    await montar();
+
+    const p = painel();
+    expect(p.textContent).toContain("Este contrato foi gerado e enviado pelo C2X. O Panteon não guarda cópia dele.");
+    expect(p.textContent).not.toContain("sem contrato gerado");
+  });
+
+  it("o nome longo é cortado sozinho: o perfil fica fora do corte, e o nome inteiro vai no title", async () => {
+    // Revisão de 02/10/2026: nome e perfil moravam no mesmo `truncate`, e o nome longo levava o perfil.
+    const longo = "MARIA DAS GRACAS APARECIDA DE SOUZA FERNANDES DOS SANTOS OLIVEIRA";
+    const comNomeLongo = VALC09();
+    comNomeLongo.envelope.signatarios[2] = pessoa("c2x:3", longo, "Comprador");
+    carga.assinatura = comNomeLongo;
+    await montar();
+
+    const linha = linhaDe(longo);
+    const cortado = linha.querySelector<HTMLElement>(".truncate");
+    expect(cortado?.textContent).toBe(longo);
+    expect(cortado?.getAttribute("title")).toBe(longo);
+    expect(cortado?.textContent).not.toContain("Comprador");
+    const perfil = Array.from(linha.querySelectorAll<HTMLElement>("span")).find((s) => s.textContent === " · Comprador");
+    expect(perfil).toBeDefined();
+    expect(perfil?.closest(".truncate")).toBeNull();
+    expect(perfil?.className).toContain("shrink-0");
+  });
+});
+
+describe("o painel da D4Sign com a marca de ordem do C2X", () => {
+  /** O mesmo quadro, com `ordenada` no C2X: o servidor numera os degraus (`posicao`). */
+  const ORDENADO = () => {
+    const base = VALC09();
+    const degrau: Record<string, number> = {
+      "c2x:1": 4,
+      "c2x:2": 2,
+      "c2x:3": 2,
+      "c2x:4": 1,
+      "c2x:5": 5,
+      "c2x:6": 3,
+      "c2x:7": 4,
+    };
+    const signatarios = base.envelope.signatarios
+      .map((s) => ({ ...s, posicao: degrau[s.chave] as number }))
+      .sort((a, b) => a.posicao - b.posicao);
+    // Um degrau que mistura perfis: a incorporadora e alguém do backoffice.
+    signatarios.push({ ...pessoa("c2x:8", "OTAVIO BACKOFFICE", "Backoffice"), posicao: 5 });
+    return { ...base, envelope: { ...base.envelope, signatarios }, total: signatarios.length };
+  };
+
+  it("cada degrau tem o nome do perfil de quem está nele; 'Assinam juntos' só quando os perfis diferem", async () => {
+    // Revisão de 02/10/2026: no quadro da D4Sign o papel é nulo, e todo degrau sem testemunha saía
+    // "Assinam juntos", até o de uma pessoa só (18 envelopes vivos com a ordem marcada, 90 degraus assim).
+    carga.assinatura = ORDENADO();
+    await montar();
+
+    const grupos = Array.from(hospedeiro.querySelectorAll<HTMLElement>("section[aria-label]")).map((s) => s.getAttribute("aria-label"));
+    expect(grupos).toEqual([
+      "Coordenação: Concluído",
+      "Compradores: Na vez",
+      "Imobiliária: Aguardando",
+      "Testemunhas: Aguardando",
+      "Assinam juntos: Aguardando",
+    ]);
+    expect(painel().textContent).toContain("Na vez: Compradores");
+  });
 });
 
 describe("o painel da D4Sign no Pré-faturamento", () => {
@@ -256,14 +325,53 @@ describe("o painel da D4Sign no Pré-faturamento", () => {
 });
 
 describe("o painel da D4Sign no portal", () => {
+  /** O quadro como `quadroDaD4SignParaOPortal` o manda: sem e-mail, sem a chave, com o provedor neutro. */
+  const NO_PORTAL = () => {
+    const { id: _id, ...envelope } = VALC09().envelope;
+    return {
+      ...VALC09(),
+      envelope: {
+        ...envelope,
+        estadoCru: null,
+        provedor: PROVEDOR_DE_OUTRO_CANAL,
+        provedorDocumentoId: null,
+        signatarios: envelope.signatarios.map((s, i) => ({
+          ...s,
+          chave: `pessoa-${i + 1}`,
+          email: null,
+          reenvioIndisponivel: { frase: GESTOS_POR_OUTRO_CANAL, motivo: "sem_id_na_clicksign" },
+        })),
+      },
+    };
+  };
+
   it("sem e-mail (o servidor não manda), a linha some, e não diz 'sem e-mail no envelope'", async () => {
-    const portal = VALC09();
-    portal.envelope.signatarios = portal.envelope.signatarios.map((s, i) => ({ ...s, chave: `pessoa-${i + 1}`, email: null }));
-    carga.assinatura = portal;
+    carga.assinatura = NO_PORTAL();
     await montar();
 
     expect(painel().textContent).not.toContain("@");
     expect(painel().textContent).not.toContain("sem e-mail no envelope");
     expect(linhaDe("CARLA COMPRADORA").textContent).toContain("Comprador");
+  });
+
+  it("o mesmo quadro, sem botão e sem log, e sem escrever \"D4Sign\" nem \"C2X\" em lugar nenhum do painel", async () => {
+    // Revisão de 02/10/2026: com o provedor "d4sign" no portal, a tela escrevia "Conferido com a D4Sign",
+    // "são feitos no C2X" e "A D4Sign não conta ao Panteon" para o incorporador.
+    carga.assinatura = NO_PORTAL();
+    await montar();
+
+    const p = painel();
+    expect(p.querySelectorAll("li button")).toHaveLength(0);
+    expect(p.querySelector("details")).toBeNull();
+    expect(p.textContent).not.toMatch(/d4sign|c2x|clicksign/i);
+    const dicas = Array.from(p.querySelectorAll("[title]")).map((el) => el.getAttribute("title") ?? "");
+    expect(dicas.join(" ")).not.toMatch(/d4sign|c2x|clicksign/i);
+    expect(p.textContent).toContain("Conferido em 02/10");
+    expect(p.textContent).toContain(GESTOS_POR_OUTRO_CANAL);
+    expect(linhaDe("CARLA COMPRADORA").textContent).toContain("Falta assinar");
+    expect(dicas).toContain("Não há notícia de entrega do convite: o que se sabe é que esta pessoa ainda não assinou.");
+    expect(p.textContent).toContain("Este contrato foi gerado e enviado por outro canal. O Panteon não guarda cópia dele.");
+    // Os compradores continuam pela régua do perfil.
+    expect(quadro("Compradores")).toContain("1 de 2");
   });
 });

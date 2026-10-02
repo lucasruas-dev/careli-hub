@@ -29,6 +29,21 @@ export const INDEFERIMENTO_POR_OUTRO_CANAL =
   "Contrato indeferido, mas a venda continua em Contrato: o contrato está em assinatura por outro canal. Fale com a Careli para liberar a venda.";
 
 /**
+ * O PROVEDOR DO QUADRO DE ASSINATURA QUE O C2X MANDOU, COMO O PORTAL O RECEBE (revisão de 02/10/2026).
+ *
+ * Lucas, 02/10/2026, pedindo o quadro do C2X no painel da Têmis: *"os card que estao pelo c2x nao tem
+ * nada na tela de assinatura"*. A tela de trabalho é a MESMA nos dois lados e decide o modo do painel
+ * (sem botão, sem log, com o perfil na linha) pelo provedor. Mandar `"d4sign"` ao portal escrevia
+ * "D4Sign" e "C2X" na tela do incorporador; mandar `null` derrubava o modo e a tela falava da
+ * Clicksign. Este valor liga o mesmo modo, com as frases neutras.
+ */
+export const PROVEDOR_DE_OUTRO_CANAL = "outro_canal";
+
+/** Onde se pedem reenvio e troca de e-mail do contrato que está em assinatura por outro canal. */
+export const GESTOS_POR_OUTRO_CANAL =
+  "Reenvio do convite e troca de e-mail deste contrato são feitos pela Careli.";
+
+/**
  * A frase que vai ao ator: o hub recebe a interna inteira; o portal, a neutra quando a interna fala
  * da D4Sign.
  */

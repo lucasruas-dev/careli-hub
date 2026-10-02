@@ -97,6 +97,35 @@ const envelopeD4Sign: Linha = {
   workspace_id: "careli",
 };
 
+/** Um envelope de contrato da Clicksign desta venda (a linha que a régua do vigente lê). */
+function envelopeClicksign(patch: Linha): Linha {
+  return {
+    ...envelopeD4Sign,
+    c2x_contract_signature_id: null,
+    conferido_em: null,
+    envelope_id: "env-clicksign",
+    estado_cru: null,
+    id: "env-cs",
+    ordenada: true,
+    origem: "panteon",
+    provedor: "clicksign",
+    provedor_documento_id: null,
+    signatarios: [{ chave: "k1", email: "a@exemplo.test", nome: "Ana", papel: "comprador" }],
+    ...patch,
+    enviado_em: patch.criado_em ?? envelopeD4Sign.enviado_em,
+  };
+}
+
+/** O diário da Clicksign como `diarioDaProposta` (trocado neste teste) o devolveria. */
+function diarioDaClicksign(estadoDoEnvelope: string) {
+  return {
+    assinaram: 1,
+    diario: [{ detalhe: null, fato: "Ana assinou", gravidade: "marco", quem: "Ana", quando: "2026-09-24T13:00:00Z" }],
+    envelope: { envelopeId: "env-clicksign", estado: estadoDoEnvelope, id: "env-cs", provedor: "clicksign", signatarios: [{ chave: "k1", email: "a@exemplo.test" }] },
+    total: 2,
+  };
+}
+
 let banco: Banco;
 
 function montar(envelopes: Linha[]) {
@@ -141,6 +170,9 @@ describe("abrirCardDoTrabalho: o card de contrato do C2X", () => {
     expect(texto).not.toMatch(/@/);
     expect(texto).not.toMatch(/c2x:/);
     expect(texto).not.toContain(UUID_DO_DOCUMENTO);
+    // Nem o nome do provedor nem o do C2X (revisão de 02/10/2026): o provedor vai neutro.
+    expect(texto).not.toMatch(/d4sign|c2x/i);
+    expect(assinatura?.envelope).toMatchObject({ provedor: "outro_canal" });
     const pessoas = (assinatura?.envelope as { signatarios: Array<Record<string, unknown>> }).signatarios;
     expect(pessoas.map((p) => [p.nome, p.email, p.papel, p.perfil])).toEqual([
       ["Ana Testemunha", null, "testemunha", "Backoffice"],
@@ -150,16 +182,46 @@ describe("abrirCardDoTrabalho: o card de contrato do C2X", () => {
   });
 
   it("o card da Clicksign continua como estava: o diário dela vence, e o portal o recebe igual", async () => {
-    montar([envelopeD4Sign]);
-    const diario = {
-      assinaram: 1,
-      diario: [{ detalhe: null, fato: "Ana assinou", gravidade: "marco", quem: "Ana", quando: "2026-09-24T13:00:00Z" }],
-      envelope: { envelopeId: "env-clicksign", estado: "parcial", id: "env-cs", provedor: "clicksign", signatarios: [{ chave: "k1", email: "a@exemplo.test" }] },
-      total: 2,
-    };
+    // A Clicksign é o vigente: o envelope vivo mais recente da venda.
+    montar([envelopeD4Sign, envelopeClicksign({ criado_em: "2026-09-28T12:00:00Z", estado: "parcial" })]);
+    const diario = diarioDaClicksign("parcial");
     estado.diarioDaClicksign = diario;
     expect((await abrir(HUB)).assinatura).toEqual(diario);
     expect((await abrir(PORTAL)).assinatura).toEqual(diario);
+  });
+
+  it("a Clicksign só com envelope, sem D4Sign, continua com o diário dela", async () => {
+    montar([envelopeClicksign({ criado_em: "2026-09-28T12:00:00Z", estado: "aguardando" })]);
+    const diario = diarioDaClicksign("aguardando");
+    estado.diarioDaClicksign = diario;
+    expect((await abrir(HUB)).assinatura).toEqual(diario);
+  });
+
+  it("um envelope da Clicksign CANCELADO, mais novo, não esconde o quadro vivo da D4Sign (a régua da trava)", async () => {
+    // Revisão de 02/10/2026: o diário da Clicksign lê o mais recente sem olhar o estado, e vinha
+    // primeiro sempre; a trava do Faturado decide pelo vigente e mandava olhar o painel.
+    montar([envelopeD4Sign, envelopeClicksign({ criado_em: "2026-09-30T12:00:00Z", estado: "cancelado" })]);
+    estado.diarioDaClicksign = diarioDaClicksign("cancelado");
+    const { assinatura } = await abrir(HUB);
+    expect(assinatura?.envelope).toMatchObject({ id: "env-d4", provedor: "d4sign" });
+    expect(assinatura).toMatchObject({ assinaram: 1, total: 2 });
+  });
+
+  it("um contrato ASSINADO na Clicksign vence o envelope vivo mais novo da D4Sign, como na trava", async () => {
+    montar([
+      { ...envelopeD4Sign, criado_em: "2026-09-30T12:00:00Z", enviado_em: "2026-09-30T12:00:00Z" },
+      envelopeClicksign({ criado_em: "2026-09-20T12:00:00Z", estado: "assinado" }),
+    ]);
+    const diario = diarioDaClicksign("assinado");
+    estado.diarioDaClicksign = diario;
+    expect((await abrir(HUB)).assinatura).toEqual(diario);
+  });
+
+  it("com a Clicksign cancelada e SEM D4Sign, o diário dela continua (ele narra o envelope que morreu)", async () => {
+    montar([envelopeClicksign({ criado_em: "2026-09-30T12:00:00Z", estado: "cancelado" })]);
+    const diario = diarioDaClicksign("cancelado");
+    estado.diarioDaClicksign = diario;
+    expect((await abrir(HUB)).assinatura).toEqual(diario);
   });
 
   it("sem envelope nenhum, o painel continua nulo", async () => {
