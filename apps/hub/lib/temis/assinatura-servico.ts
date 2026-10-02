@@ -20,7 +20,7 @@ import {
   registrarAtoDoPortal,
   respostaDoAlcance,
 } from "./contrato-servico";
-import { reenviarConvite, trocarEmailDoSignatario } from "./trocar-signatario";
+import { linkDeAssinatura, reenviarConvite, trocarEmailDoSignatario } from "./trocar-signatario";
 
 // A ASSINATURA DO CONTRATO, PARA QUEM ESTIVER OPERANDO — preparar, enviar e consertar signatário.
 //
@@ -344,6 +344,28 @@ export async function consertarSignatario(
     return NextResponse.json({
       data: { aviso: troca.aviso, email: troca.email, nome: troca.nome, signerId: troca.signerId },
     });
+  }
+
+  if (corpo.acao === "link") {
+    // ⚠️ O LINK NÃO É SEGREDO, E O QUE PROTEGE A ASSINATURA É O CÓDIGO POR E-MAIL (revisão de
+    // 02/10/2026). É o mesmo link que a Clicksign manda ao cliente, feito para ser repassado; e pela
+    // fixture real o id do caminho é a própria `signer.key`, que a lista de leitura já mostra. Para
+    // assinar, a pessoa ainda confirma o código que chega no e-mail cadastrado (`auth: "email"`).
+    // O que se ganha aqui é o atalho de copiar com o mesmo portão de escrita das outras ações, e o
+    // log registra quem USOU o botão, não quem teve acesso ao link.
+    const achado = await linkDeAssinatura(sb, { envelopeId, signerId });
+    console.info("[temis][link de assinatura] pedido", {
+      achou: achado.ok,
+      envelopeId,
+      origem: ator.tipo,
+      quem: ator.tipo === "hub" ? ator.userId : ator.usuarioId,
+      signerId,
+    });
+    if (!achado.ok) {
+      return NextResponse.json({ erro: achado.erro }, { status: achado.status });
+    }
+    registrarAtoDoPortal(ator, "pegou o link de assinatura", { envelopeId, signerId });
+    return NextResponse.json({ data: { link: achado.link, signerId } });
   }
 
   return NextResponse.json({ erro: "Ação desconhecida." }, { status: 400 });

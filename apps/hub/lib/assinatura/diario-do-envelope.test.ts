@@ -5,6 +5,7 @@ import { juntarComOsCongelados, payloadMaisRecente } from "./diario-do-envelope-
 import {
   diarioDoEnvelope,
   quemAssinou,
+  recadastrosDepoisDoEnvio,
   type SignatarioDoEnvelope,
 } from "./diario-do-envelope";
 import {
@@ -488,5 +489,186 @@ describe("payloadMaisRecente lê só o evento conferido", () => {
     expect(payload).toEqual({ document: { key: "doc-1" } });
     expect(filtros).toContainEqual(["provedor_documento_id", "doc-1"]);
     expect(filtros).toContainEqual(["assinatura_conferida", true]);
+  });
+});
+
+// ── A FILA DE ASSINATURA NA TELA (02/10/2026) ───────────────────────────────
+//
+// ⚠️ O QUE ISTO PRENDE FOI MEDIDO EM PRODUÇÃO (só SELECT, os 29 envelopes da Clicksign): 163
+// `add_signer`, 159 do lote do envio, todos até 1,1 s antes do nosso `enviado_em`, e 4 tardios, que
+// são exatamente a Maura (VOC0306) e as três Ritas (VOL). Quem tem `add_signer` depois do envio foi
+// recadastrado, e a Clicksign o pôs no FIM da fila. Lucas: *"vamos informar (na ordem da tela) que
+// aquele cadastro foi para ultima posição"*.
+describe("quem foi recadastrado depois do envio", () => {
+  const ENVIO = "2026-09-29T16:06:51.729Z";
+  const add = (key: string, quando: string) => ({
+    data: { signers: [{ email: `${key}@x.test`, key }] },
+    name: "add_signer",
+    occurred_at: quando,
+  });
+
+  it("o lote do envio não marca ninguém; o recadastro de dois dias depois marca, com a data", () => {
+    const payload = {
+      document: {
+        events: [
+          add("coord", "2026-09-29T13:06:51.052-03:00"),
+          add("maura-antiga", "2026-09-29T13:06:51.412-03:00"),
+          add("maura-nova", "2026-10-01T15:18:15.332-03:00"),
+        ],
+      },
+    };
+
+    const mapa = recadastrosDepoisDoEnvio(payload, ENVIO);
+
+    expect([...mapa.keys()]).toEqual(["maura-nova"]);
+    expect(mapa.get("maura-nova")).toBeTruthy();
+  });
+
+  it("30 segundos depois do envio não marca: é a folga do relógio", () => {
+    const payload = { document: { events: [add("k", "2026-09-29T16:07:21.000Z")] } };
+    expect(recadastrosDepoisDoEnvio(payload, ENVIO).size).toBe(0);
+  });
+
+  it("sem enviado_em, ou sem histórico, não marca ninguém", () => {
+    const payload = { document: { events: [add("k", "2026-10-01T15:18:15.332-03:00")] } };
+    expect(recadastrosDepoisDoEnvio(payload, null).size).toBe(0);
+    expect(recadastrosDepoisDoEnvio(payload, "lixo").size).toBe(0);
+    expect(recadastrosDepoisDoEnvio({}, ENVIO).size).toBe(0);
+  });
+});
+
+describe("a lista na ordem de assinatura", () => {
+  const pendente = (key: string, nome: string, patch: Partial<SignatarioDoEnvelope> = {}): SignatarioDoEnvelope => ({
+    assinouEm: null,
+    chave: key,
+    comecouEm: null,
+    convite: "sem_noticia",
+    conviteDetalhe: null,
+    conviteQuando: null,
+    email: `${key}@x.test`,
+    nome,
+    ...patch,
+  });
+  const assinou = (key: string, nome: string) => pendente(key, nome, { assinouEm: "2026-10-01T13:54:00-03:00" });
+  const noQuadro = (key: string, nome: string, ordem: number, papel: string) => ({
+    chave: key,
+    email: `${key}@x.test`,
+    nome,
+    ordem,
+    papel,
+  });
+
+  // O VOC0306 como ele está: a Maura recadastrada em 01/10, as testemunhas e as vendedoras pendentes.
+  const VOC0306 = {
+    payload: [
+      pendente("maura", "Maura P."),
+      assinou("nivea", "Nivea A."),
+      assinou("huber", "Huber J."),
+      assinou("fabricio", "Fabricio G."),
+      assinou("romulo", "Romulo G."),
+      assinou("rafael", "Rafael O."),
+      pendente("yasmin", "Yasmin L."),
+      pendente("northon", "Northon N."),
+      pendente("vitor", "Vitor A."),
+      pendente("helena", "Helena A."),
+      pendente("marcos", "Marcos P."),
+    ],
+    quadro: [
+      noQuadro("maura", "Maura P.", 3, "comprador"),
+      noQuadro("nivea", "Nivea A.", 1, "coordenadora"),
+      noQuadro("huber", "Huber J.", 1, "coordenadora"),
+      noQuadro("fabricio", "Fabricio G.", 1, "coordenadora"),
+      noQuadro("romulo", "Romulo G.", 2, "corretor"),
+      noQuadro("rafael", "Rafael O.", 4, "testemunha"),
+      noQuadro("yasmin", "Yasmin L.", 4, "testemunha"),
+      noQuadro("northon", "Northon N.", 4, "testemunha"),
+      noQuadro("vitor", "Vitor A.", 5, "vendedora"),
+      noQuadro("helena", "Helena A.", 5, "vendedora"),
+      noQuadro("marcos", "Marcos P.", 5, "vendedora"),
+    ],
+  };
+
+  it("a Maura recadastrada aparece por último, com a marca; o resto por degrau e nome", () => {
+    const juntos = juntarComOsCongelados(
+      VOC0306.payload,
+      VOC0306.quadro,
+      { envelopeId: "0384000d", estado: "parcial" },
+      new Map([["maura", "2026-10-01T15:18:15.332-03:00"]]),
+    );
+
+    expect(juntos.map((s) => s.nome)).toEqual([
+      "Fabricio G.",
+      "Huber J.",
+      "Nivea A.",
+      "Romulo G.",
+      "Northon N.",
+      "Rafael O.",
+      "Yasmin L.",
+      "Helena A.",
+      "Marcos P.",
+      "Vitor A.",
+      "Maura P.",
+    ]);
+    expect(juntos.at(-1)?.foiParaOFimEm).toBe("2026-10-01T15:18:15.332-03:00");
+    expect(juntos.filter((s) => s.foiParaOFimEm !== null)).toHaveLength(1);
+  });
+
+  it("o aviso antes de corrigir: a testemunha passaria a esperar os 5 pendentes que viriam depois dela", () => {
+    const juntos = juntarComOsCongelados(
+      VOC0306.payload,
+      VOC0306.quadro,
+      { envelopeId: "0384000d", estado: "parcial" },
+      new Map([["maura", "2026-10-01T15:18:15.332-03:00"]]),
+    );
+    const de = (nome: string) => juntos.find((s) => s.nome === nome);
+
+    // Yasmin (degrau 4): Northon (4), Helena, Marcos e Vitor (5) e a Maura (6) estão sem assinar.
+    expect(de("Yasmin L.")?.trocaVaiParaOFim).toContain("5 pessoas que ainda não assinaram");
+    // A Maura já é a última: corrigir de novo não passa ninguém na frente dela.
+    expect(de("Maura P.")?.trocaVaiParaOFim).toBeNull();
+    // Quem já assinou não tem troca.
+    expect(de("Rafael O.")?.trocaVaiParaOFim).toBeNull();
+    // Dividir o último degrau com alguém pendente também conta: a pessoa passaria a esperar por ele.
+    expect(de("Vitor A.")?.trocaVaiParaOFim).toContain("Vitor A.");
+  });
+
+  it("envelope encerrado não avisa nada", () => {
+    const juntos = juntarComOsCongelados(VOC0306.payload, VOC0306.quadro, { envelopeId: "x", estado: "cancelado" });
+    expect(juntos.every((s) => s.trocaVaiParaOFim === null)).toBe(true);
+  });
+
+  it("envelope sem ordem sai em ordem alfabética, e o recadastrado depois de todos", () => {
+    const juntos = juntarComOsCongelados(
+      [pendente("c", "Carla"), pendente("a", "Ana"), pendente("b", "Bruno")],
+      [noQuadro("c", "Carla", 0, "comprador"), noQuadro("a", "Ana", 0, "comprador"), noQuadro("b", "Bruno", 0, "conjuge")],
+      {},
+      new Map([["a", "2026-10-02T09:00:00-03:00"]]),
+    );
+
+    expect(juntos.map((s) => s.nome)).toEqual(["Bruno", "Carla", "Ana"]);
+  });
+
+  it("dois recadastros saem na ordem em que entraram, e quem não está no quadro fica no fim", () => {
+    const juntos = juntarComOsCongelados(
+      [pendente("x", "Xavier"), pendente("r2", "Rita"), pendente("r1", "Beatriz"), pendente("fora", "Ana Fora")],
+      [noQuadro("x", "Xavier", 1, "comprador"), noQuadro("r1", "Beatriz", 2, "vendedora"), noQuadro("r2", "Rita", 2, "vendedora")],
+      {},
+      new Map([
+        ["r1", "2026-10-02T09:00:00-03:00"],
+        ["r2", "2026-10-02T10:00:00-03:00"],
+      ]),
+    );
+
+    expect(juntos.map((s) => s.nome)).toEqual(["Xavier", "Beatriz", "Rita", "Ana Fora"]);
+  });
+
+  it("sem recadastros, vale a ordem do quadro mesmo que o payload venha em outra", () => {
+    const juntos = juntarComOsCongelados(
+      [pendente("v", "Vendedora"), pendente("c", "Compradora")],
+      [noQuadro("v", "Vendedora", 2, "vendedora"), noQuadro("c", "Compradora", 1, "comprador")],
+    );
+
+    expect(juntos.map((s) => s.nome)).toEqual(["Compradora", "Vendedora"]);
+    expect(juntos.every((s) => s.foiParaOFimEm === null)).toBe(true);
   });
 });
