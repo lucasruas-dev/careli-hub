@@ -160,8 +160,8 @@ describe("reconciliarVendasAssinadas: a conclusão que ficou para trás", () => 
     const r = await reconciliarVendasAssinadas(b.cliente, { ...GRAVA, moverVendas: true });
     expect(r).toEqual({ planejadas: 1, puladas: {}, refeitas: 1 });
     expect(b.linha("temis_trabalhos", "card-1")).toMatchObject({
-      // D4Sign: o prazo começa no fechamento.
-      arrependimento_inicio: "2026-09-26T15:00:00.000-03:00",
+      // D4Sign, desde 02/10/2026: o prazo começa no último comprador, como na Clicksign.
+      arrependimento_inicio: "2026-09-26T10:00:00.000-03:00",
       estagio: "prazo_legal",
     });
     expect(b.linhas("temis_trabalho_etapas").map((l) => [l.de, l.para, l.origem])).toEqual([
@@ -232,7 +232,14 @@ describe("reconciliarVendasAssinadas: o que não se resolve não gasta o limite"
 describe("reconciliarVendasAssinadas: a entrada da D4Sign que passou com a chave desligada", () => {
   // ⚠️ A ORDEM DA F3: `--gravar` sem mover vendas insere o envelope vivo (`novo` → `aguardando`) com a
   // chave desligada. A borda não volta; quando a chave liga, só a reconciliação leva o card.
-  const vivoNaD4Sign = { estado: "aguardando", fechado_em: null, origem: "c2x", provedor: "d4sign" };
+  // O comprador ainda não assinou: com ele assinado, a rodada seguinte é do alvo compradores (abaixo).
+  const vivoNaD4Sign = {
+    estado: "aguardando",
+    fechado_em: null,
+    origem: "c2x",
+    provedor: "d4sign",
+    signatarios: [{ chave: "c2x:1", email: "c@x.com", nome: "C", ordem: 1, papel: null, perfil: "Comprador" }],
+  };
 
   it("com a chave ligada: o card em Análise vai para Em assinatura e a venda para assinatura, uma vez", async () => {
     const b = banco({ card: { estagio: "analise" }, envelope: vivoNaD4Sign, venda: { etapa: "contrato" } });
@@ -263,6 +270,177 @@ describe("reconciliarVendasAssinadas: a entrada da D4Sign que passou com a chave
       envelope: { estado: "parcial", fechado_em: null },
       venda: { etapa: "contrato" },
     });
+    const r = await reconciliarVendasAssinadas(b.cliente, { ...GRAVA, moverVendas: true });
+    expect(r).toEqual({ planejadas: 0, puladas: {}, refeitas: 0 });
+    expect(escreveu(b)).toBe(false);
+  });
+});
+
+// ── O ALVO COMPRADORES (02/10/2026) ─────────────────────────────────────────────────────────────
+//
+// Lucas: *"acho que a regra de negocio para andar de em assinatura para pre-faturamento nao esta
+// acontecendo pois eu nao tenho nenhum em pre-faturamento"*. Os 6 contratos que já tinham todos os
+// compradores assinados no dia da mudança não voltam a passar pela porta sozinhos: o webhook só chama na
+// próxima assinatura, e o espelho só na borda do estado. É a reconciliação que os leva, na primeira
+// rodada do cron depois do deploy.
+
+/** A Clicksign `parcial`: a compradora e a vendedora assinaram, a testemunha não. */
+const vivoComOsCompradores = {
+  estado: "parcial",
+  fechado_em: null,
+  signatarios: [
+    { assinado_em: "2026-09-26T10:00:00.000-03:00", chave: "k1", email: "c@x.com", nome: "C", ordem: 1, papel: "comprador" },
+    { assinado_em: "2026-09-26T15:00:00.000-03:00", chave: "k2", email: "v@x.com", nome: "V", ordem: 2, papel: "vendedora" },
+    { chave: "k3", email: "t@x.com", nome: "T", ordem: 3, papel: "testemunha" },
+  ],
+};
+
+/** O mesmo envelope com a compradora ainda por assinar: candidato, mas não alvo. */
+const vivoSemOsCompradores = {
+  ...vivoComOsCompradores,
+  signatarios: [
+    { chave: "k1", email: "c@x.com", nome: "C", ordem: 1, papel: "comprador" },
+    { assinado_em: "2026-09-26T15:00:00.000-03:00", chave: "k2", email: "v@x.com", nome: "V", ordem: 2, papel: "vendedora" },
+  ],
+};
+
+/** Mais uma venda com o envelope vivo e todos os compradores assinados, card em Em assinatura. */
+function semearVendaComCompradores(b: Banco, sufixo: string) {
+  b.semear("hercules_propostas", {
+    cancelada_em: null,
+    cancelamento_pedido_em: null,
+    data_assinatura: null,
+    etapa: "assinatura",
+    id: `venda-${sufixo}`,
+    origem: "panteon",
+    workspace_id: "careli",
+  });
+  b.semear("temis_envelopes", {
+    criado_em: "2026-09-20T12:00:00.000Z",
+    enviado_em: "2026-09-20T12:01:00.000Z",
+    envelope_id: `env-${sufixo}`,
+    falha: null,
+    finalidade: "contrato",
+    id: `reg-${sufixo}`,
+    origem: "panteon",
+    proposta_id: `venda-${sufixo}`,
+    provedor: "clicksign",
+    trabalho_id: `card-${sufixo}`,
+    workspace_id: "careli",
+    ...vivoComOsCompradores,
+  });
+  b.semear("temis_trabalhos", {
+    estagio: "assinatura",
+    estagio_desde: "2026-09-21T12:00:00.000Z",
+    id: `card-${sufixo}`,
+    proposta_id: `venda-${sufixo}`,
+    tipo: "contrato",
+    workspace_id: "careli",
+  });
+}
+
+describe("reconciliarVendasAssinadas: o alvo compradores (o envelope vivo com todos os compradores assinados)", () => {
+  it("⚠️ Clicksign parcial com a compradora assinada: o card vai ao Pré-faturamento SEM a data da venda, uma vez", async () => {
+    const b = banco({ envelope: vivoComOsCompradores });
+
+    const primeira = await reconciliarVendasAssinadas(b.cliente, { ...GRAVA, moverVendas: false });
+    expect(primeira).toEqual({ planejadas: 1, puladas: {}, refeitas: 1 });
+    expect(b.linha("temis_trabalhos", "card-1")).toMatchObject({
+      arrependimento_inicio: "2026-09-26T10:00:00.000-03:00",
+      estagio: "prazo_legal",
+    });
+    expect(b.linhas("temis_trabalho_etapas")).toEqual([
+      expect.objectContaining({ de: "assinatura", origem: "webhook_assinatura", para: "prazo_legal" }),
+    ]);
+    // O contrato não fechou: a venda fica sem data.
+    expect(b.linha("hercules_propostas", "venda-1")).toMatchObject({ data_assinatura: null, etapa: "assinatura" });
+
+    const segunda = await reconciliarVendasAssinadas(b.cliente, { ...GRAVA, moverVendas: false });
+    expect(segunda).toEqual({ planejadas: 0, puladas: {}, refeitas: 0 });
+    expect(b.linhas("temis_trabalho_etapas")).toHaveLength(1);
+  });
+
+  it("a compradora ainda por assinar: não é alvo, não gasta o limite, e a venda seguinte é refeita", async () => {
+    const b = banco({ envelope: vivoSemOsCompradores });
+    semearVendaComCompradores(b, "2");
+    const r = await reconciliarVendasAssinadas(b.cliente, { gravar: true, limite: 1, moverVendas: true });
+    expect(r).toEqual({ planejadas: 1, puladas: {}, refeitas: 1 });
+    expect(b.linha("temis_trabalhos", "card-1")?.estagio).toBe("assinatura");
+    expect(b.linha("temis_trabalhos", "card-2")?.estagio).toBe("prazo_legal");
+  });
+
+  it("o limite por rodada vale para ele: dois alvos com limite 1, um refeito e um pulado", async () => {
+    const b = banco({ envelope: vivoComOsCompradores });
+    semearVendaComCompradores(b, "2");
+    const r = await reconciliarVendasAssinadas(b.cliente, { gravar: true, limite: 1, moverVendas: true });
+    expect(r).toEqual({ planejadas: 1, puladas: { limite: 1 }, refeitas: 1 });
+  });
+
+  it("⚠️ o quadro lido é só o dos candidatos (vivo com o card em Em assinatura), e antes de decidir", async () => {
+    const b = banco({ envelope: vivoComOsCompradores });
+    semearVendaComCompradores(b, "2");
+    // Uma terceira venda com o card ainda em Análise: não é candidata, o quadro dela não é lido.
+    semearVendaComCompradores(b, "3");
+    const card3 = b.linha("temis_trabalhos", "card-3");
+    if (card3) card3.estagio = "analise";
+
+    await reconciliarVendasAssinadas(b.cliente, { gravar: false, limite: 20, moverVendas: true });
+
+    const leiturasDoQuadro = b.consultas.filter(
+      (q) => q.tabela === "temis_envelopes" && q.filtros.some((f) => f.startsWith("in:id=")),
+    );
+    expect(leiturasDoQuadro.map((q) => q.filtros)).toEqual([["in:id=reg-1,reg-2"]]);
+  });
+
+  it("ensaio: planeja o alvo e não escreve nada", async () => {
+    const b = banco({ envelope: vivoComOsCompradores });
+    const r = await reconciliarVendasAssinadas(b.cliente, { gravar: false, limite: 20, moverVendas: false });
+    expect(r).toEqual({ planejadas: 1, puladas: {}, refeitas: 0 });
+    expect(escreveu(b)).toBe(false);
+    expect(b.linha("temis_trabalhos", "card-1")?.estagio).toBe("assinatura");
+  });
+
+  it("D4Sign com a chave desligada: nem candidata (o quadro nem é lido), e nada se move", async () => {
+    const b = banco({ envelope: { ...vivoComOsCompradores, origem: "c2x", provedor: "d4sign" } });
+    const r = await reconciliarVendasAssinadas(b.cliente, { ...GRAVA, moverVendas: false });
+    expect(r).toEqual({ planejadas: 0, puladas: {}, refeitas: 0 });
+    expect(escreveu(b)).toBe(false);
+    expect(b.consultas.some((q) => q.tabela === "temis_envelopes" && q.filtros.some((f) => f.startsWith("in:id=")))).toBe(
+      false,
+    );
+  });
+
+  it("⚠️ D4Sign: a entrada numa rodada e, com o comprador assinado (pelo PERFIL), o Pré-faturamento na seguinte", async () => {
+    const b = banco({
+      card: { estagio: "analise" },
+      envelope: {
+        estado: "parcial",
+        fechado_em: null,
+        origem: "c2x",
+        provedor: "d4sign",
+        signatarios: [
+          { assinado_em: "2026-09-26T11:00:00.000-03:00", chave: "c2x:1", email: "c@x.com", nome: "C", ordem: 1, papel: null, perfil: "Comprador" },
+          { chave: "c2x:2", email: "v@x.com", nome: "V", ordem: 2, papel: null, perfil: "Coordenadora de venda" },
+        ],
+      },
+      venda: { etapa: "contrato" },
+    });
+
+    const entrada = await reconciliarVendasAssinadas(b.cliente, { ...GRAVA, moverVendas: true });
+    expect(entrada).toEqual({ planejadas: 1, puladas: {}, refeitas: 1 });
+    expect(b.linha("temis_trabalhos", "card-1")?.estagio).toBe("assinatura");
+
+    const compradores = await reconciliarVendasAssinadas(b.cliente, { ...GRAVA, moverVendas: true });
+    expect(compradores).toEqual({ planejadas: 1, puladas: {}, refeitas: 1 });
+    expect(b.linha("temis_trabalhos", "card-1")).toMatchObject({
+      arrependimento_inicio: "2026-09-26T11:00:00.000-03:00",
+      estagio: "prazo_legal",
+    });
+    expect(b.linha("hercules_propostas", "venda-1")).toMatchObject({ data_assinatura: null, etapa: "assinatura" });
+  });
+
+  it("venda com pedido de cancelamento aberto: não é candidata, e nada se move", async () => {
+    const b = banco({ envelope: vivoComOsCompradores, venda: { cancelamento_pedido_em: "2026-09-27T12:00:00.000Z" } });
     const r = await reconciliarVendasAssinadas(b.cliente, { ...GRAVA, moverVendas: true });
     expect(r).toEqual({ planejadas: 0, puladas: {}, refeitas: 0 });
     expect(escreveu(b)).toBe(false);

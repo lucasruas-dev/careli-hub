@@ -84,7 +84,7 @@ describe("a venda acompanha o card", () => {
       ...envio,
       autorNome: null,
       de: "assinatura",
-      motivo: "Contrato assinado por todos na Têmis",
+      motivo: "Contrato assinado pelos compradores na Têmis",
       para: "prazo_legal",
     });
     expect(b.linha("hercules_propostas", "venda-vitoria")).toMatchObject({ etapa: "assinatura", etapa_por: null });

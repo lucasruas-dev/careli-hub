@@ -426,13 +426,24 @@ export async function concluirCancelamentoDoCard(
       // ⚠️ CONTRATO ASSINADO NÃO VIRA "INDEFERIDO" (revisão de 18/09/2026). Indeferido é o trabalho
       // RECUSADO; um contrato assinado por todos é o documento que o distrato desfaz, e marcá-lo como
       // recusado reescreveria o que aconteceu. Ele fica onde está, e o recado diz.
+      //
+      // ⚠️ E O PRÉ-FATURAMENTO DEIXOU DE QUERER DIZER "ASSINADO POR TODOS" (02/10/2026): o card entra
+      // nele quando os compradores assinam, com o envelope ainda aberto. Se esta conclusão acabou de
+      // CANCELAR o envelope vivo do contrato (`envelopeCancelado`), ele não estava assinado por todos,
+      // e o card também é indeferido. O sinal é positivo de propósito: sem envelope nenhum (o card
+      // antigo) ou na retomada (`jaEstavaDesfeita`, em que ninguém leu o envelope), o
+      // `contratoAssinado` falso não prova nada, e o card fica, com a frase neutra.
       const podeIndeferir =
         contrato.estagio === "analise" ||
         contrato.estagio === "contrato" ||
-        (contrato.estagio === "assinatura" && !contratoAssinado);
+        (contrato.estagio === "assinatura" && !contratoAssinado) ||
+        (contrato.estagio === "prazo_legal" && envelopeCancelado !== null && !contratoAssinado);
       if (!podeIndeferir) {
+        const etapa = contrato.estagio === "prazo_legal" ? "Pré-faturamento" : "Em assinatura";
         avisos.push(
-          `O card de contrato${doContrato} fica em ${contrato.estagio === "prazo_legal" ? "Pré-faturamento" : "Em assinatura"}: o contrato foi assinado, e o ${nomeDoTipo.toLowerCase()} é o documento que o desfaz.`,
+          contratoAssinado || (contrato.estagio === "prazo_legal" && !jaEstavaDesfeita)
+            ? `O card de contrato${doContrato} fica em ${etapa}: o contrato foi assinado, e o ${nomeDoTipo.toLowerCase()} é o documento que o desfaz.`
+            : `O card de contrato${doContrato} fica em ${etapa}: confira no quadro se ele deve ser indeferido.`,
         );
         continue;
       }

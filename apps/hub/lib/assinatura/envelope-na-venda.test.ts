@@ -69,6 +69,23 @@ const quadro: ItemDoQuadro[] = [
   { assinado_em: "2026-09-26T15:00:00.000-03:00", chave: "c2x:3", email: "", nome: "Vendedora", ordem: 2, papel: "vendedora" },
 ];
 
+/** O mesmo quadro com a compradora ainda por assinar: o envelope vivo que NÃO move o card. */
+const compradoraPorAssinar: ItemDoQuadro[] = quadro.map((item) =>
+  item.papel === "comprador" ? { chave: item.chave, email: item.email, nome: item.nome, ordem: item.ordem, papel: item.papel } : item,
+);
+
+/** Os compradores assinaram; a testemunha não. É o envelope `parcial` que leva o card ao Pré-faturamento. */
+const testemunhaPorAssinar: ItemDoQuadro[] = [
+  ...quadro,
+  { chave: "c2x:4", email: "", nome: "Testemunha", ordem: 3, papel: "testemunha" },
+];
+
+/**
+ * ⚠️ O QUADRO PADRÃO DEPENDE DO ESTADO, E ISSO É DE PROPÓSITO (02/10/2026). Desde que os compradores
+ * levam o card ao Pré-faturamento, o envelope vivo com todos eles assinados ANDA: os testes da entrada
+ * em assinatura usam o quadro com a compradora por assinar, e os do assinado, o quadro inteiro. Quem
+ * testa os compradores passa o quadro por extenso.
+ */
 function mudanca(p: {
   antes?: MudancaDoEnvelope["estadoAntes"];
   depois: MudancaDoEnvelope["estadoDepois"];
@@ -82,7 +99,7 @@ function mudanca(p: {
       origem: "c2x",
       propostaId: "venda-1",
       provedor: "d4sign",
-      signatarios: quadro,
+      signatarios: p.depois === "assinado" ? quadro : compradoraPorAssinar,
       ...p.envelope,
     },
     estadoAntes: p.antes ?? "novo",
@@ -112,7 +129,7 @@ describe("aplicarEnvelopeNaVenda: a D4Sign entrando em assinatura", () => {
     expect(b.linha("hercules_propostas", "venda-1")?.data_assinatura).toBeNull();
   });
 
-  it("aguardando → parcial não é borda: nada", async () => {
+  it("aguardando → parcial com a compradora por assinar não é borda: nada", async () => {
     const b = banco();
     const efeito = await aplicarEnvelopeNaVenda(b.cliente, mudanca({ antes: "aguardando", depois: "parcial" }), LIGADO);
     expect(efeito.card).toBe("nada");
@@ -149,7 +166,7 @@ describe("aplicarEnvelopeNaVenda: a D4Sign entrando em assinatura", () => {
     expect(b.linha("hercules_propostas", "venda-1")?.etapa).toBe("contrato");
   });
 
-  it("a Clicksign em aguardando/parcial não move nada (o envio da Têmis já moveu)", async () => {
+  it("a Clicksign em aguardando/parcial com a compradora por assinar não move nada (o envio da Têmis já moveu)", async () => {
     const b = banco();
     const efeito = await aplicarEnvelopeNaVenda(
       b.cliente,
@@ -242,7 +259,7 @@ describe("aplicarEnvelopeNaVenda: o assinado", () => {
     expect(escreveu(b, "hercules_propostas")).toBe(false);
   });
 
-  it("⚠️ D4Sign: o prazo começa no FECHAMENTO, e o card passa por Em assinatura antes do Pré-faturamento", async () => {
+  it("⚠️ D4Sign: o prazo começa no ÚLTIMO COMPRADOR (desde 02/10/2026), e o card passa por Em assinatura antes do Pré-faturamento", async () => {
     const b = banco({ card: { estagio: "contrato" } });
     const efeito = await aplicarEnvelopeNaVenda(
       b.cliente,
@@ -251,7 +268,8 @@ describe("aplicarEnvelopeNaVenda: o assinado", () => {
     );
     expect(efeito).toMatchObject({ card: "andou", dataDeAssinatura: "gravada" });
     const card = b.linha("temis_trabalhos", "card-1");
-    expect(card).toMatchObject({ arrependimento_inicio: "2026-09-26T15:00:00.000-03:00", estagio: "prazo_legal" });
+    // A compradora (10h), e não o fechamento (15h, a vendedora): a mesma régua da Clicksign.
+    expect(card).toMatchObject({ arrependimento_inicio: "2026-09-26T10:00:00.000-03:00", estagio: "prazo_legal" });
     expect(b.linhas("temis_trabalho_etapas").map((l) => [l.de, l.para, l.origem])).toEqual([
       ["contrato", "assinatura", "espelho_d4sign"],
       ["assinatura", "prazo_legal", "espelho_d4sign"],
@@ -292,9 +310,11 @@ describe("aplicarEnvelopeNaVenda: o assinado", () => {
 
   it("⚠️ 23:30 de Brasília grava o PRÓPRIO dia (o `Z` seria o dia seguinte)", async () => {
     const b = banco({ card: { estagio: "assinatura" }, venda: { etapa: "assinatura" } });
+    // Os compradores assinaram às 23:30 de Brasília (02:30 do dia seguinte em UTC).
+    const tarde = quadro.map((item) => (item.papel === "vendedora" ? item : { ...item, assinado_em: "2026-09-12T02:30:00.000Z" }));
     await aplicarEnvelopeNaVenda(
       b.cliente,
-      mudanca({ antes: "parcial", depois: "assinado", envelope: { fechadoEm: "2026-09-12T02:30:00.000Z" } }),
+      mudanca({ antes: "parcial", depois: "assinado", envelope: { fechadoEm: "2026-09-12T02:30:00.000Z", signatarios: tarde } }),
       LIGADO,
     );
     expect(b.linha("hercules_propostas", "venda-1")?.data_assinatura).toBe("2026-09-11");
@@ -311,13 +331,208 @@ describe("aplicarEnvelopeNaVenda: o assinado", () => {
   });
 });
 
+// ── OS COMPRADORES LEVAM O CARD AO PRÉ-FATURAMENTO (02/10/2026) ─────────────────────────────────
+//
+// Lucas: *"acho que a regra de negocio para andar de em assinatura para pre-faturamento nao esta
+// acontecendo pois eu nao tenho nenhum em pre-faturamento"*. Medido no dia: 12 contratos em assinatura,
+// nenhuma passagem jamais para o Pré-faturamento, 6 com todos os compradores assinados. A regra escrita
+// sempre foi "entra no prazo legal quando os compradores assinam"; a data da venda espera o fechamento.
+
+describe("aplicarEnvelopeNaVenda: os compradores levam o card (o envelope ainda vivo)", () => {
+  it("⚠️ Clicksign parcial com todos os compradores assinados: card no Pré-faturamento, prazo do último comprador, e a data da venda NÃO é gravada", async () => {
+    const b = banco({ card: { estagio: "assinatura" }, venda: { etapa: "assinatura" } });
+    const efeito = await aplicarEnvelopeNaVenda(
+      b.cliente,
+      mudanca({
+        antes: "parcial",
+        depois: "parcial",
+        envelope: { origem: "panteon", provedor: "clicksign", signatarios: testemunhaPorAssinar },
+      }),
+      LIGADO,
+    );
+
+    expect(efeito).toMatchObject({ card: "andou", dataDeAssinatura: "nao_se_aplica" });
+    expect(efeito.motivo).toContain("assinada pelos compradores");
+    expect(b.linha("temis_trabalhos", "card-1")).toMatchObject({
+      // A compradora (10h), e não o cônjuge (9h) nem a vendedora (15h).
+      arrependimento_inicio: "2026-09-26T10:00:00.000-03:00",
+      estagio: "prazo_legal",
+    });
+    expect(b.linhas("temis_trabalho_etapas")).toEqual([
+      expect.objectContaining({ de: "assinatura", origem: "webhook_assinatura", para: "prazo_legal" }),
+    ]);
+    // A venda fica em assinatura (o Hércules não tem pré-faturamento) e SEM data: o contrato não fechou.
+    expect(b.linha("hercules_propostas", "venda-1")).toMatchObject({ data_assinatura: null, etapa: "assinatura" });
+    expect(escreveu(b, "hercules_propostas")).toBe(false);
+  });
+
+  it("um comprador ainda por assinar (o cônjuge): nada, e nada é lido", async () => {
+    const b = banco({ card: { estagio: "assinatura" }, venda: { etapa: "assinatura" } });
+    const conjugePorAssinar = testemunhaPorAssinar.map((item) =>
+      item.papel === "conjuge" ? { chave: item.chave, email: item.email, nome: item.nome, ordem: item.ordem, papel: item.papel } : item,
+    );
+    const efeito = await aplicarEnvelopeNaVenda(
+      b.cliente,
+      mudanca({ antes: "parcial", depois: "parcial", envelope: { provedor: "clicksign", signatarios: conjugePorAssinar } }),
+      LIGADO,
+    );
+    expect(efeito.card).toBe("nada");
+    expect(b.consultas).toEqual([]);
+    expect(b.linha("temis_trabalhos", "card-1")?.estagio).toBe("assinatura");
+  });
+
+  it("⚠️ quadro sem nenhum comprador: nada (não é 'todos os zero assinaram')", async () => {
+    const b = banco({ card: { estagio: "assinatura" }, venda: { etapa: "assinatura" } });
+    const semComprador: ItemDoQuadro[] = [
+      { assinado_em: "2026-09-26T15:00:00.000-03:00", chave: "k1", email: "", nome: "Vendedora", ordem: 1, papel: "vendedora" },
+      { chave: "k2", email: "", nome: "Testemunha", ordem: 2, papel: "testemunha" },
+    ];
+    const efeito = await aplicarEnvelopeNaVenda(
+      b.cliente,
+      mudanca({ antes: "parcial", depois: "parcial", envelope: { provedor: "clicksign", signatarios: semComprador } }),
+      LIGADO,
+    );
+    expect(efeito.card).toBe("nada");
+    expect(b.consultas).toEqual([]);
+  });
+
+  it("⚠️ D4Sign: o comprador é o PERFIL 'Comprador' (papel nulo), e o card passa por Em assinatura antes do Pré-faturamento", async () => {
+    const b = banco({ card: { estagio: "contrato" } });
+    const daD4Sign: ItemDoQuadro[] = [
+      { assinado_em: "2026-09-26T11:00:00.000-03:00", chave: "c2x:1", email: "", nome: "C", ordem: 1, papel: null, perfil: "Comprador" },
+      { chave: "c2x:2", email: "", nome: "V", ordem: 2, papel: null, perfil: "Coordenadora de venda" },
+    ];
+    const efeito = await aplicarEnvelopeNaVenda(
+      b.cliente,
+      mudanca({ antes: "aguardando", depois: "parcial", envelope: { signatarios: daD4Sign } }),
+      LIGADO,
+    );
+
+    expect(efeito).toMatchObject({ card: "andou", dataDeAssinatura: "nao_se_aplica" });
+    expect(b.linha("temis_trabalhos", "card-1")).toMatchObject({
+      arrependimento_inicio: "2026-09-26T11:00:00.000-03:00",
+      estagio: "prazo_legal",
+    });
+    expect(b.linhas("temis_trabalho_etapas").map((l) => [l.de, l.para, l.origem])).toEqual([
+      ["contrato", "assinatura", "espelho_d4sign"],
+      ["assinatura", "prazo_legal", "espelho_d4sign"],
+    ]);
+    expect(b.linha("hercules_propostas", "venda-1")).toMatchObject({ data_assinatura: null, etapa: "assinatura" });
+  });
+
+  it("D4Sign com o comprador 'Sem perfil': ninguém é comprador, e o card espera o fechamento", async () => {
+    const b = banco({ card: { estagio: "assinatura" }, venda: { etapa: "assinatura" } });
+    const semPerfil: ItemDoQuadro[] = [
+      { assinado_em: "2026-09-26T11:00:00.000-03:00", chave: "c2x:1", email: "", nome: "C", ordem: 1, papel: null, perfil: "Sem perfil" },
+      { chave: "c2x:2", email: "", nome: "V", ordem: 2, papel: null, perfil: "Coordenadora de venda" },
+    ];
+    const efeito = await aplicarEnvelopeNaVenda(
+      b.cliente,
+      mudanca({ antes: "parcial", depois: "parcial", envelope: { signatarios: semPerfil } }),
+      LIGADO,
+    );
+    expect(efeito.card).toBe("nada");
+    expect(b.consultas).toEqual([]);
+  });
+
+  it("cessão parcial com os compradores assinados: nada (cessão só conclui no fechamento, e não move a venda)", async () => {
+    const b = banco({
+      card: { estagio: "assinatura" },
+      outros: [
+        { estagio: "assinatura", estagio_desde: "2026-09-22T12:00:00.000Z", id: "card-cessao", proposta_id: "venda-1", tipo: "cessao", workspace_id: "careli" },
+      ],
+      venda: { etapa: "assinatura" },
+    });
+    const efeito = await aplicarEnvelopeNaVenda(
+      b.cliente,
+      mudanca({
+        antes: "parcial",
+        depois: "parcial",
+        envelope: { finalidade: "cessao", provedor: "clicksign", signatarios: testemunhaPorAssinar },
+      }),
+      LIGADO,
+    );
+    expect(efeito.card).toBe("nada");
+    expect(b.consultas).toEqual([]);
+    expect(b.linha("temis_trabalhos", "card-cessao")?.estagio).toBe("assinatura");
+    expect(b.linha("temis_trabalhos", "card-1")?.estagio).toBe("assinatura");
+  });
+
+  it("⚠️ o envelope fecha DEPOIS: o card já estava, a data da venda é gravada e o início dos 7 dias NÃO muda", async () => {
+    const b = banco({ card: { estagio: "assinatura" }, venda: { etapa: "assinatura" } });
+    await aplicarEnvelopeNaVenda(
+      b.cliente,
+      mudanca({ antes: "parcial", depois: "parcial", envelope: { provedor: "clicksign", signatarios: testemunhaPorAssinar } }),
+      LIGADO,
+    );
+    const desde = b.linha("temis_trabalhos", "card-1")?.estagio_desde;
+    expect(b.linha("hercules_propostas", "venda-1")?.data_assinatura).toBeNull();
+
+    // A testemunha assina no dia seguinte, e o envelope fecha.
+    const todos = testemunhaPorAssinar.map((item) =>
+      item.papel === "testemunha" ? { ...item, assinado_em: "2026-09-27T09:00:00.000-03:00" } : item,
+    );
+    const fechamento = await aplicarEnvelopeNaVenda(
+      b.cliente,
+      mudanca({
+        antes: "parcial",
+        depois: "assinado",
+        envelope: { fechadoEm: "2026-09-27T09:00:00.000-03:00", provedor: "clicksign", signatarios: todos },
+      }),
+      LIGADO,
+    );
+
+    expect(fechamento).toMatchObject({ card: "ja_estava", dataDeAssinatura: "gravada" });
+    const card = b.linha("temis_trabalhos", "card-1");
+    expect(card).toMatchObject({ arrependimento_inicio: "2026-09-26T10:00:00.000-03:00", estagio: "prazo_legal" });
+    expect(card?.estagio_desde).toBe(desde);
+    expect(b.linhas("temis_trabalho_etapas")).toHaveLength(1);
+    // O dia do mesmo instante que começou o prazo (a compradora, 26/09), gravado só agora.
+    expect(b.linha("hercules_propostas", "venda-1")?.data_assinatura).toBe("2026-09-26");
+  });
+
+  it("o mesmo 'compradores assinaram' aplicado duas vezes: a segunda não move nem regrava nada", async () => {
+    const b = banco({ card: { estagio: "assinatura" }, venda: { etapa: "assinatura" } });
+    const m = mudanca({ antes: "parcial", depois: "parcial", envelope: { provedor: "clicksign", signatarios: testemunhaPorAssinar } });
+    await aplicarEnvelopeNaVenda(b.cliente, m, LIGADO);
+    const segunda = await aplicarEnvelopeNaVenda(b.cliente, m, LIGADO);
+    expect(segunda).toMatchObject({ card: "ja_estava", dataDeAssinatura: "nao_se_aplica" });
+    expect(b.linhas("temis_trabalho_etapas")).toHaveLength(1);
+  });
+
+  it("pedido de cancelamento aberto: os compradores assinados não empurram a venda", async () => {
+    const b = banco({
+      card: { estagio: "assinatura" },
+      venda: { cancelamento_pedido_em: "2026-09-25T12:00:00.000Z", etapa: "assinatura" },
+    });
+    const efeito = await aplicarEnvelopeNaVenda(
+      b.cliente,
+      mudanca({ antes: "parcial", depois: "parcial", envelope: { provedor: "clicksign", signatarios: testemunhaPorAssinar } }),
+      LIGADO,
+    );
+    expect(efeito.card).toBe("nada");
+    expect(efeito.motivo).toContain("pedido de cancelamento");
+    expect(escreveu(b, "temis_trabalhos")).toBe(false);
+  });
+});
+
 describe("as regras puras", () => {
-  it("inicioDoArrependimento: D4Sign é sempre o fechamento; Clicksign, o último comprador ou cônjuge", () => {
-    expect(inicioDoArrependimento("d4sign", quadro, "2026-09-26T15:00:00.000-03:00")).toBe("2026-09-26T15:00:00.000-03:00");
-    expect(inicioDoArrependimento("d4sign", quadro, null)).toBeNull();
+  it("⚠️ inicioDoArrependimento: o último comprador nos DOIS provedores (02/10/2026); só sem comprador, o fechamento", () => {
+    expect(inicioDoArrependimento("d4sign", quadro, "2026-09-26T15:00:00.000-03:00")).toBe("2026-09-26T10:00:00.000-03:00");
+    // Envelope ainda vivo (sem fechamento): os compradores bastam.
+    expect(inicioDoArrependimento("d4sign", quadro, null)).toBe("2026-09-26T10:00:00.000-03:00");
     expect(inicioDoArrependimento("clicksign", quadro, "2026-09-26T15:00:00.000-03:00")).toBe("2026-09-26T10:00:00.000-03:00");
     expect(inicioDoArrependimento("clicksign", [], "2026-09-26T15:00:00.000-03:00")).toBe("2026-09-26T15:00:00.000-03:00");
     expect(inicioDoArrependimento("clicksign", [], "ontem")).toBeNull();
+    // D4Sign: o papel vem nulo, e o comprador é o PERFIL "Comprador".
+    const daD4Sign: ItemDoQuadro[] = [
+      { assinado_em: "2026-09-26T11:00:00.000-03:00", chave: "c2x:1", email: "", nome: "C", ordem: 1, papel: null, perfil: "Comprador" },
+      { assinado_em: "2026-09-26T16:00:00.000-03:00", chave: "c2x:2", email: "", nome: "V", ordem: 2, papel: null, perfil: "Coordenadora de venda" },
+    ];
+    expect(inicioDoArrependimento("d4sign", daD4Sign, "2026-09-26T16:00:00.000-03:00")).toBe("2026-09-26T11:00:00.000-03:00");
+    // "Sem perfil" não é comprador: sem comprador marcado, o fechamento.
+    const semPerfil = daD4Sign.map((item) => ({ ...item, perfil: "Sem perfil" }));
+    expect(inicioDoArrependimento("d4sign", semPerfil, "2026-09-26T16:00:00.000-03:00")).toBe("2026-09-26T16:00:00.000-03:00");
   });
 
   it("diaDaAssinatura: o dia em Brasília, nunca o slice do texto", () => {

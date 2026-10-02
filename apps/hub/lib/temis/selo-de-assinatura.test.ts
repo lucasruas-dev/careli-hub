@@ -26,7 +26,7 @@ describe("contagemDoSelo", () => {
         },
         undefined,
       ),
-    ).toEqual({ assinaram: 1, conviteNaoEntregue: false, estado: "parcial", total: 3 });
+    ).toEqual({ assinaram: 1, compradores: null, conviteNaoEntregue: false, estado: "parcial", total: 3 });
   });
 
   it("Clicksign: vale o MAIOR entre marcas e histórico, nunca a soma", () => {
@@ -61,6 +61,68 @@ describe("contagemDoSelo", () => {
 
   it("quadro vazio: sem selo", () => {
     expect(contagemDoSelo({ estado: "aguardando", signatarios: [] }, undefined)).toBeNull();
+  });
+});
+
+// ── OS COMPRADORES NO SELO (02/10/2026) ─────────────────────────────────────────────────────────
+//
+// Lucas: *"vamos mudar esse 3/11 eu preciso ver somente dos compradores. se tiver um comprador 1/1 ou
+// 0/1 se tiver mais a mesma logica"*. A conta sai do QUADRO, pela régua da porta que move o card.
+
+describe("contagemDoSelo: os compradores", () => {
+  const assinou = { assinado_em: "2026-10-01T10:00:00-03:00" };
+
+  it("Clicksign: comprador e cônjuge contam; vendedora, testemunha e coordenadora não", () => {
+    const r = contagemDoSelo(
+      {
+        estado: "parcial",
+        signatarios: [
+          item("k1", { papel: "comprador", ...assinou }),
+          item("k2", { papel: "conjuge" }),
+          item("k3", { papel: "vendedora", ...assinou }),
+          item("k4", { papel: "testemunha", ...assinou }),
+          item("k5", { papel: "coordenadora" }),
+        ],
+      },
+      undefined,
+    );
+    expect(r).toMatchObject({ assinaram: 3, compradores: { assinaram: 1, total: 2 }, total: 5 });
+  });
+
+  it("⚠️ D4Sign (papel nulo): o comprador é o perfil 'Comprador'; 'Sem perfil' não conta", () => {
+    const r = contagemDoSelo(
+      {
+        estado: "parcial",
+        signatarios: [
+          item("c2x:1", { perfil: "Comprador", ...assinou }),
+          item("c2x:2", { perfil: "Sem perfil", ...assinou }),
+          item("c2x:3", { perfil: "Coordenadora de venda" }),
+        ],
+      },
+      undefined,
+    );
+    expect(r?.compradores).toEqual({ assinaram: 1, total: 1 });
+  });
+
+  it("sem comprador marcado no quadro: `compradores` nulo (a tela mostra o total)", () => {
+    const r = contagemDoSelo({ estado: "parcial", signatarios: [item("a", assinou), item("b")] }, undefined);
+    expect(r).toMatchObject({ assinaram: 1, compradores: null, total: 2 });
+  });
+
+  it("envelope assinado: todos os compradores assinaram, mesmo sem a marca", () => {
+    const r = contagemDoSelo(
+      { estado: "assinado", signatarios: [item("k1", { papel: "comprador" }), item("k2", { papel: "vendedora" })] },
+      undefined,
+    );
+    expect(r?.compradores).toEqual({ assinaram: 1, total: 1 });
+  });
+
+  it("marca ilegível não conta (a mesma régua da porta: o selo nunca diz 1/1 num card que não anda)", () => {
+    const r = contagemDoSelo(
+      { estado: "parcial", signatarios: [item("k1", { assinado_em: "ontem", papel: "comprador" })] },
+      undefined,
+    );
+    expect(r?.compradores).toEqual({ assinaram: 0, total: 1 });
   });
 });
 
@@ -109,7 +171,13 @@ describe("os filtros do selo no Board (contarAssinaturasDasPropostas)", () => {
       }),
     ]);
     const contagens = await contarAssinaturasDasPropostas(banco.cliente, ["p-1"]);
-    expect(contagens.get("p-1")).toEqual({ assinaram: 1, conviteNaoEntregue: false, estado: "aguardando", total: 2 });
+    expect(contagens.get("p-1")).toEqual({
+      assinaram: 1,
+      compradores: null,
+      conviteNaoEntregue: false,
+      estado: "aguardando",
+      total: 2,
+    });
   });
 
   it("o envelope da D4Sign fica FORA do histórico de eventos (só a Clicksign tem webhook guardado)", async () => {
@@ -124,5 +192,35 @@ describe("os filtros do selo no Board (contarAssinaturasDasPropostas)", () => {
     ]);
     await contarAssinaturasDasPropostas(comClicksign.cliente, ["p-1"]);
     expect(comClicksign.consultas.filter((c) => c.tabela === "temis_assinatura_eventos").length).toBeGreaterThan(0);
+  });
+});
+
+// ── O SELO E A REVISÃO DE 02/10/2026 ────────────────────────────────────────
+describe("contagemDoSelo: o que a revisão de 02/10/2026 pediu", () => {
+  const assinou = { assinado_em: "2026-10-01T10:00:00-03:00" };
+
+  it("envelope de finalidade nula não conta compradores: ele não move card nenhum", () => {
+    const r = contagemDoSelo(
+      { estado: "parcial", finalidade: null, signatarios: [item("k1", { papel: "comprador", ...assinou }), item("k2")] },
+      undefined,
+    );
+    expect(r?.compradores).toBeNull();
+    expect(r).toMatchObject({ assinaram: 1, total: 2 });
+  });
+
+  it("envelope de contrato conta os compradores", () => {
+    const r = contagemDoSelo(
+      { estado: "parcial", finalidade: "contrato", signatarios: [item("k1", { papel: "comprador", ...assinou }), item("k2")] },
+      undefined,
+    );
+    expect(r?.compradores).toEqual({ assinaram: 1, total: 1 });
+  });
+
+  it("contrato fechado não acende o convite devolvido, nem com bounce no histórico", () => {
+    const r = contagemDoSelo(
+      { estado: "assinado", signatarios: [item("k1", { papel: "comprador" }), item("k2")] },
+      { assinaram: 2, conviteNaoEntregue: true },
+    );
+    expect(r?.conviteNaoEntregue).toBe(false);
   });
 });

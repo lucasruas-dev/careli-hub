@@ -1072,6 +1072,26 @@ describe("concluir o distrato", () => {
     expect(escritas(banco)).toEqual([]);
   });
 
+  // ⚠️ DESDE 02/10/2026 O CARD ENTRA NO PRÉ-FATURAMENTO PELOS COMPRADORES, com o envelope aberto. Se a
+  // conclusão cancela esse envelope (não estava assinado por todos), o card de contrato é indeferido
+  // como seria em Em assinatura, e o recado não diz "contrato assinado".
+  it("card em Pré-faturamento com o envelope ainda aberto: o envelope morre e o card é indeferido", async () => {
+    silenciar();
+    const banco = distratoImportado({
+      cardDeContrato: { estagio: "prazo_legal" },
+      envelopes: [envelope({ estado: "parcial" })],
+    });
+    const { porta } = portaDeTeste({ get: [{ data: { attributes: { status: "running" } } }, RELEITURA_CANCELED] });
+
+    const r = await concluirCancelamentoDoCard(banco.cliente, pedido({ declaracoes: DECLAROU_TUDO }), porta);
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.envelopeCancelado).toBe("env-vivo");
+    expect(banco.linha("temis_trabalhos", "card-contrato")?.estagio).toBe("indeferido");
+    expect(r.avisos.join(" ")).not.toContain("o contrato foi assinado");
+  });
+
   it("card de contrato em Pré-faturamento (contrato assinado): fica onde está, e o recado diz", async () => {
     const banco = distratoImportado({ cardDeContrato: { estagio: "prazo_legal" } });
 

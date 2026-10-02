@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { TelaDeTrabalho } from "@/modules/temis/blocks/trabalho/tela-de-trabalho";
 
 import { contratoVigente } from "@/lib/temis/contrato-guardado";
+import { seloDeAssinaturaDoCard } from "@/lib/temis/selo-do-card";
 import {
   type EstagioDoTrabalho,
   type TipoDeTrabalho,
@@ -81,8 +82,16 @@ type TrabalhoDaTela = {
    * confere nada. Este bloco chegou a chamar o terceiro de `algumNaoEntregue` enquanto o servidor
    * mandava `conviteNaoEntregue` — typecheck limpo dos dois lados, e o selo vermelho do convite
    * devolvido simplesmente nunca acendia, que é a única coisa que o Lucas pediu para o card gritar.
+   *
+   * ⚠️ `compradores` (02/10/2026) É OPCIONAL PELO MESMO MOTIVO: sem ele, o card mostra o total, como
+   * antes. Ver `seloDeAssinaturaDoCard` (`lib/temis/selo-do-card.ts`).
    */
-  assinaturas?: null | { assinaram: number; conviteNaoEntregue: boolean; total: number };
+  assinaturas?: null | {
+    assinaram: number;
+    compradores?: null | { assinaram: number; total: number };
+    conviteNaoEntregue: boolean;
+    total: number;
+  };
   atividadesFeitas: string[];
   canal: "coordenador" | "hercules" | "iris";
   clienteCpf: null | string;
@@ -545,6 +554,8 @@ function Card({
   const prazo = situacaoDoPrazo(trabalho);
   // A promessa de ponta a ponta: "quando o contrato fica pronto?", que é a pergunta do comercial.
   const emissao = prazoDeEmissao(trabalho);
+  // O selo de assinatura desta etapa: só os compradores em "Em assinatura", o contrato inteiro depois.
+  const selo = seloDeAssinaturaDoCard(trabalho.estagio, trabalho.assinaturas);
 
   /**
    * Qual das duas ações este card oferece — `null` quando nenhuma.
@@ -680,18 +691,23 @@ function Card({
             ⚠️ O VERDE É O QUE O CARD JÁ USA para "Contrato gerado" (`text-emerald-700`), e o
             vermelho o que o quadro já usa para erro (`text-red-600`, o mesmo do prazo estourado).
             Nenhum tom novo: o rosa deste card já significa OUTRA coisa — o tipo que desfaz a
-            venda (cancelamento, distrato). */}
-        {trabalho.assinaturas ? (
+            venda (cancelamento, distrato).
+
+            ⚠️ EM "EM ASSINATURA" O NÚMERO É SÓ DOS COMPRADORES; NO PRÉ-FATURAMENTO, O CONTRATO
+            INTEIRO. Lucas (02/10/2026): *"vamos mudar esse 3/11 eu preciso ver somente dos
+            compradores"* e *"quando mover para o pre-faturamento mostrar o quadro real de
+            assinatura"*. São os compradores que levam o card adiante; depois, o que falta é o
+            resto do contrato. A escolha mora em `seloDeAssinaturaDoCard`, com teste. O vermelho do
+            convite devolvido vale para QUALQUER pessoa do quadro, nas duas etapas. */}
+        {trabalho.assinaturas && selo ? (
           <p className="mt-1.5 flex items-center gap-1.5 text-[0.7rem] font-semibold">
             <span
               className="flex items-center gap-1 text-emerald-700 dark:text-emerald-300"
-              title={`${trabalho.assinaturas.assinaram} de ${trabalho.assinaturas.total} assinaram.`}
+              title={selo.titulo}
             >
               <PenLine aria-hidden="true" className="shrink-0" size={11} />
-              <span className="tabular-nums">
-                {trabalho.assinaturas.assinaram}/{trabalho.assinaturas.total}
-              </span>
-              assinaram
+              <span className="tabular-nums">{selo.numero}</span>
+              {selo.palavra}
             </span>
 
             {trabalho.assinaturas.conviteNaoEntregue ? (

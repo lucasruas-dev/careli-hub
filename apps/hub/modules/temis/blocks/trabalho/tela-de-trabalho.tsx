@@ -1156,10 +1156,33 @@ export function TelaDeTrabalho({
               09/09/2026). Quem confere o envelope é o servidor; a tela oferece e aceita o não.
 
               ⚠️ E O BOTÃO ENTRA ABAIXO DO PRAZO, sem substituir nada: quem abre o card continua
-              vendo em que dia dos sete ele está, que é o motivo de a etapa existir. */}
+              vendo em que dia dos sete ele está, que é o motivo de a etapa existir.
+
+              ⚠️ E O PAINEL DA ASSINATURA VEM JUNTO ENQUANTO O ENVELOPE ESTIVER VIVO (02/10/2026). O
+              card passou a chegar aqui quando os COMPRADORES assinam, com a testemunha ou a
+              vendedora ainda por assinar. Lucas: *"quando mover para o pre-faturamento mostrar o
+              quadro real de assinatura"*. Sem o painel, quem falta, o reenvio do convite e a troca
+              de e-mail ficavam só na etapa de trás, e o Faturado não sai sem o envelope fechado
+              (`marcarAtividade`). Com o envelope assinado, ou sem envelope, o painel não aparece:
+              não há mais o que cobrar de ninguém. */}
           {card.estagio === "prazo_legal" ? (
             <div className="grid max-w-3xl gap-3">
               <EtapaDoPrazoLegal inicio={card.arrependimento_inicio} />
+              {ehContrato && assinatura && envelopeVivo && envelopeVivo.estado !== "assinado" ? (
+                <PainelDaAssinatura
+                  aoRecarregar={carregar}
+                  assinatura={assinatura}
+                  desde={card.estagio_desde}
+                  envelopeVivo={envelopeVivo}
+                />
+              ) : null}
+              {/* ⚠️ SEM PAINEL (a D4Sign, que o diário não narra), A LINHA DO ENVELOPE DIZ O QUE FALTA
+                  (revisão de 02/10/2026): a mesma reserva da etapa Em assinatura. Sem ela, o card da
+                  D4Sign no Pré-faturamento não mostrava que o contrato ainda está aberto, e a trava
+                  do Faturado recusava sem a tela explicar. */}
+              {ehContrato && !assinatura && envelopeVivo && envelopeVivo.estado !== "assinado" ? (
+                <LinhaDoEnvelope desde={card.estagio_desde} envelopeVivo={envelopeVivo} />
+              ) : null}
               {/* ⚠️ PELA MESMA RAZÃO DA ETAPA DE CIMA: o prazo de arrependimento é contado em cima
                   de um contrato que alguém pode precisar reler, e daqui em diante a tela também
                   ficava sem caminho para o PDF. Hoje não há card de contrato nesta etapa (medido em
