@@ -3,6 +3,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 import {
   AlertTriangle,
+  CalendarDays,
   CalendarRange,
   RefreshCw,
   Tags,
@@ -234,6 +235,20 @@ function Bloco({
         )}
       </Secao>
 
+      {/* ── Dias de vencimento (0209), só leitura ───────────────────────────── */}
+      {bloco.diasDeVencimento ? (
+        <Secao
+          contagem={bloco.diasDeVencimento.cadastrado ? bloco.diasDeVencimento.dias.length : 0}
+          descricao="Os dias que a proposta oferece para a parcela."
+          icone={CalendarDays}
+          plural="dias"
+          singular="dia"
+          titulo="Dias de vencimento"
+        >
+          <DiasDeVencimento dias={bloco.diasDeVencimento} />
+        </Secao>
+      ) : null}
+
       {/* ── Faixas de prazo ────────────────────────────────────────────────── */}
       {bloco.faixas.length > 0 ? (
         <Secao
@@ -264,6 +279,37 @@ function Bloco({
             ))}
           </ul>
         </Secao>
+      ) : null}
+    </div>
+  );
+}
+
+function DiasDeVencimento({ dias }: { dias: NonNullable<BlocoDePoliticas["diasDeVencimento"]> }) {
+  // ⚠️ SEM CADASTRO, A TELA DIZ O QUE A PROPOSTA FAZ, e não "nenhum dia": a proposta continua
+  // oferecendo 10 e 20, e um portal que afirmasse "sem dia de vencimento" contradiria a proposta.
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {dias.dias.map((dia) => (
+        <span
+          className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold tabular-nums ${
+            dias.cadastrado
+              ? "border border-ink/30 bg-black/[0.045] text-ink dark:bg-white/[0.07]"
+              : "border border-dashed border-line text-ink-muted"
+          }`}
+          key={dia}
+          title={
+            dias.origem === "pai"
+              ? "Herdado do empreendimento principal"
+              : dias.cadastrado
+                ? undefined
+                : "Padrão, sem dias cadastrados"
+          }
+        >
+          dia {dia}
+        </span>
+      ))}
+      {!dias.cadastrado ? (
+        <span className="text-xs text-ink-muted">padrão, sem dias cadastrados</span>
       ) : null}
     </div>
   );

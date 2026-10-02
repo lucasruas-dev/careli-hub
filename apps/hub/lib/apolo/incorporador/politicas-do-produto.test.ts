@@ -636,3 +636,52 @@ describe("lerPlanosDoPanteon (a Mesa de Venda)", () => {
     await expect(lerPlanosDoPanteon(cliente, ["39"])).rejects.toThrow(/anuais_valor/);
   });
 });
+
+// OS DIAS DE VENCIMENTO NO PORTAL (Lucas, 02/10/2026): só leitura, com a mesma herança do Apolo.
+describe("os dias de vencimento do produto", () => {
+  it("com cadastro, sem cadastro, herdado do pai, e nulo quando a leitura falhou", () => {
+    const filho = produto({ enterpriseId: "37", paiEnterpriseId: "35" });
+
+    const proprio = montarPoliticasDoProduto({
+      ...vazio,
+      diasDeVencimento: [{ dias: [5, 15], enterpriseId: "37" }],
+      produtos: [filho],
+    });
+    expect(proprio.blocos[0]?.diasDeVencimento).toEqual({
+      cadastrado: true,
+      dias: [5, 15],
+      origem: "filho",
+    });
+
+    const herdado = montarPoliticasDoProduto({
+      ...vazio,
+      diasDeVencimento: [{ dias: [25], enterpriseId: "35" }],
+      produtos: [filho],
+    });
+    expect(herdado.blocos[0]?.diasDeVencimento).toEqual({
+      cadastrado: true,
+      dias: [25],
+      origem: "pai",
+    });
+
+    const semCadastro = montarPoliticasDoProduto({ ...vazio, diasDeVencimento: [], produtos: [filho] });
+    expect(semCadastro.blocos[0]?.diasDeVencimento).toEqual({
+      cadastrado: false,
+      dias: [10, 20],
+      origem: null,
+    });
+
+    // ⚠️ Falha de leitura não vira "sem cadastro": a seção some.
+    const falhou = montarPoliticasDoProduto({ ...vazio, diasDeVencimento: null, produtos: [filho] });
+    expect(falhou.blocos[0]?.diasDeVencimento).toBeNull();
+  });
+
+  it("produtos com dias diferentes não se juntam no mesmo bloco", () => {
+    const r = montarPoliticasDoProduto({
+      ...vazio,
+      diasDeVencimento: [{ dias: [5], enterpriseId: "36" }],
+      produtos: [produto({ enterpriseId: "36" }), produto({ enterpriseId: "37" })],
+    });
+    expect(r.blocos).toHaveLength(2);
+  });
+});

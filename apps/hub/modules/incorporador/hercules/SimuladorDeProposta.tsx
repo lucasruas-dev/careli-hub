@@ -37,6 +37,7 @@ import { pisoDaEntradaNoPrazo } from "@/lib/hercules/faixa-do-plano";
 import type { FaixaDePrazo } from "@/lib/hercules/premissa-do-prazo";
 import { planoEfetivo } from "@/lib/hercules/premissa-efetiva";
 import type { PlanoDaVenda } from "@/lib/hercules/fluxo-de-venda";
+import { type DiasDeVencimento, primeiroDia } from "@/lib/hercules/dias-de-vencimento";
 import { DIAS_DE_VENCIMENTO, ENTRADA_VEZES_MAXIMA } from "@/lib/hercules/proposta";
 import {
   lerPercentualDigitado,
@@ -196,7 +197,7 @@ export type CondicoesDaProposta = {
    * `ajusteFrenteAoPlano`, em `tabela-do-lote.ts`.
    */
   descontoDoPlanoPercentual: number;
-  /** 10 ou 20, os dois que a cobrança da casa usa. */
+  /** Um dos dias cadastrados no empreendimento (10 ou 20 sem cadastro); de 1 a 28 na regra. */
   diaDeVencimento: number;
   /** Os valores de cada parcela da entrada, quando montados à mão. Nulo = partes iguais. */
   entradaParcelas: null | number[];
@@ -264,6 +265,7 @@ export type CondicoesDaProposta = {
 export function SimuladorDeProposta({
   aoMudarCondicoes,
   previa,
+  diasDeVencimento = null,
   entradaMinimaPercentual = null,
   faixasDePrazo,
   planos: planosRecebidos,
@@ -307,6 +309,15 @@ export function SimuladorDeProposta({
    * os outros exigem 10%, sem duas versoes da regra.
    */
   entradaMinimaPercentual?: null | number;
+  /**
+   * Os dias de vencimento DESTE empreendimento, da aba Política Comercial (migration 0209).
+   *
+   * Viram os atalhos do bloco Cobrança, e o primeiro é o dia que a proposta já nasce marcando.
+   * Ausente ou nulo (a leitura falhou, ou quem chama não manda) = os 10 e 20 de sempre, SEM aviso.
+   * Com `cadastrado: false` = os mesmos 10 e 20, COM o aviso de que falta cadastrar (Lucas,
+   * 02/10/2026: "só avisa"). São atalho, não trava: a data da primeira parcela continua livre.
+   */
+  diasDeVencimento?: DiasDeVencimento | null;
   /**
    * As faixas de prazo cadastradas para ESTE empreendimento.
    *
@@ -419,11 +430,18 @@ export function SimuladorDeProposta({
   // ⚠️ OS DOIS CAMPOS DA COBRANÇA VIVEM AQUI MESMO SEM A PROP. Estado condicional não existe em
   // React, e tentar criá-lo com um hook dentro de `if` quebra a ordem dos hooks. Sem a prop eles
   // simplesmente não são desenhados nem lidos por ninguém.
-  const [diaDeVencimento, setDiaDeVencimento] = useState<number>(
-    DIAS_DE_VENCIMENTO[0],
+  // OS ATALHOS SÃO OS DIAS DO EMPREENDIMENTO, e o primeiro é o que nasce marcado. Sem a prop (a Mesa,
+  // o espelho), os 10 e 20 de sempre.
+  const atalhosDeVencimento: readonly number[] =
+    diasDeVencimento && diasDeVencimento.dias.length > 0
+      ? diasDeVencimento.dias
+      : DIAS_DE_VENCIMENTO;
+  const faltaCadastrarOsDias = diasDeVencimento?.cadastrado === false;
+  const [diaDeVencimento, setDiaDeVencimento] = useState<number>(() =>
+    primeiroDia({ dias: [...atalhosDeVencimento] }),
   );
   const [primeiraParcelaEm, setPrimeiraParcelaEm] = useState<string>(() =>
-    proximoVencimento(new Date().toISOString(), DIAS_DE_VENCIMENTO[0]),
+    proximoVencimento(new Date().toISOString(), primeiroDia({ dias: [...atalhosDeVencimento] })),
   );
   // ⚠️ O AJUSTE É ESTADO PRÓPRIO, e o preço da proposta passa a ser DERIVADO dele. Antes o campo do
   // lote guardava o valor final e mais nada: depois de salvar, ninguém sabia se R$ 142.500 tinham
@@ -1933,8 +1951,8 @@ export function SimuladorDeProposta({
             >
               Dia de vencimento
             </div>
-            <div style={{ display: "flex", gap: 6 }}>
-              {DIAS_DE_VENCIMENTO.map((d) => (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {atalhosDeVencimento.map((d) => (
                 <button
                   key={d}
                   onClick={() => {
@@ -1965,6 +1983,18 @@ export function SimuladorDeProposta({
                 </button>
               ))}
             </div>
+            {/* ⚠️ SÓ AVISA, NÃO TRAVA (Lucas, 02/10/2026). Os 10 e 20 continuam oferecidos, e a
+                proposta sai normalmente; o aviso existe para alguém cadastrar os dias de verdade na
+                aba Políticas comerciais do empreendimento. */}
+            {faltaCadastrarOsDias ? (
+              <div
+                role="note"
+                style={{ color: T.muted, fontSize: 11, marginTop: 6 }}
+                title="Cadastre os dias na aba Políticas comerciais do empreendimento, no Apolo."
+              >
+                ⚠ Dias de vencimento não cadastrados no empreendimento
+              </div>
+            ) : null}
 
             <label style={{ display: "grid", gap: 3, marginTop: 10 }}>
               <span style={{ color: T.muted, fontSize: 11, fontWeight: 650 }}>

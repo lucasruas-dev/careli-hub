@@ -26,13 +26,15 @@ import {
   carregarCadastroDeEmpreendimentos,
   type LinhaDoCadastro,
 } from "@/lib/hercules/cadastro";
+import { lerDiasCadastrados } from "@/lib/hercules/dias-de-vencimento-server";
 import { lerFaixasDoPanteon } from "@/lib/hercules/planos-do-panteon";
 import {
   espelhosADescartar,
   semEspelhoDuplicado,
 } from "@/lib/hercules/sem-espelho-duplicado";
 
-// AS POLÍTICAS COMERCIAIS DE UM PRODUTO NO PORTAL — planos, faixas de prazo e categorias, SÓ LEITURA.
+// AS POLÍTICAS COMERCIAIS DE UM PRODUTO NO PORTAL — planos, faixas de prazo, categorias e dias de
+// vencimento (0209), SÓ LEITURA.
 //
 // Lucas (16/09/2026): o portal da Cecílio Rocha vira réplica do Hércules operada pelo time deles, e
 // os planos de pagamento continuam com a Careli, cadastrados no Apolo, mas VISÍVEIS dentro de
@@ -227,8 +229,19 @@ export async function GET(request: Request) {
       }
     }
 
+    // ⚠️ OS DIAS DE VENCIMENTO NÃO DERRUBAM A ABA, ao contrário das quatro leituras de cima: eles
+    // são uma seção a mais, e a leitura que falha (inclusive com a migration 0209 pendente) só faz a
+    // seção não aparecer. Nulo aqui nunca vira "não cadastrado" na tela.
+    const lidoDosDias = await lerDiasCadastrados(supabase, idsDaConfiguracao).catch(
+      (erro: unknown) => ({ colunaAusente: false, erro: String(erro), ok: false }) as const,
+    );
+    if (!lidoDosDias.ok && !lidoDosDias.colunaAusente) {
+      console.error("[incorporador/produto/politicas] dias de vencimento", lidoDosDias.erro);
+    }
+
     const data: PoliticasDoProduto = montarPoliticasDoProduto({
       categorias,
+      diasDeVencimento: lidoDosDias.ok ? lidoDosDias.linhas : null,
       faixas,
       planosDoC2x,
       planosDoPanteon,
