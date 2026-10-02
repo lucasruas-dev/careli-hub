@@ -56,6 +56,8 @@ export type CobrancaDoAsaas = {
   dueDate?: null | string;
   externalReference?: null | string;
   id?: null | string;
+  /** Preenchido pelo Asaas quando a cobrança é paga COM multa e juros: o valor de face. */
+  originalValue?: null | number | string;
   paymentDate?: null | string;
   status?: null | string;
   value?: null | number | string;
@@ -136,7 +138,10 @@ export function pagamentoDoAsaas(
     sequencia: lida.sequencia,
     situacao,
     unidade: lida.unidade,
-    valor_cobrado: valor,
+    // ⚠️ PAGO COM ATRASO, O `value` DO ASAAS JÁ VEM COM A MULTA E OS JUROS (desde 02/10/2026 toda
+    // cobrança sai com 2% e 1% ao mês). O valor de face passa para `originalValue`. Sem isto, o
+    // cobrado ficaria inflado pelos encargos e pareceria um boleto emitido com valor errado.
+    valor_cobrado: numero(cobranca.originalValue) ?? valor,
     valor_pago: pago ? (numero(cobranca.value) ?? null) : null,
     vencimento,
     workspace_id: contexto.workspace ?? "careli",

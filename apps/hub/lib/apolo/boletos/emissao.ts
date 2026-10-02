@@ -113,7 +113,58 @@ export function diferencaDoArredondamento(valores: number[]): {
   };
 }
 
-export type ClienteAsaas = { cpfCnpj?: string; id: string; name?: string };
+export type ClienteAsaas = {
+  cpfCnpj?: string;
+  id: string;
+  name?: string;
+  notificationDisabled?: boolean;
+};
+
+/**
+ * Desliga as notificações do próprio Asaas num cliente que já existe.
+ *
+ * Pedido do Lucas (02/10/2026): *"quero desabilitar as notificações de cobrança e de envio. não
+ * quero"*. O link do boleto vai pelo WhatsApp da Careli; o e-mail, o SMS e a ligação do Asaas
+ * chegavam em paralelo, com outro texto, e são cobrados à parte.
+ *
+ * ⚠️ PRECISA ACONTECER ANTES DE CRIAR A COBRANÇA. O aviso de cobrança criada (PAYMENT_CREATED) sai
+ * no instante em que o POST /payments responde; desligar depois deixa passar justamente ele.
+ *
+ * ⚠️ O CLIENTE ACHADO É O CASO COMUM, NÃO A EXCEÇÃO. Os clientes nasceram em setembro com as oito
+ * notificações padrão ligadas, e em outubro quase todo CPF já tem cadastro na conta. Pôr a flag só
+ * na criação calaria uns quatro clientes de 320.
+ *
+ * ⚠️ FALHA FECHADO. Se o Asaas recusar, o boleto NÃO é criado: emitir com a notificação ligada é
+ * exatamente o que o Lucas pediu para não acontecer. O operador vê o erro e tenta de novo. E só o
+ * `true` explícito na resposta conta como calado: um 200 com corpo vazio ou ilegível (proxy, URL
+ * errada) não prova nada, e aceitá-lo seria emitir com a notificação ligada achando que não.
+ *
+ * Também é chamada antes de EDITAR um boleto: mudar valor ou vencimento dispara o aviso de cobrança
+ * alterada (PAYMENT_UPDATED), que nasce ligado em todo cliente.
+ */
+export async function calarNotificacoesDoCliente(
+  conta: ContaAsaas,
+  cliente: ClienteAsaas,
+): Promise<ResultadoAsaas<ClienteAsaas>> {
+  if (cliente.notificationDisabled === true) return { data: cliente, ok: true };
+
+  const atualizacao = await chamar<ClienteAsaas>(
+    conta,
+    `/customers/${encodeURIComponent(cliente.id)}`,
+    { body: { notificationDisabled: true }, method: "PUT" },
+  );
+  if (!atualizacao.ok) return atualizacao;
+
+  if (atualizacao.data?.notificationDisabled !== true) {
+    return {
+      erro: "O Asaas não desligou as notificações deste cliente. O boleto não foi criado.",
+      ok: false,
+      status: 0,
+    };
+  }
+
+  return { data: { ...cliente, notificationDisabled: true }, ok: true };
+}
 
 /**
  * Acha o cliente pelo documento, ou cria.
@@ -136,7 +187,11 @@ export async function acharOuCriarCliente(
   if (!busca.ok) return busca;
 
   const existente = busca.data.data?.[0];
-  if (existente) return { data: { cliente: existente, criado: false }, ok: true };
+  if (existente) {
+    const calado = await calarNotificacoesDoCliente(conta, existente);
+    if (!calado.ok) return calado;
+    return { data: { cliente: calado.data, criado: false }, ok: true };
+  }
 
   // ⚠️ O CONTATO PODE SER E-MAIL OU TELEFONE. Na devolutiva do administrativo, as empresas trazem
   // e-mail na coluna de telefone (a BCM, por exemplo). Mandar um e-mail no campo `mobilePhone` faz o
@@ -152,22 +207,56 @@ export async function acharOuCriarCliente(
       externalReference: input.referencia,
       mobilePhone: telefone,
       name: input.nome,
+      notificationDisabled: true,
     },
     method: "POST",
   });
   if (!criacao.ok) return criacao;
 
-  return { data: { cliente: criacao.data, criado: true }, ok: true };
+  // O POST já leva a flag; isto só age se a resposta não confirmar, e aí cala antes do boleto.
+  const calado = await calarNotificacoesDoCliente(conta, criacao.data);
+  if (!calado.ok) return calado;
+
+  return { data: { cliente: calado.data, criado: true }, ok: true };
 }
 
 export type CobrancaAsaas = {
   bankSlipUrl?: string;
+  /** O cliente da cobrança no Asaas (`cus_…`). É por ele que se cala quem já tem boleto. */
+  customer?: string;
   dueDate: string;
   id: string;
   invoiceUrl?: string;
   status: string;
   value: number;
 };
+
+/**
+ * Multa e juros de atraso, mandados em TODA cobrança criada por aqui.
+ *
+ * Pedido do Lucas (02/10/2026): *"quero configurar juros e multa, multa de 2% e juro 1% (padrao de
+ * mercado) (…) para gente fazer isso via api"*.
+ *
+ * ⚠️ VAI NA COBRANÇA, E NÃO NO PAINEL. O Asaas só aplica o padrão do painel quando a cobrança chega
+ * SEM `fine` e `interest`. São sete contas emitindo (CER, Garden, Vale do Sol, Vale do Ouro,
+ * Guaimbé, Giant Towers e On Sky), cada uma com a sua configuração e sem rastro aqui; mandando na
+ * cobrança, todas saem iguais e conta nova já nasce certa. Isto substitui a anotação de 31/08 ("pelo painel, nunca
+ * pela API"): o aviso da documentação é contra mandar o objeto VAZIO ou NULO, que zera o padrão.
+ *
+ * ⚠️ `type: "PERCENTAGE"` NA MULTA, SEMPRE. O padrão quando omitido não está documentado, e
+ * `FIXED` transformaria "2" em R$ 2,00. Os juros são percentual AO MÊS, que o Asaas aplica pro rata
+ * dia; o schema deles não tem `type` para juros.
+ *
+ * ⚠️ O ASAAS NÃO TRAVA NO TETO LEGAL. Ele aceita até 10%; o teto de 2% de multa (CDC, art. 52,
+ * § 1º) e de 1% ao mês de juros é nosso, e o teste falha se alguém subir os números.
+ */
+export const MULTA_PERCENTUAL = 2;
+export const JUROS_AO_MES = 1;
+
+export const ENCARGOS_DE_ATRASO = {
+  fine: { type: "PERCENTAGE", value: MULTA_PERCENTUAL },
+  interest: { value: JUROS_AO_MES },
+} as const;
 
 /**
  * Cria o boleto.
@@ -198,6 +287,8 @@ export function criarBoleto(
       description: input.descricao,
       dueDate: input.vencimento,
       externalReference: input.referencia,
+      fine: ENCARGOS_DE_ATRASO.fine,
+      interest: ENCARGOS_DE_ATRASO.interest,
       value: valorParaOAsaas(input.valor),
     },
     method: "POST",
@@ -226,6 +317,11 @@ export type CobrancaListada = CobrancaAsaas & {
   dateCreated?: string;
   description?: string;
   externalReference?: null | string;
+  /**
+   * O valor de face, quando a cobrança foi paga COM multa e juros. Aí o `value` passa a ser o que
+   * entrou. A tela mostra `originalValue ?? value` para o total emitido bater com a planilha.
+   */
+  originalValue?: null | number;
   paymentDate?: null | string;
 };
 
@@ -501,6 +597,11 @@ export function cancelarCobranca(
  *
  * ⚠️ MANDA SÓ O QUE MUDOU. O endpoint aceita atualização parcial, e enviar o objeto inteiro faria
  * um campo não informado (a descrição, por exemplo) ser sobrescrito com vazio.
+ *
+ * ⚠️ QUANDO O VALOR OU O VENCIMENTO MUDAM, A MULTA E OS JUROS VÃO JUNTO. Nesse caso o Asaas gera
+ * um boleto novo, e a documentação não garante que `fine` e `interest` omitidos sejam mantidos.
+ * Reenviá-los impede que a correção zere os encargos, e o boleto de setembro corrigido passa a
+ * seguir a regra de 02/10. Só a descrição não leva: um boleto já entregue não ganha encargo calado.
  */
 export function atualizarCobranca(
   conta: ContaAsaas,
@@ -511,6 +612,10 @@ export function atualizarCobranca(
   if (mudancas.valor !== undefined) body.value = valorParaOAsaas(mudancas.valor);
   if (mudancas.vencimento !== undefined) body.dueDate = mudancas.vencimento;
   if (mudancas.descricao !== undefined) body.description = mudancas.descricao;
+  if (mudancas.valor !== undefined || mudancas.vencimento !== undefined) {
+    body.fine = ENCARGOS_DE_ATRASO.fine;
+    body.interest = ENCARGOS_DE_ATRASO.interest;
+  }
 
   return chamar<CobrancaAsaas>(conta, `/payments/${encodeURIComponent(cobrancaId)}`, {
     body,

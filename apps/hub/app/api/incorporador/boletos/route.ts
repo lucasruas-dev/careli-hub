@@ -13,6 +13,7 @@ import {
   acharOuCriarCliente,
   apenasDaCompetencia,
   atualizarCobranca,
+  calarNotificacoesDoCliente,
   cancelarCobranca,
   cobrancasDaReferencia,
   criarBoleto,
@@ -408,7 +409,9 @@ export async function GET(request: Request) {
         situacao: c.status,
         // A unidade como está no banco (com espaço), não a da referência (com hífen).
         unidade: parcela?.unidade ?? ref.unidade,
-        valor: c.value,
+        // ⚠️ O VALOR DE FACE. Pago com atraso, o `value` traz a multa e os juros (desde 02/10/2026
+        // em toda cobrança), e o total "Emitido" deixaria de bater com a planilha.
+        valor: c.originalValue ?? c.value,
         vencido: estaVencido(c.status, c.dueDate, pagamento),
         vencimento: c.dueDate,
         // O aviso verde some ao recarregar; isto fica.
@@ -985,6 +988,16 @@ export async function POST(request: Request) {
         );
       }
 
+      // ⚠️ CALA O CLIENTE ANTES DE MEXER NO BOLETO. Mudar valor ou vencimento dispara o aviso de
+      // cobrança alterada do Asaas (e-mail e SMS, ligado de fábrica). Falha fechado, como a emissão.
+      const calado = await calarNotificacoesDoCliente(conta, { id: alvo.customer });
+      if (!calado.ok) {
+        return NextResponse.json(
+          { error: `não consegui desligar as notificações do Asaas deste cliente: ${calado.erro}` },
+          { status: calado.status || 502 },
+        );
+      }
+
       const r = await atualizarCobranca(conta, alvo.id, naCobranca);
       if (!r.ok) return NextResponse.json({ error: r.erro }, { status: r.status || 502 });
     }
@@ -1332,9 +1345,17 @@ export async function POST(request: Request) {
     }
     if ((jaEmitido.data.data?.length ?? 0) > 0) {
       const existente = jaEmitido.data.data[0]!;
+      // ⚠️ O BOLETO JÁ EXISTE, MAS O CLIENTE PODE ESTAR COM A NOTIFICAÇÃO LIGADA (emitido antes de
+      // 02/10). Cala aqui também; se o Asaas recusar, o erro aparece na lista em vez de sumir.
+      const calado = existente.customer
+        ? await calarNotificacoesDoCliente(conta, { id: existente.customer })
+        : null;
       resultados.push({
         ...base,
         cobranca: existente.id,
+        ...(calado && !calado.ok
+          ? { erro: `já existia, mas as notificações do Asaas não foram desligadas: ${calado.erro}` }
+          : {}),
         ja_existia: true,
         link: existente.bankSlipUrl ?? existente.invoiceUrl ?? null,
       });

@@ -1,10 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  acharOuCriarCliente,
   apenasDaCompetencia,
+  atualizarCobranca,
+  criarBoleto,
   descricaoDoBoleto,
   diferencaDoArredondamento,
+  ENCARGOS_DE_ATRASO,
+  JUROS_AO_MES,
   lerReferencia,
+  MULTA_PERCENTUAL,
   referenciaDaCobranca,
   valorParaOAsaas,
 } from "./emissao";
@@ -260,5 +266,191 @@ describe("a segunda cobrança da mesma unidade no mesmo mês", () => {
     const so = apenasDaCompetencia(lista as never, "2026-09");
     expect(so).toHaveLength(2);
     expect(so.map((c) => lerReferencia(c.externalReference)!.sequencia)).toEqual([1, 2]);
+  });
+});
+
+// ── O QUE VAI PARA O ASAAS ──────────────────────────────────────────────────
+//
+// Pedido do Lucas (02/10/2026): sem as notificações do próprio Asaas, e com multa de 2% e juros de
+// 1% ao mês. Os testes leem o corpo que sai pelo fetch, porque é ele que o Asaas recebe; conferir a
+// função por dentro não prova nada sobre o boleto do cliente.
+describe("o que vai para o Asaas", () => {
+  type Chamada = { body: Record<string, unknown> | undefined; method: string; url: string };
+  let chamadas: Chamada[] = [];
+
+  function responder(...respostas: { body: unknown; status?: number }[]) {
+    chamadas = [];
+    const fila = [...respostas];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        chamadas.push({
+          body: init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined,
+          method: init?.method ?? "GET",
+          url: String(url),
+        });
+        const resposta = fila.shift() ?? { body: {} };
+        return new Response(JSON.stringify(resposta.body), { status: resposta.status ?? 200 });
+      }),
+    );
+  }
+
+  const pagador = { contato: "(37) 99999-0000", documento: "123.456.789-09", nome: "Pagador" };
+
+  beforeEach(() => {
+    vi.stubEnv("ASAAS_CER_API_KEY", "chave-de-teste");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("cliente novo já nasce sem notificação", async () => {
+    responder({ body: { data: [] } }, { body: { id: "cus_novo", notificationDisabled: true } });
+
+    const r = await acharOuCriarCliente("cer", pagador);
+
+    expect(r).toMatchObject({ data: { criado: true }, ok: true });
+    // A resposta confirmou: não há chamada a mais.
+    expect(chamadas).toHaveLength(2);
+    expect(chamadas[1]!.method).toBe("POST");
+    expect(chamadas[1]!.url).toMatch(/\/v3\/customers$/);
+    // ⚠️ BOOLEANO, NÃO TEXTO: a documentação do Asaas pede `true`, e "true" não é a mesma coisa.
+    expect(chamadas[1]!.body!.notificationDisabled).toBe(true);
+  });
+
+  it("cliente que JÁ EXISTE com notificação ligada é calado antes de voltar", async () => {
+    // ⚠️ É O CASO DE OUTUBRO: quase todo CPF já tem cadastro desde setembro, com as oito
+    // notificações padrão ligadas. Sem esta chamada, a emissão dispararia o e-mail e o SMS do Asaas.
+    responder(
+      { body: { data: [{ id: "cus_velho", notificationDisabled: false }] } },
+      { body: { id: "cus_velho", notificationDisabled: true } },
+    );
+
+    const r = await acharOuCriarCliente("cer", pagador);
+
+    expect(r).toMatchObject({
+      data: { cliente: { id: "cus_velho", notificationDisabled: true }, criado: false },
+      ok: true,
+    });
+    expect(chamadas).toHaveLength(2);
+    expect(chamadas[1]!.method).toBe("PUT");
+    expect(chamadas[1]!.url).toMatch(/\/v3\/customers\/cus_velho$/);
+    expect(chamadas[1]!.body).toEqual({ notificationDisabled: true });
+  });
+
+  it("cliente novo cuja resposta não confirma o desligamento é calado antes do boleto", async () => {
+    responder(
+      { body: { data: [] } },
+      { body: { id: "cus_novo" } },
+      { body: { id: "cus_novo", notificationDisabled: true } },
+    );
+
+    const r = await acharOuCriarCliente("cer", pagador);
+
+    expect(r).toMatchObject({ data: { cliente: { notificationDisabled: true }, criado: true }, ok: true });
+    expect(chamadas.map((c) => c.method)).toEqual(["GET", "POST", "PUT"]);
+  });
+
+  it("busca sem o campo também cala: só o `true` explícito dispensa a atualização", async () => {
+    responder(
+      { body: { data: [{ id: "cus_sem_campo" }] } },
+      { body: { id: "cus_sem_campo", notificationDisabled: true } },
+    );
+
+    const r = await acharOuCriarCliente("cer", pagador);
+
+    expect(r.ok).toBe(true);
+    expect(chamadas.map((c) => c.method)).toEqual(["GET", "PUT"]);
+  });
+
+  it("cliente já calado não gera chamada a mais", async () => {
+    responder({ body: { data: [{ id: "cus_calado", notificationDisabled: true }] } });
+
+    const r = await acharOuCriarCliente("cer", pagador);
+
+    expect(r).toMatchObject({ data: { cliente: { id: "cus_calado" }, criado: false }, ok: true });
+    expect(chamadas).toHaveLength(1);
+  });
+
+  it("⚠️ se o Asaas recusar calar o cliente, NÃO devolve o cliente (e o boleto não sai)", async () => {
+    responder(
+      { body: { data: [{ id: "cus_velho", notificationDisabled: false }] } },
+      { body: { errors: [{ description: "Cliente removido." }] }, status: 400 },
+    );
+
+    const r = await acharOuCriarCliente("cer", pagador);
+
+    expect(r).toEqual({ erro: "Cliente removido.", ok: false, status: 400 });
+  });
+
+  it("⚠️ se o Asaas responder que a notificação continua ligada, também falha", async () => {
+    responder(
+      { body: { data: [{ id: "cus_velho", notificationDisabled: false }] } },
+      { body: { id: "cus_velho", notificationDisabled: false } },
+    );
+
+    const r = await acharOuCriarCliente("cer", pagador);
+
+    expect(r.ok).toBe(false);
+  });
+
+  it("⚠️ resposta 200 VAZIA ou sem o campo não conta como calado", async () => {
+    // Um proxy ou uma URL errada podem devolver 200 com corpo que não é o cliente. Aceitar isso
+    // seria emitir com a notificação ligada achando que não.
+    for (const corpo of [{}, null, { id: "cus_velho" }]) {
+      responder({ body: { data: [{ id: "cus_velho", notificationDisabled: false }] } }, { body: corpo });
+      const r = await acharOuCriarCliente("cer", pagador);
+      expect(r.ok, JSON.stringify(corpo)).toBe(false);
+    }
+  });
+
+  it("o boleto sai com multa de 2% e juros de 1% ao mês", async () => {
+    responder({ body: { dueDate: "2026-10-10", id: "pay_1", status: "PENDING", value: 1051.57 } });
+
+    await criarBoleto("cer", {
+      cliente: "cus_1",
+      descricao: "Ed. Cristal - Unidade 201 - Competência 10/2026",
+      referencia: "boleto:ed-cristal:201:2026-10",
+      valor: 1051.5655,
+      vencimento: "2026-10-10",
+    });
+
+    expect(chamadas[0]!.method).toBe("POST");
+    expect(chamadas[0]!.url).toMatch(/\/v3\/payments$/);
+    expect(chamadas[0]!.body).toMatchObject({
+      billingType: "BOLETO",
+      fine: { type: "PERCENTAGE", value: 2 },
+      interest: { value: 1 },
+      // O arredondamento para cima continua igual: os encargos não mexem no valor de face.
+      value: 1051.57,
+    });
+  });
+
+  it("os encargos ficam no teto legal, e a multa é PERCENTUAL", () => {
+    // ⚠️ O ASAAS ACEITA ATÉ 10%. O teto é nosso: multa de 2% (CDC, art. 52, § 1º) e juros de 1% ao
+    // mês. E `FIXED` transformaria a multa de 2% em R$ 2,00.
+    expect(MULTA_PERCENTUAL).toBeLessThanOrEqual(2);
+    expect(JUROS_AO_MES).toBeLessThanOrEqual(1);
+    expect(ENCARGOS_DE_ATRASO.fine.type).toBe("PERCENTAGE");
+  });
+
+  it("corrigir valor ou vencimento reenvia os encargos; corrigir só a descrição, não", async () => {
+    responder({ body: {} }, { body: {} }, { body: {} });
+
+    await atualizarCobranca("cer", "pay_1", { vencimento: "2026-10-15" });
+    await atualizarCobranca("cer", "pay_1", { valor: 1100 });
+    await atualizarCobranca("cer", "pay_1", { descricao: "Ed. Cristal - Unidade 201" });
+
+    expect(chamadas.map((c) => c.method)).toEqual(["PUT", "PUT", "PUT"]);
+    expect(chamadas[0]!.body).toEqual({
+      dueDate: "2026-10-15",
+      fine: { type: "PERCENTAGE", value: 2 },
+      interest: { value: 1 },
+    });
+    expect(chamadas[1]!.body).toMatchObject({ fine: { value: 2 }, interest: { value: 1 }, value: 1100 });
+    // Um boleto já entregue não ganha encargo calado por causa de uma troca de texto.
+    expect(chamadas[2]!.body).toEqual({ description: "Ed. Cristal - Unidade 201" });
   });
 });
