@@ -1,7 +1,10 @@
--- 0206 · O PAPEL "COMPRADOR CECÍLIO" NO APOLO
+-- 0209 · O PAPEL "COMPRADOR CECÍLIO" NO APOLO
 --
 -- ⛔ NÃO APLICADA. Escrita em 02/10/2026 e PARADA de propósito: aplicar migration exige OK explícito
 -- do Lucas, a cada vez (regra-mãe do CLAUDE.md).
+--
+-- O NÚMERO: nasceu 0206 e foi renumerada para 0209 no mesmo dia, porque a frente pan-124-completo já usa
+-- 0206 a 0208 (e a da certidão de nascimento, 0208). Quem integrar confere de novo antes de aplicar.
 --
 -- POR QUE ELA EXISTE. Lucas, 02/10/2026: *"vamos criar dentro do apolo um perfil comprador cecilio e
 -- vamos cria-los com os dados que temos. segue a mesma estrutura, só que não vamos ter todos os dados.
@@ -50,4 +53,4 @@ alter table public.apolo_entity_profiles
   );
 
 comment on constraint apolo_entity_profiles_profile_check on public.apolo_entity_profiles is
-  'Papeis aceitos. comprador_cecilio (0206, 02/10/2026) = cliente da carteira Cecilio Rocha, carregado do LSoft e dos boletos; papel GRAVADO, sem vinculo com o C2X e sem o Comprador calculado da carteira do legado.';
+  'Papeis aceitos. comprador_cecilio (0209, 02/10/2026) = cliente da carteira Cecilio Rocha, carregado do LSoft e dos boletos; papel GRAVADO, sem vinculo com o C2X e sem o Comprador calculado da carteira do legado.';

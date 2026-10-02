@@ -11,7 +11,7 @@
 // dados que temos. (...) O principal objetivo é o time conseguir fazer contato para realizar cobrança."*
 //
 // ⛔ GRAVAR EM PRODUÇÃO EXIGE OK EXPLÍCITO DO LUCAS, A CADA VEZ. E SÓ DEPOIS DE NO AR:
-//   • a migration 0206 (sem ela o papel 'comprador_cecilio' recusa no CHECK);
+//   • a migration 0209 (sem ela o papel 'comprador_cecilio' recusa no CHECK);
 //   • o código da mesma branch: a trava da Cacá (cliente da Cecílio vai direto para um analista) mora
 //     nele. Sem ela, a Cacá confirmaria a identidade pelo CPF e responderia "sem carteira" a quem deve.
 //
