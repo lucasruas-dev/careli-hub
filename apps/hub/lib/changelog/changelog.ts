@@ -36,6 +36,43 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-10-02-dias-de-vencimento-por-empreendimento",
+    deployedAt: "__HORA_REAL__",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Os dias de vencimento da parcela agora se cadastram por empreendimento**, um ou mais, de 1 a 28. O empreendimento filho sem dias cadastrados usa os do principal.",
+            ],
+            screen: "Empreendimento · Políticas comerciais",
+          },
+        ],
+      },
+      {
+        module: "Hércules",
+        screens: [
+          {
+            items: [
+              "**A proposta passa a oferecer os dias cadastrados e já calcula a primeira parcela pelo primeiro deles.** Sem nada cadastrado, continua com 10 e 20 e avisa que falta cadastrar.",
+              "**O simulador do espelho público usa o primeiro dia cadastrado, e o portal do incorporador mostra os dias** na política do produto.",
+            ],
+            screen: "Proposta e simulador",
+          },
+        ],
+      },
+    ],
+    rollback: "f62ee398",
+    technical: {
+      done: "Migration 0210: `apolo_enterprise_settings.dias_vencimento smallint[]` (nulo = não cadastrado e herda do pai; CHECK de 1 a 28, sem nulos, lista vazia proibida). `lib/hercules/dias-de-vencimento.ts` (regra pura: conferência, herança filho para pai por itensDoMenorRecorte, tradução de group: para o pai das divisões) e `dias-de-vencimento-server.ts` (leitura em lotes de 100; falha vira nulo, nunca \"sem cadastro\"). `setEnterpriseDiasDeVencimento` em enterprise-settings.ts. Rota nova GET/PUT /api/apolo/empreendimentos/dias-de-vencimento (leitura e escrita do Apolo). GET /api/incorporador/venda/proposta devolve diasDeVencimento para o SimuladorDeProposta; /api/publico/espelho/simulacao usa o primeiro dia cadastrado (antes, 10 fixo); política do produto no portal só leitura. `conferirProposta` intocado: continua aceitando de 1 a 28 (a lista é atalho, não trava; decisão do Lucas, 02/10/2026). Sem a migration, proposta, espelho e portal seguem como antes e a aba do Apolo mostra \"migration 0210 pendente\". Integrado por merge pela sessão Publicação.",
+      motivation: "Os dias de vencimento eram fixos em 10 e 20 para todos os empreendimentos, e cada um tem a sua regra comercial.",
+    },
+    title: "Dias de vencimento da parcela por empreendimento",
+    type: "novidade",
+    version: "1.406.0",
+  },
+  {
     buildTag: "2026-10-02-certidao-nascimento-solteiro",
     deployedAt: "2026-10-02T11:15:58-03:00",
     modules: [
