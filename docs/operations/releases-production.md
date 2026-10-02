@@ -95,6 +95,30 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Temis] Nome do cliente em caixa alta no card do quadro e na tela de trabalho (v1.406.3, interna)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; a entrega nao chegou por resumo: o Lucas perguntou pela correcao vendo o quadro, e ela estava na branch fix/temis-nome-caixa-alta (449c56a8, base 1.406.0, push de 02/10 12:26).
+- Data e hora local: `2026-10-02 15:41:19 -03:00` (changelog); deploy pronto cerca de 3,5 min depois do push.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("pode publicar a 1.406.3"); branch integrada por merge sobre a 1.406.2, sem conflito`.
+- Escopo publicado: `toLocaleUpperCase("pt-BR") no nome do Card (temis-kanban.tsx, quadros do hub e do portal) e no h2 da TelaDeTrabalho; dado gravado nao muda`.
+- Commit publicado: `21abff830ba214ddf81611f3db545ebba8babc33`.
+- Deployment anterior: `dpl_A2rD8Q2aypHw6psdyYGSgqaPN1z1` (commit `ecb1ee73`, v1.406.2).
+- Deployment novo: `dpl_DVK19ujPzoyFAQP2PkNhzhmkMWqf`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Banco: `sem migracao e sem escrita`.
+- Validacoes executadas:
+  - `typecheck e suite inteira antes do OK`: `756 arquivos, 11.586 testes`;
+  - `hook de pre-push`: `756 arquivos, 11.586 testes`;
+  - `revisao por workflow`: `nao feita (mudanca de exibicao em 2 linhas, testes de tela ja procuram o nome em caixa alta)`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.406.3 com buildTag 2026-10-02-temis-nome-caixa-alta; /api/temis/trabalhos 401 sem sessao`.
+- Rollback definido: `Instant Rollback para dpl_A2rD8Q2aypHw6psdyYGSgqaPN1z1 (v1.406.2) e seguro`.
+- Riscos conhecidos: `nenhum; outras telas fora da Temis continuam mostrando o nome como foi gravado`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `nenhuma`.
+
+Registro de producao:
+
 - Assunto: `[Temis] Pre-faturamento entra quando os compradores assinam (v1.406.2, interna)`.
 - Squad/agente responsavel: `Zeus (sessao Publicacao)`; entregue por resumo de entrega.
 - Data e hora local: `2026-10-02 15:16:59 -03:00` (changelog); deploy pronto as 15:23, cerca de 4 min depois do push.
