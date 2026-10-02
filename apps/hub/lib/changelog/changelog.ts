@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-10-02-temis-card-categoria",
+    deployedAt: "__HORA_REAL__",
+    internal: true,
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O card do quadro mostra a categoria da unidade, quando houver**, entre o empreendimento e a unidade: \"Lagoa Bonita · LBF · Condomínio · Quadra C03 · Lote 07\".",
+              "**O filho aparece sempre** (VOC, VOL, VOR): os cards do Vale do Ouro que tinham sido gravados só como \"Vale do Ouro\" passam a mostrar a divisão.",
+            ],
+            screen: "Board da Têmis (hub e aba Contratos do portal)",
+          },
+        ],
+      },
+    ],
+    rollback: "d5346c54",
+    technical: {
+      done: "`lib/temis/origem-do-card.ts` (novo): `nomeDoEmpreendimentoDoCard` acha a linha de `hercules_empreendimentos` pela sigla do card (ou pelo id do C2X) e, no filho, monta nome do pai + sigla do filho; `categoriasDasPropostas` segue `hercules_propostas.unidade_id` → `hercules_unidades.categoria_id` → `temis_categorias.nome` (a mesma categoria que escolhe a minuta), em lotes de 100 por chave primária, e só lê as categorias quando alguma unidade tem uma. `trabalhosDoBoard` busca a origem em paralelo com os contratos e sobrescreve `empreendimentoNome` e o novo `categoriaNome` só na resposta; nada é gravado. Falha branda: erro vira `console.error` e o card sai como antes. Card do TemisKanban monta nome · categoria · unidade. Custo: de 3 a 4 consultas por carga do quadro. Testes: origem-do-card (16), trabalhos-db-dono (+3), teste de tela (+1, falha sem a correção). Sem migration. Branch fix/temis-card-categoria (5b258c72, base 1.406.4).",
+      motivation: "Lucas (02/10/2026), olhando o card \"Vale do Ouro · VOL · Quadra 03 · Lote 07\": \"uma correção, quando tiver filho ou categoria, trazer aqui para gente saber de onde especificamente é\", e depois \"já veio o filho\" e \"VOL VOC VOR está correto\". Medido: 5 cards do Vale do Ouro gravados só \"Vale do Ouro\", e a categoria não aparecia em lugar nenhum.",
+    },
+    title: "Categoria e filho no card da Têmis",
+    type: "correcao",
+    version: "1.407.1",
+  },
+  {
     buildTag: "2026-10-02-temis-tela-em-assinatura",
     deployedAt: "2026-10-02T17:37:30-03:00",
     modules: [
