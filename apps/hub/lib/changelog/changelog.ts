@@ -36,6 +36,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-10-02-temis-nome-do-empreendimento",
+    deployedAt: "__HORA_REAL__",
+    internal: true,
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**O card do quadro mostra o nome do empreendimento em vez da sigla**: \"Vale do Ouro · VOL · Quadra 11 · Lote 06\" no lugar de \"VOL · Quadra 11 · Lote 06\". É o mesmo nome que a tela de trabalho já mostrava.",
+            ],
+            screen: "Board da Têmis",
+          },
+        ],
+      },
+    ],
+    rollback: "21abff83",
+    technical: {
+      done: "`Card` em `modules/temis/blocks/board/temis-kanban.tsx` passa a mostrar `empreendimentoNome` (de `temis_trabalhos.enterprise_nome`, já entregue por `trabalhosDoBoard`) e cai em `empreendimentoCodigo` só se o nome vier vazio. Vale para os quadros do hub e do portal do incorporador, que usam o mesmo TemisKanban. No produto dividido o nome gravado já vem como \"Vale do Ouro · VOL\" (pai e filho). Dois testes de tela em `temis-kanban.supervisao.comportamento.test.tsx`; o primeiro falha sem a correção. Sem migration. Branch fix/temis-nome-do-empreendimento (ca6922d3, base 1.406.3), feita pela sessão Publicação a pedido do Lucas.",
+      motivation: "Lucas (02/10/2026), com print do card \"VOL · Quadra 11 · Lote 06\": \"outra coisa simples que vc pode fazer é trazer o nome do empreendimento em vez da sigla\".",
+    },
+    title: "Nome do empreendimento no card da Têmis",
+    type: "correcao",
+    version: "1.406.4",
+  },
+  {
     buildTag: "2026-10-02-temis-nome-caixa-alta",
     deployedAt: "2026-10-02T15:41:19-03:00",
     internal: true,
