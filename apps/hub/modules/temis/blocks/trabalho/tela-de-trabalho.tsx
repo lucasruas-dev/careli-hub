@@ -1123,8 +1123,13 @@ export function TelaDeTrabalho({
             /* ⚠️ LARGURA DE LEITURA, e não a largura do painel. Esta etapa não tem PDF ao lado,
                então o conteúdo esticava nos ~1.150px inteiros — e-mail e frase atravessando a tela,
                que é o jeito mais rápido de uma tela parecer desorganizada mesmo com tudo no lugar.
-               O teto deixa a lista com a proporção de uma lista, e não de uma planilha. */
-            <div className="grid max-w-3xl gap-3">
+               O teto deixa a lista com a proporção de uma lista, e não de uma planilha.
+
+               ⚠️ COM O PAINEL, O TETO SAI DAQUI (02/10/2026): o painel ocupa a coluna inteira e
+               divide a largura ele mesmo, a fila de um lado e o contrato e o log do outro. Com o
+               teto aqui, metade da coluna ficava vazia (Lucas: *"olha o espaço que ficou?"*). Sem
+               painel, o teto continua. */
+            <div className={`grid gap-3 ${assinatura ? "" : "max-w-3xl"}`}>
               {/* ⚠️ UMA LINHA, E SÓ O QUE SE SABE. Ela é o CABEÇALHO da etapa: diz em que pé está o
                   envelope como um todo (a palavra da casa, vinda pronta do servidor) e desde quando
                   o card está aqui. O detalhe por pessoa vem logo abaixo, no painel.
@@ -1223,8 +1228,12 @@ export function TelaDeTrabalho({
               (`marcarAtividade`). Com o envelope assinado, ou sem envelope, o painel não aparece:
               não há mais o que cobrar de ninguém. */}
           {card.estagio === "prazo_legal" ? (
-            <div className="grid max-w-3xl gap-3">
-              <EtapaDoPrazoLegal inicio={card.arrependimento_inicio} />
+            // Com o painel, o teto de leitura sai do invólucro e fica só no prazo dos 7 dias: o painel
+            // divide a largura ele mesmo (ver a nota da etapa Em assinatura, acima).
+            <div className={`grid gap-3 ${assinaturaNoPreFaturamento ? "" : "max-w-3xl"}`}>
+              <div className="max-w-3xl">
+                <EtapaDoPrazoLegal inicio={card.arrependimento_inicio} />
+              </div>
               {assinaturaNoPreFaturamento ? (
                 <PainelDaAssinatura
                   aoRecarregar={carregar}
@@ -2990,195 +2999,204 @@ function PainelDaAssinatura({
     // ⚠️ `@container`: o painel se arruma pela LARGURA DELE, e não pela da janela. No hub ele divide a
     // tela com a coluna fixa; no portal do incorporador ele é aberto no celular. Nos dois a pessoa vira
     // duas linhas, e as ações descem, quando o painel fica estreito.
-    <div className="@container grid gap-3">
-      <section className="rounded-xl border border-line bg-surface">
-        {/* ⚠️ O CABEÇALHO RESPONDE "EM QUE PÉ ESTÁ", em números e numa faixa só: os compradores (é o
-            que leva o card ao Pré-faturamento), o contrato inteiro (o que leva ao Faturado), o prazo
-            (quando a Clicksign cancela o envelope) e quem está na vez.
+    //
+    // ⚠️ NO PAINEL LARGO, O CONTRATO E O LOG SOBEM PARA UMA COLUNA AO LADO DA FILA. Lucas (02/10/2026),
+    // com print da tela no monitor: *"tem que melhorar essa tela, olha o espaço que ficou?"*. O painel
+    // tinha teto de leitura (`max-w-3xl`) e metade da coluna ficava vazia. A fila continua com
+    // proporção de lista, e o espaço que sobrava vira a coluna de consulta. Abaixo de `@5xl` (64rem)
+    // fica como no mockup de 02/10: a fila em cima, o contrato e o log embaixo. O `@container` mora
+    // num invólucro porque a consulta de container não estiliza o próprio container.
+    <div className="@container">
+      <div className="grid gap-3 @5xl:grid-cols-[minmax(0,1fr)_minmax(18rem,26rem)] @5xl:items-start">
+        <section className="rounded-xl border border-line bg-surface">
+          {/* ⚠️ O CABEÇALHO RESPONDE "EM QUE PÉ ESTÁ", em números e numa faixa só: os compradores (é o
+              que leva o card ao Pré-faturamento), o contrato inteiro (o que leva ao Faturado), o prazo
+              (quando a Clicksign cancela o envelope) e quem está na vez.
 
-            ⚠️ O ID DO ENVELOPE FICA NO `title`. Ele só serve para procurar na Clicksign, que é gesto
-            raro e de quem já sabe o que quer. */}
-        <header
-          className="grid gap-3 border-b border-line px-3 py-3 @xl:px-4"
-          title={
-            assinatura.envelope.envelopeId
-              ? `Envelope ${assinatura.envelope.envelopeId} na Clicksign`
-              : undefined
-          }
-        >
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-            <h3 className="m-0 text-[13px] font-semibold text-ink">Assinatura do contrato</h3>
-            {envelopeVivo?.conferido ? (
-              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line px-2 py-0.5 text-[11px] font-semibold text-ink-soft">
-                <Signature aria-hidden="true" className="size-3.5" />
-                {envelopeVivo.rotulo}
-              </span>
-            ) : null}
-          </div>
-
-          <div
-            className={`grid gap-2 ${quadros === 3 ? "grid-cols-3" : quadros === 2 ? "grid-cols-2" : "grid-cols-1"}`}
+              ⚠️ O ID DO ENVELOPE FICA NO `title`. Ele só serve para procurar na Clicksign, que é gesto
+              raro e de quem já sabe o que quer. */}
+          <header
+            className="grid gap-3 border-b border-line px-3 py-3 @xl:px-4"
+            title={
+              assinatura.envelope.envelopeId
+                ? `Envelope ${assinatura.envelope.envelopeId} na Clicksign`
+                : undefined
+            }
           >
-            {compradores.length > 0 ? (
-              <QuadroDoCabecalho
-                destaque={compradoresFechados}
-                icone={Users}
-                rotulo="Compradores"
-                sub={
-                  compradoresFechados
-                    ? "todos assinaram"
-                    : `falta ${compradores
-                        .filter((s) => !s.assinouEm)
-                        .map((s) => s.nome)
-                        .join(", ")}`
-                }
-                total={compradores.length}
-                valor={compradoresQueAssinaram}
-              />
-            ) : null}
-            <QuadroDoCabecalho
-              icone={FileText}
-              rotulo="Contrato"
-              total={total}
-              valor={assinatura.assinaram}
-            >
-              <span aria-hidden="true" className="mt-1.5 flex gap-0.5">
-                {Array.from({ length: Math.min(total, 24) }, (_, i) => (
-                  <span
-                    className={`h-1 flex-1 rounded-full ${
-                      i < Math.round((assinatura.assinaram / Math.max(total, 1)) * Math.min(total, 24))
-                        ? "bg-ink"
-                        : "bg-line"
-                    }`}
-                    key={i}
-                  />
-                ))}
-              </span>
-            </QuadroDoCabecalho>
-            {prazo ? (
-              <Tooltip
-                className="block min-w-0"
-                content="Se vencer sem todas as assinaturas, a Clicksign cancela o envelope."
-                placement="top"
-                triggerClassName="block"
-              >
-                <QuadroDoCabecalho
-                  destaque={false}
-                  icone={Hourglass}
-                  rotulo="Vence"
-                  sub={prazo.falta}
-                  valor={prazo.dia}
-                />
-              </Tooltip>
-            ) : null}
-          </div>
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+              <h3 className="m-0 text-[13px] font-semibold text-ink">Assinatura do contrato</h3>
+              {envelopeVivo?.conferido ? (
+                <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line px-2 py-0.5 text-[11px] font-semibold text-ink-soft">
+                  <Signature aria-hidden="true" className="size-3.5" />
+                  {envelopeVivo.rotulo}
+                </span>
+              ) : null}
+            </div>
 
-          {naVez ? (
-            <p className="m-0 flex min-w-0 items-center gap-2 rounded-lg bg-inverse px-3 py-2 text-[12px] text-brand-ink">
-              <ArrowRight aria-hidden="true" className="size-3.5 shrink-0" />
-              <span className="shrink-0 font-semibold">Na vez: {naVez.rotulo}</span>
-              <span className="min-w-0 truncate opacity-80">
-                {faltamNaVez.length === 1 ? "falta " : "faltam "}
-                {faltamNaVez.map((p) => primeiroNome(p.nome)).join(", ")}
-              </span>
+            <div
+              className={`grid gap-2 ${quadros === 3 ? "grid-cols-3" : quadros === 2 ? "grid-cols-2" : "grid-cols-1"}`}
+            >
+              {compradores.length > 0 ? (
+                <QuadroDoCabecalho
+                  destaque={compradoresFechados}
+                  icone={Users}
+                  rotulo="Compradores"
+                  sub={
+                    compradoresFechados
+                      ? "todos assinaram"
+                      : `falta ${compradores
+                          .filter((s) => !s.assinouEm)
+                          .map((s) => s.nome)
+                          .join(", ")}`
+                  }
+                  total={compradores.length}
+                  valor={compradoresQueAssinaram}
+                />
+              ) : null}
+              <QuadroDoCabecalho
+                icone={FileText}
+                rotulo="Contrato"
+                total={total}
+                valor={assinatura.assinaram}
+              >
+                <span aria-hidden="true" className="mt-1.5 flex gap-0.5">
+                  {Array.from({ length: Math.min(total, 24) }, (_, i) => (
+                    <span
+                      className={`h-1 flex-1 rounded-full ${
+                        i < Math.round((assinatura.assinaram / Math.max(total, 1)) * Math.min(total, 24))
+                          ? "bg-ink"
+                          : "bg-line"
+                      }`}
+                      key={i}
+                    />
+                  ))}
+                </span>
+              </QuadroDoCabecalho>
+              {prazo ? (
+                <Tooltip
+                  className="block min-w-0"
+                  content="Se vencer sem todas as assinaturas, a Clicksign cancela o envelope."
+                  placement="top"
+                  triggerClassName="block"
+                >
+                  <QuadroDoCabecalho
+                    destaque={false}
+                    icone={Hourglass}
+                    rotulo="Vence"
+                    sub={prazo.falta}
+                    valor={prazo.dia}
+                  />
+                </Tooltip>
+              ) : null}
+            </div>
+
+            {naVez ? (
+              <p className="m-0 flex min-w-0 items-center gap-2 rounded-lg bg-inverse px-3 py-2 text-[12px] text-brand-ink">
+                <ArrowRight aria-hidden="true" className="size-3.5 shrink-0" />
+                <span className="shrink-0 font-semibold">Na vez: {naVez.rotulo}</span>
+                <span className="min-w-0 truncate opacity-80">
+                  {faltamNaVez.length === 1 ? "falta " : "faltam "}
+                  {faltamNaVez.map((p) => primeiroNome(p.nome)).join(", ")}
+                </span>
+              </p>
+            ) : null}
+
+            <p className="m-0 text-[11px] text-ink-muted">
+              {envelopeVivo && !envelopeVivo.conferido
+                ? `Não deu para conferir o envelope agora · nesta etapa desde ${desdeEscrito}`
+                : `Nesta etapa desde ${desdeEscrito}`}
+            </p>
+          </header>
+
+          {trocaFeita ? (
+            <p className="m-0 break-words border-b border-line px-4 py-2 text-[11px] font-medium text-ink-soft">
+              {trocaFeita.recado}
             </p>
           ) : null}
 
-          <p className="m-0 text-[11px] text-ink-muted">
-            {envelopeVivo && !envelopeVivo.conferido
-              ? `Não deu para conferir o envelope agora · nesta etapa desde ${desdeEscrito}`
-              : `Nesta etapa desde ${desdeEscrito}`}
-          </p>
-        </header>
+          <div className="grid px-2 pb-1 pt-3 @xl:px-3">
+            {degraus.map((degrau, i) => (
+              <DegrauDaFila
+                aberto={abertos.has(degrau.chave)}
+                aoAlternar={() => alternar(degrau.chave)}
+                aoRecarregar={aoRecarregar}
+                aoTrocar={(chaveAntiga, recado) => setTrocaFeita({ chaveAntiga, recado })}
+                degrau={degrau}
+                envelopeId={assinatura.envelope.envelopeId}
+                key={degrau.chave}
+                ultimo={i === degraus.length - 1}
+              />
+            ))}
+          </div>
+        </section>
 
-        {trocaFeita ? (
-          <p className="m-0 break-words border-b border-line px-4 py-2 text-[11px] font-medium text-ink-soft">
-            {trocaFeita.recado}
-          </p>
-        ) : null}
+        <div className={`grid items-start gap-3 ${contrato ? "@xl:grid-cols-2 @5xl:grid-cols-1" : ""}`}>
+          {contrato}
 
-        <div className="grid px-2 pb-1 pt-3 @xl:px-3">
-          {degraus.map((degrau, i) => (
-            <DegrauDaFila
-              aberto={abertos.has(degrau.chave)}
-              aoAlternar={() => alternar(degrau.chave)}
-              aoRecarregar={aoRecarregar}
-              aoTrocar={(chaveAntiga, recado) => setTrocaFeita({ chaveAntiga, recado })}
-              degrau={degrau}
-              envelopeId={assinatura.envelope.envelopeId}
-              key={degrau.chave}
-              ultimo={i === degraus.length - 1}
-            />
-          ))}
-        </div>
-      </section>
+          {/* ⚠️ O LOG NASCE RECOLHIDO, e isso é o oposto de escondê-lo. Ele é AUDITORIA — responde
+              "o que houve com este envelope", que é pergunta de quem foi investigar, não de quem abriu
+              o card para trabalhar. Aberto por padrão, ele competia com a fila: duas listas na mesma
+              tela, e a que pede ação perdia.
 
-      <div className={`grid items-start gap-3 ${contrato ? "@xl:grid-cols-2" : ""}`}>
-        {contrato}
+              ⚠️ E O TETO DE ALTURA CONTINUA: a Clicksign reenvia o histórico INTEIRO a cada webhook,
+              então um envelope movimentado tem dezenas de linhas — sem o teto, o log aberto empurraria
+              o botão de voltar para fora da tela. */}
+          <details className="rounded-xl border border-line bg-surface px-3.5 py-3">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-muted transition-colors hover:text-ink">
+              <ScrollText aria-hidden="true" className="size-3.5" />
+              Log do envelope
+              <span className="ml-1 font-normal normal-case tracking-normal">
+                {diario.length === 0 ? "sem eventos" : `${diario.length} eventos`}
+              </span>
+            </summary>
 
-        {/* ⚠️ O LOG NASCE RECOLHIDO, e isso é o oposto de escondê-lo. Ele é AUDITORIA — responde
-            "o que houve com este envelope", que é pergunta de quem foi investigar, não de quem abriu
-            o card para trabalhar. Aberto por padrão, ele competia com a fila: duas listas na mesma
-            tela, e a que pede ação perdia.
-
-            ⚠️ E O TETO DE ALTURA CONTINUA: a Clicksign reenvia o histórico INTEIRO a cada webhook,
-            então um envelope movimentado tem dezenas de linhas — sem o teto, o log aberto empurraria
-            o botão de voltar para fora da tela. */}
-        <details className="rounded-xl border border-line bg-surface px-3.5 py-3">
-          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-muted transition-colors hover:text-ink">
-            <ScrollText aria-hidden="true" className="size-3.5" />
-            Log do envelope
-            <span className="ml-1 font-normal normal-case tracking-normal">
-              {diario.length === 0 ? "sem eventos" : `${diario.length} eventos`}
-            </span>
-          </summary>
-
-          {diario.length === 0 ? (
-            <p className="m-0 mt-2 text-xs text-ink-muted">
-              Nenhum evento registrado para este envelope ainda.
-            </p>
-          ) : (
-            <ol className="m-0 mt-2 grid max-h-64 list-none gap-1 overflow-auto p-0">
-              {diario.map((linha, i) => (
-                <li
-                  className="grid grid-cols-[2px_1fr] items-stretch gap-x-2.5 py-1 pr-2"
-                  key={`${linha.quando}-${linha.fato}-${i}`}
-                >
-                  {/* A gravidade é uma barra, como na linha da pessoa: o erro se vê sem pintar a linha. */}
-                  <span
-                    className={`h-full self-stretch rounded-sm ${
-                      linha.gravidade === "erro"
-                        ? "bg-rose-500"
-                        : linha.gravidade === "marco"
-                          ? "bg-emerald-500"
-                          : "bg-line"
-                    }`}
-                  />
-                  <div className="min-w-0">
-                    <p
-                      className={`m-0 text-xs font-medium ${
+            {diario.length === 0 ? (
+              <p className="m-0 mt-2 text-xs text-ink-muted">
+                Nenhum evento registrado para este envelope ainda.
+              </p>
+            ) : (
+              <ol className="m-0 mt-2 grid max-h-64 list-none gap-1 overflow-auto p-0">
+                {diario.map((linha, i) => (
+                  <li
+                    className="grid grid-cols-[2px_1fr] items-stretch gap-x-2.5 py-1 pr-2"
+                    key={`${linha.quando}-${linha.fato}-${i}`}
+                  >
+                    {/* A gravidade é uma barra, como na linha da pessoa: o erro se vê sem pintar a linha. */}
+                    <span
+                      className={`h-full self-stretch rounded-sm ${
                         linha.gravidade === "erro"
-                          ? "text-rose-700 dark:text-rose-300"
-                          : "text-ink"
+                          ? "bg-rose-500"
+                          : linha.gravidade === "marco"
+                            ? "bg-emerald-500"
+                            : "bg-line"
                       }`}
-                    >
-                      {linha.fato}
-                      {linha.quem ? (
-                        <span className="font-normal text-ink-muted"> · {linha.quem}</span>
+                    />
+                    <div className="min-w-0">
+                      <p
+                        className={`m-0 text-xs font-medium ${
+                          linha.gravidade === "erro"
+                            ? "text-rose-700 dark:text-rose-300"
+                            : "text-ink"
+                        }`}
+                      >
+                        {linha.fato}
+                        {linha.quem ? (
+                          <span className="font-normal text-ink-muted"> · {linha.quem}</span>
+                        ) : null}
+                      </p>
+                      {linha.detalhe ? (
+                        <p className="m-0 break-words text-[10.5px] text-ink-soft">{linha.detalhe}</p>
                       ) : null}
-                    </p>
-                    {linha.detalhe ? (
-                      <p className="m-0 break-words text-[10.5px] text-ink-soft">{linha.detalhe}</p>
-                    ) : null}
-                    <p className="m-0 text-[10px] tabular-nums text-ink-muted">
-                      {momento(linha.quando)}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          )}
-        </details>
+                      <p className="m-0 text-[10px] tabular-nums text-ink-muted">
+                        {momento(linha.quando)}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </details>
+        </div>
       </div>
     </div>
   );
