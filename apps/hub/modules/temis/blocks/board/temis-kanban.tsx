@@ -627,8 +627,12 @@ function Card({
         {trabalho.clienteCpf ? (
           <p className="text-[0.7rem] tabular-nums text-ink-muted">{cpfLegivel(trabalho.clienteCpf)}</p>
         ) : null}
+        {/* O NOME DO EMPREENDIMENTO, E NÃO A SIGLA. Lucas, 02/10/2026: *"trazer o nome do
+            empreendimento em vez da sigla"*. É o mesmo campo que a tela de trabalho já mostrava
+            (`enterprise_nome`); no produto dividido ele vem como "Vale do Ouro · VOL", o pai na
+            frente e o filho depois. A sigla só aparece se o nome faltar. */}
         <p className="mt-0.5 text-[0.7rem] text-ink-muted">
-          {trabalho.empreendimentoCodigo} · {trabalho.unidade}
+          {trabalho.empreendimentoNome?.trim() || trabalho.empreendimentoCodigo} · {trabalho.unidade}
         </p>
 
         {/* ⚠️ QUANDO CHEGOU E PARA QUANDO ESTÁ (Lucas, 06/09/2026: *"pode continuar trazer o prazo,
