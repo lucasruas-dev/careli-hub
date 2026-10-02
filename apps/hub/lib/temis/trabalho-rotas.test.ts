@@ -80,6 +80,18 @@ const mocks = vi.hoisted(() => ({
     feito: "nada" as const,
     recado: null as null | string,
   })),
+  lerEntradaDaVenda: vi.fn(
+    async (_sb: unknown, _propostaId: string): Promise<import("@/lib/hercules/entrada/regra").EntradaDoCard> => ({
+      avulsosPagos: [],
+      entrada: null,
+      paga: false,
+      parcelas: [],
+      pedido: 5021,
+      pedidoDesfeito: false,
+      regra: "envio_d4sign",
+      situacao: "lida",
+    }),
+  ),
   marcarAtividade: vi.fn(async () => ({ andou: false, estagio: "analise", ok: true as const })),
   registrarPassagemDeEtapa: vi.fn(async () => undefined),
   retornarParaAnalise: vi.fn(async () => ({
@@ -220,6 +232,12 @@ vi.mock("@/lib/hercules/concluir-cancelamento-server", () => ({
 
 vi.mock("@/lib/hercules/indeferimento-na-venda-server", () => ({
   devolverVendaNoIndeferimento: mocks.devolverVendaNoIndeferimento,
+}));
+
+// A leitura da entrada no C2X tem teste próprio (`lib/hercules/entrada/ler-entrada.test.ts`, com o C2X
+// falso). Aqui o teste é de QUEM a recebe: só o hub, só o card de contrato em Pré-faturamento.
+vi.mock("@/lib/hercules/entrada/ler-entrada", () => ({
+  lerEntradaDaVenda: mocks.lerEntradaDaVenda,
 }));
 
 vi.mock("@/lib/temis/analise-do-trabalho", () => ({
@@ -770,6 +788,59 @@ describe("GET /trabalho", () => {
     });
     const falha = await hubTrabalho.GET(get("/api/temis/trabalho?id=t-careli"));
     expect(await falha.json()).toEqual({ error: "Não foi possível abrir: column x does not exist" });
+    erro.mockRestore();
+  });
+});
+
+// ⚠️ A ENTRADA LIDA NO C2X (Lucas, 02/10/2026: *"So no hub"* e *"So o passo 1"*). O portal abre a MESMA
+// `abrirCardDoTrabalho` e não recebe o campo, nem a leitura acontece para ele; em outra etapa o C2X
+// não é lido; e a falha da leitura não derruba o card.
+describe("GET /trabalho: a entrada lida no C2X", () => {
+  const NO_PRE_FATURAMENTO = { ...CARD, estagio: "prazo_legal", proposta_id: "p-cecilio" };
+
+  it("hub, contrato em Pré-faturamento: o campo vem, lido pela venda do card", async () => {
+    responderPorTabela({ temis_trabalhos: () => ({ data: NO_PRE_FATURAMENTO, error: null }) });
+    const r = await hubTrabalho.GET(get("/api/temis/trabalho?id=t-careli"));
+    expect(r.status).toBe(200);
+    const corpo = (await r.json()) as { data: { entrada?: { pedido: number; situacao: string } } };
+    expect(corpo.data.entrada).toMatchObject({ pedido: 5021, situacao: "lida" });
+    expect(mocks.lerEntradaDaVenda).toHaveBeenCalledTimes(1);
+    expect(mocks.lerEntradaDaVenda.mock.calls[0]?.[1]).toBe("p-cecilio");
+  });
+
+  it("portal, o MESMO card: o campo não vem e o C2X não é lido", async () => {
+    responderPorTabela({ temis_trabalhos: () => ({ data: NO_PRE_FATURAMENTO, error: null }) });
+    const r = await portalTrabalho.GET(get("/api/incorporador/temis/trabalho?id=t-cecilio"));
+    expect(r.status).toBe(200);
+    const corpo = (await r.json()) as { data: Record<string, unknown> };
+    expect("entrada" in corpo.data).toBe(false);
+    expect(mocks.lerEntradaDaVenda).not.toHaveBeenCalled();
+  });
+
+  it("hub, outra etapa ou outro tipo: o campo não vem e o C2X não é lido", async () => {
+    for (const card of [
+      { ...NO_PRE_FATURAMENTO, estagio: "assinatura" },
+      { ...NO_PRE_FATURAMENTO, estagio: "faturado" },
+      { ...NO_PRE_FATURAMENTO, tipo: "cancelamento" },
+      { ...NO_PRE_FATURAMENTO, proposta_id: null },
+    ]) {
+      responderPorTabela({ temis_trabalhos: () => ({ data: card, error: null }) });
+      const r = await hubTrabalho.GET(get("/api/temis/trabalho?id=t-careli"));
+      expect(r.status).toBe(200);
+      expect("entrada" in ((await r.json()) as { data: Record<string, unknown> }).data).toBe(false);
+    }
+    expect(mocks.lerEntradaDaVenda).not.toHaveBeenCalled();
+  });
+
+  it("a leitura estourou: o card abre igual, com a entrada 'falhou'", async () => {
+    const erro = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.lerEntradaDaVenda.mockRejectedValueOnce(new Error("inesperado"));
+    responderPorTabela({ temis_trabalhos: () => ({ data: NO_PRE_FATURAMENTO, error: null }) });
+    const r = await hubTrabalho.GET(get("/api/temis/trabalho?id=t-careli"));
+    expect(r.status).toBe(200);
+    const corpo = (await r.json()) as { data: { card: { id: string }; entrada: unknown } };
+    expect(corpo.data.card.id).toBe("t-cecilio");
+    expect(corpo.data.entrada).toEqual({ motivo: "inesperada", situacao: "falhou" });
     erro.mockRestore();
   });
 });

@@ -5,10 +5,14 @@ import {
   ArrowLeft,
   Ban,
   CircleCheck,
+  CircleDot,
+  Clock,
+  Coins,
   Eye,
   FilePlus2,
   FileText,
   FileX2,
+  Info,
   Loader2,
   Mail,
   MailCheck,
@@ -20,6 +24,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Tooltip } from "@repo/uix";
+import type { EntradaDoCard, ParcelaDaEntrada } from "@/lib/hercules/entrada/regra";
 import type { AnaliseDoTrabalho, CampoDaAnalise } from "@/lib/temis/analise-do-trabalho";
 import type { DescontoDaProposta } from "@/lib/temis/comercial-da-analise";
 import type { PedidoDoTrabalho } from "@/lib/temis/pedido-do-trabalho";
@@ -290,6 +295,12 @@ export function TelaDeTrabalho({
     analise: AnaliseDoTrabalho | null;
     assinatura: AssinaturaDoCard | null;
     card: Card;
+    /**
+     * A entrada lida no C2X (`lib/hercules/entrada/ler-entrada.ts`). ⚠️ SÓ VEM NO HUB E SÓ NO CARD DE
+     * CONTRATO EM PRÉ-FATURAMENTO (Lucas, 02/10/2026: *"So no hub"*). Ausente = não perguntada, e a
+     * etapa não desenha o bloco.
+     */
+    entrada?: EntradaDoCard;
     envelopeVivo: EnvelopeVivo | null;
     podeEmitir: boolean;
     /** Só no pedido de cancelamento ou distrato: a venda caiu? o lote está livre? (a retomada) */
@@ -356,6 +367,7 @@ export function TelaDeTrabalho({
           // que ele é nesse caso — "não sei" —, e a etapa volta a dizer o que ainda não mostra.
           assinatura?: AssinaturaDoCard | null;
           card: Card;
+          entrada?: EntradaDoCard;
           // ⚠️ OPCIONAL DE PROPÓSITO. Enquanto a versão de produção da rota não mandar o campo, a
           // tela precisa continuar abrindo — e o `?? null` abaixo faz dela o que ela é nesse caso:
           // "não sei", que a confirmação trata como o texto neutro e o servidor resolve de novo.
@@ -1168,7 +1180,11 @@ export function TelaDeTrabalho({
               não há mais o que cobrar de ninguém. */}
           {card.estagio === "prazo_legal" ? (
             <div className="grid max-w-3xl gap-3">
-              <EtapaDoPrazoLegal inicio={card.arrependimento_inicio} />
+              <EtapaDoPrazoLegal
+                aoRecarregar={carregar}
+                entrada={ehContrato ? dados.entrada : undefined}
+                inicio={card.arrependimento_inicio}
+              />
               {ehContrato && assinatura && envelopeVivo && envelopeVivo.estado !== "assinado" ? (
                 <PainelDaAssinatura
                   aoRecarregar={carregar}
@@ -2594,7 +2610,16 @@ function DaquiNaoSeVolta({ estagio }: { estagio: "faturado" | "indeferido" }) {
 
 // ── ETAPA 4 · PRAZO LEGAL ──────────────────────────────────────────────────
 
-function EtapaDoPrazoLegal({ inicio }: { inicio: null | string }) {
+function EtapaDoPrazoLegal({
+  aoRecarregar,
+  entrada,
+  inicio,
+}: {
+  aoRecarregar: () => Promise<void>;
+  /** Ausente = a rota não leu (portal, ou card que não é de contrato): o bloco da entrada não aparece. */
+  entrada: EntradaDoCard | undefined;
+  inicio: null | string;
+}) {
   // ⚠️ SETE DIAS CORRIDOS, não úteis: é prazo do comprador e corre no calendário. O resto dos
   // prazos da Têmis conta dias ÚTEIS, porque mede trabalho nosso.
   const dias = inicio
@@ -2629,11 +2654,201 @@ function EtapaDoPrazoLegal({ inicio }: { inicio: null | string }) {
         )}
       </section>
 
-      <EmConstrucao
-        oQueVem="A entrada lida do C2X (à vista ou primeira parcela, com a data de vencimento) e o botão de faturar, que só acende com as duas condições fechadas."
-        titulo="A entrada"
-      />
+      {/* ⚠️ O AVISO DE OBRA SAIU (02/10/2026): a entrada agora é LIDA no C2X. Lucas: *"verifica se
+          estamos conseguindo ler o financeiro desses contratos"*, e, perguntado, *"So o passo 1"*: a
+          tela mostra a entrada e se está paga, e NÃO há botão de faturar novo. O Faturado continua
+          à mão, com a trava que já existe. */}
+      {entrada ? <BlocoDaEntrada aoRecarregar={aoRecarregar} entrada={entrada} /> : null}
     </div>
+  );
+}
+
+/** "2026-09-29" → "29/09/2026", sem passar por `Date` (o dia do C2X não tem fuso). */
+function diaNaTela(dia: null | string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dia ?? ""));
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
+}
+
+const REAIS = new Intl.NumberFormat("pt-BR", { currency: "BRL", style: "currency" });
+
+/** Como a venda foi casada com o pedido, para o ícone de informação. */
+const COMO_CASOU: Record<Extract<EntradaDoCard, { situacao: "lida" }>["regra"], string> = {
+  envio_d4sign: "pelo envio da D4Sign",
+  origem_c2x_id: "pela venda importada do C2X",
+  terreno_mesmo_comprador: "pelo lote e pelo comprador",
+};
+
+/** A situação da parcela: rótulo, cor e ícone. Grafite no neutro; cor só no que pede olho. */
+const SITUACAO_NA_TELA: Record<ParcelaDaEntrada["situacao"], { classe: string; rotulo: string }> = {
+  em_aberto: { classe: "text-ink-soft", rotulo: "Em aberto" },
+  paga: { classe: "text-emerald-700 dark:text-emerald-300", rotulo: "Paga" },
+  pago_sem_data: { classe: "text-amber-700 dark:text-amber-300", rotulo: "Pago sem data" },
+  vencida: { classe: "text-rose-700 dark:text-rose-300", rotulo: "Vencida" },
+};
+
+/**
+ * A ENTRADA LIDA NO C2X: as parcelas de Ato e Sinal, a que conta como entrada destacada, e os Avulso
+ * pagos à parte.
+ *
+ * ⚠️ O AVULSO PAGO APARECE, MAS NÃO QUITA NADA SOZINHO. Lucas, 02/10/2026, perguntado sobre o card do
+ * REP D L163 (dois Avulso pagos em 28/09 no valor exato do Ato e do Sinal, que continuam Atrasado no
+ * C2X): *"Mostrar e eu decido"*. A linha diz que o time decide; a parcela de entrada continua com a
+ * situação que o C2X dá a ela.
+ *
+ * ⚠️ AS TRÊS FRASES DE FORA ("sem pedido", "mais de um candidato", "não consegui ler") NÃO SE
+ * MISTURAM: cada uma pede uma ação diferente de quem lê (digitar a venda no C2X, olhar os pedidos,
+ * tentar de novo), e uma frase só para as três mandaria a pessoa fazer a coisa errada.
+ */
+function BlocoDaEntrada({
+  aoRecarregar,
+  entrada,
+}: {
+  aoRecarregar: () => Promise<void>;
+  entrada: EntradaDoCard;
+}) {
+  const [lendo, setLendo] = useState(false);
+  const lida = entrada.situacao === "lida" ? entrada : null;
+  const info = lida
+    ? `Pedido ${lida.pedido} no C2X, casado ${COMO_CASOU[lida.regra]}. Lido agora, só consulta: o Faturado continua à mão.`
+    : "Lido agora no C2X, só consulta: o Faturado continua à mão.";
+
+  return (
+    <section aria-label="A entrada" className="rounded-xl border border-line bg-surface p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="m-0 text-sm font-semibold text-ink">A entrada</h3>
+        <div className="flex items-center gap-2">
+          {lida?.entrada ? <SeloDaEntrada parcela={lida.entrada} /> : null}
+          <Tooltip content={info} placement="top">
+            <span aria-label={info} className="grid size-6 place-items-center text-ink-muted" role="img">
+              <Info aria-hidden="true" className="size-3.5" />
+            </span>
+          </Tooltip>
+        </div>
+      </div>
+
+      {entrada.situacao === "lida" ? (
+        <>
+          {entrada.pedidoDesfeito ? (
+            <p className="m-0 mt-2 flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300">
+              <AlertTriangle aria-hidden="true" className="size-3.5 shrink-0" />
+              O pedido {entrada.pedido} está desfeito no C2X.
+            </p>
+          ) : null}
+          {entrada.parcelas.length === 0 ? (
+            <p className="m-0 mt-2 text-xs text-ink-muted">O pedido no C2X não tem Ato nem Sinal com valor.</p>
+          ) : (
+            <ul className="m-0 mt-2 grid list-none gap-1 p-0">
+              {entrada.parcelas.map((p) => (
+                <LinhaDaParcela key={p.id} parcela={p} />
+              ))}
+            </ul>
+          )}
+          {entrada.avulsosPagos.length > 0 ? (
+            <div className="mt-3 border-t border-line pt-3" data-avulsos="">
+              <p className="m-0 flex items-center gap-1.5 text-xs text-ink-soft">
+                <Coins aria-hidden="true" className="size-3.5 shrink-0" />
+                Avulso pago: o time decide se conta como entrada.
+              </p>
+              <ul className="m-0 mt-1.5 grid list-none gap-1 p-0">
+                {entrada.avulsosPagos.map((p) => (
+                  <LinhaDaParcela key={p.id} parcela={p} />
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <div className="mt-2 flex items-start justify-between gap-3">
+          <p className="m-0 text-xs text-ink-soft">{fraseSemLeitura(entrada)}</p>
+          {entrada.situacao === "falhou" ? (
+            <Tooltip content="Ler de novo" placement="top">
+              <button
+                aria-label="Ler de novo"
+                className="grid size-7 shrink-0 place-items-center rounded-lg border border-line text-ink-muted transition-colors hover:bg-subtle hover:text-ink disabled:opacity-50"
+                disabled={lendo}
+                onClick={() => {
+                  setLendo(true);
+                  void aoRecarregar().finally(() => setLendo(false));
+                }}
+                type="button"
+              >
+                <RefreshCw aria-hidden="true" className={`size-3.5 ${lendo ? "animate-spin" : ""}`} />
+              </button>
+            </Tooltip>
+          ) : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** A frase de quando não há parcela para mostrar. */
+function fraseSemLeitura(entrada: Exclude<EntradaDoCard, { situacao: "lida" }>): string {
+  if (entrada.situacao === "falhou") return "Não consegui ler o C2X agora.";
+  if (entrada.situacao === "ambiguo") {
+    return entrada.motivo === "sem_documento_no_panteon"
+      ? "Não deu para casar a venda com um pedido do C2X: a venda está sem o CPF do comprador."
+      : "Não deu para casar a venda com um pedido do C2X (mais de um candidato).";
+  }
+  if (entrada.motivo === "pedido_nao_achado_no_c2x") {
+    return "Sem pedido no C2X: o pedido ligado a esta venda não foi encontrado lá.";
+  }
+  if (entrada.motivo === "pedido_de_outro_comprador") {
+    return "Sem pedido no C2X: a venda ainda não foi digitada. O pedido vivo neste lote é de outro comprador.";
+  }
+  return "Sem pedido no C2X: a venda ainda não foi digitada.";
+}
+
+/** O selo do cabeçalho: a situação da parcela que conta como entrada. */
+function SeloDaEntrada({ parcela }: { parcela: ParcelaDaEntrada }) {
+  const { classe, rotulo } = SITUACAO_NA_TELA[parcela.situacao];
+  const Icone = parcela.situacao === "paga" ? CircleCheck : parcela.situacao === "em_aberto" ? Clock : AlertTriangle;
+  const texto = parcela.situacao === "paga" && parcela.pagoEm ? `Paga em ${diaNaTela(parcela.pagoEm)}` : rotulo;
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-semibold ${classe}`} data-selo-da-entrada="">
+      <Icone aria-hidden="true" className="size-3.5" />
+      {texto}
+    </span>
+  );
+}
+
+/** Uma parcela: rótulo, valor, vencimento, pagamento e situação. A que conta como entrada em destaque. */
+function LinhaDaParcela({ parcela }: { parcela: ParcelaDaEntrada }) {
+  const { classe, rotulo } = SITUACAO_NA_TELA[parcela.situacao];
+  return (
+    <li
+      className={`flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded-lg px-2 py-1.5 text-xs ${
+        parcela.contaComoEntrada ? "bg-subtle font-semibold text-ink" : "text-ink-soft"
+      }`}
+      data-conta-como-entrada={parcela.contaComoEntrada ? "sim" : undefined}
+    >
+      <span className="inline-flex min-w-[6.5rem] items-center gap-1.5">
+        {parcela.contaComoEntrada ? (
+          <Tooltip content="A parcela que conta como entrada" placement="top">
+            <span aria-label="A parcela que conta como entrada" className="inline-flex" role="img">
+              <CircleDot aria-hidden="true" className="size-3.5 text-ink" />
+            </span>
+          </Tooltip>
+        ) : null}
+        {parcela.rotulo}
+      </span>
+      <span className="tabular-nums">{REAIS.format(parcela.valor)}</span>
+      {parcela.vencimento ? (
+        <span className="tabular-nums text-ink-muted">vence {diaNaTela(parcela.vencimento)}</span>
+      ) : null}
+      {parcela.pagoEm ? (
+        parcela.pagaPelaMarcacao ? (
+          <Tooltip content="O C2X marcou como paga sem a data do pagamento: vale o dia da marcação." placement="top">
+            <span className="tabular-nums text-ink-muted underline decoration-dotted">
+              pago {diaNaTela(parcela.pagoEm)}
+            </span>
+          </Tooltip>
+        ) : (
+          <span className="tabular-nums text-ink-muted">pago {diaNaTela(parcela.pagoEm)}</span>
+        )
+      ) : null}
+      <span className={`ml-auto font-semibold ${classe}`}>{rotulo}</span>
+    </li>
   );
 }
 

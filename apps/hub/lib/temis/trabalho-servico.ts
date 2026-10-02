@@ -53,6 +53,8 @@ import { carregarCadastroDeEmpreendimentos, type LinhaDoCadastro } from "@/lib/h
 import { paiDaChave } from "@/lib/hercules/chave-do-grupo";
 import { codigoDaVenda } from "@/lib/hercules/codigo-da-venda";
 import { concluirCancelamentoDoCard } from "@/lib/hercules/concluir-cancelamento-server";
+import { lerEntradaDaVenda } from "@/lib/hercules/entrada/ler-entrada";
+import type { EntradaDoCard } from "@/lib/hercules/entrada/regra";
 import { ehIdDoPai, expandirIdDoPainel } from "@/lib/hercules/expandir-id-do-painel";
 import {
   type EventoDaUnidade,
@@ -886,6 +888,24 @@ export async function abrirCardDoTrabalho(
   }
   if (!card) return NextResponse.json({ error: "Trabalho nao encontrado." }, { status: 404 });
 
+  // ⚠️ A ENTRADA LIDA NO C2X, SÓ NO HUB, SÓ NO CARD DE CONTRATO EM PRÉ-FATURAMENTO. Lucas, 02/10/2026:
+  // *"verifica se estamos conseguindo ler o financeiro desses contratos"*, e, perguntado, *"So no
+  // hub"*: o portal abre esta MESMA função e não recebe o campo (nem a leitura acontece para ele). Em
+  // outra etapa o C2X não é lido: a pergunta "a entrada está paga?" só existe no Pré-faturamento. A
+  // leitura começa AQUI, junto das outras, para o card não esperar uma depois da outra; ela nunca
+  // lança (falha vira `situacao: "falhou"`), e o `catch` é a rede do inesperado.
+  const leAEntrada =
+    ator.tipo === "hub" &&
+    String(card.tipo).trim() === "contrato" &&
+    String(card.estagio).trim() === "prazo_legal" &&
+    Boolean(card.proposta_id);
+  const entradaNoC2x: Promise<EntradaDoCard> | null = leAEntrada
+    ? lerEntradaDaVenda(sb, String(card.proposta_id)).catch((e: unknown): EntradaDoCard => {
+        console.error("[temis][trabalho] falha inesperada ao ler a entrada", e instanceof Error ? e.name : "erro");
+        return { motivo: "inesperada", situacao: "falhou" };
+      })
+    : null;
+
   // ⚠️ CARD SEM PROPOSTA NÃO É ERRO. Os quatro cards antigos (Garden e Lavra) nasceram antes da
   // migration 0134 e têm `proposta_id` nulo: a tela abre com o cabeçalho e diz que não há venda
   // ligada. A análise, os contratos e o diário vão juntos: a etapa 1 usa a primeira, a etapa 2 a
@@ -934,12 +954,17 @@ export async function abrirCardDoTrabalho(
       ? await lerSituacaoDoPedido(sb, String(card.proposta_id))
       : null;
 
+  const entrada = entradaNoC2x ? await entradaNoC2x : undefined;
+
   return NextResponse.json(
     {
       data: {
         analise,
         assinatura,
         card: { ...card, contratos },
+        // ⚠️ O CAMPO SÓ EXISTE QUANDO FOI LIDO (hub, contrato, Pré-faturamento): fora disso ele NÃO VEM,
+        // e a tela não desenha o bloco. Sem CPF e sem nome: parcelas, datas, valores e o número do pedido.
+        ...(entrada !== undefined ? { entrada } : {}),
         // ⚠️ O PORTAL RECEBE O ENVELOPE SEM O VOCABULÁRIO INTERNO (plano, seções 4 e 5): o aviso de
         // dois contratos é só da tela interna, e `provedor` e o id do documento da D4Sign (o uuid do
         // C2X) nunca atravessam. A tela de trabalho é a MESMA função nos dois lados, então o corte é
