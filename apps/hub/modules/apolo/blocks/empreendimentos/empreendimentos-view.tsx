@@ -1339,6 +1339,7 @@ async function fetchEnterpriseLogos(): Promise<Record<string, string>> {
 async function fetchEnterpriseSettings(enterpriseId: string): Promise<{
   analiseCredito: boolean;
   ativo: boolean;
+  certidaoNascimento: boolean;
   comprovanteRenda: boolean;
   limiteCredito: number | null;
   prevenda: boolean;
@@ -1358,6 +1359,7 @@ async function fetchEnterpriseSettings(enterpriseId: string): Promise<{
           string,
           {
             analiseCreditoHabilitada?: boolean;
+            certidaoNascimentoHabilitada?: boolean;
             comprovanteRendaHabilitado?: boolean;
             credenciamentoAtivo?: boolean;
             limiteCredito?: number | null;
@@ -1378,6 +1380,8 @@ async function fetchEnterpriseSettings(enterpriseId: string): Promise<{
       // primeiro cliente aprovado caía na coluna Pré-venda.
       analiseCredito: setting?.analiseCreditoHabilitada ?? true,
       ativo: Boolean(setting?.credenciamentoAtivo),
+      // Certidão de nascimento também nasce DESLIGADA (default da coluna, migration 0208).
+      certidaoNascimento: setting?.certidaoNascimentoHabilitada === true,
       // Comprovante de renda nasce DESLIGADO (default da coluna, migration 0095): sem setting
       // salvo, empreendimento nenhum passa a exigir documento novo sozinho.
       comprovanteRenda: setting?.comprovanteRendaHabilitado === true,
@@ -1400,6 +1404,7 @@ async function fetchEnterpriseSettings(enterpriseId: string): Promise<{
     return {
       analiseCredito: true,
       ativo: false,
+      certidaoNascimento: false,
       comprovanteRenda: false,
       limiteCredito: null,
       prevenda: false,
@@ -1444,6 +1449,7 @@ async function patchEnterpriseSettings(
   code: string,
   patch: {
     analiseCreditoHabilitada?: boolean;
+    certidaoNascimentoHabilitada?: boolean;
     comprovanteRendaHabilitado?: boolean;
     limiteCredito?: number | null;
     prevendaHabilitada?: boolean;
@@ -1673,6 +1679,11 @@ function CredenciamentoCard({
   const [rendaOn, setRendaOn] = useState(false);
   const [salvandoRenda, setSalvandoRenda] = useState(false);
   const [erroRenda, setErroRenda] = useState<string | null>(null);
+  // Certidão de nascimento do cliente solteiro: mesmo molde do comprovante de renda, só o toggle,
+  // nascendo DESLIGADO.
+  const [certidaoNascimentoOn, setCertidaoNascimentoOn] = useState(false);
+  const [salvandoCertidaoNascimento, setSalvandoCertidaoNascimento] = useState(false);
+  const [erroCertidaoNascimento, setErroCertidaoNascimento] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1692,6 +1703,7 @@ function CredenciamentoCard({
       setPrevendaOn(value.prevenda);
       setValorPix(numeroParaMoeda(value.valorPix));
       setRendaOn(value.comprovanteRenda);
+      setCertidaoNascimentoOn(value.certidaoNascimento);
     });
     return () => {
       alive = false;
@@ -1808,6 +1820,18 @@ function CredenciamentoCard({
     });
     setSalvandoRenda(false);
     if (!result.ok) setErroRenda(result.error ?? "Falha ao salvar.");
+  }
+
+  // Salva o bloco Certidão de nascimento (só o toggle). Mesma regra do comprovante de renda: vale
+  // para a PRÓXIMA CAD de cliente solteiro deste empreendimento, e não alcança as já enviadas.
+  async function salvarCertidaoNascimento() {
+    setErroCertidaoNascimento(null);
+    setSalvandoCertidaoNascimento(true);
+    const result = await patchEnterpriseSettings(enterpriseId, code, {
+      certidaoNascimentoHabilitada: certidaoNascimentoOn,
+    });
+    setSalvandoCertidaoNascimento(false);
+    if (!result.ok) setErroCertidaoNascimento(result.error ?? "Falha ao salvar.");
   }
 
   async function handleFile(file: File | undefined) {
@@ -1947,6 +1971,20 @@ function CredenciamentoCard({
         onToggle={() => setRendaOn((v) => !v)}
         salvando={salvandoRenda}
         titulo="Comprovante de renda"
+      />
+
+      {/* Certidão de nascimento: chave sem valor, logo abaixo do comprovante de renda (Lucas,
+          02/10/2026: "é igual o comprovante de renda"). Ligada, a CAD do cliente SOLTEIRO passa a
+          exigir a certidão; os demais estados civis seguem como hoje. */}
+      <SubEtapaCredenciamento
+        ativo={ativo}
+        descricao="Exige a certidão de nascimento do cliente solteiro para enviar a CAD, junto dos documentos que já são obrigatórios. Os outros estados civis continuam mandando a certidão de sempre. Desligada, a CAD do solteiro segue sem esse documento."
+        erro={erroCertidaoNascimento}
+        habilitada={certidaoNascimentoOn}
+        onSalvar={() => void salvarCertidaoNascimento()}
+        onToggle={() => setCertidaoNascimentoOn((v) => !v)}
+        salvando={salvandoCertidaoNascimento}
+        titulo="Certidão de nascimento"
       />
 
       {/* O clique no toggle mexeu na fila: quantas fichas saíram da pré-venda e para onde. */}

@@ -23,13 +23,19 @@ const estado = vi.hoisted(() => ({
   ),
   // Captura o CadDoc que o servidor manda desenhar: é ELE que prova o que sai impresso.
   pdf: vi.fn(async (_cad: Record<string, unknown>) => new Uint8Array([1, 2, 3])),
+  certidao: vi.fn(async () => false),
   renda: vi.fn(async () => false),
   upload: vi.fn(async () => ({ ok: true })),
 }));
 
 vi.mock("@/lib/apolo/cadastro-persist", () => ({ createApoloEntity: estado.criar }));
-vi.mock("@/lib/apolo/enterprise-settings", () => ({ exigeComprovanteRenda: estado.renda }));
+vi.mock("@/lib/apolo/enterprise-settings", () => ({
+  exigeCertidaoNascimento: estado.certidao,
+  exigeComprovanteRenda: estado.renda,
+}));
 vi.mock("@/lib/apolo/cadastro-obrigatorios", () => ({
+  CERTIDAO_NASCIMENTO_CATEGORIA: "certidao_nascimento",
+  CERTIDAO_NASCIMENTO_ROTULO: "Certidão de nascimento",
   COMPROVANTE_RENDA_LABELS: {},
   validarCamposMinimos: () => ({ ok: true }),
   validarDocumentosObrigatorios: () => ({ ok: true }),
@@ -97,6 +103,7 @@ beforeEach(() => {
   });
   estado.upload.mockClear();
   estado.renda.mockClear();
+  estado.certidao.mockClear();
   estado.mercado.mockClear();
   estado.pdf.mockClear();
 });
@@ -441,6 +448,8 @@ describe("corretor autônomo", () => {
       payload: corretor(),
     });
     expect(estado.renda).not.toHaveBeenCalled();
+    // A certidão de nascimento segue a mesma porta: a etapa é do comprador.
+    expect(estado.certidao).not.toHaveBeenCalled();
   });
 
   // ⚠️ O AFROUXAMENTO DAS TRAVAS NASCE NA PORTA, NÃO NO `role` DO JSON (27/09/2026). Se o papel do

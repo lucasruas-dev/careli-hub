@@ -33,8 +33,13 @@ const estado = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/apolo/cadastro-persist", () => ({ createApoloEntity: estado.criar }));
-vi.mock("@/lib/apolo/enterprise-settings", () => ({ exigeComprovanteRenda: estado.renda }));
+vi.mock("@/lib/apolo/enterprise-settings", () => ({
+  exigeCertidaoNascimento: estado.renda,
+  exigeComprovanteRenda: estado.renda,
+}));
 vi.mock("@/lib/apolo/cadastro-obrigatorios", () => ({
+  CERTIDAO_NASCIMENTO_CATEGORIA: "certidao_nascimento",
+  CERTIDAO_NASCIMENTO_ROTULO: "Certidão de nascimento",
   COMPROVANTE_RENDA_LABELS: {},
   validarCamposMinimos: () => ({ ok: true }),
   validarDocumentosObrigatorios: () => ({ ok: true }),

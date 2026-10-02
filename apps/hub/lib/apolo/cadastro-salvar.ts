@@ -1,6 +1,8 @@
 import { PDFDocument } from "pdf-lib";
 
 import {
+  CERTIDAO_NASCIMENTO_CATEGORIA,
+  CERTIDAO_NASCIMENTO_ROTULO,
   COMPROVANTE_RENDA_LABELS,
   validarCamposMinimos,
   validarDocumentosObrigatorios,
@@ -26,7 +28,7 @@ import {
   uploadApoloDocument,
 } from "@/lib/apolo/documentos";
 import { nomeDeMercadoDoEmpreendimento } from "@/lib/apolo/empreendimento-de-mercado";
-import { exigeComprovanteRenda } from "@/lib/apolo/enterprise-settings";
+import { exigeCertidaoNascimento, exigeComprovanteRenda } from "@/lib/apolo/enterprise-settings";
 import {
   type Autonomo,
   conferirHabilitacaoDoAutonomo,
@@ -98,6 +100,9 @@ const MAX_BASE64_LENGTH = 28_000_000; // ~20MB por arquivo
 const CATEGORIA_LABEL: Record<string, string> = {
   cad: "CAD",
   certidao: "Certidão",
+  // Categoria própria (Setup > Certidão de nascimento, cliente solteiro): a ficha não pode
+  // confundi-la com a certidão de estado civil dos casados, que fica em `certidao`.
+  [CERTIDAO_NASCIMENTO_CATEGORIA]: CERTIDAO_NASCIMENTO_ROTULO,
   comprovante_endereco: "Comprovante de endereço",
   // As TRÊS formas do comprovante de renda: o rótulo carrega a forma entregue (extrato bancário /
   // contracheque / imposto de renda), que é o que a aba Documentos da ficha mostra.
@@ -297,12 +302,19 @@ export async function salvarCadastroDoApolo(
   // órfãs). Sem `enterpriseId` não existe chave que consultar, então a exigência não se aplica —
   // não é um furo desta etapa, é o furo do vínculo faltando, que se resolve exigindo o
   // empreendimento no wizard. (No portal ele é obrigatório: a porta de lá barra antes.)
-  const rendaObrigatoria =
+  //
+  // A CERTIDÃO DE NASCIMENTO (Setup do empreendimento, só cliente solteiro) segue a mesma porta:
+  // só a CAD do cliente, só com empreendimento, e a chave lida aqui, nunca do corpo.
+  const [rendaObrigatoria, certidaoNascimentoObrigatoria] =
     role === "prospect"
-      ? await exigeComprovanteRenda(adminClient, payload.vinculo?.enterpriseId)
-      : false;
+      ? await Promise.all([
+          exigeComprovanteRenda(adminClient, payload.vinculo?.enterpriseId),
+          exigeCertidaoNascimento(adminClient, payload.vinculo?.enterpriseId),
+        ])
+      : [false, false];
   const obrigatorios = validarDocumentosObrigatorios({
     documentos,
+    exigeCertidaoNascimento: certidaoNascimentoObrigatoria,
     exigeComprovanteRenda: rendaObrigatoria,
     perfil: payload.perfil,
     persona: payload.persona,

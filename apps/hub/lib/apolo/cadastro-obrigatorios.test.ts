@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CERTIDAO_NASCIMENTO_CATEGORIA,
+  certidaoDoCadastro,
   COMPROVANTE_RENDA_LABELS,
   COMPROVANTE_RENDA_OPCOES,
   categoriasComArquivo,
@@ -448,4 +450,180 @@ describe("comprovante de renda — etapa por empreendimento", () => {
       comprovante_renda_irpf: "Comprovante de renda (imposto de renda)",
     });
   });
+});
+
+// CERTIDÃO DE NASCIMENTO (Setup do empreendimento, 02/10/2026). Mesmo molde do comprovante de
+// renda, com uma diferença: a chave ligada SOZINHA não basta, o cliente tem que ser SOLTEIRO (1).
+// Lucas: "caso a mesma esteja habilitada terá a sessão de solicitar a certidão de nascimento para
+// clientes solteiro". Viúvo segue como hoje (decisão do mesmo dia).
+describe("certidão de nascimento — etapa por empreendimento, só solteiro", () => {
+  const PF_COMPLETO = [arquivo("identificacao"), arquivo("comprovante_endereco")];
+  const casaNascimento = (req: ReturnType<typeof requisitosDocumentos>) =>
+    req.some((r) => r.match(CERTIDAO_NASCIMENTO_CATEGORIA));
+
+  it("chave LIGADA e solteiro (1): o requisito aparece", () => {
+    const req = requisitosDocumentos({
+      estadoCivilId: "1",
+      exigeCertidaoNascimento: true,
+      persona: "pf",
+    });
+    expect(casaNascimento(req)).toBe(true);
+  });
+
+  it("chave DESLIGADA ou ausente: solteiro segue como hoje", () => {
+    expect(casaNascimento(requisitosDocumentos({ estadoCivilId: "1", persona: "pf" }))).toBe(false);
+    expect(
+      casaNascimento(
+        requisitosDocumentos({ estadoCivilId: "1", exigeCertidaoNascimento: false, persona: "pf" }),
+      ),
+    ).toBe(false);
+  });
+
+  // 2 a 6 (inclusive o viúvo, 5) não ganham a certidão de nascimento; os que já pediam a certidão
+  // de estado civil continuam pedindo ELA, e só ela.
+  it.each(["2", "3", "4", "5", "6"])("chave LIGADA e estado civil %s: não aparece", (estadoCivilId) => {
+    const req = requisitosDocumentos({ estadoCivilId, exigeCertidaoNascimento: true, persona: "pf" });
+    expect(casaNascimento(req)).toBe(false);
+  });
+
+  it.each(["2", "3", "4", "6"])(
+    "chave LIGADA e estado civil %s: a certidão de estado civil continua exigida",
+    (estadoCivilId) => {
+      const req = requisitosDocumentos({ estadoCivilId, exigeCertidaoNascimento: true, persona: "pf" });
+      expect(req.some((r) => r.match("certidao"))).toBe(true);
+    },
+  );
+
+  // A imobiliária passa por esta função como PJ, e o link do autônomo dispensa o estado civil.
+  it("chave LIGADA: imobiliária (PJ) e autônomo pelo link não recebem a exigência", () => {
+    expect(
+      casaNascimento(requisitosDocumentos({ exigeCertidaoNascimento: true, persona: "pj" })),
+    ).toBe(false);
+    expect(
+      casaNascimento(
+        requisitosDocumentos({
+          estadoCivilId: "1",
+          exigeCertidaoNascimento: true,
+          persona: "pf",
+          semEstadoCivil: true,
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("chave LIGADA, solteiro sem a certidão: RECUSA com mensagem acionável", () => {
+    const r = validarDocumentosObrigatorios({
+      documentos: PF_COMPLETO,
+      exigeCertidaoNascimento: true,
+      perfil: { estadoCivilId: "1" },
+      persona: "pf",
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.faltando).toEqual(["a certidão de nascimento"]);
+      expect(r.mensagem).toBe("Anexe a certidão de nascimento para enviar o cadastro.");
+    }
+  });
+
+  it("chave LIGADA, solteiro com a certidão: passa", () => {
+    const r = validarDocumentosObrigatorios({
+      documentos: [...PF_COMPLETO, arquivo(CERTIDAO_NASCIMENTO_CATEGORIA)],
+      exigeCertidaoNascimento: true,
+      perfil: { estadoCivilId: "1" },
+      persona: "pf",
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  // Categoria própria: a certidão de estado civil ("certidao") não serve no lugar dela.
+  it("chave LIGADA: a categoria 'certidao' não satisfaz a certidão de nascimento", () => {
+    const r = validarDocumentosObrigatorios({
+      documentos: [...PF_COMPLETO, arquivo("certidao")],
+      exigeCertidaoNascimento: true,
+      perfil: { estadoCivilId: "1" },
+      persona: "pf",
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it("chave LIGADA e categoria SEM arquivo: não conta", () => {
+    const r = validarDocumentosObrigatorios({
+      documentos: [...PF_COMPLETO, { categoria: CERTIDAO_NASCIMENTO_CATEGORIA, fileBase64: "" }],
+      exigeCertidaoNascimento: true,
+      perfil: { estadoCivilId: "1" },
+      persona: "pf",
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it("chave DESLIGADA, solteiro sem a certidão: passa (comportamento de hoje)", () => {
+    const r = validarDocumentosObrigatorios({
+      documentos: PF_COMPLETO,
+      perfil: { estadoCivilId: "1" },
+      persona: "pf",
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("a lista do assistente (forma curta) mostra 'certidão de nascimento'", () => {
+    const faltando = documentosFaltandoCurto(
+      { estadoCivilId: "1", exigeCertidaoNascimento: true, persona: "pf" },
+      ["identificacao", "comprovante_endereco"],
+    );
+    expect(faltando).toEqual(["certidão de nascimento"]);
+  });
+});
+
+// A decisão que monta a etapa "Certidão" do assistente. É a MESMA regra da trava: se divergissem,
+// o corretor veria a etapa e o servidor recusaria, ou o contrário.
+describe("certidaoDoCadastro — qual certidão o assistente pede", () => {
+  it("solteiro com a chave ligada: nascimento (a etapa aparece)", () => {
+    expect(
+      certidaoDoCadastro({ estadoCivilId: "1", exigeCertidaoNascimento: true, persona: "pf" }),
+    ).toBe("nascimento");
+  });
+
+  it("solteiro com a chave desligada: nenhuma (sem etapa, como hoje)", () => {
+    expect(certidaoDoCadastro({ estadoCivilId: "1", persona: "pf" })).toBeNull();
+  });
+
+  it.each(["2", "3", "4", "6"])("estado civil %s: a de estado civil, com ou sem a chave", (id) => {
+    expect(certidaoDoCadastro({ estadoCivilId: id, persona: "pf" })).toBe("estado_civil");
+    expect(
+      certidaoDoCadastro({ estadoCivilId: id, exigeCertidaoNascimento: true, persona: "pf" }),
+    ).toBe("estado_civil");
+  });
+
+  it("viúvo (5) com a chave ligada: nenhuma", () => {
+    expect(
+      certidaoDoCadastro({ estadoCivilId: "5", exigeCertidaoNascimento: true, persona: "pf" }),
+    ).toBeNull();
+  });
+
+  it("PJ e autônomo pelo link: nenhuma", () => {
+    expect(certidaoDoCadastro({ exigeCertidaoNascimento: true, persona: "pj" })).toBeNull();
+    expect(
+      certidaoDoCadastro({
+        estadoCivilId: "1",
+        exigeCertidaoNascimento: true,
+        persona: "pf",
+        semEstadoCivil: true,
+      }),
+    ).toBeNull();
+  });
+
+  // Cada pedido bate com o requisito: a etapa nunca aparece sem a trava, nem a trava sem a etapa.
+  it.each(["1", "2", "3", "4", "5", "6"])(
+    "estado civil %s: etapa e requisito andam juntos",
+    (estadoCivilId) => {
+      for (const exige of [true, false]) {
+        const input = { estadoCivilId, exigeCertidaoNascimento: exige, persona: "pf" as const };
+        const req = requisitosDocumentos(input);
+        const temCertidao = req.some(
+          (r) => r.match("certidao") || r.match(CERTIDAO_NASCIMENTO_CATEGORIA),
+        );
+        expect(certidaoDoCadastro(input) !== null).toBe(temCertidao);
+      }
+    },
+  );
 });

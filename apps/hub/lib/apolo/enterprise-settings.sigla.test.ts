@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   setEnterpriseAnaliseCredito,
+  setEnterpriseCertidaoNascimento,
   setEnterpriseComissaoCoordenadora,
   setEnterpriseComissaoImobiliaria,
   setEnterpriseComprovanteRenda,
@@ -182,6 +183,10 @@ describe("setEnterpriseCredenciamento: o toggle não mexe mais na sigla por cont
 const SETTERS: Array<[string, (client: never, enterpriseId: string) => Promise<{ ok: boolean }>]> = [
   ["análise de crédito", (c, id) => setEnterpriseAnaliseCredito({ adminClient: c, enterpriseId: id, habilitada: true })],
   ["comprovante de renda", (c, id) => setEnterpriseComprovanteRenda({ adminClient: c, enterpriseId: id, habilitada: true })],
+  [
+    "certidão de nascimento",
+    (c, id) => setEnterpriseCertidaoNascimento({ adminClient: c, enterpriseId: id, habilitada: true }),
+  ],
   ["pré-venda", (c, id) => setEnterprisePrevenda({ adminClient: c, enterpriseId: id, habilitada: false })],
   ["recepção de CAD", (c, id) => setEnterpriseRecepcaoCad({ adminClient: c, enterpriseId: id, habilitada: false })],
   [

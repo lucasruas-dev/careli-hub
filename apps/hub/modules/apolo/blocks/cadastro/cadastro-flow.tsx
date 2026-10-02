@@ -52,6 +52,8 @@ import {
 } from "@/lib/apolo/c2x-fields";
 import { C2X_PROFISSOES } from "@/lib/apolo/c2x-professions";
 import {
+  CERTIDAO_NASCIMENTO_CATEGORIA,
+  certidaoDoCadastro,
   COMPROVANTE_RENDA_OPCOES,
   type ComprovanteRendaCategoria,
   documentosFaltandoCurto,
@@ -253,6 +255,9 @@ type ArquivoAnexado = { fileBase64: string; fileName: string; mimeType: string }
 // faz o documento chegar na ficha já dizendo qual das três o cliente entregou.
 type DocCategoria =
   | "certidao"
+  // Certidão de nascimento do cliente solteiro (Setup > Certidão de nascimento): categoria própria,
+  // para a ficha não confundi-la com a certidão de estado civil.
+  | typeof CERTIDAO_NASCIMENTO_CATEGORIA
   | "comprovante_endereco"
   | "contrato_social"
   | "identificacao"
@@ -643,6 +648,9 @@ function mapCertidao(type: string): string {
 // Certidão que o CAD exige conforme o estado civil (id do C2X).
 function certidaoEsperada(estadoCivilId: string): { hint: string; titulo: string } {
   switch (estadoCivilId) {
+    // Solteiro: só chega aqui quando o empreendimento liga a Certidão de nascimento no Setup.
+    case "1":
+      return { hint: "Certidão de nascimento", titulo: "Certidão de nascimento" };
     case "3":
       return {
         hint: "Certidão de casamento com averbação do divórcio",
@@ -918,13 +926,13 @@ export type PublicoConfig = {
   semEnriquecimento?: boolean;
 };
 
-// O que o EMPREENDIMENTO desta CAD exige além do conjunto de sempre. Hoje só o comprovante de
-// renda (etapa nova do Setup); a forma é um objeto para caber a próxima sem mudar assinatura.
-export type ExigenciasCad = { comprovanteRenda: boolean };
+// O que o EMPREENDIMENTO desta CAD exige além do conjunto de sempre: o comprovante de renda e a
+// certidão de nascimento do cliente solteiro, as duas etapas do Setup.
+export type ExigenciasCad = { certidaoNascimento: boolean; comprovanteRenda: boolean };
 
 // Nada exigido a mais. É o valor de partida E o de qualquer falha: a tela nunca inventa uma
 // exigência que não conseguiu confirmar — quem barra a CAD é o servidor, no envio.
-const SEM_EXIGENCIAS: ExigenciasCad = { comprovanteRenda: false };
+const SEM_EXIGENCIAS: ExigenciasCad = { certidaoNascimento: false, comprovanteRenda: false };
 
 export type ApiCadastro = {
   ocr: <T>(body: Record<string, unknown>) => Promise<T>;
@@ -992,10 +1000,17 @@ async function apiExigenciasInterno(enterpriseId?: null | string): Promise<Exige
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     const json = (await response.json().catch(() => null)) as null | {
-      data?: { settings?: Record<string, { comprovanteRendaHabilitado?: boolean }> };
+      data?: {
+        settings?: Record<
+          string,
+          { certidaoNascimentoHabilitada?: boolean; comprovanteRendaHabilitado?: boolean }
+        >;
+      };
     };
+    const setting = json?.data?.settings?.[id];
     return {
-      comprovanteRenda: json?.data?.settings?.[id]?.comprovanteRendaHabilitado === true,
+      certidaoNascimento: setting?.certidaoNascimentoHabilitada === true,
+      comprovanteRenda: setting?.comprovanteRendaHabilitado === true,
     };
   } catch {
     return SEM_EXIGENCIAS;
@@ -1007,9 +1022,13 @@ async function apiExigenciasPublico(headers: Record<string, string>): Promise<Ex
   try {
     const response = await fetch("/api/publico/cad/exigencias", { cache: "no-store", headers });
     const json = (await response.json().catch(() => null)) as null | {
+      certidaoNascimento?: boolean;
       comprovanteRenda?: boolean;
     };
-    return { comprovanteRenda: json?.comprovanteRenda === true };
+    return {
+      certidaoNascimento: json?.certidaoNascimento === true,
+      comprovanteRenda: json?.comprovanteRenda === true,
+    };
   } catch {
     return SEM_EXIGENCIAS;
   }
@@ -1166,9 +1185,12 @@ async function apiExigenciasPortal(enterpriseId: string): Promise<ExigenciasCad>
       { cache: "no-store" },
     );
     const json = (await response.json().catch(() => null)) as null | {
-      data?: { comprovanteRenda?: boolean };
+      data?: { certidaoNascimento?: boolean; comprovanteRenda?: boolean };
     };
-    return { comprovanteRenda: json?.data?.comprovanteRenda === true };
+    return {
+      certidaoNascimento: json?.data?.certidaoNascimento === true,
+      comprovanteRenda: json?.data?.comprovanteRenda === true,
+    };
   } catch {
     return SEM_EXIGENCIAS;
   }
@@ -1582,10 +1604,17 @@ export function CadastroFlow({
   }, [api, empImobSel, isCorretor, isImobiliaria, modoPublico]);
 
   // PJ não tem certidão/cônjuge. PF: Casado(2), Divorciado(3), Separado(4) e
-  // União Estável(6) exigem certidão (o MOST valida a autenticidade).
+  // União Estável(6) exigem certidão (o MOST valida a autenticidade). Solteiro(1) recebe a
+  // certidão de NASCIMENTO quando o empreendimento liga a etapa no Setup (02/10/2026). A decisão
+  // é a mesma do servidor (`certidaoDoCadastro`), para a etapa e a trava nunca discordarem.
   const isPj = persona === "pj";
-  const needsCertidao =
-    !isPj && !autonomoPublico && ["2", "3", "4", "6"].includes(perfil.estadoCivilId);
+  const certidaoPedida = certidaoDoCadastro({
+    estadoCivilId: perfil.estadoCivilId,
+    exigeCertidaoNascimento: !isImobiliaria && !isCorretor && exigencias.certidaoNascimento,
+    persona,
+    semEstadoCivil: autonomoPublico,
+  });
+  const needsCertidao = certidaoPedida !== null;
   // Cônjuge presente: casado ou união estável (só PF).
   const temConjuge = !isPj && !autonomoPublico && ["2", "6"].includes(perfil.estadoCivilId);
   // PJ tem jornada própria (Lucas 17/jul): o endereço da empresa já vem do cartão CNPJ, então
@@ -1958,7 +1987,9 @@ export function CadastroFlow({
           <StepCertidao
             estadoCivilId={perfil.estadoCivilId}
             onBack={() => setStep(step - 1)}
-            onDocumento={reterDocumento("certidao")}
+            onDocumento={reterDocumento(
+              certidaoPedida === "nascimento" ? CERTIDAO_NASCIMENTO_CATEGORIA : "certidao",
+            )}
             onNext={() => setStep(step + 1)}
             onPerfilChange={(patch) => setPerfil((p) => ({ ...p, ...patch }))}
             regimeBensId={perfil.regimeBensId}
@@ -1978,6 +2009,7 @@ export function CadastroFlow({
 
         {current === "Revisão" ? (
           <StepRevisao
+            exigeCertidaoNascimento={certidaoPedida === "nascimento"}
             exigeComprovanteRenda={exigeRenda}
             // (fatia 2) O vínculo do autônomo, para a revisão mostrar QUEM é, e nunca uma
             // "Imobiliária" vazia. Só vai quando a porta escolhida foi a do autônomo.
@@ -4049,7 +4081,7 @@ function StepCertidao({
   const pedeRegime = ["2", "6"].includes(estadoCivilId);
 
   return (
-    <StepCard title="3. Certidão">
+    <StepCard title={estadoCivilId === "1" ? "3. Certidão de nascimento" : "3. Certidão"}>
       <p className="rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 print:hidden">
         Agora anexe a <span className="font-semibold">{tituloMinusculo}</span> do cliente. Nós
         conferimos a autenticidade do documento automaticamente.
@@ -4271,6 +4303,7 @@ function StepRevisao({
   empreendimentosSel,
   empresa,
   endereco,
+  exigeCertidaoNascimento,
   exigeComprovanteRenda,
   formato,
   identidade,
@@ -4299,6 +4332,9 @@ function StepRevisao({
   empreendimentosSel: string[];
   empresa: Empresa;
   endereco: Endereco | null;
+  // Etapa "Certidão de nascimento" valendo para ESTA CAD (empreendimento ligou e o cliente é
+  // solteiro). Entra na lista do que falta e no `disabled` do Enviar.
+  exigeCertidaoNascimento: boolean;
   // Etapa "Comprovante de renda" ligada no empreendimento desta CAD: entra na lista do que falta e
   // no `disabled` do Enviar, igual aos demais obrigatórios.
   exigeComprovanteRenda: boolean;
@@ -4381,6 +4417,7 @@ function StepRevisao({
   const faltando = documentosFaltandoCurto(
     {
       estadoCivilId: perfil.estadoCivilId,
+      exigeCertidaoNascimento,
       exigeComprovanteRenda,
       persona,
       semEstadoCivil: autonomoPublico,

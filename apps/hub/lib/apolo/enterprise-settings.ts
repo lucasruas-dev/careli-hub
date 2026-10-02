@@ -32,6 +32,10 @@ export type EnterpriseSetting = {
   // papel tem posição, e todo mundo assinaria por último — que não é o que ninguém quis dizer.
   assinaturaOrdem: null | Record<string, number> | string[];
   assinaturaOrdenada: boolean;
+  // Toggle da Certidão de nascimento (default FALSE na migration 0208). Ligado ⇒ o envio da CAD
+  // de cliente SOLTEIRO (estado civil 1) exige a certidão de nascimento. Desligado ⇒ a CAD segue
+  // como hoje. Os outros estados civis não mudam.
+  certidaoNascimentoHabilitada: boolean;
   // Toggle do Comprovante de renda (default FALSE na migration 0095). Ligado ⇒ o envio da CAD
   // exige o comprovante de renda do cliente (um entre extrato bancário dos últimos 3 meses,
   // contracheque ou declaração de imposto de renda). Desligado ⇒ a CAD segue como hoje.
@@ -63,6 +67,7 @@ type SettingRow = {
   analise_credito_habilitada: boolean | null;
   assinatura_ordem: unknown;
   assinatura_ordenada: boolean | null;
+  certidao_nascimento_habilitada: boolean | null;
   code: string | null;
   comprovante_renda_habilitado: boolean | null;
   credenciamento_ativo: boolean | null;
@@ -219,14 +224,28 @@ export async function listEnterpriseSettings(
   // leitura sem ela em vez de devolver settings vazias — a tela não pode perder o resto por causa
   // de uma coluna nova.
   let data: SettingRow[] | null = null;
+  const colunasAte0207 =
+    "enterprise_id, code, credenciamento_ativo, limite_credito, valor_pix, analise_credito_habilitada, prevenda_habilitada, comprovante_renda_habilitado, recepcao_cad, recepcao_imobiliaria, assinatura_ordenada, assinatura_ordem";
   const completa = await adminClient
     .from(TABLE)
-    .select(
-      "enterprise_id, code, credenciamento_ativo, limite_credito, valor_pix, analise_credito_habilitada, prevenda_habilitada, comprovante_renda_habilitado, recepcao_cad, recepcao_imobiliaria, assinatura_ordenada, assinatura_ordem",
-    )
+    .select(`${colunasAte0207}, certidao_nascimento_habilitada`)
     .limit(2000);
+  if (!completa.error) data = (completa.data ?? []) as SettingRow[];
 
-  if (completa.error) {
+  // A coluna da 0208 é a mais nova: sem ela no banco, refaz a leitura só sem ESSA coluna, em vez
+  // de cair no núcleo abaixo e perder junto o comprovante de renda, a pré-venda e a ordem de
+  // assinatura que já estão gravados. Nula vira "desligada" (flagPadraoDesligado).
+  if (data === null) {
+    const sem0208 = await adminClient.from(TABLE).select(colunasAte0207).limit(2000);
+    if (!sem0208.error) {
+      data = (sem0208.data ?? []).map((r) => ({
+        ...(r as Omit<SettingRow, "certidao_nascimento_habilitada">),
+        certidao_nascimento_habilitada: null,
+      }));
+    }
+  }
+
+  if (data === null) {
     // Colunas novas (valor_pix, análise de crédito, pré-venda, comprovante de renda) podem não
     // existir em ambiente com migration pendente: refaz a leitura com o núcleo estável e assume os
     // defaults de cada coluna em vez de perder o resto das settings.
@@ -241,6 +260,7 @@ export async function listEnterpriseSettings(
         | "analise_credito_habilitada"
         | "assinatura_ordem"
         | "assinatura_ordenada"
+        | "certidao_nascimento_habilitada"
         | "comprovante_renda_habilitado"
         | "prevenda_habilitada"
         | "recepcao_cad"
@@ -252,6 +272,7 @@ export async function listEnterpriseSettings(
       // mesmo tempo — o comportamento de antes da 0142.
       assinatura_ordem: null,
       assinatura_ordenada: null,
+      certidao_nascimento_habilitada: null,
       comprovante_renda_habilitado: null,
       prevenda_habilitada: null,
       // Colunas da migration 0110 ausentes: null vira "ligado" (flagPadraoLigado), o mesmo
@@ -260,8 +281,6 @@ export async function listEnterpriseSettings(
       recepcao_imobiliaria: null,
       valor_pix: null,
     }));
-  } else {
-    data = (completa.data ?? []) as SettingRow[];
   }
 
   const out: Record<string, EnterpriseSetting> = {};
@@ -272,6 +291,7 @@ export async function listEnterpriseSettings(
       // comportamento de contratos que hoje saem em paralelo, sem ninguém ter pedido.
       assinaturaOrdem: ordemGravada(row.assinatura_ordem),
       assinaturaOrdenada: flagPadraoDesligado(row.assinatura_ordenada),
+      certidaoNascimentoHabilitada: flagPadraoDesligado(row.certidao_nascimento_habilitada),
       comprovanteRendaHabilitado: flagPadraoDesligado(row.comprovante_renda_habilitado),
       credenciamentoAtivo: Boolean(row.credenciamento_ativo),
       limiteCredito: normalizarLimite(row.limite_credito),
@@ -384,6 +404,7 @@ async function setEnterpriseFlag(input: {
   adminClient: AdminClient;
   coluna:
     | "analise_credito_habilitada"
+    | "certidao_nascimento_habilitada"
     | "comprovante_renda_habilitado"
     | "prevenda_habilitada"
     | "recepcao_cad"
@@ -418,6 +439,7 @@ async function setEnterpriseFlag(input: {
     /column|does not exist/i.test(error?.message ?? "");
   const MIGRATION_DA_COLUNA: Record<typeof input.coluna, string> = {
     analise_credito_habilitada: "0071",
+    certidao_nascimento_habilitada: "0208",
     comprovante_renda_habilitado: "0095",
     prevenda_habilitada: "0071",
     recepcao_cad: "0110",
@@ -487,6 +509,17 @@ export function setEnterpriseComprovanteRenda(input: {
   updatedBy?: string | null;
 }): Promise<{ error?: string; ok: boolean }> {
   return setEnterpriseFlag({ ...input, coluna: "comprovante_renda_habilitado" });
+}
+
+// Liga/desliga a exigência da Certidão de nascimento do cliente solteiro no envio da CAD (não
+// toca `credenciamento_ativo`).
+export function setEnterpriseCertidaoNascimento(input: {
+  adminClient: AdminClient;
+  enterpriseId: string;
+  habilitada: boolean;
+  updatedBy?: string | null;
+}): Promise<{ error?: string; ok: boolean }> {
+  return setEnterpriseFlag({ ...input, coluna: "certidao_nascimento_habilitada" });
 }
 
 // Liga/desliga a Pré-venda do empreendimento (não toca `credenciamento_ativo`).
@@ -662,6 +695,31 @@ export async function exigeComprovanteRenda(
 
   if (error || !data) return false;
   return flagPadraoDesligado(data.comprovante_renda_habilitado);
+}
+
+/**
+ * O empreendimento (id do C2X) exige a CERTIDÃO DE NASCIMENTO do cliente solteiro no envio da CAD?
+ *
+ * Mesmo contrato de `exigeComprovanteRenda`: é a trava de servidor que as TRÊS portas de envio
+ * (Apolo interno, link público e portal do incorporador) consultam, e FALHA DE LEITURA = NÃO EXIGE
+ * pelos mesmos motivos (empreendimento sem settings, migration 0208 pendente, Supabase oscilando).
+ * Quem decide se o cliente é solteiro é `requisitosDocumentos`; aqui só a chave do empreendimento.
+ */
+export async function exigeCertidaoNascimento(
+  adminClient: AdminClient,
+  enterpriseId: null | string | undefined,
+): Promise<boolean> {
+  const id = (enterpriseId ?? "").trim();
+  if (!id) return false;
+
+  const { data, error } = await adminClient
+    .from(TABLE)
+    .select("certidao_nascimento_habilitada")
+    .eq("enterprise_id", id)
+    .maybeSingle<{ certidao_nascimento_habilitada: boolean | null }>();
+
+  if (error || !data) return false;
+  return flagPadraoDesligado(data.certidao_nascimento_habilitada);
 }
 
 // Ids dos empreendimentos ativos pro credenciamento (o portal usa este recorte).
