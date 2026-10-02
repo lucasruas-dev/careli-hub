@@ -37,7 +37,7 @@ export type ChangelogEntry = {
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
     buildTag: "2026-10-02-pre-faturamento-pelos-compradores",
-    deployedAt: "__HORA_REAL__",
+    deployedAt: "2026-10-02T15:16:59-03:00",
     internal: true,
     modules: [
       {
