@@ -97,6 +97,24 @@ export type CacaToolContext = {
 export const PERFIL_DESCRITO_COMPRADOR_CECILIO =
   "cliente da carteira Cecílio Rocha — o atendimento é SÓ com um analista da Careli. Você não tem o financeiro desta carteira: não consulte, não informe e não comente parcela, boleto, valor ou situação, e nunca diga que o cliente está sem pendência. A transferência já está registrada; avise com naturalidade que um analista dá continuidade";
 
+/**
+ * AS FERRAMENTAS QUE ACHAM A FICHA SÓ PELO CPF/CNPJ (status e ficha da CAD, PIX do credenciamento,
+ * cadastro da imobiliária) não pedem identidade: servem ao corretor e à imobiliária. Para o cliente da
+ * Cecílio elas entregariam o cadastro do LSoft (RG, mãe, nascimento, endereço) a quem só digitou o
+ * CPF, e a `enviar_ficha_cad` ainda gera o PDF. Aqui elas param, e a transferência sai registrada.
+ */
+function recusaDoCompradorCecilio(
+  context: CacaToolContext,
+  match: { profiles: readonly string[] } | null,
+): string | null {
+  if (!match || !ehCompradorCecilio(match.profiles)) return null;
+
+  context.handoff = { reason: MOTIVO_HANDOFF_COMPRADOR_CECILIO, requested: true };
+  context.customerProfileLabel = PERFIL_DESCRITO_COMPRADOR_CECILIO;
+
+  return "Este documento é de um cadastro que você NÃO atende por aqui: não consulte, não envie e não comente nenhum dado dele, nem confirme ou negue que o cadastro existe. A transferência para um analista da Careli já está registrada. Avise com naturalidade que um analista dá continuidade.";
+}
+
 export function describeApoloProfile(
   profiles: readonly string[] | null | undefined,
 ): string | null {
@@ -678,6 +696,8 @@ async function consultarStatusCad(
   }
 
   const match = await lookupApoloByDocument(admin, cpf);
+  const recusaCecilio = recusaDoCompradorCecilio(context, match);
+  if (recusaCecilio) return recusaCecilio;
   if (!match?.entityId) {
     return "Não localizei nenhuma CAD com esse CPF. Pode ser que o cadastro ainda não tenha sido enviado, ou que o número esteja diferente. Confere o CPF comigo; se continuar não achando, o time consegue verificar.";
   }
@@ -805,6 +825,8 @@ async function consultarFichaCredenciamento(
   }
 
   const match = await lookupApoloByDocument(admin, cpf);
+  const recusaCecilio = recusaDoCompradorCecilio(context, match);
+  if (recusaCecilio) return recusaCecilio;
   if (!match?.entityId) {
     return "Não localizei nenhuma ficha com esse CPF. Confere o CPF comigo; se continuar não achando, o time verifica.";
   }
@@ -1028,6 +1050,8 @@ async function enviarFichaCad(context: CacaToolContext, input: unknown): Promise
   }
 
   const match = await lookupApoloByDocument(admin, cpf);
+  const recusaCecilio = recusaDoCompradorCecilio(context, match);
+  if (recusaCecilio) return recusaCecilio;
   if (!match?.entityId) {
     return "Não localizei nenhuma ficha com esse CPF. Confere o CPF comigo.";
   }
@@ -1070,6 +1094,8 @@ async function enviarPixCredenciamento(
   }
 
   const match = await lookupApoloByDocument(admin, cpf);
+  const recusaCecilio = recusaDoCompradorCecilio(context, match);
+  if (recusaCecilio) return recusaCecilio;
   if (!match?.entityId) {
     return "Não localizei nenhuma CAD com esse CPF. Confere o CPF comigo; se continuar não achando, o time verifica.";
   }
@@ -1607,6 +1633,8 @@ async function consultarCadastroImobiliaria(
   }
 
   const match = await lookupApoloByDocument(context.client, cnpj);
+  const recusaCecilio = recusaDoCompradorCecilio(context, match);
+  if (recusaCecilio) return recusaCecilio;
 
   if (!match) {
     return "Não localizei nenhum cadastro com esse CNPJ. Confirme o número com a imobiliária; se estiver certo, pode ser que ainda não haja cadastro — nesse caso transfira para o time cadastrar.";

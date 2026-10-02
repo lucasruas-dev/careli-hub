@@ -91,10 +91,14 @@ const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_
 });
 
 // ─── leitura ────────────────────────────────────────────────────────────────────────────────────
+// ⚠️ A ORDEM TEM DE SER ÚNICA: com uma coluna que se repete (a view da carteira tem uma linha por cliente
+// E empreendimento), a paginação por faixa pode pular ou repetir linhas na virada da página, sem erro.
 async function lerTudo(tabela, colunas, ordem, filtro = (q) => q) {
   const linhas = [];
   for (let de = 0; ; de += 1000) {
-    const { data, error } = await filtro(sb.from(tabela).select(colunas)).order(ordem).range(de, de + 999);
+    let consulta = filtro(sb.from(tabela).select(colunas));
+    for (const coluna of [].concat(ordem)) consulta = consulta.order(coluna);
+    const { data, error } = await consulta.range(de, de + 999);
     if (error) throw new Error(`${tabela}: ${error.message}`);
     linhas.push(...data);
     if (data.length < 1000) return linhas;
@@ -120,6 +124,12 @@ function falhou(onde, error) {
 }
 
 // ─── desfazer ───────────────────────────────────────────────────────────────────────────────────
+//
+// ⚠️ SÓ O QUE A CARGA GRAVOU, E NUNCA POR CIMA DO TRABALHO DO TIME. Apagar a ficha leva junto, por
+// cascata, tudo o que pende dela. Por isso a ficha que ganhou QUALQUER linha fora da carga (nota,
+// documento, vínculo, esteira, consulta, contato digitado à mão) não é apagada nem tocada: ela vai
+// para a lista, e o Lucas decide. As fontes também são filtradas pela etiqueta, para uma carga futura
+// da Cecílio não ir junto.
 if (desfazer) {
   const etiqueta = R.ETIQUETA_DA_CARGA;
   const novas = await lerTudo("apolo_entities", "id,metadata", "id", (q) => q.eq("metadata->>carga", etiqueta).eq("metadata->>source", "cecilio"));
@@ -127,32 +137,60 @@ if (desfazer) {
   // `metadata.carga`, e `NULL <> 'x'` é NULL no SQL — o `.neq` devolveria zero e ninguém seria limpo.
   const idsNovos = new Set(novas.map((f) => f.id));
   const tocadas = (await lerTudo("apolo_entities", "id,metadata", "id", (q) => q.eq("metadata->cecilio->>carga", etiqueta))).filter((f) => !idsNovos.has(f.id));
-  const contar = async (tabela, filtro) => {
-    const { count, error } = await filtro(sb.from(tabela).select("*", { count: "exact", head: true }));
-    if (error) throw new Error(`${tabela}: ${error.message}`);
-    return count ?? 0;
-  };
-  const filtros = {
+
+  // As 27 ligações de `apolo_entities` medidas em 02/10/2026 (pg_constraint). As 4 primeiras a carga
+  // também grava: nelas só conta como trabalho do time a linha SEM a etiqueta.
+  const COM_ETIQUETA = ["apolo_addresses", "apolo_contacts", "apolo_entity_identifiers", "apolo_entity_profiles"];
+  const SEM_ETIQUETA = [
+    ["apolo_audit_events", "entity_id"], ["apolo_c2x_sync", "entity_id"], ["apolo_commercial_links", "entity_id"],
+    ["apolo_credito_overrides", "entity_id"], ["apolo_documents", "entity_id"], ["apolo_enterprise_settings", "vendedor_entity_id"],
+    ["apolo_esteira", "entity_id"], ["apolo_esteira", "corretor_entity_id"], ["apolo_esteira", "imobiliaria_entity_id"],
+    ["apolo_financial_snapshots", "entity_id"], ["apolo_imobiliaria_match", "entity_id"], ["apolo_merge_candidates", "entity_id"],
+    ["apolo_merge_candidates", "candidate_entity_id"], ["apolo_module_records", "entity_id"], ["apolo_relationships", "entity_id"],
+    ["apolo_relationships", "related_entity_id"], ["apolo_service_signals", "entity_id"], ["apolo_timeline_events", "entity_id"],
+    ["hercules_documentos", "cliente_entity_id"], ["serasa_consultas", "entity_id"], ["temis_categorias", "vendedor_entity_id"],
+  ];
+  const comTrabalho = new Set();
+  const idsNovosLista = [...idsNovos];
+  for (const [tabela, coluna] of SEM_ETIQUETA) {
+    for (const linha of await emLotes(idsNovosLista, (lote) => sb.from(tabela).select(coluna).in(coluna, lote))) comTrabalho.add(linha[coluna]);
+  }
+  for (const tabela of COM_ETIQUETA) {
+    for (const linha of await emLotes(idsNovosLista, (lote) => sb.from(tabela).select("entity_id,metadata").in("entity_id", lote))) {
+      if (linha.metadata?.carga !== etiqueta) comTrabalho.add(linha.entity_id);
+    }
+  }
+  const apagar = novas.filter((f) => !comTrabalho.has(f.id));
+  const alvo = [...apagar.map((f) => f.id), ...tocadas.map((f) => f.id)];
+
+  const ETIQUETADAS = {
     apolo_addresses: (q) => q.eq("metadata->>carga", etiqueta),
     apolo_contacts: (q) => q.eq("metadata->>carga", etiqueta),
     apolo_entity_identifiers: (q) => q.eq("source_system", "cecilio").eq("metadata->>carga", etiqueta),
     apolo_entity_profiles: (q) => q.eq("profile", "comprador_cecilio").eq("metadata->>carga", etiqueta),
-    apolo_source_links: (q) => q.eq("source_system", "cecilio"),
+    apolo_source_links: (q) => q.eq("source_system", "cecilio").eq("metadata->>carga", etiqueta),
   };
   console.log(`DESFAZER a carga "${etiqueta}"`);
-  console.log(`  ${novas.length} fichas criadas pela carga (apagadas inteiras, com tudo o que pende delas)`);
-  console.log(`  ${tocadas.length} fichas que já existiam (perdem só o que a carga acrescentou):`);
-  for (const [tabela, filtro] of Object.entries(filtros)) console.log(`     ${tabela}: ${await contar(tabela, filtro)} linhas com a etiqueta (contando as das fichas novas)`);
+  console.log(`  ${apagar.length} fichas criadas pela carga: apagadas inteiras`);
+  console.log(`  ${comTrabalho.size} fichas criadas pela carga em que o time JÁ TRABALHOU: NÃO são tocadas (lista abaixo, para decidir)`);
+  for (const id of comTrabalho) console.log(`     ${id}`);
+  console.log(`  ${tocadas.length} fichas que já existiam: perdem só o que a carga acrescentou`);
+  for (const [tabela, filtro] of Object.entries(ETIQUETADAS)) {
+    const linhas = await emLotes(alvo, (lote) => filtro(sb.from(tabela).select("entity_id")).in("entity_id", lote));
+    console.log(`     ${tabela}: ${linhas.length} linhas com a etiqueta`);
+  }
   if (!gravar) {
-    console.log("\nENSAIO do desfazer: nada foi apagado. Rode com --desfazer --gravar para valer.");
+    console.log("\nENSAIO do desfazer: nada foi apagado. Rode com --desfazer --gravar para valer (com o OK do Lucas).");
     process.exit(0);
   }
-  for (const [tabela, filtro] of Object.entries(filtros)) {
-    const { error } = await filtro(sb.from(tabela).delete());
-    falhou(`apagar ${tabela}`, error);
+  for (const [tabela, filtro] of Object.entries(ETIQUETADAS)) {
+    for (let i = 0; i < alvo.length; i += 100) {
+      const { error } = await filtro(sb.from(tabela).delete()).in("entity_id", alvo.slice(i, i + 100));
+      falhou(`apagar ${tabela}`, error);
+    }
   }
-  for (let i = 0; i < novas.length; i += 100) {
-    const { error } = await sb.from("apolo_entities").delete().in("id", novas.slice(i, i + 100).map((f) => f.id)).eq("metadata->>carga", etiqueta);
+  for (let i = 0; i < apagar.length; i += 100) {
+    const { error } = await sb.from("apolo_entities").delete().in("id", apagar.slice(i, i + 100).map((f) => f.id)).eq("metadata->>carga", etiqueta);
     falhou("apagar fichas novas", error);
   }
   for (const ficha of tocadas) {
@@ -160,7 +198,7 @@ if (desfazer) {
     const { error } = await sb.from("apolo_entities").update({ metadata: resto }).eq("id", ficha.id);
     falhou(`limpar metadata de ${ficha.id}`, error);
   }
-  console.log(`\n✓ Desfeito: ${novas.length} fichas apagadas, ${tocadas.length} fichas devolvidas ao que eram.`);
+  console.log(`\n✓ Desfeito: ${apagar.length} fichas apagadas, ${tocadas.length} devolvidas ao que eram, ${comTrabalho.size} preservadas para decisão.`);
   process.exit(0);
 }
 
@@ -180,7 +218,7 @@ const clientesLsoft = await lerTudo(
   "codigo,nome,cpf,rg,nascimento,telefone,celular,email,endereco,numero,complemento,bairro,cidade,estado,cep,mae,pai,nome_pai,sexo,estado_civil,regime_bens,escolaridade,profissao,naturalidade,nacionalidade,faixa_renda,conjuge",
   "codigo",
 );
-const carteirasLsoft = await lerTudo("lsoft_carteira_por_cliente_empreendimento", "codigo,empreendimento,parcelas_abertas", "codigo");
+const carteirasLsoft = await lerTudo("lsoft_carteira_por_cliente_empreendimento", "codigo,empreendimento,parcelas_abertas", ["codigo", "empreendimento"]);
 
 // Telefones que já receberam o boleto com entrega confirmada pelo WhatsApp (delivered/read).
 const envios = await lerTudo("boletos_eventos", "id,empreendimento,telefone,wa_message_id", "id", (q) => q.eq("tipo", "envio").eq("ok", true));

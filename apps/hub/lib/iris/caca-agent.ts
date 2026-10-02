@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
   MOTIVO_HANDOFF_COMPRADOR_CECILIO,
+  PERFIL_COMPRADOR_CECILIO,
   RESPOSTA_HANDOFF_COMPRADOR_CECILIO,
   ehCompradorCecilio,
 } from "@/lib/apolo/comprador-cecilio";
@@ -1128,6 +1129,26 @@ async function resolveBoletoCustomerAccess({
   toolsUsed: string[];
   trace: CacaAgentTraceStep[];
 }): Promise<BoletoCustomerAccess> {
+  // ⚠️ A TRAVA DA CECÍLIO ANTES DOS ATALHOS. O contato ativo de cobrança e o reuso do state logo
+  // abaixo devolvem "verificado" sem passar pelo telefone nem pelo CPF; sem esta checagem, quem é do
+  // C2X e da Cecílio (ou ganhou o papel depois de validado) receberia a carteira do legado.
+  if (client) {
+    const fichaCecilio = await fichaValidadaDoCompradorCecilio(client, {
+      c2xClientId:
+        readCobrancaActiveContactC2xId(ticket) ??
+        state.apoloC2xClientId ??
+        extractC2xClientId(contact, ticket),
+      entityId: state.apoloEntityId ?? null,
+    });
+    if (fichaCecilio) {
+      return acessoDoCompradorCecilio(
+        { entityId: fichaCecilio, profiles: [PERFIL_COMPRADOR_CECILIO] },
+        trace,
+        toolsUsed,
+      ) as BoletoCustomerAccess;
+    }
+  }
+
   // Contato ATIVO de cobranca: veio de processo validado pelo operador (o ticket
   // ja traz o c2xClientId). Dispensa autenticacao por CPF e segue direto.
   const cobrancaActiveC2xId = readCobrancaActiveContactC2xId(ticket);
@@ -1510,6 +1531,54 @@ export function acessoDoCompradorCecilio(
   };
 }
 
+/**
+ * A IDENTIDADE QUE JÁ VEIO VALIDADA (do ticket, do contato ativo de cobrança ou da memória de 30 dias)
+ * é de um cliente da Cecílio? Esses caminhos pulam a busca por telefone e por CPF, então a trava
+ * precisa olhar a ficha por eles também: o cliente que é do C2X E da Cecílio, validado antes de
+ * ganhar o papel, seguiria recebendo a carteira do legado como se fosse tudo.
+ *
+ * Devolve o entity_id da ficha com o papel, ou `null`. Erro de leitura devolve `null` e loga: a
+ * consulta financeira que viria depois depende do mesmo banco.
+ */
+export async function fichaValidadaDoCompradorCecilio(
+  client: SupabaseClient,
+  { c2xClientId, entityId }: { c2xClientId?: string | null; entityId?: string | null },
+): Promise<string | null> {
+  const ids = entityId ? [entityId] : [];
+
+  if (c2xClientId && /^\d+$/.test(c2xClientId)) {
+    const { data, error } = await client
+      .from("apolo_source_links")
+      .select("entity_id")
+      .eq("source_system", "c2x")
+      .eq("source_table", "users")
+      .eq("source_id", c2xClientId)
+      .limit(5);
+    if (error) {
+      console.error("[caca] trava da Cecilio: falha ao ler a ficha do C2X", error.message);
+    }
+    ids.push(...((data ?? []) as Array<{ entity_id: string }>).map((row) => row.entity_id));
+  }
+
+  if (!ids.length) {
+    return null;
+  }
+
+  const { data, error } = await client
+    .from("apolo_entity_profiles")
+    .select("entity_id,status")
+    .eq("profile", PERFIL_COMPRADOR_CECILIO)
+    .in("entity_id", uniqueStrings(ids));
+  if (error) {
+    console.error("[caca] trava da Cecilio: falha ao ler os papeis", error.message);
+    return null;
+  }
+
+  return ((data ?? []) as Array<{ entity_id: string; status: string | null }>).find(
+    (row) => row.status !== "archived",
+  )?.entity_id ?? null;
+}
+
 export async function lookupApoloByPhone(
   client: SupabaseClient,
   contact: CacaAgentContact,
@@ -1730,6 +1799,10 @@ async function hydrateApoloCustomerRecords(
 
 function pickPreferredApoloCustomer(records: ApoloCustomerRecord[]) {
   return (
+    // ⚠️ A FICHA DA CECÍLIO GANHA DE TODAS. Se o mesmo CPF ou telefone casa duas fichas (a da carga e um
+    // gêmeo do C2X), escolher a do C2X esconderia o papel e a trava não dispararia: a Cacá responderia
+    // a carteira do legado como se fosse tudo o que a pessoa tem.
+    records.find((record) => ehCompradorCecilio(record.profiles)) ??
     records.find(
       (record) =>
         record.hasBuyerProfile && record.hasUnitPortfolio && record.c2xClientId,

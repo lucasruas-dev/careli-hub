@@ -80,12 +80,12 @@ const apoloProfileLabels: Record<string, string> = {
   usuario: "Usuario",
 };
 
-// `comprador_cecilio` ANTES do PF/PJ: o primeiro rótulo vira o `profileLabel` do card, e sem isto o
-// cliente da Cecílio aparecia na Iris como "Pessoa fisica". Ele nunca ganha `delinquency`: o selo vem
-// de `apolo_financeiro_por_entidade`, que só o C2X alimenta, e a Cecílio não está lá.
+// `comprador_cecilio` PRIMEIRO: o primeiro rótulo vira o `profileLabel` do card. Sem isto o cliente da
+// Cecílio aparecia na Iris como "Pessoa fisica" e, se também fosse usuário do C2X, como o comprador do
+// legado. Ele nunca ganha `delinquency` (ver o cálculo abaixo).
 const apoloProfileOrder: string[] = [
-  "usuario",
   "comprador_cecilio",
+  "usuario",
   "pessoa_fisica",
   "pessoa_juridica",
   "imobiliaria",
@@ -334,8 +334,14 @@ export async function POST(request: NextRequest) {
         profilesByEntity.get(resolvedEntity?.id ?? match.entity.id) ?? [],
       );
       const snapshotEntityId = resolvedEntity?.id ?? match.entity.id;
+      // ⚠️ SEM SELO PARA QUEM TEM O PAPEL DA CECÍLIO, mesmo que tenha carteira no C2X: o selo mede só o
+      // legado, e um "adimplente" verde em quem deve na Cecílio faria o atendente tratar a cobrança
+      // como cortesia. A situação da Cecílio mora no Asaas e a Iris não a tem.
+      const temPapelCecilio = (profilesByEntity.get(snapshotEntityId) ?? []).some(
+        (row) => row.profile === "comprador_cecilio" && row.status !== "archived",
+      );
       const delinquency: "adimplente" | "inadimplente" | null =
-        overdueByEntity.has(snapshotEntityId)
+        !temPapelCecilio && overdueByEntity.has(snapshotEntityId)
           ? (overdueByEntity.get(snapshotEntityId) ?? 0) > 0
             ? "inadimplente"
             : "adimplente"

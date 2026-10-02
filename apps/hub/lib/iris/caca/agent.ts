@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getAnthropicClient, resolveClaudeModel } from "@/lib/ai/claude";
 import {
   MOTIVO_HANDOFF_COMPRADOR_CECILIO,
+  PERFIL_COMPRADOR_CECILIO,
   ehCompradorCecilio,
 } from "@/lib/apolo/comprador-cecilio";
 import { runClaudeAgent } from "@/lib/ai/claude-agent";
@@ -15,6 +16,7 @@ import {
   type CacaAgentTraceStep,
   type CacaAgentTurn,
   type CacaAutomationState,
+  fichaValidadaDoCompradorCecilio,
   lookupApoloByPhone,
   readCacaAutomationState,
 } from "@/lib/iris/caca-agent";
@@ -249,6 +251,31 @@ export async function runCacaClaudeTurn({
       validationSource = "cpf";
       identidadeLembrada = { displayName: lembrada.displayName };
     }
+  }
+
+  // ⚠️ A TRAVA DA CECÍLIO TAMBÉM NA IDENTIDADE QUE JÁ VEIO PRONTA. O state do ticket e a memória de 30
+  // dias pulam a busca por telefone acima; quem é do C2X E da Cecílio (ou ganhou o papel depois de
+  // validado) seguiria recebendo a carteira do legado como se fosse tudo. Uma leitura curta, só
+  // quando há identidade ou ficha a conferir.
+  if (!compradorCecilio && (identityVerified || apoloEntityId)) {
+    try {
+      compradorCecilio = Boolean(
+        await fichaValidadaDoCompradorCecilio(client, {
+          c2xClientId,
+          entityId: apoloEntityId,
+        }),
+      );
+    } catch {
+      // Falha de leitura: segue como estava (o financeiro que viria depois lê o mesmo banco).
+    }
+  }
+
+  if (compradorCecilio) {
+    identityVerified = false;
+    c2xClientId = null;
+    validationSource = null;
+    identidadeLembrada = null;
+    customerProfileLabel = describeApoloProfile([PERFIL_COMPRADOR_CECILIO]);
   }
 
   const businessHours = businessHoursForNow();

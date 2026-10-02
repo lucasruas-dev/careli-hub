@@ -2284,10 +2284,23 @@ function IrisConversationPanel({
     ticket.crm360Registration,
   );
   const portfolioShortcutEnabled = hasUserPortfolio || fallbackUserProfile;
+  // O papel da Cecílio, pela ficha do contexto (ids crus) ou pelo vínculo do telefone (rótulos).
+  const contatoEhCompradorCecilio =
+    ehCompradorCecilio(apoloContextEntity?.profiles ?? []) ||
+    ehCompradorCecilio([
+      ticket.crm360Registration?.profileLabel,
+      ...(ticket.crm360Registration?.profiles ?? []),
+    ]);
   // Marcadores do header (centro): PERFIL do contato (papel Careli) + adimplencia.
   // Cliente vira Comprador (tem carteira) ou Prospect; demais papeis vêm do Apolo
   // (pulando "pessoa fisica/juridica", que é tipo de pessoa, não perfil).
   const contactProfileLabel = (() => {
+    // Cliente da Cecílio PRIMEIRO, mesmo com carteira no C2X, e sem selo (`contactDelinquency` abaixo):
+    // o selo do legado, verde, esconderia a dívida da Cecílio de quem vai cobrar.
+    if (contatoEhCompradorCecilio) {
+      return ROTULO_COMPRADOR_CECILIO;
+    }
+
     if (hasUserPortfolio) {
       return "Comprador";
     }
@@ -2301,12 +2314,6 @@ function IrisConversationPanel({
 
     if (isUsuario) {
       return "Prospect";
-    }
-
-    // Cliente da Cecílio: papel GRAVADO, sem selo de adimplência (`contactDelinquency` só existe
-    // para quem tem carteira do C2X). Sem este ramo, o chip mostrava o id cru "comprador_cecilio".
-    if (ehCompradorCecilio(apoloProfiles)) {
-      return ROTULO_COMPRADOR_CECILIO;
     }
 
     const role = apoloProfiles.find((profile) => {
@@ -2323,7 +2330,7 @@ function IrisConversationPanel({
     );
   })();
   const contactDelinquency: "adimplente" | "inadimplente" | null =
-    hasUserPortfolio
+    hasUserPortfolio && !contatoEhCompradorCecilio
       ? (apoloContextEntity?.financial?.overdueInstallments ?? 0) > 0
         ? "inadimplente"
         : "adimplente"

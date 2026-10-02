@@ -453,12 +453,12 @@ export function EmailChannelChip({
 // Prospect (sem). Demais papéis: nome curto (Imob./Incorp./Forn./Parc.).
 // A bolinha de adimplência (verde/vermelho) só existe pro Comprador.
 //
-// "comprador cecilio" (o rótulo normalizado de `comprador_cecilio`) fica logo depois do usuário, SEM
-// bolinha: a adimplência da Cecílio mora no Asaas, e a Iris não tem esse dado. Quem é comprador do
-// C2X e da Cecílio continua lido como comprador do C2X.
+// "comprador cecilio" (o rótulo normalizado de `comprador_cecilio`) vem PRIMEIRO, e SEM bolinha: a
+// adimplência da Cecílio mora no Asaas, e a Iris não tem esse dado. Vale também para quem é comprador
+// do C2X e da Cecílio: a bolinha do legado, verde, esconderia a dívida da Cecílio de quem vai cobrar.
 const PROFILE_PRIORITY = [
-  "usuario",
   "comprador cecilio",
+  "usuario",
   "incorporador",
   "imobiliaria",
   "corretor",

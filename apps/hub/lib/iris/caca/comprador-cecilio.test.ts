@@ -122,6 +122,30 @@ describe("validar_identidade com cliente da Cecílio", () => {
   });
 });
 
+describe("as ferramentas que acham a ficha só pelo documento", () => {
+  it("consultar_cadastro_imobiliaria com CNPJ de cliente da Cecílio não entrega nada e transfere", async () => {
+    lookupApoloByDocument.mockResolvedValue({
+      c2xClientId: null,
+      displayName: "EMPRESA DE TESTE LTDA",
+      documentMasked: "**.***.***/****-81",
+      entityId: "ficha-pj",
+      hasBuyerProfile: false,
+      hasUnitPortfolio: false,
+      profiles: ["comprador_cecilio", "pessoa_juridica"],
+      unitLabels: [],
+    });
+    const ctx = contexto();
+    const ferramenta = buildCacaTools(ctx).find((t) => t.definition.name === "consultar_cadastro_imobiliaria");
+    if (!ferramenta) throw new Error("consultar_cadastro_imobiliaria sumiu da lista de ferramentas");
+
+    const resposta = await ferramenta.run({ cnpj: "11.222.333/0001-81" });
+    const texto = typeof resposta === "string" ? resposta : resposta.content;
+
+    expect(texto).not.toMatch(/EMPRESA DE TESTE|comprador_cecilio|Razão/);
+    expect(ctx.handoff).toEqual({ reason: MOTIVO_HANDOFF_COMPRADOR_CECILIO, requested: true });
+  });
+});
+
 describe("describeApoloProfile", () => {
   it("descreve o cliente da Cecílio antes do comprador do C2X", () => {
     expect(describeApoloProfile(["comprador_cecilio"])).toBe(PERFIL_DESCRITO_COMPRADOR_CECILIO);

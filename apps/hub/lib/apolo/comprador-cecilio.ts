@@ -76,7 +76,7 @@ export function unidadesDaCarteiraCecilio(metadata: unknown): UnidadeDaCarteiraC
   return unidades;
 }
 
-/** "Garden · 404 BL 03" — o rótulo de uma unidade na ficha. */
+/** "Garden · Q01 L01" — o rótulo de uma unidade na ficha. */
 export function rotuloDaUnidadeCecilio(unidade: UnidadeDaCarteiraCecilio) {
   return unidade.unidade ? `${unidade.carteira} · ${unidade.unidade}` : unidade.carteira;
 }
