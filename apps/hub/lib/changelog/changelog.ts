@@ -37,7 +37,7 @@ export type ChangelogEntry = {
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
     buildTag: "2026-10-01-reenvio-usa-a-key-do-webhook",
-    deployedAt: "__HORA_REAL__",
+    deployedAt: "2026-10-02T07:37:20-03:00",
     internal: true,
     modules: [
       {
