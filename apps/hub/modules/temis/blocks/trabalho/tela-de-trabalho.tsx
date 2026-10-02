@@ -1176,6 +1176,13 @@ export function TelaDeTrabalho({
                   envelopeVivo={envelopeVivo}
                 />
               ) : null}
+              {/* ⚠️ SEM PAINEL (a D4Sign, que o diário não narra), A LINHA DO ENVELOPE DIZ O QUE FALTA
+                  (revisão de 02/10/2026): a mesma reserva da etapa Em assinatura. Sem ela, o card da
+                  D4Sign no Pré-faturamento não mostrava que o contrato ainda está aberto, e a trava
+                  do Faturado recusava sem a tela explicar. */}
+              {ehContrato && !assinatura && envelopeVivo && envelopeVivo.estado !== "assinado" ? (
+                <LinhaDoEnvelope desde={card.estagio_desde} envelopeVivo={envelopeVivo} />
+              ) : null}
               {/* ⚠️ PELA MESMA RAZÃO DA ETAPA DE CIMA: o prazo de arrependimento é contado em cima
                   de um contrato que alguém pode precisar reler, e daqui em diante a tela também
                   ficava sem caminho para o PDF. Hoje não há card de contrato nesta etapa (medido em

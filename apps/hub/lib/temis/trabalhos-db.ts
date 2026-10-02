@@ -557,7 +557,7 @@ export async function contarAssinaturasDasPropostas(
  * posterior), além do histórico.
  */
 export function contagemDoSelo(
-  envelope: { estado: string; signatarios: unknown },
+  envelope: { estado: string; finalidade?: null | string; signatarios: unknown },
   historico: undefined | { assinaram: number; conviteNaoEntregue: boolean },
 ): ContagemDeAssinaturas | null {
   const quadro = lerQuadro(envelope.signatarios);
@@ -584,16 +584,24 @@ export function contagemDoSelo(
 
   // ⚠️ OS COMPRADORES SAEM SÓ DO QUADRO, PELA RÉGUA DA PORTA (`compradoresDoQuadro`): o histórico dos
   // payloads só sabe "quantos", e não "quem". Envelope fechado: todos assinaram, compradores inclusive.
+  //
+  // ⚠️ E SÓ NO ENVELOPE QUE A PORTA RECONHECE COMO CONTRATO (revisão de 02/10/2026). Um envelope de
+  // finalidade nula (o VOC0306, nascido entre a 0195 e o deploy que a preenche) não move card nenhum:
+  // contar os compradores dele faria o card mostrar "1/1 comprador" parado em Em assinatura. Sem
+  // `finalidade` na chamada (quem não a lê), vale a contagem.
   const doQuadro = compradoresDoQuadro(quadro);
+  const daPorta = envelope.finalidade === undefined || envelope.finalidade === "contrato";
   const compradores =
-    doQuadro.total === 0
+    doQuadro.total === 0 || !daPorta
       ? null
       : { assinaram: envelope.estado === "assinado" ? doQuadro.total : doQuadro.assinaram, total: doQuadro.total };
 
   return {
     assinaram,
     compradores,
-    conviteNaoEntregue: (historico?.conviteNaoEntregue ?? false) || conviteVoltou,
+    // ⚠️ CONTRATO FECHADO NÃO TEM CONVITE A CONSERTAR: o histórico guarda o bounce de quem foi
+    // trocado, e no Pré-faturamento o ícone vermelho acenderia sobre um contrato assinado por todos.
+    conviteNaoEntregue: envelope.estado === "assinado" ? false : (historico?.conviteNaoEntregue ?? false) || conviteVoltou,
     estado: envelope.estado,
     total,
   };
@@ -1303,14 +1311,35 @@ async function recusaPorContratoPorAssinar(
   }
 
   const linhas = (data ?? []) as Array<EnvelopeDaProposta & { enviado_em: null | string; signatarios: unknown }>;
+  // Um contrato assinado por todos, em qualquer envelope desta proposta, libera o Faturado.
+  if (linhas.some((l) => l.estado === "assinado")) return null;
+
   const vigente = envelopeVigente(linhas).vigente;
-  if (!vigente || vigente.estado === "assinado") return null;
+  if (!vigente) {
+    // ⚠️ "SEM ENVELOPE VIVO" NÃO É "SEM ENVELOPE" (revisão de 02/10/2026). Desde que o card entra no
+    // Pré-faturamento pelos compradores, o envelope pode MORRER depois: a vendedora recusa, o prazo
+    // vence (o envio manda `canceled` no vencimento parcial) ou alguém cancela. `envelopeVigente` não
+    // vê envelope morto, e a trava deixava faturar um contrato que a vendedora nunca assinou. Só o
+    // card que nunca mandou contrato nenhum (o legado, sem linha que saiu) continua passando.
+    const jaSaiu = linhas.some((l) => l.envelope_id !== null || Boolean(String(l.enviado_em ?? "").trim()));
+    if (!jaSaiu) return null;
+    return {
+      erro:
+        "o envelope do contrato foi cancelado, recusado ou venceu antes de todos assinarem, então o contrato não está assinado. " +
+        "Volte o card para a análise e mande o contrato de novo; nada foi marcado.",
+      ok: false,
+      status: 409,
+    };
+  }
 
   const quadro = lerQuadro(vigente.signatarios);
   const assinaram = quadro.filter((item) => Boolean(item.assinado_em)).length;
   const conta = quadro.length > 0 ? `${assinaram} de ${quadro.length} assinaram` : "o envelope ainda não fechou";
+  // ⚠️ O PAINEL SÓ EXISTE PARA A CLICKSIGN (o diário da tela lê só ela): na D4Sign, mandar olhar o
+  // painel seria mandar procurar o que a tela não mostra.
+  const onde = vigente.provedor === "clicksign" ? " Veja quem falta no painel da assinatura, nesta etapa;" : "";
   return {
-    erro: `faltam assinaturas no contrato: ${conta}. O card só vai para Faturado com o contrato assinado por todos. Veja quem falta no painel da assinatura, nesta etapa; nada foi marcado.`,
+    erro: `faltam assinaturas no contrato: ${conta}. O card só vai para Faturado com o contrato assinado por todos.${onde} nada foi marcado.`,
     ok: false,
     status: 409,
   };

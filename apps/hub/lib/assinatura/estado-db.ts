@@ -146,7 +146,13 @@ export async function aplicarEventoDaClicksign(
     // Pré-faturamento devolve "já estava". Só o CONTRATO conta compradores (cessão e cancelamento por
     // correção continuam só no fechamento). E a data do prazo sai do QUADRO que a função devolveu
     // (bug 8.3), não de uma segunda leitura de eventos.
-    const compradoresFecharam = linha.finalidade === "contrato" && todosOsCompradoresAssinaram(registro.signatarios);
+    // ⚠️ SÓ COM O ENVELOPE EM ASSINATURA OU FECHADO (revisão de 02/10/2026): o quadro guarda as
+    // marcas também depois de um `refusal`, `deadline` ou `cancel`, e envelope morto não leva card a
+    // lugar nenhum. O fechado repetido entra: a conclusão devolve "já estava" e refaz o que tropeçou.
+    const vivoOuFechado =
+      registro.estadoDepois === "aguardando" || registro.estadoDepois === "parcial" || registro.estadoDepois === "assinado";
+    const compradoresFecharam =
+      linha.finalidade === "contrato" && vivoOuFechado && todosOsCompradoresAssinaram(registro.signatarios);
     const efeito =
       (registro.mudouEstado || compradoresFecharam) && linha.proposta_id
         ? await efeitoDoWebhookNaVenda(sb, linha, linha.proposta_id, registro)
@@ -231,7 +237,10 @@ async function efeitoDoWebhookNaVenda(
       // os compradores assinados (02/10/2026). Sem a linha no log, seria um contrato parado sem aviso.
       const andou = efeito.card === "andou" || efeito.card === "ja_estava";
       const incompleto = efeito.dataDeAssinatura === "falhou" || efeito.dataDeAssinatura === "sem_data_real";
-      const deviaAndar = registro.estadoDepois === "assinado" || todosOsCompradoresAssinaram(registro.signatarios);
+      const deviaAndar =
+        registro.estadoDepois === "assinado" ||
+        ((registro.estadoDepois === "aguardando" || registro.estadoDepois === "parcial") &&
+          todosOsCompradoresAssinaram(registro.signatarios));
       if (deviaAndar && (!andou || incompleto)) {
         console.warn(
           `[clicksign][webhook] contrato ${registro.estadoDepois === "assinado" ? "assinado" : "assinado pelos compradores"} sem o efeito completo na venda ${propostaId} (${resumo}): ${efeito.motivo}. A reconciliação do espelho refaz o tropeço na próxima rodada; o "não" de uma guarda fica como está, e o card se confere à mão.`,

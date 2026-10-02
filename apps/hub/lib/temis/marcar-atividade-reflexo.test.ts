@@ -288,3 +288,59 @@ describe("a última atividade do Pré-faturamento confere o envelope do contrato
     expect(banco.consultas.some((c) => c.tabela === "temis_envelopes")).toBe(false);
   });
 });
+
+// ── O ENVELOPE QUE MORREU DEPOIS DOS COMPRADORES (revisão de 02/10/2026) ─────────────────────────
+//
+// ⚠️ O CARD ENTRA NO PRÉ-FATURAMENTO COM O ENVELOPE ABERTO, E O ENVELOPE PODE MORRER DEPOIS: a
+// vendedora recusa, o prazo vence (o envio manda `canceled` no vencimento parcial) ou alguém cancela.
+// A régua do vigente não vê envelope morto, e a trava lia isso como "sem envelope" e deixava faturar.
+describe("a trava do Faturado com o envelope do contrato morto", () => {
+  for (const estado of ["recusado", "expirado", "cancelado"] as const) {
+    it(`envelope ${estado} depois dos compradores: RECUSADO com 409, e nada escrito`, async () => {
+      const { antes, ultima } = doEstagio("contrato", "prazo_legal");
+      montar({ atividades_feitas: antes });
+      banco.semear("temis_envelopes", envelopeDoContrato({ estado }));
+
+      const r = await marcarAtividade({ atividade: ultima, feita: true, id: "card-1" });
+
+      expect(r).toMatchObject({ ok: false, status: 409 });
+      if (r.ok) return;
+      expect(r.erro).toContain("cancelado, recusado ou venceu antes de todos assinarem");
+      expect(banco.linha("temis_trabalhos", "card-1")?.estagio).toBe("prazo_legal");
+      expect(banco.consultas.filter((c) => c.operacao !== "select")).toEqual([]);
+    });
+  }
+
+  it("um cancelado antigo e um assinado novo: passa, o contrato que vale está assinado", async () => {
+    const { antes, ultima } = doEstagio("contrato", "prazo_legal");
+    montar({ atividades_feitas: antes });
+    banco.semear("temis_envelopes", envelopeDoContrato({ estado: "cancelado" }));
+    banco.semear(
+      "temis_envelopes",
+      envelopeDoContrato({
+        criado_em: "2026-09-28T12:00:00.000Z",
+        envelope_id: "env-2",
+        estado: "assinado",
+        fechado_em: "2026-09-29T09:00:00.000-03:00",
+        id: "reg-2",
+      }),
+    );
+
+    const r = await marcarAtividade({ atividade: ultima, feita: true, id: "card-1" });
+
+    expect(r).toMatchObject({ estagio: "faturado", ok: true });
+  });
+
+  it("na D4Sign, a frase não manda olhar o painel que a tela não mostra", async () => {
+    const { antes, ultima } = doEstagio("contrato", "prazo_legal");
+    montar({ atividades_feitas: antes });
+    banco.semear("temis_envelopes", envelopeDoContrato({ provedor: "d4sign" }));
+
+    const r = await marcarAtividade({ atividade: ultima, feita: true, id: "card-1" });
+
+    expect(r).toMatchObject({ ok: false, status: 409 });
+    if (r.ok) return;
+    expect(r.erro).toContain("faltam assinaturas no contrato");
+    expect(r.erro).not.toContain("painel");
+  });
+});

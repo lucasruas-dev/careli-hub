@@ -194,3 +194,33 @@ describe("os filtros do selo no Board (contarAssinaturasDasPropostas)", () => {
     expect(comClicksign.consultas.filter((c) => c.tabela === "temis_assinatura_eventos").length).toBeGreaterThan(0);
   });
 });
+
+// ── O SELO E A REVISÃO DE 02/10/2026 ────────────────────────────────────────
+describe("contagemDoSelo: o que a revisão de 02/10/2026 pediu", () => {
+  const assinou = { assinado_em: "2026-10-01T10:00:00-03:00" };
+
+  it("envelope de finalidade nula não conta compradores: ele não move card nenhum", () => {
+    const r = contagemDoSelo(
+      { estado: "parcial", finalidade: null, signatarios: [item("k1", { papel: "comprador", ...assinou }), item("k2")] },
+      undefined,
+    );
+    expect(r?.compradores).toBeNull();
+    expect(r).toMatchObject({ assinaram: 1, total: 2 });
+  });
+
+  it("envelope de contrato conta os compradores", () => {
+    const r = contagemDoSelo(
+      { estado: "parcial", finalidade: "contrato", signatarios: [item("k1", { papel: "comprador", ...assinou }), item("k2")] },
+      undefined,
+    );
+    expect(r?.compradores).toEqual({ assinaram: 1, total: 1 });
+  });
+
+  it("contrato fechado não acende o convite devolvido, nem com bounce no histórico", () => {
+    const r = contagemDoSelo(
+      { estado: "assinado", signatarios: [item("k1", { papel: "comprador" }), item("k2")] },
+      { assinaram: 2, conviteNaoEntregue: true },
+    );
+    expect(r?.conviteNaoEntregue).toBe(false);
+  });
+});
