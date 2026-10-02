@@ -16,7 +16,7 @@
 --      PIX ficam fora disso: só a ficha as lê, por rota própria do servidor.
 --
 -- ⚠️ SÓ O SERVICE ROLE LÊ E GRAVA. RLS ligado e nenhuma política: `anon` e `authenticated` não chegam
--- aqui nem por engano. Quem lê é /api/apolo/entidades/[entityId]/dados-bancarios, depois de conferir o
+-- aqui nem por engano. Quem lê é /api/apolo/cadastro/[entityId]/dados-bancarios, depois de conferir o
 -- acesso ao Apolo; quem grava é o salvar do cadastro (lib/apolo/cadastro-salvar.ts).
 --
 -- ⚠️ O QUE ACONTECE ENQUANTO ELA NÃO RODA, dito inteiro:
@@ -27,8 +27,8 @@
 -- ORDEM DE ENTREGA: livre. O app funciona antes e depois.
 --
 -- UMA LINHA POR CONTA, e não uma por ficha: o fornecedor pode trocar de banco, e a conta antiga fica
--- `archived` para o histórico de pagamentos dizer para onde o dinheiro foi. Hoje o cadastro grava uma
--- e a ficha mostra as ativas.
+-- `archived` para o histórico de pagamentos dizer para onde o dinheiro foi. O cadastro arquiva a ativa
+-- antes de gravar a nova, e a ficha mostra as ativas.
 
 create table if not exists public.apolo_entity_bank_accounts (
   id              uuid primary key default gen_random_uuid(),

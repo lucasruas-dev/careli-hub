@@ -530,7 +530,19 @@ export async function salvarCadastroDoApolo(
 
   // 1a) A CONTA DO FORNECEDOR. A tabela foi conferida antes de a ficha nascer; o que sobra aqui é a
   // gravação falhar de verdade, e aí a ficha já existe: vira aviso para o operador refazer a conta.
+  //
+  // ⚠️ UMA CONTA ATIVA POR FICHA (revisão de 02/10/2026). Cadastrar de novo o mesmo documento cai no
+  // modo anexo, na mesma ficha: sem arquivar a conta anterior, ela ficaria com duas contas `active` e a
+  // tela não diria qual paga. A antiga fica `archived`, para o histórico dizer para onde o dinheiro foi.
   if (contaDoFornecedor) {
+    const { error: arquivarError } = await adminClient
+      .from(TABELA_DA_CONTA_DO_FORNECEDOR)
+      .update({ status: "archived", updated_at: new Date().toISOString() })
+      .eq("entity_id", entityId)
+      .eq("status", "active");
+    if (arquivarError) {
+      uploadWarnings.push(`dados bancários (conta anterior): ${arquivarError.message}`);
+    }
     const { error: contaError } = await adminClient
       .from(TABELA_DA_CONTA_DO_FORNECEDOR)
       .insert(

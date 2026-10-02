@@ -4157,25 +4157,21 @@ function StepEndereco({
           }}
         />
       </div>
-      {endereco ? (
-        <>
-          {/* Aviso quando a MOST não leu o comprovante: documento salvo, preenche pelo CEP. */}
-          {!endereco.logradouro && !endereco.cidade ? (
-            <p className="m-0 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/12 dark:text-amber-300">
-              Não conseguimos ler o endereço no comprovante. O documento foi salvo: fotografe a
-              conta inteira, sem cortar as bordas, e anexe de novo, ou preencha pelo CEP abaixo.
-            </p>
-          ) : null}
-          <EnderecoEditavel endereco={endereco} onChange={onEnderecoChange} />
-          {endereco.dataDocumento ? (
-            <ComprovanteRecencia data={endereco.dataDocumento} />
-          ) : null}
-        </>
-      ) : opcional ? (
-        // Sem comprovante, o fornecedor ainda pode ter o endereço digitado pelo CEP. O primeiro
-        // campo preenchido cria o endereço (`onEnderecoChange` parte de um vazio).
-        <EnderecoEditavel endereco={ENDERECO_EM_BRANCO} onChange={onEnderecoChange} />
+      {/* Aviso quando a MOST não leu o comprovante: documento salvo, preenche pelo CEP. No
+          fornecedor sem comprovante (`opcional`) não há leitura nenhuma a avisar. */}
+      {endereco && !endereco.logradouro && !endereco.cidade && !opcional ? (
+        <p className="m-0 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/12 dark:text-amber-300">
+          Não conseguimos ler o endereço no comprovante. O documento foi salvo: fotografe a
+          conta inteira, sem cortar as bordas, e anexe de novo, ou preencha pelo CEP abaixo.
+        </p>
       ) : null}
+      {/* ⚠️ UM EnderecoEditavel SÓ, NA MESMA POSIÇÃO DA ÁRVORE (revisão de 02/10/2026). No fornecedor
+          sem comprovante, a primeira tecla cria o `endereco`; com dois ramos diferentes, o React
+          remontava o campo e o cursor saía do CEP a cada letra. */}
+      {endereco || opcional ? (
+        <EnderecoEditavel endereco={endereco ?? ENDERECO_EM_BRANCO} onChange={onEnderecoChange} />
+      ) : null}
+      {endereco?.dataDocumento ? <ComprovanteRecencia data={endereco.dataDocumento} /> : null}
       <NavButtons
         canNext={opcional || Boolean(endereco?.logradouro && endereco?.cidade)}
         nextLabel={opcional ? "Avançar para os dados bancários" : undefined}
@@ -5026,38 +5022,9 @@ function StepRevisao({
       }
     }
 
-    // (02/10/2026) A CONTA E O PIX DO FORNECEDOR, no papel que fica no drive dele. É o registro do
-    // que o operador informou no dia; a ficha lê a versão viva da tabela própria.
-    if (conta) {
-      secoes.push(
-        cadSection("Dados bancários e PIX", [
-          ...(conta.conta
-            ? [
-                cadField(
-                  "Banco",
-                  [conta.conta.bancoCodigo, conta.conta.bancoNome].filter(Boolean).join(" - "),
-                  true,
-                ),
-                cadField("Tipo de conta", rotuloDoTipoDeConta(conta.conta.tipo)),
-                cadField("Agência", conta.conta.agencia),
-                cadField("Conta", conta.conta.numero),
-              ]
-            : []),
-          ...(conta.pix
-            ? [
-                cadField("Tipo de chave PIX", rotuloDoTipoDeChave(conta.pix.tipo)),
-                cadField("Chave PIX", conta.pix.chave, true),
-              ]
-            : []),
-          ...(conta.titular
-            ? [
-                cadField("Titular", titleCase(conta.titular.nome ?? ""), true),
-                cadField("Documento do titular", conta.titular.documento ?? ""),
-              ]
-            : []),
-        ]),
-      );
-    }
+    // ⚠️ A CONTA E O PIX DO FORNECEDOR NÃO ENTRAM NESTE PDF (revisão de 02/10/2026). O PDF fica no
+    // drive da ficha, que todo leitor do Apolo baixa; a conta vive em tabela própria justamente para
+    // só quem opera o Apolo vê-la (migration 0211 e a rota de dados bancários da ficha).
 
     // ⚠️ PENDÊNCIAS DE DOCUMENTAÇÃO — a seção que FORMALIZA o que a leitura não confirmou.
     //
@@ -5071,7 +5038,13 @@ function StepRevisao({
     // limpa a pendência sozinho, sem estado fantasma de um arquivo que já foi substituído.
     const pendencias: string[] = [];
     const mesesComprovante = endereco?.dataDocumento ? mesesDesde(endereco.dataDocumento) : null;
-    if (endereco && !endereco.dataDocumento) {
+    // O fornecedor pode ter o endereço DIGITADO, sem comprovante nenhum (é opcional para ele): sem
+    // comprovante anexado não há data de emissão a confirmar, nem leitura que tenha falhado.
+    const avaliaComprovante =
+      !formato.fichaSimples || (documentos.comprovante_endereco ?? []).length > 0;
+    if (!avaliaComprovante) {
+      // nada a anotar sobre comprovante
+    } else if (endereco && !endereco.dataDocumento) {
       pendencias.push(
         "Comprovante de endereço: a data de emissão não pôde ser confirmada pela leitura automática (documento ilegível ou sem data).",
       );
@@ -5080,7 +5053,7 @@ function StepRevisao({
         `Comprovante de endereço emitido há ${mesesComprovante} meses (${formatDateBR(endereco?.dataDocumento ?? "")}); o ideal são até 3 meses.`,
       );
     }
-    if (endereco && !endereco.logradouro && !endereco.cidade) {
+    if (avaliaComprovante && endereco && !endereco.logradouro && !endereco.cidade) {
       pendencias.push(
         "Endereço não foi lido do comprovante; confirmar os dados preenchidos manualmente.",
       );

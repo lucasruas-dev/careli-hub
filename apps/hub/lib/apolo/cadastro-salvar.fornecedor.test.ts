@@ -65,6 +65,10 @@ function clienteFalso(opcoes: { semTabela?: boolean } = {}) {
           ? { count: null, data: null, error: { code: "42P01", message: "relation does not exist" } }
           : { count: 0, data: [], error: null };
       for (const metodo of ["eq", "limit", "select"]) builder[metodo] = () => builder;
+      builder.update = (linha: unknown) => {
+        escritas.push({ linha, operacao: "update", tabela });
+        return builder;
+      };
       builder.insert = (linha: unknown) => {
         escritas.push({ linha, operacao: "insert", tabela });
         return Promise.resolve({ error: null });
@@ -127,14 +131,23 @@ describe("o fornecedor na porta do salvar", () => {
     const { escritas, r } = await salvar(FORNECEDOR_PF());
 
     expect(r.ok).toBe(true);
-    const conta = escritas.find((e) => e.tabela === "apolo_entity_bank_accounts");
-    expect(conta?.operacao).toBe("insert");
+    const conta = escritas.find(
+      (e) => e.tabela === "apolo_entity_bank_accounts" && e.operacao === "insert",
+    );
     expect(conta?.linha).toMatchObject({
       created_by: OPERADOR,
       entity_id: "ent-fornecedor",
       pix_key: "joao@pedreiro.com",
       pix_key_type: "email",
     });
+  });
+
+  it("arquiva a conta ativa anterior ANTES de gravar a nova (uma conta ativa por ficha)", async () => {
+    const { escritas } = await salvar(FORNECEDOR_PF());
+
+    const daTabela = escritas.filter((e) => e.tabela === "apolo_entity_bank_accounts");
+    expect(daTabela.map((e) => e.operacao)).toEqual(["update", "insert"]);
+    expect(daTabela[0]?.linha).toMatchObject({ status: "archived" });
   });
 
   it("a PORTA liga o afrouxamento das travas de comprador, sem código de corretor", async () => {
