@@ -95,6 +95,30 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Temis] Nome do empreendimento no card do quadro, em vez da sigla (v1.406.4, interna)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`, a pedido direto do Lucas ("outra coisa simples que vc pode fazer e trazer o nome do empreendimento em vez da sigla").
+- Data e hora local: `2026-10-02 16:12:13 -03:00` (changelog); deploy pronto cerca de 3 min depois do push.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("pode publicar a 1.406.4"); branch fix/temis-nome-do-empreendimento (ca6922d3, base 1.406.3) integrada por merge`.
+- Escopo publicado: `Card do TemisKanban mostra empreendimentoNome (temis_trabalhos.enterprise_nome) e cai na sigla so com o nome vazio; quadros do hub e do portal`.
+- Commit publicado: `2fee05e16ea92e45b9a8925cf1cc1561f4a68fe6`.
+- Deployment anterior: `dpl_DVK19ujPzoyFAQP2PkNhzhmkMWqf` (commit `21abff83`, v1.406.3).
+- Deployment novo: `dpl_AkgzVJJiKkNgStnj3zzv4LKsgiwX`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Banco: `sem migracao e sem escrita`.
+- Validacoes executadas:
+  - `teste de tela novo falha sem a correcao (conferido revertendo a linha)`: `1 falha sem, 6/6 com`;
+  - `typecheck e suite inteira antes do OK`: `756 arquivos, 11.588 testes`;
+  - `hook de pre-push`: `756 arquivos, 11.588 testes`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.406.4 com buildTag 2026-10-02-temis-nome-do-empreendimento; /api/temis/trabalhos e /api/incorporador/contratos 401 sem sessao`.
+- Rollback definido: `Instant Rollback para dpl_DVK19ujPzoyFAQP2PkNhzhmkMWqf (v1.406.3) e seguro`.
+- Riscos conhecidos: `5 cards do Vale do Ouro (2 VOC, 2 VOL, 1 VOR) tem enterprise_nome "Vale do Ouro" sem o filho e aparecem sem a sigla da divisao; os outros 19 do Vale do Ouro trazem "Vale do Ouro · VOx"`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `nenhuma`.
+
+Registro de producao:
+
 - Assunto: `[Temis] Nome do cliente em caixa alta no card do quadro e na tela de trabalho (v1.406.3, interna)`.
 - Squad/agente responsavel: `Zeus (sessao Publicacao)`; a entrega nao chegou por resumo: o Lucas perguntou pela correcao vendo o quadro, e ela estava na branch fix/temis-nome-caixa-alta (449c56a8, base 1.406.0, push de 02/10 12:26).
 - Data e hora local: `2026-10-02 15:41:19 -03:00` (changelog); deploy pronto cerca de 3,5 min depois do push.
