@@ -48,6 +48,21 @@ vi.mock("./contrato-guardado-db", () => ({
   contratosDasPropostas: async () => new Map(),
 }));
 
+// A origem do card (nome pelo cadastro, categoria da unidade) tem teste próprio
+// (`origem-do-card.test.ts`); aqui ela não pode somar consultas ao construtor falso, que conta chamadas.
+// O mapa é o que ela "devolveu": vazio por padrão, que é o card como foi gravado.
+const origem = vi.hoisted(() => ({
+  pedidos: [] as unknown[],
+  porCard: new Map<string, { categoria: null | string; nome: string }>(),
+}));
+
+vi.mock("./origem-do-card", () => ({
+  origemDosCards: async (_sb: unknown, cards: unknown) => {
+    origem.pedidos.push(cards);
+    return origem.porCard;
+  },
+}));
+
 const passagens = vi.hoisted(() => ({ registradas: [] as Array<Record<string, unknown>> }));
 
 vi.mock("./passagem-de-etapa-db", () => ({
@@ -106,6 +121,8 @@ beforeEach(() => {
   estado.chamadas.length = 0;
   estado.respostas.length = 0;
   passagens.registradas.length = 0;
+  origem.pedidos.length = 0;
+  origem.porCard = new Map();
   esquecerAusenciaDaColunaDoDono();
 });
 
@@ -286,6 +303,33 @@ describe("trabalhosDoBoard, o dono no card e a paginação (arrumação da onda 
     expect(trabalhos).toHaveLength(1001);
     expect(estado.chamadas[0]?.filtros).toContainEqual(["range", 0, 999]);
     expect(estado.chamadas[1]?.filtros).toContainEqual(["range", 1000, 1999]);
+  });
+});
+
+// Lucas (02/10/2026): *"quando tiver filho ou categoria, trazer aqui para gente saber de onde
+// especificamente é"*. O board pede a origem com o que o card gravou e a aplica no card.
+describe("trabalhosDoBoard, de onde é o card", () => {
+  it("pede a origem com a sigla, o id, o nome gravado e a proposta de cada card", async () => {
+    estado.respostas.push({ data: [{ ...LINHA, proposta_id: "p-1" }], error: null });
+    await trabalhosDoBoard();
+    expect(origem.pedidos[0]).toEqual([
+      { codigo: "VOC", enterpriseId: "37", id: "t-1", nomeGravado: "Vale do Ouro", propostaId: "p-1" },
+    ]);
+  });
+
+  it("o card gravado só com o pai sai com o filho e a categoria da origem", async () => {
+    origem.porCard = new Map([["t-1", { categoria: "Condomínio", nome: "Vale do Ouro · VOC" }]]);
+    estado.respostas.push({ data: [LINHA], error: null });
+    const [trabalho] = await trabalhosDoBoard();
+    expect(trabalho?.empreendimentoNome).toBe("Vale do Ouro · VOC");
+    expect(trabalho?.categoriaNome).toBe("Condomínio");
+  });
+
+  it("sem origem (leitura falhou), o card fica como foi gravado e sem categoria", async () => {
+    estado.respostas.push({ data: [LINHA], error: null });
+    const [trabalho] = await trabalhosDoBoard();
+    expect(trabalho?.empreendimentoNome).toBe("Vale do Ouro");
+    expect(trabalho?.categoriaNome).toBeNull();
   });
 });
 

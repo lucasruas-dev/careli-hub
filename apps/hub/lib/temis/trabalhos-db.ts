@@ -29,6 +29,7 @@ import {
 } from "@/lib/hercules/reflexo-da-temis-server";
 
 import { type ContratoNoCard, contratosDasPropostas } from "./contrato-guardado-db";
+import { origemDosCards } from "./origem-do-card";
 import { registrarPassagemDeEtapa } from "./passagem-de-etapa-db";
 import {
   ESTAGIOS_ENCERRADOS,
@@ -125,6 +126,15 @@ export type TrabalhoDoBoard = Trabalho & {
    */
   assinaturas: ContagemDeAssinaturas | null;
   canal: CanalDoTrabalho;
+  /**
+   * A categoria da unidade da proposta ("Condomínio", no Lagoa Bonita), para o card dizer de onde
+   * especificamente é (Lucas, 02/10/2026). `null` = a unidade não tem categoria, que é o normal, ou a
+   * leitura falhou e o card sai como antes.
+   *
+   * ⚠️ PREENCHIDO SÓ EM `trabalhosDoBoard`, junto com o `empreendimentoNome` refeito pelo cadastro
+   * (o pai na frente, o filho depois). Ver `origemDosCards` (./origem-do-card).
+   */
+  categoriaNome: null | string;
   /**
    * Os contratos JÁ GERADOS desta proposta, do mais novo para o mais antigo.
    *
@@ -265,6 +275,8 @@ function mapear(l: LinhaCrua): TrabalhoDoBoard {
     assinaturas: null,
     atividadesFeitas: Array.isArray(l.atividades_feitas) ? l.atividades_feitas : [],
     canal: l.canal as CanalDoTrabalho,
+    // Preenchido só em `trabalhosDoBoard`, numa leitura por lote — ver a nota do campo.
+    categoriaNome: null,
     clienteCpf: l.cliente_cpf,
     clienteNome: l.cliente_nome,
     // Preenchido só em `trabalhosDoBoard`, numa consulta por lote — ver a nota do campo.
@@ -420,14 +432,37 @@ export async function trabalhosDoBoard(input?: {
   // não deve passar de algumas dezenas, mas "uma consulta por card" é o tipo de conta que só dói
   // quando a fila cresce — e aí ninguém liga o board lento a esta linha. `contratosDasPropostas`
   // já sai sem consultar quando nenhum card tem proposta, que é o caso do board antigo.
-  const contratos = await contratosDasPropostas(
-    supabase,
-    trabalhos.map((t) => t.propostaId ?? "").filter(Boolean),
-  );
+  //
+  // DE ONDE É O CARD (Lucas, 02/10/2026: *"quando tiver filho ou categoria, trazer aqui"*), em
+  // paralelo com os contratos: o nome sai do cadastro, o pai na frente e o filho depois, e não mais
+  // só do que foi gravado na abertura (5 cards do Vale do Ouro estavam só "Vale do Ouro"); a
+  // categoria sai da unidade da proposta. ⚠️ NÃO DERRUBA O QUADRO: `origemDosCards` nunca lança, e
+  // o card sem origem fica como estava.
+  const [contratos, origens] = await Promise.all([
+    contratosDasPropostas(
+      supabase,
+      trabalhos.map((t) => t.propostaId ?? "").filter(Boolean),
+    ),
+    origemDosCards(
+      supabase,
+      data.map((l) => ({
+        codigo: l.enterprise_codigo,
+        enterpriseId: l.enterprise_id,
+        id: l.id,
+        nomeGravado: l.enterprise_nome,
+        propostaId: l.proposta_id,
+      })),
+    ),
+  ]);
 
   for (const trabalho of trabalhos) {
     if (trabalho.propostaId) {
       trabalho.contratos = contratos.get(trabalho.propostaId) ?? [];
+    }
+    const origem = origens.get(trabalho.id);
+    if (origem) {
+      trabalho.empreendimentoNome = origem.nome;
+      trabalho.categoriaNome = origem.categoria;
     }
   }
 
