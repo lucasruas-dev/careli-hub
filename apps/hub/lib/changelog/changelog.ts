@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-10-02-boletos-multa-juros-sem-aviso-asaas",
+    deployedAt: "__HORA_REAL__",
+    internal: true,
+    modules: [
+      {
+        module: "Boletos",
+        screens: [
+          {
+            items: [
+              "**Os boletos saem com multa de 2% e juros de 1% ao mês.**",
+              "**O cliente deixa de receber e-mail, SMS e ligação do próprio Asaas.** Só o WhatsApp da Careli continua.",
+              "**O total de emitidos mostra o valor do boleto mesmo quando o pagamento foi feito com atraso.**",
+            ],
+            screen: "Boletos (hub e portal)",
+          },
+        ],
+      },
+    ],
+    rollback: "61a9fdaf",
+    technical: {
+      done: "`lib/apolo/boletos/emissao.ts`: `acharOuCriarCliente` cria o cliente com `notificationDisabled: true` e, no cliente achado pelo CPF, faz PUT /customers/{id} `{notificationDisabled: true}` antes do POST /payments (`calarNotificacoesDoCliente`), falhando fechado sem a confirmação `notificationDisabled === true`; o mesmo antes de `atualizarCobranca` e no ramo ja_existia das duas rotas de emissão. `criarBoleto` manda `fine {type: PERCENTAGE, value: 2}` e `interest {value: 1}` (constante `ENCARGOS_DE_ATRASO`, travada por teste no teto legal); `atualizarCobranca` reenvia os dois quando valor ou vencimento mudam. `pagamento-do-asaas`: `valor_cobrado = originalValue ?? value`, e as listagens de boletos usam o mesmo. Formatos conferidos na documentação oficial do Asaas (fine com type PERCENTAGE, interest ao mês, notificationDisabled no cliente). Sem migration; escrita no Asaas como comportamento (PUT /customers uma vez por cliente nas 7 contas). Integrado por merge pela sessão Publicação.",
+      motivation: "Lucas (02/10/2026): \"quero desabilitar as notificações de cobrança e de envio. não quero\" e \"quero configurar juros e multa, multa de 2% e juro 1% (padrao de mercado) (…) para gente fazer isso via api\". Os 320 boletos de outubro ficaram segurados esperando esta publicação.",
+    },
+    title: "Boletos com multa e juros e sem os avisos do Asaas",
+    type: "correcao",
+    version: "1.406.1",
+  },
+  {
     buildTag: "2026-10-02-dias-de-vencimento-por-empreendimento",
     deployedAt: "2026-10-02T11:44:54-03:00",
     modules: [
