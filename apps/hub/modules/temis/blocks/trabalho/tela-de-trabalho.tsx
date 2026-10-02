@@ -59,7 +59,10 @@ import {
 import { contratoVigente } from "@/lib/temis/contrato-guardado";
 import { MOTIVOS } from "@/lib/temis/indeferimento";
 import { recadoDaGeracao } from "@/lib/temis/minuta-da-cadeia";
-import { RECUSA_DE_CHAVE_QUE_NAO_E_DA_CLICKSIGN } from "@/lib/assinatura/recusa-de-reenvio";
+import {
+  ACOES_DA_D4SIGN_FICAM_NO_C2X,
+  RECUSA_DE_CHAVE_QUE_NAO_E_DA_CLICKSIGN,
+} from "@/lib/assinatura/recusa-de-reenvio";
 import { pedidoDoTrabalho } from "@/lib/temis/pedido-do-trabalho";
 import {
   caminhoDoCard,
@@ -185,6 +188,11 @@ type AssinaturaDoCard = {
   diario: LinhaDoDiario[];
   envelope: {
     /**
+     * Quando o espelho conferiu este envelope com a D4Sign pela última vez. Só D4Sign: lá não há
+     * webhook, e o rodapé do painel diz de quando é o que se vê. Ausente ou `null` = não se sabe.
+     */
+    conferidoEm?: null | string;
+    /**
      * A NOSSA linha de `hercules_documentos` que ESTE envelope levou para a Clicksign.
      *
      * ⚠️ É ELE, E NÃO `contratoVigente`, QUE DIZ QUAL FOLHA ESTÁ NA MÃO DE QUEM ASSINA. Gerar uma
@@ -192,9 +200,17 @@ type AssinaturaDoCard = {
      * é pior do que não conferir. `null` = envelope anterior à coluna.
      */
     documentoId: null | string;
-    /** O id na Clicksign — é ele que se procura na conta de lá, e não o uuid da nossa linha. */
+    /**
+     * O id na Clicksign — é ele que se procura na conta de lá, e não o uuid da nossa linha. `null` na
+     * D4Sign, de propósito: é ele que acende os gestos da Clicksign, e lá eles ficam no C2X.
+     */
     envelopeId: null | string;
     estado: string;
+    /**
+     * `clicksign` ou `d4sign`. ⚠️ Na D4Sign (o contrato que o C2X mandou, 02/10/2026) o painel é o
+     * QUADRO do espelho: sem log, sem botão, com o perfil na linha e a hora da última conferência.
+     */
+    provedor?: string;
     signatarios: SignatarioNaTela[];
     /**
      * Quando o envelope vence, em ISO: no vencimento sem todas as assinaturas, a Clicksign o cancela.
@@ -254,8 +270,13 @@ type SignatarioNaTela = {
    */
   papel: null | string;
   /**
-   * O degrau desta pessoa na fila da Clicksign, numerado pelo servidor (`naOrdemDaFila`). A tela só
-   * AGRUPA por ele, e nunca reordena. Ausente ou `null` = fora do quadro congelado.
+   * O perfil de tela ("Comprador", "Backoffice", "Imobiliária"…). Só na D4Sign, onde o papel do quadro
+   * é nulo e é o perfil que diz quem compra (`ehCompradorNoQuadro`).
+   */
+  perfil?: null | string;
+  /**
+   * O degrau desta pessoa na fila, numerado pelo servidor (`naOrdemDaFila`). A tela só AGRUPA por ele,
+   * e nunca reordena. Ausente ou `null` = fora do quadro congelado, ou (na D4Sign) envelope sem ordem.
    */
   posicao?: null | number;
   /**
@@ -1176,6 +1197,10 @@ export function TelaDeTrabalho({
                 // envelope e NÃO mexem na etapa do card. Quem precisa reler é ESTA tela — é ela que
                 // desenha o e-mail novo e o convite recém-mandado. Subir pelo quadro recarregaria a
                 // lista de cards e deixaria o painel aberto mostrando o e-mail antigo.
+                //
+                // ⚠️ O CARD DO C2X (D4SIGN) TAMBÉM TEM PAINEL DESDE 02/10/2026, no lugar do aviso
+                // "Não há signatários". Lucas: *"os card que estao pelo c2x nao tem nada na tela de
+                // assinatura"*. É o quadro do espelho, sem botão e sem log (`PainelDaAssinatura`).
                 <PainelDaAssinatura
                   aoRecarregar={carregar}
                   assinatura={assinatura}
@@ -1192,8 +1217,11 @@ export function TelaDeTrabalho({
                   envelopeVivo={envelopeVivo}
                 />
               ) : (
+                // ⚠️ A FRASE DIZIA "o envelope ainda não devolveu nenhum evento", e era falsa no card do
+                // C2X: o envelope da D4Sign existia, com o quadro cheio (02/10/2026). Agora ele tem
+                // painel, e sobra aqui só o card sem envelope com gente no quadro, ou a leitura que falhou.
                 <EmConstrucao
-                  oQueVem="Não há signatários para mostrar nesta venda: ou o card chegou aqui sem envelope, ou o envelope ainda não devolveu nenhum evento. Continuam por vir a tela de monitoramento e o botão de cobrar pela Íris."
+                  oQueVem="Não há signatários para mostrar nesta venda: o Panteon não vê envelope de contrato com gente no quadro, ou não deu para ler agora. Continuam por vir a tela de monitoramento e o botão de cobrar pela Íris."
                   titulo="Em assinatura"
                 />
               )}
@@ -1240,10 +1268,11 @@ export function TelaDeTrabalho({
                   envelopeVivo={envelopeVivo}
                 />
               ) : null}
-              {/* ⚠️ SEM PAINEL (a D4Sign, que o diário não narra), A LINHA DO ENVELOPE DIZ O QUE FALTA
-                  (revisão de 02/10/2026): a mesma reserva da etapa Em assinatura. Sem ela, o card da
-                  D4Sign no Pré-faturamento não mostrava que o contrato ainda está aberto, e a trava
-                  do Faturado recusava sem a tela explicar. */}
+              {/* ⚠️ SEM PAINEL, A LINHA DO ENVELOPE DIZ O QUE FALTA (revisão de 02/10/2026): a mesma
+                  reserva da etapa Em assinatura. Ela nasceu para o card da D4Sign, que não tinha
+                  painel; desde que o quadro da D4Sign chega aqui (Lucas, 02/10/2026: *"os card que
+                  estao pelo c2x nao tem nada na tela de assinatura"*), ela sobra para o envelope sem
+                  quadro, ou para a leitura que falhou, e a trava do Faturado continua explicada. */}
               {ehContrato && !assinatura && envelopeVivo && envelopeVivo.estado !== "assinado" ? (
                 <LinhaDoEnvelope desde={card.estagio_desde} envelopeVivo={envelopeVivo} />
               ) : null}
@@ -2949,13 +2978,26 @@ function PainelDaAssinatura({
   const degraus = degrausDaFila(signatarios, encerrado);
   const naVez = degraus.find((d) => d.estado === "na_vez") ?? null;
   const faltamNaVez = naVez ? naVez.pessoas.filter((p) => !p.assinouEm) : [];
+  /**
+   * O contrato que o C2X mandou pela D4Sign (02/10/2026): o painel é o QUADRO do espelho, sem log (não
+   * há evento), sem botão (os gestos ficam no C2X) e com a hora da última conferência no rodapé.
+   */
+  const daD4Sign = assinatura.envelope.provedor === "d4sign";
 
   /**
    * ⚠️ COMPRADOR PELA RÉGUA DO QUADRO (`ehCompradorNoQuadro`): é ela que decide quando o card entra no
    * Pré-faturamento, e o "Compradores 1 de 1" daqui não pode divergir do selo do card nem da porta da
-   * etapa. A tela só tem o papel (o perfil é da D4Sign, que não chega a este painel).
+   * etapa. Na Clicksign ela lê o papel; na D4Sign, o PERFIL "Comprador", porque lá o papel do quadro é
+   * sempre nulo (`espelho-d4sign/quadro.ts`).
+   *
+   * ⚠️ POR ISSO, NA D4SIGN, O PAPEL VAI NULO PARA A RÉGUA. O "Testemunha" que a linha mostra é rótulo de
+   * tela (o servidor o tira da marca do C2X), e a porta não o lê: passá-lo aqui faria o painel discordar
+   * da porta na testemunha de perfil "Cliente" (3 em 4.842 testemunhas no acervo do C2X, medido em
+   * 02/10/2026).
    */
-  const compradores = signatarios.filter((s) => ehCompradorNoQuadro({ papel: s.papel }));
+  const compradores = signatarios.filter((s) =>
+    ehCompradorNoQuadro({ papel: daD4Sign ? null : s.papel, perfil: s.perfil ?? undefined }),
+  );
   const compradoresQueAssinaram = compradores.filter((s) => s.assinouEm).length;
   const compradoresFechados = compradores.length > 0 && compradoresQueAssinaram === compradores.length;
   /** Envelope encerrado não vence mais: o prazo dele deixou de importar. */
@@ -3089,6 +3131,7 @@ function PainelDaAssinatura({
               ? `Não deu para conferir o envelope agora · nesta etapa desde ${desdeEscrito}`
               : `Nesta etapa desde ${desdeEscrito}`}
           </p>
+          {daD4Sign ? <ConferenciaDaD4Sign conferidoEm={assinatura.envelope.conferidoEm ?? null} /> : null}
         </header>
 
         {trocaFeita ? (
@@ -3104,6 +3147,7 @@ function PainelDaAssinatura({
               aoAlternar={() => alternar(degrau.chave)}
               aoRecarregar={aoRecarregar}
               aoTrocar={(chaveAntiga, recado) => setTrocaFeita({ chaveAntiga, recado })}
+              daD4Sign={daD4Sign}
               degrau={degrau}
               envelopeId={assinatura.envelope.envelopeId}
               key={degrau.chave}
@@ -3113,7 +3157,7 @@ function PainelDaAssinatura({
         </div>
       </section>
 
-      <div className={`grid items-start gap-3 ${contrato ? "@xl:grid-cols-2" : ""}`}>
+      <div className={`grid items-start gap-3 ${contrato && !daD4Sign ? "@xl:grid-cols-2" : ""}`}>
         {contrato}
 
         {/* ⚠️ O LOG NASCE RECOLHIDO, e isso é o oposto de escondê-lo. Ele é AUDITORIA — responde
@@ -3123,63 +3167,105 @@ function PainelDaAssinatura({
 
             ⚠️ E O TETO DE ALTURA CONTINUA: a Clicksign reenvia o histórico INTEIRO a cada webhook,
             então um envelope movimentado tem dezenas de linhas — sem o teto, o log aberto empurraria
-            o botão de voltar para fora da tela. */}
-        <details className="rounded-xl border border-line bg-surface px-3.5 py-3">
-          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-muted transition-colors hover:text-ink">
-            <ScrollText aria-hidden="true" className="size-3.5" />
-            Log do envelope
-            <span className="ml-1 font-normal normal-case tracking-normal">
-              {diario.length === 0 ? "sem eventos" : `${diario.length} eventos`}
-            </span>
-          </summary>
+            o botão de voltar para fora da tela.
 
-          {diario.length === 0 ? (
-            <p className="m-0 mt-2 text-xs text-ink-muted">
-              Nenhum evento registrado para este envelope ainda.
-            </p>
-          ) : (
-            <ol className="m-0 mt-2 grid max-h-64 list-none gap-1 overflow-auto p-0">
-              {diario.map((linha, i) => (
-                <li
-                  className="grid grid-cols-[2px_1fr] items-stretch gap-x-2.5 py-1 pr-2"
-                  key={`${linha.quando}-${linha.fato}-${i}`}
-                >
-                  {/* A gravidade é uma barra, como na linha da pessoa: o erro se vê sem pintar a linha. */}
-                  <span
-                    className={`h-full self-stretch rounded-sm ${
-                      linha.gravidade === "erro"
-                        ? "bg-rose-500"
-                        : linha.gravidade === "marco"
-                          ? "bg-emerald-500"
-                          : "bg-line"
-                    }`}
-                  />
-                  <div className="min-w-0">
-                    <p
-                      className={`m-0 text-xs font-medium ${
+            ⚠️ NA D4SIGN NÃO HÁ LOG: ela não manda evento ao Panteon, e um "sem eventos" ali faria
+            parecer que o contrato parou, quando só não há quem narre. */}
+        {daD4Sign ? null : (
+          <details className="rounded-xl border border-line bg-surface px-3.5 py-3">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-muted transition-colors hover:text-ink">
+              <ScrollText aria-hidden="true" className="size-3.5" />
+              Log do envelope
+              <span className="ml-1 font-normal normal-case tracking-normal">
+                {diario.length === 0 ? "sem eventos" : `${diario.length} eventos`}
+              </span>
+            </summary>
+
+            {diario.length === 0 ? (
+              <p className="m-0 mt-2 text-xs text-ink-muted">
+                Nenhum evento registrado para este envelope ainda.
+              </p>
+            ) : (
+              <ol className="m-0 mt-2 grid max-h-64 list-none gap-1 overflow-auto p-0">
+                {diario.map((linha, i) => (
+                  <li
+                    className="grid grid-cols-[2px_1fr] items-stretch gap-x-2.5 py-1 pr-2"
+                    key={`${linha.quando}-${linha.fato}-${i}`}
+                  >
+                    {/* A gravidade é uma barra, como na linha da pessoa: o erro se vê sem pintar a linha. */}
+                    <span
+                      className={`h-full self-stretch rounded-sm ${
                         linha.gravidade === "erro"
-                          ? "text-rose-700 dark:text-rose-300"
-                          : "text-ink"
+                          ? "bg-rose-500"
+                          : linha.gravidade === "marco"
+                            ? "bg-emerald-500"
+                            : "bg-line"
                       }`}
-                    >
-                      {linha.fato}
-                      {linha.quem ? (
-                        <span className="font-normal text-ink-muted"> · {linha.quem}</span>
+                    />
+                    <div className="min-w-0">
+                      <p
+                        className={`m-0 text-xs font-medium ${
+                          linha.gravidade === "erro"
+                            ? "text-rose-700 dark:text-rose-300"
+                            : "text-ink"
+                        }`}
+                      >
+                        {linha.fato}
+                        {linha.quem ? (
+                          <span className="font-normal text-ink-muted"> · {linha.quem}</span>
+                        ) : null}
+                      </p>
+                      {linha.detalhe ? (
+                        <p className="m-0 break-words text-[10.5px] text-ink-soft">{linha.detalhe}</p>
                       ) : null}
-                    </p>
-                    {linha.detalhe ? (
-                      <p className="m-0 break-words text-[10.5px] text-ink-soft">{linha.detalhe}</p>
-                    ) : null}
-                    <p className="m-0 text-[10px] tabular-nums text-ink-muted">
-                      {momento(linha.quando)}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          )}
-        </details>
+                      <p className="m-0 text-[10px] tabular-nums text-ink-muted">
+                        {momento(linha.quando)}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </details>
+        )}
       </div>
+    </div>
+  );
+}
+
+/** Duas horas sem conferência com a D4Sign: o cron passa a cada 30 min, e o rodízio volta antes disso. */
+const CONFERENCIA_ATRASADA_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * O RODAPÉ DO QUADRO DA D4SIGN: de quando é o que se vê, e onde se fazem os gestos.
+ *
+ * Lucas, 02/10/2026, pedindo o quadro do C2X no painel: *"os card que estao pelo c2x nao tem nada na
+ * tela de assinatura"*. A D4Sign não avisa o Panteon quando alguém assina: o espelho confere de tempos
+ * em tempos (o cron de 30 em 30 min, um rodízio de 20 documentos), e o quadro é o retrato da última
+ * conferência. Escrever a hora dela é o que impede o operador de ler "falta a Maria" como fato de agora.
+ *
+ * ⚠️ PASSOU DE 2 H, UM AVISO DISCRETO, E NÃO VERMELHO: conferência atrasada não é contrato com problema,
+ * é só um retrato mais velho. E a frase dos gestos é a mesma do servidor (`ACOES_DA_D4SIGN_FICAM_NO_C2X`):
+ * reenvio e troca de e-mail desse contrato são feitos no C2X.
+ */
+function ConferenciaDaD4Sign({ conferidoEm }: { conferidoEm: null | string }) {
+  const quando = conferidoEm ? Date.parse(conferidoEm) : Number.NaN;
+  const legivel = !Number.isNaN(quando);
+  const atrasada = legivel && Date.now() - quando > CONFERENCIA_ATRASADA_MS;
+  return (
+    <div className="grid gap-0.5 text-[11px] text-ink-muted">
+      <p className="m-0">
+        {legivel
+          ? `Conferido com a D4Sign em ${momentoCurto(conferidoEm as string)}`
+          : "Ainda sem conferência com a D4Sign"}
+        {atrasada ? (
+          <span className="text-amber-700 dark:text-amber-300">
+            {" "}
+            · há mais de 2 h: alguma assinatura recente pode ainda não aparecer aqui
+          </span>
+        ) : null}
+      </p>
+      <p className="m-0">{ACOES_DA_D4SIGN_FICAM_NO_C2X}</p>
     </div>
   );
 }
@@ -3364,6 +3450,7 @@ function DegrauDaFila({
   aoAlternar,
   aoRecarregar,
   aoTrocar,
+  daD4Sign = false,
   degrau,
   envelopeId,
   ultimo,
@@ -3372,6 +3459,8 @@ function DegrauDaFila({
   aoAlternar: () => void;
   aoRecarregar: () => Promise<void>;
   aoTrocar: (chaveAntiga: string, recado: string) => void;
+  /** O quadro é o da D4Sign: a linha mostra o perfil e fala da D4Sign, e não da Clicksign. */
+  daD4Sign?: boolean;
   degrau: DegrauNaTela;
   envelopeId: null | string;
   ultimo: boolean;
@@ -3483,6 +3572,7 @@ function DegrauDaFila({
               aguardaAVez={degrau.estado === "aguardando"}
               aoRecarregar={aoRecarregar}
               aoTrocar={aoTrocar}
+              daD4Sign={daD4Sign}
               // ⚠️ O ENVELOPE VEM DE CIMA, E É O DA CLICKSIGN. É o id que as rotas de conserto pedem;
               // o uuid da nossa linha de `temis_envelopes` não serve para nada do lado de lá. Quando
               // ele é `null`, a linha não oferece botão nenhum.
@@ -3527,6 +3617,7 @@ function LinhaDoSignatario({
   aguardaAVez = false,
   aoRecarregar,
   aoTrocar,
+  daD4Sign = false,
   envelopeId,
   mostrarPapel = true,
   signatario,
@@ -3536,13 +3627,24 @@ function LinhaDoSignatario({
   aoRecarregar: () => Promise<void>;
   /** A troca deu certo: o painel guarda o recado e esconde a chave antiga (ver `trocaFeita`). */
   aoTrocar?: (chaveAntiga: string, recado: string) => void;
+  /** O quadro é o da D4Sign (o contrato que o C2X mandou): perfil na linha, e nenhum texto da Clicksign. */
+  daD4Sign?: boolean;
   envelopeId: null | string;
   /** O papel ao lado do nome. O degrau já diz o papel quando todos nele são iguais. */
   mostrarPapel?: boolean;
   signatario: SignatarioNaTela;
 }) {
-  const papel = mostrarPapel ? papelNaLinha(signatario.papel) : null;
-  const estado = estadoDoSignatario(signatario, aguardaAVez);
+  /**
+   * ⚠️ NA D4SIGN A LINHA SEMPRE DIZ QUEM A PESSOA É: "Testemunha" quando o C2X marcou, senão o perfil
+   * ("Comprador", "Backoffice", "Imobiliária"…). Lá o papel do quadro é nulo, e sem o perfil a lista
+   * seria uma coluna de nomes sem dizer quem compra.
+   */
+  const papel = daD4Sign
+    ? (papelNaLinha(signatario.papel) ?? (signatario.perfil || null))
+    : mostrarPapel
+      ? papelNaLinha(signatario.papel)
+      : null;
+  const estado = estadoDoSignatario(signatario, aguardaAVez, daD4Sign);
   const Icone = estado.icone;
 
   /**
@@ -3831,12 +3933,16 @@ function LinhaDoSignatario({
         {/* ⚠️ O E-MAIL APARECE SEMPRE, e é o ponto do painel inteiro: foi um e-mail inexistente que
             derrubou o envelope da Beatriz. Escondê-lo obrigaria a abrir a Clicksign para descobrir o
             que a tela já tem na mão. */}
-        <p className="m-0 break-words text-[11px] text-ink-muted">
-          {/* ⚠️ `||`, E NÃO `??`: a lib manda string VAZIA quando o envelope não tem e-mail da pessoa,
-              e o `??` só troca nulo — a linha ficaria em branco no lugar da frase. É a armadilha que o
-              repo já registrou em `nullish-nao-troca-string-vazia`. */}
-          {signatario.email || "sem e-mail no envelope"}
-        </p>
+        {/* ⚠️ NO PORTAL, O QUADRO DA D4SIGN CHEGA SEM E-MAIL (`quadroDaD4SignParaOPortal`: o e-mail é dado
+            interno), e o nulo ali é "não mostrado", e não "sem e-mail": a linha some em vez de mentir. */}
+        {daD4Sign && signatario.email === null ? null : (
+          <p className="m-0 break-words text-[11px] text-ink-muted">
+            {/* ⚠️ `||`, E NÃO `??`: a lib manda string VAZIA quando o envelope não tem e-mail da pessoa,
+                e o `??` só troca nulo — a linha ficaria em branco no lugar da frase. É a armadilha que o
+                repo já registrou em `nullish-nao-troca-string-vazia`. */}
+            {signatario.email || "sem e-mail no envelope"}
+          </p>
+        )}
         {/* ⚠️ QUEM FOI RECADASTRADO ESTÁ NO FIM DA FILA, E A LINHA DIZ ISSO (Lucas, 02/10/2026:
             *"vamos informar (na ordem da tela) que aquele cadastro foi para ultima posição"*). A
             posição já está certa na fila; a frase explica por que uma compradora aparece depois das
@@ -4099,6 +4205,11 @@ function LinhaDoSignatario({
 function estadoDoSignatario(
   signatario: SignatarioNaTela,
   aguardaAVez = false,
+  /**
+   * O quadro é o da D4Sign. ⚠️ ELA NÃO CONTA AO PANTEON SE O CONVITE CHEGOU (não há webhook; o espelho
+   * só sabe quem assinou), e as frases da Clicksign ("A Clicksign só avisa…") seriam falsas aqui.
+   */
+  daD4Sign = false,
 ): {
   cor: string;
   detalhe: null | string;
@@ -4166,11 +4277,23 @@ function estadoDoSignatario(
   if (aguardaAVez) {
     return {
       cor: "text-ink-muted",
-      detalhe:
-        "Os degraus de antes ainda não terminaram. A Clicksign manda o convite desta pessoa quando chegar a vez dela.",
+      detalhe: daD4Sign
+        ? "Os degraus de antes ainda não terminaram. O convite desta pessoa sai quando chegar a vez dela."
+        : "Os degraus de antes ainda não terminaram. A Clicksign manda o convite desta pessoa quando chegar a vez dela.",
       icone: Clock,
       quando: null,
       texto: "Aguarda a vez",
+    };
+  }
+
+  if (daD4Sign) {
+    return {
+      cor: "text-ink-muted",
+      detalhe:
+        "A D4Sign não conta ao Panteon se o convite chegou: o que se sabe é que esta pessoa ainda não assinou.",
+      icone: Clock,
+      quando: null,
+      texto: "Falta assinar",
     };
   }
 

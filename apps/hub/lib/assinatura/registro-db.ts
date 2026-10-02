@@ -41,6 +41,13 @@ export type ItemDoQuadro = {
   papel: null | string;
   /** Rótulo de tela, só D4Sign. */
   perfil?: string;
+  /**
+   * O C2X mandou esta pessoa assinar como testemunha. SÓ D4SIGN, e sempre presente no quadro que o
+   * espelho grava desde 02/10/2026 (`true` ou `false`): a AUSÊNCIA é o que diz que o quadro foi gravado
+   * antes da marca, e é por ela que o espelho relê o rol no C2X uma vez (`quadroSemAMarca`, em
+   * `espelho-d4sign/quadro.ts`). Ver lá por que é um campo próprio, e não `papel`.
+   */
+  testemunha?: boolean;
   assinado_em?: string;
   recusado_em?: string;
   convite_falhou_em?: string;
@@ -168,6 +175,8 @@ export function lerQuadro(bruto: unknown): ItemDoQuadro[] {
       papel: typeof p.papel === "string" ? p.papel : null,
     };
     if (typeof p.perfil === "string") lido.perfil = p.perfil;
+    // ⚠️ SÓ UM BOOLEANO DE FATO ENTRA: a ausência tem significado (quadro anterior à marca) e não vira `false`.
+    if (typeof p.testemunha === "boolean") lido.testemunha = p.testemunha;
     for (const marca of ["assinado_em", "recusado_em", "convite_falhou_em", "convite_entregue_em"] as const) {
       const valor = p[marca];
       if (typeof valor === "string" && valor.trim()) lido[marca] = valor;

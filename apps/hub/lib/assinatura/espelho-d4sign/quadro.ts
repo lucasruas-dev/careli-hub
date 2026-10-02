@@ -20,9 +20,24 @@ import type { PessoaDoC2x } from "./c2x";
 // empreendimento e "Cliente" → Comprador. Uma segunda régua aqui era o "Huber como Imobiliária" que o
 // Lucas apontou duas vezes em 18/08.
 //
-// ⚠️ `papel` (vocabulário da casa) FICA NULO NA D4SIGN, DE PROPÓSITO. O C2X não diz cônjuge, vendedora
-// nem testemunha; inventar a partir do perfil erraria o corretor que compra (perfil "Imobiliária"). O
-// prazo de 7 dias da D4Sign conta do FECHAMENTO, não do papel (plano, seção 7), e a tela lê `perfil`.
+// ⚠️ `papel` (vocabulário da casa) FICA NULO NA D4SIGN, DE PROPÓSITO. O C2X não diz cônjuge nem
+// vendedora; inventar a partir do perfil erraria o corretor que compra (perfil "Imobiliária"). O prazo
+// de 7 dias da D4Sign conta do FECHAMENTO, não do papel (plano, seção 7), e a tela lê `perfil`.
+//
+// ⚠️ A TESTEMUNHA O C2X DIZ, SIM, E ESTE COMENTÁRIO DIZIA O CONTRÁRIO ATÉ 02/10/2026. Cada linha do envio
+// tem `contract_signature_type_id`, e o 3 é "Assinar como testemunha" (medido no C2X, só SELECT: 10
+// testemunhas nos 5 contratos vivos da D4Sign na Têmis). Lucas, no mesmo dia: testemunha *"Entra
+// agora"*. Ela vai num CAMPO PRÓPRIO, `testemunha: boolean`, e não em `papel: "testemunha"`, por duas
+// razões medidas nos leitores do quadro:
+//   1. `papel` escrito MUDA A RÉGUA DO COMPRADOR (`ehCompradorNoQuadro`: papel não vazio manda, e o
+//      perfil é ignorado), e é ela que move o card para o Pré-faturamento e conta o selo. O campo próprio
+//      não é lido por ela, nem por `contagemDoSelo`, `perfilDaPessoa`/`pessoasDoQuadro` (Hércules),
+//      `signatariosDoEnvelope` (incorporador) ou a 0195: nenhum leitor de hoje muda uma vírgula.
+//   2. O quadro gravado ANTES da marca precisa ser reconhecido, para ganhar a marca uma vez. Com `papel`,
+//      "não é testemunha" e "gravado antes" seriam o mesmo nulo (a 0195 apaga o nulo, `jsonb_strip_nulls`);
+//      com o booleano sempre escrito (`true` ou `false`), a ausência só pode ser o quadro antigo.
+// Quem mostra "Testemunha" é o painel da Têmis (`quadro-da-d4sign-db.ts`), que traduz o campo no papel
+// da tela.
 
 /** O quadro do envio, na ordem do C2X (`after_position`, `ss.id`), com a chave `c2x:<ss.id>`. */
 export function quadroDoEnvioDoC2x(pessoas: readonly PessoaDoC2x[]): ItemDoQuadro[] {
@@ -35,8 +50,35 @@ export function quadroDoEnvioDoC2x(pessoas: readonly PessoaDoC2x[]): ItemDoQuadr
       ordem: Number.isFinite(pessoa.posicao) ? pessoa.posicao : 0,
       papel: null,
       perfil: perfilDeTela(pessoa.perfilC2x, email, pessoa.papelNoEmpreendimento, pessoa.usuarioC2xId),
+      // ⚠️ SEMPRE ESCRITO, `false` INCLUSIVE: a ausência é o sinal do quadro anterior à marca.
+      testemunha: pessoa.testemunha === true,
     };
   });
+}
+
+/**
+ * O quadro foi gravado ANTES da marca de testemunha? (algum item sem o campo booleano). Puro.
+ *
+ * ⚠️ É O QUE FAZ O ESPELHO RELER O ROL UMA VEZ, e só uma: o quadro regravado com a marca passa a ter o
+ * campo em todo item, e esta pergunta vira `false` para sempre. Quadro vazio não tem o que marcar.
+ */
+export function quadroSemAMarca(quadro: readonly Pick<ItemDoQuadro, "testemunha">[]): boolean {
+  return quadro.some((item) => typeof item.testemunha !== "boolean");
+}
+
+/**
+ * O RETRATO DO ROL: quem está no quadro (a chave) e se é testemunha. Puro.
+ *
+ * ⚠️ É A COMPARAÇÃO "A LISTA DE PESSOAS MUDOU" do espelho, e a marca entra nela (02/10/2026). Antes era só
+ * a chave: o quadro antigo, sem a marca, e o relido, com ela, saíam iguais e nunca seriam regravados. O
+ * item sem o campo sai com `?`, diferente de `t` e de `-`, e por isso o quadro antigo é regravado UMA vez
+ * pela função da 0195 (que preserva `assinado_em` pela chave); depois disso o retrato bate e nada se
+ * regrava a cada rodada.
+ */
+export function retratoDoRol(quadro: readonly Pick<ItemDoQuadro, "chave" | "testemunha">[]): string {
+  return quadro
+    .map((item) => `${item.chave}#${typeof item.testemunha !== "boolean" ? "?" : item.testemunha ? "t" : "-"}`)
+    .join("|");
 }
 
 export type MarcasDaD4Sign = {

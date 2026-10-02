@@ -11,11 +11,8 @@ import {
   type SignatarioDoEnvelope,
   vencimentoDoPayload,
 } from "./diario-do-envelope";
-import {
-  fraseDaTrocaQueVaiParaOFim,
-  fraseDoReenvioBloqueado,
-  type MotivoDoReenvioBloqueado,
-} from "./recusa-de-reenvio";
+import { naOrdemDaFila } from "./fila-de-assinatura";
+import { fraseDoReenvioBloqueado, type MotivoDoReenvioBloqueado } from "./recusa-de-reenvio";
 
 // O DIÁRIO DA PROPOSTA — a leitura que a tela e o card usam.
 //
@@ -47,6 +44,15 @@ export type SignatarioDaProposta = SignatarioDoEnvelope & {
    * apareceu nos eventos e não está na lista congelada (signatário acrescentado por fora).
    */
   papel: null | string;
+  /**
+   * O PERFIL DE TELA ("Comprador", "Backoffice", "Imobiliária"…), SÓ NO QUADRO DA D4SIGN. Ausente na
+   * Clicksign, onde quem diz é o `papel`.
+   *
+   * ⚠️ NA D4SIGN O PAPEL É NULO (o C2X não diz cônjuge nem vendedora, `espelho-d4sign/quadro.ts`), e é
+   * o perfil "Comprador" que a régua do comprador reconhece (`ehCompradorNoQuadro`). Sem ele na tela, o
+   * painel não saberia contar os compradores que levam o card ao Pré-faturamento.
+   */
+  perfil?: null | string;
   /**
    * O DEGRAU DESTA PESSOA NA FILA DE ASSINATURA — o `group` da Clicksign. `null` = fora do quadro
    * congelado (acrescentada por fora), e aí a tela a põe no fim, sem degrau.
@@ -97,6 +103,11 @@ export type SignatarioDaProposta = SignatarioDoEnvelope & {
 
 export type EnvelopeDoDiario = {
   atualizadoEm: null | string;
+  /**
+   * Quando o espelho conferiu este envelope com a D4Sign pela última vez (`temis_envelopes.conferido_em`).
+   * SÓ NA D4SIGN: lá não há webhook, e o painel diz de quando é o que mostra. Ausente na Clicksign.
+   */
+  conferidoEm?: null | string;
   /**
    * O NOSSO documento que ESTE envelope levou — a linha de `hercules_documentos` cujo arquivo foi
    * baixado do Storage e mandado para a Clicksign (`lib/assinatura/envio-db.ts`).
@@ -273,7 +284,9 @@ async function diarioDaLinha(
  * ⚠️ E SÓ DA CLICKSIGN (0.15 do plano da fonte única). O diário é a narração do webhook DA CLICKSIGN
  * (o payload, o bounce, o reenvio de convite). Desde a F3 a mesma tabela guarda os envelopes que o
  * C2X mandou pela D4Sign, e o mais recente da proposta pode ser um deles: o diário diria "0 de 0"
- * e o botão de reenviar mandaria à Clicksign um documento que ela não conhece.
+ * e o botão de reenviar mandaria à Clicksign um documento que ela não conhece. O card da D4Sign tem
+ * leitura própria desde 02/10/2026, pelo QUADRO (`quadro-da-d4sign-db.ts`), e quem escolhe entre as
+ * duas é `abrirCardDoTrabalho`.
  */
 async function envelopeMaisRecente(
   sb: SupabaseClient,
@@ -526,65 +539,14 @@ export function juntarComOsCongelados(
     });
   }
 
-  return naOrdemDaFila(juntos, congeladoPorEmail, encerrado !== null);
-}
-
-/**
- * A LISTA NA ORDEM EM QUE AS PESSOAS ASSINAM — e, no empate, em ordem alfabética.
- *
- * Lucas, 02/10/2026: *"Temos que mostrar os assinantes por ordem de assinatura se não tiver ordem de
- * assinatura ordem alfabetica"* e *"vamos informar (na ordem da tela) que aquele cadastro foi para
- * ultima posição"*.
- *
- * ⚠️ TRÊS FASES, PORQUE A ORDEM DO QUADRO NÃO BASTA. (0) quem está no quadro e não foi recadastrado:
- * pelo degrau do envio (`max(1, ordem)`, o mesmo `group` que `envelope.ts` manda), depois nome; (1)
- * quem foi recadastrado com o envelope rodando: no FIM, na ordem em que entrou (cada recadastro vai
- * para o último degrau + 1 daquela hora); (2) quem não está no quadro: por nome, no fim. Envelope sem
- * ordem (todo mundo `0`) sai inteiro em ordem alfabética, e o recadastrado depois dele.
- *
- * ⚠️ ATÉ 02/10/2026 A TELA PUNHA "QUEM PRECISA DE CONSERTO" PRIMEIRO, e a ordem do envelope não
- * importava. A barra de destaque da linha continua apontando quem precisa de gesto; a posição agora
- * é a da fila, que é o que o Lucas pediu.
- *
- * ⚠️ E O AVISO DA TROCA SAI DAQUI, porque só a lista inteira sabe quantos ficam antes: corrigir o
- * e-mail de quem tem gente sem assinar na mesma posição ou depois dela a manda para trás dessa gente.
- */
-function naOrdemDaFila(
-  juntos: SignatarioDaProposta[],
-  congeladoPorEmail: ReadonlyMap<string, SignatarioCongelado>,
-  encerrado: boolean,
-): SignatarioDaProposta[] {
-  const fichas = juntos.map((linha) => {
-    const congelado = congeladoPorEmail.get(linha.email.toLowerCase());
-    const fase = congelado === undefined ? 2 : linha.foiParaOFimEm ? 1 : 0;
-    return { degrau: Math.max(1, congelado?.ordem ?? 0), fase, linha };
-  });
-
-  fichas.sort((a, b) => {
-    if (a.fase !== b.fase) return a.fase - b.fase;
-    if (a.fase === 0 && a.degrau !== b.degrau) return a.degrau - b.degrau;
-    if (a.fase === 1) {
-      const diferenca = Date.parse(a.linha.foiParaOFimEm ?? "") - Date.parse(b.linha.foiParaOFimEm ?? "");
-      if (diferenca) return diferenca;
-    }
-    return a.linha.nome.localeCompare(b.linha.nome, "pt-BR", { sensitivity: "base" });
-  });
-
-  // A posição na fila: o degrau na fase 0; na fase 1, depois do maior degrau, um por recadastro.
-  const maior = Math.max(0, ...fichas.filter((f) => f.fase === 0).map((f) => f.degrau));
-  let recadastrados = 0;
-  const posicoes = fichas.map((f) => (f.fase === 0 ? f.degrau : f.fase === 1 ? maior + ++recadastrados : null));
-
-  return fichas.map((f, i) => {
-    const posicao = posicoes[i] ?? null;
-    const linha = { ...f.linha, posicao };
-    if (encerrado || posicao === null || linha.assinouEm !== null) return linha;
-    const passamAFrente = fichas.filter((outra, j) => {
-      const dela = posicoes[j] ?? null;
-      return j !== i && outra.linha.assinouEm === null && dela !== null && dela >= posicao;
-    }).length;
-    return passamAFrente > 0
-      ? { ...linha, trocaVaiParaOFim: fraseDaTrocaQueVaiParaOFim(linha.nome, passamAFrente) }
-      : linha;
-  });
+  // ⚠️ A FILA É A RÉGUA ÚNICA DE `fila-de-assinatura.ts` (a mesma do quadro da D4Sign); aqui só se diz
+  // onde cada linha está no quadro congelado, pelo e-mail (a CAD trava e-mail repetido por pessoa).
+  return naOrdemDaFila(
+    juntos,
+    (linha) => {
+      const congelado = congeladoPorEmail.get(linha.email.toLowerCase());
+      return congelado === undefined ? null : { ordem: congelado.ordem ?? 0 };
+    },
+    { encerrado: encerrado !== null },
+  );
 }

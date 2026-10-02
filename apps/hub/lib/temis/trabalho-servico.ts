@@ -39,8 +39,13 @@ import { documentosDoApoloParaPortal } from "@/lib/apolo/incorporador/documentos
 import { foraDoEscopo } from "@/lib/apolo/incorporador/escopo";
 import { comIdsDoGrupo } from "@/lib/apolo/incorporador/resumo-do-produto";
 import { createApoloAdminClient } from "@/lib/apolo/server";
-import { diarioDaProposta } from "@/lib/assinatura/diario-do-envelope-db";
+import { type DiarioDaAssinatura, diarioDaProposta } from "@/lib/assinatura/diario-do-envelope-db";
 import { type EnvelopeDaProposta, envelopeQueSegura } from "@/lib/assinatura/envio-db";
+import {
+  type DiarioDaD4SignNoPortal,
+  quadroDaD4SignDaProposta,
+  quadroDaD4SignParaOPortal,
+} from "@/lib/assinatura/quadro-da-d4sign-db";
 import { envelopeVigente } from "@/lib/assinatura/envelope-vigente";
 import {
   fraseParaOAtor,
@@ -910,10 +915,7 @@ export async function abrirCardDoTrabalho(
         // envelope DA VENDA — e a tela avisaria de um cancelamento que a volta dele não faz. O
         // `catch` é a rede do inesperado: um erro solto derrubaria o GET inteiro por um painel.
         String(card.tipo).trim() === "contrato"
-          ? diarioDaProposta(sb, String(card.proposta_id)).catch((e: unknown) => {
-              console.error("[temis][trabalho] falha ao montar o diário do envelope", e);
-              return null;
-            })
+          ? assinaturaDoContrato(sb, String(card.proposta_id))
           : Promise.resolve(null),
         String(card.tipo).trim() === "contrato"
           ? envelopeVivoDaProposta(sb, String(card.proposta_id))
@@ -938,7 +940,9 @@ export async function abrirCardDoTrabalho(
     {
       data: {
         analise,
-        assinatura,
+        // ⚠️ O QUADRO DA D4SIGN SAI CORTADO PARA O PORTAL (sem e-mail, sem a chave do C2X, sem o uuid do
+        // documento); o diário da Clicksign continua como estava nos dois lados.
+        assinatura: ator.tipo === "hub" ? assinatura : assinaturaParaOPortal(assinatura),
         card: { ...card, contratos },
         // ⚠️ O PORTAL RECEBE O ENVELOPE SEM O VOCABULÁRIO INTERNO (plano, seções 4 e 5): o aviso de
         // dois contratos é só da tela interna, e `provedor` e o id do documento da D4Sign (o uuid do
@@ -951,6 +955,44 @@ export async function abrirCardDoTrabalho(
     },
     { headers: { "Cache-Control": "no-store" } },
   );
+}
+
+/**
+ * O PAINEL DE ASSINATURA DO CARD DE CONTRATO: o diário da Clicksign e, sem ele, o quadro da D4Sign.
+ *
+ * Lucas, 02/10/2026: *"tem com a gente trazer o esquema de assinatura que e criado pelo c2x? os card
+ * que estao pelo c2x nao tem nada na tela de assinatura"*. O diário lê SÓ a Clicksign (é a narração
+ * do webhook dela), e os 5 cards de contrato que tinham só envelope da D4Sign (medido no mesmo dia)
+ * caíam no aviso "Não há signatários para mostrar". Agora, sem diário da Clicksign, vale o QUADRO que
+ * o espelho grava (`quadroDaD4SignDaProposta`), sem botão nenhum: os gestos ficam no C2X.
+ *
+ * ⚠️ A CLICKSIGN VEM PRIMEIRO, e o card dela não muda nada: o quadro da D4Sign só é lido quando o
+ * diário não existe. Medido em 02/10/2026 (só SELECT): nenhuma proposta tem envelope dos dois
+ * provedores, então a ordem não esconde contrato vivo de ninguém hoje.
+ *
+ * ⚠️ OS DOIS `catch` SÃO A REDE DO INESPERADO: um erro solto derrubaria o GET inteiro por um painel.
+ */
+async function assinaturaDoContrato(sb: SupabaseClient, propostaId: string): Promise<DiarioDaAssinatura | null> {
+  const daClicksign = await diarioDaProposta(sb, propostaId).catch((e: unknown) => {
+    console.error("[temis][trabalho] falha ao montar o diário do envelope", e);
+    return null;
+  });
+  if (daClicksign) return daClicksign;
+  return quadroDaD4SignDaProposta(sb, propostaId).catch((e: unknown) => {
+    console.error("[temis][trabalho] falha ao montar o quadro da D4Sign", e instanceof Error ? e.name : "erro");
+    return null;
+  });
+}
+
+/**
+ * O painel de assinatura como o PORTAL o recebe: o da D4Sign cortado (`quadroDaD4SignParaOPortal`), o
+ * da Clicksign como sempre foi.
+ */
+function assinaturaParaOPortal(
+  assinatura: DiarioDaAssinatura | null,
+): DiarioDaAssinatura | DiarioDaD4SignNoPortal | null {
+  if (!assinatura) return null;
+  return assinatura.envelope.provedor === "d4sign" ? quadroDaD4SignParaOPortal(assinatura) : assinatura;
 }
 
 /**

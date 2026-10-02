@@ -32,6 +32,11 @@ const PERFIL_DO_COMPRADOR = "comprador";
  * vendedora), e quem diz é o PERFIL "Comprador", que `perfilDeTela` dá a quem o C2X chama de "Cliente".
  * Só vale com o papel vazio: um papel escrito manda, e o perfil não o desmente.
  *
+ * ⚠️ A MARCA DE TESTEMUNHA DO C2X (`testemunha`, gravada pelo espelho desde 02/10/2026) NÃO É LIDA AQUI,
+ * de propósito: ela mora em campo próprio para esta régua não mudar (`espelho-d4sign/quadro.ts`). Tirar
+ * a testemunha da conta dos compradores só mudaria a testemunha de perfil "Cliente" (3 em 4.842 no
+ * acervo do C2X, medido no mesmo dia), e no lado arriscado: o card andaria antes de ela assinar.
+ *
  * ⚠️ O LIMITE CONHECIDO DA D4SIGN, ACEITO: o comprador sem usuário no C2X sai "Sem perfil", e o
  * corretor que compra sai "Imobiliária". Nenhum dos dois conta como comprador aqui. O card pode então
  * entrar no Pré-faturamento antes deles; o que segura o dinheiro é a trava do Faturado (o envelope

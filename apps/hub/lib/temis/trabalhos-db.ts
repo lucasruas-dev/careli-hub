@@ -1335,11 +1335,12 @@ async function recusaPorContratoPorAssinar(
   const quadro = lerQuadro(vigente.signatarios);
   const assinaram = quadro.filter((item) => Boolean(item.assinado_em)).length;
   const conta = quadro.length > 0 ? `${assinaram} de ${quadro.length} assinaram` : "o envelope ainda não fechou";
-  // ⚠️ O PAINEL SÓ EXISTE PARA A CLICKSIGN (o diário da tela lê só ela): na D4Sign, mandar olhar o
-  // painel seria mandar procurar o que a tela não mostra.
-  const onde = vigente.provedor === "clicksign" ? " Veja quem falta no painel da assinatura, nesta etapa;" : "";
+  // ⚠️ O PAINEL MOSTRA QUEM FALTA NOS DOIS PROVEDORES DESDE 02/10/2026. Até ali ele só existia para a
+  // Clicksign, e na D4Sign a frase não mandava olhar o que a tela não mostrava. Lucas, no mesmo dia:
+  // *"os card que estao pelo c2x nao tem nada na tela de assinatura"*; o card do C2X passou a ter o
+  // quadro da D4Sign no painel (`quadro-da-d4sign-db.ts`), e a frase vale para os dois.
   return {
-    erro: `faltam assinaturas no contrato: ${conta}. O card só vai para Faturado com o contrato assinado por todos.${onde} nada foi marcado.`,
+    erro: `faltam assinaturas no contrato: ${conta}. O card só vai para Faturado com o contrato assinado por todos. Veja quem falta no painel da assinatura, nesta etapa; nada foi marcado.`,
     ok: false,
     status: 409,
   };

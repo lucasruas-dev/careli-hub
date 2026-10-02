@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { SignatarioD4Sign } from "@/lib/guardian/d4sign-consulta";
 
 import type { PessoaDoC2x } from "./c2x";
-import { fechamentoDaD4Sign, marcasDaD4Sign, quadroDoEnvioDoC2x } from "./quadro";
+import { fechamentoDaD4Sign, marcasDaD4Sign, quadroDoEnvioDoC2x, quadroSemAMarca, retratoDoRol } from "./quadro";
 
 // O QUADRO DO ENVIO DO C2X E AS MARCAS DA D4SIGN (F3 da fonte única). Pessoas fictícias.
 
@@ -15,6 +15,7 @@ function pessoa(patch: Partial<PessoaDoC2x> & { linhaId: number }): PessoaDoC2x 
     papelNoEmpreendimento: null,
     perfilC2x: null,
     posicao: 0,
+    testemunha: false,
     usuarioC2xId: null,
     ...patch,
   };
@@ -47,6 +48,7 @@ describe("quadroDoEnvioDoC2x", () => {
       ordem: 2,
       papel: null,
       perfil: "Comprador",
+      testemunha: false,
     });
   });
 
@@ -57,6 +59,38 @@ describe("quadroDoEnvioDoC2x", () => {
       pessoa({ email: "cap@exemplo.test", linhaId: 3, papelNoEmpreendimento: "coordenador", perfilC2x: "Imobiliária" }),
     ]);
     expect(quadro.map((i) => i.perfil)).toEqual(["Coordenadora de venda", "Backoffice", "Coordenadora de venda"]);
+  });
+
+  // Lucas, 02/10/2026: a testemunha do C2X "Entra agora". Campo próprio, e o papel continua nulo: a régua
+  // do comprador (`ehCompradorNoQuadro`) lê o papel, e ela não pode mudar por causa da marca.
+  it("a marca de testemunha do C2X vai no campo próprio, sempre escrita (true ou false), e o papel continua nulo", () => {
+    const quadro = quadroDoEnvioDoC2x([
+      pessoa({ email: "rh@careli.adm.br", linhaId: 1, nome: "Ana Testemunha", testemunha: true }),
+      pessoa({ email: "c@exemplo.test", linhaId: 2, nome: "Cliente", perfilC2x: "Cliente" }),
+    ]);
+    expect(quadro.map((i) => [i.chave, i.testemunha, i.papel])).toEqual([
+      ["c2x:1", true, null],
+      ["c2x:2", false, null],
+    ]);
+  });
+});
+
+describe("a marca de testemunha no quadro já gravado", () => {
+  it("quadroSemAMarca: o quadro antigo (sem o campo) é reconhecido; o novo e o vazio não", () => {
+    expect(quadroSemAMarca([{ chave: "c2x:1" }, { chave: "c2x:2" }] as never)).toBe(true);
+    expect(quadroSemAMarca([{ testemunha: true }, { testemunha: false }])).toBe(false);
+    expect(quadroSemAMarca([])).toBe(false);
+  });
+
+  it("retratoDoRol: a mesma chave sem a marca e com a marca são retratos DIFERENTES (o antigo é regravado); com a marca, iguais", () => {
+    const antigo = [{ chave: "c2x:1" }, { chave: "c2x:2" }];
+    const relido = [
+      { chave: "c2x:1", testemunha: true },
+      { chave: "c2x:2", testemunha: false },
+    ];
+    expect(retratoDoRol(antigo)).not.toBe(retratoDoRol(relido));
+    expect(retratoDoRol(relido)).toBe(retratoDoRol([...relido]));
+    expect(retratoDoRol(relido)).not.toBe(retratoDoRol([{ chave: "c2x:1", testemunha: false }, relido[1] as never]));
   });
 });
 

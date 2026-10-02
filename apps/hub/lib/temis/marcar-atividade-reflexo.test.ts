@@ -331,7 +331,8 @@ describe("a trava do Faturado com o envelope do contrato morto", () => {
     expect(r).toMatchObject({ estagio: "faturado", ok: true });
   });
 
-  it("na D4Sign, a frase não manda olhar o painel que a tela não mostra", async () => {
+  // Lucas, 02/10/2026: o card do C2X passou a ter o quadro da D4Sign no painel, e a frase vale para os dois.
+  it("na D4Sign, a frase também manda olhar o painel, que agora mostra o quadro dela", async () => {
     const { antes, ultima } = doEstagio("contrato", "prazo_legal");
     montar({ atividades_feitas: antes });
     banco.semear("temis_envelopes", envelopeDoContrato({ provedor: "d4sign" }));
@@ -341,6 +342,6 @@ describe("a trava do Faturado com o envelope do contrato morto", () => {
     expect(r).toMatchObject({ ok: false, status: 409 });
     if (r.ok) return;
     expect(r.erro).toContain("faltam assinaturas no contrato");
-    expect(r.erro).not.toContain("painel");
+    expect(r.erro).toContain("Veja quem falta no painel da assinatura");
   });
 });

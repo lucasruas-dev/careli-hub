@@ -17,6 +17,18 @@
 // servidor até a tela (`MotivoDoReenvioBloqueado`), e a frase sai do motivo.
 
 /**
+ * O CONTRATO QUE O C2X MANDOU PELA D4SIGN NÃO SE CONSERTA DAQUI.
+ *
+ * Lucas, 02/10/2026, pedindo o quadro da D4Sign no painel da Têmis: *"os card que estao pelo c2x nao
+ * tem nada na tela de assinatura"*. O painel passou a mostrar quem falta, mas reenvio de convite, link e
+ * troca de e-mail são gestos da Clicksign (as rotas recusam a chave `c2x:`): na D4Sign eles continuam
+ * no C2X, que é quem mandou o documento. A frase é uma só para o rodapé do painel e para o motivo da
+ * linha, e por isso mora aqui, com as outras recusas, num arquivo que a tela pode importar.
+ */
+export const ACOES_DA_D4SIGN_FICAM_NO_C2X =
+  "Reenvio do convite e troca de e-mail deste contrato são feitos no C2X, que mandou o documento.";
+
+/**
  * POR QUE o reenvio de convite não pode ser tentado nesta linha.
  *
  * ⚠️ A RÉGUA É A DO SERVIDOR, NA MESMA ORDEM. `reenviarConvite` (em `lib/temis/trocar-signatario.ts`)

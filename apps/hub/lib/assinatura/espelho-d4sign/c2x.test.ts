@@ -153,4 +153,32 @@ describe("a forma dos envios", () => {
     await lerPessoasDosEnvios(conexao as never, Array.from({ length: 1200 }, (_, i) => i + 1));
     expect(lotes).toEqual([500, 500, 200]);
   });
+
+  // Lucas, 02/10/2026: a testemunha do C2X "Entra agora". O tipo 3 de `contract_signature_types` é
+  // "Assinar como testemunha" (medido no C2X, só SELECT); 1 e 2 são "Apenas assinar" e "Assinar como parte".
+  it("a marca de testemunha sai do tipo de assinatura da linha do envio (3), e o resto é falso", async () => {
+    expect(SQL_DAS_PESSOAS).toMatch(/ss\.contract_signature_type_id\s+as\s+tipo_de_assinatura/);
+    const linha = (linhaId: number, tipo: null | number | string) => ({
+      cs_id: 5,
+      email: null,
+      linha_id: linhaId,
+      nome: `P${linhaId}`,
+      papel_no_empreendimento: null,
+      perfil_c2x: null,
+      posicao: 0,
+      tipo_de_assinatura: tipo,
+      usuario_c2x_id: null,
+    });
+    const conexao = {
+      query: async () => [[linha(1, 3), linha(2, "3"), linha(3, 2), linha(4, 1), linha(5, null)], []],
+    };
+    const pessoas = (await lerPessoasDosEnvios(conexao as never, [5])).get(5) ?? [];
+    expect(pessoas.map((p) => [p.linhaId, p.testemunha])).toEqual([
+      [1, true],
+      [2, true],
+      [3, false],
+      [4, false],
+      [5, false],
+    ]);
+  });
 });

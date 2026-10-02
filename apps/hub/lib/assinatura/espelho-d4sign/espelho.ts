@@ -37,7 +37,14 @@ import {
 } from "./c2x";
 import { type CasamentoDoEnvio, casarEnvioComAVenda, precisaDoComprador, type PropostaCandidata } from "./casamento";
 import { finalidadeDoTipoDoC2x } from "./finalidade";
-import { fechamentoCompletoDaD4Sign, fechamentoDaD4Sign, marcasDaD4Sign, quadroDoEnvioDoC2x } from "./quadro";
+import {
+  fechamentoCompletoDaD4Sign,
+  fechamentoDaD4Sign,
+  marcasDaD4Sign,
+  quadroDoEnvioDoC2x,
+  quadroSemAMarca,
+  retratoDoRol,
+} from "./quadro";
 
 // O ESPELHO DA D4SIGN: O CONTRATO QUE O C2X MANDOU PASSA A MORAR NO PANTEON (F3 do plano da fonte única).
 //
@@ -503,6 +510,8 @@ export async function espelharD4Sign(entrada: {
   const mudancas: MudancaDoEnvelope[] = [];
   const emJogo = new Map<string, EmJogo>();
   const nativas = new Map<string, VendaLigada>();
+  /** O rol relido no C2X dos quadros gravados antes da marca de testemunha, por `cs.id` (passo 4). */
+  const rolSemAMarca = new Map<number, PessoaDoC2x[]>();
 
   try {
     // ── 1. DESCOBRE ───────────────────────────────────────────────────────
@@ -683,6 +692,7 @@ export async function espelharD4Sign(entrada: {
         so: Boolean(so),
       }).slice(0, Math.max(0, opcoes.tetoDeListas));
       await carregarQuadros(fila);
+      await relerOsRolsSemAMarca(fila);
       await percorrerALista(fila);
     }
 
@@ -881,6 +891,38 @@ export async function espelharD4Sign(entrada: {
     await Promise.all(Array.from({ length: n }, () => trabalhador()));
   }
 
+  /**
+   * O ROL DOS QUADROS GRAVADOS ANTES DA MARCA DE TESTEMUNHA, numa leitura curta só para a fila inteira.
+   *
+   * ⚠️ UMA VEZ POR ENVELOPE, E NUMA CONSULTA SÓ POR RODADA. Lucas, 02/10/2026: a testemunha do C2X
+   * *"Entra agora"*, e os 2.232 envelopes já espelhados não têm a marca (medido no mesmo dia, só SELECT:
+   * nenhum item com o campo). Reler o rol de cada um no `/list`, como o rol diferente faz, abriria até
+   * 20 conexões por rodada (o teto do cron) no C2X, que tem `max_connections` escasso e compartilhado.
+   * Aqui é uma conexão, com o `in (...)` em lotes de 500 (`lerPessoasDosEnvios`). O quadro regravado
+   * com a marca não volta a esta lista (`quadroSemAMarca`), e então nada mais se relê por isso.
+   *
+   * ⚠️ FALHA NÃO DERRUBA O PASSO: sem o rol relido, o `/list` segue como sempre e o quadro ganha a marca
+   * na próxima rodada.
+   */
+  async function relerOsRolsSemAMarca(fila: EmJogo[]): Promise<void> {
+    if (!c2xOk || !temTempo()) return;
+    const csIds = fila
+      .filter((j) => j.envio && j.quadro && quadroSemAMarca(j.quadro))
+      .map((j) => (j.envio as EnvioDoC2x).csId);
+    if (csIds.length === 0) return;
+    let curta: null | PoolConnection = null;
+    try {
+      curta = await abrirLeituraDoC2x(pool);
+      const lidos = await lerPessoasDosEnvios(curta, csIds);
+      await fecharLeituraDoC2x(curta);
+      curta = null;
+      for (const csId of csIds) rolSemAMarca.set(csId, lidos.get(csId) ?? []);
+    } catch (falha) {
+      descartarLeituraDoC2x(curta);
+      falhar(`c2x:marca:${codigoDoErro(falha)}`);
+    }
+  }
+
   /** O rol de UM envio, numa leitura curta e própria do C2X (a da descoberta já foi fechada). */
   async function relerRol(csId: number): Promise<PessoaDoC2x[]> {
     let curta: null | PoolConnection = null;
@@ -923,11 +965,18 @@ export async function espelharD4Sign(entrada: {
     let quadroNovo: ItemDoQuadro[] | null = null;
     // ⚠️ ROL DIFERENTE → RELÊ O ROL NO C2X (I11): alguém foi trocado no envio. O quadro novo vai à função
     // pela chave (`p_quadro`), e quem continua nele leva as marcas que já tinha.
-    if (pares.rolDiferente && j.envio && c2xOk) {
+    //
+    // ⚠️ E O QUADRO SEM A MARCA DE TESTEMUNHA TAMBÉM (02/10/2026): o rol dele já foi relido para a fila
+    // inteira (`relerOsRolsSemAMarca`), e a comparação é o RETRATO (chave e marca), não só a chave. Sem
+    // a marca no retrato, o quadro antigo e o relido sairiam iguais e a marca nunca seria gravada; com
+    // ela, o antigo é regravado uma vez e, dali em diante, o retrato bate e nada se regrava.
+    const semAMarca = quadroSemAMarca(quadro);
+    if ((pares.rolDiferente || semAMarca) && j.envio && c2xOk) {
       try {
-        const relido = quadroDoEnvioDoC2x(await relerRol(j.envio.csId));
-        const chaves = (q: readonly ItemDoQuadro[]) => q.map((i) => i.chave).join("|");
-        if (relido.length > 0 && chaves(relido) !== chaves(quadro)) {
+        const jaRelido = rolSemAMarca.get(j.envio.csId);
+        const pessoas = jaRelido ?? (pares.rolDiferente ? await relerRol(j.envio.csId) : null);
+        const relido = pessoas ? quadroDoEnvioDoC2x(pessoas) : [];
+        if (relido.length > 0 && retratoDoRol(relido) !== retratoDoRol(quadro)) {
           quadroNovo = relido;
           quadro = relido;
           pares = marcasDaD4Sign(quadro, sigs);

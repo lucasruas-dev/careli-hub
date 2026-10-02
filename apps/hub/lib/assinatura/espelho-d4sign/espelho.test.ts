@@ -29,7 +29,8 @@ type EnvioFalso = {
   uuid_doc: null | string;
 };
 
-type PessoaFalsa = { cs_id: number; email: string; linha_id: number; nome: string };
+/** `tipo_de_assinatura` 3 = "Assinar como testemunha" no C2X (ausente = assinar como parte). */
+type PessoaFalsa = { cs_id: number; email: string; linha_id: number; nome: string; tipo_de_assinatura?: number };
 
 /** O timeout de consulta do mysql2 (é o que ele devolve a quem chamou; a conexão não morre sozinha). */
 const TIMEOUT_DO_MYSQL = () => Object.assign(new Error("Query inactivity timeout"), { code: "PROTOCOL_SEQUENCE_TIMEOUT" });
@@ -41,6 +42,7 @@ function poolFalso(
   opcoesDoPool: { falhar?: "compradores" | "envios" | "rol" } = {},
 ) {
   const consultas: string[] = [];
+  let abertas = 0;
   let destruidas = 0;
   let liberadas = 0;
   const conexao = {
@@ -85,10 +87,16 @@ function poolFalso(
     },
   };
   return {
+    abertas: () => abertas,
     consultas,
     destruidas: () => destruidas,
     liberadas: () => liberadas,
-    pool: { getConnection: async () => conexao } as never,
+    pool: {
+      getConnection: async () => {
+        abertas += 1;
+        return conexao;
+      },
+    } as never,
   };
 }
 
@@ -153,6 +161,14 @@ function registroFalso(banco: Banco) {
     // caminho real faz depois da função da 0195. Copiando o item cru, este duplo devolveria um quadro
     // que a leitura de verdade nunca devolve.
     const quadro = lerQuadro(entrada.quadro ?? linha.signatarios);
+    // ⚠️ QUADRO NOVO (`p_quadro`): quem continua nele leva as marcas que tinha, PELA CHAVE, como a 0195 faz.
+    if (entrada.quadro) {
+      const antigo = lerQuadro(linha.signatarios);
+      for (const item of quadro) {
+        const velho = antigo.find((v) => v.chave === item.chave);
+        if (velho?.assinado_em && !item.assinado_em) item.assinado_em = velho.assinado_em;
+      }
+    }
     for (const m of entrada.marcas ?? []) {
       const item = quadro.find((i) => i.chave === m.chave);
       if (item && m.assinadoEm && !item.assinado_em) item.assinado_em = m.assinadoEm;
@@ -966,5 +982,131 @@ describe("a rede da Clicksign", () => {
     expect(recusa).toHaveBeenCalledTimes(1);
     expect(r2.vendasMovidas).toBe(0);
     expect(r2.falhas).toContain("venda:p-c1:recusado");
+  });
+});
+
+// Lucas, 02/10/2026: a testemunha do C2X "Entra agora". O espelho lê a marca (`contract_signature_type_id
+// = 3`) e a grava no quadro; os 2.232 envelopes já espelhados ganham a marca UMA vez, na próxima
+// conferência, pela função da 0195 (que preserva `assinado_em` pela chave), e depois o quadro fica estável.
+describe("a marca de testemunha", () => {
+  const ENVIO: EnvioFalso = { ar_id: 1, criado_em_brasilia: "2026-09-20 10:00:00", cs_id: 10, unidade_c2x_id: 1, uuid_doc: "d-1" };
+  const ROL: PessoaFalsa[] = [
+    { cs_id: 10, email: "compra@exemplo.test", linha_id: 101, nome: "Bia Compradora" },
+    { cs_id: 10, email: "rh@careli.adm.br", linha_id: 102, nome: "Ana Testemunha", tipo_de_assinatura: 3 },
+  ];
+  /** O quadro como o espelho gravava antes da marca: sem o campo `testemunha`. */
+  const QUADRO_ANTIGO = [
+    { assinado_em: "2026-09-25T10:00:00-03:00", chave: "c2x:101", email: "compra@exemplo.test", nome: "Bia Compradora", ordem: 0, papel: null, perfil: "Comprador" },
+    { chave: "c2x:102", email: "rh@careli.adm.br", nome: "Ana Testemunha", ordem: 0, papel: null, perfil: "Backoffice" },
+  ];
+  /** A D4Sign com as mesmas duas pessoas (o rol não mudou) e ninguém assinado: a marca antiga vem só do quadro. */
+  const listaSemAssinatura = (uuid: string): ConsultaD4Sign => ({
+    documento: documento(uuid, "aguardando-assinaturas"),
+    ok: true,
+    signatarios: [assinante("compra@exemplo.test", null), assinante("rh@careli.adm.br", null)],
+  });
+  const bancoComOAntigo = () =>
+    bancoBase({
+      hercules_propostas: [{ etapa: "assinatura", id: "p-1", origem: "c2x", workspace_id: "careli" }],
+      temis_envelopes: [linhaDoEspelho({ id: "e-1", proposta_id: "p-1", provedor_documento_id: "d-1", signatarios: QUADRO_ANTIGO })],
+    });
+
+  it("o quadro antigo é regravado UMA vez com a marca (mesmas chaves, assinado_em preservado); na rodada seguinte nada se relê nem se regrava", async () => {
+    const banco = bancoComOAntigo();
+    const d4 = d4signFalsa({ catalogo: { "d-1": "aguardando-assinaturas" }, lista: listaSemAssinatura });
+    const { portas, registro } = portasFalsas(banco);
+
+    const c2x1 = poolFalso([ENVIO], ROL);
+    const r1 = await espelharD4Sign({ admin: banco.cliente, d4sign: d4.porta, opcoes: OPCOES, pool: c2x1.pool, portas });
+    expect(r1.falhas).toEqual([]);
+    const comQuadro = registro.chamadas.filter((c) => c.entrada.quadro);
+    expect(comQuadro).toHaveLength(1);
+    // As MESMAS chaves do quadro antigo: é por elas que a 0195 casa e preserva as marcas.
+    expect(comQuadro[0]?.entrada.quadro?.map((i) => [i.chave, i.testemunha])).toEqual([
+      ["c2x:101", false],
+      ["c2x:102", true],
+    ]);
+    const gravado = lerQuadro(banco.linha("temis_envelopes", "e-1")?.signatarios);
+    expect(gravado.map((i) => [i.chave, i.testemunha, i.assinado_em ?? null])).toEqual([
+      ["c2x:101", false, "2026-09-25T10:00:00-03:00"],
+      ["c2x:102", true, null],
+    ]);
+
+    // A segunda rodada: o quadro já tem a marca, então nenhum rol é relido e nenhum quadro vai à função.
+    const c2x2 = poolFalso([ENVIO], ROL);
+    const antes = registro.chamadas.length;
+    const r2 = await espelharD4Sign({ admin: banco.cliente, d4sign: d4.porta, opcoes: OPCOES, pool: c2x2.pool, portas });
+    expect(r2.falhas).toEqual([]);
+    expect(c2x2.consultas.filter((sql) => sql === SQL_DAS_PESSOAS)).toHaveLength(0);
+    expect(registro.chamadas.slice(antes).some((c) => c.entrada.quadro)).toBe(false);
+    expect(d4.listados).toEqual(["d-1", "d-1"]);
+  });
+
+  it("o rol dos quadros sem a marca é UMA consulta e uma conexão a mais para a fila inteira, fechada antes do /list", async () => {
+    const banco = bancoBase({
+      temis_envelopes: [
+        linhaDoEspelho({ id: "e-1", provedor_documento_id: "d-1", signatarios: QUADRO_ANTIGO }),
+        linhaDoEspelho({ id: "e-2", provedor_documento_id: "d-2", signatarios: [{ ...QUADRO_ANTIGO[1], chave: "c2x:201" }] }),
+      ],
+    });
+    const c2x = poolFalso(
+      [ENVIO, { ...ENVIO, ar_id: 2, cs_id: 20, uuid_doc: "d-2" }],
+      [...ROL, { cs_id: 20, email: "rh@careli.adm.br", linha_id: 201, nome: "Ana Testemunha", tipo_de_assinatura: 3 }],
+    );
+    const devolvidasNoList: number[] = [];
+    const d4 = d4signFalsa({
+      catalogo: { "d-1": "aguardando-assinaturas", "d-2": "aguardando-assinaturas" },
+      lista: (uuid) => {
+        devolvidasNoList.push(c2x.liberadas());
+        return uuid === "d-1"
+          ? listaSemAssinatura(uuid)
+          : { documento: documento(uuid, "aguardando-assinaturas"), ok: true, signatarios: [assinante("rh@careli.adm.br", null)] };
+      },
+    });
+    const { portas, registro } = portasFalsas(banco);
+    const r = await espelharD4Sign({ admin: banco.cliente, d4sign: d4.porta, opcoes: OPCOES, pool: c2x.pool, portas });
+    expect(r.falhas).toEqual([]);
+    expect(c2x.consultas.filter((sql) => sql === SQL_DAS_PESSOAS)).toHaveLength(1);
+    expect(c2x.abertas()).toBe(2);
+    // As duas leituras (a da descoberta e a da marca) já tinham voltado ao pool quando o /list começou.
+    expect(devolvidasNoList).toEqual([2, 2]);
+    expect(c2x.destruidas()).toBe(0);
+    expect(registro.chamadas.filter((c) => c.entrada.quadro)).toHaveLength(2);
+    expect(lerQuadro(banco.linha("temis_envelopes", "e-2")?.signatarios)[0]?.testemunha).toBe(true);
+  });
+
+  it("a leitura do rol que falha não derruba o /list: o quadro fica como estava e ganha a marca na próxima rodada", async () => {
+    const banco = bancoComOAntigo();
+    const d4 = d4signFalsa({ catalogo: { "d-1": "aguardando-assinaturas" }, lista: listaSemAssinatura });
+    const { portas, registro } = portasFalsas(banco);
+    const falho = poolFalso([ENVIO], ROL, {}, { falhar: "rol" });
+    const r = await espelharD4Sign({ admin: banco.cliente, d4sign: d4.porta, opcoes: OPCOES, pool: falho.pool, portas });
+    expect(r.falhas).toContain("c2x:marca:PROTOCOL_SEQUENCE_TIMEOUT");
+    expect(falho.destruidas()).toBe(1);
+    expect(d4.listados).toEqual(["d-1"]);
+    expect(registro.chamadas.some((c) => c.entrada.quadro)).toBe(false);
+    expect(lerQuadro(banco.linha("temis_envelopes", "e-1")?.signatarios).some((i) => "testemunha" in i)).toBe(false);
+
+    const r2 = await espelharD4Sign({ admin: banco.cliente, d4sign: d4.porta, opcoes: OPCOES, pool: poolFalso([ENVIO], ROL).pool, portas });
+    expect(r2.falhas).toEqual([]);
+    expect(lerQuadro(banco.linha("temis_envelopes", "e-1")?.signatarios).map((i) => i.testemunha)).toEqual([false, true]);
+  });
+
+  it("o envio novo já nasce com a marca no quadro (sem releitura depois)", async () => {
+    const banco = bancoBase({
+      hercules_unidades: [{ codigo: "VOC0101", enterprise_id: "36", espelho_de: null, id: "u-1", lote: "01", origem_c2x_id: 1, quadra: "01", workspace_id: "careli" }],
+    });
+    const d4 = d4signFalsa({ catalogo: { "d-1": "aguardando-assinaturas" }, lista: listaSemAssinatura });
+    const { portas } = portasFalsas(banco);
+    const c2x = poolFalso([ENVIO], ROL);
+    const r = await espelharD4Sign({ admin: banco.cliente, d4sign: d4.porta, opcoes: OPCOES, pool: c2x.pool, portas });
+    expect(r.inseridos).toBe(1);
+    const nova = banco.linhas("temis_envelopes")[0];
+    expect(lerQuadro(nova?.signatarios).map((i) => [i.chave, i.testemunha])).toEqual([
+      ["c2x:101", false],
+      ["c2x:102", true],
+    ]);
+    // Uma consulta do rol só: a do nascimento. A marca já estava lá quando o /list passou.
+    expect(c2x.consultas.filter((sql) => sql === SQL_DAS_PESSOAS)).toHaveLength(1);
   });
 });

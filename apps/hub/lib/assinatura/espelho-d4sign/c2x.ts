@@ -56,8 +56,24 @@ export type PessoaDoC2x = {
   perfilC2x: null | string;
   /** `after_position` (0 = sem ordem). */
   posicao: number;
+  /**
+   * O C2X mandou esta pessoa assinar COMO TESTEMUNHA (`contract_signature_type_id = 3`).
+   *
+   * ⚠️ O C2X DIZ, SIM, QUEM É TESTEMUNHA, e o espelho dizia que não. Lucas, 02/10/2026, decidindo o
+   * painel da D4Sign na Têmis: testemunha *"Entra agora"*. Medido no C2X no mesmo dia (só SELECT, em
+   * transação READ ONLY): `contract_signature_types` tem 3 linhas, `1 Apenas assinar` (código 1 da
+   * D4Sign), `2 Assinar como parte` (4) e `3 Assinar como testemunha` (5); no acervo são 848, 15.457 e
+   * 4.842 linhas de `contract_signature_signers`, e nos 5 contratos vivos da D4Sign na Têmis (envios
+   * 3803, 3804, 3805, 3819 e 3829) são 10 testemunhas, 2 por envio. A marca é a da LINHA do envio
+   * (`ss`), e não a do cadastro (`contract_signers`): é o que foi mandado à D4Sign, e as duas só
+   * discordam em 1 das 21.147 linhas.
+   */
+  testemunha: boolean;
   usuarioC2xId: null | number;
 };
+
+/** `contract_signature_types.id` de "Assinar como testemunha" (código 5 da D4Sign), medido em 02/10/2026. */
+export const TIPO_DE_ASSINATURA_TESTEMUNHA = 3;
 
 // ── AS CONSULTAS (constantes: o teste confere que são só SELECT) ─────────────
 
@@ -81,9 +97,13 @@ export const SQL_DOS_ENVIOS = `select cs.id                                   as
    and {EXCLUIDOS}
  order by cs.id`;
 
-/** (2) Quem estava no envio. Sem `ss.signed`/`ss.date_signed`: quem assinou vem só da D4Sign. */
+/**
+ * (2) Quem estava no envio. Sem `ss.signed`/`ss.date_signed`: quem assinou vem só da D4Sign. O tipo de
+ * assinatura da linha diz quem é testemunha (`TIPO_DE_ASSINATURA_TESTEMUNHA`).
+ */
 export const SQL_DAS_PESSOAS = `select ss.contract_signature_id as cs_id, ss.id as linha_id,
        ss.user_name as nome, ss.email, ss.after_position as posicao,
+       ss.contract_signature_type_id as tipo_de_assinatura,
        pf.name as perfil_c2x, usr.id as usuario_c2x_id,
        case
          when usr.id is not null and usr.id = e.coordenador_id then 'coordenador'
@@ -135,6 +155,7 @@ type LinhaDaPessoa = RowDataPacket & {
   papel_no_empreendimento: null | string;
   perfil_c2x: null | string;
   posicao: null | number | string;
+  tipo_de_assinatura?: null | number | string;
   usuario_c2x_id: null | number | string;
 };
 
@@ -294,6 +315,7 @@ export async function lerPessoasDosEnvios(
         papelNoEmpreendimento: textoOuNulo(l.papel_no_empreendimento),
         perfilC2x: textoOuNulo(l.perfil_c2x),
         posicao: inteiro(l.posicao) ?? 0,
+        testemunha: inteiro(l.tipo_de_assinatura) === TIPO_DE_ASSINATURA_TESTEMUNHA,
         usuarioC2xId: inteiro(l.usuario_c2x_id),
       });
       porEnvio.set(csId, lista);
