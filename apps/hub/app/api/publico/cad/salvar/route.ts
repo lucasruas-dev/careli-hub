@@ -15,7 +15,7 @@ import {
   uploadApoloDocument,
 } from "@/lib/apolo/documentos";
 import { nomeDeMercadoDoEmpreendimento } from "@/lib/apolo/empreendimento-de-mercado";
-import { exigeComprovanteRenda } from "@/lib/apolo/enterprise-settings";
+import { exigeCertidaoNascimento, exigeComprovanteRenda } from "@/lib/apolo/enterprise-settings";
 import {
   gravarVinculoEsteira,
   nomeDoEmpreendimento,
@@ -137,9 +137,14 @@ export async function POST(request: Request) {
   }
   // A etapa COMPROVANTE DE RENDA é do EMPREENDIMENTO, e o empreendimento sai do TOKEN — nunca do
   // corpo, pela mesma razão da imobiliária: um corpo forjado desligaria a exigência sozinho.
-  const rendaObrigatoria = await exigeComprovanteRenda(adminClient, sessao.enterpriseId);
+  // A CERTIDÃO DE NASCIMENTO do solteiro segue a mesma regra: chave do empreendimento do TOKEN.
+  const [rendaObrigatoria, certidaoNascimentoObrigatoria] = await Promise.all([
+    exigeComprovanteRenda(adminClient, sessao.enterpriseId),
+    exigeCertidaoNascimento(adminClient, sessao.enterpriseId),
+  ]);
   const obrigatorios = validarDocumentosObrigatorios({
     documentos,
+    exigeCertidaoNascimento: certidaoNascimentoObrigatoria,
     exigeComprovanteRenda: rendaObrigatoria,
     perfil: payload.perfil,
     persona,

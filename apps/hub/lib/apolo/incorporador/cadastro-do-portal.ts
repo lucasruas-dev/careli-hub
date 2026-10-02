@@ -11,7 +11,7 @@ import {
   type EsteiraDoSalvar,
   type SalvarPayload,
 } from "@/lib/apolo/cadastro-salvar";
-import { exigeComprovanteRenda } from "@/lib/apolo/enterprise-settings";
+import { exigeCertidaoNascimento, exigeComprovanteRenda } from "@/lib/apolo/enterprise-settings";
 import { normalizarEnterpriseId } from "@/lib/apolo/esteira-cad";
 import { custoOcrImagem } from "@/lib/apolo/most-precos";
 import {
@@ -707,7 +707,8 @@ export async function checarCpfNoPortal({
  * Sem `enterpriseId`: os produtos que a sessão pode cadastrar, e só os que o portal OPERA (a tela
  * usa também para decidir se o botão "Novo cliente" aparece: lista vazia, sem botão; e o portal
  * que não confecciona leva 404 no portão).
- * Com `enterpriseId`: o que aquele produto exige (hoje o comprovante de renda) e as imobiliárias
+ * Com `enterpriseId`: o que aquele produto exige (o comprovante de renda e a certidão de nascimento
+ * do cliente solteiro) e as imobiliárias
  * habilitadas nele. A régua de quem opera esse produto é conferida ANTES, pela rota
  * (`recusaDaEscritaNoCadastro`), porque a resposta dela é a da porta de escrita.
  */
@@ -769,8 +770,9 @@ export async function configuracaoDoCadastroNoPortal({
     return { corpo: { error: "Não foi possível carregar o produto agora." }, status: 503 };
   }
 
-  const [comprovanteRenda, imobiliarias] = await Promise.all([
+  const [comprovanteRenda, certidaoNascimento, imobiliarias] = await Promise.all([
     exigeComprovanteRenda(adminClient, alvo),
+    exigeCertidaoNascimento(adminClient, alvo),
     imobiliariasDoCadastro(adminClient, catalogo, alvo),
   ]);
   if (!imobiliarias.ok) {
@@ -780,6 +782,7 @@ export async function configuracaoDoCadastroNoPortal({
   return {
     corpo: {
       data: {
+        certidaoNascimento,
         comprovanteRenda,
         imobiliarias: imobiliarias.imobiliarias,
         produto: { id: alvo, nome: nomeDoProduto(catalogo, alvo, doPanteon) },

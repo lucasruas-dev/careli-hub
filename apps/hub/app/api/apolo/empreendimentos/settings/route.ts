@@ -4,6 +4,7 @@ import { authorizeApoloRead, authorizeApoloWrite } from "@/lib/apolo/auth";
 import {
   listEnterpriseSettings,
   setEnterpriseAnaliseCredito,
+  setEnterpriseCertidaoNascimento,
   setEnterpriseComprovanteRenda,
   setEnterpriseCredenciamento,
   setEnterpriseLimiteCredito,
@@ -22,7 +23,8 @@ import { createApoloAdminClient } from "@/lib/apolo/server";
 //  - PATCH → campos parciais das sub-etapas: `analiseCreditoHabilitada` + `limiteCredito` (Análise
 //            de Crédito), `prevendaHabilitada` + `valorPix` (Pré-venda) e
 //            `comprovanteRendaHabilitado` (Comprovante de renda, que é só um flag — não tem valor
-//            a configurar) e os portões públicos `recepcaoCad` / `recepcaoImobiliaria` (migration
+//            a configurar), `certidaoNascimentoHabilitada` (Certidão de nascimento do cliente
+//            solteiro, migration 0208, também só um flag) e os portões públicos `recepcaoCad` / `recepcaoImobiliaria` (migration
 //            0110 — CAD e habilitação de imobiliária abrem em momentos diferentes; caso Recanto
 //            do Vale) e a ORDEM DE ASSINATURA (`assinaturaOrdenada` + `assinaturaOrdem`, migration
 //            0142 — estes DOIS andam juntos, porque são uma decisão só). Cada campo é opcional; a
@@ -113,6 +115,7 @@ export async function PATCH(request: Request) {
     // ("assinam em ordem, e nesta ordem"). `assinaturaOrdem` nula = ordem padrão da casa.
     assinaturaOrdem?: null | Record<string, number> | string[];
     assinaturaOrdenada?: boolean;
+    certidaoNascimentoHabilitada?: boolean;
     // Ignorado, como no POST: a sigla sai do cadastro do Panteon pelo id.
     code?: string;
     comprovanteRendaHabilitado?: boolean;
@@ -144,6 +147,7 @@ export async function PATCH(request: Request) {
   const mexeuLimite = "limiteCredito" in body;
   const mexeuPrevenda = "prevendaHabilitada" in body;
   const mexeuRenda = "comprovanteRendaHabilitado" in body;
+  const mexeuCertidaoNascimento = "certidaoNascimentoHabilitada" in body;
   const mexeuRecepcaoCad = "recepcaoCad" in body;
   const mexeuRecepcaoImob = "recepcaoImobiliaria" in body;
   const mexeuValorPix = "valorPix" in body;
@@ -152,6 +156,7 @@ export async function PATCH(request: Request) {
     (mexeuAnalise && typeof body.analiseCreditoHabilitada !== "boolean") ||
     (mexeuPrevenda && typeof body.prevendaHabilitada !== "boolean") ||
     (mexeuRenda && typeof body.comprovanteRendaHabilitado !== "boolean") ||
+    (mexeuCertidaoNascimento && typeof body.certidaoNascimentoHabilitada !== "boolean") ||
     (mexeuRecepcaoCad && typeof body.recepcaoCad !== "boolean") ||
     (mexeuRecepcaoImob && typeof body.recepcaoImobiliaria !== "boolean")
   ) {
@@ -253,6 +258,18 @@ export async function PATCH(request: Request) {
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: 500 });
   }
 
+  // Certidão de nascimento: só o flag. Ligado, as três portas de envio da CAD passam a exigir o
+  // documento do cliente solteiro — a leitura fica em `exigeCertidaoNascimento`.
+  if (mexeuCertidaoNascimento) {
+    const r = await setEnterpriseCertidaoNascimento({
+      adminClient,
+      enterpriseId: body.enterpriseId,
+      habilitada: Boolean(body.certidaoNascimentoHabilitada),
+      updatedBy: auth.userId,
+    });
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: 500 });
+  }
+
   // Portões públicos: cada um salva só o próprio flag, sem tocar o master nem os demais campos.
   if (mexeuRecepcaoCad) {
     const r = await setEnterpriseRecepcaoCad({
@@ -320,6 +337,7 @@ export async function PATCH(request: Request) {
       analiseCreditoHabilitada: body.analiseCreditoHabilitada,
       assinaturaOrdem: mexeuOrdem ? (body.assinaturaOrdem ?? null) : undefined,
       assinaturaOrdenada: mexeuOrdem ? Boolean(body.assinaturaOrdenada) : undefined,
+      certidaoNascimentoHabilitada: body.certidaoNascimentoHabilitada,
       comprovanteRendaHabilitado: body.comprovanteRendaHabilitado,
       limiteCredito: limite,
       prevendaHabilitada: body.prevendaHabilitada,

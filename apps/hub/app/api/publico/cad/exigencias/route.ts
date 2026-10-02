@@ -1,11 +1,14 @@
-import { exigeComprovanteRenda } from "@/lib/apolo/enterprise-settings";
+import { exigeCertidaoNascimento, exigeComprovanteRenda } from "@/lib/apolo/enterprise-settings";
 import { anotarContexto } from "@/lib/publico/cad/log-erros";
 import { erro, json, prepararRota, recusar, responder } from "@/lib/publico/cad/rotas";
 import { sessaoDoRequest } from "@/lib/publico/cad/sessao";
 
-// O que ESTE empreendimento exige a mais no envio da CAD. Hoje só o COMPROVANTE DE RENDA (etapa
-// nova do Setup do empreendimento, migration 0095); a forma é uma lista para caber a próxima
-// exigência sem virar uma rota por chave.
+// O que ESTE empreendimento exige a mais no envio da CAD: o COMPROVANTE DE RENDA (migration 0095)
+// e a CERTIDÃO DE NASCIMENTO do cliente solteiro (migration 0208), as duas etapas do Setup do
+// empreendimento. Cada exigência é uma chave do mesmo objeto, sem virar uma rota por chave.
+//
+// A certidão de nascimento vem como "o empreendimento pede", sem olhar o estado civil: quem decide
+// que ela vale só para o solteiro é o assistente (para mostrar a etapa) e o salvar (para barrar).
 //
 // ⚠️ ISTO É A TELA, NÃO A TRAVA. Quem barra a CAD sem comprovante é /api/publico/cad/salvar, que
 // relê a chave do banco pelo empreendimento do TOKEN. Esta rota existe para o corretor VER a
@@ -41,15 +44,19 @@ export async function GET(request: Request) {
   // Sessão ainda sem empreendimento escolhido (a antessala só carimba quando há um só, ou depois
   // da escolha): não há chave a consultar, e a CAD nem pode ser enviada assim.
   if (!sessao.sessao.enterpriseId) {
-    return responder(request, inicio, json({ comprovanteRenda: false }));
+    return responder(
+      request,
+      inicio,
+      json({ certidaoNascimento: false, comprovanteRenda: false }),
+    );
   }
 
   try {
-    const comprovanteRenda = await exigeComprovanteRenda(
-      adminClient,
-      sessao.sessao.enterpriseId,
-    );
-    return responder(request, inicio, json({ comprovanteRenda }));
+    const [comprovanteRenda, certidaoNascimento] = await Promise.all([
+      exigeComprovanteRenda(adminClient, sessao.sessao.enterpriseId),
+      exigeCertidaoNascimento(adminClient, sessao.sessao.enterpriseId),
+    ]);
+    return responder(request, inicio, json({ certidaoNascimento, comprovanteRenda }));
   } catch {
     return responder(request, inicio, erro(undefined, 500));
   }

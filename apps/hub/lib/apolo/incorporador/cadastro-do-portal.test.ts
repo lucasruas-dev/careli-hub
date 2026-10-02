@@ -24,6 +24,7 @@ const estado = vi.hoisted(() => ({
   enrichCompany: vi.fn(),
   enrichPerson: vi.fn(),
   escrita: vi.fn(),
+  exigeCertidao: vi.fn(),
   exigeRenda: vi.fn(),
   extract: vi.fn(),
   imobiliarias: vi.fn(),
@@ -57,7 +58,10 @@ vi.mock("@/lib/apolo/cadastro-checar-cpf", () => ({
   conferirCpfNoEmpreendimento: estado.conferirCpf,
 }));
 
-vi.mock("@/lib/apolo/enterprise-settings", () => ({ exigeComprovanteRenda: estado.exigeRenda }));
+vi.mock("@/lib/apolo/enterprise-settings", () => ({
+  exigeCertidaoNascimento: estado.exigeCertidao,
+  exigeComprovanteRenda: estado.exigeRenda,
+}));
 
 vi.mock("@/lib/apolo/incorporador/crm", () => ({
   lerImobiliariasVinculadas: estado.imobiliarias,
@@ -164,6 +168,8 @@ beforeEach(() => {
   estado.enrichPerson.mockReset();
   estado.exigeRenda.mockReset();
   estado.exigeRenda.mockResolvedValue(true);
+  estado.exigeCertidao.mockReset();
+  estado.exigeCertidao.mockResolvedValue(false);
   estado.extract.mockReset();
   estado.imobiliarias.mockReset();
   estado.imobiliarias.mockResolvedValue({
@@ -754,6 +760,7 @@ describe("configuracaoDoCadastroNoPortal", () => {
     expect(r).toEqual({
       corpo: {
         data: {
+          certidaoNascimento: false,
           comprovanteRenda: true,
           imobiliarias: [{ id: IMOB_HABILITADA, nome: "RR Soluções" }],
           produto: { id: "37", nome: "Vale do Ouro" },
@@ -761,6 +768,20 @@ describe("configuracaoDoCadastroNoPortal", () => {
       },
       status: 200,
     });
+  });
+
+  // A tela do portal mostra a etapa da certidão para o solteiro só se o servidor disser que o
+  // produto a liga; a chave é lida do produto PEDIDO, já conferido como da sessão.
+  it("certidão de nascimento ligada no produto: as exigências dizem, lendo o produto pedido", async () => {
+    estado.exigeCertidao.mockResolvedValue(true);
+    const r = await configuracaoDoCadastroNoPortal({
+      adminClient: {} as never,
+      ator: ator(),
+      catalogo: CATALOGO,
+      enterpriseId: "37",
+    });
+    expect(r.corpo).toMatchObject({ data: { certidaoNascimento: true } });
+    expect(estado.exigeCertidao).toHaveBeenCalledWith({}, "37");
   });
 });
 

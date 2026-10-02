@@ -33,6 +33,18 @@ export type PersonaCadastro = "pf" | "pj";
 // Espelha `needsCertidao`/`temConjuge` de cadastro-flow.tsx.
 const ESTADO_CIVIL_EXIGE_CERTIDAO = new Set(["2", "3", "4", "6"]); // needsCertidao
 const ESTADO_CIVIL_TEM_CONJUGE = new Set(["2", "6"]); // temConjuge
+// 1 = solteiro. Só ele recebe a CERTIDÃO DE NASCIMENTO, e só com a chave do empreendimento ligada
+// (Lucas, 02/10/2026: "para clientes solteiro"; viúvo segue como hoje, decisão do mesmo dia).
+export const ESTADO_CIVIL_SOLTEIRO = "1";
+
+// ---------------------------------------------------------------------------
+// CERTIDÃO DE NASCIMENTO (etapa por empreendimento — Setup > Certidão de nascimento)
+// ---------------------------------------------------------------------------
+//
+// Categoria PRÓPRIA, e não a `certidao` dos casados: a ficha precisa dizer qual certidão foi
+// entregue, e a certidão de estado civil continua sendo outro documento (Lucas, 02/10/2026).
+export const CERTIDAO_NASCIMENTO_CATEGORIA = "certidao_nascimento";
+export const CERTIDAO_NASCIMENTO_ROTULO = "Certidão de nascimento";
 
 // Documento de sócio carrega o índice na categoria ("identificacao_socio_2"); espelha o
 // SOCIO_CATEGORIA_RE do upload. A família (id / comprovante) é o que interessa aqui.
@@ -113,10 +125,16 @@ export function normalizarCategoria(valor: string | null | undefined): string {
 //         sócio (identificação + comprovante DELE). Vale para prospect PJ e imobiliária: os dois
 //         passam pelas etapas Contrato social e Sócios.
 //   +   → COMPROVANTE DE RENDA, nos dois, quando a etapa está ligada no Setup do empreendimento
-//         (`exigeComprovanteRenda`). É a única exigência que NÃO se deduz do cadastro: ela vem da
-//         chave do empreendimento, lida no servidor.
+//         (`exigeComprovanteRenda`). Ela e a certidão de nascimento abaixo são as exigências que
+//         NÃO se deduzem do cadastro: vêm da chave do empreendimento, lida no servidor.
+//   +   → CERTIDÃO DE NASCIMENTO, só PF SOLTEIRO, quando a etapa está ligada no Setup
+//         (`exigeCertidaoNascimento`).
 export type RequisitosInput = {
   estadoCivilId?: string | null;
+  // Etapa "Certidão de nascimento" LIGADA no Setup do empreendimento (migration 0208). Mesmo
+  // contrato de `exigeComprovanteRenda`: vem SEMPRE de fora, lida no servidor, e sozinha não basta
+  // — o requisito só nasce para PF com estado civil 1 (solteiro).
+  exigeCertidaoNascimento?: boolean;
   // Etapa "Comprovante de renda" LIGADA no Setup do empreendimento (migration 0095). Vem SEMPRE
   // de fora: a exigência é decisão comercial por empreendimento, não característica da persona.
   //
@@ -143,6 +161,24 @@ const REQUISITO_COMPROVANTE_RENDA: RequisitoDocumento = {
     "o comprovante de renda (extrato bancário dos últimos 3 meses, contracheque ou declaração de imposto de renda)",
   rotuloCurto: "comprovante de renda",
 };
+
+/**
+ * QUAL CERTIDÃO este cadastro pede, se pede alguma: a de estado civil (casado, divorciado, separado,
+ * união estável), a de nascimento (solteiro, com a chave do empreendimento ligada) ou nenhuma.
+ *
+ * É a mesma decisão de `requisitosDocumentos`, numa forma que o assistente usa para montar a etapa
+ * "Certidão" e escolher a categoria do anexo. Um lugar só para as duas coisas: se a tela e a trava
+ * discordassem, o corretor veria a etapa e o servidor recusaria (ou o contrário).
+ */
+export function certidaoDoCadastro(
+  input: Omit<RequisitosInput, "exigeComprovanteRenda">,
+): "estado_civil" | "nascimento" | null {
+  if (input.persona === "pj" || input.semEstadoCivil) return null;
+  const estadoCivil = normalizarCategoria(input.estadoCivilId);
+  if (ESTADO_CIVIL_EXIGE_CERTIDAO.has(estadoCivil)) return "estado_civil";
+  if (input.exigeCertidaoNascimento && estadoCivil === ESTADO_CIVIL_SOLTEIRO) return "nascimento";
+  return null;
+}
 
 export function requisitosDocumentos(input: RequisitosInput): RequisitoDocumento[] {
   const renda = input.exigeComprovanteRenda ? [REQUISITO_COMPROVANTE_RENDA] : [];
@@ -187,7 +223,8 @@ export function requisitosDocumentos(input: RequisitosInput): RequisitoDocumento
   ];
 
   const estadoCivil = input.semEstadoCivil ? "" : normalizarCategoria(input.estadoCivilId);
-  if (ESTADO_CIVIL_EXIGE_CERTIDAO.has(estadoCivil)) {
+  const certidao = certidaoDoCadastro(input);
+  if (certidao === "estado_civil") {
     requisitos.push({
       match: (c) => c === "certidao",
       rotulo: "a certidão de estado civil",
@@ -199,6 +236,13 @@ export function requisitosDocumentos(input: RequisitosInput): RequisitoDocumento
       match: (c) => c === "identificacao_conjuge",
       rotulo: "o documento de identificação do cônjuge",
       rotuloCurto: "identificação do cônjuge",
+    });
+  }
+  if (certidao === "nascimento") {
+    requisitos.push({
+      match: (c) => c === CERTIDAO_NASCIMENTO_CATEGORIA,
+      rotulo: "a certidão de nascimento",
+      rotuloCurto: "certidão de nascimento",
     });
   }
   requisitos.push(...renda);
@@ -281,6 +325,9 @@ export type ValidacaoObrigatorios =
 // feita na rota, ver validarDocumentoObrigatorio).
 export function validarDocumentosObrigatorios(payload: {
   documentos?: DocumentoAnexado[] | null;
+  // A chave "Certidão de nascimento" do EMPREENDIMENTO, lida no servidor
+  // (`exigeCertidaoNascimento`). Nunca vem do corpo, pelo mesmo motivo do comprovante de renda.
+  exigeCertidaoNascimento?: boolean;
   // A chave "Comprovante de renda" do EMPREENDIMENTO desta CAD, lida no servidor
   // (`exigeComprovanteRenda` em lib/apolo/enterprise-settings.ts). Nunca vem do corpo: o corpo é
   // do cliente, e um payload forjado desligaria a exigência sozinho.
@@ -293,6 +340,7 @@ export function validarDocumentosObrigatorios(payload: {
   const faltando = documentosFaltando(
     {
       estadoCivilId: payload.perfil?.estadoCivilId,
+      exigeCertidaoNascimento: payload.exigeCertidaoNascimento,
       exigeComprovanteRenda: payload.exigeComprovanteRenda,
       persona: payload.persona,
       semEstadoCivil: payload.semEstadoCivil,
