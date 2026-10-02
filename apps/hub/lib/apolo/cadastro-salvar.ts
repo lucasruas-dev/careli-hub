@@ -19,6 +19,12 @@ import {
 import { formatoDoCadastro } from "@/lib/apolo/cadastro-tipos";
 import { proximoCodigoDoCorretor } from "@/lib/apolo/codigo-do-corretor";
 import {
+  type DadosBancarios,
+  type DadosBancariosInformados,
+  linhaDaContaDoFornecedor,
+  validarDadosBancarios,
+} from "@/lib/apolo/dados-bancarios";
+import {
   APOLO_DOC_MAX_BYTES,
   MENSAGEM_DOCUMENTO_GRANDE,
   caminhoUploadDiretoValido,
@@ -89,7 +95,20 @@ type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
 // ⚠️ ELE NASCE COM CÓDIGO PRÓPRIO E SEM IMOBILIÁRIA. O código vem da sequência do banco (ver
 // `proximoCodigoDoCorretor` mais abaixo) e é o que diz que a pessoa é autônoma — Lucas: *"assim
 // saberemos que ele e autonomo"*, e ele aparece *"somente no CRM"*.
-const ENABLED_ROLES: ApoloBirthRole[] = ["prospect", "imobiliaria", "corretor"];
+//
+// ⚠️ O FORNECEDOR ENTROU EM 02/10/2026. Lucas: *"preciso habilitar no apolo o cadastro de
+// fornecedor"*, com CPF (prestador) OU CNPJ, dados bancários e PIX, e "já fica ativo" (fora da
+// esteira). Como no corretor, a camada de baixo já aceitava o papel; faltava a porta. O que ele tem de
+// próprio mora no formato (`fichaSimples`, `pedeDadosBancarios`) e na conta gravada em
+// `apolo_entity_bank_accounts` (migration 0211), logo abaixo.
+const ENABLED_ROLES: ApoloBirthRole[] = ["prospect", "imobiliaria", "corretor", "fornecedor"];
+
+// A tabela da conta e do PIX do fornecedor (migration 0211).
+export const TABELA_DA_CONTA_DO_FORNECEDOR = "apolo_entity_bank_accounts";
+
+export const MENSAGEM_SEM_TABELA_DA_CONTA =
+  "Os dados bancários do fornecedor ainda não estão liberados neste ambiente, e sem eles o " +
+  "cadastro não pode ser salvo. Fale com a equipe do Panteon.";
 
 // Um documento pode ter varios arquivos (RG frente+verso, contrato social com N paginas) e o PJ
 // ainda soma 2 documentos por socio -- uma empresa com 4 socios ja passa de 20.
@@ -149,6 +168,8 @@ export type IncomingDoc = {
 // nada (o forjador geraria o dele).
 export type SalvarPayload = CreateApoloEntityInput & {
   cad?: Omit<CadDoc, "autenticacao"> | null;
+  /** A conta e o PIX do FORNECEDOR (regra em lib/apolo/dados-bancarios.ts). Ignorado nos outros papéis. */
+  dadosBancarios?: DadosBancariosInformados | null;
   documentos?: IncomingDoc[];
   // Vínculo escolhido no wizard (imobiliária -> empreendimento -> corretor). A imobiliária vem em
   // perfil.imobiliariaId; aqui vêm o empreendimento e o corretor. Grava a esteira igual ao portal
@@ -286,10 +307,15 @@ export async function salvarCadastroDoApolo(
   // mas a validação de cliente pode ser burlada, então a barra de verdade fica aqui. Exige o
   // ARQUIVO anexado, nunca o sucesso do OCR (v1.105.0 — [[project_apolo_most_sem_trava]]).
   // Ver lib/apolo/cadastro-obrigatorios.ts.
+  //
+  // O FORMATO VEM DO PAPEL, e é ele que diz se o cadastro é o ENXUTO do fornecedor (02/10/2026): o
+  // corpo não tem campo para afrouxar obrigatório nenhum.
+  const formato = formatoDoCadastro(role);
   const campos = validarCamposMinimos({
     empresa: payload.empresa,
     identidade: payload.identidade,
     persona: payload.persona,
+    simples: formato.fichaSimples,
   });
   if (!campos.ok) {
     return invalido(campos.mensagem, 400);
@@ -318,12 +344,33 @@ export async function salvarCadastroDoApolo(
     exigeComprovanteRenda: rendaObrigatoria,
     perfil: payload.perfil,
     persona: payload.persona,
+    simples: formato.fichaSimples,
   });
   if (!obrigatorios.ok) {
     return invalido(obrigatorios.mensagem, 400);
   }
 
-  const formato = formatoDoCadastro(role);
+  // A CONTA OU O PIX DO FORNECEDOR (02/10/2026), e a barra é aqui, ANTES DE CRIAR A FICHA.
+  //
+  // ⚠️ DUAS RECUSAS, NA ORDEM: a regra (400, a frase de lib/apolo/dados-bancarios.ts) e a tabela que
+  // ainda não existe (503). A segunda é a mesma doutrina do código do corretor: sem a migration 0211, a
+  // ficha nasceria e a conta se perderia, e o financeiro descobriria no dia de pagar. "Não sei se
+  // consigo gravar a conta" é tratado como "não grave nada". O `head` não traz linha nenhuma.
+  let contaDoFornecedor: DadosBancarios | null = null;
+  if (formato.pedeDadosBancarios) {
+    const conta = validarDadosBancarios(payload.dadosBancarios);
+    if (!conta.ok) {
+      return invalido(conta.mensagem, 400);
+    }
+    const { error: semTabela } = await adminClient
+      .from(TABELA_DA_CONTA_DO_FORNECEDOR)
+      .select("id", { count: "exact", head: true })
+      .limit(1);
+    if (semTabela) {
+      return invalido(MENSAGEM_SEM_TABELA_DA_CONTA, 503);
+    }
+    contaDoFornecedor = conta.dados;
+  }
 
   // O VÍNCULO DA CAD: A IMOBILIÁRIA **OU** O CORRETOR AUTÔNOMO, E A BARRA É AQUI (fatia 2, 28/09/2026).
   //
@@ -450,6 +497,10 @@ export async function salvarCadastroDoApolo(
             codigoDoCorretor: gerarCodigoDoCorretor,
           }
         : {}),
+      // (02/10/2026) O FORNECEDOR também não é CAD: a pessoa que já compra com a gente pode prestar
+      // serviço, e ganha o papel na MESMA ficha. Decidido aqui, pelo papel que a porta liberou, e não
+      // pelo corpo (ver `OpcoesDoCadastro.cadastroDeFornecedor`).
+      ...(role === "fornecedor" ? { cadastroDeFornecedor: true } : {}),
       fichaExistente: input.fichaExistente ?? "anexar",
       // (24/09/2026) Quem salva pelo HUB é o operador da Careli: a imobiliária que ele habilita no
       // cadastro grava auditoria e avisa o coordenador (Lucas, "3 - Isso ae"). O portal (autor de fora
@@ -476,6 +527,24 @@ export async function salvarCadastroDoApolo(
   // Avisos acumulados (esteira + documentos): a entidade já existe, então falhas aqui viram aviso.
   const uploadWarnings: string[] = [];
   const savedDocs: string[] = [];
+
+  // 1a) A CONTA DO FORNECEDOR. A tabela foi conferida antes de a ficha nascer; o que sobra aqui é a
+  // gravação falhar de verdade, e aí a ficha já existe: vira aviso para o operador refazer a conta.
+  if (contaDoFornecedor) {
+    const { error: contaError } = await adminClient
+      .from(TABELA_DA_CONTA_DO_FORNECEDOR)
+      .insert(
+        linhaDaContaDoFornecedor(
+          entityId,
+          contaDoFornecedor,
+          // `created_by` é uuid: quem cadastra de fora do hub não tem `hub_users.id`.
+          autor.ownerUserId && UUID_RE.test(autor.ownerUserId) ? autor.ownerUserId : null,
+        ),
+      );
+    if (contaError) {
+      uploadWarnings.push(`dados bancários: ${contaError.message}`);
+    }
+  }
 
   // 1b) VÍNCULO na esteira (empreendimento + imobiliária + corretor), como o portal público faz —
   // para a CAD manual entrar na fila COM empreendimento e não nascer órfã (o bug das órfãs). Só
@@ -515,7 +584,9 @@ export async function salvarCadastroDoApolo(
   const vinculo = payload.vinculo;
   const imobiliariaId = autonomoDoVinculo ? "" : payload.perfil?.imobiliariaId?.trim();
   let esteira: EsteiraDoSalvar = "sem-vinculo";
-  if (role !== "corretor" && vinculo?.enterpriseId && (imobiliariaId || autonomoDoVinculo)) {
+  // (02/10/2026) A condição passou a ler `formato.entraNaEsteira` em vez de `role !== "corretor"`: o
+  // fornecedor também fica fora, e a próxima ficha que não for CAD não precisa de mais um `&&` aqui.
+  if (formato.entraNaEsteira && vinculo?.enterpriseId && (imobiliariaId || autonomoDoVinculo)) {
     const imobiliariaNome = imobiliariaId
       ? await nomeDaImobiliaria(adminClient, imobiliariaId, payload.perfil?.imobiliariaLabel)
       : "";

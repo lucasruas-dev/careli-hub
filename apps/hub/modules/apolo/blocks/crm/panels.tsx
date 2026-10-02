@@ -71,6 +71,7 @@ import {
   uniqueText,
 } from "../../data/apolo-derive";
 import type { ApoloCarteiraRoleKind } from "../../data/apolo-derive";
+import { ContaDoFornecedorPanel } from "./conta-do-fornecedor-panel";
 import { ScopedPortfolioPanel } from "./scoped-portfolio-panel";
 import { ExtratoClientePanel } from "./extrato-cliente-panel";
 import { EvolucaoDaParcela } from "./evolucao-da-parcela";
@@ -408,6 +409,8 @@ function RegistrationPanel({ entity }: { entity: ApoloEntity }) {
           ))}
         </div>
       </section>
+      {/* (02/10/2026) Conta e PIX do fornecedor, lidas à parte (só quem opera o Apolo vê). */}
+      {entity.profiles.includes("fornecedor") ? <ContaDoFornecedorPanel entityId={entity.id} /> : null}
       {/* Cônjuge: só PF casada (PJ e solteiro não têm). Vem do C2X (spouses) e
           também aparece na aba Relacionamentos como contato. */}
       {!isCompany && (isMarried || spouseNome) ? (

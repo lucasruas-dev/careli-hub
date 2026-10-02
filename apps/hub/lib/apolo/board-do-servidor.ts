@@ -356,7 +356,10 @@ export async function montarFilaDoBoard(
       //
       // `or` com is.null preserva quem não tem bornRole (entidades antigas, anteriores ao campo):
       // um `neq` puro as descartaria, porque em SQL NULL não é "diferente de" nada.
-      .or("metadata->>bornRole.is.null,metadata->>bornRole.neq.corretor")
+      //
+      // (02/10/2026) O FORNECEDOR TAMBÉM NÃO É CAD, e fica fora pelo mesmo portão. Ele já nasce
+      // `active` (lib/apolo/cadastro-persist.ts); este filtro é a segunda volta da chave.
+      .or("metadata->>bornRole.is.null,metadata->>bornRole.not.in.(corretor,fornecedor)")
       .order("created_at", { ascending: true })
       // Teto alto (era 200): com ordem da mais ANTIGA pra mais nova, um teto baixo cortava as CADs
       // RECENTES da fila de validação — a partir da 201ª a CAD sumia do Board (incidente 22/jul:

@@ -66,6 +66,15 @@ import {
   formatoDoCadastro,
   type FormatoDoCadastro,
 } from "@/lib/apolo/cadastro-tipos";
+import {
+  BANCOS_SUGERIDOS,
+  type DadosBancariosInformados,
+  rotuloDoTipoDeChave,
+  rotuloDoTipoDeConta,
+  TIPOS_DE_CHAVE_PIX,
+  TIPOS_DE_CONTA,
+  validarDadosBancarios,
+} from "@/lib/apolo/dados-bancarios";
 import { cpfValido } from "@/lib/apolo/documento";
 import {
   casarProfissaoNaLista,
@@ -187,6 +196,17 @@ type Endereco = {
   numero: string;
   tipoDocumento: string;
   uf: string;
+};
+const ENDERECO_EM_BRANCO: Endereco = {
+  bairro: "",
+  cep: "",
+  cidade: "",
+  complemento: "",
+  dataDocumento: "",
+  logradouro: "",
+  numero: "",
+  tipoDocumento: "",
+  uf: "",
 };
 type Perfil = {
   email: string;
@@ -1397,6 +1417,10 @@ export function CadastroFlow({
   // COMO IMOBILIARIA"*. A mesma regra serve a tela e os testes.
   const formato = formatoDoCadastro(tipo);
   const isCorretor = formato.papel === "corretor";
+  // (02/10/2026) O FORNECEDOR: CPF ou CNPJ, sem Vínculo, fora da esteira, cadastro enxuto e com a
+  // etapa de dados bancários. Tudo isso vem do formato; esta flag só cala os efeitos que buscam o que
+  // é de CAD de cliente (imobiliárias, autônomos, vínculo, exigências do empreendimento).
+  const isFornecedor = formato.papel === "fornecedor";
   // Adapter de I/O do wizard. No interno é `undefined` → os 4 helpers de hoje; no público troca a
   // origem sem tocar em mais nada. Vai por contexto porque os fetches moram nos steps-filhos.
   // O PORTAL anda como o público (vínculo pronto de fora: sem seletor, imobiliária não exigida no
@@ -1465,13 +1489,16 @@ export function CadastroFlow({
   // Etapas extras que o EMPREENDIMENTO liga no Setup (hoje: comprovante de renda). Parte de
   // "nenhuma": a tela só acrescenta etapa depois de o servidor confirmar que ela está ligada.
   const [exigencias, setExigencias] = useState<ExigenciasCad>(SEM_EXIGENCIAS);
+  // (02/10/2026) A conta e o PIX do fornecedor, como digitados. A regra é a do servidor
+  // (lib/apolo/dados-bancarios.ts).
+  const [dadosBancarios, setDadosBancarios] = useState<DadosBancariosInformados>({});
 
   // Imobiliárias reais do Apolo (read-model), inclusive no localhost: a chave de serviço do
   // .env.local valida contra o projeto de produção (verificado 16/jul). Sem lista, o seletor
   // fica vazio -- nunca placeholder, pra não vincular a CAD a uma imobiliária inexistente.
   useEffect(() => {
     // No público a imobiliária vem FIXA do token (antessala): não há seletor nem rota para listar.
-    if (modoPublico || isCorretor) return;
+    if (modoPublico || isCorretor || isFornecedor) return;
     let alive = true;
     void (async () => {
       try {
@@ -1484,7 +1511,7 @@ export function CadastroFlow({
     return () => {
       alive = false;
     };
-  }, [api, isCorretor, modoPublico]);
+  }, [api, isCorretor, isFornecedor, modoPublico]);
 
   // (fatia 2, 28/09/2026) Os CORRETORES AUTÔNOMOS da casa, para a outra porta do bloco Vínculo. Mesma
   // condição do efeito de cima: no público o vínculo vem do token, e o cadastro DO corretor não tem
@@ -1492,7 +1519,7 @@ export function CadastroFlow({
   // enquanto não houver nenhum autônomo cadastrado (medido em 28/09/2026: `select count(*) from
   // apolo_entities where broker_code is not null;` → 0, a fatia 1 ainda não foi publicada).
   useEffect(() => {
-    if (modoPublico || isCorretor || isImobiliaria) return;
+    if (modoPublico || isCorretor || isImobiliaria || isFornecedor) return;
     let alive = true;
     void (async () => {
       const lista = await apiCorretoresAutonomos();
@@ -1501,7 +1528,7 @@ export function CadastroFlow({
     return () => {
       alive = false;
     };
-  }, [isCorretor, isImobiliaria, modoPublico]);
+  }, [isCorretor, isFornecedor, isImobiliaria, modoPublico]);
 
   // Empreendimentos ativos pro vínculo de trabalho da imobiliária. Interno lê o C2X read-only;
   // na imobiliária PÚBLICA o adapter devolve a vitrine que veio do token/prop (sem rede). Só a
@@ -1537,7 +1564,7 @@ export function CadastroFlow({
   // `vinculoProspectOk` já trata lista vazia como "nada a escolher".
   useEffect(() => {
     // Nem para o cadastro DO corretor: ele não tem bloco Vínculo nenhum.
-    if (isImobiliaria || isCorretor || modoPublico) return;
+    if (isImobiliaria || isCorretor || isFornecedor || modoPublico) return;
     const comAutonomo = tipoDeVinculo === "autonomo";
     const vinculoId = comAutonomo ? autonomoSel : perfil.imobiliariaId;
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(vinculoId);
@@ -1569,6 +1596,7 @@ export function CadastroFlow({
   }, [
     autonomoSel,
     isCorretor,
+    isFornecedor,
     isImobiliaria,
     modoPublico,
     perfil.imobiliariaId,
@@ -1584,7 +1612,8 @@ export function CadastroFlow({
   useEffect(() => {
     // O CORRETOR AUTÔNOMO TAMBÉM FICA DE FORA (27/09/2026): a etapa fala do COMPRADOR, e ele não tem
     // empreendimento nenhum de onde a exigência viria.
-    if (isImobiliaria || isCorretor) {
+    // O FORNECEDOR idem (02/10/2026): ele não compra, e não tem empreendimento.
+    if (isImobiliaria || isCorretor || isFornecedor) {
       setExigencias(SEM_EXIGENCIAS);
       return;
     }
@@ -1601,7 +1630,7 @@ export function CadastroFlow({
     return () => {
       alive = false;
     };
-  }, [api, empImobSel, isCorretor, isImobiliaria, modoPublico]);
+  }, [api, empImobSel, isCorretor, isFornecedor, isImobiliaria, modoPublico]);
 
   // PJ não tem certidão/cônjuge. PF: Casado(2), Divorciado(3), Separado(4) e
   // União Estável(6) exigem certidão (o MOST valida a autenticidade). Solteiro(1) recebe a
@@ -1613,10 +1642,13 @@ export function CadastroFlow({
     exigeCertidaoNascimento: !isImobiliaria && !isCorretor && exigencias.certidaoNascimento,
     persona,
     semEstadoCivil: autonomoPublico,
+    simples: formato.fichaSimples,
   });
   const needsCertidao = certidaoPedida !== null;
   // Cônjuge presente: casado ou união estável (só PF).
-  const temConjuge = !isPj && !autonomoPublico && ["2", "6"].includes(perfil.estadoCivilId);
+  // O cadastro ENXUTO do fornecedor não tem estado civil, então não tem cônjuge.
+  const temConjuge =
+    !isPj && !autonomoPublico && !formato.fichaSimples && ["2", "6"].includes(perfil.estadoCivilId);
   // PJ tem jornada própria (Lucas 17/jul): o endereço da empresa já vem do cartão CNPJ, então
   // não se pede comprovante dela — o que se pede é o contrato social e a ficha de cada sócio
   // (com o comprovante DELE dentro do próprio bloco).
@@ -1626,15 +1658,22 @@ export function CadastroFlow({
   // que foi lido antes, então acrescentá-la ali não reordena nada que o corretor já conhece — e a
   // numeração dos cartões sai da posição no array, não de número fixo.
   const exigeRenda = !isImobiliaria && !isCorretor && exigencias.comprovanteRenda;
+  //
+  // (02/10/2026) O FORNECEDOR: o PJ dele é só o cartão CNPJ (sem Contrato social e Sócios, decisão do
+  // Lucas), o PF passa pelo Endereço com comprovante opcional, e os dois têm a etapa "Dados bancários"
+  // logo antes da Revisão, pelo mesmo motivo da Renda: não reordena nada do que já existe.
   const steps = isImobiliaria
     ? ["Identificação", "Contrato social", "Sócios", "Corretores", "Revisão"]
     : [
         ...(isPj
-          ? ["Identificação", "Contrato social", "Sócios"]
+          ? formato.fichaSimples
+            ? ["Identificação"]
+            : ["Identificação", "Contrato social", "Sócios"]
           : needsCertidao
             ? ["Identificação", "Endereço", "Certidão"]
             : ["Identificação", "Endereço"]),
         ...(exigeRenda ? ["Renda"] : []),
+        ...(formato.pedeDadosBancarios ? ["Dados bancários"] : []),
         "Revisão",
       ];
   const current = steps[Math.min(step, steps.length - 1)];
@@ -1685,6 +1724,7 @@ export function CadastroFlow({
     // (fatia 2) O escolhedor do vínculo volta à imobiliária, que é o caso comum.
     setTipoDeVinculo("imobiliaria");
     setAutonomoSel("");
+    setDadosBancarios({});
     setResetKey((k) => k + 1);
   }
 
@@ -1960,6 +2000,8 @@ export function CadastroFlow({
         {current === "Endereço" ? (
           <StepEndereco
             endereco={endereco}
+            numero={activeIndex + 1}
+            opcional={formato.fichaSimples}
             onDocumento={reterDocumento("comprovante_endereco")}
             onEnderecoChange={(patch) =>
               setEndereco((atual) => ({
@@ -2007,6 +2049,16 @@ export function CadastroFlow({
           />
         ) : null}
 
+        {current === "Dados bancários" ? (
+          <StepDadosBancarios
+            dados={dadosBancarios}
+            numero={activeIndex + 1}
+            onBack={() => setStep(step - 1)}
+            onChange={(patch) => setDadosBancarios((d) => ({ ...d, ...patch }))}
+            onNext={() => setStep(step + 1)}
+          />
+        ) : null}
+
         {current === "Revisão" ? (
           <StepRevisao
             exigeCertidaoNascimento={certidaoPedida === "nascimento"}
@@ -2016,6 +2068,7 @@ export function CadastroFlow({
             autonomoSel={tipoDeVinculo === "autonomo" ? autonomoSel : ""}
             autonomos={autonomos}
             conjuge={temConjuge ? conjuge : null}
+            dadosBancarios={formato.pedeDadosBancarios ? dadosBancarios : null}
             // No portal a imobiliária também vem de fora do wizard (escolhida na TelaCrm).
             publico={publico ?? (portal ? { imobiliariaNome: portal.imobiliariaNome } : undefined)}
             corretores={corretores}
@@ -2536,7 +2589,9 @@ function StepIdentificacao({
   const emailValido = emailRegex.test(perfil.email);
   // Cônjuge presente: casado (2) ou união estável (6).
   // No link do autônomo o cônjuge não é pedido: ele é dado do COMPRADOR (quem assina junto).
-  const temConjuge = !autonomoPublico && ["2", "6"].includes(perfil.estadoCivilId);
+  // O cadastro ENXUTO do fornecedor (02/10/2026) não pergunta estado civil, e portanto não tem cônjuge.
+  const temConjuge =
+    !autonomoPublico && !formato.fichaSimples && ["2", "6"].includes(perfil.estadoCivilId);
   const estadoCivilLabel =
     C2X_ESTADO_CIVIL.find((o) => o.id.toString() === perfil.estadoCivilId)?.label ?? "";
   const conjugeEmailOk =
@@ -2647,15 +2702,21 @@ function StepIdentificacao({
 
   // O que o documento NÃO entregou. Só nome e CPF impedem de seguir (é o que o servidor exige
   // em cadastro-persist); os outros entram na lista pra ficar claro o que vale preencher.
+  // (02/10/2026) No fornecedor só nome e CPF entram: mãe, naturalidade e nacionalidade são do envio
+  // ao C2X, e o fornecedor não vai para lá. Avisar a falta delas seria pedir o que ninguém vai usar.
   const faltaNoDocumento = identidade
     ? [
         identidade.nome.trim() ? null : "nome",
         // "CPF válido", não "CPF preenchido": ver o comentário do campo, o contracheque devolve
         // texto solto nesse campo e um valor errado é pior que um vazio.
         cpfValido(identidade.cpf) ? null : "CPF",
-        identidade.nomeMae.trim() ? null : "nome da mãe",
-        identidade.naturalidade.trim() ? null : "naturalidade",
-        identidade.nacionalidade.trim() ? null : "nacionalidade",
+        ...(formato.fichaSimples
+          ? []
+          : [
+              identidade.nomeMae.trim() ? null : "nome da mãe",
+              identidade.naturalidade.trim() ? null : "naturalidade",
+              identidade.nacionalidade.trim() ? null : "nacionalidade",
+            ]),
       ].filter((item): item is string => item !== null)
     : [];
   // CPF digitado errado nao pode passar: o cadastro inteiro pendura nele (dedupe, consulta de
@@ -2709,8 +2770,29 @@ function StepIdentificacao({
   // nacionalidade em branco. Só a naturalidade é cobrada porque a nacionalidade é DERIVADA dela
   // (derivarNacionalidade, lib/apolo/cadastro-cascata.ts). NÃO é trava de OCR (v1.105.0): o campo
   // Naturalidade abre para digitação sempre que a leitura vem vazia.
-  const faltamNaIdentidadePf: string[] = identidade
-    ? [
+  //
+  // ⚠️ O FORNECEDOR TEM A LISTA DELE (02/10/2026). Decisão do Lucas: PF exige só a identidade, sem
+  // estado civil, perfil, profissão ou naturalidade (são do comprador e do C2X). O que ele cobra é um
+  // jeito de falar com o fornecedor: telefone com DDD OU e-mail, e o e-mail, se digitado, válido.
+  const contatoDoFornecedor = [
+    emailValido || soDigitos(perfil.telefone).length >= 10 ? null : "telefone com DDD ou e-mail",
+    perfil.email.trim() && !emailValido ? "e-mail válido" : null,
+  ];
+  const contatoDaEmpresaFornecedora = [
+    emailRegex.test(empresa.email) || soDigitos(empresa.telefone).length >= 10
+      ? null
+      : "telefone com DDD ou e-mail",
+    empresa.email.trim() && !emailRegex.test(empresa.email) ? "e-mail válido" : null,
+  ];
+  const faltamNaIdentidadePf: string[] = !identidade
+    ? ["o documento de identificação"]
+    : formato.fichaSimples
+      ? [
+          identidade.nome.trim() ? null : "nome",
+          cpfDaIdentidadeOk ? null : "CPF válido",
+          ...contatoDoFornecedor,
+        ].filter((item): item is string => item !== null)
+      : [
         identidade.nome.trim() ? null : "nome",
         cpfDaIdentidadeOk ? null : "CPF válido",
         identidade.naturalidade.trim() ? null : "naturalidade (cidade de nascimento)",
@@ -2733,8 +2815,7 @@ function StepIdentificacao({
         // (revisão de 01/10/2026). A mesma régua está no servidor (/api/publico/autonomo/cadastro).
         !autonomoPublico || soDigitos(perfil.telefone).length >= 10 ? null : "celular com DDD",
         conjugeOk ? null : "dados do cônjuge",
-      ].filter((item): item is string => item !== null)
-    : ["o documento de identificação"];
+      ].filter((item): item is string => item !== null);
 
   const podeAvancarPf = faltamNaIdentidadePf.length === 0 && !conflitoCpf;
   // Imobiliária: não se vincula a outra imobiliária (a Seção "Vínculo" some); em troca, exige ao
@@ -2748,7 +2829,11 @@ function StepIdentificacao({
         emailRegex.test(empresa.email) ? null : "e-mail válido",
         empreendimentosSel.length > 0 ? null : "ao menos um empreendimento",
       ].filter((item): item is string => item !== null)
-    : [
+    : formato.fichaSimples
+      ? [empresa.documentoLido ? null : "o cartão CNPJ", ...contatoDaEmpresaFornecedora].filter(
+          (item): item is string => item !== null,
+        )
+      : [
         empresa.documentoLido ? null : "o cartão CNPJ",
         ...faltaNoVinculo({
           autonomoId: tipoDeVinculo === "autonomo" ? autonomoSel : "",
@@ -2761,6 +2846,7 @@ function StepIdentificacao({
       ].filter((item): item is string => item !== null);
 
   const podeAvancarPj = faltamNaIdentidadePj.length === 0;
+  const isFornecedorDoc = formato.papel === "fornecedor";
   const podeAvancar = isPj ? podeAvancarPj : podeAvancarPf;
   const faltamParaAvancar = isPj ? faltamNaIdentidadePj : faltamNaIdentidadePf;
 
@@ -2879,6 +2965,13 @@ function StepIdentificacao({
             <span className="font-semibold">RG, CNH ou passaporte</span>. Os dados são lidos do
             próprio documento.
           </>
+        ) : isFornecedorDoc ? (
+          <>
+            Anexe o documento do fornecedor. Se for pessoa física:{" "}
+            <span className="font-semibold">RG, CNH ou passaporte</span>. Se for empresa: o{" "}
+            <span className="font-semibold">cartão CNPJ</span>. Nós identificamos o tipo pelo próprio
+            documento.
+          </>
         ) : (
           <>
             Agora anexe o documento de identificação do cliente:{" "}
@@ -2898,7 +2991,9 @@ function StepIdentificacao({
                 ? autonomoPublico
                   ? "Adicionar o seu documento"
                   : "Adicionar documento do corretor"
-                : "Adicionar documento do cliente"
+                : isFornecedorDoc
+                  ? "Adicionar documento do fornecedor"
+                  : "Adicionar documento do cliente"
           }
           hint={
             formato.persona === "pj"
@@ -3061,7 +3156,7 @@ function StepIdentificacao({
             )}
             <CampoDoDocumento
               cidade
-              label="Naturalidade (obrigatória)"
+              label={formato.fichaSimples ? "Naturalidade" : "Naturalidade (obrigatória)"}
               placeholder="Cidade de nascimento, ex.: Goiânia"
               value={identidade.naturalidade}
               onChange={(v) => onIdentidadeChange({ naturalidade: v })}
@@ -3086,7 +3181,7 @@ function StepIdentificacao({
           {/* A naturalidade não é "só mais um campo que faltou ler": ela BARRA o avanço, senão o
               C2X recusa a CAD lá na frente ("Naturalidade não pode ficar em branco" — 8 casos em
               produção). A nacionalidade sai dela sozinha, por isso não é cobrada aqui. */}
-          {identidade.naturalidade.trim() ? null : (
+          {identidade.naturalidade.trim() || formato.fichaSimples ? null : (
             <p className="mb-3 rounded-lg border border-rose-300/60 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
               {autonomoPublico
                 ? "Informe a sua naturalidade (a cidade onde você nasceu) para continuar."
@@ -3094,6 +3189,9 @@ function StepIdentificacao({
             </p>
           )}
 
+          {/* O fornecedor não tem Perfil (02/10/2026): sexo, estado civil, escolaridade, renda,
+              patrimônio e profissão são do comprador e do envio ao C2X. */}
+          {formato.fichaSimples ? null : (
           <Secao title="Perfil">
             <SelectField
               label="Sexo"
@@ -3138,6 +3236,7 @@ function StepIdentificacao({
               onChange={(v) => onPerfilChange({ profissaoId: v })}
             />
           </Secao>
+          )}
 
           <Secao title="Contato">
             <PhoneField
@@ -3147,7 +3246,8 @@ function StepIdentificacao({
             />
             <div className="sm:col-span-2">
               <EmailField
-                assinaContrato
+                // O e-mail do fornecedor não assina contrato nenhum.
+                assinaContrato={!formato.fichaSimples}
                 value={perfil.email}
                 onChange={(v) => onPerfilChange({ email: v })}
               />
@@ -3286,7 +3386,13 @@ function StepIdentificacao({
       <NavButtons
         canNext={podeAvancar}
         nextLabel={
-          isPj ? "Avançar para o contrato social" : "Avançar para o comprovante de endereço"
+          isPj
+            ? formato.fichaSimples
+              ? "Avançar para os dados bancários"
+              : "Avançar para o contrato social"
+            : formato.fichaSimples
+              ? "Avançar para o endereço"
+              : "Avançar para o comprovante de endereço"
         }
         onNext={onNext}
       />
@@ -3969,28 +4075,46 @@ function MultiSelectField({
 
 function StepEndereco({
   endereco,
+  numero,
   onBack,
   onDocumento,
   onEnderecoChange,
   onExtract,
   onNext,
+  opcional = false,
 }: {
   endereco: Endereco | null;
+  // Posição da etapa (é a 2 em todos os formatos de hoje; vem de fora como a da Renda).
+  numero: number;
   onBack: () => void;
   onDocumento: (arquivo: ArquivoAnexado) => void;
   onEnderecoChange: (patch: Partial<Endereco>) => void;
   onExtract: (ext: Extraction) => void;
   onNext: () => void;
+  /**
+   * (02/10/2026) O ENDEREÇO DO FORNECEDOR É OPCIONAL. Decisão do Lucas: do fornecedor PF só a
+   * identidade é obrigatória. O comprovante pode ser anexado e o endereço pode ser digitado pelo CEP,
+   * mas nada disso trava o avanço.
+   */
+  opcional?: boolean;
 }) {
   const { autonomoPublico } = useCadastroCtx();
   return (
-    <StepCard title="2. Comprovante de endereço">
+    <StepCard title={`${numero}. ${opcional ? "Endereço" : "Comprovante de endereço"}`}>
+      {opcional ? (
+        <p className="m-0 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-3 py-2 text-xs text-[#7a5e2c] print:hidden dark:text-[#d9b877]">
+          O endereço do fornecedor é <span className="font-semibold">opcional</span>. Se tiver um
+          comprovante (conta de luz, água ou telefone), anexe e nós lemos o endereço. Se não tiver,
+          preencha pelo CEP ou avance sem ele.
+        </p>
+      ) : (
       <p className="m-0 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-3 py-2 text-xs text-[#7a5e2c] print:hidden dark:text-[#d9b877]">
         Agora anexe{" "}
         {autonomoPublico ? "o seu comprovante de endereço" : "o comprovante de endereço do cliente"}:
         conta de luz, de água ou de telefone, emitida nos últimos 3 meses. Fotografe a conta inteira,
         sem cortar as bordas.
       </p>
+      )}
       <div className="print:hidden">
         <DocUploader
           label="Adicionar comprovante de endereço"
@@ -4047,9 +4171,14 @@ function StepEndereco({
             <ComprovanteRecencia data={endereco.dataDocumento} />
           ) : null}
         </>
+      ) : opcional ? (
+        // Sem comprovante, o fornecedor ainda pode ter o endereço digitado pelo CEP. O primeiro
+        // campo preenchido cria o endereço (`onEnderecoChange` parte de um vazio).
+        <EnderecoEditavel endereco={ENDERECO_EM_BRANCO} onChange={onEnderecoChange} />
       ) : null}
       <NavButtons
-        canNext={Boolean(endereco?.logradouro && endereco?.cidade)}
+        canNext={opcional || Boolean(endereco?.logradouro && endereco?.cidade)}
+        nextLabel={opcional ? "Avançar para os dados bancários" : undefined}
         onBack={onBack}
         onNext={onNext}
       />
@@ -4293,11 +4422,138 @@ function StepRenda({
   );
 }
 
+// (02/10/2026) A CONTA E O PIX DO FORNECEDOR. Lucas, ao habilitar o cadastro: os dados bancários
+// entram "já nesta entrega", e é obrigatório ter UMA forma de pagar: a conta completa OU uma chave PIX.
+//
+// ⚠️ A REGRA É A DO SERVIDOR (`validarDadosBancarios`, lib/apolo/dados-bancarios.ts): a mesma função
+// habilita o botão e monta o aviso do que falta. Duas listas um dia discordam.
+function StepDadosBancarios({
+  dados,
+  numero,
+  onBack,
+  onChange,
+  onNext,
+}: {
+  dados: DadosBancariosInformados;
+  numero: number;
+  onBack: () => void;
+  onChange: (patch: Partial<DadosBancariosInformados>) => void;
+  onNext: () => void;
+}) {
+  const conferido = validarDadosBancarios(dados);
+  // A lista do que falta só aparece depois que o operador mexeu em algo: tela nova não abre gritando.
+  const mexeu = Object.values(dados).some((valor) => String(valor ?? "").trim());
+  const tipoDaChave = TIPOS_DE_CHAVE_PIX.find((tipo) => tipo.valor === dados.pixTipo);
+  const exemploDaChave: Record<string, string> = {
+    aleatoria: "123e4567-e89b-12d3-a456-426614174000",
+    cnpj: "00.000.000/0000-00",
+    cpf: "000.000.000-00",
+    email: "nome@empresa.com.br",
+    telefone: "(62) 99999-9999",
+  };
+
+  return (
+    <StepCard title={`${numero}. Dados bancários`}>
+      <p className="m-0 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-3 py-2 text-xs text-[#7a5e2c] print:hidden dark:text-[#d9b877]">
+        Informe <span className="font-semibold">como pagar o fornecedor</span>: a conta bancária
+        completa, uma chave PIX, ou as duas. Ao menos uma é obrigatória.
+      </p>
+
+      <Secao title="Conta bancária">
+        <label className="grid gap-1 text-xs text-ink-muted sm:col-span-2">
+          Banco
+          <input
+            className="h-9 rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-line-strong"
+            list="bancos-sugeridos"
+            placeholder="Digite o nome ou o código, ex.: 341 - Itaú Unibanco"
+            value={dados.banco ?? ""}
+            onChange={(e) => onChange({ banco: e.target.value })}
+          />
+          <datalist id="bancos-sugeridos">
+            {BANCOS_SUGERIDOS.map((banco) => (
+              <option key={banco} value={banco} />
+            ))}
+          </datalist>
+        </label>
+        <SelectField
+          label="Tipo de conta"
+          value={dados.tipoConta ?? ""}
+          options={TIPOS_DE_CONTA.map((tipo) => ({ id: tipo.valor, label: tipo.rotulo }))}
+          onChange={(v) => onChange({ tipoConta: v })}
+        />
+        <TextField
+          editavel
+          label="Agência"
+          placeholder="0000"
+          value={dados.agencia ?? ""}
+          onChange={(v) => onChange({ agencia: v })}
+        />
+        <TextField
+          editavel
+          label="Conta com dígito"
+          placeholder="00000-0"
+          value={dados.conta ?? ""}
+          onChange={(v) => onChange({ conta: v })}
+        />
+      </Secao>
+
+      <Secao title="PIX">
+        <SelectField
+          label="Tipo de chave"
+          value={dados.pixTipo ?? ""}
+          options={TIPOS_DE_CHAVE_PIX.map((tipo) => ({ id: tipo.valor, label: tipo.rotulo }))}
+          onChange={(v) => onChange({ pixTipo: v })}
+        />
+        <div className="sm:col-span-2">
+          <TextField
+            editavel
+            label={tipoDaChave ? `Chave PIX (${tipoDaChave.rotulo})` : "Chave PIX"}
+            placeholder={exemploDaChave[dados.pixTipo ?? ""] ?? "Escolha o tipo da chave"}
+            value={dados.pixChave ?? ""}
+            onChange={(v) => onChange({ pixChave: v })}
+          />
+        </div>
+      </Secao>
+
+      <Secao title="Titular (só se a conta não for do fornecedor)">
+        <TextField
+          editavel
+          label="Nome do titular"
+          placeholder="Deixe em branco se a conta é do fornecedor"
+          value={dados.titular ?? ""}
+          onChange={(v) => onChange({ titular: v })}
+        />
+        <TextField
+          editavel
+          label="CPF ou CNPJ do titular"
+          placeholder="Opcional"
+          value={dados.documentoTitular ?? ""}
+          onChange={(v) => onChange({ documentoTitular: v })}
+        />
+      </Secao>
+
+      {conferido.ok || !mexeu ? null : (
+        <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+          Para avançar, ainda falta: <strong>{juntarPtBr(conferido.faltando)}</strong>.
+        </p>
+      )}
+
+      <NavButtons
+        canNext={conferido.ok}
+        nextLabel="Avançar para revisão"
+        onBack={onBack}
+        onNext={onNext}
+      />
+    </StepCard>
+  );
+}
+
 function StepRevisao({
   autonomoSel,
   autonomos,
   conjuge,
   corretores,
+  dadosBancarios,
   documentos,
   empreendimentos,
   empreendimentosSel,
@@ -4327,6 +4583,8 @@ function StepRevisao({
   autonomos?: CorretorAutonomoOpcao[];
   conjuge: Conjuge | null;
   corretores: CorretorCadastro[];
+  // (02/10/2026) A conta e o PIX do fornecedor; nulo nos formatos que não pedem.
+  dadosBancarios: DadosBancariosInformados | null;
   documentos: DocumentosAnexados;
   empreendimentos: SelectOption[];
   empreendimentosSel: string[];
@@ -4414,16 +4672,24 @@ function StepRevisao({
     ...(socios.some((s) => s.arquivosIdentificacao.length > 0) ? ["identificacao_socio_1"] : []),
     ...(socios.some((s) => s.arquivosComprovante.length > 0) ? ["comprovante_socio_1"] : []),
   ];
-  const faltando = documentosFaltandoCurto(
-    {
-      estadoCivilId: perfil.estadoCivilId,
-      exigeCertidaoNascimento,
-      exigeComprovanteRenda,
-      persona,
-      semEstadoCivil: autonomoPublico,
-    },
-    categoriasAnexadas,
-  );
+  // (02/10/2026) A conta do fornecedor entra no MESMO "o que falta" do Enviar, conferida pela regra
+  // do servidor. A etapa já trava o avanço; isto cobre quem voltou e apagou um campo.
+  const contaConferida = dadosBancarios ? validarDadosBancarios(dadosBancarios) : null;
+  const conta = contaConferida?.ok ? contaConferida.dados : null;
+  const faltando = [
+    ...documentosFaltandoCurto(
+      {
+        estadoCivilId: perfil.estadoCivilId,
+        exigeCertidaoNascimento,
+        exigeComprovanteRenda,
+        persona,
+        semEstadoCivil: autonomoPublico,
+        simples: formato.fichaSimples,
+      },
+      categoriasAnexadas,
+    ),
+    ...(contaConferida && !contaConferida.ok ? ["dados bancários"] : []),
+  ];
   const podeEnviar = faltando.length === 0;
 
   // Certidões, análise financeira (GOLD) e demais consultas sob demanda saíram
@@ -4503,6 +4769,8 @@ function StepRevisao({
       const salvo = await api.salvar({
         // Estrutura da CAD: o PDF é montado no servidor, com o código de autenticação.
         cad: montarCadDoc(),
+        // A conta e o PIX do fornecedor, como digitados: o servidor confere e limpa pela mesma regra.
+        dadosBancarios: dadosBancarios ?? undefined,
         conjuge: conjuge
           ? {
               // A ficha INTEIRA viaja (23/08): sexo, escolaridade, renda, profissão, patrimônio,
@@ -4758,6 +5026,39 @@ function StepRevisao({
       }
     }
 
+    // (02/10/2026) A CONTA E O PIX DO FORNECEDOR, no papel que fica no drive dele. É o registro do
+    // que o operador informou no dia; a ficha lê a versão viva da tabela própria.
+    if (conta) {
+      secoes.push(
+        cadSection("Dados bancários e PIX", [
+          ...(conta.conta
+            ? [
+                cadField(
+                  "Banco",
+                  [conta.conta.bancoCodigo, conta.conta.bancoNome].filter(Boolean).join(" - "),
+                  true,
+                ),
+                cadField("Tipo de conta", rotuloDoTipoDeConta(conta.conta.tipo)),
+                cadField("Agência", conta.conta.agencia),
+                cadField("Conta", conta.conta.numero),
+              ]
+            : []),
+          ...(conta.pix
+            ? [
+                cadField("Tipo de chave PIX", rotuloDoTipoDeChave(conta.pix.tipo)),
+                cadField("Chave PIX", conta.pix.chave, true),
+              ]
+            : []),
+          ...(conta.titular
+            ? [
+                cadField("Titular", titleCase(conta.titular.nome ?? ""), true),
+                cadField("Documento do titular", conta.titular.documento ?? ""),
+              ]
+            : []),
+        ]),
+      );
+    }
+
     // ⚠️ PENDÊNCIAS DE DOCUMENTAÇÃO — a seção que FORMALIZA o que a leitura não confirmou.
     //
     // Pedido do Lucas (22/08): comprovante e certidão não travam mais o envio, "contudo temos que
@@ -4812,7 +5113,12 @@ function StepRevisao({
       data: registro.data,
       hora: registro.hora,
       nome: nomeCliente,
-      papel: isImobiliaria ? "Imobiliária" : isPj ? "Pessoa jurídica" : formato.papelLabel,
+      // O fornecedor PJ sai como "Fornecedor", e não "Pessoa jurídica": a ficha diz o PAPEL dele.
+      papel: isImobiliaria
+        ? "Imobiliária"
+        : isPj && !formato.fichaSimples
+          ? "Pessoa jurídica"
+          : formato.papelLabel,
       secoes,
       // A imobiliária não se vincula a outra imobiliária, e o autônomo não se vincula a nenhuma: o
       // campo sai do topo da ficha dos dois.
@@ -4911,10 +5217,13 @@ function StepRevisao({
             <ReadField label="UF" value={endereco?.uf ?? ""} />
           </Secao>
 
-          <Secao title="Contato e vínculo">
+          {/* O fornecedor PJ não tem vínculo: nem a linha "Imobiliária" vazia (02/10/2026). */}
+          <Secao title={formato.exigeVinculo ? "Contato e vínculo" : "Contato"}>
             <ReadField label="Telefone" value={empresa.telefone} />
             <ReadField label="E-mail" value={empresa.email} span2 />
-            <ReadField label="Imobiliária" value={label(imobiliarias, perfil.imobiliariaId)} />
+            {formato.exigeVinculo ? (
+              <ReadField label="Imobiliária" value={label(imobiliarias, perfil.imobiliariaId)} />
+            ) : null}
           </Secao>
 
           {socios.map((socio, index) => (
@@ -4954,8 +5263,16 @@ function StepRevisao({
             <ReadField label="Nome da mãe" value={titleCase(identidade?.nomeMae ?? "")} span2 />
             <ReadField label="Naturalidade" value={titleCase(identidade?.naturalidade ?? "")} />
             <ReadField label="Nacionalidade" value={titleCase(identidade?.nacionalidade ?? "")} />
-            <ReadField label="Sexo" value={label(C2X_SEXO, perfil.sexoId)} />
-            <ReadField label="Estado civil" value={label(C2X_ESTADO_CIVIL, perfil.estadoCivilId)} />
+            {/* O fornecedor não informa sexo nem estado civil (cadastro enxuto, 02/10/2026). */}
+            {formato.fichaSimples ? null : (
+              <>
+                <ReadField label="Sexo" value={label(C2X_SEXO, perfil.sexoId)} />
+                <ReadField
+                  label="Estado civil"
+                  value={label(C2X_ESTADO_CIVIL, perfil.estadoCivilId)}
+                />
+              </>
+            )}
             {perfil.regimeBensId ? (
               <ReadField
                 label="Regime de bens"
@@ -4964,6 +5281,7 @@ function StepRevisao({
             ) : null}
           </Secao>
 
+          {formato.fichaSimples ? null : (
           <Secao title="Perfil">
             <ReadField label="Escolaridade" value={label(C2X_ESCOLARIDADE, perfil.escolaridadeId)} />
             <ReadField label="Faixa de renda" value={label(C2X_FAIXA_RENDA, perfil.rendaId)} />
@@ -4974,6 +5292,7 @@ function StepRevisao({
               span2
             />
           </Secao>
+          )}
 
           <Secao title="Endereço">
             <ReadField label="Logradouro" value={titleCase(endereco?.logradouro ?? "")} span2 />
@@ -5033,6 +5352,36 @@ function StepRevisao({
           ) : null}
         </>
       )}
+
+      {/* (02/10/2026) A conta e o PIX do fornecedor, já limpos pela regra do servidor. */}
+      {conta ? (
+        <Secao title="Dados bancários e PIX">
+          {conta.conta ? (
+            <>
+              <ReadField
+                label="Banco"
+                value={[conta.conta.bancoCodigo, conta.conta.bancoNome].filter(Boolean).join(" - ")}
+                span2
+              />
+              <ReadField label="Tipo de conta" value={rotuloDoTipoDeConta(conta.conta.tipo)} />
+              <ReadField label="Agência" value={conta.conta.agencia} />
+              <ReadField label="Conta" value={conta.conta.numero} />
+            </>
+          ) : null}
+          {conta.pix ? (
+            <>
+              <ReadField label="Tipo de chave PIX" value={rotuloDoTipoDeChave(conta.pix.tipo)} />
+              <ReadField label="Chave PIX" value={conta.pix.chave} span2 />
+            </>
+          ) : null}
+          {conta.titular ? (
+            <>
+              <ReadField label="Titular" value={titleCase(conta.titular.nome ?? "")} span2 />
+              <ReadField label="Documento do titular" value={conta.titular.documento ?? ""} />
+            </>
+          ) : null}
+        </Secao>
+      ) : null}
 
       {erroEnvio ? (
         <p className="mt-4 rounded-lg border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-500/12 px-3 py-2 text-xs font-medium text-rose-700 dark:text-rose-300">
@@ -5319,7 +5668,8 @@ function SelectField({
   hint?: string;
   label: string;
   onChange: (value: string) => void;
-  options: C2xOption[];
+  // Os catálogos do C2X têm id numérico; os do fornecedor (tipo de conta, tipo de chave PIX), texto.
+  options: Array<C2xOption | { id: string; label: string }>;
   value: string;
 }) {
   return (

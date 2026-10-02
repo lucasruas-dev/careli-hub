@@ -627,3 +627,65 @@ describe("certidaoDoCadastro — qual certidão o assistente pede", () => {
     },
   );
 });
+
+// O CADASTRO ENXUTO DO FORNECEDOR (02/10/2026). Decisão do Lucas: PF exige só a identidade, PJ só o
+// cartão CNPJ. Comprovante de endereço, estado civil, contrato social e sócios ficam opcionais, e a
+// naturalidade não é cobrada (ela existe pelo envio ao C2X, e o fornecedor não vai para lá).
+describe("o fornecedor (simples)", () => {
+  it("PF: só o documento de identificação, mesmo casado", () => {
+    expect(
+      documentosFaltando({ estadoCivilId: "2", persona: "pf", simples: true }, []),
+    ).toEqual(["o documento de identificação"]);
+    expect(
+      documentosFaltando({ estadoCivilId: "2", persona: "pf", simples: true }, ["identificacao"]),
+    ).toEqual([]);
+  });
+
+  it("PJ: só o cartão CNPJ, sem contrato social nem sócios", () => {
+    expect(documentosFaltando({ persona: "pj", simples: true }, [])).toEqual(["o cartão CNPJ"]);
+    expect(documentosFaltando({ persona: "pj", simples: true }, ["identificacao"])).toEqual([]);
+  });
+
+  it("não pede certidão nenhuma", () => {
+    expect(certidaoDoCadastro({ estadoCivilId: "2", persona: "pf", simples: true })).toBeNull();
+  });
+
+  it("a renda do empreendimento não alcança o fornecedor", () => {
+    expect(
+      documentosFaltando(
+        { exigeComprovanteRenda: true, persona: "pf", simples: true },
+        ["identificacao"],
+      ),
+    ).toEqual([]);
+  });
+
+  it("a trava do servidor segue a mesma regra", () => {
+    expect(
+      validarDocumentosObrigatorios({
+        documentos: [{ categoria: "identificacao", fileBase64: "abc" }],
+        persona: "pf",
+        perfil: { estadoCivilId: "2" },
+        simples: true,
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  it("os campos mínimos não cobram a naturalidade, e falam do fornecedor", () => {
+    expect(
+      validarCamposMinimos({
+        identidade: { cpf: "529.982.247-25", nome: "Joao" },
+        persona: "pf",
+        simples: true,
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      validarCamposMinimos({ identidade: { cpf: "111", nome: "Joao" }, persona: "pf", simples: true }),
+    ).toEqual({ mensagem: "Informe um CPF válido do fornecedor para enviar o cadastro.", ok: false });
+  });
+
+  it("o cliente continua cobrando a naturalidade", () => {
+    expect(
+      validarCamposMinimos({ identidade: { cpf: "529.982.247-25", nome: "Maria" }, persona: "pf" }),
+    ).toMatchObject({ ok: false });
+  });
+});

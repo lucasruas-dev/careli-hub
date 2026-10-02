@@ -35,7 +35,9 @@ export const CADASTRO_TIPOS: CadastroTipo[] = [
   // de propósito: é o mesmo motivo por que ele tem tipo próprio.
   { descricao: "Autônomo, sem vínculo", disponivel: true, label: "Corretor", slug: "corretor" },
   { descricao: "Equipe interna", disponivel: false, label: "Colaborador", slug: "colaborador" },
-  { descricao: "Prestador ou fornecedor", disponivel: false, label: "Fornecedor", slug: "fornecedor" },
+  // (02/10/2026) Ligado com formato próprio (ver `FORMATOS.fornecedor`). Sem o formato ele abriria o
+  // cadastro de CLIENTE, que é o defeito que o corretor já teve.
+  { descricao: "Prestador ou fornecedor", disponivel: true, label: "Fornecedor", slug: "fornecedor" },
   { descricao: "Parceiro de negócio", disponivel: false, label: "Parceiro", slug: "parceiro" },
 ];
 
@@ -62,8 +64,26 @@ export type FormatoDoCadastro = {
   entraNaEsteira: boolean;
   /** A tela pede o bloco Vínculo (imobiliária -> empreendimento -> corretor). */
   exigeVinculo: boolean;
+  /**
+   * CADASTRO ENXUTO: a ficha de quem NÃO COMPRA nada (hoje, o fornecedor).
+   *
+   * Decisões do Lucas (02/10/2026) para o fornecedor:
+   *   • PF exige só a IDENTIDADE: comprovante de endereço opcional, e nada de estado civil, cônjuge,
+   *     certidão, renda, profissão ou naturalidade (são do COMPRADOR e do envio ao C2X, e o fornecedor
+   *     não vai ao C2X);
+   *   • PJ exige só o CARTÃO CNPJ: sem as etapas Contrato social e Sócios.
+   *
+   * ⚠️ A TELA E A PORTA LEEM ESTE CAMPO. O wizard esconde as seções e a etapa; o servidor
+   * (lib/apolo/cadastro-salvar.ts) relaxa os obrigatórios pelo MESMO formato, lido do papel.
+   */
+  fichaSimples: boolean;
   /** Papel de nascimento gravado na entidade (`apolo_entity_profiles.profile`). */
-  papel: "corretor" | "imobiliaria" | "prospect";
+  papel: "corretor" | "fornecedor" | "imobiliaria" | "prospect";
+  /**
+   * A etapa "Dados bancários" (conta OU PIX, regra em lib/apolo/dados-bancarios.ts). Só o fornecedor:
+   * é a ele que o financeiro paga.
+   */
+  pedeDadosBancarios: boolean;
   /** Como a ficha chama o papel na tela e no PDF. */
   papelLabel: string;
   persona: PersonaDoCadastro;
@@ -77,8 +97,10 @@ export type FormatoDoCadastro = {
 const FORMATO_PROSPECT: FormatoDoCadastro = {
   entraNaEsteira: true,
   exigeVinculo: true,
+  fichaSimples: false,
   papel: "prospect",
   papelLabel: "Prospect",
+  pedeDadosBancarios: false,
   persona: "documento",
   rotuloDoDocumento: "CAD",
   slug: "prospect",
@@ -91,8 +113,10 @@ const FORMATOS: Record<string, FormatoDoCadastro> = {
   imobiliaria: {
     entraNaEsteira: true,
     exigeVinculo: false,
+    fichaSimples: false,
     papel: "imobiliaria",
     papelLabel: "Imobiliária",
+    pedeDadosBancarios: false,
     persona: "pj",
     rotuloDoDocumento: "Imobiliaria",
     slug: "imobiliaria",
@@ -101,12 +125,30 @@ const FORMATOS: Record<string, FormatoDoCadastro> = {
   corretor: {
     entraNaEsteira: false,
     exigeVinculo: false,
+    fichaSimples: false,
     papel: "corretor",
     papelLabel: "Corretor autônomo",
+    pedeDadosBancarios: false,
     persona: "pf",
     rotuloDoDocumento: "Corretor",
     slug: "corretor",
     titulo: "Cadastro de Corretor Autônomo",
+  },
+  // (02/10/2026) O FORNECEDOR. Lucas, ao habilitar: aceita CPF (prestador pessoa física) OU CNPJ
+  // (empresa), por isso a persona é a do DOCUMENTO, como a do cliente. Fica FORA DA ESTEIRA ("já fica
+  // ativo"): a esteira valida documento de COMPRADOR (regra de 05/08), e o fornecedor não compra nada.
+  // Sem vínculo: ele não é de imobiliária nem de empreendimento.
+  fornecedor: {
+    entraNaEsteira: false,
+    exigeVinculo: false,
+    fichaSimples: true,
+    papel: "fornecedor",
+    papelLabel: "Fornecedor",
+    pedeDadosBancarios: true,
+    persona: "documento",
+    rotuloDoDocumento: "Fornecedor",
+    slug: "fornecedor",
+    titulo: "Cadastro de Fornecedor",
   },
   prospect: FORMATO_PROSPECT,
 };

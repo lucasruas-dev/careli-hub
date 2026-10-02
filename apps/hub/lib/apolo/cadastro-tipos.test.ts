@@ -158,3 +158,47 @@ describe("o que falta no Vínculo (a mesma lista que habilita o botão e monta o
     ).toEqual([]);
   });
 });
+
+// O FORNECEDOR (02/10/2026). Lucas: "preciso habilitar no apolo o cadastro de fornecedor". CPF
+// (prestador) ou CNPJ (empresa), fora da esteira ("já fica ativo"), sem Vínculo, cadastro enxuto e
+// com a etapa de dados bancários.
+describe("o tipo Fornecedor", () => {
+  it("está disponível no menu + e abre o formato DELE, e não o do cliente", () => {
+    expect(CADASTRO_TIPOS.find((t) => t.slug === "fornecedor")?.disponivel).toBe(true);
+    expect(findCadastroTipo("fornecedor").slug).toBe("fornecedor");
+    expect(formatoDoCadastro("fornecedor").papel).toBe("fornecedor");
+  });
+
+  it("CPF ou CNPJ, sem Vínculo, fora da esteira, enxuto e com dados bancários", () => {
+    expect(formatoDoCadastro("fornecedor")).toMatchObject({
+      entraNaEsteira: false,
+      exigeVinculo: false,
+      fichaSimples: true,
+      papelLabel: "Fornecedor",
+      pedeDadosBancarios: true,
+      persona: "documento",
+      titulo: "Cadastro de Fornecedor",
+    });
+    expect(documentoDaIdentificacao(formatoDoCadastro("fornecedor")).aceitos).toEqual([
+      "identidade",
+      "cnpj",
+    ]);
+  });
+
+  it("não pede vínculo nenhum", () => {
+    expect(
+      faltaNoVinculo({
+        formato: formatoDoCadastro("fornecedor"),
+        imobiliariaId: "",
+        modoPublico: false,
+        vinculoOk: false,
+      }),
+    ).toEqual([]);
+  });
+
+  it("os outros formatos não ganharam nada do fornecedor", () => {
+    for (const slug of ["prospect", "imobiliaria", "corretor"]) {
+      expect(formatoDoCadastro(slug)).toMatchObject({ fichaSimples: false, pedeDadosBancarios: false });
+    }
+  });
+});

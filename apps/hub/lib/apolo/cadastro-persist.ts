@@ -222,6 +222,18 @@ export type OpcoesDoCadastro = {
    */
   cadastroDeCorretorAutonomo?: boolean;
   /**
+   * ESTE É O CADASTRO DE FORNECEDOR (02/10/2026), feito pelo time da Careli no wizard do hub.
+   *
+   * O fornecedor também NÃO É CAD: não tem empreendimento, não entra na esteira e não disputa vaga em
+   * loteamento. Por isso solta as MESMAS duas travas do corretor autônomo (a CAD de comprador que a
+   * pessoa já tenha não recusa o cadastro, e o e-mail das fichas do mesmo documento não conta contra
+   * ela) e, na ficha que já existia, o que ela tem vence. Não gera código nenhum.
+   *
+   * ⚠️ VEM DA PORTA, NUNCA DO CORPO, e o papel tem de concordar (`role: "fornecedor"`), pelo mesmo
+   * motivo do autônomo: senão bastaria trocar `?tipo=` na URL para contornar a recusa de CAD duplicada.
+   */
+  cadastroDeFornecedor?: boolean;
+  /**
    * A ficha que é do MESMO DONO desta que está nascendo: o e-mail dela não conta contra ela.
    *
    * ⚠️ EXISTE PARA O DONO DA IMOBILIÁRIA. A trava de e-mail único guarda a regra do Lucas
@@ -510,6 +522,11 @@ export async function createApoloEntity(
   // `payload?.role !== "prospect"`).
   const cadastroDeCorretor =
     opcoes.cadastroDeCorretorAutonomo === true && input.role === "corretor";
+  // (02/10/2026) O fornecedor, pela mesma regra de porta + papel.
+  const cadastroDeFornecedor = opcoes.cadastroDeFornecedor === true && input.role === "fornecedor";
+  // QUEM NÃO É CAD: o autônomo e o fornecedor. É isto que solta as travas de comprador abaixo; o código
+  // CA- continua sendo só do autônomo (`cadastroDeCorretor`).
+  const cadastroSemCad = cadastroDeCorretor || cadastroDeFornecedor;
   const isPj = input.persona === "pj";
   const identidade = input.identidade ?? {};
   const empresa = input.empresa ?? {};
@@ -654,7 +671,7 @@ export async function createApoloEntity(
       // ⚠️ ISTO NÃO AFROUXA O DEDUP DE COMPRADOR: o ramo global do prospect continua igual (foi ele
       // que impediu os "dois Pedro Alexandro"), e a CAD no MESMO empreendimento segue recusada. A
       // diferença é o PAPEL de quem está nascendo, não o empreendimento.
-      if (jaTemNesteEmpreendimento && !cadastroDeCorretor) {
+      if (jaTemNesteEmpreendimento && !cadastroSemCad) {
         const onde = jaTemNesteEmpreendimento.empreendimento?.trim();
         return recusaDaPorta(
           {
@@ -754,10 +771,10 @@ export async function createApoloEntity(
       ...new Set(
         [
           ...(anexarEm
-            ? acrescentar || cadastroDeCorretor
+            ? acrescentar || cadastroSemCad
               ? [anexarEm, ...fichasDoMesmoDocumento]
               : [anexarEm]
-            : cadastroDeCorretor
+            : cadastroSemCad
               ? fichasDoMesmoDocumento
               : []),
           ...(opcoes.fichaDoMesmoDono ? [opcoes.fichaDoMesmoDono] : []),
@@ -882,6 +899,7 @@ export async function createApoloEntity(
     codigoDoCorretor = text(sequencia.codigo);
   }
 
+  const statusDaFichaNova = cadastroDeFornecedor ? "active" : "review";
   const entityRow = {
     ...(codigoDoCorretor ? { broker_code: codigoDoCorretor } : {}),
     display_name: displayName,
@@ -903,7 +921,10 @@ export async function createApoloEntity(
     primary_city: location.city || null,
     primary_state: location.state || null,
     quality_score: 0,
-    status: "review",
+    // (02/10/2026) O FORNECEDOR NASCE ATIVO. Lucas: *"Não, já fica ativo"*, perguntado se ele passa pela
+    // validação. `review` é o que põe a ficha nascida no Apolo na fila do Board
+    // (lib/apolo/board-do-servidor.ts), que também o exclui pelo `bornRole`, como faz com o corretor.
+    status: statusDaFichaNova,
     trade_name: isPj ? text(empresa.nomeFantasia) || null : null,
     workspace_id: "careli",
   };
@@ -1037,7 +1058,9 @@ export async function createApoloEntity(
     // nenhum. Antes esse caso era RECUSADO, e é por isso que a recusa existia. Aqui a precedência
     // inverte: o que a ficha já tem vence, e o cadastro de corretor só preenche o que falta. E
     // `origemCadPublica` não é tocado: quem o escreveu foi a CAD, não este cadastro.
-    const metadataMesclado: Record<string, unknown> = cadastroDeCorretor
+    // (02/10/2026) O FORNECEDOR segue a mesma precedência: a pessoa que já é compradora e passa a
+    // prestar serviço não tem a ficha de compra reescrita pelo cadastro de fornecedor.
+    const metadataMesclado: Record<string, unknown> = cadastroSemCad
       ? {
           ...metaAtual,
           cadastro: { ...cadastro, ...cadastroAtual },
@@ -1294,7 +1317,9 @@ export async function createApoloEntity(
     ),
     profile_labels: [ROLE_LABEL[input.role]],
     quality_score: 0,
-    status: "review",
+    // A ficha que já existia guarda o status dela no índice só no modo ACRESCENTAR (ignoreDuplicates);
+    // nos outros, o índice segue o status da ficha nova, como sempre seguiu.
+    status: anexarEm ? "review" : statusDaFichaNova,
   };
 
   // MODO ACRESCENTAR: só o que a ficha não tem do mesmo tipo (ver `linhasQueFaltamNaFicha`). As

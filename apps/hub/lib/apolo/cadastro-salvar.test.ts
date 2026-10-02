@@ -110,8 +110,9 @@ beforeEach(() => {
 
 describe("salvarCadastroDoApolo", () => {
   // (27/09/2026) O `corretor` SAIU desta lista: o processo do corretor autônomo existe agora (ver o
-  // bloco "corretor autônomo" no fim deste arquivo). Quem ainda não tem processo é fornecedor,
-  // parceiro, colaborador e incorporador — e a porta continua recusando antes de qualquer consulta.
+  // bloco "corretor autônomo" no fim deste arquivo). (02/10/2026) O `fornecedor` também saiu: o
+  // processo dele está em cadastro-salvar.fornecedor.test.ts. Quem ainda não tem processo é parceiro,
+  // colaborador e incorporador — e a porta continua recusando antes de qualquer consulta.
   it("papel fora do processo: 400 antes de qualquer consulta, com a frase de sempre", async () => {
     const { client } = clienteFalso();
     const autor = autorDoHub();
@@ -120,7 +121,7 @@ describe("salvarCadastroDoApolo", () => {
       autor,
       origemDaEsteira: "cadastro-manual",
       origemPadrao: "cadastro-formulario",
-      payload: payload({ role: "fornecedor" }),
+      payload: payload({ role: "parceiro" }),
     });
     expect(r).toEqual({
       error: "Processo de cadastro ainda nao disponivel para este papel.",

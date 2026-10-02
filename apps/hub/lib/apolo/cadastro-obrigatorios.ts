@@ -151,6 +151,12 @@ export type RequisitosInput = {
    * O cadastro interno do autônomo segue cobrando como sempre: a decisão foi sobre o link.
    */
   semEstadoCivil?: boolean;
+  /**
+   * CADASTRO ENXUTO do fornecedor (`FormatoDoCadastro.fichaSimples`, 02/10/2026). Decisão do Lucas:
+   * PF exige só a identidade, PJ só o cartão CNPJ. Comprovante de endereço, estado civil, contrato
+   * social e sócios viram opcionais. Decidido pelo PAPEL que a porta lê, nunca por um campo do corpo.
+   */
+  simples?: boolean;
 };
 
 // O requisito do comprovante de renda (uma das três formas). Igual para PF e PJ: quem decide é a
@@ -173,7 +179,7 @@ const REQUISITO_COMPROVANTE_RENDA: RequisitoDocumento = {
 export function certidaoDoCadastro(
   input: Omit<RequisitosInput, "exigeComprovanteRenda">,
 ): "estado_civil" | "nascimento" | null {
-  if (input.persona === "pj" || input.semEstadoCivil) return null;
+  if (input.persona === "pj" || input.semEstadoCivil || input.simples) return null;
   const estadoCivil = normalizarCategoria(input.estadoCivilId);
   if (ESTADO_CIVIL_EXIGE_CERTIDAO.has(estadoCivil)) return "estado_civil";
   if (input.exigeCertidaoNascimento && estadoCivil === ESTADO_CIVIL_SOLTEIRO) return "nascimento";
@@ -182,6 +188,20 @@ export function certidaoDoCadastro(
 
 export function requisitosDocumentos(input: RequisitosInput): RequisitoDocumento[] {
   const renda = input.exigeComprovanteRenda ? [REQUISITO_COMPROVANTE_RENDA] : [];
+
+  // O fornecedor: UM documento, o que identifica quem ele é. A renda não entra (a chave é do
+  // empreendimento da CAD, e o fornecedor não tem CAD).
+  if (input.simples) {
+    return [
+      input.persona === "pj"
+        ? { match: (c) => c === "identificacao", rotulo: "o cartão CNPJ", rotuloCurto: "cartão CNPJ" }
+        : {
+            match: (c) => c === "identificacao",
+            rotulo: "o documento de identificação",
+            rotuloCurto: "documento de identificação",
+          },
+    ];
+  }
 
   if (input.persona === "pj") {
     return [
@@ -336,6 +356,8 @@ export function validarDocumentosObrigatorios(payload: {
   persona: PersonaCadastro;
   // Decidido pela PORTA (o link do autônomo), nunca pelo corpo. Ver `RequisitosInput.semEstadoCivil`.
   semEstadoCivil?: boolean;
+  // Decidido pelo PAPEL lido na porta (o fornecedor). Ver `RequisitosInput.simples`.
+  simples?: boolean;
 }): ValidacaoObrigatorios {
   const faltando = documentosFaltando(
     {
@@ -344,6 +366,7 @@ export function validarDocumentosObrigatorios(payload: {
       exigeComprovanteRenda: payload.exigeComprovanteRenda,
       persona: payload.persona,
       semEstadoCivil: payload.semEstadoCivil,
+      simples: payload.simples,
     },
     categoriasComArquivo(payload.documentos),
   );
@@ -372,11 +395,16 @@ export type ValidacaoCampos = { mensagem: string; ok: false } | { ok: true };
 // nascimento, a nacionalidade se resolve sozinha. Isto NÃO é trava de OCR (v1.105.0): o wizard já
 // abre o campo Naturalidade para digitação sempre que a leitura vem vazia, então o operador tem
 // como cumprir a exigência mesmo quando o documento não trouxe nada.
+//
+// O FORNECEDOR (`simples`, 02/10/2026) não cobra a naturalidade: ela existe pelo envio ao C2X, e o
+// fornecedor não sobe para o C2X (lib/apolo/c2x-write.ts). Nome e documento válido continuam.
 export function validarCamposMinimos(payload: {
   persona: PersonaCadastro;
   identidade?: { cpf?: string | null; naturalidade?: string | null; nome?: string | null } | null;
   empresa?: { cnpj?: string | null; nomeFantasia?: string | null; razaoSocial?: string | null } | null;
+  simples?: boolean;
 }): ValidacaoCampos {
+  const quem = payload.simples ? "do fornecedor" : "do cliente";
   if (payload.persona === "pj") {
     const nome = (payload.empresa?.razaoSocial ?? payload.empresa?.nomeFantasia ?? "").trim();
     if (!nome) {
@@ -393,11 +421,12 @@ export function validarCamposMinimos(payload: {
 
   const nome = (payload.identidade?.nome ?? "").trim();
   if (!nome) {
-    return { mensagem: "Informe o nome do cliente para enviar o cadastro.", ok: false };
+    return { mensagem: `Informe o nome ${quem} para enviar o cadastro.`, ok: false };
   }
   if (!cpfValido(payload.identidade?.cpf ?? "")) {
-    return { mensagem: "Informe um CPF válido do cliente para enviar o cadastro.", ok: false };
+    return { mensagem: `Informe um CPF válido ${quem} para enviar o cadastro.`, ok: false };
   }
+  if (payload.simples) return { ok: true };
   // Sem naturalidade o C2X recusa a CAD depois (e a nacionalidade, que dela deriva, nasce vazia
   // junto). Barrar aqui é mais barato que descobrir na recusa, dias depois do cliente ir embora.
   if (!(payload.identidade?.naturalidade ?? "").trim()) {
