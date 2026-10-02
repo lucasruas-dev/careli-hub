@@ -45,6 +45,8 @@ let hospedeiro: HTMLDivElement;
 let pedidos: Array<Record<string, unknown>>;
 /** O que a rota do link responde neste teste. */
 let respostaDoLink: { corpo: unknown; status: number };
+/** Depois de uma troca de e-mail, a recarga devolve a pessoa com a chave nova E o cadastro antigo. */
+let depoisDaTroca: boolean;
 
 const CARD = () => ({
   arrependimento_inicio: null,
@@ -101,9 +103,14 @@ const ASSINATURA = () => ({
         trocaVaiParaOFim: null,
       }),
       pessoa("s-maura", "MAURA MARIA PASSOS", { foiParaOFimEm: "2026-10-01T15:18:15.332-03:00", papel: "comprador" }),
+      // O fantasma dos segundos depois da troca: o último aviso da Clicksign ainda traz o cadastro
+      // antigo, e o quadro já traz o novo.
+      ...(depoisDaTroca
+        ? [pessoa("s-yasmin-nova", "YASMIN L.", { email: "yasmin.certa@exemplo.com", foiParaOFimEm: null })]
+        : []),
     ],
   },
-  total: 4,
+  total: depoisDaTroca ? 5 : 4,
 });
 
 function responder(url: string, init?: RequestInit): { corpo: unknown; status: number } {
@@ -111,6 +118,10 @@ function responder(url: string, init?: RequestInit): { corpo: unknown; status: n
     const corpo = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
     pedidos.push(corpo);
     if (corpo.acao === "link") return respostaDoLink;
+    if (corpo.acao === "trocar_email") {
+      depoisDaTroca = true;
+      return { corpo: { data: { aviso: null, email: corpo.email, nome: "YASMIN L.", signerId: "s-yasmin-nova" } }, status: 200 };
+    }
     return { corpo: { data: { ok: true } }, status: 200 };
   }
   if (url.includes("/trabalho?id=")) {
@@ -171,6 +182,7 @@ beforeEach(() => {
   document.body.appendChild(hospedeiro);
   raiz = createRoot(hospedeiro);
   pedidos = [];
+  depoisDaTroca = false;
   respostaDoLink = { corpo: { data: { link: LINK, signerId: "s-yasmin" } }, status: 200 };
   vi.stubGlobal(
     "fetch",
@@ -284,5 +296,63 @@ describe("o link de assinatura para mandar ao cliente", () => {
 
     const campo = linhaDe("YASMIN L.").querySelector<HTMLInputElement>('input[aria-label="Link de assinatura"]');
     expect(campo?.value).toBe(LINK);
+  });
+});
+
+describe("o que a revisão de 02/10/2026 pediu na tela", () => {
+  function digitar(campo: HTMLInputElement, valor: string): void {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    setter?.call(campo, valor);
+    campo.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  it("depois da troca, o recado sobrevive à recarga e o cadastro antigo some da lista", async () => {
+    await montar();
+
+    await act(async () => {
+      linhaDe("YASMIN L.").querySelector<HTMLButtonElement>('button[aria-label="Corrigir o e-mail"]')?.click();
+    });
+    const campo = hospedeiro.querySelector<HTMLInputElement>('input[type="email"]');
+    await act(async () => {
+      if (campo) digitar(campo, "yasmin.certa@exemplo.com");
+    });
+    await act(async () => {
+      Array.from(hospedeiro.querySelectorAll<HTMLButtonElement>("button"))
+        .find((b) => b.textContent?.includes("Confirmo: trocar e enviar"))
+        ?.click();
+    });
+    await esperarPromessas();
+
+    const yasmins = linhas().filter((l) => l.textContent?.includes("YASMIN L."));
+    expect(yasmins, "uma Yasmin só, a do e-mail novo").toHaveLength(1);
+    expect(yasmins[0]?.textContent).toContain("yasmin.certa@exemplo.com");
+    expect(hospedeiro.textContent).toContain("YASMIN L.: E-mail corrigido");
+    expect(hospedeiro.textContent).toContain("foi para o fim da fila de assinatura");
+    // O total do cabeçalho não conta o cadastro antigo.
+    expect(hospedeiro.textContent).toContain("1 de 4");
+  });
+
+  it("no convite que voltou o link fica desabilitado, e a frase manda corrigir o e-mail antes", async () => {
+    await montar();
+
+    const botao = linhaDe("CONVITE QUE VOLTOU").querySelector<HTMLButtonElement>(
+      'button[aria-label="Copiar o link de assinatura"]',
+    );
+    expect(botao?.disabled).toBe(true);
+    expect(botao?.title).toContain("corrija o e-mail antes de mandar o link");
+  });
+
+  it("dois cliques seguidos no link fazem um pedido só", async () => {
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText: vi.fn(async () => undefined) } });
+    await montar();
+
+    await act(async () => {
+      const botao = linhaDe("YASMIN L.").querySelector<HTMLButtonElement>('button[aria-label="Copiar o link de assinatura"]');
+      botao?.click();
+      botao?.click();
+    });
+    await esperarPromessas();
+
+    expect(pedidos.filter((p) => p.acao === "link")).toHaveLength(1);
   });
 });

@@ -347,9 +347,12 @@ export async function consertarSignatario(
   }
 
   if (corpo.acao === "link") {
-    // ⚠️ O LINK É BUSCADO NO CLIQUE, E NÃO VEM NA LISTA DA TELA. Ele abre a assinatura do cliente, e
-    // por isso só sai para quem pediu, uma pessoa por vez, depois do mesmo portão de escrita das
-    // outras duas ações. E todo pedido fica no log, com quem pediu e de qual envelope.
+    // ⚠️ O LINK NÃO É SEGREDO, E O QUE PROTEGE A ASSINATURA É O CÓDIGO POR E-MAIL (revisão de
+    // 02/10/2026). É o mesmo link que a Clicksign manda ao cliente, feito para ser repassado; e pela
+    // fixture real o id do caminho é a própria `signer.key`, que a lista de leitura já mostra. Para
+    // assinar, a pessoa ainda confirma o código que chega no e-mail cadastrado (`auth: "email"`).
+    // O que se ganha aqui é o atalho de copiar com o mesmo portão de escrita das outras ações, e o
+    // log registra quem USOU o botão, não quem teve acesso ao link.
     const achado = await linkDeAssinatura(sb, { envelopeId, signerId });
     console.info("[temis][link de assinatura] pedido", {
       achou: achado.ok,

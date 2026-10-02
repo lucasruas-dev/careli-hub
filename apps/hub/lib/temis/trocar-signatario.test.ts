@@ -1809,3 +1809,192 @@ describe("o link de assinatura de uma pessoa", () => {
     expect(r.status).toBe(409);
   });
 });
+
+// ── A TROCA QUE CAI NO MEIO (revisão de 02/10/2026) ─────────────────────────
+//
+// ⚠️ TIMEOUT E 5xx NÃO DIZEM SE A CLICKSIGN FEZ O QUE SE PEDIU. Desfazer às cegas deixava a pessoa
+// fora do envelope; criar de novo às cegas deixava dois cadastros com o mesmo e-mail.
+describe("a troca que cai no meio", () => {
+  /** Uma porta em que cada padrão responde, em sequência, o que está na fila dele. */
+  function portaEmSequencia(filas: Record<string, unknown[]>) {
+    const chamadas: { caminho: string; metodo: string }[] = [];
+    const porta = async <T = unknown>(caminho: string, opcoes: Opcoes = {}): Promise<T> => {
+      const metodo = opcoes.metodo ?? "GET";
+      chamadas.push({ caminho, metodo });
+      for (const [padrao, fila] of Object.entries(filas)) {
+        if (`${metodo} ${caminho}`.includes(padrao) && fila.length > 0) {
+          const resposta = fila.length > 1 ? fila.shift() : fila[0];
+          if (resposta instanceof Error) throw resposta;
+          return resposta as T;
+        }
+      }
+      if (metodo === "GET" && caminho.includes("/signers?")) return DEGRAUS_DO_ENVELOPE_GRAVADO as T;
+      if (caminho.endsWith("/signers")) return { data: { id: "sig-novo" } } as T;
+      return {} as T;
+    };
+    return { chamadas, porta };
+  }
+  const falha = (status: number) =>
+    new FalhaDaClicksign(`Clicksign devolveu ${status}.`, { detalhes: [], requestId: null, status });
+  const comEmail = (itens: Array<[string, number, string]>) => ({
+    data: itens.map(([id, group, email]) => ({ attributes: { email, group }, id, type: "signers" })),
+  });
+
+  it("remoção que expira e o antigo SAIU: o novo fica, e a troca termina", async () => {
+    const { chamadasDaFuncao, sb } = bancoDeTeste({ envelope: envelopeGravado });
+    const { chamadas, porta } = portaEmSequencia({
+      [LER_DEGRAUS]: [DEGRAUS_DO_ENVELOPE_GRAVADO, listaDeDegraus({ "sig-novo": 2, "sig-titular": 1 })],
+      "DELETE /envelopes/env-30/signers/sig-conjuge": [falha(504)],
+    });
+
+    const r = await trocarEmailDoSignatario(sb, pedidoDaTroca, porta);
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.aviso).toContain("demorou a responder");
+    expect(chamadas.map((c) => `${c.metodo} ${c.caminho}`)).not.toContain("DELETE /envelopes/env-30/signers/sig-novo");
+    expect(chamadasDaFuncao).toHaveLength(1);
+  });
+
+  it("remoção que expira e o antigo FICOU: o novo é desfeito", async () => {
+    const { sb } = bancoDeTeste({ envelope: envelopeGravado });
+    const { chamadas, porta } = portaEmSequencia({
+      [LER_DEGRAUS]: [DEGRAUS_DO_ENVELOPE_GRAVADO, listaDeDegraus({ "sig-conjuge": 1, "sig-novo": 2, "sig-titular": 1 })],
+      "DELETE /envelopes/env-30/signers/sig-conjuge": [falha(503)],
+    });
+
+    const r = await trocarEmailDoSignatario(sb, pedidoDaTroca, porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.removido).toBe(false);
+    expect(chamadas.at(-1)).toEqual({ caminho: "/envelopes/env-30/signers/sig-novo", metodo: "DELETE" });
+  });
+
+  it("remoção que expira e nem a releitura responde: o novo FICA, e a frase manda conferir antes de tentar", async () => {
+    const { atualizacoes, sb } = bancoDeTeste({ envelope: envelopeGravado });
+    const { chamadas, porta } = portaEmSequencia({
+      [LER_DEGRAUS]: [DEGRAUS_DO_ENVELOPE_GRAVADO, falha(503)],
+      "DELETE /envelopes/env-30/signers/sig-conjuge": [falha(0)],
+    });
+
+    const r = await trocarEmailDoSignatario(sb, pedidoDaTroca, porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(502);
+    expect(r.erro).toContain("Não tente a troca de novo antes disso");
+    expect(chamadas.map((c) => `${c.metodo} ${c.caminho}`)).not.toContain("DELETE /envelopes/env-30/signers/sig-novo");
+    expect(atualizacoes).toEqual([]);
+  });
+
+  it("o e-mail novo já está no envelope ao lado do antigo: duas linhas, nada é mexido", async () => {
+    const { chamadasDaFuncao, sb } = bancoDeTeste({ envelope: envelopeGravado });
+    const { chamadas, porta } = portaEmSequencia({
+      [LER_DEGRAUS]: [
+        comEmail([
+          ["sig-titular", 1, "titular@x.com"],
+          ["sig-conjuge", 1, "conjug@x.com"],
+          ["sig-fantasma", 2, "Maria@X.com"],
+        ]),
+      ],
+    });
+
+    const r = await trocarEmailDoSignatario(sb, pedidoDaTroca, porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.status).toBe(409);
+    expect(r.erro).toContain("já tem um cadastro com o e-mail maria@x.com");
+    expect(chamadas).toHaveLength(1);
+    expect(chamadasDaFuncao).toEqual([]);
+  });
+
+  it("o antigo já saiu e o novo já está lá: a troca é adotada, sem cadastrar nem remover", async () => {
+    const { chamadasDaFuncao, sb } = bancoDeTeste({ envelope: envelopeGravado });
+    const { chamadas, porta } = portaEmSequencia({
+      [LER_DEGRAUS]: [
+        comEmail([
+          ["sig-titular", 1, "titular@x.com"],
+          ["sig-de-antes", 2, "maria@x.com"],
+        ]),
+      ],
+    });
+
+    const r = await trocarEmailDoSignatario(sb, pedidoDaTroca, porta);
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.signerId).toBe("sig-de-antes");
+    expect(r.aviso).toContain("já tinha sido feita na Clicksign");
+    expect(chamadas).toHaveLength(1);
+    const quadro = chamadasDaFuncao[0]?.p_quadro as Array<{ chave: string; ordem: number }>;
+    expect(quadro.find((p) => p.chave === "sig-de-antes")?.ordem).toBe(2);
+  });
+
+  it("cadastro que não responde avisa que pode ter entrado, e a próxima tentativa confere", async () => {
+    const { sb } = bancoDeTeste({ envelope: envelopeGravado });
+    const { porta } = portaEmSequencia({ "POST /envelopes/env-30/signers": [falha(0)] });
+
+    const r = await trocarEmailDoSignatario(sb, pedidoDaTroca, porta);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.erro).toContain("pode ter entrado mesmo assim");
+  });
+});
+
+describe("o link segue a régua do reenvio", () => {
+  const LINK = "https://app.clicksign.com/notarial/widget/signatures/bbbb-2222/redirect";
+  const payloadCom = (pessoa: Record<string, unknown>) => ({
+    document: {
+      events: [{ data: { signers: [{ ...pessoa, url: LINK }] }, name: "add_signer", occurred_at: "2026-09-28T09:00:00-03:00" }],
+      signers: [pessoa],
+    },
+  });
+  const semChave = {
+    ...envelopeGravado,
+    signatarios: envelopeGravado.signatarios.map((s) => ({ ...s, chave: undefined })),
+  };
+
+  it("quem só existe no payload (fora do quadro) não recebe link", async () => {
+    const { sb } = bancoDeTeste({
+      envelope: semChave,
+      payload: payloadCom({ email: "de-fora@x.com", key: "sig-de-fora", name: "De Fora" }),
+    });
+
+    const r = await linkDeAssinatura(sb, { envelopeId: "env-30", signerId: "sig-de-fora" });
+
+    expect(r).toEqual({ erro: RECUSA_DE_QUEM_NAO_ESTA_NO_QUADRO, ok: false, status: 409 });
+  });
+
+  it("quadro sem chave: a linha é achada pelo e-mail do payload, e quem já assinou ali não recebe link", async () => {
+    const assinado = {
+      ...semChave,
+      signatarios: [semChave.signatarios[0], { ...semChave.signatarios[1], assinado_em: "2026-09-29T10:00:00-03:00" }],
+    };
+    const { sb } = bancoDeTeste({
+      envelope: assinado,
+      payload: payloadCom({ email: "conjug@x.com", key: "sig-conjuge", name: "Maria Souza Lima" }),
+    });
+
+    const r = await linkDeAssinatura(sb, { envelopeId: "env-30", signerId: "sig-conjuge" });
+
+    expect(r).toEqual({ erro: RECUSA_DE_LINK_DE_QUEM_JA_ASSINOU, ok: false, status: 409 });
+  });
+
+  it("quem recusou também não", async () => {
+    const recusou = {
+      ...envelopeGravado,
+      signatarios: [envelopeGravado.signatarios[0], { ...envelopeGravado.signatarios[1], recusado_em: "2026-09-29T10:00:00-03:00" }],
+    };
+    const { sb } = bancoDeTeste({
+      envelope: recusou,
+      payload: payloadCom({ email: "conjug@x.com", key: "sig-conjuge", name: "Maria Souza Lima" }),
+    });
+
+    const r = await linkDeAssinatura(sb, { envelopeId: "env-30", signerId: "sig-conjuge" });
+
+    expect(r).toEqual({ erro: RECUSA_DE_CONVITE_DE_QUEM_RECUSOU, ok: false, status: 409 });
+  });
+});

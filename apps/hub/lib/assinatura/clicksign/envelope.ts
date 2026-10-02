@@ -571,8 +571,11 @@ export async function consultarEnvelope(
 
 // ── OS DEGRAUS DE VERDADE ───────────────────────────────────────────────────
 
-/** Um signatário como a Clicksign o tem: o id e o degrau (`group`), cru, para quem lê conferir. */
-export type DegrauNaClicksign = { grupo: unknown; id: string };
+/**
+ * Um signatário como a Clicksign o tem: o id, o degrau (`group`, cru, para quem lê conferir) e o
+ * e-mail, que é como a troca descobre um cadastro novo que uma tentativa anterior já deixou lá.
+ */
+export type DegrauNaClicksign = { email?: string; grupo: unknown; id: string };
 
 export type DegrausLidos = { ok: true; signatarios: DegrauNaClicksign[] };
 
@@ -623,10 +626,14 @@ export async function lerDegrausDoEnvelope(
     }
     return {
       ok: true,
-      signatarios: lista.map((s) => ({
-        grupo: (s?.attributes as Record<string, unknown> | undefined)?.group,
-        id: String(s?.id ?? "").trim(),
-      })),
+      signatarios: lista.map((s) => {
+        const atributos = (s?.attributes ?? {}) as Record<string, unknown>;
+        return {
+          email: typeof atributos.email === "string" ? atributos.email.trim() : "",
+          grupo: atributos.group,
+          id: String(s?.id ?? "").trim(),
+        };
+      }),
     };
   } catch (e) {
     return {

@@ -2835,7 +2835,20 @@ function PainelDaAssinatura({
    * ⚠️ ATÉ AQUI QUEM PRECISAVA DE CONSERTO VINHA PRIMEIRO. A barra de destaque da linha continua
    * apontando essa pessoa; a posição dela agora é a da fila.
    */
-  const signatarios = assinatura.envelope.signatarios;
+  /**
+   * O que a última troca de e-mail contou, e a chave que ela tirou do envelope.
+   *
+   * ⚠️ MORA NO PAINEL, E NÃO NA LINHA (revisão de 02/10/2026). Depois da troca a lista é relida e a
+   * pessoa volta com a chave NOVA: a linha remonta e o recado que ela guardava ("foi para o fim da
+   * fila", "o convite não saiu") sumia antes de alguém ler. E nos segundos até o aviso da Clicksign
+   * chegar, o último payload ainda traz o cadastro ANTIGO: a mesma pessoa aparecia duas vezes e o
+   * total subia um. A chave antiga fica escondida enquanto o painel estiver aberto.
+   */
+  const [trocaFeita, setTrocaFeita] = useState<null | { chaveAntiga: string; recado: string }>(null);
+  const signatarios = trocaFeita
+    ? assinatura.envelope.signatarios.filter((s) => s.chave !== trocaFeita.chaveAntiga)
+    : assinatura.envelope.signatarios;
+  const escondidos = assinatura.envelope.signatarios.length - signatarios.length;
 
   /**
    * ⚠️ DO MAIS RECENTE PARA O MAIS ANTIGO, E A ORDEM É FEITA AQUI. O `document.events[]` da
@@ -2874,7 +2887,7 @@ function PainelDaAssinatura({
           <div className="min-w-0">
             <p className="m-0 text-sm font-semibold text-ink">
               <span className="tabular-nums">
-                {assinatura.assinaram} de {assinatura.total}
+                {assinatura.assinaram} de {assinatura.total - escondidos}
               </span>{" "}
               assinaram
             </p>
@@ -2892,10 +2905,17 @@ function PainelDaAssinatura({
           ) : null}
         </header>
 
+        {trocaFeita ? (
+          <p className="m-0 break-words border-b border-line px-4 py-2 text-[11px] font-medium text-ink-soft">
+            {trocaFeita.recado}
+          </p>
+        ) : null}
+
         <ul className="m-0 grid list-none gap-0.5 p-2">
           {signatarios.map((s) => (
             <LinhaDoSignatario
               aoRecarregar={aoRecarregar}
+              aoTrocar={(chaveAntiga, recado) => setTrocaFeita({ chaveAntiga, recado })}
               // ⚠️ O ENVELOPE VEM DE CIMA, E É O DA CLICKSIGN. É o id que as duas rotas de conserto
               // pedem; o uuid da nossa linha de `temis_envelopes` não serve para nada do lado de lá.
               // Quando ele é `null`, a linha não oferece botão nenhum.
@@ -3001,10 +3021,13 @@ function PainelDaAssinatura({
  */
 function LinhaDoSignatario({
   aoRecarregar,
+  aoTrocar,
   envelopeId,
   signatario,
 }: {
   aoRecarregar: () => Promise<void>;
+  /** A troca deu certo: o painel guarda o recado e esconde a chave antiga (ver `trocaFeita`). */
+  aoTrocar?: (chaveAntiga: string, recado: string) => void;
   envelopeId: null | string;
   signatario: SignatarioNaTela;
 }) {
@@ -3101,12 +3124,26 @@ function LinhaDoSignatario({
    * distingue sozinha, e as outras ficam quietas.
    */
   const precisaDeConserto = signatario.convite === "nao_entregue" && !signatario.assinouEm;
+  /**
+   * O link pode ser copiado? A régua do reenvio, e mais uma: o convite que VOLTOU.
+   *
+   * ⚠️ COM O E-MAIL ERRADO O LINK NÃO RESOLVE (revisão de 02/10/2026). Para assinar, a Clicksign
+   * manda um código para o e-mail cadastrado; se ele voltou, o código também volta, e o cliente abre
+   * o contrato e não consegue concluir. Ali o caminho é corrigir o e-mail primeiro.
+   */
+  const podeCopiarLink = podeReenviar && !precisaDeConserto;
+  const fraseDoLink = precisaDeConserto
+    ? "O convite deste e-mail voltou, e o código para assinar vai para ele: corrija o e-mail antes de mandar o link."
+    : podeReenviar
+      ? "Copiar o link de assinatura (o mesmo do convite por e-mail)"
+      : fraseDoReenvio;
   const emailLimpo = emailNovo.trim();
   // O campo nasce com o que está no envelope AGORA: o normal é corrigir uma letra, e digitar o
   // endereço inteiro de novo é como se erra de novo.
   const abrirCorrecao = (): void => {
     setErro(null);
     setRecado(null);
+    setLinkParaCopiar(null);
     setEmailNovo(emailAtual);
     setCorrigindo(true);
   };
@@ -3119,6 +3156,7 @@ function LinhaDoSignatario({
     noArRef.current = true;
     setErro(null);
     setRecado(null);
+    setLinkParaCopiar(null);
     setAcaoNoAr(corpo.acao === "reenviar" ? "reenviar" : "trocar");
     try {
       const r = await temisFetch("/assinatura/signatario", {
@@ -3170,11 +3208,11 @@ function LinhaDoSignatario({
         const fila = signatario.trocaVaiParaOFim
           ? ` ${signatario.nome || "A pessoa"} foi para o fim da fila de assinatura.`
           : "";
-        setRecado(
-          aviso
-            ? `E-mail corrigido no envelope.${fila} ${aviso}`
-            : `E-mail corrigido e convite mandado para o endereço novo.${fila}`,
-        );
+        const texto = aviso
+          ? `E-mail corrigido no envelope.${fila} ${aviso}`
+          : `E-mail corrigido e convite mandado para o endereço novo.${fila}`;
+        if (aoTrocar) aoTrocar(signerId, `${signatario.nome || "A pessoa"}: ${texto}`);
+        else setRecado(texto);
         setCorrigindo(false);
       }
       // ⚠️ RECARREGA O CARD DEPOIS DO SUCESSO. Na troca, o signatário antigo deixou de existir no
@@ -3206,10 +3244,12 @@ function LinhaDoSignatario({
    * Lucas, 02/10/2026: *"quero ter esse link para mandar para o cliente, tem hora que ele não acha o
    * link no e-mail ae mandando fica mais facil"*. É o MESMO link do convite por e-mail.
    *
-   * ⚠️ O LINK VEM NO CLIQUE, UMA PESSOA POR VEZ, e não na lista: ele abre a assinatura do cliente, e o
-   * servidor registra quem pediu. E o 404 aqui não é erro: é o link que ainda não chegou ao Panteon
-   * (envelope enviado antes de 02/10/2026, até o próximo aviso da Clicksign), e a frase do servidor
-   * diz o que fazer enquanto isso.
+   * ⚠️ O LINK VEM NO CLIQUE, UMA PESSOA POR VEZ, e o servidor registra quem usou o botão. Ele não é
+   * segredo (é o do convite por e-mail): quem protege a assinatura é o código que a Clicksign manda
+   * para o e-mail cadastrado. Por isso o link fica DESABILITADO no convite que voltou: com o e-mail
+   * errado, o código não chega e o cliente não conclui. E o 404 aqui não é erro: é o link que ainda
+   * não chegou ao Panteon (envelope enviado antes de 02/10/2026, até o próximo aviso da Clicksign), e
+   * a frase do servidor diz o que fazer enquanto isso.
    */
   const copiarLink = async (): Promise<void> => {
     if (envelopeId === null) return;
@@ -3481,16 +3521,13 @@ function LinhaDoSignatario({
               {/* ⚠️ O LINK SEGUE A RÉGUA DO REENVIO: o envelope vivo, a chave da Clicksign e a linha
                   no quadro. Desabilitado, ele mostra o mesmo motivo; e some para quem já assinou. */}
               {signatario.assinouEm ? null : (
-                <Tooltip
-                  content={podeReenviar ? "Copiar o link de assinatura (o mesmo do convite por e-mail)" : fraseDoReenvio}
-                  placement="top"
-                >
+                <Tooltip content={fraseDoLink} placement="top">
                   <button
                     aria-label="Copiar o link de assinatura"
                     className="grid size-7 shrink-0 place-items-center rounded-lg border border-line text-ink-muted transition-colors hover:bg-subtle hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={acaoNoAr !== null || !podeReenviar}
+                    disabled={acaoNoAr !== null || !podeCopiarLink}
                     onClick={() => void copiarLink()}
-                    title={podeReenviar ? "Copiar o link de assinatura" : fraseDoReenvio}
+                    title={fraseDoLink}
                     type="button"
                   >
                     {acaoNoAr === "link" ? (

@@ -841,8 +841,8 @@ describe("a leitura dos degraus do envelope", () => {
     expect(r).toEqual({
       ok: true,
       signatarios: [
-        { grupo: 3, id: "sig-maura" },
-        { grupo: 6, id: "sig-nova" },
+        { email: "", grupo: 3, id: "sig-maura" },
+        { email: "", grupo: 6, id: "sig-nova" },
       ],
     });
     expect(chamadas).toEqual([{ caminho: "/envelopes/env-20/signers?page[size]=50", corpo: undefined, metodo: "GET" }]);
