@@ -624,7 +624,7 @@ export async function GET(request: Request) {
           reserva.imobiliaria_entity_id ?? "",
           reserva.corretor_entity_id ?? "",
         ]),
-        // OS DIAS DE VENCIMENTO DO EMPREENDIMENTO DA UNIDADE (0209), com a herança do pai. Viram os
+        // OS DIAS DE VENCIMENTO DO EMPREENDIMENTO DA UNIDADE (0210), com a herança do pai. Viram os
         // atalhos do bloco Cobrança do simulador. ⚠️ NULO = A LEITURA FALHOU, e a modal oferece os 10
         // e 20 de sempre SEM dizer "não cadastrado": falha técnica não é afirmação sobre o cadastro.
         // E SÃO ATALHO, NÃO TRAVA: o POST continua aceitando de 1 a 28 (Lucas, 02/10/2026).

@@ -310,7 +310,7 @@ export function SimuladorDeProposta({
    */
   entradaMinimaPercentual?: null | number;
   /**
-   * Os dias de vencimento DESTE empreendimento, da aba Política Comercial (migration 0209).
+   * Os dias de vencimento DESTE empreendimento, da aba Política Comercial (migration 0210).
    *
    * Viram os atalhos do bloco Cobrança, e o primeiro é o dia que a proposta já nasce marcando.
    * Ausente ou nulo (a leitura falhou, ou quem chama não manda) = os 10 e 20 de sempre, SEM aviso.

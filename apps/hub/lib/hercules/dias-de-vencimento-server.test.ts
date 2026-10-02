@@ -59,7 +59,7 @@ describe("lerDiasDoEmpreendimento", () => {
     expect(await lerDiasDoEmpreendimento(client, RECORTE, "teste")).toBeNull();
   });
 
-  it("a migration 0209 pendente (coluna ausente) também é nulo, e não derruba ninguém", async () => {
+  it("a migration 0210 pendente (coluna ausente) também é nulo, e não derruba ninguém", async () => {
     const { client } = cliente(() => ({
       data: null,
       error: { code: "42703", message: 'column apolo_enterprise_settings.dias_vencimento does not exist' },

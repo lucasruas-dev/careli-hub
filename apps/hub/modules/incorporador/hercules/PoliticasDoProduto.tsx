@@ -235,7 +235,7 @@ function Bloco({
         )}
       </Secao>
 
-      {/* ── Dias de vencimento (0209), só leitura ───────────────────────────── */}
+      {/* ── Dias de vencimento (0210), só leitura ───────────────────────────── */}
       {bloco.diasDeVencimento ? (
         <Secao
           contagem={bloco.diasDeVencimento.cadastrado ? bloco.diasDeVencimento.dias.length : 0}

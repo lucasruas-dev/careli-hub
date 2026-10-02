@@ -129,7 +129,7 @@ export type PedidoDeProposta = {
  * um acerto pontual com o cliente não pode ser recusado por não estar nesta lista.
  *
  * ⚠️ DESDE 02/10/2026 SÃO SÓ O PADRÃO DE QUEM NÃO CADASTROU. Os atalhos de verdade são os dias da aba
- * Políticas comerciais do empreendimento (`lib/hercules/dias-de-vencimento.ts`, migration 0209); esta
+ * Políticas comerciais do empreendimento (`lib/hercules/dias-de-vencimento.ts`, migration 0210); esta
  * lista vale quando nem o empreendimento nem o pai cadastraram, e a tela avisa que falta cadastrar.
  * Continuam atalho: o servidor segue aceitando de 1 a `VENCIMENTO_DIA_MAXIMO`.
  */

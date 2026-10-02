@@ -710,7 +710,7 @@ export function PoliticaComercialTab({
         </div>
       </section>
 
-      {/* ── OS DIAS DE VENCIMENTO: também nascem no Apolo (migration 0209) ── */}
+      {/* ── OS DIAS DE VENCIMENTO: também nascem no Apolo (migration 0210) ── */}
       <DiasDeVencimentoCard codes={codes} enterpriseId={enterpriseId} />
 
       {/* ── O QUE VEM DO C2X: leitura ────────────────────────────────────── */}

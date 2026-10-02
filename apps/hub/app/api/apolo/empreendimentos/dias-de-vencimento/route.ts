@@ -43,7 +43,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const SEM_A_MIGRATION =
-  "Os dias de vencimento ainda não podem ser cadastrados neste ambiente (migration 0209 pendente).";
+  "Os dias de vencimento ainda não podem ser cadastrados neste ambiente (migration 0210 pendente).";
 
 const AGRUPAMENTO =
   "Este produto é um agrupamento sem empreendimento principal no cadastro. Cadastre os dias em cada divisão.";
@@ -187,7 +187,7 @@ export async function PUT(request: Request) {
   });
 
   if (!gravado.ok) {
-    // ⚠️ "dias_vencimento" SOZINHO NÃO BASTA: o nome do CHECK da 0209 também tem essas palavras, e
+    // ⚠️ "dias_vencimento" SOZINHO NÃO BASTA: o nome do CHECK da 0210 também tem essas palavras, e
     // uma recusa dele não é migration pendente.
     const semColuna = ehColunaDosDiasAusente({ message: gravado.error });
     return NextResponse.json(

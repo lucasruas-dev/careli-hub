@@ -973,14 +973,14 @@ export function setEnterpriseComissaoImobiliaria(input: {
 }
 
 /**
- * OS DIAS DE VENCIMENTO DA PARCELA do empreendimento (migration 0209).
+ * OS DIAS DE VENCIMENTO DA PARCELA do empreendimento (migration 0210).
  *
  * Lucas (02/10/2026): *"vamos colocar uma parte que apontamos os dias de vencimento da parcela (...)
  * o usuario pode colocar as datas, inserir mais de uma"*.
  *
  * ⚠️ QUEM CONFERE A LISTA É `conferirDiasDeVencimento` (lib/hercules/dias-de-vencimento.ts), ANTES
  * de chegar aqui: este setter recebe a lista já limpa, ou `null`. Nulo é "não cadastrado" e faz o
- * empreendimento voltar a herdar do pai; a lista vazia nunca é gravada (o CHECK da 0209 a recusa).
+ * empreendimento voltar a herdar do pai; a lista vazia nunca é gravada (o CHECK da 0210 a recusa).
  *
  * ⚠️ MESMA DISCIPLINA DE `gravarPercentual`: UPDATE de uma coluna só na linha que existe, e INSERT
  * com `credenciamento_ativo: false` explícito quando não existe. Cadastrar um dia de vencimento não

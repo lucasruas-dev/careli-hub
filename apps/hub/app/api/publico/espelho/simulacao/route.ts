@@ -181,7 +181,7 @@ export async function POST(request: Request) {
     planosPublicos(client, ids),
     // O piso do empreendimento, o mesmo que a tela recebeu na rota da situação.
     pisoDeEntradaPublico(client, ids),
-    // O DIA DO CRONOGRAMA É O PRIMEIRO CADASTRADO (0209), pela régua de filho → pai: a unidade
+    // O DIA DO CRONOGRAMA É O PRIMEIRO CADASTRADO (0210), pela régua de filho → pai: a unidade
     // da divisão sem cadastro herda o do pai do espelho. Sem cadastro, ou com a leitura falhando,
     // os 10 de sempre — a simulação não para por isso (Lucas, 02/10/2026).
     lerDiasDoEmpreendimento(

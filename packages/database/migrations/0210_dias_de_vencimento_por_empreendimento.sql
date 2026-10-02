@@ -1,4 +1,4 @@
--- 0209 · OS DIAS DE VENCIMENTO DA PARCELA, POR EMPREENDIMENTO
+-- 0210 · OS DIAS DE VENCIMENTO DA PARCELA, POR EMPREENDIMENTO
 --
 -- Lucas (02/10/2026): *"dentro do setup, do empreendimento na aba politicas comerciais, vamos colocar
 -- uma parte que apontamos os dias de vencimento da parcela. Hoje está padrão (...), agora passa a ter

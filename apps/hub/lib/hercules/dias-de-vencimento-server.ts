@@ -8,7 +8,7 @@
 //   - a PROPOSTA, o ESPELHO e o PORTAL, onde a falha cai nos 10 e 20 de sempre SEM o aviso de "não
 //     cadastrado": falha técnica não vira afirmação sobre o cadastro, e a venda não para por isso.
 //
-// ⚠️ A MIGRATION 0209 PODE NÃO ESTAR APLICADA quando este código subir. A coluna ausente responde
+// ⚠️ A MIGRATION 0210 PODE NÃO ESTAR APLICADA quando este código subir. A coluna ausente responde
 // `42703` (Postgres) ou `PGRST204` (schema cache), e é por isso que `colunaAusente` existe: a aba diz
 // o que falta em vez de um erro cru, e os outros leitores seguem como antes da frente.
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -85,8 +85,8 @@ export async function lerDiasDoEmpreendimento(
   try {
     const lido = await lerDiasCadastrados(client, [recorte.enterpriseId, recorte.paiEnterpriseId]);
     if (!lido.ok) {
-      // Coluna ausente é a pendência conhecida da 0209: aviso, não erro.
-      if (lido.colunaAusente) console.info(`[${rotulo}] dias de vencimento: migration 0209 pendente`);
+      // Coluna ausente é a pendência conhecida da 0210: aviso, não erro.
+      if (lido.colunaAusente) console.info(`[${rotulo}] dias de vencimento: migration 0210 pendente`);
       else console.error(`[${rotulo}] dias de vencimento`, lido.erro);
       return null;
     }

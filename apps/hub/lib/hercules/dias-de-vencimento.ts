@@ -14,7 +14,7 @@
 //      `proposta.ts`.
 //   4. O PORTAL DO INCORPORADOR SÓ LÊ, como as outras políticas dele.
 //
-// ⚠️ NULO É "NÃO CADASTRADO", E LISTA VAZIA NÃO EXISTE. A coluna (`dias_vencimento`, migration 0209)
+// ⚠️ NULO É "NÃO CADASTRADO", E LISTA VAZIA NÃO EXISTE. A coluna (`dias_vencimento`, migration 0210)
 // nasce nula, e o CHECK do banco recusa o array vazio: uma lista vazia gravada diria "este
 // empreendimento não tem dia nenhum", que não é decisão que alguém toma, e mataria a herança do pai
 // em silêncio. Remover o último dia na tela é VOLTAR A HERDAR, e por isso vira nulo aqui.

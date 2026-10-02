@@ -139,7 +139,7 @@ type ReservaNaTela = {
 type PortaoDaProposta = {
   credenciamento: CredenciamentoNaTela;
   /**
-   * Os dias de vencimento do empreendimento da unidade (0209), já com a herança do pai. Nulo ou
+   * Os dias de vencimento do empreendimento da unidade (0210), já com a herança do pai. Nulo ou
    * ausente (leitura falhou, ou rota de antes desta frente) = os 10 e 20 de sempre, sem aviso.
    */
   diasDeVencimento?: DiasDeVencimento | null;

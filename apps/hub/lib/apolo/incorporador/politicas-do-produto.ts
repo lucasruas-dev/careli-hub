@@ -156,7 +156,7 @@ export type BlocoDePoliticas = {
    */
   consultaIncompleta: boolean;
   /**
-   * Os dias de vencimento da parcela que a proposta oferece neste produto (0209), com a herança do
+   * Os dias de vencimento da parcela que a proposta oferece neste produto (0210), com a herança do
    * pai. SÓ LEITURA no portal (Lucas, 02/10/2026): quem cadastra é a Careli, no Apolo. Nulo = a
    * leitura falhou, e a tela simplesmente não desenha a seção.
    */
