@@ -7,6 +7,7 @@ import {
   cancelarEnvelope,
   consultarEnvelope,
   enviarParaAssinatura,
+  lerDegrausDoEnvelope,
   nomeDoEnvelope,
   notificarSignatario,
   recusaPorTamanhoDoArquivo,
@@ -821,6 +822,53 @@ function duploComDelete(respostas: Record<string, unknown> = {}) {
 
 const falha = (mensagem: string, status: number, requestId: null | string = null) =>
   new FalhaDaClicksign(mensagem, { detalhes: [], requestId, status });
+
+// ⚠️ É A ÚNICA FONTE DO DEGRAU REAL: o webhook nunca traz `group`, e a nossa `ordem` não sabe de quem
+// foi recadastrado (lido na Clicksign em 02/10/2026: a Maura é ordem 3 no quadro e degrau 6 lá).
+describe("a leitura dos degraus do envelope", () => {
+  it("lê id e group de cada signatário, numa página só", async () => {
+    const { chamadas, porta } = duploComDelete({
+      "/signers?": {
+        data: [
+          { attributes: { group: 3, name: "Maura" }, id: "sig-maura", type: "signers" },
+          { attributes: { group: 6 }, id: " sig-nova ", type: "signers" },
+        ],
+      },
+    });
+
+    const r = await lerDegrausDoEnvelope("env-20", porta);
+
+    expect(r).toEqual({
+      ok: true,
+      signatarios: [
+        { grupo: 3, id: "sig-maura" },
+        { grupo: 6, id: "sig-nova" },
+      ],
+    });
+    expect(chamadas).toEqual([{ caminho: "/envelopes/env-20/signers?page[size]=50", corpo: undefined, metodo: "GET" }]);
+  });
+
+  it("página cheia é falha: pode haver mais gente, e decidir sem ver todo mundo é o erro", async () => {
+    const cheia = Array.from({ length: 50 }, (_, i) => ({ attributes: { group: 1 }, id: `s${i}` }));
+    const { porta } = duploComDelete({ "/signers?": { data: cheia } });
+
+    const r = await lerDegrausDoEnvelope("env-20", porta);
+
+    expect(r.ok).toBe(false);
+  });
+
+  it("resposta sem lista e falha HTTP viram falha, sem lançar", async () => {
+    expect((await lerDegrausDoEnvelope("env-20", duploComDelete({ "/signers?": { data: {} } }).porta)).ok).toBe(false);
+    const r = await lerDegrausDoEnvelope("env-20", duploComDelete({ "/signers?": falha("Clicksign devolveu 503.", 503, "req-9") }).porta);
+    expect(r).toMatchObject({ ok: false, requestId: "req-9" });
+  });
+
+  it("sem id não chama nada", async () => {
+    const { chamadas, porta } = duploComDelete();
+    expect((await lerDegrausDoEnvelope("  ", porta)).ok).toBe(false);
+    expect(chamadas).toEqual([]);
+  });
+});
 
 describe("remover um signatário do envelope", () => {
   it("chama o DELETE do signatário, e não o do envelope", async () => {

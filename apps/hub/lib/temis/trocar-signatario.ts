@@ -3,6 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PortaDaClicksign } from "@/lib/assinatura/clicksign/cliente";
 import {
   acrescentarSignatario,
+  type DegrauNaClicksign,
+  lerDegrausDoEnvelope,
   notificarSignatario,
   removerSignatario,
 } from "@/lib/assinatura/clicksign/envelope";
@@ -257,6 +259,129 @@ export function fraseDaFalhaDepoisDeRemover(pedido: {
     `remova ${quem} pelo painel da Clicksign (o envelope é o ${pedido.envelopeId}) e refaça a troca por aqui. ` +
     "O signatário antigo já tinha sido removido."
   );
+}
+
+/**
+ * A FRASE DE QUANDO A TROCA PARA COM O SIGNATÁRIO ANTIGO AINDA NO ENVELOPE.
+ *
+ * ⚠️ DESDE 02/10/2026 O NOVO ENTRA ANTES DE O ANTIGO SAIR (ver `trocarEmailDoSignatario`), então a
+ * falha mais comum deixou de ser "a pessoa ficou de fora". Esta frase conta o que sobrou: o antigo
+ * continua lá, e o que se diz depende de o cadastro pela metade ter sido desfeito ou não.
+ */
+export function fraseDaFalhaAntesDeRemover(pedido: {
+  /** O cadastro novo (o que ficou pela metade, ou o que entrou e não deu para manter) saiu? */
+  desfeito: boolean;
+  detalhe: string;
+  envelopeId: string;
+  nome: string;
+  /** Onde parou: no cadastro do novo, nos requisitos dele ou na remoção do antigo. */
+  passo: "remocao" | "requisitos" | "signatario";
+}): string {
+  const quem = pedido.nome || "O signatário";
+  const motivo =
+    pedido.passo === "remocao"
+      ? `a Clicksign não deixou tirar o cadastro antigo de ${quem}: ${pedido.detalhe}.`
+      : pedido.passo === "requisitos"
+        ? `a Clicksign aceitou o cadastro com o e-mail novo e recusou os requisitos de assinatura: ${pedido.detalhe}.`
+        : `a Clicksign recusou o cadastro com o e-mail novo: ${pedido.detalhe}.`;
+
+  if (pedido.passo === "signatario" || pedido.desfeito) {
+    return (
+      `A troca não foi feita: ${motivo} ` +
+      `${quem} continua no envelope ${pedido.envelopeId} com o e-mail antigo, e nada mudou na ordem de assinatura. ` +
+      "Pode tentar de novo."
+    );
+  }
+
+  return (
+    `A troca parou no meio: ${motivo} ` +
+    `${quem} continua no envelope ${pedido.envelopeId} com o e-mail antigo, e a tentativa de desfazer o cadastro novo também falhou, ` +
+    "então o envelope está com as duas linhas e precisa de mão. " +
+    `Remova pelo painel da Clicksign a linha com o e-mail novo (o envelope é o ${pedido.envelopeId}) antes de tentar de novo.`
+  );
+}
+
+/** O que a conferência do degrau responde. `presente` = o antigo ainda está no envelope. */
+export type VereditoDoDegrau =
+  | { erro: string; ok: false; presente: boolean; status: 409 | 502 }
+  | { ok: true; presente: boolean };
+
+/**
+ * A TROCA MANTÉM A ORDEM DE ASSINATURA? — só quando a pessoa já está no ÚLTIMO degrau.
+ *
+ * ⚠️ A CLICKSIGN NÃO DEIXA ESCOLHER O DEGRAU DE QUEM ENTRA NUM ENVELOPE JÁ ENVIADO. Mandar `group`
+ * volta 400 (*"group não é permitido"*, medido em 01/10/2026), e sem ele a pessoa cai num degrau
+ * NOVO, depois de todo mundo: lido por GET em 02/10/2026, com autorização do Lucas, a Maura
+ * (compradora do VOC0306, degrau 3) voltou no degrau 6, atrás das testemunhas e das vendedoras; a
+ * Rita (vendedora, degrau 4 de três envelopes do VOL) voltou no degrau 5. Ou seja: trocar o e-mail
+ * de quem NÃO está no último degrau empurra a pessoa para o fim da fila, e a testemunha passa a
+ * assinar antes da compradora. Lucas, 02/10/2026, autorizando a trava: *"2 tem o meu ok"*.
+ *
+ * ⚠️ NO ÚLTIMO DEGRAU A TROCA É SEGURA, e é o único lugar onde ela é. A pessoa sai do degrau `N` e
+ * volta no `N + 1`: continua depois de todo mundo que já estava antes dela. O que muda é só que, se
+ * ela dividia o degrau com outras pessoas, passa a esperar por elas.
+ *
+ * ⚠️ QUEM JÁ SAIU DO ENVELOPE (uma tentativa anterior removeu e não recadastrou) é medido pela nossa
+ * `ordem`: se ela é do último degrau que sobrou, voltar no fim é voltar no lugar dela; se não é, a
+ * troca é recusada e o caminho é mandar o contrato de novo, porque sem ela o envelope pode fechar.
+ *
+ * ⚠️ DEGRAU QUE NÃO É INTEIRO A PARTIR DE 1 É RECUSA. O schema do GET deles declara `group` com
+ * default 0, e decidir sobre um 0 ou um nulo seria decidir no escuro.
+ */
+export function conferirDegrauDaTroca(pedido: {
+  degraus: readonly DegrauNaClicksign[];
+  envelopeId: string;
+  nome: string;
+  /** A `ordem` congelada da pessoa: só pesa quando ela já não está no envelope da Clicksign. */
+  ordemNoQuadro: number;
+  signerId: string;
+}): VereditoDoDegrau {
+  const quem = pedido.nome || "Esta pessoa";
+  const voltarParaAnalise =
+    "Nada foi mexido. Para corrigir o e-mail mantendo a ordem, volte o card para a análise (o envelope é cancelado) e mande o contrato de novo.";
+
+  const degrauDe = (bruto: unknown): null | number =>
+    typeof bruto === "number" && Number.isInteger(bruto) && bruto >= 1 ? bruto : null;
+
+  const lidos = pedido.degraus.map((d) => ({ degrau: degrauDe(d.grupo), id: d.id }));
+  const alvo = lidos.find((d) => d.id === pedido.signerId);
+
+  if (lidos.length === 0 || lidos.some((d) => d.degrau === null)) {
+    return {
+      erro:
+        `A Clicksign não informou o degrau de assinatura de todos os signatários do envelope ${pedido.envelopeId}, ` +
+        "e sem isso não dá para saber se a troca mudaria a ordem. Nada foi mexido. Tente de novo em instantes.",
+      ok: false,
+      presente: alvo !== undefined,
+      status: 502,
+    };
+  }
+
+  const ultimo = Math.max(...lidos.map((d) => d.degrau as number));
+
+  if (alvo) {
+    if ((alvo.degrau as number) >= ultimo) return { ok: true, presente: true };
+    return {
+      erro:
+        "A Clicksign não deixa escolher o degrau de quem entra num envelope já enviado: quem é recadastrado vai para o fim da fila. " +
+        `${quem} está no degrau ${alvo.degrau} de ${ultimo}, então trocar o e-mail agora faria ${quem} assinar por último, ` +
+        `depois de quem hoje assina no degrau ${ultimo}. ${voltarParaAnalise}`,
+      ok: false,
+      presente: true,
+      status: 409,
+    };
+  }
+
+  if (pedido.ordemNoQuadro >= ultimo) return { ok: true, presente: false };
+  return {
+    erro:
+      `${quem} já não está no envelope ${pedido.envelopeId} da Clicksign (uma tentativa anterior tirou o cadastro e não conseguiu pôr de volta), ` +
+      `e recadastrar agora poria ${quem} no fim da fila, depois de quem assina no degrau ${ultimo}. ` +
+      `Nada foi mexido. Volte o card para a análise e mande o contrato de novo: do jeito que está, o envelope pode fechar sem a assinatura de ${quem}.`,
+    ok: false,
+    presente: false,
+    status: 409,
+  };
 }
 
 // ── O CAMINHO INTEIRO, COM O BANCO E A CLICKSIGN ────────────────────────────
@@ -619,13 +744,21 @@ export type FalhaNaTroca = {
  *
  * A sequência, e o porquê de cada passo estar onde está:
  *
- *   0. confere TUDO (e-mail, duplicidade, id do documento) — antes de existir estrago;
- *   1. remove o signatário  ⚠️ PONTO SEM VOLTA. 403 = já assinou, e aí para tudo;
- *   2. cria de novo, com o MESMO nome, a MESMA ordem e o e-mail novo;
- *   3. cria os DOIS requisitos (sem eles a pessoa não tem o que assinar) — e se ELES falharem, o
- *      cadastro do passo 2 é DESFEITO, para a retentativa ter por onde entrar;
- *   4. notifica só ela;
- *   5. atualiza `temis_envelopes.signatarios`, MESCLANDO.
+ *   0. confere TUDO (e-mail, duplicidade, id do documento) — antes de existir estrago — e LÊ NA
+ *      CLICKSIGN o degrau de cada signatário: só segue se a pessoa está no ÚLTIMO degrau, o único
+ *      lugar em que recadastrar não muda a ordem (ver `conferirDegrauDaTroca`);
+ *   1. cria a pessoa de novo, com o MESMO nome e o e-mail novo, e os DOIS requisitos (sem eles ela
+ *      não tem o que assinar) — se algo aqui falhar, o cadastro pela metade é DESFEITO e o antigo
+ *      continua no envelope, intacto;
+ *   2. só então remove o cadastro antigo. 403 = já começou a assinar: o novo é desfeito e nada muda;
+ *   3. notifica só a pessoa nova;
+ *   4. atualiza `temis_envelopes.signatarios`, MESCLANDO.
+ *
+ * ⚠️ ATÉ 02/10/2026 A REMOÇÃO VINHA PRIMEIRO, e isso tinha dois buracos. Uma falha no cadastro
+ * deixava a pessoa FORA do envelope (Maura, 01/10/2026: 39 minutos fora, e a testemunha assinou na
+ * frente). E o envelope tem `auto_close` ligado: tirar a ÚLTIMA pessoa que faltava deixaria todos
+ * os que sobraram assinados, e a Clicksign poderia fechar o contrato sem ela antes de o recadastro
+ * chegar. Criando antes, sempre há alguém pendente no envelope.
  *
  * `porta` é a chamada HTTP da Clicksign (o duplo do teste entra por aqui).
  */
@@ -726,35 +859,35 @@ export async function trocarEmailDoSignatario(
     };
   }
 
-  // ── 1. A REMOÇÃO — O PONTO SEM VOLTA ──────────────────────────────────────
-  const remocao = await removerSignatario(envelopeId, signerId, porta);
-
-  if (!remocao.ok && remocao.jaAssinou) {
-    return { erro: RECUSA_DE_QUEM_JA_ASSINOU, ok: false, removido: false, status: 409 };
-  }
-
-  // ⚠️ O 404 SEGUE EM FRENTE, E ISSO É DELIBERADO. Ele é o estado que uma tentativa ANTERIOR desta
-  // mesma troca deixa: removeu e não conseguiu recriar. Barrar aqui seria fechar o único caminho de
-  // conserto e deixar a pessoa fora do envelope para sempre — o contrato nunca fecharia. O risco do
-  // outro lado (um id errado fazer nascer um signatário repetido) é menor e é VISÍVEL: a linha
-  // duplicada aparece na lista e pode ser removida, porque quem não assinou a Clicksign deixa sair.
-  if (!remocao.ok && !remocao.naoEncontrado) {
+  // ── 0, A ÚLTIMA CONFERÊNCIA: O DEGRAU DE VERDADE, LIDO NA CLICKSIGN ────────
+  //
+  // ⚠️ ELA VEM POR ÚLTIMO PORQUE É A ÚNICA QUE CUSTA UMA CHAMADA, e as de cima recusam sem gastar
+  // nada. E é leitura: se falhar, a troca não começa.
+  const lidos = await lerDegrausDoEnvelope(envelopeId, porta);
+  if (!lidos.ok) {
     return {
-      erro: `Não foi possível remover o signatário antigo: ${remocao.erro}. O envelope continua como estava, e ninguém perdeu o convite.`,
+      erro:
+        `Não consegui perguntar à Clicksign em que degrau cada pessoa assina (${lidos.erro}), e sem isso a troca poderia mudar a ordem de assinatura. ` +
+        "Nada foi mexido. Tente de novo em instantes.",
       ok: false,
       removido: false,
       status: 502,
     };
   }
 
-  const avisos: string[] = [];
-  if (!remocao.ok) {
-    avisos.push(
-      "A Clicksign não achou o signatário antigo (ele já tinha saído do envelope), então a troca seguiu direto para o cadastro do novo.",
-    );
+  const degrau = conferirDegrauDaTroca({
+    degraus: lidos.signatarios,
+    envelopeId,
+    nome: alvo.congelado.nome,
+    ordemNoQuadro: alvo.congelado.ordem,
+    signerId,
+  });
+  if (!degrau.ok) {
+    // `removido` conta se o antigo JÁ estava fora: é o que faz a tela reler a lista.
+    return { erro: degrau.erro, ok: false, removido: !degrau.presente, status: degrau.status };
   }
 
-  // ── 2 e 3. O CADASTRO E OS DOIS REQUISITOS ────────────────────────────────
+  // ── 1. O CADASTRO DO NOVO E OS DOIS REQUISITOS, ANTES DE TIRAR O ANTIGO ────
   //
   // ⚠️ O CPF NÃO VOLTA NA TROCA, e é bom que não volte. `temis_envelopes.signatarios` congelou só
   // nome, e-mail, ordem e papel: o signatário recriado entra com `has_documentation: false`, ou
@@ -781,19 +914,34 @@ export async function trocarEmailDoSignatario(
     // ⚠️ O CADASTRO PELA METADE É DESFEITO, E NÃO DEIXADO LÁ — e isto conserta um BECO SEM SAÍDA, não
     // é capricho de limpeza. Quando os requisitos falham, a pessoa entrou no envelope com o e-mail
     // NOVO e sem nada para assinar, enquanto a nossa lista congelada ainda guarda o e-mail ANTIGO.
-    // A retentativa que a frase mandava fazer batia justamente aí: `acharOSignatario` procura o
-    // signatário do diário dentro da lista congelada, pelo e-mail, não acha — e devolve *"está no
-    // envelope da Clicksign mas não na lista que o Panteon congelou"*. Ou seja: o único caminho de
-    // conserto estava fechado, com uma pessoa pendurada num envelope que nunca fecharia.
+    // A retentativa batia justamente aí: `acharOSignatario` procura o signatário do diário dentro
+    // da lista congelada, pelo e-mail, não acha — e devolve *"está no envelope da Clicksign mas não
+    // na lista que o Panteon congelou"*. Ou seja: o único caminho de conserto estava fechado.
     //
     // ⚠️ REMOVER AQUI É SEGURO: este signatário nasceu segundos atrás e NÃO TEM REQUISITO, então não
-    // há assinatura nenhuma a perder — e a Clicksign devolveria 403 se houvesse. Desfeito, o envelope
-    // volta ao mesmo estado da falha de cadastro, que a retentativa já sabe atravessar (o 404 do
-    // DELETE segue em frente).
+    // há assinatura nenhuma a perder — e a Clicksign devolveria 403 se houvesse.
     const desfeito =
       acrescimo.passo === "requisitos" && acrescimo.signerId !== null
         ? (await removerSignatario(envelopeId, acrescimo.signerId, porta)).ok
         : false;
+
+    // ⚠️ AS DUAS FRASES CONTAM ESTADOS QUE NÃO SE PARECEM. Com o antigo ainda no envelope, nada
+    // mudou e dá para tentar de novo. Sem ele (uma tentativa anterior já tinha tirado), a pessoa
+    // continua FORA do envelope, e é isso que a tela tem de dizer.
+    if (degrau.presente) {
+      return {
+        erro: fraseDaFalhaAntesDeRemover({
+          desfeito,
+          detalhe: acrescimo.erro,
+          envelopeId,
+          nome: alvo.congelado.nome,
+          passo: acrescimo.passo,
+        }),
+        ok: false,
+        removido: false,
+        status: 502,
+      };
+    }
 
     return {
       erro: fraseDaFalhaDepoisDeRemover({
@@ -809,7 +957,45 @@ export async function trocarEmailDoSignatario(
     };
   }
 
-  // ── 4. O CONVITE, SÓ PARA ELE ─────────────────────────────────────────────
+  // ── 2. A REMOÇÃO DO ANTIGO, COM O NOVO JÁ NO ENVELOPE ─────────────────────
+  const avisos: string[] = [];
+  if (!degrau.presente) {
+    avisos.push(
+      "O cadastro antigo já tinha saído do envelope numa tentativa anterior, então a troca só fez o cadastro do novo.",
+    );
+  } else {
+    const remocao = await removerSignatario(envelopeId, signerId, porta);
+
+    // ⚠️ O 404 SEGUE EM FRENTE: a leitura do degrau viu o antigo, e ele sumiu no meio. O que se
+    // queria (o antigo fora, o novo dentro) é o estado em que o envelope ficou.
+    if (!remocao.ok && remocao.naoEncontrado) {
+      avisos.push(
+        "A Clicksign não achou o cadastro antigo na hora de tirá-lo (ele já tinha saído do envelope); o novo entrou do mesmo jeito.",
+      );
+    } else if (!remocao.ok) {
+      // ⚠️ O ANTIGO FICOU, ENTÃO O NOVO SAI. Deixar os dois faria o envelope esperar a assinatura
+      // de quem tem o e-mail errado E a de quem tem o certo. O novo nasceu segundos atrás e não tem
+      // assinatura, então a Clicksign deixa removê-lo.
+      const desfeito = (await removerSignatario(envelopeId, acrescimo.signerId, porta)).ok;
+      if (remocao.jaAssinou && desfeito) {
+        return { erro: RECUSA_DE_QUEM_JA_ASSINOU, ok: false, removido: false, status: 409 };
+      }
+      return {
+        erro: fraseDaFalhaAntesDeRemover({
+          desfeito,
+          detalhe: remocao.erro,
+          envelopeId,
+          nome: alvo.congelado.nome,
+          passo: "remocao",
+        }),
+        ok: false,
+        removido: false,
+        status: remocao.jaAssinou ? 409 : 502,
+      };
+    }
+  }
+
+  // ── 3. O CONVITE, SÓ PARA ELE ─────────────────────────────────────────────
   //
   // ⚠️ AQUI A FALHA NÃO DERRUBA A TROCA. A pessoa já está no envelope, com os requisitos: o que
   // faltou foi o e-mail sair, e para isso existe o botão de reenviar convite. Responder "falhou"
@@ -823,7 +1009,7 @@ export async function trocarEmailDoSignatario(
     );
   }
 
-  // ── 5. O NOSSO REGISTRO ───────────────────────────────────────────────────
+  // ── 4. O NOSSO REGISTRO ───────────────────────────────────────────────────
   const gravado = await gravarTrocaNoRegistro(sb, {
     chaveNova: acrescimo.signerId,
     emailAntigo: alvo.congelado.email,

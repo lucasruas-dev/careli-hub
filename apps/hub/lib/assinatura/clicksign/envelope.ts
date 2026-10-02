@@ -569,6 +569,73 @@ export async function consultarEnvelope(
   }
 }
 
+// ── OS DEGRAUS DE VERDADE ───────────────────────────────────────────────────
+
+/** Um signatário como a Clicksign o tem: o id e o degrau (`group`), cru, para quem lê conferir. */
+export type DegrauNaClicksign = { grupo: unknown; id: string };
+
+export type DegrausLidos = { ok: true; signatarios: DegrauNaClicksign[] };
+
+export type FalhaAoLerDegraus = {
+  erro: string;
+  ok: false;
+  /** `X-Request-Id` da Clicksign — é o que o suporte deles pede. */
+  requestId: null | string;
+};
+
+/** Bem acima dos 11 signatários do maior contrato da casa: a lista vem numa página só. */
+const SIGNATARIOS_POR_PAGINA = 50;
+
+/**
+ * EM QUE DEGRAU CADA SIGNATÁRIO ESTÁ, PERGUNTADO À CLICKSIGN — `GET /envelopes/{id}/signers`.
+ *
+ * ⚠️ A NOSSA `ordem` NÃO SERVE PARA ISTO, E O WEBHOOK NUNCA TRAZ O DEGRAU. A `ordem` de
+ * `temis_envelopes.signatarios` é a que o envio mandou; quem foi recadastrado depois está em outro
+ * degrau na Clicksign e o quadro não sabe (a Maura do VOC0306 é ordem 3 no quadro e degrau 6 lá,
+ * lido em 02/10/2026). E o payload do webhook não tem `group` em nenhuma das 2.244 linhas de
+ * signatário medidas. A única fonte do degrau real é esta leitura.
+ *
+ * ⚠️ LISTA INCOMPLETA É FALHA. Se a página vier cheia, pode haver mais gente, e decidir "esta pessoa
+ * está no último degrau" sem ver todo mundo é justamente o erro que esta leitura existe para evitar.
+ *
+ * ⚠️ NUNCA LANÇA, e quem chama RECUSA quando ela falha: sem o degrau, a troca não começa.
+ */
+export async function lerDegrausDoEnvelope(
+  envelopeId: string,
+  porta: PortaDaClicksign = chamar,
+): Promise<DegrausLidos | FalhaAoLerDegraus> {
+  const id = envelopeId.trim();
+  // Sem id, `GET /envelopes//signers` não é deste envelope: ver a nota de `consultarEnvelope`.
+  if (!id) {
+    return { erro: "Sem o id do envelope não dá para ler os signatários na Clicksign.", ok: false, requestId: null };
+  }
+
+  try {
+    const lido = await porta<{ data?: unknown }>(
+      `/envelopes/${id}/signers?page[size]=${SIGNATARIOS_POR_PAGINA}`,
+      { metodo: "GET" },
+    );
+    const lista = Array.isArray(lido?.data) ? (lido.data as Array<Record<string, unknown>>) : null;
+    if (!lista) throw new Error("A Clicksign respondeu sobre os signatários e não mandou a lista.");
+    if (lista.length >= SIGNATARIOS_POR_PAGINA) {
+      throw new Error("A lista de signatários veio cheia e pode ter mais de uma página.");
+    }
+    return {
+      ok: true,
+      signatarios: lista.map((s) => ({
+        grupo: (s?.attributes as Record<string, unknown> | undefined)?.group,
+        id: String(s?.id ?? "").trim(),
+      })),
+    };
+  } catch (e) {
+    return {
+      erro: detalheDaFalha(e),
+      ok: false,
+      requestId: e instanceof FalhaDaClicksign ? e.erro.requestId : null,
+    };
+  }
+}
+
 // ── O CANCELAMENTO ──────────────────────────────────────────────────────────
 
 export type CancelamentoFeito = { envelopeId: string; ok: true };
@@ -1015,9 +1082,16 @@ export async function acrescentarSignatario(
   try {
     // ⚠️ SEM `group` NO ENVELOPE QUE JÁ ESTÁ RODANDO. Primeiro uso real da troca de e-mail
     // (01/10/2026, Maura Maria Passos, VOC0306, envelope 0384000d): a Clicksign removeu a pessoa e
-    // recusou o recadastro com 400, *"group não é permitido"*. A doc deles diz que `group` só vale
-    // com `sequence_enabled: true`, e o nosso envio nunca liga essa bandeira: no rascunho o campo
-    // passa, no envelope ativado é recusado. Sem ele a pessoa entra como as outras.
+    // recusou o recadastro com 400, *"group não é permitido"*. Isso foi MEDIDO, não está na doc: a
+    // v3 não tem `sequence_enabled` no envelope (é campo do documento da API v1.5), e a página do
+    // signatário não fala de envelope rodando.
+    //
+    // ⚠️ E SEM `group` A PESSOA NÃO ENTRA "COMO AS OUTRAS": ENTRA NO FIM DA FILA. Lido por GET na
+    // Clicksign em 02/10/2026, com autorização do Lucas: a Maura, que era do degrau 3 (compradora),
+    // voltou no degrau 6, depois das testemunhas e das vendedoras; a Rita, vendedora do degrau 4 em
+    // três envelopes do VOL, voltou no degrau 5. É sempre o maior degrau do envelope + 1. Por isso
+    // quem chama confere ANTES que a pessoa já está no último degrau: ver `conferirDegrauDaTroca`,
+    // em `lib/temis/trocar-signatario.ts`.
     signerId = await cadastrarSignatario(envelope, alvo.pessoa, alvo.semCpf === true, porta, false);
   } catch (e) {
     const falha = e instanceof FalhaDaClicksign ? e : null;
