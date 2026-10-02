@@ -19,6 +19,7 @@ import { ENTRADA_MINIMA_PERCENTUAL } from "@/lib/hercules/composicoes";
 
 import { getApoloAccessToken } from "@/modules/apolo/data/apolo-operations";
 
+import { DiasDeVencimentoCard } from "@/modules/apolo/blocks/empreendimentos/dias-de-vencimento-card";
 import { PlanosComerciaisTab } from "@/modules/apolo/blocks/empreendimentos/planos-comerciais-tab";
 
 // ABA POLÍTICAS COMERCIAIS do empreendimento.
@@ -708,6 +709,9 @@ export function PoliticaComercialTab({
           ) : null}
         </div>
       </section>
+
+      {/* ── OS DIAS DE VENCIMENTO: também nascem no Apolo (migration 0210) ── */}
+      <DiasDeVencimentoCard codes={codes} enterpriseId={enterpriseId} />
 
       {/* ── O QUE VEM DO C2X: leitura ────────────────────────────────────── */}
       <section className="overflow-hidden rounded-2xl border border-line bg-surface">

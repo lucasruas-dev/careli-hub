@@ -46,6 +46,11 @@ import {
   planosPreferindoOPanteon,
   semAColunaQueFaltou,
 } from "@/lib/hercules/planos-do-panteon";
+import {
+  type DiasDeVencimento,
+  diasDoEmpreendimento,
+  type LinhaDosDias,
+} from "@/lib/hercules/dias-de-vencimento";
 import type { FaixaDePrazo } from "@/lib/hercules/premissa-do-prazo";
 import {
   itensDoMenorRecorte,
@@ -150,6 +155,12 @@ export type BlocoDePoliticas = {
    * de dizer "nenhum plano cadastrado": falha técnica não pode virar afirmação de negócio.
    */
   consultaIncompleta: boolean;
+  /**
+   * Os dias de vencimento da parcela que a proposta oferece neste produto (0210), com a herança do
+   * pai. SÓ LEITURA no portal (Lucas, 02/10/2026): quem cadastra é a Careli, no Apolo. Nulo = a
+   * leitura falhou, e a tela simplesmente não desenha a seção.
+   */
+  diasDeVencimento: DiasDeVencimento | null;
   faixas: FaixaDoPortal[];
   /** De que degrau vieram os planos gerais. Nulo = nenhum plano. */
   origemDosPlanos: null | OrigemDoRecorte;
@@ -386,6 +397,8 @@ function porOrdem(a: PlanoLido, b: PlanoLido): number {
  */
 export function montarPoliticasDoProduto(entrada: {
   categorias: readonly LinhaDaCategoria[];
+  /** As linhas de configuração do produto e dos pais. Nulo = a leitura falhou. Ausente = nulo. */
+  diasDeVencimento?: null | readonly LinhaDosDias[];
   faixas: Readonly<Record<string, readonly FaixaDePrazo[]>>;
   planosDoC2x: null | readonly PlanosDoEmpreendimento[];
   planosDoPanteon: readonly PlanoLido[];
@@ -484,6 +497,10 @@ export function montarPoliticasDoProduto(entrada: {
       categorias,
       consultaIncompleta:
         entrada.planosDoC2x === null && !comPlanoNoPanteon.has(produto.enterpriseId),
+      // A MESMA régua de filho → pai da aba do Apolo e da proposta (`diasDoEmpreendimento`).
+      diasDeVencimento: entrada.diasDeVencimento
+        ? diasDoEmpreendimento(recorte, entrada.diasDeVencimento)
+        : null,
       faixas,
       origemDosPlanos: geral.origem,
       planos: geral.itens.map(planoParaATela),
@@ -497,6 +514,7 @@ export function montarPoliticasDoProduto(entrada: {
       c: bloco.categorias.map((c) => [c.id, c.planos.map((p) => p.id)]),
       f: bloco.faixas,
       i: bloco.consultaIncompleta,
+      d: bloco.diasDeVencimento,
       o: bloco.origemDosPlanos,
       p: bloco.planos.map((p) => p.id),
     });

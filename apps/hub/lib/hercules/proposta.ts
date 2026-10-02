@@ -117,7 +117,7 @@ export type PedidoDeProposta = {
    */
   validadeEm: string;
   valorNegociado: number;
-  /** 10 ou 20 na tela; 1 a 28 na regra do servidor. */
+  /** Os dias cadastrados no empreendimento na tela (10 ou 20 sem cadastro); 1 a 28 no servidor. */
   vencimentoDia: number;
 };
 
@@ -127,6 +127,11 @@ export type PedidoDeProposta = {
  * ⚠️ SÃO ATALHOS, NÃO A REGRA — como os `PRAZOS_SUGERIDOS` da reserva. A cobrança da casa roda em
  * 10 e 20, mas quem valida é o servidor, e ele aceita a faixa inteira: uma venda antiga migrada ou
  * um acerto pontual com o cliente não pode ser recusado por não estar nesta lista.
+ *
+ * ⚠️ DESDE 02/10/2026 SÃO SÓ O PADRÃO DE QUEM NÃO CADASTROU. Os atalhos de verdade são os dias da aba
+ * Políticas comerciais do empreendimento (`lib/hercules/dias-de-vencimento.ts`, migration 0210); esta
+ * lista vale quando nem o empreendimento nem o pai cadastraram, e a tela avisa que falta cadastrar.
+ * Continuam atalho: o servidor segue aceitando de 1 a `VENCIMENTO_DIA_MAXIMO`.
  */
 export const DIAS_DE_VENCIMENTO = [10, 20] as const;
 

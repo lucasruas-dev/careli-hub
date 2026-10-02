@@ -1030,6 +1030,73 @@ export function setEnterpriseComissaoImobiliaria(input: {
   });
 }
 
+/**
+ * OS DIAS DE VENCIMENTO DA PARCELA do empreendimento (migration 0210).
+ *
+ * Lucas (02/10/2026): *"vamos colocar uma parte que apontamos os dias de vencimento da parcela (...)
+ * o usuario pode colocar as datas, inserir mais de uma"*.
+ *
+ * ⚠️ QUEM CONFERE A LISTA É `conferirDiasDeVencimento` (lib/hercules/dias-de-vencimento.ts), ANTES
+ * de chegar aqui: este setter recebe a lista já limpa, ou `null`. Nulo é "não cadastrado" e faz o
+ * empreendimento voltar a herdar do pai; a lista vazia nunca é gravada (o CHECK da 0210 a recusa).
+ *
+ * ⚠️ MESMA DISCIPLINA DE `gravarPercentual`: UPDATE de uma coluna só na linha que existe, e INSERT
+ * com `credenciamento_ativo: false` explícito quando não existe. Cadastrar um dia de vencimento não
+ * pode ligar o credenciamento de um empreendimento por acidente.
+ */
+export async function setEnterpriseDiasDeVencimento(input: {
+  adminClient: AdminClient;
+  dias: null | number[];
+  enterpriseId: string;
+  updatedBy?: null | string;
+}): Promise<{ error?: string; ok: boolean }> {
+  const enterpriseId = (input.enterpriseId ?? "").trim();
+  if (!enterpriseId) return { error: "Empreendimento invalido.", ok: false };
+
+  const dias = input.dias && input.dias.length > 0 ? input.dias : null;
+  const sigla = await siglaDoCadastro(input.adminClient, enterpriseId);
+
+  const { data: existente, error: erroLeitura } = await input.adminClient
+    .from(TABLE)
+    .select("enterprise_id")
+    .eq("enterprise_id", enterpriseId)
+    .maybeSingle<{ enterprise_id: string }>();
+
+  if (erroLeitura && !tabelaAusente(erroLeitura)) {
+    return { error: `Nao foi possivel salvar: ${erroLeitura.message}`, ok: false };
+  }
+
+  if (existente) {
+    const { error } = await input.adminClient
+      .from(TABLE)
+      .update({
+        dias_vencimento: dias,
+        ...realinharSigla(sigla),
+        updated_at: new Date().toISOString(),
+        updated_by: input.updatedBy ?? null,
+      })
+      .eq("enterprise_id", enterpriseId);
+
+    if (error) return { error: `Nao foi possivel salvar: ${error.message}`, ok: false };
+    return { ok: true };
+  }
+
+  // Sem linha e sem dias: voltar a herdar o que já é herdado não precisa criar linha nenhuma.
+  if (dias === null) return { ok: true };
+
+  const { error } = await input.adminClient.from(TABLE).insert({
+    code: sigla,
+    credenciamento_ativo: false,
+    dias_vencimento: dias,
+    enterprise_id: enterpriseId,
+    updated_at: new Date().toISOString(),
+    updated_by: input.updatedBy ?? null,
+  });
+
+  if (error) return { error: `Nao foi possivel salvar: ${error.message}`, ok: false };
+  return { ok: true };
+}
+
 // Formato canônico do uuid do Postgres. Serve só para recusar lixo digitado antes de bater no
 // banco: id que EXISTE, mas aponta para entidade arquivada ou fundida, é problema de quem lê (a
 // migration 0145 não criou FK de propósito), não de quem grava.

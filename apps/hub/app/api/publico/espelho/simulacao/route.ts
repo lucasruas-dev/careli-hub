@@ -6,6 +6,8 @@ import { NextResponse } from "next/server";
 import { APOLO_DOCS_BUCKET } from "@/lib/apolo/documentos";
 import { chaveDaLogo } from "@/lib/apolo/enterprise-logos";
 import { montarCronograma } from "@/lib/hercules/cronograma";
+import { primeiroDia, SEM_CADASTRO } from "@/lib/hercules/dias-de-vencimento";
+import { lerDiasDoEmpreendimento } from "@/lib/hercules/dias-de-vencimento-server";
 import { abrirEspelho, ERRO_GENERICO } from "@/lib/hercules/espelho/abrir-espelho";
 import { estadoDoEspelho } from "@/lib/hercules/espelho/estado-do-espelho";
 import { pisoDeEntradaPublico, planosPublicos } from "@/lib/hercules/espelho/planos-publicos";
@@ -132,13 +134,14 @@ export async function POST(request: Request) {
   const { data: unidade } = await lerComColunasDoApartamento((extras) =>
     client
       .from("hercules_unidades")
-      .select(`area,codigo,lote,preco_tabela,quadra,situacao${extras}`)
+      .select(`area,codigo,enterprise_id,lote,preco_tabela,quadra,situacao${extras}`)
       .in("enterprise_id", ids)
       .eq("codigo", codigoDoLote)
       .maybeSingle<{
         apartamento?: null | string;
         area: null | number | string;
         codigo: string;
+        enterprise_id: null | number | string;
         lote: null | string;
         preco_tabela: null | number | string;
         quadra: null | string;
@@ -173,11 +176,24 @@ export async function POST(request: Request) {
     );
   }
 
-  const [planos, entradaMinimaPercentual] = await Promise.all([
+  const enterpriseDaUnidade = String(unidade.enterprise_id ?? "").trim() || paiC2xId;
+  const [planos, entradaMinimaPercentual, diasDeVencimento] = await Promise.all([
     planosPublicos(client, ids),
     // O piso do empreendimento, o mesmo que a tela recebeu na rota da situação.
     pisoDeEntradaPublico(client, ids),
+    // O DIA DO CRONOGRAMA É O PRIMEIRO CADASTRADO (0210), pela régua de filho → pai: a unidade
+    // da divisão sem cadastro herda o do pai do espelho. Sem cadastro, ou com a leitura falhando,
+    // os 10 de sempre — a simulação não para por isso (Lucas, 02/10/2026).
+    lerDiasDoEmpreendimento(
+      client,
+      {
+        enterpriseId: enterpriseDaUnidade,
+        paiEnterpriseId: paiC2xId && paiC2xId !== enterpriseDaUnidade ? paiC2xId : null,
+      },
+      "publico/espelho",
+    ),
   ]);
+  const diaDeVencimento = primeiroDia(diasDeVencimento ?? SEM_CADASTRO);
   const plano = planos.find((p) => p.nome === corpo.plano) ?? planos[0];
   if (!plano) {
     return NextResponse.json(
@@ -232,9 +248,10 @@ export async function POST(request: Request) {
       // financiar e a folha sairia com R$ 195.000: a troca silenciosa de que o Lucas reclamou em
       // 22/09 no valor da entrada (*"ele não traz o valor que eu tinha colocado"*), agora no bem.
       bensEPermutas: bens,
-      // O dia é só o que o cronograma precisa para agendar; a folha da simulação não anuncia
-      // vencimento (ver `validadeEmIso` nulo abaixo).
-      diaDeVencimento: 10,
+      // O dia é só o que o cronograma precisa para agendar (o primeiro cadastrado no
+      // empreendimento, ou 10); a folha da simulação não anuncia vencimento (ver `validadeEmIso`
+      // nulo abaixo).
+      diaDeVencimento,
       entradaValor: entrada,
       // Nulo aqui é a data calculada, uma a uma: só sobe o que alguém escolheu de fato.
       entradaDatas,
@@ -285,7 +302,7 @@ export async function POST(request: Request) {
       // a partir de um texto digitado numa página sem login.
       compradores: [],
       cronograma,
-      diaDeVencimento: 10,
+      diaDeVencimento,
       emitidaEmIso: new Date().toISOString(),
       empreendimento: nome,
       logoC2x: logoDoC2x(),

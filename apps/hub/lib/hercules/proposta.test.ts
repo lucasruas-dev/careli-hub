@@ -246,6 +246,14 @@ describe("conferirProposta", () => {
     }
   });
 
+  // Lucas (02/10/2026): os dias cadastrados no empreendimento são ATALHO da tela, não trava. Uma
+  // venda migrada ou um acerto pontual com o cliente num dia fora da lista não pode ser recusado.
+  it("aceita qualquer dia de 1 a 28, mesmo fora dos atalhos (a lista do empreendimento não trava)", () => {
+    for (const dia of [2, 5, 7, 15, 25, 27]) {
+      expect(conferirProposta({ ...PEDIDO, vencimentoDia: dia }, AGORA)).toEqual([]);
+    }
+  });
+
   it("entrada à vista é 1x, e parcela quebrada não é parcela", () => {
     expect(conferirProposta({ ...PEDIDO, entradaVezes: 1 }, AGORA)).toEqual([]);
     expect(campos({ ...PEDIDO, entradaVezes: 2.5 })).toEqual(["entradaVezes"]);

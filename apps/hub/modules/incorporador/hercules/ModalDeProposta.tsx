@@ -18,6 +18,7 @@ import { precoNoPlano } from "@/lib/hercules/ajuste-de-preco";
 // seria a quarta cópia da regra, e a primeira a aceitar `NaN` como bem de verdade.
 import { valeDinheiro } from "@/lib/hercules/bens-e-permutas";
 import { montarCronograma } from "@/lib/hercules/cronograma";
+import type { DiasDeVencimento } from "@/lib/hercules/dias-de-vencimento";
 import { escolherPlanoDaProposta } from "@/lib/hercules/escolher-plano";
 import type { PlanoDaVenda } from "@/lib/hercules/fluxo-de-venda";
 import {
@@ -137,6 +138,11 @@ type ReservaNaTela = {
 /** O que o GET entrega — o contrato da rota, escrito do lado de cá. */
 type PortaoDaProposta = {
   credenciamento: CredenciamentoNaTela;
+  /**
+   * Os dias de vencimento do empreendimento da unidade (0210), já com a herança do pai. Nulo ou
+   * ausente (leitura falhou, ou rota de antes desta frente) = os 10 e 20 de sempre, sem aviso.
+   */
+  diasDeVencimento?: DiasDeVencimento | null;
   entradaMinimaPercentual: null | number;
   /** As faixas de prazo deste empreendimento. Vazio = nenhuma cadastrada, e nada muda. */
   faixasDePrazo?: FaixaDePrazo[];
@@ -1120,6 +1126,7 @@ export function ModalDeProposta({
                 >
                   <SimuladorDeProposta
                     aoMudarCondicoes={receberCondicoes}
+                    diasDeVencimento={portao.diasDeVencimento ?? null}
                     entradaMinimaPercentual={portao.entradaMinimaPercentual}
                     faixasDePrazo={portao.faixasDePrazo ?? []}
                     planos={portao.planos}
