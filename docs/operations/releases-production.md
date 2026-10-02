@@ -95,6 +95,31 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Temis] Tela Em assinatura em fila de degraus, e a troca de e-mail na Clicksign cria antes de remover (v1.407.0, melhoria)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; entregue por resumo de entrega (feat/temis-tela-em-assinatura), que trouxe junto a correcao nunca publicada fix/clicksign-troca-so-no-ultimo-degrau.
+- Data e hora local: `2026-10-02 17:37:30 -03:00` (changelog); deploy pronto as 17:42, cerca de 3 min depois do push.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("pode publicar a 1.407.0"); feat/temis-tela-em-assinatura (7df5c19f, fd4cb742, base 1.406.4) com fix/clicksign-troca-so-no-ultimo-degrau (de56aa42, 52f2e1d0, 5574d6ee) dentro, integradas por merge sem conflito. A release/1.407.0 antiga (autonomo no Board, barrada) foi renomeada para release/autonomo-no-board-barrada; o autonomo recebe o proximo numero quando vier`.
+- Escopo publicado: `trocarEmailDoSignatario le os degraus (GET signers), cria o novo e os requisitos ANTES de remover o antigo, grava ordem = ultimo degrau + 1, rele os degraus quando a remocao expira; webhook guarda signer.url (HMAC, so app.clicksign.com); acao "link" na rota do signatario (hub e portal); PainelDaAssinatura como fila de degraus com cabecalho (compradores por ehCompradorNoQuadro, total, venceEm de document.deadline_at, quem esta na vez)`.
+- Commit publicado: `d5346c5423f0bc1fac2dbf8c1e018a3879944401`.
+- Deployment anterior: `dpl_AkgzVJJiKkNgStnj3zzv4LKsgiwX` (commit `2fee05e1`, v1.406.4).
+- Deployment novo: `dpl_5cin53HBU84apVJy5rds4FBjoCCd`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Banco: `sem migracao; o webhook passa a gravar signer.url no payload que ja guardava`.
+- Validacoes executadas:
+  - `revisao por workflow (4 lentes: troca, link, fila, tela; 2 refutadores por achado; 12 agentes)`: `nenhum bloqueante; 2 medios confirmados e 2 rebaixados a baixo, todos na troca sob timeout da Clicksign; link e fila sem achado relevante; 6 baixos`;
+  - `typecheck e suite inteira antes do OK`: `758 arquivos, 11.671 testes`;
+  - `hook de pre-push`: `758 arquivos, 11.671 testes`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.407.0 com buildTag 2026-10-02-temis-tela-em-assinatura; /api/temis/trabalhos, /api/temis/assinatura/signatario (GET e POST) e /api/incorporador/contratos 401 sem sessao`;
+  - `Vercel runtime errors`: `nenhum nos 15 min depois do deploy`.
+- Rollback definido: `Instant Rollback para dpl_AkgzVJJiKkNgStnj3zzv4LKsgiwX (v1.406.4) e seguro, mas volta a troca antiga (remove antes de criar, o caminho do incidente do VOC0306)`.
+- Riscos conhecidos: `(1) remocao do antigo que expira (status 0/5xx) e a releitura ainda o ve: o codigo desfaz o novo, e se a remocao terminar depois a pessoa fica fora com a frase dizendo que nada mudou; conserto: manter o novo e mandar conferir no painel, como no caso da releitura que falha. (2) cadastro novo que expira mas entra na Clicksign sem requisitos: depois do 409 e da remocao manual do antigo, a adocao responde ok sem conferir requisitos. Baixos: troca concorrente do mesmo signatario, teto de 60 s com ate 7 chamadas de 15 s, botoes do convite que voltou fora da coluna no painel largo, leitor do hub ve botoes habilitados (403 ao clicar, ja era assim), link montavel a partir da chave que o leitor recebe (assinar exige o codigo por e-mail)`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `consertos (1) e (2) pela frente da troca de e-mail; 1.407.1 categoria e filho no card`.
+
+Registro de producao:
+
 - Assunto: `[Temis] Nome do empreendimento no card do quadro, em vez da sigla (v1.406.4, interna)`.
 - Squad/agente responsavel: `Zeus (sessao Publicacao)`, a pedido direto do Lucas ("outra coisa simples que vc pode fazer e trazer o nome do empreendimento em vez da sigla").
 - Data e hora local: `2026-10-02 16:12:13 -03:00` (changelog); deploy pronto cerca de 3 min depois do push.
