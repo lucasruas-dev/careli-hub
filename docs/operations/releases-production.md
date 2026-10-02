@@ -95,6 +95,32 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Boletos] Boletos com multa de 2% e juros de 1% ao mes, sem os avisos do Asaas (v1.406.1, interna, urgente)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; entregue por resumo de entrega.
+- Data e hora local: `2026-10-02 14:54:27 -03:00` (changelog); deploy pronto cerca de 4 min depois do push.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("pode publicar a 1.406.1"); branch fix/boletos-asaas-sem-notificacao-com-multa (441f4692, base 1.406.0). Urgente: os 320 boletos de outubro estavam segurados esperando esta publicacao, com vencimentos nos dias 2, 4 e 5`.
+- Escopo publicado: `cliente do Asaas com notificationDisabled true (criado assim, ou PUT /customers/{id} antes do POST /payments, falhando fechado sem confirmacao); cobranca com fine PERCENTAGE 2 e interest 1 ao mes; edicao reenvia os encargos quando valor ou vencimento mudam; listagens usam originalValue ?? value`.
+- Commit publicado: `1f6b574fa51a416e3d3ff35947aea2350e05a5b1`.
+- Deployment anterior: `dpl_DAQ5rFnmpePQ8jR7JJXWCyjao5Yu` (commit `61a9fdaf`, v1.406.0).
+- Deployment novo: `dpl_DPbjwCMhaecXeoTvzwunBDDJm492`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Banco: `sem migracao e sem escrita; no Asaas, PUT /customers uma vez por cliente nas 7 contas de boleto`.
+- Validacoes executadas:
+  - `formato conferido na doc oficial do Asaas (criar cobranca e atualizar cliente, 02/10/2026)`: `fine {type FIXED|PERCENTAGE, value}, interest {value} = percentual ao mes, notificationDisabled boolean no cliente`;
+  - `vitest lib/apolo/boletos e rotas de boletos`: `15 arquivos, 193 testes`;
+  - `hook de pre-push`: `754 arquivos, 11.535 testes`;
+  - `revisao por workflow`: `NAO feita, pela urgencia (mudanca restrita a emissao)`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.406.1 com buildTag 2026-10-02-boletos-multa-juros-sem-aviso-asaas; /api/boletos/emitir 401 sem sessao`.
+- Logs recentes: `sem erro nas rotas de boletos nos ultimos 15 min`.
+- Rollback definido: `Instant Rollback para dpl_DAQ5rFnmpePQ8jR7JJXWCyjao5Yu (v1.406.0) e seguro; boletos ja emitidos com multa e juros continuam com eles no Asaas`.
+- Riscos conhecidos: `PUT /payments da edicao manda corpo parcial (ja era assim); CPF com dois cadastros na mesma conta so tem o primeiro desligado (busca limit=1); o template do WhatsApp nao menciona multa e juros`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `emitir 1 boleto numa carteira teste e conferir no painel do Asaas multa, juros e notificacoes desligadas; depois disparar o lote de 320`.
+
+Registro de producao:
+
 - Assunto: `[Apolo/Politicas comerciais + Hercules/proposta] Dias de vencimento da parcela por empreendimento (v1.406.0)`.
 - Squad/agente responsavel: `Zeus (sessao Publicacao)`; entregue por resumo de entrega.
 - Data e hora local: `2026-10-02 11:44:54 -03:00` (changelog); deploy pronto cerca de 3,5 min depois do push.
