@@ -95,6 +95,32 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Temis/Hades] O reenvio do convite de assinatura volta a funcionar (v1.404.1, interna)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; construido pela sessao Plantao (commit 015e7698 sobre a base de 29/09, sem push) e integrado pela Publicacao.
+- Data e hora local: `2026-10-02 07:37:20 -03:00` (changelog); deploy pronto cerca de 3 min depois do push.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("pode publicar a 1.404.1"); pedido da Nivea (Temis, 01/10): "Nao consigo reenviar os contratos"`.
+- Escopo publicado: `reenviarConvite aceita o id que veio no webhook (signer.key = id REST da Clicksign) sem escrever em temis_envelopes; travas no servidor antes da Clicksign (estado terminal, chave que nao e id, id no quadro ou no payload deste envelope, e-mail repetido, quem assinou ou recusou pelo payload); quadroComATroca sem chave tmp:N; regra do "@" no servidor (chaveDaClicksign); mesma frase nas duas telas`.
+- Integracao: `a entrega estava 89 commits atras; um conflito no card da Temis (tela-de-trabalho.tsx) resolvido juntando o lapis de Sem noticia (1.403.2) e a trava podeTrocarEmail do plantao nos dois botoes de corrigir. O changelog do plantao prometia "Corrigir o e-mail" no termo de acordo do Hades, que nao existe; a frase foi tirada`.
+- Commit publicado: `ed19f44521249da5ce7cc05ea8e0edc86ae108ce`.
+- Deployment anterior: `dpl_8P5yput8PXfidCvmALeQJPB3Vs76` (commit `47e19c01`, v1.404.0).
+- Deployment novo: `dpl_3Uki4eXLYNQftd7rpyNLSBc5V31G`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Banco: `sem migracao; o reenvio nao escreve em temis_envelopes`.
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `suite completa e hook de pre-push`: `745 arquivos, 11.393 testes`;
+  - `revisao por workflow (8 agentes)`: `troca de e-mail de ponta a ponta mantem as correcoes de hoje (sem group, bulk_requirements, 404 segue); reenvio nao alcanca outro envelope nem quem assinou; nada passou a gravar diferente; medicao: 29 envelopes Clicksign, 18 vivos destravados (4 Temis, 14 Hades), 67 pessoas a convidar (27 Temis, 40 Hades), 55/55 chaves iguais ao signer.key`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.404.1 com buildTag 2026-10-01-reenvio-usa-a-key-do-webhook; rotas do signatario e do termo de acordo 401 sem sessao`.
+- Logs recentes: `sem erro nas rotas de assinatura nos ultimos 15 min`.
+- Rollback definido: `Instant Rollback para dpl_8P5yput8PXfidCvmALeQJPB3Vs76 (v1.404.0) e seguro`.
+- Riscos conhecidos: `todos os envelopes vivos sao de assinatura em ordem e o reenvio nao olha a vez (42 dos 67 fora da vez; pela doc da Clicksign so o grupo ativo pode ser notificado, entao o reenvio fora da vez e recusado por ela). Fora desta entrega e ja no ar: corrigir e-mail remove e recria a pessoa e, se ela e a unica do degrau, a fila anda (VOC0306 da Maura: testemunha assinou antes da compradora em 01/10 14:46); conserto e criar antes de remover`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Nivea reenviar os convites, primeiro para quem esta na vez`.
+
+Registro de producao:
+
 - Assunto: `[Apolo/Autonomos + link publico] Link publico do corretor autonomo e tela Autonomos (v1.404.0)`.
 - Squad/agente responsavel: `Zeus (sessao Publicacao)`; construido pela conta de construcao e entregue por resumo de entrega (2a versao).
 - Data e hora local: `2026-10-01 16:18:48 -03:00` (changelog); deploy pronto cerca de 4 min depois do push.
@@ -103,7 +129,7 @@ Registro de producao:
 - Escopo publicado: `paginas e rotas publicas /publico/autonomo, /api/publico/autonomo/iniciar e /cadastro (envio grava so o pedido em apolo_audit_events); token do autonomo so faz extract no /api/publico/cad/ocr; tela Apolo > Autonomos e rotas internas so para a coordenacao; aprovacao cria/acrescenta a ficha, papel ativo, codigo CA e documentos`.
 - Commit publicado: `47e19c01`.
 - Deployment anterior: `dpl_BTgjjjr95eKKa4sdqbju4T3cqTm5` (commit `c9ee4d22`, v1.403.5).
-- Deployment novo: `ver list_deployments do commit 47e19c01`.
+- Deployment novo: `dpl_8P5yput8PXfidCvmALeQJPB3Vs76`.
 - Dominio alvo autorizado: `https://c2x.app.br`.
 - Banco: `sem migracao`.
 - Validacoes executadas:
