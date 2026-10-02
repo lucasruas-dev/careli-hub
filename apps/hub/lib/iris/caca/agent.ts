@@ -2,6 +2,10 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getAnthropicClient, resolveClaudeModel } from "@/lib/ai/claude";
+import {
+  MOTIVO_HANDOFF_COMPRADOR_CECILIO,
+  ehCompradorCecilio,
+} from "@/lib/apolo/comprador-cecilio";
 import { runClaudeAgent } from "@/lib/ai/claude-agent";
 import {
   CACA_AGENT_VERSION,
@@ -176,6 +180,9 @@ export async function runCacaClaudeTurn({
   // entity_id do Apolo do contato (casado por TELEFONE) — pra tools que GRAVAM na ficha do prospect
   // (registrar_chave_pix). Persistido no state pra sobreviver entre turnos.
   let apoloEntityId: string | null = state.apoloEntityId ?? null;
+  // O telefone casou com um cliente da carteira Cecílio Rocha: a Cacá não consulta nada
+  // financeiro dele e o atendimento já nasce transferido para um analista (ver o handoff abaixo).
+  let compradorCecilio = false;
 
   // Regra do Lucas: se o telefone do WhatsApp bate com o telefone do cadastro (comprador com
   // unidade), a identidade está confirmada — pode consultar e enviar boleto SEM pedir CPF.
@@ -194,6 +201,8 @@ export async function runCacaClaudeTurn({
         // entity_id pra registrar_chave_pix gravar na ficha certa.
         apoloEntityId = byPhone.entityId ?? apoloEntityId;
 
+        compradorCecilio = ehCompradorCecilio(byPhone.profiles);
+
         const isRealtor = byPhone.profiles.some((profile) =>
           ["imobiliaria", "corretor"].includes(profile.toLowerCase()),
         );
@@ -205,7 +214,10 @@ export async function runCacaClaudeTurn({
         }
       }
 
+      // ⚠️ Quem também é comprador do C2X NÃO é verificado pelo telefone quando tem o papel da
+      // Cecílio: a Cacá só enxerga o boleto do C2X e responderia sobre ele como se fosse tudo.
       if (
+        !compradorCecilio &&
         byPhone?.hasBuyerProfile &&
         byPhone.hasUnitPortfolio &&
         byPhone.c2xClientId
@@ -227,7 +239,7 @@ export async function runCacaClaudeTurn({
   // A persona pede uma reconfirmação leve do nome antes de expor financeiro.
   let identidadeLembrada: { displayName: string | null } | null = null;
 
-  if (!identityVerified) {
+  if (!identityVerified && !compradorCecilio) {
     const lembrada = lerIdentidadeLembrada(contact);
 
     if (lembrada) {
@@ -263,7 +275,11 @@ export async function runCacaClaudeTurn({
     customerProfileLabel,
     entityId: apoloEntityId,
     boletosGerados: [],
-    handoff: { reason: null, requested: false },
+    // ⚠️ A TRAVA DA CECÍLIO NÃO DEPENDE DO MODELO OBEDECER: a transferência já sai registrada aqui,
+    // e o texto da persona (`describeApoloProfile`) só orienta o que ela escreve ao cliente.
+    handoff: compradorCecilio
+      ? { reason: MOTIVO_HANDOFF_COMPRADOR_CECILIO, requested: true }
+      : { reason: null, requested: false },
     identityVerified,
     imobiliariaC2xClientId,
     imobiliariaName,

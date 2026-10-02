@@ -452,8 +452,13 @@ export function EmailChannelChip({
 // Regra Careli: cliente vira Comprador (tem carteira = snapshot financeiro) ou
 // Prospect (sem). Demais papéis: nome curto (Imob./Incorp./Forn./Parc.).
 // A bolinha de adimplência (verde/vermelho) só existe pro Comprador.
+//
+// "comprador cecilio" (o rótulo normalizado de `comprador_cecilio`) fica logo depois do usuário, SEM
+// bolinha: a adimplência da Cecílio mora no Asaas, e a Iris não tem esse dado. Quem é comprador do
+// C2X e da Cecílio continua lido como comprador do C2X.
 const PROFILE_PRIORITY = [
   "usuario",
+  "comprador cecilio",
   "incorporador",
   "imobiliaria",
   "corretor",
@@ -463,6 +468,7 @@ const PROFILE_PRIORITY = [
 ];
 
 const PROFILE_LABELS: Record<string, string> = {
+  "comprador cecilio": "Comprador Cecílio",
   imobiliaria: "Imob.",
   corretor: "Corretor",
   incorporador: "Incorp.",
@@ -476,6 +482,8 @@ function normalizeProfileKey(value: string): string {
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
+    // O id cru do papel ("comprador_cecilio") e o rótulo ("Comprador Cecílio") viram a mesma chave.
+    .replace(/_/g, " ")
     .trim();
 }
 

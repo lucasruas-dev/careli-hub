@@ -93,6 +93,7 @@ function normalizeProfile(value: string | null): ApoloProfile | null {
     "acesso_incorporador",
     "pessoa_fisica",
     "pessoa_juridica",
+    "comprador_cecilio",
   ]);
 
   return value && allowed.has(value) ? (value as ApoloProfile) : null;

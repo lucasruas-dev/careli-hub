@@ -117,6 +117,10 @@ import {
   IrisCobrancaContextSidebar,
   type CobrancaProposalRenderArgs,
 } from "./blocks/conversation/iris-cobranca-context";
+import {
+  ROTULO_COMPRADOR_CECILIO,
+  ehCompradorCecilio,
+} from "@/lib/apolo/comprador-cecilio";
 import type { IdentidadeDoContato } from "@/lib/iris/apolo/identidade-contato";
 
 import {
@@ -2297,6 +2301,12 @@ function IrisConversationPanel({
 
     if (isUsuario) {
       return "Prospect";
+    }
+
+    // Cliente da Cecílio: papel GRAVADO, sem selo de adimplência (`contactDelinquency` só existe
+    // para quem tem carteira do C2X). Sem este ramo, o chip mostrava o id cru "comprador_cecilio".
+    if (ehCompradorCecilio(apoloProfiles)) {
+      return ROTULO_COMPRADOR_CECILIO;
     }
 
     const role = apoloProfiles.find((profile) => {
@@ -7605,6 +7615,9 @@ function pickIrisApoloPhone(entity: unknown) {
 
 function formatApoloProfileLabel(profiles: string[], kind?: string) {
   const labels = profiles
+    .map((profile) =>
+      ehCompradorCecilio([profile]) ? ROTULO_COMPRADOR_CECILIO : profile,
+    )
     .map((profile) => profile.replace(/_/g, " ").replace(/\s+/g, " ").trim())
     .filter(Boolean)
     .map((profile) => formatIrisDisplayName(profile));

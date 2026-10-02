@@ -10,6 +10,7 @@ import {
   Landmark,
   LayoutDashboard,
   LayoutGrid,
+  ReceiptText,
   ShieldCheck,
   Store,
   UserRoundCog,
@@ -55,6 +56,7 @@ export type ApoloScreenItem = {
 export const apoloProfileLabels = {
   acesso_incorporador: "Incorporador",
   colaborador: "Colaborador",
+  comprador_cecilio: "Comprador Cecílio",
   corretor: "Corretor",
   fornecedor: "Fornecedor",
   imobiliaria: "Imobiliaria",
@@ -71,6 +73,7 @@ export const apoloProfileLabels = {
 export const apoloProfileOptions = [
   "usuario",
   "prospect",
+  "comprador_cecilio",
   "incorporador",
   "imobiliaria",
   "corretor",
@@ -170,6 +173,7 @@ export function getApoloProfileIcon(profile: ApoloProfile): LucideIcon {
   const icons = {
     acesso_incorporador: BarChart3,
     colaborador: UserRoundCog,
+    comprador_cecilio: ReceiptText,
     corretor: IdCard,
     fornecedor: BriefcaseBusiness,
     imobiliaria: Store,

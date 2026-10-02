@@ -30,6 +30,10 @@ import {
   loadC2xVendasPorEmpreendimento,
   loadC2xVendasPorImobiliaria,
 } from "@/lib/guardian/c2x-analytics";
+import {
+  MOTIVO_HANDOFF_COMPRADOR_CECILIO,
+  ehCompradorCecilio,
+} from "@/lib/apolo/comprador-cecilio";
 import { lookupApoloByDocument } from "@/lib/iris/caca-agent";
 import { loadHermesResumo } from "@/lib/iris/hermes-analytics";
 import { loadInfraSaude } from "@/lib/iris/infra-analytics";
@@ -90,10 +94,18 @@ export type CacaToolContext = {
 // Traduz os perfis crus do Apolo (usuario/colaborador/imobiliaria/...) num rotulo curto e
 // humano — e sinaliza quem NAO tem carteira, pra Caca contextualizar em vez de dizer que o
 // sistema falhou. Exportado porque o agent.ts tambem usa na verificacao por telefone.
+export const PERFIL_DESCRITO_COMPRADOR_CECILIO =
+  "cliente da carteira Cecílio Rocha — o atendimento é SÓ com um analista da Careli. Você não tem o financeiro desta carteira: não consulte, não informe e não comente parcela, boleto, valor ou situação, e nunca diga que o cliente está sem pendência. A transferência já está registrada; avise com naturalidade que um analista dá continuidade";
+
 export function describeApoloProfile(
   profiles: readonly string[] | null | undefined,
 ): string | null {
   const set = new Set((profiles ?? []).map((profile) => profile.toLowerCase()));
+
+  // PRIMEIRO, antes do comprador do C2X: quem é das duas carteiras também não é atendido sozinho.
+  if (ehCompradorCecilio(profiles)) {
+    return PERFIL_DESCRITO_COMPRADOR_CECILIO;
+  }
 
   if (set.has("usuario")) {
     return "comprador (tem carteira/parcelas)";
@@ -1384,6 +1396,17 @@ async function validarIdentidade(
 
   if (!match) {
     return "Documento não encontrado no nosso cadastro. Não dá pra liberar dado por aqui — transfira para um atendente validar o contrato com segurança.";
+  }
+
+  // ⚠️ A TRAVA DA CECÍLIO (02/10/2026). Sem ela, CPF e nome conferiam, a identidade era marcada
+  // como confirmada com c2xClientId nulo, e o financeiro respondia "sem carteira" para quem está
+  // em atraso na Cecílio. A identidade NÃO é confirmada e a transferência sai registrada aqui,
+  // sem depender de o modelo chamar `transferir_para_humano`.
+  if (ehCompradorCecilio(match.profiles)) {
+    context.handoff = { reason: MOTIVO_HANDOFF_COMPRADOR_CECILIO, requested: true };
+    context.customerProfileLabel = PERFIL_DESCRITO_COMPRADOR_CECILIO;
+
+    return "Cadastro localizado na carteira Cecílio Rocha. Você NÃO atende o financeiro desta carteira e a identidade NÃO foi confirmada por aqui: a transferência para um analista da Careli já está registrada. Não informe nem comente parcela, boleto, valor ou situação, e não diga que o cliente está sem pendência. Avise com naturalidade que um analista dá continuidade.";
   }
 
   // Antes recusava quem nao fosse comprador-com-unidade. Agora atende TODO perfil

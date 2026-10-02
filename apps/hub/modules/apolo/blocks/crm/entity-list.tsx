@@ -22,6 +22,8 @@ import type { ApoloProfileFilter } from "../../types/apolo-local";
 const CRM_FILTERS: { label: string; value: ApoloProfileFilter }[] = [
   { label: "Comprador", value: "comprador" },
   { label: "Prospect", value: "prospect" },
+  // Papel GRAVADO (apolo_entity_profiles), não derivado: o servidor filtra pela tabela de papéis.
+  { label: "Comprador Cecílio", value: "comprador_cecilio" },
   { label: "Imobiliaria", value: "imobiliaria" },
   { label: "Corretor", value: "corretor" },
   { label: "Fornecedor", value: "fornecedor" },

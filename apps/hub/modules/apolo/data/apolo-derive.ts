@@ -231,8 +231,12 @@ export function codigoDoCorretorDaFicha(entity: ApoloEntity): null | string {
 }
 
 export function primaryBusinessProfile(entity: ApoloEntity): ApoloProfile {
+  // `comprador_cecilio` logo depois do 'usuario': sem isto, o cliente da Cecílio (que só tem
+  // esse papel e o PF/PJ) aparecia no resumo da ficha como "Pessoa fisica". Quem é comprador do
+  // C2X E da Cecílio continua sendo lido primeiro como cliente do C2X.
   const profilePriority = [
     "usuario",
+    "comprador_cecilio",
     "incorporador",
     "imobiliaria",
     "corretor",

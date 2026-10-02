@@ -83,6 +83,9 @@ function normalizeProfile(
     "acesso_incorporador",
     "pessoa_fisica",
     "pessoa_juridica",
+    // Sem ele aqui, o filtro "Comprador Cecílio" do CRM chegava ao servidor como "sem filtro" e
+    // listava todo mundo.
+    "comprador_cecilio",
   ]);
 
   return value &&

@@ -69,6 +69,7 @@ const localDevPhoneMatchCache = new Map<
 const apoloProfileLabels: Record<string, string> = {
   acesso_incorporador: "Incorporador",
   colaborador: "Colaborador",
+  comprador_cecilio: "Comprador Cecílio",
   corretor: "Corretor",
   fornecedor: "Fornecedor",
   imobiliaria: "Imobiliaria",
@@ -79,8 +80,12 @@ const apoloProfileLabels: Record<string, string> = {
   usuario: "Usuario",
 };
 
+// `comprador_cecilio` ANTES do PF/PJ: o primeiro rótulo vira o `profileLabel` do card, e sem isto o
+// cliente da Cecílio aparecia na Iris como "Pessoa fisica". Ele nunca ganha `delinquency`: o selo vem
+// de `apolo_financeiro_por_entidade`, que só o C2X alimenta, e a Cecílio não está lá.
 const apoloProfileOrder: string[] = [
   "usuario",
+  "comprador_cecilio",
   "pessoa_fisica",
   "pessoa_juridica",
   "imobiliaria",

@@ -23,6 +23,7 @@ import {
 } from "./c2x-fields";
 import { C2X_PROFISSOES } from "./c2x-professions";
 import { normalizarProfissaoLivre } from "./profissao";
+import { ehCompradorCecilio, unidadesDaCarteiraCecilio } from "./comprador-cecilio";
 import { documentoParaBusca } from "@/lib/iris/apolo/busca-por-numero";
 import { importarCreciDoC2x, type CreciDoC2x } from "@/lib/apolo/importar-creci";
 import {
@@ -3575,6 +3576,9 @@ function cadastroFromApoloMetadata(
     cadastroEditado?: Record<string, unknown>;
     source?: string;
   } | null;
+  if (meta?.source === "cecilio" && meta.cadastro) {
+    return cadastroDaCarteiraCecilio(row, enderecos, cadastroEfetivo(meta));
+  }
   if (meta?.source !== "apolo" || !meta.cadastro) return undefined;
 
   // A correção que o operador faz no Board entra POR CIMA. Sem isto, o telefone (ou qualquer
@@ -3617,6 +3621,56 @@ function cadastroFromApoloMetadata(
     schooling: labelDoLookup(C2X_ESCOLARIDADE, c.escolaridadeId),
     sex: labelDoLookup(C2X_SEXO, c.sexoId),
     socialContractUpdatedAt: dataParaBr(c.dataAtualizacaoCadastral),
+    socialName: null,
+    spouse: null,
+    state: end?.state ?? row.primary_state ?? null,
+    street: end?.value ?? null,
+    zipcode: end?.postalCode ?? null,
+  };
+}
+
+// O CADASTRO DO CLIENTE DA CECÍLIO, como o LSoft o tem (carga de 02/10/2026,
+// scripts/apolo/importar-compradores-cecilio.mjs). Diferente do cadastro do wizard, os campos chegam
+// como TEXTO ("CASADO", "COMERCIANTE"), e não como id das tabelas do C2X: passar por `labelDoLookup`
+// apagaria todos. Campo que o LSoft não tem fica nulo, e a tela mostra "-".
+function cadastroDaCarteiraCecilio(
+  row: ApoloEntityRow,
+  enderecos: ApoloAddress[],
+  c: Record<string, unknown>,
+): ApoloC2xCadastro {
+  const isCompany = row.entity_kind === "pj";
+  const end = enderecos[0];
+  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+
+  return {
+    age: null,
+    birthday: dataParaBr(c.dataNascimento),
+    city: end?.city ?? row.primary_city ?? null,
+    civilState: str(c.estadoCivil),
+    cnpj: isCompany ? row.document_masked : null,
+    companySize: null,
+    complement: end?.complement ?? null,
+    cpf: isCompany ? null : row.document_masked,
+    creciNumber: null,
+    creciValidate: null,
+    district: end?.district ?? null,
+    fantasyName: row.trade_name ?? null,
+    isCompany,
+    legalRepresentative: null,
+    motherName: str(c.nomeMae),
+    municipalInscription: null,
+    nacionality: str(c.nacionalidade),
+    naturalness: str(c.naturalidade),
+    nire: null,
+    number: end?.number ?? null,
+    openCompanyDate: null,
+    profession: str(c.profissao),
+    propertyRegime: str(c.regimeBens),
+    rg: str(c.rg),
+    salaryRange: str(c.faixaRenda),
+    schooling: str(c.escolaridade),
+    sex: str(c.sexo),
+    socialContractUpdatedAt: null,
     socialName: null,
     spouse: null,
     state: end?.state ?? row.primary_state ?? null,
@@ -3674,6 +3728,11 @@ function mapApoloEntityRow(
     // O código do corretor autônomo (0193). Vem da COLUNA e não do metadata de propósito: o sync do
     // C2X reescreve o jsonb inteiro (o mesmo motivo da 0183, do CRECI).
     ...(row.broker_code?.trim() ? { codigoCorretor: row.broker_code.trim() } : {}),
+    // As unidades da Cecílio moram no metadata da ficha, e não em `apolo_commercial_links` (que é a
+    // carteira do C2X). Só para quem tem o papel: metadata velho sem o papel não vira carteira.
+    ...(ehCompradorCecilio(profiles)
+      ? { carteiraCecilio: unidadesDaCarteiraCecilio(row.metadata) }
+      : {}),
     commercialLinks,
     confidenceScore: clampScore(row.quality_score ?? 0),
     contacts: related.contacts.map(mapApoloContactRow),

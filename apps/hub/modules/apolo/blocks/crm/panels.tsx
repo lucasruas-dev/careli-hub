@@ -22,6 +22,7 @@ import type { LucideIcon } from "lucide-react";
 
 import { Tooltip } from "@repo/uix";
 import { apoloProfileLabels } from "@/lib/apolo/catalog";
+import { rotuloDaUnidadeCecilio } from "@/lib/apolo/comprador-cecilio";
 import { arquivoParaDrive } from "../../lib/document-capture";
 import type { ApoloAuditSignal, ApoloEntity, ApoloInstallment, ApoloTimelineEvent } from "@/lib/apolo/types";
 import type { ApoloDocumentItem } from "@/lib/apolo/documentos";
@@ -113,6 +114,7 @@ function SummaryPanel({
   const primaryPhone = primaryPhoneContact(entity);
   const primaryAddress = entity.addresses[0];
   const acquiredUnits = acquiredUnitsCount(entity);
+  const unidadesCecilio = entity.carteiraCecilio ?? [];
   const commercialRelationship = commercialRelationshipLabel(entity);
   const isCompany = isCompanyEntity(entity);
   const isUsuario = entity.profiles.includes("usuario");
@@ -155,9 +157,28 @@ function SummaryPanel({
             label="Situacao"
             value={isUsuario ? buyerStatus : "Nao aplicavel"}
           />
-          <InfoTile label="Unidades adquiridas" value={String(acquiredUnits)} />
+          <InfoTile
+            label="Unidades adquiridas"
+            value={String(acquiredUnits + unidadesCecilio.length)}
+          />
         </div>
       </section>
+
+      {/* Carteira Cecilio: as unidades que a cobranca vai tratar. Sem valor nem situacao do boleto,
+          de proposito: isso mora no Asaas e e lido ao vivo pela aba Boletos do portal. */}
+      {unidadesCecilio.length ? (
+        <section className="rounded-xl border border-line bg-surface p-4">
+          <PanelTitle eyebrow="Carteira Cecílio Rocha" title="Unidades deste cliente" />
+          <div className="mt-4 flex flex-wrap gap-1.5">
+            {unidadesCecilio.map((unidade) => (
+              <Pill key={rotuloDaUnidadeCecilio(unidade)}>{rotuloDaUnidadeCecilio(unidade)}</Pill>
+            ))}
+          </div>
+          <p className="m-0 mt-3 text-xs font-medium text-ink-muted">
+            A situação de cada boleto está na aba Boletos do portal da Cecílio Rocha.
+          </p>
+        </section>
+      ) : null}
 
       {/* Ultimos eventos + contato/vinculo */}
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">

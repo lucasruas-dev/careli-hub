@@ -11,7 +11,11 @@ export type ApoloProfile =
   | "pessoa_juridica"
   // Papel de nascimento de quem quer adquirir uma unidade (cadastro pelo formulário).
   // Acumula com os outros: um corretor que resolve comprar vira "corretor + prospect".
-  | "prospect";
+  | "prospect"
+  // Cliente da carteira da Cecílio Rocha, carregado do LSoft e dos boletos (02/10/2026). Papel
+  // GRAVADO, e não o "Comprador" calculado da carteira do C2X: a Cecílio não tem vínculo com o
+  // legado. Ver lib/apolo/comprador-cecilio.ts.
+  | "comprador_cecilio";
 
 export type ApoloEntityStatus =
   | "active"
@@ -224,6 +228,9 @@ export type ApoloEntity = {
   documents: ApoloDocumentSignal[];
   documentMasked: string;
   hadesClientId?: string;
+  // As unidades da carteira Cecílio (`metadata.cecilio.unidades`), só em quem tem o papel
+  // `comprador_cecilio`. Ausente nos demais.
+  carteiraCecilio?: { carteira: string; unidade: string | null }[];
   // True quando o cliente está na CARTEIRA do C2X (faturado vigente com pagamento) —
   // a definição oficial de Comprador. Setado no loader; ausente = usar heurística.
   isBuyer?: boolean;

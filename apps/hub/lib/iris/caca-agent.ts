@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import {
+  MOTIVO_HANDOFF_COMPRADOR_CECILIO,
+  RESPOSTA_HANDOFF_COMPRADOR_CECILIO,
+  ehCompradorCecilio,
+} from "@/lib/apolo/comprador-cecilio";
 import { prepareBoletoResendAction } from "@/lib/guardian/asaas";
 import { loadHadesAttendanceClient } from "@/lib/guardian/attendance";
 import type { CacaInboundMediaAnalysis } from "@/lib/iris/caca-media-analysis";
@@ -1214,6 +1219,14 @@ async function resolveBoletoCustomerAccess({
     tool: "apolo_validate_customer_phone",
   });
 
+  // ⚠️ ANTES do comprador do C2X, de propósito: quem também é comprador da Cecílio vai para o
+  // humano mesmo tendo carteira no legado, porque a Cacá não enxerga o boleto da Cecílio e
+  // responderia sobre o C2X como se fosse tudo.
+  const cecilioPeloTelefone = acessoDoCompradorCecilio(phoneMatch, trace, toolsUsed);
+  if (cecilioPeloTelefone) {
+    return cecilioPeloTelefone;
+  }
+
   if (
     phoneMatch?.hasBuyerProfile &&
     phoneMatch.hasUnitPortfolio &&
@@ -1231,6 +1244,11 @@ async function resolveBoletoCustomerAccess({
   const storedCandidate = state.apoloEntityId
     ? await lookupApoloByEntityId(client, state.apoloEntityId)
     : null;
+
+  const cecilioGuardado = acessoDoCompradorCecilio(storedCandidate, trace, toolsUsed);
+  if (cecilioGuardado) {
+    return cecilioGuardado;
+  }
 
   if (
     state.awaitingCadastroConfirmation &&
@@ -1323,6 +1341,14 @@ async function resolveBoletoCustomerAccess({
         },
         status: "handoff",
       };
+    }
+
+    // ⚠️ A TRAVA DA CECÍLIO (02/10/2026). Sem ela, CPF e nome conferiam, a ficha virava
+    // "verificada" com c2xClientId nulo e as consultas financeiras respondiam "sem carteira" para
+    // quem está em atraso na Cecílio. Vai para o humano ANTES de pedir o nome.
+    const cecilioPeloDocumento = acessoDoCompradorCecilio(documentMatch, trace, toolsUsed);
+    if (cecilioPeloDocumento) {
+      return cecilioPeloDocumento;
     }
 
     // Antes: se o documento existia mas nao era comprador-com-unidade, encaminhava pro humano.
@@ -1446,6 +1472,41 @@ function askForCpfIdentity({
       identityCandidateUnitCode: unitCode,
     },
     status: "ask",
+  };
+}
+
+/**
+ * O CLIENTE DA CECÍLIO VAI PARA O HUMANO, sem consulta financeira.
+ *
+ * A Cecílio não tem vínculo com o C2X, e a Cacá só sabe ler parcela e boleto do C2X: com a ficha
+ * criada no Apolo, ela confirmaria a identidade e responderia "sem carteira" para quem está devendo.
+ * Devolve `null` para quem não tem o papel `comprador_cecilio`, e aí o fluxo segue como sempre.
+ */
+export function acessoDoCompradorCecilio(
+  registro: Pick<ApoloCustomerRecord, "entityId" | "profiles"> | null | undefined,
+  trace: CacaAgentTraceStep[],
+  toolsUsed: string[],
+): BoletoCustomerAccess | null {
+  if (!registro || !ehCompradorCecilio(registro.profiles)) {
+    return null;
+  }
+
+  traceTool(trace, toolsUsed, {
+    metadata: { entityId: registro.entityId },
+    status: "blocked",
+    summary: "Cliente da carteira Cecilio Rocha: atendimento so com analista, sem consulta financeira.",
+    tool: "apolo_comprador_cecilio",
+  });
+
+  return {
+    reason: MOTIVO_HANDOFF_COMPRADOR_CECILIO,
+    replyText: RESPOSTA_HANDOFF_COMPRADOR_CECILIO,
+    statePatch: {
+      awaitingCadastroConfirmation: false,
+      awaitingCpfDocument: false,
+      handoffRequired: true,
+    },
+    status: "handoff",
   };
 }
 
