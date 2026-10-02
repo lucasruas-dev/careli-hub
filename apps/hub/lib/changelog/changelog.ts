@@ -37,7 +37,7 @@ export type ChangelogEntry = {
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
     buildTag: "2026-10-02-boletos-multa-juros-sem-aviso-asaas",
-    deployedAt: "__HORA_REAL__",
+    deployedAt: "2026-10-02T14:54:27-03:00",
     internal: true,
     modules: [
       {
