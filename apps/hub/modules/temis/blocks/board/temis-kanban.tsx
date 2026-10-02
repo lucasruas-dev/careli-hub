@@ -94,6 +94,15 @@ type TrabalhoDaTela = {
   };
   atividadesFeitas: string[];
   canal: "coordenador" | "hercules" | "iris";
+  /**
+   * A categoria da unidade ("Condomínio"), quando houver. Vai no card entre o empreendimento e a
+   * unidade (Lucas, 02/10/2026: *"quando tiver filho ou categoria, trazer aqui"*).
+   *
+   * ⚠️ OPCIONAL pelo mesmo motivo de `assinaturas`: rota que ainda não manda o campo desenha o card
+   * sem a categoria, como antes. O nome é o de `TrabalhoDoBoard` (`lib/temis/trabalhos-db.ts`),
+   * letra por letra: atravessa a rota como JSON, onde o TypeScript não confere nada.
+   */
+  categoriaNome?: null | string;
   clienteCpf: null | string;
   clienteNome: string;
   /** O que já foi gerado e guardado desta proposta. Vazio = ainda não há papel. */
@@ -630,9 +639,18 @@ function Card({
         {/* O NOME DO EMPREENDIMENTO, E NÃO A SIGLA. Lucas, 02/10/2026: *"trazer o nome do
             empreendimento em vez da sigla"*. É o mesmo campo que a tela de trabalho já mostrava
             (`enterprise_nome`); no produto dividido ele vem como "Vale do Ouro · VOL", o pai na
-            frente e o filho depois. A sigla só aparece se o nome faltar. */}
+            frente e o filho depois. A sigla só aparece se o nome faltar.
+            E A CATEGORIA, QUANDO HOUVER, entre o empreendimento e a unidade (Lucas, 02/10/2026:
+            *"quando tiver filho ou categoria, trazer aqui para gente saber de onde especificamente
+            é"*). O nome e a categoria saem do servidor (`origemDosCards`, lib/temis/origem-do-card). */}
         <p className="mt-0.5 text-[0.7rem] text-ink-muted">
-          {trabalho.empreendimentoNome?.trim() || trabalho.empreendimentoCodigo} · {trabalho.unidade}
+          {[
+            trabalho.empreendimentoNome?.trim() || trabalho.empreendimentoCodigo,
+            trabalho.categoriaNome?.trim(),
+            trabalho.unidade,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </p>
 
         {/* ⚠️ QUANDO CHEGOU E PARA QUANDO ESTÁ (Lucas, 06/09/2026: *"pode continuar trazer o prazo,

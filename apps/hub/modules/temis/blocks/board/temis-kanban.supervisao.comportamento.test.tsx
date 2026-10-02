@@ -13,6 +13,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 //   • desligado: `/api/temis/trabalhos` como sempre, e nenhum selo;
 //   • ligado: `?incluir=incorporadores`, e o card de fora ganha o selo "Incorporador" (o da Careli não);
 //   • o board só-leitura do comercial (`rota`) nunca manda o parâmetro nem pinta selo.
+// E, no mesmo card, de onde ele é (02/10/2026): o nome do empreendimento, a categoria quando houver
+// e a unidade.
 
 (globalThis as unknown as { React: typeof React }).React = React;
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -148,6 +150,51 @@ describe("TemisKanban — supervisão dos cards do incorporador", () => {
     await montar(<TemisKanban enterpriseId={null} />);
 
     expect(cardDe("CLIENTE SEM NOME DE PRODUTO")?.textContent).toContain("GDN · Q01 L01");
+  });
+
+  // Lucas (02/10/2026): *"quando tiver filho ou categoria, trazer aqui para gente saber de onde
+  // especificamente é"*. O pai na frente, o filho, a categoria e a unidade, nessa ordem.
+  it("com categoria, o card mostra o pai, o filho, a categoria e a unidade", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              data: {
+                estagios: ESTAGIOS,
+                trabalhos: [
+                  {
+                    ...card("t-lbf", "Cliente do condomínio", null),
+                    categoriaNome: "Condomínio",
+                    empreendimentoCodigo: "LBF",
+                    empreendimentoNome: "Lagoa Bonita · LBF",
+                    unidade: "Quadra C03 · Lote 07",
+                  },
+                  {
+                    ...card("t-vol", "Cliente sem categoria", null),
+                    categoriaNome: null,
+                    empreendimentoCodigo: "VOL",
+                    empreendimentoNome: "Vale do Ouro · VOL",
+                    unidade: "Quadra 03 · Lote 07",
+                  },
+                ],
+              },
+            }),
+            { headers: { "content-type": "application/json" }, status: 200 },
+          ),
+        ),
+      ),
+    );
+    await montar(<TemisKanban enterpriseId={null} />);
+
+    expect(cardDe("CLIENTE DO CONDOMÍNIO")?.textContent).toContain(
+      "Lagoa Bonita · LBF · Condomínio · Quadra C03 · Lote 07",
+    );
+    // Sem categoria, nada entra entre o empreendimento e a unidade.
+    expect(cardDe("CLIENTE SEM CATEGORIA")?.textContent).toContain(
+      "Vale do Ouro · VOL · Quadra 03 · Lote 07",
+    );
   });
 
   it("o parâmetro soma ao filtro de empreendimento", async () => {
