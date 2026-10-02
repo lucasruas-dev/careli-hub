@@ -95,6 +95,31 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Apolo/Setup e CAD] Certidao de nascimento do cliente solteiro, ligada por empreendimento (v1.405.0)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`; entregue por resumo de entrega.
+- Data e hora local: `2026-10-02 11:15:58 -03:00` (changelog); deploy pronto cerca de 3 min depois do push.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("pode aplicar a 0208 e publicar a 1.405.0"); branch feat/certidao-nascimento-solteiro (5871b90b, base 1.404.1)`.
+- Escopo publicado: `interruptor "Certidao de nascimento" no Setup (aba Credenciamento); com ele ligado, a CAD de PF com estado civil 1 exige a certidao de nascimento (etapa e categoria proprias) no Apolo, no link publico da CAD e no portal; as tres portas leem a chave no servidor. Fora: imobiliaria, autonomo, CAD sem empreendimento, viuvo`.
+- Commit publicado: `f62ee3980542a8c5216cfff5fc0da22efa896251`.
+- Deployment anterior: `dpl_3Uki4eXLYNQftd7rpyNLSBc5V31G` (commit `ed19f445`, v1.404.1).
+- Deployment novo: `dpl_24eLBoERSFpHnggaygCZkEtT9bYz`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Banco: `migration 0208 aplicada antes do push (supabase_migrations 20261002141559): apolo_enterprise_settings.certidao_nascimento_habilitada boolean not null default false; 40 linhas, 0 ligadas, comprovante de renda intacto (3 ligados)`.
+- Validacoes executadas:
+  - `check-types`: `limpo`;
+  - `suite completa e hook de pre-push`: `748 arquivos, 11.454 testes`;
+  - `revisao por workflow (8 agentes)`: `desligado nao muda nada (0 diferencas em 239.728 combinacoes de regra antiga x nova); estado civil 1 = solteiro em todas as fontes; migration segura`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.405.0 com buildTag 2026-10-02-certidao-nascimento-solteiro; settings e CAD publico 401 sem sessao`.
+- Logs recentes: `sem erro nas rotas de settings e CAD nos ultimos 15 min`.
+- Rollback definido: `Instant Rollback para dpl_3Uki4eXLYNQftd7rpyNLSBc5V31G (v1.404.1) e seguro; a coluna da 0208 fica sem uso`.
+- Riscos conhecidos: `ligar o interruptor com uma CAD de solteiro ja aberta faz o envio dela ser recusado sem lugar para anexar (recarregar e refazer); texto do Setup diz que o viuvo manda certidao, mas hoje nao manda nenhuma; o PAN-124 tem outra migration numerada 0208 ainda nao commitada (renumerar na integracao)`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `ligar o interruptor no empreendimento que pedir, num momento sem CAD de solteiro em andamento`.
+
+Registro de producao:
+
 - Assunto: `[Temis/Hades] O reenvio do convite de assinatura volta a funcionar (v1.404.1, interna)`.
 - Squad/agente responsavel: `Zeus (sessao Publicacao)`; construido pela sessao Plantao (commit 015e7698 sobre a base de 29/09, sem push) e integrado pela Publicacao.
 - Data e hora local: `2026-10-02 07:37:20 -03:00` (changelog); deploy pronto cerca de 3 min depois do push.
