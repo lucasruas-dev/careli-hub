@@ -39,7 +39,16 @@ let hospedeiro: HTMLDivElement;
 /** O que a carga do card devolve neste teste. */
 let carga: { assinatura: unknown; estagio: string; estadoDoEnvelope: string };
 
-const pessoa = (chave: string, nome: string, papel: string, posicao: null | number, patch: Record<string, unknown> = {}) => ({
+/** Uma pessoa como a carga do card a manda (a forma de `SignatarioNaTela`). */
+type PessoaNaCarga = Record<string, unknown> & { assinouEm: null | string; chave: string; posicao: null | number };
+
+const pessoa = (
+  chave: string,
+  nome: string,
+  papel: string,
+  posicao: null | number,
+  patch: Record<string, unknown> = {},
+): PessoaNaCarga => ({
   assinouEm: null,
   chave,
   comecouEm: null,
