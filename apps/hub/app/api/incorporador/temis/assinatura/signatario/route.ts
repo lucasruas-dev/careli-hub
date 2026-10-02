@@ -5,6 +5,7 @@ import { autorizarTemisDoPortal } from "@/lib/temis/portao-do-portal";
 //
 //   POST { acao: "reenviar",     envelopeId, signerId }
 //   POST { acao: "trocar_email", email, envelopeId, signerId }
+//   POST { acao: "link",         envelopeId, signerId }  → { data: { link } }, o link do convite
 //
 // ⚠️ UM CÓDIGO SÓ: `consertarSignatario` (`lib/temis/assinatura-servico.ts`) é a função do hub, com
 // a mesma leitura do envelope no nosso banco antes de falar com a Clicksign e a mesma recusa de

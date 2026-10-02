@@ -219,6 +219,71 @@ function eventosComARaiz(payload: unknown): EventoDoDocumento[] {
   return [...doDocumento, { dados: objeto(raiz.data), nome, quando: emIso(raiz.occurred_at) }];
 }
 
+// ── O LINK DE ASSINATURA ────────────────────────────────────────────────────
+
+/** O tamanho máximo de um link de assinatura: os reais têm ~100 caracteres. */
+const TETO_DO_LINK = 300;
+
+/**
+ * O LINK É DA CLICKSIGN? — `https://app.clicksign.com/...`, no caminho da assinatura, ou nada.
+ *
+ * ⚠️ ESTE LINK VAI PARA O CLIENTE PELA MÃO DO NOSSO ATENDIMENTO, e por isso a régua é estreita. Lucas,
+ * 02/10/2026: *"quero ter esse link para mandar para o cliente, tem hora que ele não acha o link no
+ * e-mail"*. Um link de outro endereço que entrasse aqui seria encaminhado ao cliente por nós: só
+ * passa https, o host exato `app.clicksign.com`, sem usuário, senha nem porta, e só os dois caminhos
+ * de assinatura que a Clicksign usa. O formato real (fixture `clicksign-sign-com-bounce.json`) é
+ * `/notarial/widget/signatures/<id>/redirect`.
+ */
+export function linkDeAssinaturaValido(bruto: unknown): null | string {
+  const valor = texto(bruto);
+  if (!valor || valor.length > TETO_DO_LINK) return null;
+  let url: URL;
+  try {
+    url = new URL(valor);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.hostname !== "app.clicksign.com") return null;
+  if (url.username || url.password || url.port || url.search || url.hash) return null;
+  const caminho = /^\/(?:notarial\/widget\/signatures\/[A-Za-z0-9-]+\/redirect|sign\/[A-Za-z0-9-]+)\/?$/;
+  return caminho.test(url.pathname) ? url.toString() : null;
+}
+
+/**
+ * O LINK DE ASSINATURA DESTA PESSOA, lido no payload do webhook.
+ *
+ * ⚠️ O HISTÓRICO INTEIRO VEM EM TODO PAYLOAD, E É ISSO QUE FAZ O LINK EXISTIR PARA TODO MUNDO. O
+ * `add_signer` de cada pessoa (com `data.signers[].url`) fica em `document.events[]`, então qualquer
+ * aviso novo do envelope (alguém abriu, alguém assinou) traz o link de todos. Quem foi recadastrado
+ * por uma troca de e-mail tem link NOVO, e o `add_signer` dele vem depois: vale o mais recente.
+ *
+ * ⚠️ SÓ A `key` CASA, NUNCA O E-MAIL. A `signer.key` do webhook é o id REST (58 de 58 iguais ao
+ * quadro, medido em 02/10/2026), e um e-mail repetido levaria o link de uma pessoa para outra.
+ */
+export function linkDeAssinaturaNoPayload(payload: unknown, chave: string): null | string {
+  const procurada = chave.trim();
+  if (!procurada) return null;
+  let achado: { link: string; quando: string } | null = null;
+  let saiuEm: null | string = null;
+  for (const evento of eventosComARaiz(payload)) {
+    for (const bruto of pessoasDoEvento(evento.dados)) {
+      const pessoa = objeto(bruto);
+      if (texto(pessoa.key) !== procurada) continue;
+      // ⚠️ QUEM SAIU DO ENVELOPE NÃO TEM LINK QUE SIRVA. O `add_signer` antigo continua no histórico
+      // com o link, mas depois do `remove_signer` ele abre um convite morto.
+      if (evento.nome === "remove_signer") {
+        if (saiuEm === null || evento.quando > saiuEm) saiuEm = evento.quando;
+        continue;
+      }
+      const link = linkDeAssinaturaValido(pessoa.url);
+      if (!link) continue;
+      if (achado === null || evento.quando > achado.quando) achado = { link, quando: evento.quando };
+    }
+  }
+  if (achado === null) return null;
+  return saiuEm !== null && saiuEm >= achado.quando ? null : achado.link;
+}
+
 /**
  * As marcas que o histórico INTEIRO afirma: `sign`, `refusal` e as notícias do convite.
  *
@@ -442,12 +507,15 @@ function metadataReduzido(bruto: unknown): Record<string, unknown> {
   return saida;
 }
 
-function reduzir(bruto: unknown, profundidade: number): unknown {
+/** As estruturas em que `url` é o LINK DE ASSINATURA de uma pessoa (e não a raiz do site deles). */
+const ESTRUTURAS_DO_SIGNATARIO = new Set(["signer", "signers"]);
+
+function reduzir(bruto: unknown, profundidade: number, pai = ""): unknown {
   if (profundidade > 8) return undefined;
   if (Array.isArray(bruto)) {
     return bruto
       .slice(0, TETO_DE_ITENS)
-      .map((item) => reduzir(item, profundidade + 1))
+      .map((item) => reduzir(item, profundidade + 1, pai))
       .filter((item) => item !== undefined);
   }
   if (!bruto || typeof bruto !== "object") return valorSimples(bruto);
@@ -459,8 +527,16 @@ function reduzir(bruto: unknown, profundidade: number): unknown {
     } else if (CHAVES_DE_ESTRUTURA.has(chave)) {
       // ⚠️ `event` PODE SER TEXTO (o nome do evento, em formatos mais enxutos): aí é valor.
       const reduzido =
-        valor && typeof valor === "object" ? reduzir(valor, profundidade + 1) : valorSimples(valor);
+        valor && typeof valor === "object" ? reduzir(valor, profundidade + 1, chave) : valorSimples(valor);
       if (reduzido !== undefined) saida[chave] = reduzido;
+    } else if (chave === "url" && ESTRUTURAS_DO_SIGNATARIO.has(pai)) {
+      // ⚠️ O LINK DE ASSINATURA ENTRA, E SÓ ELE (02/10/2026). Até aqui `url` ficava fora da allowlist
+      // inteira, e nenhum dos 2.331 signatários guardados tinha link. Ele entra só dentro de
+      // `signer`/`signers` e só se for da Clicksign (`linkDeAssinaturaValido`): o `data.url` da raiz
+      // (o endereço do site deles) e o link assinado do PDF continuam de fora. E este redutor só
+      // roda no evento com HMAC conferido: o não conferido guarda o esqueleto.
+      const link = linkDeAssinaturaValido(valor);
+      if (link) saida.url = link;
     } else if (CHAVES_DE_VALOR.has(chave)) {
       const simples = valorSimples(valor);
       if (simples !== undefined) saida[chave] = simples;

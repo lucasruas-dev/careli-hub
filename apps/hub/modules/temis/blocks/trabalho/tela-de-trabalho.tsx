@@ -2,28 +2,45 @@
 
 import {
   AlertTriangle,
+  ArrowDownToLine,
   ArrowLeft,
+  ArrowRight,
   Ban,
+  Check,
+  ChevronDown,
   CircleCheck,
+  Clock,
   Eye,
   FilePlus2,
   FileText,
   FileX2,
+  Hourglass,
+  Link2,
   Loader2,
   Mail,
   MailCheck,
   MailX,
   Pencil,
   RefreshCw,
+  ScrollText,
+  Signature,
   Undo2,
+  Users,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 import { Tooltip } from "@repo/uix";
 import type { AnaliseDoTrabalho, CampoDaAnalise } from "@/lib/temis/analise-do-trabalho";
 import type { DescontoDaProposta } from "@/lib/temis/comercial-da-analise";
 import type { PedidoDoTrabalho } from "@/lib/temis/pedido-do-trabalho";
-import { PAPEIS, type PapelNoContrato, rotuloDoPapel } from "@/lib/assinatura/tipos";
+import { ehCompradorNoQuadro } from "@/lib/assinatura/compradores-do-quadro";
+import {
+  ehTerminal,
+  type EstadoDaAssinatura,
+  PAPEIS,
+  type PapelNoContrato,
+  rotuloDoPapel,
+} from "@/lib/assinatura/tipos";
 import {
   avisoDoCancelamentoDoContrato,
   MOTIVO_MINIMO_DO_CANCELAMENTO,
@@ -179,6 +196,11 @@ type AssinaturaDoCard = {
     envelopeId: null | string;
     estado: string;
     signatarios: SignatarioNaTela[];
+    /**
+     * Quando o envelope vence, em ISO: no vencimento sem todas as assinaturas, a Clicksign o cancela.
+     * Ausente ou `null` = o servidor não sabe (nenhum aviso ainda), e o cabeçalho não mostra o prazo.
+     */
+    venceEm?: null | string;
   };
   total: number;
 };
@@ -216,6 +238,11 @@ type SignatarioNaTela = {
   conviteDetalhe: null | string;
   conviteQuando: null | string;
   email: null | string;
+  /**
+   * Quando esta pessoa foi recadastrada com o envelope já enviado, e por isso está no FIM da fila de
+   * assinatura. Vem do servidor (`recadastrosDepoisDoEnvio`); ausente ou `null` = não foi.
+   */
+  foiParaOFimEm?: null | string;
   nome: string;
   /**
    * `comprador`, `conjuge`, `vendedora`… como o envio congelou em `temis_envelopes.signatarios`.
@@ -226,6 +253,11 @@ type SignatarioNaTela = {
    * verdade quer dizer: apareceu nos eventos e não está na lista congelada do envio.
    */
   papel: null | string;
+  /**
+   * O degrau desta pessoa na fila da Clicksign, numerado pelo servidor (`naOrdemDaFila`). A tela só
+   * AGRUPA por ele, e nunca reordena. Ausente ou `null` = fora do quadro congelado.
+   */
+  posicao?: null | number;
   /**
    * O reenvio de convite não pode ser tentado para esta pessoa — `null` = pode.
    *
@@ -244,6 +276,11 @@ type SignatarioNaTela = {
    * envelope encerrou (e aí a troca de e-mail também não vale).
    */
   reenvioIndisponivel?: null | { frase: string; motivo: string };
+  /**
+   * O aviso de que corrigir o e-mail manda esta pessoa para o fim da fila (a frase vem pronta do
+   * servidor, que vê a lista inteira). Ausente ou `null` = a troca não muda a posição de ninguém.
+   */
+  trocaVaiParaOFim?: null | string;
 };
 
 type Card = {
@@ -689,6 +726,12 @@ export function TelaDeTrabalho({
   const caminho = caminhoDoCard(card.tipo, card.estagio);
   const ehContrato = card.tipo === "contrato" && Boolean(card.proposta_id);
   /**
+   * A assinatura que o Pré-faturamento mostra no painel: só com o envelope vivo e ainda não assinado
+   * (ver a nota da etapa). `null` = a etapa fica sem painel, e o contrato aparece sozinho.
+   */
+  const assinaturaNoPreFaturamento =
+    ehContrato && assinatura && envelopeVivo && envelopeVivo.estado !== "assinado" ? assinatura : null;
+  /**
    * O card se conclui por aqui? Cancelamento ou distrato, com venda ligada, fora de Concluído e de
    * Indeferido. A régua é `podeConcluir`, a mesma que o servidor aplica.
    */
@@ -1115,11 +1158,15 @@ export function TelaDeTrabalho({
                   moravam DENTRO de `EtapaDoContrato`, que só desenha em `estagio === "contrato"`;
                   o envio move o card para cá e leva o papel junto. O dado nunca faltou: `contratos`
                   chega na carga do card em TODA etapa (`lib/temis/trabalho-servico.ts`, o
-                  `Promise.all` sem condicional de estágio) — faltava a tela oferecer. */}
-              {ehContrato ? (
+                  `Promise.all` sem condicional de estágio) — faltava a tela oferecer.
+
+                  ⚠️ COM PAINEL, ELE MORA DENTRO DO PAINEL, AO LADO DO LOG (mockup aprovado pelo Lucas
+                  em 02/10/2026): a fila de quem assina é o que se lê primeiro, e o contrato e o log
+                  são consulta. Sem painel, ele fica sozinho, aqui. */}
+              {ehContrato && !assinatura ? (
                 <ContratoParaConferir
                   contratos={card.contratos}
-                  documentoDoEnvelope={assinatura?.envelope.documentoId ?? null}
+                  documentoDoEnvelope={null}
                   onAbrir={abrirContrato}
                 />
               ) : null}
@@ -1132,6 +1179,15 @@ export function TelaDeTrabalho({
                 <PainelDaAssinatura
                   aoRecarregar={carregar}
                   assinatura={assinatura}
+                  contrato={
+                    ehContrato ? (
+                      <ContratoParaConferir
+                        contratos={card.contratos}
+                        documentoDoEnvelope={assinatura.envelope.documentoId}
+                        onAbrir={abrirContrato}
+                      />
+                    ) : null
+                  }
                   desde={card.estagio_desde}
                   envelopeVivo={envelopeVivo}
                 />
@@ -1169,10 +1225,17 @@ export function TelaDeTrabalho({
           {card.estagio === "prazo_legal" ? (
             <div className="grid max-w-3xl gap-3">
               <EtapaDoPrazoLegal inicio={card.arrependimento_inicio} />
-              {ehContrato && assinatura && envelopeVivo && envelopeVivo.estado !== "assinado" ? (
+              {assinaturaNoPreFaturamento ? (
                 <PainelDaAssinatura
                   aoRecarregar={carregar}
-                  assinatura={assinatura}
+                  assinatura={assinaturaNoPreFaturamento}
+                  contrato={
+                    <ContratoParaConferir
+                      contratos={card.contratos}
+                      documentoDoEnvelope={assinaturaNoPreFaturamento.envelope.documentoId}
+                      onAbrir={abrirContrato}
+                    />
+                  }
                   desde={card.estagio_desde}
                   envelopeVivo={envelopeVivo}
                 />
@@ -1188,8 +1251,8 @@ export function TelaDeTrabalho({
                   de um contrato que alguém pode precisar reler, e daqui em diante a tela também
                   ficava sem caminho para o PDF. Hoje não há card de contrato nesta etapa (medido em
                   24/09/2026), e é por isso mesmo que ela entra junto: o defeito só apareceria no
-                  primeiro que chegasse. */}
-              {ehContrato ? (
+                  primeiro que chegasse. Com o painel, ele já está lá dentro, ao lado do log. */}
+              {ehContrato && !assinaturaNoPreFaturamento ? (
                 <ContratoParaConferir
                   contratos={card.contratos}
                   documentoDoEnvelope={assinatura?.envelope.documentoId ?? null}
@@ -2690,8 +2753,12 @@ function ContratoParaConferir({
     c.versao === null ? c.nome : `versão ${c.versao}`;
 
   return (
-    <section className="rounded-xl border border-line bg-surface p-4">
-      <h3 className="m-0 text-sm font-semibold text-ink">O contrato</h3>
+    // ⚠️ COMPACTO, COM O RÓTULO NO JEITO DO LOG (mockup aprovado em 02/10/2026): nas etapas de
+    // assinatura ele mora ao lado do log, no rodapé do painel, e as duas caixas são consulta.
+    <section className="min-w-0 rounded-xl border border-line bg-surface px-3.5 py-3">
+      <h3 className="m-0 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-muted">
+        <FileText aria-hidden="true" className="size-3.5" />O contrato
+      </h3>
 
       {!paraAbrir ? (
         <p className="m-0 mt-2 text-xs text-ink-muted">
@@ -2700,14 +2767,19 @@ function ContratoParaConferir({
       ) : (
         <>
           <button
-            className="mt-2 w-full rounded-lg bg-emerald-500/10 px-2.5 py-1.5 text-left text-xs text-emerald-700 transition-colors hover:bg-emerald-500/20 dark:text-emerald-300"
+            className="mt-2 flex w-full items-center gap-2.5 rounded-lg border border-line px-2.5 py-2 text-left transition-colors hover:bg-subtle"
             onClick={() => onAbrir(paraAbrir.id)}
             type="button"
           >
-            {comoSeChama(paraAbrir)}
-            {enviado ? " · foi para a Clicksign" : ""}
-            <span className="block text-[10px] text-ink-muted">
-              {new Date(paraAbrir.criadoEm).toLocaleString("pt-BR")}
+            <FileText aria-hidden="true" className="size-4 shrink-0 text-ink-soft" />
+            <span className="min-w-0">
+              <span className="block text-xs font-semibold text-ink">
+                {comoSeChama(paraAbrir)}
+                {enviado ? " · foi para a Clicksign" : ""}
+              </span>
+              <span className="block text-[10px] text-ink-muted">
+                {new Date(paraAbrir.criadoEm).toLocaleString("pt-BR")}
+              </span>
             </span>
           </button>
 
@@ -2721,8 +2793,9 @@ function ContratoParaConferir({
               : "Esta é a geração mais recente guardada nesta venda. O envelope não diz qual versão levou, então confira a data antes de usar o que está escrito aqui."}
           </p>
 
+          {/* O aviso é uma barra lateral, e não um bloco colorido: a régua de destaque da casa. */}
           {desencontro ? (
-            <p className="m-0 mt-2 rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+            <p className="m-0 mt-2 border-l-2 border-amber-500 pl-2 text-[11px] font-medium text-ink">
               {`Existe uma geração mais recente (${comoSeChama(desencontro.vigente)}) que NÃO foi para a assinatura. Quem assina está com ${comoSeChama(desencontro.enviado)} na mão.`}
             </p>
           ) : null}
@@ -2812,12 +2885,19 @@ function LinhaDoEnvelope({
 }
 
 /**
- * O PAINEL DA ASSINATURA — o contador, quem assina e o log do envelope.
+ * O PAINEL DA ASSINATURA — em que pé está o envelope, a fila de quem assina e, embaixo, o contrato e
+ * o log.
  *
- * As três coisas que o Lucas pediu em 12/09/2026, nesta ordem: *"gostaria de ter essa visao de
- * quantas assinaturas ja foram feitas, tipo 1/5"* · *"nesse caso tinha que voltar com o erro de
- * e-mail"* · *"seria legal ter um painel de log, tipo, contrato enviado, contrato nao enviado -
- * e-mail invalido"*.
+ * As três coisas que o Lucas pediu em 12/09/2026: *"gostaria de ter essa visao de quantas
+ * assinaturas ja foram feitas, tipo 1/5"* · *"nesse caso tinha que voltar com o erro de e-mail"* ·
+ * *"seria legal ter um painel de log, tipo, contrato enviado, contrato nao enviado - e-mail
+ * invalido"*.
+ *
+ * ⚠️ A LISTA VIROU A FILA DE DEGRAUS (02/10/2026, mockup aprovado). Lucas, vendo a tela: *"essa tela
+ * está ruim... Primeiro melhorar o layout dessa tela a UI está ruim. Temos que mostrar os assinantes
+ * por ordem de assinatura se não tiver ordem de assinatura ordem alfabética."* O contrato é assinado
+ * em degraus, um depois do outro, e a pergunta de quem abre o card é "de quem depende agora?". A
+ * lista corrida respondia com onze linhas do mesmo peso; a fila responde com um degrau destacado.
  *
  * ⚠️ NADA AQUI CONSULTA A CLICKSIGN. O painel desenha o que já veio na carga da tela, e a tela
  * recarrega ao abrir — a casa já pagou caro por polling (o Hermes), e um envelope que anda em
@@ -2826,12 +2906,15 @@ function LinhaDoEnvelope({
 function PainelDaAssinatura({
   aoRecarregar,
   assinatura,
+  contrato,
   desde,
   envelopeVivo,
 }: {
   /** Relê o card depois de um conserto, para a lista refletir o e-mail novo. */
   aoRecarregar: () => Promise<void>;
   assinatura: AssinaturaDoCard;
+  /** O `ContratoParaConferir` da etapa: mora ao lado do log, no rodapé do painel. */
+  contrato?: ReactNode;
   /** `estagio_desde` do card: quando ele entrou nesta etapa. */
   desde: string;
   envelopeVivo: EnvelopeVivo | null;
@@ -2840,19 +2923,44 @@ function PainelDaAssinatura({
   const desdeEscrito = Number.isNaN(entrada.getTime()) ? desde : entrada.toLocaleString("pt-BR");
 
   /**
-   * ⚠️ QUEM PRECISA DE GESTO VEM PRIMEIRO, e a ordem do envelope não serve para isso. A
-   * Clicksign devolve os signatários na ordem em que foram cadastrados, que é inútil para quem
-   * abriu o card perguntando "o que travou?". Num contrato de cinco pessoas, a única que pede
-   * conserto pode estar em quinto lugar, embaixo de quatro linhas verdes.
+   * O que a última troca de e-mail contou, e a chave que ela tirou do envelope.
    *
-   * ⚠️ E A ORDENAÇÃO É ESTÁVEL: `sort` numa CÓPIA, e o critério é só "precisa de conserto",
-   * então quem empata fica como veio. Sem isso a lista dançaria a cada recarga.
+   * ⚠️ MORA NO PAINEL, E NÃO NA LINHA (revisão de 02/10/2026). Depois da troca a lista é relida e a
+   * pessoa volta com a chave NOVA: a linha remonta e o recado que ela guardava ("foi para o fim da
+   * fila", "o convite não saiu") sumia antes de alguém ler. E nos segundos até o aviso da Clicksign
+   * chegar, o último payload ainda traz o cadastro ANTIGO: a mesma pessoa aparecia duas vezes e o
+   * total subia um. A chave antiga fica escondida enquanto o painel estiver aberto.
    */
-  const signatarios = [...assinatura.envelope.signatarios].sort((a, b) => {
-    const pesoA = a.convite === "nao_entregue" && !a.assinouEm ? 0 : 1;
-    const pesoB = b.convite === "nao_entregue" && !b.assinouEm ? 0 : 1;
-    return pesoA - pesoB;
-  });
+  const [trocaFeita, setTrocaFeita] = useState<null | { chaveAntiga: string; recado: string }>(null);
+  /** Os degraus concluídos que alguém abriu. Concluído nasce fechado: ninguém mais ali pede gesto. */
+  const [abertos, setAbertos] = useState<ReadonlySet<string>>(() => new Set());
+  const signatarios = trocaFeita
+    ? assinatura.envelope.signatarios.filter((s) => s.chave !== trocaFeita.chaveAntiga)
+    : assinatura.envelope.signatarios;
+  const escondidos = assinatura.envelope.signatarios.length - signatarios.length;
+  const total = assinatura.total - escondidos;
+
+  /**
+   * ⚠️ A FILA VEM DO SERVIDOR, E A TELA SÓ AGRUPA. A ordem e o número do degrau (`posicao`) são de
+   * `naOrdemDaFila` (`lib/assinatura/diario-do-envelope-db.ts`): só ele sabe o degrau do envio e quem
+   * foi recadastrado no fim da fila. Reordenar aqui criaria uma segunda régua para a mesma fila.
+   */
+  const encerrado = ehTerminal(assinatura.envelope.estado as EstadoDaAssinatura);
+  const degraus = degrausDaFila(signatarios, encerrado);
+  const naVez = degraus.find((d) => d.estado === "na_vez") ?? null;
+  const faltamNaVez = naVez ? naVez.pessoas.filter((p) => !p.assinouEm) : [];
+
+  /**
+   * ⚠️ COMPRADOR PELA RÉGUA DO QUADRO (`ehCompradorNoQuadro`): é ela que decide quando o card entra no
+   * Pré-faturamento, e o "Compradores 1 de 1" daqui não pode divergir do selo do card nem da porta da
+   * etapa. A tela só tem o papel (o perfil é da D4Sign, que não chega a este painel).
+   */
+  const compradores = signatarios.filter((s) => ehCompradorNoQuadro({ papel: s.papel }));
+  const compradoresQueAssinaram = compradores.filter((s) => s.assinouEm).length;
+  const compradoresFechados = compradores.length > 0 && compradoresQueAssinaram === compradores.length;
+  /** Envelope encerrado não vence mais: o prazo dele deixou de importar. */
+  const prazo = encerrado ? null : prazoDoEnvelope(assinatura.envelope.venceEm ?? null);
+  const quadros = 1 + (compradores.length > 0 ? 1 : 0) + (prazo ? 1 : 0);
 
   /**
    * ⚠️ DO MAIS RECENTE PARA O MAIS ANTIGO, E A ORDEM É FEITA AQUI. O `document.events[]` da
@@ -2870,124 +2978,523 @@ function PainelDaAssinatura({
     return quandoB - quandoA;
   });
 
-  return (
-    <div className="grid gap-3">
-      {/* ⚠️ UMA CAIXA SÓ, com cabeçalho e lista dentro. Eram três caixas cinzas empilhadas com o
-          mesmo peso — estado do envelope, assinaturas, log — e nenhuma delas dizia "olhe aqui
-          primeiro". O cabeçalho responde onde o contrato está; a lista, de quem depende.
+  const alternar = (chave: string): void =>
+    setAbertos((antes) => {
+      const depois = new Set(antes);
+      if (depois.has(chave)) depois.delete(chave);
+      else depois.add(chave);
+      return depois;
+    });
 
-          ⚠️ O ID DO ENVELOPE SAIU DA TELA e foi para o `title`. Ele aparecia DUAS vezes (na barra
-          e no log) e não significa nada para quem trabalha o contrato — só serve para procurar na
-          Clicksign, que é gesto raro e de quem já sabe o que quer. */}
+  return (
+    // ⚠️ `@container`: o painel se arruma pela LARGURA DELE, e não pela da janela. No hub ele divide a
+    // tela com a coluna fixa; no portal do incorporador ele é aberto no celular. Nos dois a pessoa vira
+    // duas linhas, e as ações descem, quando o painel fica estreito.
+    <div className="@container grid gap-3">
       <section className="rounded-xl border border-line bg-surface">
+        {/* ⚠️ O CABEÇALHO RESPONDE "EM QUE PÉ ESTÁ", em números e numa faixa só: os compradores (é o
+            que leva o card ao Pré-faturamento), o contrato inteiro (o que leva ao Faturado), o prazo
+            (quando a Clicksign cancela o envelope) e quem está na vez.
+
+            ⚠️ O ID DO ENVELOPE FICA NO `title`. Ele só serve para procurar na Clicksign, que é gesto
+            raro e de quem já sabe o que quer. */}
         <header
-          className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-line px-4 py-3"
+          className="grid gap-3 border-b border-line px-3 py-3 @xl:px-4"
           title={
             assinatura.envelope.envelopeId
               ? `Envelope ${assinatura.envelope.envelopeId} na Clicksign`
               : undefined
           }
         >
-          <div className="min-w-0">
-            <p className="m-0 text-sm font-semibold text-ink">
-              <span className="tabular-nums">
-                {assinatura.assinaram} de {assinatura.total}
-              </span>{" "}
-              assinaram
-            </p>
-            <p className="m-0 text-[11px] text-ink-muted">
-              {envelopeVivo && !envelopeVivo.conferido
-                ? `Não deu para conferir o envelope agora · nesta etapa desde ${desdeEscrito}`
-                : `Nesta etapa desde ${desdeEscrito}`}
-            </p>
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+            <h3 className="m-0 text-[13px] font-semibold text-ink">Assinatura do contrato</h3>
+            {envelopeVivo?.conferido ? (
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line px-2 py-0.5 text-[11px] font-semibold text-ink-soft">
+                <Signature aria-hidden="true" className="size-3.5" />
+                {envelopeVivo.rotulo}
+              </span>
+            ) : null}
           </div>
 
-          {envelopeVivo?.conferido ? (
-            <span className="shrink-0 text-[11px] font-semibold text-ink-soft">
-              {envelopeVivo.rotulo}
-            </span>
+          <div
+            className={`grid gap-2 ${quadros === 3 ? "grid-cols-3" : quadros === 2 ? "grid-cols-2" : "grid-cols-1"}`}
+          >
+            {compradores.length > 0 ? (
+              <QuadroDoCabecalho
+                destaque={compradoresFechados}
+                icone={Users}
+                rotulo="Compradores"
+                sub={
+                  compradoresFechados
+                    ? "todos assinaram"
+                    : `falta ${compradores
+                        .filter((s) => !s.assinouEm)
+                        .map((s) => s.nome)
+                        .join(", ")}`
+                }
+                total={compradores.length}
+                valor={compradoresQueAssinaram}
+              />
+            ) : null}
+            <QuadroDoCabecalho
+              icone={FileText}
+              rotulo="Contrato"
+              total={total}
+              valor={assinatura.assinaram}
+            >
+              <span aria-hidden="true" className="mt-1.5 flex gap-0.5">
+                {Array.from({ length: Math.min(total, 24) }, (_, i) => (
+                  <span
+                    className={`h-1 flex-1 rounded-full ${
+                      i < Math.round((assinatura.assinaram / Math.max(total, 1)) * Math.min(total, 24))
+                        ? "bg-ink"
+                        : "bg-line"
+                    }`}
+                    key={i}
+                  />
+                ))}
+              </span>
+            </QuadroDoCabecalho>
+            {prazo ? (
+              <Tooltip
+                className="block min-w-0"
+                content="Se vencer sem todas as assinaturas, a Clicksign cancela o envelope."
+                placement="top"
+                triggerClassName="block"
+              >
+                <QuadroDoCabecalho
+                  destaque={false}
+                  icone={Hourglass}
+                  rotulo="Vence"
+                  sub={prazo.falta}
+                  valor={prazo.dia}
+                />
+              </Tooltip>
+            ) : null}
+          </div>
+
+          {naVez ? (
+            <p className="m-0 flex min-w-0 items-center gap-2 rounded-lg bg-inverse px-3 py-2 text-[12px] text-brand-ink">
+              <ArrowRight aria-hidden="true" className="size-3.5 shrink-0" />
+              <span className="shrink-0 font-semibold">Na vez: {naVez.rotulo}</span>
+              <span className="min-w-0 truncate opacity-80">
+                {faltamNaVez.length === 1 ? "falta " : "faltam "}
+                {faltamNaVez.map((p) => primeiroNome(p.nome)).join(", ")}
+              </span>
+            </p>
           ) : null}
+
+          <p className="m-0 text-[11px] text-ink-muted">
+            {envelopeVivo && !envelopeVivo.conferido
+              ? `Não deu para conferir o envelope agora · nesta etapa desde ${desdeEscrito}`
+              : `Nesta etapa desde ${desdeEscrito}`}
+          </p>
         </header>
 
-        <ul className="m-0 grid list-none gap-0.5 p-2">
-          {signatarios.map((s) => (
-            <LinhaDoSignatario
+        {trocaFeita ? (
+          <p className="m-0 break-words border-b border-line px-4 py-2 text-[11px] font-medium text-ink-soft">
+            {trocaFeita.recado}
+          </p>
+        ) : null}
+
+        <div className="grid px-2 pb-1 pt-3 @xl:px-3">
+          {degraus.map((degrau, i) => (
+            <DegrauDaFila
+              aberto={abertos.has(degrau.chave)}
+              aoAlternar={() => alternar(degrau.chave)}
               aoRecarregar={aoRecarregar}
-              // ⚠️ O ENVELOPE VEM DE CIMA, E É O DA CLICKSIGN. É o id que as duas rotas de conserto
-              // pedem; o uuid da nossa linha de `temis_envelopes` não serve para nada do lado de lá.
-              // Quando ele é `null`, a linha não oferece botão nenhum.
+              aoTrocar={(chaveAntiga, recado) => setTrocaFeita({ chaveAntiga, recado })}
+              degrau={degrau}
               envelopeId={assinatura.envelope.envelopeId}
+              key={degrau.chave}
+              ultimo={i === degraus.length - 1}
+            />
+          ))}
+        </div>
+      </section>
+
+      <div className={`grid items-start gap-3 ${contrato ? "@xl:grid-cols-2" : ""}`}>
+        {contrato}
+
+        {/* ⚠️ O LOG NASCE RECOLHIDO, e isso é o oposto de escondê-lo. Ele é AUDITORIA — responde
+            "o que houve com este envelope", que é pergunta de quem foi investigar, não de quem abriu
+            o card para trabalhar. Aberto por padrão, ele competia com a fila: duas listas na mesma
+            tela, e a que pede ação perdia.
+
+            ⚠️ E O TETO DE ALTURA CONTINUA: a Clicksign reenvia o histórico INTEIRO a cada webhook,
+            então um envelope movimentado tem dezenas de linhas — sem o teto, o log aberto empurraria
+            o botão de voltar para fora da tela. */}
+        <details className="rounded-xl border border-line bg-surface px-3.5 py-3">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-muted transition-colors hover:text-ink">
+            <ScrollText aria-hidden="true" className="size-3.5" />
+            Log do envelope
+            <span className="ml-1 font-normal normal-case tracking-normal">
+              {diario.length === 0 ? "sem eventos" : `${diario.length} eventos`}
+            </span>
+          </summary>
+
+          {diario.length === 0 ? (
+            <p className="m-0 mt-2 text-xs text-ink-muted">
+              Nenhum evento registrado para este envelope ainda.
+            </p>
+          ) : (
+            <ol className="m-0 mt-2 grid max-h-64 list-none gap-1 overflow-auto p-0">
+              {diario.map((linha, i) => (
+                <li
+                  className="grid grid-cols-[2px_1fr] items-stretch gap-x-2.5 py-1 pr-2"
+                  key={`${linha.quando}-${linha.fato}-${i}`}
+                >
+                  {/* A gravidade é uma barra, como na linha da pessoa: o erro se vê sem pintar a linha. */}
+                  <span
+                    className={`h-full self-stretch rounded-sm ${
+                      linha.gravidade === "erro"
+                        ? "bg-rose-500"
+                        : linha.gravidade === "marco"
+                          ? "bg-emerald-500"
+                          : "bg-line"
+                    }`}
+                  />
+                  <div className="min-w-0">
+                    <p
+                      className={`m-0 text-xs font-medium ${
+                        linha.gravidade === "erro"
+                          ? "text-rose-700 dark:text-rose-300"
+                          : "text-ink"
+                      }`}
+                    >
+                      {linha.fato}
+                      {linha.quem ? (
+                        <span className="font-normal text-ink-muted"> · {linha.quem}</span>
+                      ) : null}
+                    </p>
+                    {linha.detalhe ? (
+                      <p className="m-0 break-words text-[10.5px] text-ink-soft">{linha.detalhe}</p>
+                    ) : null}
+                    <p className="m-0 text-[10px] tabular-nums text-ink-muted">
+                      {momento(linha.quando)}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </details>
+      </div>
+    </div>
+  );
+}
+
+/** Um número do cabeçalho do painel: compradores, contrato ou vencimento. */
+function QuadroDoCabecalho({
+  children,
+  destaque = false,
+  icone: Icone,
+  rotulo,
+  sub,
+  total,
+  valor,
+}: {
+  children?: ReactNode;
+  /** Pinta o número de verde: os compradores todos assinaram. */
+  destaque?: boolean;
+  icone: typeof Mail;
+  rotulo: string;
+  sub?: string;
+  /** O "de Y". Sem ele, o valor sai sozinho (a data do vencimento). */
+  total?: number;
+  valor: number | string;
+}) {
+  return (
+    <div className="min-w-0 rounded-lg border border-line px-2.5 py-2">
+      <p className="m-0 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-muted">
+        <Icone aria-hidden="true" className="size-3 shrink-0" />
+        <span className="truncate">{rotulo}</span>
+      </p>
+      <p
+        className={`m-0 mt-0.5 flex items-center gap-1 text-[17px] font-bold tabular-nums @xl:text-[20px] ${
+          destaque ? "text-emerald-700 dark:text-emerald-300" : "text-ink"
+        }`}
+      >
+        {valor}
+        {total !== undefined ? (
+          <>
+            {" "}
+            <span className="text-[12px] font-semibold text-ink-muted">de {total}</span>
+          </>
+        ) : null}
+        {destaque ? <CircleCheck aria-hidden="true" className="size-4 shrink-0" /> : null}
+      </p>
+      {sub ? <p className="m-0 hidden truncate text-[11px] text-ink-muted @xl:block">{sub}</p> : null}
+      {children}
+    </div>
+  );
+}
+
+/** Em que pé está um degrau da fila. */
+type EstadoDoDegrau = "aguardando" | "concluido" | "encerrado" | "fora" | "na_vez";
+
+/** Um degrau da fila, pronto para a tela: as pessoas dele e o rótulo. */
+type DegrauNaTela = {
+  assinaram: number;
+  /** Identidade estável do degrau na lista (é o `key` e o que lembra se ele está aberto). */
+  chave: string;
+  estado: EstadoDoDegrau;
+  /** Alguém dele foi para o fim da fila ao corrigir o e-mail. */
+  fimDaFila: boolean;
+  /**
+   * O número que se LÊ: 1, 2, 3… em sequência. ⚠️ NÃO É A `posicao` DA CLICKSIGN, que tem buraco (a
+   * Maura do VOC0306 deixou o degrau 3 vazio ao ir para o 6). `null` = fora da fila.
+   */
+  numero: null | number;
+  /** Mostra o papel em cada linha: o degrau mistura papéis, ou a fila não tem número. */
+  papelNaLinha: boolean;
+  pessoas: SignatarioNaTela[];
+  rotulo: string;
+};
+
+/**
+ * AGRUPA A LISTA DO SERVIDOR EM DEGRAUS, sem reordenar nada. Puro.
+ *
+ * ⚠️ A ORDEM É A QUE CHEGOU. O servidor já manda a lista pela fila (degrau, depois nome) e quem está
+ * fora do quadro no fim; o grupo nasce na ordem em que o primeiro dele aparece.
+ *
+ * ⚠️ "NA VEZ" É O PRIMEIRO DEGRAU QUE AINDA TEM ALGUÉM SEM ASSINAR. É a regra da Clicksign: só o grupo
+ * ativo recebe convite, e os seguintes esperam. Envelope encerrado não tem vez de ninguém.
+ *
+ * ⚠️ SEM NENHUM NÚMERO (a lista de antes do campo `posicao`), a fila vira UM degrau só: a tela não
+ * inventa degrau que o servidor não mandou.
+ */
+function degrausDaFila(signatarios: SignatarioNaTela[], encerrado: boolean): DegrauNaTela[] {
+  const comNumero = signatarios.some((s) => typeof s.posicao === "number");
+  const grupos = new Map<string, SignatarioNaTela[]>();
+  for (const s of signatarios) {
+    const chave = !comNumero ? "fila" : typeof s.posicao === "number" ? `degrau-${s.posicao}` : "fora";
+    const grupo = grupos.get(chave);
+    if (grupo) grupo.push(s);
+    else grupos.set(chave, [s]);
+  }
+
+  let numero = 0;
+  let achouAVez = false;
+  return [...grupos.entries()].map(([chave, pessoas]) => {
+    const assinaram = pessoas.filter((p) => p.assinouEm).length;
+    const completo = assinaram === pessoas.length;
+    const fora = chave === "fora";
+    let estado: EstadoDoDegrau;
+    if (completo) estado = "concluido";
+    else if (fora) estado = "fora";
+    else if (encerrado) estado = "encerrado";
+    else if (!achouAVez) {
+      estado = "na_vez";
+      achouAVez = true;
+    } else estado = "aguardando";
+
+    const rotulo = fora ? "Fora da fila" : comNumero ? rotuloDoDegrau(pessoas) : "Quem assina";
+    return {
+      assinaram,
+      chave,
+      estado,
+      fimDaFila: pessoas.some((p) => Boolean(p.foiParaOFimEm)),
+      numero: fora ? null : ++numero,
+      papelNaLinha: fora || !comNumero || rotulo === "Assinam juntos",
+      pessoas,
+      rotulo,
+    };
+  });
+}
+
+/** O nome do degrau pelo papel de quem está nele: [uma pessoa, várias]. */
+const NOME_DO_DEGRAU: Record<string, readonly [string, string]> = {
+  careli: ["Careli", "Careli"],
+  comprador: ["Comprador", "Compradores"],
+  conjuge: ["Cônjuge", "Compradores"],
+  coordenadora: ["Coordenação", "Coordenação"],
+  corretor: ["Corretor", "Corretores"],
+  testemunha: ["Testemunha", "Testemunhas"],
+  vendedora: ["Vendedora", "Vendedoras"],
+};
+
+/**
+ * O RÓTULO DO DEGRAU — o papel de quem está nele. Comprador e cônjuge são o mesmo lado e viram
+ * "Compradores"; papéis diferentes no mesmo degrau (o envelope sem ordem) viram "Assinam juntos".
+ */
+function rotuloDoDegrau(pessoas: SignatarioNaTela[]): string {
+  const papeis = new Set(pessoas.map((p) => (p.papel === "conjuge" ? "comprador" : (p.papel ?? ""))));
+  if (papeis.size !== 1) return "Assinam juntos";
+  const papel = pessoas[0]?.papel ?? "";
+  const nomes = NOME_DO_DEGRAU[papel];
+  if (!nomes) return "Assinam juntos";
+  return pessoas.length === 1 ? nomes[0] : nomes[1];
+}
+
+/** "MAURA MARIA PASSOS" → "Maura": a faixa "Na vez" cabe numa linha. */
+function primeiroNome(nome: string): string {
+  const primeiro = nome.trim().split(/\s+/)[0] ?? "";
+  return primeiro ? primeiro.charAt(0).toUpperCase() + primeiro.slice(1).toLowerCase() : "sem nome";
+}
+
+/**
+ * O VENCIMENTO, PARA O CABEÇALHO: "29/10" e "em 27 dias". `null` = sem data legível.
+ *
+ * ⚠️ DIAS DE CALENDÁRIO, contados entre as meias-noites: o prazo da Clicksign corre no relógio, e
+ * "em 1 dia" às 23h de hoje para um vencimento amanhã às 9h é o que a pessoa espera ler.
+ */
+function prazoDoEnvelope(venceEm: null | string): null | { dia: string; falta: string } {
+  if (!venceEm) return null;
+  const vence = new Date(venceEm);
+  if (Number.isNaN(vence.getTime())) return null;
+  const meiaNoite = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const dias = Math.round((meiaNoite(vence) - meiaNoite(new Date())) / 86_400_000);
+  const falta =
+    dias < 0 ? "venceu" : dias === 0 ? "vence hoje" : dias === 1 ? "amanhã" : `em ${dias} dias`;
+  return { dia: vence.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), falta };
+}
+
+/**
+ * UM DEGRAU DA FILA: o nó numerado no trilho, o rótulo e o estado, e as pessoas dele.
+ *
+ * ⚠️ O DEGRAU NÃO É `<li>`, DE PROPÓSITO: a linha da pessoa é que é. Quem procura uma pessoa na lista
+ * (os testes da tela, e o leitor de tela) acha o item dela, e não o degrau inteiro em volta.
+ *
+ * ⚠️ O CONCLUÍDO NASCE FECHADO, MAS AS LINHAS CONTINUAM NA PÁGINA (`hidden`): ninguém ali pede gesto,
+ * e a linha de resumo diz quem assinou e quando. Abrir é um clique na seta.
+ */
+function DegrauDaFila({
+  aberto,
+  aoAlternar,
+  aoRecarregar,
+  aoTrocar,
+  degrau,
+  envelopeId,
+  ultimo,
+}: {
+  aberto: boolean;
+  aoAlternar: () => void;
+  aoRecarregar: () => Promise<void>;
+  aoTrocar: (chaveAntiga: string, recado: string) => void;
+  degrau: DegrauNaTela;
+  envelopeId: null | string;
+  ultimo: boolean;
+}) {
+  const fechado = degrau.estado === "concluido" && !aberto;
+  const ultimaAssinatura = degrau.pessoas
+    .map((p) => p.assinouEm)
+    .filter((q): q is string => Boolean(q))
+    .sort((a, b) => Date.parse(a) - Date.parse(b))
+    .pop();
+  const estadoEscrito: Record<EstadoDoDegrau, null | string> = {
+    aguardando: "Aguardando",
+    concluido: "Concluído",
+    encerrado: "Não concluído",
+    fora: null,
+    na_vez: "Na vez",
+  };
+  const escrito = estadoEscrito[degrau.estado];
+
+  return (
+    <section
+      aria-label={escrito ? `${degrau.rotulo}: ${escrito}` : degrau.rotulo}
+      className="relative grid grid-cols-[26px_minmax(0,1fr)] gap-x-2.5 pb-2.5"
+    >
+      {ultimo ? null : (
+        <span aria-hidden="true" className="absolute bottom-0 left-[12.5px] top-[26px] w-px bg-line" />
+      )}
+      <span
+        aria-hidden="true"
+        className={`relative z-[1] grid size-[26px] place-items-center rounded-full text-[11px] font-bold tabular-nums ${
+          degrau.estado === "concluido"
+            ? "bg-inverse text-brand-ink"
+            : degrau.estado === "na_vez"
+              ? "border-2 border-ink bg-surface text-ink"
+              : "border border-dashed border-line-strong bg-surface text-ink-muted"
+        }`}
+      >
+        {degrau.estado === "concluido" ? <Check className="size-3.5" /> : (degrau.numero ?? "·")}
+      </span>
+
+      <div className="min-w-0">
+        <div className="flex min-h-[26px] flex-wrap items-center gap-x-2 gap-y-1">
+          <h4
+            className={`m-0 text-[13px] font-semibold ${
+              degrau.estado === "aguardando" || degrau.estado === "encerrado" ? "text-ink-soft" : "text-ink"
+            }`}
+          >
+            {degrau.rotulo}
+          </h4>
+          <span className="text-[11px] tabular-nums text-ink-muted">
+            {degrau.assinaram} de {degrau.pessoas.length}
+          </span>
+          {escrito ? (
+            <span
+              className={`rounded-full px-1.5 py-px text-[10px] font-semibold uppercase tracking-[0.06em] ${
+                degrau.estado === "concluido"
+                  ? "text-emerald-700 dark:text-emerald-300"
+                  : degrau.estado === "na_vez"
+                    ? "bg-inverse text-brand-ink"
+                    : "border border-line text-ink-muted"
+              }`}
+            >
+              {escrito}
+            </span>
+          ) : null}
+          {degrau.fimDaFila ? (
+            <Tooltip
+              content="A Clicksign põe no fim da fila quem tem o e-mail corrigido depois do envio."
+              placement="top"
+            >
+              <span className="inline-flex items-center gap-1 rounded-full border border-line px-1.5 py-px text-[10.5px] font-semibold text-ink-soft">
+                <ArrowDownToLine aria-hidden="true" className="size-3" />
+                fim da fila
+              </span>
+            </Tooltip>
+          ) : null}
+          {degrau.estado === "concluido" ? (
+            <button
+              aria-expanded={aberto}
+              aria-label={aberto ? "Fechar o degrau" : "Ver quem assinou"}
+              className="ml-auto grid size-6 place-items-center rounded-md text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
+              onClick={aoAlternar}
+              title={aberto ? "Fechar o degrau" : "Ver quem assinou"}
+              type="button"
+            >
+              <ChevronDown
+                aria-hidden="true"
+                className={`size-3.5 transition-transform ${aberto ? "rotate-180" : ""}`}
+              />
+            </button>
+          ) : null}
+        </div>
+
+        {fechado ? (
+          <p className="m-0 truncate text-[11.5px] text-ink-muted">
+            {degrau.pessoas.map((p) => p.nome).join(", ")}
+            {ultimaAssinatura ? ` · ${momentoCurto(ultimaAssinatura)}` : ""}
+          </p>
+        ) : null}
+
+        <ul
+          className={`m-0 mt-1.5 list-none gap-0.5 ${fechado ? "hidden" : "grid"} ${
+            degrau.estado === "na_vez" ? "rounded-lg border border-line-strong bg-surface p-1" : "p-0"
+          }`}
+          hidden={fechado}
+        >
+          {degrau.pessoas.map((s) => (
+            <LinhaDoSignatario
+              aguardaAVez={degrau.estado === "aguardando"}
+              aoRecarregar={aoRecarregar}
+              aoTrocar={aoTrocar}
+              // ⚠️ O ENVELOPE VEM DE CIMA, E É O DA CLICKSIGN. É o id que as rotas de conserto pedem;
+              // o uuid da nossa linha de `temis_envelopes` não serve para nada do lado de lá. Quando
+              // ele é `null`, a linha não oferece botão nenhum.
+              envelopeId={envelopeId}
               key={s.chave}
+              mostrarPapel={degrau.papelNaLinha}
               signatario={s}
             />
           ))}
         </ul>
-      </section>
-
-      {/* ⚠️ O LOG NASCE RECOLHIDO, e isso é o oposto de escondê-lo. Ele é AUDITORIA — responde
-          "o que houve com este envelope", que é pergunta de quem foi investigar, não de quem abriu
-          o card para trabalhar. Aberto por padrão, ele empurrava a lista de signatários para cima e
-          competia com ela: duas listas na mesma tela, e a que pede ação perdia.
-
-          ⚠️ E O TETO DE ALTURA CONTINUA: a Clicksign reenvia o histórico INTEIRO a cada webhook,
-          então um envelope movimentado tem dezenas de linhas — sem o teto, o log aberto empurraria
-          o botão de voltar para fora da tela. */}
-      <details className="rounded-xl border border-line bg-surface px-3.5 py-3">
-        <summary className="cursor-pointer list-none text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-muted transition-colors hover:text-ink">
-          Log do envelope
-          <span className="ml-2 font-normal normal-case tracking-normal">
-            {diario.length === 0 ? "sem eventos" : `${diario.length} eventos`}
-          </span>
-        </summary>
-
-        {diario.length === 0 ? (
-          <p className="m-0 mt-2 text-xs text-ink-muted">
-            Nenhum evento registrado para este envelope ainda.
-          </p>
-        ) : (
-          <ol className="m-0 mt-2 grid max-h-64 list-none gap-1 overflow-auto p-0">
-            {diario.map((linha, i) => (
-              <li
-                className={`grid grid-cols-[3px_1fr] items-stretch gap-x-2.5 overflow-hidden rounded-lg py-1.5 pr-3 ${
-                  linha.gravidade === "erro" ? "bg-rose-500/10" : ""
-                }`}
-                key={`${linha.quando}-${linha.fato}-${i}`}
-              >
-                <span
-                  className={`h-full self-stretch rounded-sm ${
-                    linha.gravidade === "erro"
-                      ? "bg-rose-500"
-                      : linha.gravidade === "marco"
-                        ? "bg-emerald-500"
-                        : "bg-line"
-                  }`}
-                />
-                <div className="min-w-0">
-                  <p
-                    className={`m-0 text-xs font-medium ${
-                      linha.gravidade === "erro"
-                        ? "text-rose-700 dark:text-rose-300"
-                        : "text-ink"
-                    }`}
-                  >
-                    {linha.fato}
-                    {linha.quem ? (
-                      <span className="font-normal text-ink-muted"> · {linha.quem}</span>
-                    ) : null}
-                  </p>
-                  {linha.detalhe ? (
-                    <p className="m-0 break-words text-[10.5px] text-ink-soft">{linha.detalhe}</p>
-                  ) : null}
-                  <p className="m-0 text-[10px] tabular-nums text-ink-muted">
-                    {momento(linha.quando)}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ol>
-        )}
-      </details>
-    </div>
+      </div>
+    </section>
   );
 }
 
@@ -3017,16 +3524,25 @@ function PainelDaAssinatura({
  * e-mail no lugar do `signer_id` é um 404 garantido, com o operador achando que o sistema quebrou.
  */
 function LinhaDoSignatario({
+  aguardaAVez = false,
   aoRecarregar,
+  aoTrocar,
   envelopeId,
+  mostrarPapel = true,
   signatario,
 }: {
+  /** A pessoa está num degrau que ainda não chegou: o silêncio dela é espera, e não falta de notícia. */
+  aguardaAVez?: boolean;
   aoRecarregar: () => Promise<void>;
+  /** A troca deu certo: o painel guarda o recado e esconde a chave antiga (ver `trocaFeita`). */
+  aoTrocar?: (chaveAntiga: string, recado: string) => void;
   envelopeId: null | string;
+  /** O papel ao lado do nome. O degrau já diz o papel quando todos nele são iguais. */
+  mostrarPapel?: boolean;
   signatario: SignatarioNaTela;
 }) {
-  const papel = papelNaLinha(signatario.papel);
-  const estado = estadoDoSignatario(signatario);
+  const papel = mostrarPapel ? papelNaLinha(signatario.papel) : null;
+  const estado = estadoDoSignatario(signatario, aguardaAVez);
   const Icone = estado.icone;
 
   /**
@@ -3037,7 +3553,12 @@ function LinhaDoSignatario({
    * faria a REMOÇÃO acontecer duas vezes: a segunda passada apagaria o signatário que a primeira
    * acabou de criar.
    */
-  const [acaoNoAr, setAcaoNoAr] = useState<null | "reenviar" | "trocar">(null);
+  const [acaoNoAr, setAcaoNoAr] = useState<null | "link" | "reenviar" | "trocar">(null);
+  /**
+   * O link de assinatura, quando a cópia automática não pôde ser feita (o navegador negou a área de
+   * transferência). Aí ele aparece num campo para copiar à mão.
+   */
+  const [linkParaCopiar, setLinkParaCopiar] = useState<null | string>(null);
   /**
    * A MESMA TRAVA, AGORA SEM DEPENDER DO RENDER.
    *
@@ -3102,7 +3623,7 @@ function LinhaDoSignatario({
   const fraseDaTroca = envelopeEncerrado
     ? (signatario.reenvioIndisponivel?.frase ?? RECUSA_DE_CHAVE_QUE_NAO_E_DA_CLICKSIGN)
     : podeTrocarEmail
-      ? "Remove esta pessoa do envelope e a recria com o e-mail corrigido."
+      ? (signatario.trocaVaiParaOFim ?? "Corrige o e-mail desta pessoa no envelope e manda o convite só para ela.")
       : RECUSA_DE_CHAVE_QUE_NAO_E_DA_CLICKSIGN;
   /**
    * Esta linha PEDE alguma coisa de quem está olhando?
@@ -3113,12 +3634,26 @@ function LinhaDoSignatario({
    * distingue sozinha, e as outras ficam quietas.
    */
   const precisaDeConserto = signatario.convite === "nao_entregue" && !signatario.assinouEm;
+  /**
+   * O link pode ser copiado? A régua do reenvio, e mais uma: o convite que VOLTOU.
+   *
+   * ⚠️ COM O E-MAIL ERRADO O LINK NÃO RESOLVE (revisão de 02/10/2026). Para assinar, a Clicksign
+   * manda um código para o e-mail cadastrado; se ele voltou, o código também volta, e o cliente abre
+   * o contrato e não consegue concluir. Ali o caminho é corrigir o e-mail primeiro.
+   */
+  const podeCopiarLink = podeReenviar && !precisaDeConserto;
+  const fraseDoLink = precisaDeConserto
+    ? "O convite deste e-mail voltou, e o código para assinar vai para ele: corrija o e-mail antes de mandar o link."
+    : podeReenviar
+      ? "Copiar o link de assinatura (o mesmo do convite por e-mail)"
+      : fraseDoReenvio;
   const emailLimpo = emailNovo.trim();
   // O campo nasce com o que está no envelope AGORA: o normal é corrigir uma letra, e digitar o
   // endereço inteiro de novo é como se erra de novo.
   const abrirCorrecao = (): void => {
     setErro(null);
     setRecado(null);
+    setLinkParaCopiar(null);
     setEmailNovo(emailAtual);
     setCorrigindo(true);
   };
@@ -3131,6 +3666,7 @@ function LinhaDoSignatario({
     noArRef.current = true;
     setErro(null);
     setRecado(null);
+    setLinkParaCopiar(null);
     setAcaoNoAr(corpo.acao === "reenviar" ? "reenviar" : "trocar");
     try {
       const r = await temisFetch("/assinatura/signatario", {
@@ -3178,11 +3714,15 @@ function LinhaDoSignatario({
         // frase o operador leria "convite mandado" sobre um e-mail que não foi. Ele não é erro: o
         // caminho é o botão de reenviar, não o de trocar de novo.
         const aviso = j.data?.aviso ?? null;
-        setRecado(
-          aviso
-            ? `E-mail corrigido no envelope. ${aviso}`
-            : "E-mail corrigido e convite mandado para o endereço novo.",
-        );
+        // A posição nova também é dita: a Clicksign põe quem é recadastrado no fim da fila.
+        const fila = signatario.trocaVaiParaOFim
+          ? ` ${signatario.nome || "A pessoa"} foi para o fim da fila de assinatura.`
+          : "";
+        const texto = aviso
+          ? `E-mail corrigido no envelope.${fila} ${aviso}`
+          : `E-mail corrigido e convite mandado para o endereço novo.${fila}`;
+        if (aoTrocar) aoTrocar(signerId, `${signatario.nome || "A pessoa"}: ${texto}`);
+        else setRecado(texto);
         setCorrigindo(false);
       }
       // ⚠️ RECARREGA O CARD DEPOIS DO SUCESSO. Na troca, o signatário antigo deixou de existir no
@@ -3208,75 +3748,148 @@ function LinhaDoSignatario({
     }
   };
 
+  /**
+   * PEGA O LINK DE ASSINATURA E COPIA, para o atendimento mandar ao cliente.
+   *
+   * Lucas, 02/10/2026: *"quero ter esse link para mandar para o cliente, tem hora que ele não acha o
+   * link no e-mail ae mandando fica mais facil"*. É o MESMO link do convite por e-mail.
+   *
+   * ⚠️ O LINK VEM NO CLIQUE, UMA PESSOA POR VEZ, e o servidor registra quem usou o botão. Ele não é
+   * segredo (é o do convite por e-mail): quem protege a assinatura é o código que a Clicksign manda
+   * para o e-mail cadastrado. Por isso o link fica DESABILITADO no convite que voltou: com o e-mail
+   * errado, o código não chega e o cliente não conclui. E o 404 aqui não é erro: é o link que ainda
+   * não chegou ao Panteon (envelope enviado antes de 02/10/2026, até o próximo aviso da Clicksign), e
+   * a frase do servidor diz o que fazer enquanto isso.
+   */
+  const copiarLink = async (): Promise<void> => {
+    if (envelopeId === null) return;
+    if (noArRef.current) return;
+    noArRef.current = true;
+    setErro(null);
+    setRecado(null);
+    setLinkParaCopiar(null);
+    setAcaoNoAr("link");
+    try {
+      const r = await temisFetch("/assinatura/signatario", {
+        body: JSON.stringify({ acao: "link", envelopeId, signerId }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const j = (await r.json().catch(() => ({}))) as { data?: { link?: string }; erro?: string };
+      const link = j.data?.link ?? "";
+      if (!r.ok || !link) {
+        if (r.status === 404 && j.erro) {
+          setRecado(j.erro);
+          return;
+        }
+        setErro(j.erro ?? `Não consegui pegar o link (${r.status}).`);
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(link);
+        setRecado(
+          "Link de assinatura copiado. Mande só para o contato da ficha do cliente; para assinar, ele ainda confirma pelo código que chega no e-mail.",
+        );
+      } catch {
+        // O navegador pode negar a área de transferência: aí o link aparece para copiar à mão.
+        setLinkParaCopiar(link);
+        setRecado("O navegador não deixou copiar sozinho: copie o link abaixo.");
+      }
+    } catch {
+      setErro("Não consegui falar com o servidor. Nada foi mexido: tente de novo.");
+    } finally {
+      noArRef.current = false;
+      setAcaoNoAr(null);
+    }
+  };
+
   return (
     <li
       /* ⚠️ O VERMELHO É UMA BARRA, E NÃO UM BLOCO MACIÇO. O fundo rosa cobrindo a linha inteira
          gritava mais alto que o próprio texto — e num contrato de cinco pessoas com dois convites
          devolvidos, metade da caixa fica rosa e o destaque deixa de destacar. A barra na borda diz
          a mesma coisa e devolve o fundo ao texto. É a mesma régua do log logo abaixo, que já marca
-         gravidade com barra. */
-      className={`rounded-lg border-l-2 px-2.5 py-2 ${
+         gravidade com barra.
+
+         ⚠️ TRÊS COLUNAS NO PAINEL LARGO (quem, estado, ações) E DUAS NO ESTREITO, com as ações
+         descendo (mockup aprovado em 02/10/2026). O portal do incorporador é aberto no celular, e
+         ali três colunas espremiam o e-mail até sumir. */
+      className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-lg border-l-2 py-1.5 pl-2.5 pr-2 @xl:grid-cols-[minmax(0,1fr)_auto_auto] ${
         precisaDeConserto
           ? "border-rose-500 bg-rose-500/[0.06]"
           : "border-transparent hover:bg-subtle"
       }`}
     >
-      <div className="flex items-start justify-between gap-3">
-        {/* ⚠️ `min-w-0` E `break-words` DE NOVO, pelo mesmo motivo do bloco `Campos`: e-mail não
-            tem onde quebrar, e sem os dois ele escreve por cima do estado à direita — logo aqui,
-            onde o e-mail é justamente o que costuma estar errado. */}
-        <div className="min-w-0">
-          <p className="m-0 truncate text-[13px] font-semibold text-ink">
-            {signatario.nome}
-            {papel ? <span className="font-normal text-ink-muted"> · {papel}</span> : null}
+      {/* ⚠️ `min-w-0` E `break-words` DE NOVO, pelo mesmo motivo do bloco `Campos`: e-mail não tem onde
+          quebrar, e sem os dois ele escreve por cima do estado à direita — logo aqui, onde o e-mail é
+          justamente o que costuma estar errado. */}
+      <div className="min-w-0">
+        <p className="m-0 truncate text-[12.5px] font-semibold text-ink">
+          {signatario.nome}
+          {papel ? <span className="font-normal text-ink-muted"> · {papel}</span> : null}
+        </p>
+        {/* ⚠️ O E-MAIL APARECE SEMPRE, e é o ponto do painel inteiro: foi um e-mail inexistente que
+            derrubou o envelope da Beatriz. Escondê-lo obrigaria a abrir a Clicksign para descobrir o
+            que a tela já tem na mão. */}
+        <p className="m-0 break-words text-[11px] text-ink-muted">
+          {/* ⚠️ `||`, E NÃO `??`: a lib manda string VAZIA quando o envelope não tem e-mail da pessoa,
+              e o `??` só troca nulo — a linha ficaria em branco no lugar da frase. É a armadilha que o
+              repo já registrou em `nullish-nao-troca-string-vazia`. */}
+          {signatario.email || "sem e-mail no envelope"}
+        </p>
+        {/* ⚠️ QUEM FOI RECADASTRADO ESTÁ NO FIM DA FILA, E A LINHA DIZ ISSO (Lucas, 02/10/2026:
+            *"vamos informar (na ordem da tela) que aquele cadastro foi para ultima posição"*). A
+            posição já está certa na fila; a frase explica por que uma compradora aparece depois das
+            testemunhas. Grafite, e não âmbar: é informação, e não problema. */}
+        {signatario.foiParaOFimEm ? (
+          <p className="m-0 mt-0.5 flex items-center gap-1 text-[10.5px] font-semibold text-ink-soft">
+            <ArrowDownToLine aria-hidden="true" className="size-3 shrink-0" />
+            Foi para o fim da fila ao corrigir o e-mail ({momento(signatario.foiParaOFimEm)})
           </p>
-          {/* ⚠️ O E-MAIL APARECE SEMPRE, e é o ponto do painel inteiro: foi um e-mail inexistente
-              que derrubou o envelope da Beatriz. Escondê-lo obrigaria a abrir a Clicksign para
-              descobrir o que a tela já tem na mão. */}
-          <p className="m-0 break-words text-[11px] text-ink-muted">
-            {/* ⚠️ `||`, E NÃO `??`: a lib manda string VAZIA quando o envelope não tem e-mail da
-                pessoa, e o `??` só troca nulo — a linha ficaria em branco no lugar da frase. É a
-                armadilha que o repo já registrou em `nullish-nao-troca-string-vazia`. */}
-            {signatario.email || "sem e-mail no envelope"}
-            {/* ⚠️ A HORA ENTRA AQUI, COLADA NO E-MAIL, em vez de virar um parágrafo próprio. Ela
-                é o único detalhe que interessa de quem já assinou, e uma terceira linha por pessoa
-                triplicava a altura da lista para dizer o que cabe depois de um ponto. */}
-            {signatario.assinouEm ? (
-              <span className="text-ink-soft"> · {momento(signatario.assinouEm)}</span>
-            ) : null}
-          </p>
-        </div>
-
-        <span
-          className={`flex shrink-0 items-center gap-1 text-[11px] font-semibold ${estado.cor}`}
-        >
-          <Icone aria-hidden="true" className="size-3.5 shrink-0" />
-          {estado.texto}
-        </span>
+        ) : null}
       </div>
 
-      {/* ⚠️ O DETALHE SÓ APARECE ONDE ELE MUDA O QUE A PESSOA VAI FAZER: no convite que voltou,
-          porque o motivo decide entre corrigir o endereço e reenviar. "Assinou em tal hora" e
-          "abriu em tal hora" já estão ditos pelo estado à direita e repetidos no log; escritos aqui,
-          eram três linhas de texto em cada pessoa numa coluna que se lê de relance. */}
+      {/* ⚠️ O ESTADO LEVA A HORA AO LADO, e o detalhe vai para a dica. "Assinou em tal hora" e "abriu
+          em tal hora" eram uma linha a mais por pessoa numa coluna que se lê de relance. */}
+      <span
+        className={`flex shrink-0 items-center gap-1 justify-self-end whitespace-nowrap text-[11px] font-semibold ${estado.cor}`}
+        title={estado.detalhe ?? undefined}
+      >
+        <Icone aria-hidden="true" className="size-3.5 shrink-0" />
+        {estado.texto}
+        {estado.quando ? (
+          <span className="font-normal tabular-nums text-ink-muted"> {momentoCurto(estado.quando)}</span>
+        ) : null}
+      </span>
+
+      {/* ⚠️ O DETALHE ESCRITO SÓ APARECE ONDE ELE MUDA O QUE A PESSOA VAI FAZER: no convite que voltou,
+          porque o motivo decide entre corrigir o endereço e reenviar. */}
       {precisaDeConserto && estado.detalhe ? (
-        <p className="m-0 mt-0.5 break-words text-[10.5px] text-rose-700 dark:text-rose-300">
+        <p className="col-span-full m-0 break-words text-[10.5px] text-rose-700 dark:text-rose-300">
           {estado.detalhe}
         </p>
       ) : null}
 
       {podeMexer ? (
-        <div className="mt-1.5 grid gap-1.5">
+        // ⚠️ `contents`: as ações viram a TERCEIRA COLUNA da linha no painel largo e descem para baixo
+        // do nome no estreito, sem mudar uma vírgula nas regras dos botões.
+        <div className="contents">
           {corrigindo ? (
-            <div className="grid gap-1.5 rounded-lg border border-line bg-subtle px-2 py-2">
+            <div className="col-span-full mt-1 grid gap-1.5 rounded-lg border border-line bg-subtle px-2 py-2">
               {/* ⚠️ A FRASE VEM ANTES DO CAMPO, e é ela que faz o campo ser uma confirmação e não
                   um formulário de cadastro. O que acontece no clique não se adivinha pelo rótulo:
                   a pessoa é REMOVIDA do envelope de produção e recriada. Quem lê "editar e-mail"
                   imagina um UPDATE; o que existe do lado de lá é um DELETE seguido de um POST. */}
               <p className="m-0 text-[10.5px] text-ink-soft">
-                O signatário atual sai do envelope e entra de novo com o e-mail corrigido, e só ele
-                recebe o convite. Quem já assinou não é tocado.
+                O e-mail corrigido entra no envelope antes de o antigo sair, e só ele recebe o
+                convite. Quem já assinou não é tocado.
               </p>
+              {signatario.trocaVaiParaOFim ? (
+                <p className="m-0 flex gap-1.5 border-l-2 border-ink pl-2 text-[10.5px] font-semibold text-ink">
+                  <ArrowDownToLine aria-hidden="true" className="mt-px size-3 shrink-0" />
+                  {signatario.trocaVaiParaOFim}
+                </p>
+              ) : null}
               <input
                 autoComplete="off"
                 className="w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-[11px] text-ink outline-none focus:border-line-strong"
@@ -3289,7 +3902,7 @@ function LinhaDoSignatario({
               />
               <div className="flex flex-wrap gap-2">
                 <button
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-[11px] font-semibold text-ink transition-colors hover:bg-subtle disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-inverse px-3 py-1.5 text-[11px] font-semibold text-brand-ink transition-opacity hover:opacity-90 disabled:opacity-50"
                   // ⚠️ O MESMO E-MAIL NÃO PASSA DAQUI, e a recusa manda para o botão certo: trocar
                   // um endereço por ele mesmo removeria a pessoa do envelope para recriá-la igual.
                   // Quando o endereço está certo e o cliente não recebeu, o caminho é "Reenviar
@@ -3323,8 +3936,8 @@ function LinhaDoSignatario({
                 </button>
               </div>
             </div>
-          ) : (
-            <div className="flex flex-wrap items-center gap-1.5">
+          ) : signatario.assinouEm ? null : (
+            <div className="col-span-full flex flex-wrap items-center gap-1 @xl:col-span-1 @xl:justify-end">
               {/* ⚠️ A AÇÃO PRINCIPAL É A DO PROBLEMA DAQUELA LINHA, e só ela ganha nome. Lucas
                   (12/09/2026), vendo a tela: *"achei muito grande esses botões (escrita), ta feio
                   essa tela ... é muito informação, temos que conduzir o usuário na tela, ele tem
@@ -3353,7 +3966,7 @@ function LinhaDoSignatario({
               {precisaDeConserto ? (
                 <Tooltip content={fraseDaTroca} placement="top">
                   <button
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#A07C3B] px-2.5 py-1 text-[11px] font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-inverse px-2.5 text-[11px] font-semibold text-brand-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={acaoNoAr !== null || !podeTrocarEmail}
                     onClick={abrirCorrecao}
                     title={podeTrocarEmail ? undefined : fraseDaTroca}
@@ -3418,14 +4031,44 @@ function LinhaDoSignatario({
                   </button>
                 </Tooltip>
               )}
+
+              {/* ⚠️ O LINK SEGUE A RÉGUA DO REENVIO: o envelope vivo, a chave da Clicksign e a linha
+                  no quadro. Desabilitado, ele mostra o mesmo motivo; e some para quem já assinou. */}
+              {signatario.assinouEm ? null : (
+                <Tooltip content={fraseDoLink} placement="top">
+                  <button
+                    aria-label="Copiar o link de assinatura"
+                    className="grid size-7 shrink-0 place-items-center rounded-lg border border-line text-ink-muted transition-colors hover:bg-subtle hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={acaoNoAr !== null || !podeCopiarLink}
+                    onClick={() => void copiarLink()}
+                    title={fraseDoLink}
+                    type="button"
+                  >
+                    {acaoNoAr === "link" ? (
+                      <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+                    ) : (
+                      <Link2 aria-hidden="true" className="size-3.5" />
+                    )}
+                  </button>
+                </Tooltip>
+              )}
             </div>
           )}
 
           {recado ? (
-            <p className="m-0 break-words text-[10.5px] font-medium text-ink-soft">{recado}</p>
+            <p className="col-span-full m-0 break-words text-[10.5px] font-medium text-ink-soft">{recado}</p>
+          ) : null}
+          {linkParaCopiar ? (
+            <input
+              aria-label="Link de assinatura"
+              className="col-span-full w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-[11px] text-ink outline-none focus:border-line-strong"
+              onFocus={(e) => e.currentTarget.select()}
+              readOnly
+              value={linkParaCopiar}
+            />
           ) : null}
           {erro ? (
-            <p className="m-0 break-words text-[10.5px] font-medium text-rose-700 dark:text-rose-300">
+            <p className="col-span-full m-0 break-words text-[10.5px] font-medium text-rose-700 dark:text-rose-300">
               {erro}
             </p>
           ) : null}
@@ -3447,11 +4090,21 @@ function LinhaDoSignatario({
  * FALHA — foi assim que soubemos do `bounce` da Beatriz —, então a ausência de aviso não prova
  * entrega nenhuma. A frase diz o que a tela realmente sabe, e o detalhe explica por quê: sem isso,
  * o operador leria o silêncio como "o cliente recebeu e está enrolando".
+ *
+ * ⚠️ E O SILÊNCIO DE QUEM AINDA NÃO CHEGOU NA VEZ É ESPERA (02/10/2026, mockup aprovado). A Clicksign
+ * só notifica o degrau ativo: as vendedoras, atrás das testemunhas, não receberam convite nenhum, e
+ * escrever "Sem notícia" ao lado delas fazia o operador procurar defeito onde há só fila. Vale só para
+ * o silêncio: convite que voltou, aberto ou entregue continua dito como é.
  */
-function estadoDoSignatario(signatario: SignatarioNaTela): {
+function estadoDoSignatario(
+  signatario: SignatarioNaTela,
+  aguardaAVez = false,
+): {
   cor: string;
   detalhe: null | string;
   icone: typeof Mail;
+  /** A hora que acompanha o estado na linha, em ISO. `null` = o estado não tem hora. */
+  quando: null | string;
   texto: string;
 } {
   if (signatario.assinouEm) {
@@ -3459,6 +4112,7 @@ function estadoDoSignatario(signatario: SignatarioNaTela): {
       cor: "text-emerald-700 dark:text-emerald-300",
       detalhe: `Assinou em ${momento(signatario.assinouEm)}.`,
       icone: CircleCheck,
+      quando: signatario.assinouEm,
       texto: "Assinou",
     };
   }
@@ -3474,7 +4128,7 @@ function estadoDoSignatario(signatario: SignatarioNaTela): {
         // ⚠️ O CONSELHO SAIU DA FRASE PORQUE ELE VIROU BOTÃO. Ela mandava voltar o card para a
         // análise — o que CANCELA o envelope de produção e obriga quem já assinou a assinar de novo.
         // Depois virou "corrija o e-mail aqui embaixo", que é escrever o rótulo do botão que está
-        // logo ali. A linha diz o FATO; o que fazer é o botão dourado ao lado. Lucas (12/09/2026):
+        // logo ali. A linha diz o FATO; o que fazer é o botão grafite ao lado. Lucas (12/09/2026):
         // *"é muito informação, temos que conduzir o usuário na tela"* — conduzir é ter um gesto
         // óbvio, não um parágrafo explicando o gesto.
         "Esta assinatura não chega sozinha.",
@@ -3482,6 +4136,7 @@ function estadoDoSignatario(signatario: SignatarioNaTela): {
         .filter(Boolean)
         .join(" "),
       icone: MailX,
+      quando: signatario.conviteQuando,
       texto: "Convite NÃO entregue",
     };
   }
@@ -3491,6 +4146,7 @@ function estadoDoSignatario(signatario: SignatarioNaTela): {
       cor: "text-ink",
       detalhe: `Abriu o documento em ${momento(signatario.comecouEm)} e ainda não assinou.`,
       icone: Eye,
+      quando: signatario.comecouEm,
       texto: "Abriu para assinar",
     };
   }
@@ -3502,7 +4158,19 @@ function estadoDoSignatario(signatario: SignatarioNaTela): {
         ? `Convite entregue em ${momento(signatario.conviteQuando)}.`
         : null,
       icone: MailCheck,
+      quando: signatario.conviteQuando,
       texto: "Convite entregue",
+    };
+  }
+
+  if (aguardaAVez) {
+    return {
+      cor: "text-ink-muted",
+      detalhe:
+        "Os degraus de antes ainda não terminaram. A Clicksign manda o convite desta pessoa quando chegar a vez dela.",
+      icone: Clock,
+      quando: null,
+      texto: "Aguarda a vez",
     };
   }
 
@@ -3511,6 +4179,7 @@ function estadoDoSignatario(signatario: SignatarioNaTela): {
     detalhe:
       "A Clicksign só avisa quando a notificação falha, e nada foi dito sobre esta: não dá para afirmar que o convite chegou.",
     icone: Mail,
+    quando: null,
     texto: "Sem notícia",
   };
 }
@@ -3540,6 +4209,18 @@ function momento(iso: string): string {
   const quando = new Date(iso);
   if (Number.isNaN(quando.getTime())) return iso;
   return quando.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
+/**
+ * "2026-10-01T17:46:00Z" → "01/10 14:46": a hora ao lado do estado, na fila. O ano sai porque um
+ * envelope vive semanas, e a data inteira continua na dica e no log (`momento`).
+ */
+function momentoCurto(iso: string): string {
+  const quando = new Date(iso);
+  if (Number.isNaN(quando.getTime())) return iso;
+  const dia = quando.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  const hora = quando.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return `${dia} ${hora}`;
 }
 
 function EmConstrucao({ oQueVem, titulo }: { oQueVem: string; titulo: string }) {

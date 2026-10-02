@@ -183,6 +183,69 @@ export function quemAssinou(payload: unknown): SignatarioDoEnvelope[] {
 }
 
 /**
+ * QUANDO O ENVELOPE VENCE — o `document.deadline_at` do payload, em ISO. `null` = não veio, ou veio
+ * ilegível.
+ *
+ * ⚠️ É A DATA EM QUE A CLICKSIGN CANCELA O ENVELOPE QUE NÃO FECHOU: o envio manda
+ * `deadline_partial_signature_action: "canceled"` (`traduzir.ts`). É por isso que a tela a mostra no
+ * cabeçalho da assinatura (Lucas, 02/10/2026, no mockup aprovado da etapa "Em assinatura").
+ *
+ * ⚠️ MEDIDO ANTES DE CONFIAR (02/10/2026, só SELECT, os 300 payloads conferidos mais recentes): os
+ * 300 trazem `document.deadline_at` preenchido, e nenhum o traz na raiz nem em `envelope`. O payload
+ * mais recente basta: um `update_deadline` muda o campo, e o webhook seguinte já chega com o novo.
+ *
+ * ⚠️ DATA ILEGÍVEL VIRA `null`, E NÃO O TEXTO CRU (o contrário de `emIso`): um prazo que a tela não sabe
+ * ler não pode virar "vence em" de coisa nenhuma.
+ */
+export function vencimentoDoPayload(payload: unknown): null | string {
+  const cru = texto(documentoDoPayload(payload).deadline_at);
+  if (!cru) return null;
+  const lido = Date.parse(cru);
+  return Number.isNaN(lido) ? null : new Date(lido).toISOString();
+}
+
+/** A folga entre o lote de cadastro do envio e o `enviado_em` que nós gravamos (medido: até 1,1 s). */
+const FOLGA_DO_ENVIO_MS = 60_000;
+
+/**
+ * QUEM FOI RECADASTRADO DEPOIS DO ENVIO — e por isso está no fim da fila de assinatura.
+ *
+ * ⚠️ A CLICKSIGN PÕE NO ÚLTIMO DEGRAU + 1 QUEM ENTRA NUM ENVELOPE JÁ ENVIADO (lido por GET em
+ * 02/10/2026: a Maura do VOC0306 foi do degrau 3 para o 6; a Rita do VOL, do 4 para o 5), e o
+ * webhook nunca traz o degrau. O que ele traz é o histórico inteiro, com o `add_signer` de cada
+ * pessoa: quem tem `add_signer` DEPOIS do envio foi recadastrado, e está no fim. Lucas, 02/10/2026:
+ * *"vamos informar (na ordem da tela) que aquele cadastro foi para ultima posição"*.
+ *
+ * ⚠️ MEDIDO ANTES DE CONFIAR (02/10/2026, só SELECT, os 29 envelopes da Clicksign): 163
+ * `add_signer`, 159 do lote do envio (todos até 1,1 s antes do nosso `enviado_em`) e 4 tardios, que
+ * são exatamente a Maura e as três Ritas. Zero falso positivo, zero falso negativo. A folga de 1
+ * minuto não muda o resultado e protege do relógio.
+ *
+ * ⚠️ DERIVAR EM VEZ DE GRAVAR É O QUE ACERTA O PASSADO SEM ESCREVER NO BANCO: os 4 envelopes
+ * trocados antes desta regra aparecem certos sem UPDATE nenhum.
+ *
+ * Devolve `key → quando foi recadastrado` (ISO). `enviadoEm` nulo ou ilegível devolve vazio.
+ */
+export function recadastrosDepoisDoEnvio(payload: unknown, enviadoEm: null | string): Map<string, string> {
+  const saida = new Map<string, string>();
+  const envio = enviadoEm ? Date.parse(enviadoEm) : Number.NaN;
+  if (Number.isNaN(envio)) return saida;
+
+  for (const evento of eventosDoDocumento(payload)) {
+    if (evento.nome !== "add_signer") continue;
+    const quando = Date.parse(evento.quando);
+    if (Number.isNaN(quando) || quando <= envio + FOLGA_DO_ENVIO_MS) continue;
+    for (const bruto of pessoasDoEvento(evento.dados)) {
+      const chave = texto(objeto(bruto).key);
+      if (!chave) continue;
+      const anterior = saida.get(chave);
+      if (anterior === undefined || Date.parse(anterior) < quando) saida.set(chave, evento.quando);
+    }
+  }
+  return saida;
+}
+
+/**
  * O que este evento diz sobre o CONVITE de quem assina — ou nada.
  *
  * ⚠️ SÓ O CONVITE DE ASSINATURA CONTA COMO "convite". A Clicksign usa o mesmo `notification` para
