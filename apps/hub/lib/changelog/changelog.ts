@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-10-02-temis-tela-em-assinatura",
+    deployedAt: "__HORA_REAL__",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Quem assina o contrato aparece em fila, na ordem da assinatura.** Os grupos que já terminaram ficam recolhidos e o grupo da vez fica destacado. Quem ainda não chegou na vez aparece como \"Aguarda a vez\".",
+              "**O topo mostra quantos compradores já assinaram**, quantas pessoas assinaram o contrato, quando o envelope vence e quem está na vez.",
+              "**Corrigir o e-mail de quem assina põe a pessoa no fim da fila**, que é como a Clicksign faz. Antes de corrigir, a tela avisa quantas pessoas passam a vir antes dela. A pessoa nova entra antes de a antiga sair, e ninguém fica fora do contrato no meio da troca.",
+              "**Cada pessoa que ainda não assinou tem um botão para copiar o link de assinatura**, para mandar ao cliente quando ele não acha o e-mail.",
+              "As ações de cada pessoa viraram ícones, com a explicação ao passar o mouse. O contrato e o log ficam lado a lado embaixo. A tela funciona no celular e no modo escuro.",
+            ],
+            screen: "Tela de trabalho da Têmis (Em assinatura e Pré-faturamento)",
+          },
+        ],
+      },
+    ],
+    rollback: "2fee05e1",
+    technical: {
+      done: "Duas entregas juntas. (1) fix/clicksign-troca-so-no-ultimo-degrau (de56aa42, 52f2e1d0, 5574d6ee): `trocarEmailDoSignatario` lê os degraus reais (`GET /envelopes/{id}/signers`), cria a pessoa nova e os requisitos ANTES de remover a antiga (com auto_close, tirar a última pendente antes poderia fechar o contrato), grava no quadro ordem = último degrau + 1 (onde a Clicksign põe o recadastro em envelope rodando, já que `group` volta 400), e numa remoção que expira relê os degraus antes de decidir (se não dá para saber, o novo fica e a frase manda conferir no painel). O redutor do webhook guarda `signer.url` só em evento com HMAC conferido e só de https://app.clicksign.com; ação \"link\" na rota do signatário (hub e portal) com as guardas do reenvio e log de quem pediu. (2) feat/temis-tela-em-assinatura (7df5c19f, fd4cb742): `SignatarioDaProposta.posicao` (o degrau de `naOrdemDaFila`), `EnvelopeDoDiario.venceEm` de `document.deadline_at` (medido em 300 de 300 payloads), `PainelDaAssinatura` reescrito como fila de degraus com cabeçalho de números (compradores pela `ehCompradorNoQuadro`, a mesma régua do selo do card), `LinhaDoSignatario` com o estado \"Aguarda a vez\", layout por `@container`. Regras e `aria-label` das ações mantidos; Hades com tipos próprios, não afetado. Testes novos: fila-de-degraus (11), fila-e-link-de-assinatura, diario-do-envelope, marcas, trocar-signatario e envelope. Sem migration. Integrado por merge pela sessão Publicação.",
+      motivation: "Incidente de 01/10/2026 no VOC0306: corrigir o e-mail da compradora (sozinha no degrau 3) removeu antes de criar, o degrau ficou vazio e a testemunha do degrau 4 assinou na frente dela; a troca morreu no meio e a pessoa ficou 39 minutos fora do envelope. Decisões do Lucas em 02/10/2026: \"não vamos voltar o card (...) vamos editar e vamos informar (na ordem da tela) que aquele cadastro foi para última posição\", \"Temos que mostrar os assinantes por ordem de assinatura\" e \"quero ter esse link para mandar para o cliente, tem hora que ele não acha o link no e-mail\".",
+    },
+    title: "Tela Em assinatura da Têmis em fila, e a troca de e-mail sem deixar ninguém fora",
+    type: "melhoria",
+    version: "1.407.0",
+  },
+  {
     buildTag: "2026-10-02-temis-nome-do-empreendimento",
     deployedAt: "2026-10-02T16:12:13-03:00",
     internal: true,
