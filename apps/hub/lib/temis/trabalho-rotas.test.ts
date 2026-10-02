@@ -89,6 +89,7 @@ const mocks = vi.hoisted(() => ({
       pedido: 5021,
       pedidoDesfeito: false,
       regra: "envio_d4sign",
+      semFinanceiro: false,
       situacao: "lida",
     }),
   ),

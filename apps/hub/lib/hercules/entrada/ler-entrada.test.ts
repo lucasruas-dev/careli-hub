@@ -4,16 +4,26 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SQL_ABRE_LEITURA, SQL_FECHA_LEITURA } from "@/lib/assinatura/espelho-d4sign/c2x";
 
-import { SQL_PARCELAS_DA_ENTRADA, SQL_PEDIDO_DO_ENVIO, SQL_PEDIDOS_DAS_UNIDADES } from "./c2x";
-import { lerEntradaDaVenda } from "./ler-entrada";
+import {
+  SQL_PARCELAS_DA_ENTRADA,
+  SQL_PEDIDO_DO_ENVIO,
+  SQL_PEDIDOS_DAS_UNIDADES,
+  SQL_PEDIDOS_DESFEITOS_DAS_UNIDADES,
+  TIMEOUT_DA_CONSULTA_NA_TELA_MS,
+} from "./c2x";
+import { lerEntradaDaVenda, TETO_DA_LEITURA_MS } from "./ler-entrada";
 
 // A LEITURA DA ENTRADA COM O CARD ABRINDO: Panteon falso e C2X falso, nenhum dos dois é o de verdade.
 //
 // O que fica travado:
 //   • o casamento na ordem da F8 (carga pelo `origem_c2x_id`, D4Sign pelo envio, Clicksign pelo
 //     terreno e pelo comprador), com "ambíguo" para dois candidatos e "sem pedido" para nenhum;
+//   • (revisão de 02/10/2026) o pedido do terreno nascido antes da venda não casa sozinho (VOR Q14
+//     L01); sem candidato vivo, o desfeito do comprador nascido depois da venda aparece; a venda do
+//     Garden nem abre o C2X; o pedido sem parcela nenhuma sai "sem financeiro";
 //   • no C2X só SELECT, dentro de `START TRANSACTION READ ONLY`, e a conexão volta (COMMIT + release);
-//   • falha e teto viram `falhou`, a conexão que falhou é DESTRUÍDA, e nada lança;
+//   • falha e teto viram `falhou`, a conexão que falhou é DESTRUÍDA (também quando é o próprio
+//     START TRANSACTION que falha), e nada lança;
 //   • o documento do comprador não sai na resposta.
 
 const DOC = "11122233344";
@@ -72,6 +82,7 @@ function panteon(dados: {
 // ── O C2X FALSO ─────────────────────────────────────────────────────────────
 
 function c2x(respostas: {
+  desfeitos?: Linha[];
   envio?: Linha[];
   falharEm?: string;
   parcelas?: Linha[];
@@ -80,24 +91,27 @@ function c2x(respostas: {
 }) {
   const sqls: string[] = [];
   const parametros: unknown[] = [];
+  const tetos: unknown[] = [];
   const conexao = {
     destroy: vi.fn(),
-    query: vi.fn(async (opcoes: { sql: string }, params?: unknown[]) => {
+    query: vi.fn(async (opcoes: { sql: string; timeout?: number }, params?: unknown[]) => {
       sqls.push(opcoes.sql);
       parametros.push(params);
+      tetos.push(opcoes.timeout);
       if (respostas.semFim && opcoes.sql === respostas.semFim) return new Promise(() => undefined);
       if (respostas.falharEm && opcoes.sql === respostas.falharEm) {
         throw Object.assign(new Error("Query inactivity timeout"), { code: "PROTOCOL_SEQUENCE_TIMEOUT" });
       }
       if (opcoes.sql === SQL_PEDIDO_DO_ENVIO) return [respostas.envio ?? []];
       if (opcoes.sql === SQL_PEDIDOS_DAS_UNIDADES) return [respostas.pedidosDasUnidades ?? []];
+      if (opcoes.sql === SQL_PEDIDOS_DESFEITOS_DAS_UNIDADES) return [respostas.desfeitos ?? []];
       if (opcoes.sql === SQL_PARCELAS_DA_ENTRADA) return [respostas.parcelas ?? []];
       return [[]];
     }),
     release: vi.fn(),
   };
   const pool = { getConnection: vi.fn(async () => conexao) };
-  return { conexao, parametros, pool: pool as unknown as Pick<Pool, "getConnection">, sqls };
+  return { conexao, parametros, pool: pool as unknown as Pick<Pool, "getConnection">, sqls, tetos };
 }
 
 const parcela = (campos: Linha): Linha => ({
@@ -108,6 +122,7 @@ const parcela = (campos: Linha): Linha => ({
   pago_em: null,
   parcela_do_sinal: 0,
   status: 6,
+  total_de_parcelas: 40,
   total_do_sinal: 1,
   valor: "1000.00",
   vencimento: "2026-09-28",
@@ -138,11 +153,16 @@ const ENVELOPE_CLICKSIGN = { ...ENVELOPE_D4SIGN, c2x_contract_signature_id: null
 
 const VENDA_NATIVA = {
   cliente_documento: "111.222.333-44",
+  criado_em: "2026-09-16T15:25:33.913804-03:00",
   id: "venda-1",
   origem: "panteon",
   origem_c2x_id: null,
+  unidade: { enterprise_id: "36" },
   unidade_id: "u-vol",
 };
+
+/** Um pedido redigitado no C2X DEPOIS da venda nativa (o caso de sempre). */
+const DEPOIS_DA_VENDA = "2026-09-22 10:00:00";
 
 /** O terreno do VOL Q03 L11: a linha viva da VOL e a do pai VLO apontando para ela, entre 1.500 outras. */
 const UNIDADES = [
@@ -214,7 +234,7 @@ describe("lerEntradaDaVenda: o casamento", () => {
     const p = panteon({ envelopes: [ENVELOPE_CLICKSIGN], unidades: UNIDADES, venda: VENDA_NATIVA });
     const m = c2x({
       parcelas: [parcela({ ar_id: 5012, pago_em: "2026-09-23", parcela_do_sinal: 1, parcela_id: 2, status: 5, tipo: 2, total_do_sinal: 3, valor: "4345.10" })],
-      pedidosDasUnidades: [{ ar_id: 5012, documento: "111.222.333-44", estagio: 4 }],
+      pedidosDasUnidades: [{ ar_id: 5012, criado_em_brasilia: DEPOIS_DA_VENDA, documento: "111.222.333-44", estagio: 4 }],
     });
     const r = await lerEntradaDaVenda(p.sb, "venda-1", { agora: HOJE, pool: m.pool });
     expect(r).toMatchObject({ paga: true, pedido: 5012, regra: "terreno_mesmo_comprador", situacao: "lida" });
@@ -232,8 +252,8 @@ describe("lerEntradaDaVenda: o casamento", () => {
     const p = panteon({ envelopes: [ENVELOPE_CLICKSIGN], unidades: UNIDADES, venda: VENDA_NATIVA });
     const m = c2x({
       pedidosDasUnidades: [
-        { ar_id: 5011, documento: DOC, estagio: 3 },
-        { ar_id: 5012, documento: DOC, estagio: 4 },
+        { ar_id: 5011, criado_em_brasilia: DEPOIS_DA_VENDA, documento: DOC, estagio: 3 },
+        { ar_id: 5012, criado_em_brasilia: DEPOIS_DA_VENDA, documento: DOC, estagio: 4 },
       ],
     });
     const r = await lerEntradaDaVenda(p.sb, "venda-1", { agora: HOJE, pool: m.pool });
@@ -247,6 +267,13 @@ describe("lerEntradaDaVenda: o casamento", () => {
     const m = c2x({ pedidosDasUnidades: [] });
     const r = await lerEntradaDaVenda(p.sb, "venda-1", { agora: HOJE, pool: m.pool });
     expect(r).toEqual({ motivo: "sem_pedido_no_c2x", situacao: "sem_pedido_no_c2x" });
+    // Sem candidato vivo, os desfeitos do terreno são lidos, a partir da hora de parede da venda.
+    const i = m.sqls.indexOf(SQL_PEDIDOS_DESFEITOS_DAS_UNIDADES);
+    expect(i).toBeGreaterThan(m.sqls.indexOf(SQL_PEDIDOS_DAS_UNIDADES));
+    const [unidades, desde] = m.parametros[i] as [number[], string];
+    expect([...unidades].sort()).toEqual([5277, 5576]);
+    expect(desde).toBe("2026-09-16 15:25:33");
+    soLeitura(m.sqls);
   });
 
   it("o pedido que já é de outra venda do Panteon no lote não conta", async () => {
@@ -256,7 +283,7 @@ describe("lerEntradaDaVenda: o casamento", () => {
       unidades: UNIDADES,
       venda: VENDA_NATIVA,
     });
-    const m = c2x({ pedidosDasUnidades: [{ ar_id: 5012, documento: DOC, estagio: 4 }] });
+    const m = c2x({ pedidosDasUnidades: [{ ar_id: 5012, criado_em_brasilia: DEPOIS_DA_VENDA, documento: DOC, estagio: 4 }] });
     const r = await lerEntradaDaVenda(p.sb, "venda-1", { agora: HOJE, pool: m.pool });
     expect(r).toEqual({ motivo: "pedido_de_venda_desfeita", situacao: "sem_pedido_no_c2x" });
   });
@@ -281,7 +308,158 @@ describe("lerEntradaDaVenda: o casamento", () => {
   });
 });
 
+describe("lerEntradaDaVenda: a revisão de 02/10/2026", () => {
+  /** A eec9f905 do VOR Q14 L01: nasceu no Panteon em 01/10 17:53, pela Clicksign. */
+  const VENDA_NOVA_DO_VOR = { ...VENDA_NATIVA, criado_em: "2026-10-01T17:53:31.381775-03:00" };
+
+  it("VOR Q14 L01: o pedido 5032, de 25/09 (da proposta cancelada), é ambíguo e as parcelas nem são lidas", async () => {
+    const p = panteon({ envelopes: [ENVELOPE_CLICKSIGN], unidades: UNIDADES, venda: VENDA_NOVA_DO_VOR });
+    const m = c2x({
+      parcelas: [parcela({ ar_id: 5032, parcela_id: 1, tipo: 2 })],
+      pedidosDasUnidades: [{ ar_id: 5032, criado_em_brasilia: "2026-09-25 19:24:00", documento: DOC, estagio: 4 }],
+    });
+    const r = await lerEntradaDaVenda(p.sb, "venda-1", { agora: HOJE, pool: m.pool });
+    expect(r).toEqual({ motivo: "pedido_anterior_a_venda", pedido: 5032, situacao: "ambiguo" });
+    expect(m.sqls).not.toContain(SQL_PARCELAS_DA_ENTRADA);
+    // Ambíguo não é "sem candidato vivo": os desfeitos não são lidos.
+    expect(m.sqls).not.toContain(SQL_PEDIDOS_DESFEITOS_DAS_UNIDADES);
+    expect(m.conexao.release).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(r)).not.toContain(DOC);
+  });
+
+  it("VOR Q14 L01: o pedido redigitado depois da venda casa", async () => {
+    const p = panteon({ envelopes: [ENVELOPE_CLICKSIGN], unidades: UNIDADES, venda: VENDA_NOVA_DO_VOR });
+    const m = c2x({
+      parcelas: [parcela({ ar_id: 5040, parcela_id: 1, status: 6, tipo: 2, vencimento: "2026-10-05" })],
+      pedidosDasUnidades: [{ ar_id: 5040, criado_em_brasilia: "2026-10-01 18:10:00", documento: DOC, estagio: 4 }],
+    });
+    const r = await lerEntradaDaVenda(p.sb, "venda-1", { agora: HOJE, pool: m.pool });
+    expect(r).toMatchObject({ pedido: 5040, regra: "terreno_mesmo_comprador", situacao: "lida" });
+  });
+
+  it("sem candidato vivo: o pedido do comprador desfeito DEPOIS da venda aparece com o número", async () => {
+    const p = panteon({ envelopes: [ENVELOPE_CLICKSIGN], unidades: UNIDADES, venda: VENDA_NOVA_DO_VOR });
+    const m = c2x({
+      desfeitos: [{ ar_id: 5041, criado_em_brasilia: "2026-10-01 18:30:00", documento: DOC, estagio: 7 }],
+      pedidosDasUnidades: [],
+    });
+    const r = await lerEntradaDaVenda(p.sb, "venda-1", { agora: HOJE, pool: m.pool });
+    expect(r).toEqual({ motivo: "pedido_desfeito_no_c2x", pedido: 5041, situacao: "sem_pedido_no_c2x" });
+    // O corte pela data vai no SQL, na hora de parede de Brasília da venda.
+    const [, desde] = m.parametros[m.sqls.indexOf(SQL_PEDIDOS_DESFEITOS_DAS_UNIDADES)] as [number[], string];
+    expect(desde).toBe("2026-10-01 17:53:31");
+    expect(m.sqls).not.toContain(SQL_PARCELAS_DA_ENTRADA);
+    soLeitura(m.sqls);
+    expect(JSON.stringify(r)).not.toContain(DOC);
+  });
+
+  it("sem candidato vivo: o desfeito de ANTES da venda não conta, e segue 'ainda não foi digitada'", async () => {
+    const p = panteon({ envelopes: [ENVELOPE_CLICKSIGN], unidades: UNIDADES, venda: VENDA_NOVA_DO_VOR });
+    // O C2X falso devolve a linha mesmo com o corte do SQL: a régua da memória também barra.
+    const m = c2x({
+      desfeitos: [{ ar_id: 4990, criado_em_brasilia: "2026-09-25 19:24:00", documento: DOC, estagio: 10 }],
+      pedidosDasUnidades: [],
+    });
+    const r = await lerEntradaDaVenda(p.sb, "venda-1", { agora: HOJE, pool: m.pool });
+    expect(r).toEqual({ motivo: "sem_pedido_no_c2x", situacao: "sem_pedido_no_c2x" });
+  });
+
+  it("a venda sem data de criação não lê os desfeitos (não há corte para o SQL)", async () => {
+    const p = panteon({ envelopes: [ENVELOPE_CLICKSIGN], unidades: UNIDADES, venda: { ...VENDA_NATIVA, criado_em: null } });
+    const m = c2x({ pedidosDasUnidades: [] });
+    const r = await lerEntradaDaVenda(p.sb, "venda-1", { agora: HOJE, pool: m.pool });
+    expect(r).toEqual({ motivo: "sem_pedido_no_c2x", situacao: "sem_pedido_no_c2x" });
+    expect(m.sqls).not.toContain(SQL_PEDIDOS_DESFEITOS_DAS_UNIDADES);
+  });
+
+  it("Garden (enterprise 39): o financeiro não é do C2X, e o C2X nem é aberto", async () => {
+    const GARDEN = { ...VENDA_NATIVA, unidade: { enterprise_id: "39" } };
+    for (const [envelopes, venda] of [
+      [[ENVELOPE_CLICKSIGN], GARDEN],
+      [[ENVELOPE_D4SIGN], GARDEN],
+      [[], { ...GARDEN, origem: "c2x", origem_c2x_id: 4400 }],
+    ] as const) {
+      const p = panteon({ envelopes: [...envelopes], unidades: UNIDADES, venda });
+      const m = c2x({ envio: [{ ar_id: 5020 }], parcelas: PARCELAS_DO_5020 });
+      const r = await lerEntradaDaVenda(p.sb, "venda-1", { agora: HOJE, pool: m.pool });
+      expect(r).toEqual({ motivo: "financeiro_no_lsoft", situacao: "fora_do_c2x" });
+      expect(m.pool.getConnection).not.toHaveBeenCalled();
+      // Nem o terreno é lido: a tabela de unidades inteira não serve a quem não vai ao C2X.
+      expect(p.chamadas.some((c) => c.tabela === "hercules_unidades")).toBe(false);
+    }
+  });
+
+  it("a unidade embutida pode vir em lista (PostgREST) e o empreendimento que não é do LSoft segue para o C2X", async () => {
+    const lista = panteon({ envelopes: [ENVELOPE_D4SIGN], venda: { ...VENDA_NATIVA, unidade: [{ enterprise_id: 39 }] } });
+    const m1 = c2x({});
+    expect(await lerEntradaDaVenda(lista.sb, "venda-1", { agora: HOJE, pool: m1.pool })).toEqual({
+      motivo: "financeiro_no_lsoft",
+      situacao: "fora_do_c2x",
+    });
+    const semUnidade = panteon({ envelopes: [ENVELOPE_D4SIGN], venda: { ...VENDA_NATIVA, unidade: null } });
+    const m2 = c2x({ envio: [] });
+    await lerEntradaDaVenda(semUnidade.sb, "venda-1", { agora: HOJE, pool: m2.pool });
+    expect(m2.pool.getConnection).toHaveBeenCalledTimes(1);
+    // A venda é lida com a data de criação e o empreendimento da unidade, numa ida só.
+    const select = lista.chamadas.find((c) => c.tabela === "hercules_propostas")?.filtros.find((f) => f[0] === "select");
+    expect(String(select?.[1])).toContain("criado_em");
+    expect(String(select?.[1])).toContain("unidade:hercules_unidades(enterprise_id)");
+  });
+
+  it("o pedido sem NENHUMA parcela no C2X: lido, sem parcelas e 'sem financeiro'", async () => {
+    const p = panteon({ venda: { ...VENDA_NATIVA, origem: "c2x", origem_c2x_id: 4400 } });
+    const m = c2x({
+      parcelas: [
+        {
+          apagada: null,
+          ar_id: 4400,
+          estagio: 4,
+          marcado_em_brasilia: null,
+          pago_em: null,
+          parcela_do_sinal: null,
+          parcela_id: null,
+          status: null,
+          tipo: null,
+          total_de_parcelas: 0,
+          total_do_sinal: null,
+          valor: null,
+          vencimento: null,
+        },
+      ],
+    });
+    const r = await lerEntradaDaVenda(p.sb, "venda-1", { agora: HOJE, pool: m.pool });
+    expect(r).toMatchObject({ entrada: null, parcelas: [], pedido: 4400, semFinanceiro: true, situacao: "lida" });
+  });
+
+  it("o pedido com parcela lançada não é 'sem financeiro'", async () => {
+    const p = panteon({ envelopes: [ENVELOPE_D4SIGN], venda: VENDA_NATIVA });
+    const m = c2x({ envio: [{ ar_id: 5020 }], parcelas: PARCELAS_DO_5020 });
+    const r = await lerEntradaDaVenda(p.sb, "venda-1", { agora: HOJE, pool: m.pool });
+    expect(r).toMatchObject({ semFinanceiro: false, situacao: "lida" });
+  });
+
+  it("o teto da leitura inteira é 3 s, e o START TRANSACTION leva o teto do card (5 s), não os 20 s do espelho", async () => {
+    expect(TETO_DA_LEITURA_MS).toBe(3_000);
+    const p = panteon({ venda: { ...VENDA_NATIVA, origem: "c2x", origem_c2x_id: 4400 } });
+    const m = c2x({ parcelas: [parcela({ ar_id: 4400, parcela_id: 1, tipo: 1 })] });
+    await lerEntradaDaVenda(p.sb, "venda-1", { agora: HOJE, pool: m.pool });
+    expect(m.sqls[0]).toBe(SQL_ABRE_LEITURA);
+    expect(m.tetos[0]).toBe(TIMEOUT_DA_CONSULTA_NA_TELA_MS);
+  });
+});
+
 describe("lerEntradaDaVenda: falha não derruba nada", () => {
+  it("o START TRANSACTION falhou: a conexão é DESTRUÍDA e nunca devolvida ao pool", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const p = panteon({ envelopes: [ENVELOPE_D4SIGN], venda: VENDA_NATIVA });
+    const m = c2x({ envio: [{ ar_id: 5020 }], falharEm: SQL_ABRE_LEITURA });
+    const r = await lerEntradaDaVenda(p.sb, "venda-1", { agora: HOJE, pool: m.pool });
+    expect(r).toEqual({ motivo: "c2x", situacao: "falhou" });
+    expect(m.conexao.destroy).toHaveBeenCalledTimes(1);
+    expect(m.conexao.release).not.toHaveBeenCalled();
+    expect(m.sqls).toEqual([SQL_ABRE_LEITURA]);
+  });
+
   it("o C2X sem vaga ou fora do ar: falhou", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const p = panteon({ envelopes: [ENVELOPE_D4SIGN], venda: VENDA_NATIVA });

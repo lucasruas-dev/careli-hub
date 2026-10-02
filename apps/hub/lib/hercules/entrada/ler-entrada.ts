@@ -6,9 +6,17 @@ import { abrirLeituraDoC2x, descartarLeituraDoC2x, fecharLeituraDoC2x } from "@/
 import { diaEmBrasilia } from "@/lib/assinatura/instante";
 import { getHadesDbPool } from "@/lib/guardian/db";
 import { terrenosDasUnidades } from "@/lib/hercules/terreno";
+import { EMPREENDIMENTOS_DO_LSOFT_NO_FINANCEIRO } from "@/lib/lsoft/carteira-no-financeiro";
 
-import { pedidoComAEntrada, pedidoDoEnvio, pedidosDasUnidades } from "./c2x";
-import { type EloDaEntrada, eloDaEntrada, type PedidoDoTerreno } from "./elo";
+import {
+  paredeDeBrasilia,
+  pedidoComAEntrada,
+  pedidoDoEnvio,
+  pedidosDasUnidades,
+  pedidosDesfeitosDasUnidades,
+  TIMEOUT_DA_CONSULTA_NA_TELA_MS,
+} from "./c2x";
+import { type EloDaEntrada, eloDaEntrada, type EntradaDoElo, olhaOsDesfeitos, type PedidoDoTerreno } from "./elo";
 import { type EntradaDoCard, situacaoDaEntrada } from "./regra";
 
 // A ENTRADA DE UMA VENDA, LIDA NA HORA EM QUE O CARD DO PRÉ-FATURAMENTO ABRE (só leitura).
@@ -17,11 +25,17 @@ import { type EntradaDoCard, situacaoDaEntrada } from "./regra";
 // (decisão dele no mesmo dia, *"So o passo 1"*): a tela mostra a entrada e se está paga; o Faturado
 // continua à mão, com a trava que já existe. Por isso aqui não se grava nada, nem no Panteon nem no C2X.
 //
-// O caminho: (1) no Panteon, a venda (origem, `origem_c2x_id`, unidade e o documento do comprador, EM
-// MEMÓRIA) e os envelopes de contrato; (2) só para a nativa da Clicksign, o terreno da unidade (a
-// mesma união do espelho da D4Sign, `terrenosDasUnidades`) e os pedidos que já são de outra venda;
-// (3) no C2X, numa conexão só-leitura, o elo (`elo.ts`) e as parcelas do pedido (`c2x.ts`); (4) a regra
-// pura (`regra.ts`) decide o que a tela mostra.
+// O caminho: (1) no Panteon, a venda (origem, `origem_c2x_id`, unidade com o empreendimento, quando
+// nasceu e o documento do comprador, EM MEMÓRIA) e os envelopes de contrato; (2) só para a nativa da
+// Clicksign, o terreno da unidade (a mesma união do espelho da D4Sign, `terrenosDasUnidades`) e os
+// pedidos que já são de outra venda; (3) no C2X, numa conexão só-leitura, o elo (`elo.ts`), os
+// pedidos desfeitos do comprador quando não sobrou candidato vivo, e as parcelas do pedido
+// (`c2x.ts`); (4) a regra pura (`regra.ts`) decide o que a tela mostra.
+//
+// ⚠️ O EMPREENDIMENTO CUJO FINANCEIRO NÃO É O C2X NEM ABRE O C2X (revisão de 02/10/2026). O Garden
+// (enterprise 39) tem a carteira no LSoft (`EMPREENDIMENTOS_DO_LSOFT_NO_FINANCEIRO`) e zero parcela no
+// legado: lido no C2X, ele sairia "sem pedido", e a tela mandaria digitar no C2X uma venda que não vai
+// para lá. A lista é a MESMA do Financeiro do portal, para as duas telas não discordarem.
 //
 // ⚠️ FALHA NÃO DERRUBA O CARD: tudo o que dá errado vira `{ situacao: "falhou" }`, e a tela diz que não
 // conseguiu ler. E HÁ UM TETO PARA A LEITURA INTEIRA (`TETO_DA_LEITURA_MS`): o C2X é produção com
@@ -32,8 +46,26 @@ import { type EntradaDoCard, situacaoDaEntrada } from "./regra";
 // ⚠️ O DOCUMENTO DO COMPRADOR ENTRA E NÃO SAI: comparado em memória pelo elo, nunca logado nem
 // devolvido. O log de falha leva só o código do erro.
 
-/** O teto da leitura inteira (Panteon + C2X) com o card abrindo. */
-export const TETO_DA_LEITURA_MS = 8_000;
+/**
+ * O teto da leitura inteira (Panteon + C2X) com o card abrindo.
+ *
+ * ⚠️ 3 s, E NÃO OS 8 s DE ANTES (revisão de 02/10/2026): a rota espera a leitura antes de responder,
+ * então um C2X lento segurava a ABERTURA DO CARD inteiro (a análise, os contratos, a assinatura) por
+ * até 8 s. A leitura saudável cabe com folga: medida em 02/10/2026 (duas rodadas, os 6 cards de
+ * contrato em Pré-faturamento e o VOR Q14 L01), a nativa da Clicksign, que lê a tabela de unidades,
+ * levou de 0,9 a 1,2 s; a da D4Sign, de 0,2 a 0,3 s. Passou do teto, a tela diz que não conseguiu ler e
+ * oferece "ler de novo".
+ */
+export const TETO_DA_LEITURA_MS = 3_000;
+
+/**
+ * Os `enterprises.id` do C2X (o `hercules_unidades.enterprise_id`) cujo financeiro mora no LSoft. Hoje,
+ * só o Garden (39). Vem da lista do Financeiro do portal, e não de uma cópia: o dia em que outro
+ * empreendimento entrar lá, ele sai do C2X aqui também.
+ */
+const ENTERPRISES_FORA_DO_C2X: ReadonlySet<number> = new Set(
+  EMPREENDIMENTOS_DO_LSOFT_NO_FINANCEIRO.map((e) => e.c2xEnterpriseId),
+);
 
 const WORKSPACE = "careli";
 const PAGINA = 1000;
@@ -62,11 +94,24 @@ type LinhaDoEnvelope = {
 
 type VendaLida = {
   cliente_documento: null | string;
+  /** Quando a venda nasceu no Panteon (ISO). O pedido do terreno mais velho que ela não casa sozinho. */
+  criado_em: null | string;
   id: string;
   origem: null | string;
   origem_c2x_id: null | number | string;
+  /** A unidade embutida (`hercules_unidades` pela FK `unidade_id`), só com o empreendimento no C2X. */
+  unidade?: null | UnidadeDaVenda | UnidadeDaVenda[];
   unidade_id: null | string;
 };
+
+type UnidadeDaVenda = { enterprise_id: null | number | string };
+
+/** O financeiro desta venda mora fora do C2X (o empreendimento da unidade está na lista do LSoft). */
+function financeiroForaDoC2x(venda: VendaLida): boolean {
+  const unidade = Array.isArray(venda.unidade) ? venda.unidade[0] : venda.unidade;
+  const enterprise = inteiroPositivo(unidade?.enterprise_id);
+  return enterprise !== null && ENTERPRISES_FORA_DO_C2X.has(enterprise);
+}
 
 /** O que se pode trocar no teste: o relógio, o pool do C2X e o teto. */
 export type PortasDaLeitura = {
@@ -95,6 +140,12 @@ const codigoDoErro = (erro: unknown): string => {
  * ⚠️ PÁGINAS DE 1.000 COM `order`, E AS QUE SOBRAM EM PARALELO: são ~5.500 linhas (medido em
  * 02/10/2026), e seis idas em fila somariam um segundo ao card. O teto do PostgREST é 1.000 por
  * página; sem `order`, página de 1.000 pula e repete linha.
+ *
+ * ⚠️ PENDÊNCIA CONHECIDA (revisão de 02/10/2026), SEM MUDANÇA DE COMPORTAMENTO AQUI: CADA ABERTURA DE
+ * CARD DE VENDA NATIVA DA CLICKSIGN LÊ `hercules_unidades` INTEIRA (~5.500 linhas em 02/10/2026) só
+ * para achar a família de UMA unidade. É o mesmo preço que o espelho da D4Sign e a F8 pagam, e cabe no
+ * teto hoje; cresce com a tabela. O conserto é ler só a família (pelo `espelho_de` e pela quadra e
+ * lote do terreno) ou guardar o terreno na unidade, e fica para quando a leitura apertar o teto.
  */
 async function lerTodasAsUnidades(sb: SupabaseClient): Promise<LinhaDaUnidade[]> {
   const pagina = (de: number, comContagem: boolean) =>
@@ -171,10 +222,18 @@ function poolDoC2x(portas: PortasDaLeitura): null | Pick<Pool, "getConnection"> 
   return r.ok ? r.pool : null;
 }
 
-/** O elo que não é elo vira a situação da tela (sem pedido ou ambíguo). */
+/**
+ * O elo que não é elo vira a situação da tela (sem pedido ou ambíguo). O pedido anterior à venda e o
+ * desfeito levam o número: a frase da tela diz qual pedido conferir no C2X.
+ */
 function semElo(elo: Exclude<EloDaEntrada, { tipo: "elo" }>): EntradaDoCard {
-  return elo.tipo === "ambiguo"
-    ? { motivo: elo.motivo, situacao: "ambiguo" }
+  if (elo.tipo === "ambiguo") {
+    return elo.motivo === "pedido_anterior_a_venda"
+      ? { motivo: elo.motivo, pedido: elo.arId, situacao: "ambiguo" }
+      : { motivo: elo.motivo, situacao: "ambiguo" };
+  }
+  return elo.motivo === "pedido_desfeito_no_c2x"
+    ? { motivo: elo.motivo, pedido: elo.arId, situacao: "sem_pedido_no_c2x" }
     : { motivo: elo.motivo, situacao: "sem_pedido_no_c2x" };
 }
 
@@ -214,7 +273,7 @@ export async function lerEntradaDaVenda(
       const [lida, envelopes] = await Promise.all([
         sb
           .from("hercules_propostas")
-          .select("id, origem, origem_c2x_id, unidade_id, cliente_documento")
+          .select("id, origem, origem_c2x_id, unidade_id, cliente_documento, criado_em, unidade:hercules_unidades(enterprise_id)")
           .eq("id", propostaId)
           .maybeSingle<VendaLida>(),
         sb
@@ -227,6 +286,8 @@ export async function lerEntradaDaVenda(
       if (lida.error || !lida.data) throw new FalhaNoPanteon("hercules_propostas");
       if (envelopes.error) throw new FalhaNoPanteon("temis_envelopes");
       venda = lida.data;
+      // ── O financeiro desta venda é do C2X? Se não (o Garden), nem o terreno nem o C2X são lidos ──
+      if (financeiroForaDoC2x(venda)) return { motivo: "financeiro_no_lsoft", situacao: "fora_do_c2x" };
       const nativa = String(venda.origem ?? "") === "panteon";
       if (nativa) {
         // O vigente é escolhido entre os envelopes de CONTRATO (a régua de `envelopeVigente` pede só eles).
@@ -267,7 +328,8 @@ export async function lerEntradaDaVenda(
 
     let documento = String(venda.cliente_documento ?? "").replace(/\D/g, "");
     try {
-      const conexao = await abrirLeituraDoC2x(pool);
+      // O teto do START TRANSACTION é o das consultas do card (5 s), e não os 20 s do espelho.
+      const conexao = await abrirLeituraDoC2x(pool, TIMEOUT_DA_CONSULTA_NA_TELA_MS);
       if (controle.encerrada) {
         // O teto passou enquanto se esperava vaga no pool: a resposta já saiu, a conexão volta inteira.
         await fecharLeituraDoC2x(conexao);
@@ -277,17 +339,30 @@ export async function lerEntradaDaVenda(
 
       const arIdDoEnvioD4Sign = csDoVigente !== null ? await pedidoDoEnvio(conexao, csDoVigente) : null;
       const pedidosDoTerreno: null | PedidoDoTerreno[] = terreno ? await pedidosDasUnidades(conexao, terreno.unidadesC2x) : null;
-      const elo = eloDaEntrada({
+      const doElo: EntradaDoElo = {
         arIdDoEnvioD4Sign,
+        criadoEmDaVenda: venda.criado_em,
         documentoDoComprador: documento,
         origem: venda.origem,
         origemC2xId: venda.origem_c2x_id,
         pedidosDeOutrasVendas: terreno?.outrasVendas,
         pedidosDoTerreno,
-      });
+      };
+      let elo = eloDaEntrada(doElo);
+      // ⚠️ SEM CANDIDATO VIVO DO COMPRADOR, OS DESFEITOS DELE (revisão de 02/10/2026): sem isto, a venda
+      // digitada e já cancelada ou distratada no C2X saía "ainda não foi digitada". Só no terreno, só
+      // com o documento e a data da venda, e só os nascidos a partir dela (o corte é no SQL: o documento
+      // de terceiros de pedidos desfeitos antigos nem sai do C2X).
+      const desde = paredeDeBrasilia(venda.criado_em);
+      let pedidosDesfeitos: null | PedidoDoTerreno[] = null;
+      if (terreno && documento && desde && olhaOsDesfeitos(elo)) {
+        pedidosDesfeitos = await pedidosDesfeitosDasUnidades(conexao, terreno.unidadesC2x, desde);
+        elo = eloDaEntrada({ ...doElo, pedidosDesfeitosDoTerreno: pedidosDesfeitos });
+      }
       // ⚠️ OS DÍGITOS SAEM DA MEMÓRIA AQUI: o elo já comparou.
       documento = "";
-      for (const p of pedidosDoTerreno ?? []) p.documentoDoComprador = "";
+      doElo.documentoDoComprador = "";
+      for (const p of [...(pedidosDoTerreno ?? []), ...(pedidosDesfeitos ?? [])]) p.documentoDoComprador = "";
 
       if (elo.tipo !== "elo") {
         await fecharLeituraDoC2x(conexao);

@@ -146,16 +146,26 @@ export type ConexaoDeLeitura = Pick<PoolConnection, "query">;
 /**
  * UMA conexão do pool, com `START TRANSACTION READ ONLY`. Quem abre FECHA (`fecharLeituraDoC2x`).
  *
- * ⚠️ SE O `START TRANSACTION` FALHAR A CONEXÃO VOLTA NA HORA: uma conexão sem a trava só-leitura não
- * sai daqui.
+ * ⚠️ SE O `START TRANSACTION` FALHAR A CONEXÃO É DESTRUÍDA NA HORA, E NÃO DEVOLVIDA (revisão de
+ * 02/10/2026): uma conexão sem a trava só-leitura não sai daqui, e a que falhou por tempo pode estar
+ * com o comando ainda rodando no MySQL. Devolvida ao pool com `release`, ela seria entregue ocupada
+ * ao próximo que pedisse vaga. `descartarLeituraDoC2x` fecha o socket (e só cai no `release` se o
+ * `destroy` lançar).
+ *
+ * @param timeoutMs O teto do `START TRANSACTION`. O padrão é o do espelho (20 s); a leitura feita
+ *   com o card abrindo (`lib/hercules/entrada/ler-entrada.ts`) passa o seu, mais curto, porque tem
+ *   uma pessoa esperando.
  */
-export async function abrirLeituraDoC2x(pool: Pick<Pool, "getConnection">): Promise<PoolConnection> {
+export async function abrirLeituraDoC2x(
+  pool: Pick<Pool, "getConnection">,
+  timeoutMs: number = TIMEOUT_DA_CONSULTA_MS,
+): Promise<PoolConnection> {
   const conexao = await pool.getConnection();
   try {
-    await conexao.query({ sql: SQL_ABRE_LEITURA, timeout: TIMEOUT_DA_CONSULTA_MS });
+    await conexao.query({ sql: SQL_ABRE_LEITURA, timeout: timeoutMs });
     return conexao;
   } catch (falha) {
-    conexao.release();
+    descartarLeituraDoC2x(conexao);
     throw falha;
   }
 }

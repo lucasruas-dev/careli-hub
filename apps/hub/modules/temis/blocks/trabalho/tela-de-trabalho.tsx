@@ -2695,9 +2695,15 @@ const SITUACAO_NA_TELA: Record<ParcelaDaEntrada["situacao"], { classe: string; r
  * C2X): *"Mostrar e eu decido"*. A linha diz que o time decide; a parcela de entrada continua com a
  * situação que o C2X dá a ela.
  *
- * ⚠️ AS TRÊS FRASES DE FORA ("sem pedido", "mais de um candidato", "não consegui ler") NÃO SE
- * MISTURAM: cada uma pede uma ação diferente de quem lê (digitar a venda no C2X, olhar os pedidos,
- * tentar de novo), e uma frase só para as três mandaria a pessoa fazer a coisa errada.
+ * ⚠️ AS FRASES DE FORA NÃO SE MISTURAM: cada uma pede uma ação diferente de quem lê (digitar a
+ * venda no C2X, olhar os pedidos, conferir um pedido antigo ou desfeito, tentar de novo, ou nada,
+ * quando o financeiro nem é do C2X), e uma frase só para todas mandaria a pessoa fazer a coisa
+ * errada. A do Garden é a revisão de 02/10/2026: a tela mandava "digitar a venda no C2X" numa venda
+ * cujo financeiro mora no LSoft.
+ *
+ * ⚠️ OS GATILHOS DE TOOLTIP SÃO `button`, COMO NO RESTO DA TELA (revisão de 02/10/2026): o `Tooltip`
+ * abre no foco, e um `span` não recebe foco, então quem navega pelo teclado nunca lia o "como casou"
+ * nem o "pago pela marcação".
  */
 function BlocoDaEntrada({
   aoRecarregar,
@@ -2709,19 +2715,33 @@ function BlocoDaEntrada({
   const [lendo, setLendo] = useState(false);
   const lida = entrada.situacao === "lida" ? entrada : null;
   const info = lida
-    ? `Pedido ${lida.pedido} no C2X, casado ${COMO_CASOU[lida.regra]}. Lido agora, só consulta: o Faturado continua à mão.`
-    : "Lido agora no C2X, só consulta: o Faturado continua à mão.";
+    ? `Pedido ${lida.pedido} no C2X, casado ${COMO_CASOU[lida.regra]}. Lido agora, só consulta: a mudança de etapa continua à mão.`
+    : entrada.situacao === "fora_do_c2x"
+      ? "O C2X não foi lido para esta venda."
+      : "Lido agora no C2X, só consulta: a mudança de etapa continua à mão.";
 
   return (
     <section aria-label="A entrada" className="rounded-xl border border-line bg-surface p-4">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="m-0 text-sm font-semibold text-ink">A entrada</h3>
+        <div className="flex items-baseline gap-2">
+          <h3 className="m-0 text-sm font-semibold text-ink">A entrada</h3>
+          {/* O número do pedido à vista, e não só no tooltip: é o que o time procura no C2X. */}
+          {lida ? (
+            <span className="text-xs text-ink-muted tabular-nums" data-pedido-da-entrada="">
+              Pedido {lida.pedido}
+            </span>
+          ) : null}
+        </div>
         <div className="flex items-center gap-2">
           {lida?.entrada ? <SeloDaEntrada parcela={lida.entrada} /> : null}
           <Tooltip content={info} placement="top">
-            <span aria-label={info} className="grid size-6 place-items-center text-ink-muted" role="img">
+            <button
+              aria-label={info}
+              className="grid size-6 place-items-center rounded-md text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
+              type="button"
+            >
               <Info aria-hidden="true" className="size-3.5" />
-            </span>
+            </button>
           </Tooltip>
         </div>
       </div>
@@ -2735,7 +2755,13 @@ function BlocoDaEntrada({
             </p>
           ) : null}
           {entrada.parcelas.length === 0 ? (
-            <p className="m-0 mt-2 text-xs text-ink-muted">O pedido no C2X não tem Ato nem Sinal com valor.</p>
+            // ⚠️ DUAS FRASES (revisão de 02/10/2026): o pedido sem NENHUMA parcela lançada pede para
+            // esperar ou cobrar o lançamento no C2X; o de entrada toda zerada, para olhar o plano.
+            <p className="m-0 mt-2 text-xs text-ink-muted">
+              {entrada.semFinanceiro
+                ? "O C2X ainda não tem o financeiro deste pedido (nenhuma parcela lançada)."
+                : "O pedido no C2X não tem Ato nem Sinal com valor."}
+            </p>
           ) : (
             <ul className="m-0 mt-2 grid list-none gap-1 p-0">
               {entrada.parcelas.map((p) => (
@@ -2784,17 +2810,27 @@ function BlocoDaEntrada({
 
 /** A frase de quando não há parcela para mostrar. */
 function fraseSemLeitura(entrada: Exclude<EntradaDoCard, { situacao: "lida" }>): string {
-  if (entrada.situacao === "falhou") return "Não consegui ler o C2X agora.";
+  if (entrada.situacao === "fora_do_c2x") return "O financeiro desta venda não é do C2X.";
+  if (entrada.situacao === "falhou") {
+    // Quem não respondeu foi o Panteon: dizer "o C2X" mandaria a pessoa olhar o lugar errado.
+    return entrada.motivo === "panteon" ? "Não consegui ler a venda agora." : "Não consegui ler o C2X agora.";
+  }
   if (entrada.situacao === "ambiguo") {
+    if (entrada.motivo === "pedido_anterior_a_venda") {
+      return `O pedido ${entrada.pedido} do C2X é de antes desta venda: confira se não é o de uma proposta cancelada.`;
+    }
     return entrada.motivo === "sem_documento_no_panteon"
       ? "Não deu para casar a venda com um pedido do C2X: a venda está sem o CPF do comprador."
       : "Não deu para casar a venda com um pedido do C2X (mais de um candidato).";
+  }
+  if (entrada.motivo === "pedido_desfeito_no_c2x") {
+    return `O pedido ${entrada.pedido} deste comprador está cancelado ou distratado no C2X.`;
   }
   if (entrada.motivo === "pedido_nao_achado_no_c2x") {
     return "Sem pedido no C2X: o pedido ligado a esta venda não foi encontrado lá.";
   }
   if (entrada.motivo === "pedido_de_outro_comprador") {
-    return "Sem pedido no C2X: a venda ainda não foi digitada. O pedido vivo neste lote é de outro comprador.";
+    return "O pedido vivo neste lote no C2X está em outro CPF: confira antes de digitar.";
   }
   return "Sem pedido no C2X: a venda ainda não foi digitada.";
 }
@@ -2812,6 +2848,9 @@ function SeloDaEntrada({ parcela }: { parcela: ParcelaDaEntrada }) {
   );
 }
 
+/** O porquê do dia do "Pago" sem `payment_date` (decisão de 29/09/2026). */
+const PAGA_PELA_MARCACAO = "O C2X marcou como paga sem a data do pagamento: vale o dia da marcação.";
+
 /** Uma parcela: rótulo, valor, vencimento, pagamento e situação. A que conta como entrada em destaque. */
 function LinhaDaParcela({ parcela }: { parcela: ParcelaDaEntrada }) {
   const { classe, rotulo } = SITUACAO_NA_TELA[parcela.situacao];
@@ -2825,9 +2864,9 @@ function LinhaDaParcela({ parcela }: { parcela: ParcelaDaEntrada }) {
       <span className="inline-flex min-w-[6.5rem] items-center gap-1.5">
         {parcela.contaComoEntrada ? (
           <Tooltip content="A parcela que conta como entrada" placement="top">
-            <span aria-label="A parcela que conta como entrada" className="inline-flex" role="img">
+            <button aria-label="A parcela que conta como entrada" className="inline-flex rounded-sm" type="button">
               <CircleDot aria-hidden="true" className="size-3.5 text-ink" />
-            </span>
+            </button>
           </Tooltip>
         ) : null}
         {parcela.rotulo}
@@ -2838,10 +2877,14 @@ function LinhaDaParcela({ parcela }: { parcela: ParcelaDaEntrada }) {
       ) : null}
       {parcela.pagoEm ? (
         parcela.pagaPelaMarcacao ? (
-          <Tooltip content="O C2X marcou como paga sem a data do pagamento: vale o dia da marcação." placement="top">
-            <span className="tabular-nums text-ink-muted underline decoration-dotted">
+          <Tooltip content={PAGA_PELA_MARCACAO} placement="top">
+            <button
+              aria-label={`pago ${diaNaTela(parcela.pagoEm)}: ${PAGA_PELA_MARCACAO}`}
+              className="tabular-nums text-ink-muted underline decoration-dotted"
+              type="button"
+            >
               pago {diaNaTela(parcela.pagoEm)}
-            </span>
+            </button>
           </Tooltip>
         ) : (
           <span className="tabular-nums text-ink-muted">pago {diaNaTela(parcela.pagoEm)}</span>

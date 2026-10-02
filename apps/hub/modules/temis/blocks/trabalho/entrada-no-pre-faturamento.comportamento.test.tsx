@@ -77,6 +77,7 @@ const VAL_C_L22: EntradaDoCard = (() => {
     pedido: 5021,
     pedidoDesfeito: false,
     regra: "envio_d4sign",
+    semFinanceiro: false,
     situacao: "lida",
   };
 })();
@@ -95,9 +96,16 @@ const REP_D_L163: EntradaDoCard = (() => {
     pedido: 5020,
     pedidoDesfeito: false,
     regra: "envio_d4sign",
+    semFinanceiro: false,
     situacao: "lida",
   };
 })();
+
+/** Um pedido lido do C2X com as parcelas dadas (o resto como no VAL C L22). */
+const lidaCom = (campos: Partial<Extract<EntradaDoCard, { situacao: "lida" }>>): EntradaDoCard => ({
+  ...(VAL_C_L22 as Extract<EntradaDoCard, { situacao: "lida" }>),
+  ...campos,
+});
 
 function responder(url: string): { corpo: unknown; status: number } {
   if (url.includes("/trabalho?id=")) {
@@ -168,9 +176,12 @@ describe("a entrada no Pré-faturamento", () => {
     await montar();
     const b = bloco();
     expect(b, "o bloco da entrada").toBeTruthy();
-    expect(texto(b)).not.toContain("O que vem");
+    // O aviso de obra que este bloco substituiu não aparece em lugar nenhum da tela.
+    expect(texto(hospedeiro)).not.toContain("A entrada lida do C2X");
     // O selo do cabeçalho diz que a entrada está paga e quando.
     expect(texto(b?.querySelector("[data-selo-da-entrada]"))).toContain("Paga em 29/09/2026");
+    // O número do pedido à vista no cabeçalho, para o time procurar no C2X.
+    expect(texto(b?.querySelector("[data-pedido-da-entrada]"))).toBe("Pedido 5021");
 
     const linhas = Array.from(b?.querySelectorAll("li") ?? []);
     expect(linhas).toHaveLength(3);
@@ -186,10 +197,104 @@ describe("a entrada no Pré-faturamento", () => {
     expect(destacadas).toHaveLength(1);
     expect(texto(destacadas[0])).toContain("Sinal 1/3");
 
-    // Passo 1: nenhum botão de faturar.
-    expect(Array.from(hospedeiro.querySelectorAll("button")).some((x) => /fatura/i.test(x.textContent ?? ""))).toBe(false);
+    // Passo 1: nenhum botão de faturar, nem pelo texto nem pelo nome acessível (o botão de ícone só
+    // tem o `aria-label`).
+    const botoes = Array.from(hospedeiro.querySelectorAll("button"));
+    expect(botoes.length).toBeGreaterThan(0);
+    expect(botoes.filter((x) => /fatur/i.test(`${x.textContent ?? ""} ${x.getAttribute("aria-label") ?? ""}`))).toEqual([]);
     // Sem travessão nos textos de tela do bloco.
     expect(texto(b)).not.toMatch(/[—–]/);
+  });
+
+  it("os gatilhos de tooltip do bloco são botões com nome (o teclado chega neles)", async () => {
+    const pelaMarcacao = parcela({
+      contaComoEntrada: true,
+      id: 1,
+      pagaPelaMarcacao: true,
+      pagoEm: "2026-09-28",
+      rotulo: "Sinal 1/1",
+      situacao: "paga",
+    });
+    entrada = lidaCom({ entrada: pelaMarcacao, parcelas: [pelaMarcacao] });
+    await montar();
+    const b = bloco();
+    // Nenhum gatilho ficou como `span` com papel de imagem.
+    expect(b?.querySelectorAll('span[role="img"]')).toHaveLength(0);
+    const nomes = Array.from(b?.querySelectorAll<HTMLButtonElement>('button[type="button"]') ?? []).map((x) => x.getAttribute("aria-label") ?? "");
+    expect(nomes.some((n) => n.startsWith("Pedido 5021 no C2X, casado pelo envio da D4Sign"))).toBe(true);
+    expect(nomes).toContain("A parcela que conta como entrada");
+    expect(nomes.some((n) => n.startsWith("pago 28/09/2026: O C2X marcou como paga sem a data do pagamento"))).toBe(true);
+  });
+
+  it("Pago sem data: a parcela diz isso, e não 'em aberto' nem 'paga'", async () => {
+    const semData = parcela({ contaComoEntrada: true, id: 1, rotulo: "Sinal 1/1", situacao: "pago_sem_data", valor: 4000 });
+    entrada = lidaCom({ entrada: semData, paga: false, parcelas: [semData] });
+    await montar();
+    const b = bloco();
+    expect(texto(b?.querySelector("[data-selo-da-entrada]"))).toContain("Pago sem data");
+    const linha = b?.querySelector('[data-conta-como-entrada="sim"]');
+    expect(texto(linha)).toContain("Pago sem data");
+    expect(texto(linha)).not.toContain("Em aberto");
+    expect(texto(linha)).not.toContain("pago ");
+  });
+
+  it("o pedido lido está desfeito no C2X: o aviso aparece com o número", async () => {
+    entrada = lidaCom({ pedidoDesfeito: true });
+    await montar();
+    expect(texto(bloco())).toContain("O pedido 5021 está desfeito no C2X.");
+  });
+
+  it("sem pedido vivo e o do comprador desfeito depois da venda: diz qual pedido", async () => {
+    entrada = { motivo: "pedido_desfeito_no_c2x", pedido: 5041, situacao: "sem_pedido_no_c2x" };
+    await montar();
+    expect(texto(bloco())).toContain("O pedido 5041 deste comprador está cancelado ou distratado no C2X.");
+    expect(texto(bloco())).not.toContain("ainda não foi digitada");
+  });
+
+  it("o único pedido é de antes da venda (VOR Q14 L01): pede para conferir, com o número", async () => {
+    entrada = { motivo: "pedido_anterior_a_venda", pedido: 5032, situacao: "ambiguo" };
+    await montar();
+    expect(texto(bloco())).toContain(
+      "O pedido 5032 do C2X é de antes desta venda: confira se não é o de uma proposta cancelada.",
+    );
+  });
+
+  it("o pedido vivo no lote é de outro CPF: confira antes de digitar", async () => {
+    entrada = { motivo: "pedido_de_outro_comprador", situacao: "sem_pedido_no_c2x" };
+    await montar();
+    expect(texto(bloco())).toContain("O pedido vivo neste lote no C2X está em outro CPF: confira antes de digitar.");
+    expect(texto(bloco())).not.toContain("ainda não foi digitada");
+  });
+
+  it("o financeiro não é do C2X (Garden): diz isso, sem mandar digitar e sem 'ler de novo'", async () => {
+    entrada = { motivo: "financeiro_no_lsoft", situacao: "fora_do_c2x" };
+    await montar();
+    expect(texto(bloco())).toContain("O financeiro desta venda não é do C2X.");
+    expect(texto(bloco())).not.toMatch(/digitad|digitar/i);
+    expect(bloco()?.querySelector('button[aria-label="Ler de novo"]')).toBeNull();
+  });
+
+  it("o pedido sem nenhuma parcela lançada tem frase própria, diferente da entrada zerada", async () => {
+    entrada = lidaCom({ entrada: null, paga: false, parcelas: [], semFinanceiro: true });
+    await montar();
+    expect(texto(bloco())).toContain("O C2X ainda não tem o financeiro deste pedido (nenhuma parcela lançada).");
+    expect(texto(bloco())).not.toContain("não tem Ato nem Sinal com valor");
+
+    act(() => {
+      raiz.unmount();
+    });
+    raiz = createRoot(hospedeiro);
+    entrada = lidaCom({ entrada: null, paga: false, parcelas: [], semFinanceiro: false });
+    await montar();
+    expect(texto(bloco())).toContain("O pedido no C2X não tem Ato nem Sinal com valor.");
+  });
+
+  it("o Panteon não respondeu: diz que não leu a venda (e não o C2X)", async () => {
+    entrada = { motivo: "panteon", situacao: "falhou" };
+    await montar();
+    expect(texto(bloco())).toContain("Não consegui ler a venda agora.");
+    expect(texto(bloco())).not.toContain("C2X agora");
+    expect(bloco()?.querySelector('button[aria-label="Ler de novo"]')).toBeTruthy();
   });
 
   it("Avulso pago numa linha própria, com a frase de que o time decide", async () => {

@@ -64,6 +64,16 @@ export type PedidoDoC2x = {
   arId: number;
   estagio: null | number;
   parcelas: readonly ParcelaDoC2x[];
+  /**
+   * Quantas parcelas o pedido tem no C2X, de QUALQUER tipo (a mensal também), fora as marcadas para
+   * apagar. `0` = o financeiro do pedido ainda não foi lançado; `null` = não se sabe.
+   *
+   * ⚠️ EXISTE PARA A TELA NÃO DIZER A MESMA FRASE PARA DUAS COISAS (revisão de 02/10/2026): o pedido
+   * sem NENHUMA parcela e o pedido cuja entrada é toda de valor zero davam "não tem Ato nem Sinal com
+   * valor". O primeiro pede para esperar (ou cobrar) o lançamento no C2X; o segundo, para olhar o
+   * plano da venda.
+   */
+  totalDeParcelas: null | number;
 };
 
 /**
@@ -105,6 +115,8 @@ export type EntradaLida = {
   parcelas: ParcelaDaEntrada[];
   /** O pedido está desfeito no C2X (estágio 7, 8, 10 ou 11): a tela avisa. */
   pedidoDesfeito: boolean;
+  /** O pedido não tem NENHUMA parcela lançada no C2X (`totalDeParcelas === 0`): a tela diz isso. */
+  semFinanceiro: boolean;
 };
 
 /**
@@ -112,6 +124,10 @@ export type EntradaLida = {
  *
  * ⚠️ O `motivo` VAI JUNTO PARA A TELA ESCOLHER A FRASE CERTA, e nenhum deles carrega dado de pessoa.
  * O número do pedido do C2X (`pedido`) não é dado pessoal: é o que o time procura lá.
+ *
+ * ⚠️ `fora_do_c2x` NÃO É FALHA NEM "SEM PEDIDO" (revisão de 02/10/2026): é a venda de um empreendimento
+ * cujo financeiro mora no LSoft (o Garden, `EMPREENDIMENTOS_DO_LSOFT_NO_FINANCEIRO`). O C2X nem é
+ * aberto, e a tela não manda ninguém digitar a venda lá.
  */
 export type EntradaDoCard =
   | (EntradaLida & {
@@ -125,6 +141,12 @@ export type EntradaDoCard =
       situacao: "ambiguo";
     }
   | {
+      /** O único candidato do comprador nasceu no C2X ANTES desta venda (o de uma proposta cancelada?). */
+      motivo: "pedido_anterior_a_venda";
+      pedido: number;
+      situacao: "ambiguo";
+    }
+  | {
       motivo:
         | "carga_sem_pedido"
         | "pedido_de_outro_comprador"
@@ -132,6 +154,16 @@ export type EntradaDoCard =
         | "pedido_nao_achado_no_c2x"
         | "sem_pedido_no_c2x";
       situacao: "sem_pedido_no_c2x";
+    }
+  | {
+      /** Nenhum pedido vivo do comprador, e um cancelado ou distratado dele nasceu depois da venda. */
+      motivo: "pedido_desfeito_no_c2x";
+      pedido: number;
+      situacao: "sem_pedido_no_c2x";
+    }
+  | {
+      motivo: "financeiro_no_lsoft";
+      situacao: "fora_do_c2x";
     }
   | {
       motivo: "c2x" | "c2x_sem_configuracao" | "inesperada" | "panteon" | "tempo";
@@ -235,5 +267,6 @@ export function situacaoDaEntrada(pedido: PedidoDoC2x, hoje: string): EntradaLid
     paga: entrada?.situacao === "paga",
     parcelas,
     pedidoDesfeito: pedido.estagio !== null && ESTAGIOS_DESFEITOS_NO_C2X.has(pedido.estagio),
+    semFinanceiro: pedido.totalDeParcelas === 0,
   };
 }

@@ -29,7 +29,12 @@ function parcela(campos: Partial<ParcelaDoC2x> & Pick<ParcelaDoC2x, "tipo">): Pa
   };
 }
 
-const pedido = (parcelas: ParcelaDoC2x[], estagio: null | number = 4): PedidoDoC2x => ({ arId: 5000, estagio, parcelas });
+const pedido = (parcelas: ParcelaDoC2x[], estagio: null | number = 4, totalDeParcelas: null | number = parcelas.length): PedidoDoC2x => ({
+  arId: 5000,
+  estagio,
+  parcelas,
+  totalDeParcelas,
+});
 
 describe("situacaoDaEntrada", () => {
   it("Ato zerado e Pago com o Sinal atrasado: a entrada é o Sinal, e NÃO está paga (Stefany M., VOR1401)", () => {
@@ -139,6 +144,17 @@ describe("situacaoDaEntrada", () => {
       HOJE,
     );
     expect(r).toMatchObject({ avulsosPagos: [], entrada: null, paga: false, parcelas: [] });
+    // Tem parcela lançada (as três zeradas): NÃO é "sem financeiro", a frase da tela é outra.
+    expect(r.semFinanceiro).toBe(false);
+  });
+
+  it("pedido sem NENHUMA parcela no C2X: sem financeiro, e não 'entrada zerada' (revisão de 02/10/2026)", () => {
+    const vazio = situacaoDaEntrada(pedido([], 4, 0), HOJE);
+    expect(vazio).toMatchObject({ entrada: null, paga: false, parcelas: [], semFinanceiro: true });
+    // Só mensais lançadas (nenhum Ato, Sinal ou Avulso lido): tem financeiro, só não tem entrada.
+    expect(situacaoDaEntrada(pedido([], 4, 120), HOJE).semFinanceiro).toBe(false);
+    // Total que não se sabe não vira "sem financeiro".
+    expect(situacaoDaEntrada(pedido([], 4, null), HOJE).semFinanceiro).toBe(false);
   });
 
   it("Ato antes de Sinal no mesmo vencimento; apagada e cancelada não entram", () => {

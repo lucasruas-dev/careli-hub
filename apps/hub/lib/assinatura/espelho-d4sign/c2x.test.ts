@@ -71,18 +71,31 @@ describe("só leitura", () => {
     for (const c of chamadas.slice(1, -1)) expect(c.sql.trim().toLowerCase().startsWith("select")).toBe(true);
   });
 
-  it("START TRANSACTION que falha devolve a conexão e não segue", async () => {
-    let devolvida = false;
+  it("START TRANSACTION que falha DESTRÓI a conexão (não a devolve ocupada ao pool) e não segue", async () => {
+    const eventos: string[] = [];
     const conexao = {
+      destroy: () => eventos.push("destroy"),
       query: async () => {
         throw Object.assign(new Error("x"), { code: "ER_X" });
       },
-      release: () => {
-        devolvida = true;
-      },
+      release: () => eventos.push("release"),
     };
     await expect(abrirLeituraDoC2x({ getConnection: async () => conexao } as never)).rejects.toBeTruthy();
-    expect(devolvida).toBe(true);
+    expect(eventos).toEqual(["destroy"]);
+  });
+
+  it("o teto do START TRANSACTION: 20 s por padrão, ou o que quem abre pedir", async () => {
+    const tetos: unknown[] = [];
+    const conexao = {
+      query: async (opcoes: { timeout?: number }) => {
+        tetos.push(opcoes.timeout);
+        return [[], []];
+      },
+      release: () => undefined,
+    };
+    await abrirLeituraDoC2x({ getConnection: async () => conexao } as never);
+    await abrirLeituraDoC2x({ getConnection: async () => conexao } as never, 5_000);
+    expect(tetos).toEqual([TIMEOUT_DA_CONSULTA_MS, 5_000]);
   });
 
   it("a conexão cuja consulta falhou é DESTRUÍDA (não volta ao pool com a consulta presa); sem destroy, release", () => {
