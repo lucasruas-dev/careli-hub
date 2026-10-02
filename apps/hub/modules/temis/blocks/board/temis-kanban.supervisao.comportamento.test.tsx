@@ -117,8 +117,8 @@ describe("TemisKanban — supervisão dos cards do incorporador", () => {
     await montar(<TemisKanban enterpriseId={null} incluirIncorporadores />);
 
     expect(urls).toEqual(["/api/temis/trabalhos?incluir=incorporadores"]);
-    expect(cardDe("Cliente da Cecília")?.textContent).toContain("Incorporador");
-    expect(cardDe("Cliente da Careli")?.textContent).not.toContain("Incorporador");
+    expect(cardDe("CLIENTE DA CECÍLIA")?.textContent).toContain("Incorporador");
+    expect(cardDe("CLIENTE DA CARELI")?.textContent).not.toContain("Incorporador");
   });
 
   it("o parâmetro soma ao filtro de empreendimento", async () => {

@@ -170,7 +170,7 @@ describe("TelaContratos — a sub-aba Board", () => {
     expect(simulado.getApoloAccessToken).not.toHaveBeenCalled();
 
     // Só leitura: o card não abre tela de trabalho.
-    await clicar(botaoQueContem("Maria Compradora"));
+    await clicar(botaoQueContem("MARIA COMPRADORA"));
     expect(hospedeiro.querySelector("[data-temis-trabalho]")).toBeNull();
   });
 
@@ -193,7 +193,7 @@ describe("TelaContratos — a sub-aba Board", () => {
   it("o card abre a tela de trabalho, e ela também fala com o portal", async () => {
     await montar(<TelaContratos confecciona />);
     await clicar(botao("Board"));
-    await clicar(botaoQueContem("Maria Compradora"));
+    await clicar(botaoQueContem("MARIA COMPRADORA"));
 
     expect(hospedeiro.querySelector("[data-temis-trabalho]")).not.toBeNull();
     const trabalho = daTemis().find((c) => c.url.includes("/trabalho?"));
@@ -262,7 +262,7 @@ describe("MinutasDoProduto", () => {
 describe("a mesma peça sem provedor continua no hub", () => {
   it("o quadro da Têmis e a tela de trabalho: /api/temis com o Bearer, como antes", async () => {
     await montar(<TemisKanban enterpriseId={null} />);
-    await clicar(botaoQueContem("Maria Compradora"));
+    await clicar(botaoQueContem("MARIA COMPRADORA"));
 
     expect(chamadas).toEqual([
       {

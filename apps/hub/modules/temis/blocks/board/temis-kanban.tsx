@@ -606,7 +606,13 @@ function Card({
           ) : null}
         </div>
 
-        <p className="mt-1.5 text-sm font-semibold leading-tight text-ink">{trabalho.clienteNome}</p>
+        {/* ⚠️ O NOME SAI EM CAIXA ALTA, SEMPRE. Lucas, 02/10/2026: *"vamos deixar o nome em caixa
+            alta de todos, estão vindo uns com e outros sem"*. O nome chega como foi digitado em
+            cada origem (a mesma Maura aparecia "maura maria passos" e "MAURA MARIA PASSOS" na
+            mesma coluna): a régua é da tela, e o dado gravado não muda. */}
+        <p className="mt-1.5 text-sm font-semibold leading-tight text-ink">
+          {(trabalho.clienteNome || "").toLocaleUpperCase("pt-BR")}
+        </p>
         {trabalho.clienteCpf ? (
           <p className="text-[0.7rem] tabular-nums text-ink-muted">{cpfLegivel(trabalho.clienteCpf)}</p>
         ) : null}

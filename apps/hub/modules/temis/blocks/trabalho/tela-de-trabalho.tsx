@@ -779,8 +779,9 @@ export function TelaDeTrabalho({
       <div className="flex shrink-0 flex-wrap items-start justify-between gap-x-6 gap-y-2">
         <header className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
+            {/* Em caixa alta, como no card do quadro: ver a nota em `temis-kanban.tsx`. */}
             <h2 className="m-0 text-base font-semibold text-ink">
-              {card.cliente_nome ?? "Sem nome"}
+              {card.cliente_nome?.toLocaleUpperCase("pt-BR") ?? "Sem nome"}
             </h2>
 
             {/* ⚠️ O TIPO VEM ANTES DE TUDO, colado no nome — Lucas (10/09/2026): *"quando abro
