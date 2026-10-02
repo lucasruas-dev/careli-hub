@@ -182,6 +182,28 @@ export function quemAssinou(payload: unknown): SignatarioDoEnvelope[] {
   return [...porChave.values()];
 }
 
+/**
+ * QUANDO O ENVELOPE VENCE — o `document.deadline_at` do payload, em ISO. `null` = não veio, ou veio
+ * ilegível.
+ *
+ * ⚠️ É A DATA EM QUE A CLICKSIGN CANCELA O ENVELOPE QUE NÃO FECHOU: o envio manda
+ * `deadline_partial_signature_action: "canceled"` (`traduzir.ts`). É por isso que a tela a mostra no
+ * cabeçalho da assinatura (Lucas, 02/10/2026, no mockup aprovado da etapa "Em assinatura").
+ *
+ * ⚠️ MEDIDO ANTES DE CONFIAR (02/10/2026, só SELECT, os 300 payloads conferidos mais recentes): os
+ * 300 trazem `document.deadline_at` preenchido, e nenhum o traz na raiz nem em `envelope`. O payload
+ * mais recente basta: um `update_deadline` muda o campo, e o webhook seguinte já chega com o novo.
+ *
+ * ⚠️ DATA ILEGÍVEL VIRA `null`, E NÃO O TEXTO CRU (o contrário de `emIso`): um prazo que a tela não sabe
+ * ler não pode virar "vence em" de coisa nenhuma.
+ */
+export function vencimentoDoPayload(payload: unknown): null | string {
+  const cru = texto(documentoDoPayload(payload).deadline_at);
+  if (!cru) return null;
+  const lido = Date.parse(cru);
+  return Number.isNaN(lido) ? null : new Date(lido).toISOString();
+}
+
 /** A folga entre o lote de cadastro do envio e o `enviado_em` que nós gravamos (medido: até 1,1 s). */
 const FOLGA_DO_ENVIO_MS = 60_000;
 

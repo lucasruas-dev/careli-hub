@@ -9,6 +9,7 @@ import {
   quemAssinou,
   recadastrosDepoisDoEnvio,
   type SignatarioDoEnvelope,
+  vencimentoDoPayload,
 } from "./diario-do-envelope";
 import {
   fraseDaTrocaQueVaiParaOFim,
@@ -46,6 +47,19 @@ export type SignatarioDaProposta = SignatarioDoEnvelope & {
    * apareceu nos eventos e não está na lista congelada (signatário acrescentado por fora).
    */
   papel: null | string;
+  /**
+   * O DEGRAU DESTA PESSOA NA FILA DE ASSINATURA — o `group` da Clicksign. `null` = fora do quadro
+   * congelado (acrescentada por fora), e aí a tela a põe no fim, sem degrau.
+   *
+   * ⚠️ É O SERVIDOR QUE NUMERA, E A TELA SÓ AGRUPA (Lucas, 02/10/2026, no mockup aprovado da etapa
+   * "Em assinatura": a lista vira uma fila de degraus). O número é o que `naOrdemDaFila` já usava para
+   * ordenar: o degrau do envio (`max(1, ordem)`), e para quem foi recadastrado com o envelope rodando,
+   * o último degrau + 1 por recadastro. Recalcular na tela seria uma segunda régua para a mesma fila.
+   *
+   * ⚠️ OS NÚMEROS PODEM TER BURACO: a Maura do VOC0306 saiu do degrau 3 (o 3 ficou vazio) e foi para o
+   * 6. A tela numera os degraus em sequência para quem lê; este é o número da Clicksign.
+   */
+  posicao: null | number;
   /**
    * O reenvio de convite NÃO PODE ser tentado para esta pessoa — `null` = pode.
    *
@@ -117,6 +131,11 @@ export type EnvelopeDoDiario = {
   provedor: string;
   provedorDocumentoId: null | string;
   signatarios: SignatarioDaProposta[];
+  /**
+   * Quando o envelope vence, em ISO: no vencimento sem todas as assinaturas, a Clicksign o CANCELA.
+   * `null` = nenhum payload ainda, ou o payload sem a data. Ver `vencimentoDoPayload`.
+   */
+  venceEm: null | string;
 };
 
 /**
@@ -238,6 +257,7 @@ async function diarioDaLinha(
       provedor: envelope.provedor ?? "clicksign",
       provedorDocumentoId: envelope.provedor_documento_id,
       signatarios,
+      venceEm: payload === null ? null : vencimentoDoPayload(payload),
     },
     total: signatarios.length,
   };
@@ -470,6 +490,8 @@ export function juntarComOsCongelados(
       chave,
       foiParaOFimEm: recadastros.get(chave) ?? recadastros.get(s.chave) ?? null,
       papel: congelado?.papel ?? null,
+      // Numerada depois, com a lista inteira: ver `naOrdemDaFila`.
+      posicao: null,
       // ⚠️ A RÉGUA É A DO SERVIDOR, LINHA POR LINHA: o envelope não pode estar encerrado, a `chave`
       // tem de servir para falar com a Clicksign (e-mail, `tmp:` e `c2x:` não servem) E a pessoa tem
       // de ter linha no quadro congelado, que é onde moram `assinado_em` e `recusado_em`. Faltando
@@ -497,6 +519,7 @@ export function juntarComOsCongelados(
       foiParaOFimEm: c.chave === null ? null : (recadastros.get(c.chave) ?? null),
       nome: c.nome,
       papel: c.papel,
+      posicao: null,
       // Quem está aqui TEM linha no quadro (ele É a linha), então decidem o estado do envelope e a chave.
       reenvioIndisponivel: bloqueio(c.chave ?? c.email, true),
       trocaVaiParaOFim: null,
@@ -554,13 +577,14 @@ function naOrdemDaFila(
 
   return fichas.map((f, i) => {
     const posicao = posicoes[i] ?? null;
-    if (encerrado || posicao === null || f.linha.assinouEm !== null) return f.linha;
+    const linha = { ...f.linha, posicao };
+    if (encerrado || posicao === null || linha.assinouEm !== null) return linha;
     const passamAFrente = fichas.filter((outra, j) => {
       const dela = posicoes[j] ?? null;
       return j !== i && outra.linha.assinouEm === null && dela !== null && dela >= posicao;
     }).length;
     return passamAFrente > 0
-      ? { ...f.linha, trocaVaiParaOFim: fraseDaTrocaQueVaiParaOFim(f.linha.nome, passamAFrente) }
-      : f.linha;
+      ? { ...linha, trocaVaiParaOFim: fraseDaTrocaQueVaiParaOFim(linha.nome, passamAFrente) }
+      : linha;
   });
 }

@@ -7,6 +7,7 @@ import {
   quemAssinou,
   recadastrosDepoisDoEnvio,
   type SignatarioDoEnvelope,
+  vencimentoDoPayload,
 } from "./diario-do-envelope";
 import {
   RECUSA_DE_QUEM_NAO_ESTA_NO_QUADRO,
@@ -670,5 +671,131 @@ describe("a lista na ordem de assinatura", () => {
 
     expect(juntos.map((s) => s.nome)).toEqual(["Compradora", "Vendedora"]);
     expect(juntos.every((s) => s.foiParaOFimEm === null)).toBe(true);
+  });
+});
+
+// O NÚMERO DO DEGRAU QUE A TELA AGRUPA (02/10/2026, mockup aprovado da etapa "Em assinatura"). A tela
+// vira uma fila de degraus, e quem numera é o servidor: a mesma conta que ordena.
+describe("a posição de cada pessoa na fila", () => {
+  const pendente = (key: string, nome: string): SignatarioDoEnvelope => ({
+    assinouEm: null,
+    chave: key,
+    comecouEm: null,
+    convite: "sem_noticia",
+    conviteDetalhe: null,
+    conviteQuando: null,
+    email: `${key}@x.test`,
+    nome,
+  });
+  const noQuadro = (key: string, nome: string, ordem: number, papel: string) => ({
+    chave: key,
+    email: `${key}@x.test`,
+    nome,
+    ordem,
+    papel,
+  });
+
+  it("o VOC0306: cada um no degrau do envio, e a Maura recadastrada no 6, com o 3 vazio", () => {
+    const juntos = juntarComOsCongelados(
+      [
+        pendente("maura", "Maura P."),
+        pendente("nivea", "Nivea A."),
+        pendente("romulo", "Romulo G."),
+        pendente("rafael", "Rafael O."),
+        pendente("vitor", "Vitor A."),
+      ],
+      [
+        noQuadro("maura", "Maura P.", 3, "comprador"),
+        noQuadro("nivea", "Nivea A.", 1, "coordenadora"),
+        noQuadro("romulo", "Romulo G.", 2, "corretor"),
+        noQuadro("rafael", "Rafael O.", 4, "testemunha"),
+        noQuadro("vitor", "Vitor A.", 5, "vendedora"),
+      ],
+      { envelopeId: "0384000d", estado: "parcial" },
+      new Map([["maura", "2026-10-01T15:18:15.332-03:00"]]),
+    );
+
+    expect(juntos.map((s) => [s.nome, s.posicao])).toEqual([
+      ["Nivea A.", 1],
+      ["Romulo G.", 2],
+      ["Rafael O.", 4],
+      ["Vitor A.", 5],
+      ["Maura P.", 6],
+    ]);
+  });
+
+  it("quem já assinou também leva o degrau: a tela precisa dele para fechar o degrau concluído", () => {
+    const assinou = { ...pendente("a", "Ana"), assinouEm: "2026-10-01T10:00:00-03:00" };
+    const juntos = juntarComOsCongelados([assinou, pendente("b", "Bia")], [
+      noQuadro("a", "Ana", 1, "coordenadora"),
+      noQuadro("b", "Bia", 2, "comprador"),
+    ]);
+
+    expect(juntos.map((s) => s.posicao)).toEqual([1, 2]);
+  });
+
+  it("envelope sem ordem deixa todo mundo no degrau 1", () => {
+    const juntos = juntarComOsCongelados(
+      [pendente("c", "Carla"), pendente("a", "Ana")],
+      [noQuadro("c", "Carla", 0, "comprador"), noQuadro("a", "Ana", 0, "testemunha")],
+    );
+
+    expect(juntos.map((s) => s.posicao)).toEqual([1, 1]);
+  });
+
+  // ⚠️ "DEPOIS DO MAIOR" É O MAIOR DE QUEM NÃO FOI RECADASTRADO (`naOrdemDaFila`): aqui o Xavier, no 1.
+  // O número absoluto pode não bater com o `group` da Clicksign, e não precisa: a tela só agrupa e
+  // numera em sequência, e o que importa é cada recadastro num degrau seu, na ordem em que entrou.
+  it("dois recadastros ganham um degrau cada, depois do maior; quem está fora do quadro fica sem degrau", () => {
+    const juntos = juntarComOsCongelados(
+      [pendente("x", "Xavier"), pendente("r2", "Rita"), pendente("r1", "Beatriz"), pendente("fora", "Ana Fora")],
+      [noQuadro("x", "Xavier", 1, "comprador"), noQuadro("r1", "Beatriz", 2, "vendedora"), noQuadro("r2", "Rita", 2, "vendedora")],
+      {},
+      new Map([
+        ["r1", "2026-10-02T09:00:00-03:00"],
+        ["r2", "2026-10-02T10:00:00-03:00"],
+      ]),
+    );
+
+    expect(juntos.map((s) => [s.nome, s.posicao])).toEqual([
+      ["Xavier", 1],
+      ["Beatriz", 2],
+      ["Rita", 3],
+      ["Ana Fora", null],
+    ]);
+  });
+
+  it("envelope encerrado continua numerado: a fila de quem não assinou ainda se lê", () => {
+    const juntos = juntarComOsCongelados(
+      [pendente("a", "Ana"), pendente("b", "Bia")],
+      [noQuadro("a", "Ana", 1, "comprador"), noQuadro("b", "Bia", 2, "testemunha")],
+      { envelopeId: "x", estado: "cancelado" },
+    );
+
+    expect(juntos.map((s) => s.posicao)).toEqual([1, 2]);
+  });
+});
+
+describe("quando o envelope vence", () => {
+  it("lê o `document.deadline_at` e devolve em ISO", () => {
+    expect(vencimentoDoPayload({ document: { deadline_at: "2026-10-29T16:25:39.934-03:00" } })).toBe(
+      "2026-10-29T19:25:39.934Z",
+    );
+  });
+
+  it("acha a data também no documento dentro de `data`", () => {
+    expect(vencimentoDoPayload({ data: { document: { deadline_at: "2026-11-01T15:54:04.858-03:00" } } })).toBe(
+      "2026-11-01T18:54:04.858Z",
+    );
+  });
+
+  it("sem a data, ou com data ilegível, devolve nulo, e nunca o texto cru", () => {
+    expect(vencimentoDoPayload({ document: {} })).toBeNull();
+    expect(vencimentoDoPayload({ document: { deadline_at: "amanhã" } })).toBeNull();
+    expect(vencimentoDoPayload(null)).toBeNull();
+  });
+
+  it("o payload real do bounce traz a data, e ela é lida", () => {
+    expect(vencimentoDoPayload(payloadReal)).toBe("2026-10-12T02:23:56.603Z");
   });
 });
