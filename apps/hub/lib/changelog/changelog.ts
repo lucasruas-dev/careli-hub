@@ -36,6 +36,37 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-10-02-certidao-nascimento-solteiro",
+    deployedAt: "__HORA_REAL__",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "**Novo interruptor Certidão de nascimento na aba Credenciamento**, logo abaixo de Comprovante de renda. Vem desligado em todos os empreendimentos.",
+            ],
+            screen: "Setup do empreendimento",
+          },
+          {
+            items: [
+              "**Com o interruptor ligado, a CAD do cliente solteiro passa a pedir a certidão de nascimento** numa etapa própria, no cadastro, no link público da CAD e no portal do incorporador. Os outros estados civis seguem como estão, e na ficha o documento aparece como Certidão de nascimento.",
+            ],
+            screen: "CAD do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "ed19f445",
+    technical: {
+      done: "Migration 0208: `apolo_enterprise_settings.certidao_nascimento_habilitada` boolean not null default false (mesmo molde da 0095 do comprovante de renda). `enterprise-settings.ts` ganha o campo, o setter e `exigeCertidaoNascimento` (leitura que falha não exige), e a leitura das configurações tenta de novo sem a coluna se ela ainda não existir. `cadastro-obrigatorios.ts` ganha `certidaoDoCadastro`, a regra única do servidor e do assistente: requisito só para pessoa física com estado civil 1 e a chave ligada, categoria `certidao_nascimento`. As três portas (salvar compartilhado do Apolo e do portal, só prospect, e o link público pelo empreendimento do token) leem a chave no servidor, nunca do corpo. O assistente mostra a etapa 3. Certidão de nascimento; as rotas de exigências do link público e do portal devolvem `certidaoNascimento`. Fora: imobiliária, corretor autônomo, CAD sem empreendimento e viúvo (decisão do Lucas, 02/10/2026). Integrado por merge pela sessão Publicação.",
+      motivation: "Lucas (02/10/2026): \"vamos colocar no setup dos empreendimento a aba que habilita a solicitacao de certidao de nascimento. caso a mesma esteja habilitada terá a sessão de solicitar a certidão de nascimento para clientes solteiro\".",
+    },
+    title: "Certidão de nascimento do cliente solteiro, ligada por empreendimento",
+    type: "novidade",
+    version: "1.405.0",
+  },
+  {
     buildTag: "2026-10-01-reenvio-usa-a-key-do-webhook",
     deployedAt: "2026-10-02T07:37:20-03:00",
     internal: true,
