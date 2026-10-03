@@ -222,7 +222,7 @@ describe("a fila de assinatura na tela", () => {
   it("quem foi recadastrado mostra que foi para o fim da fila, e só ele", async () => {
     await montar();
 
-    expect(linhaDe("MAURA MARIA PASSOS").textContent).toContain("Foi para o fim da fila ao corrigir o e-mail");
+    expect(linhaDe("MAURA MARIA PASSOS").textContent).toContain("Foi para o fim da fila ao entrar depois do envio");
     expect(linhaDe("YASMIN L.").textContent).not.toContain("fim da fila");
   });
 

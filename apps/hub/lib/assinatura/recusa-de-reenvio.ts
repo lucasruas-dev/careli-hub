@@ -153,3 +153,44 @@ export function fraseDaTrocaQueVaiParaOFim(nome: string, quantos: number): strin
     `e passa a esperar ${esperando}.`
   );
 }
+
+// ── TROCAR QUEM ASSINA (03/10/2026) ─────────────────────────────────────────
+//
+// Lucas, 03/10/2026: *"é basicamente eu tirar uma pessoa e colocar outra para assinar, não precisa
+// mudar em nada no cadastro"*. O caso típico é a testemunha ou a vendedora que não pode assinar.
+//
+// ⚠️ AS FRASES MORAM AQUI PELO MESMO MOTIVO DAS DE CIMA: a tela e o servidor contam a mesma
+// história, e este arquivo é o único que os dois podem importar.
+//
+// ⚠️ VALE PARA TODO PAPEL, INCLUSIVE COMPRADOR E CÔNJUGE. A primeira versão bloqueava os dois (são
+// as partes do contrato, com nome e CPF impressos no texto), e o Lucas decidiu o contrário no mesmo
+// dia: *"a troca pode ser para qualquer pessoa até o comprador"* (03/10/2026). O texto do contrato
+// continua como está; quem precisa de outro texto volta o card para a análise.
+
+/** A frase de quando a troca de pessoa chega pelo portal do incorporador. */
+export const RECUSA_DE_TROCA_DE_PESSOA_NO_PORTAL =
+  "Trocar quem assina é feito pela equipe da Careli, no hub. Pelo portal dá para corrigir o e-mail de quem assina. Nada foi mexido.";
+
+/** O lembrete do formulário: a troca não mexe no texto do contrato. */
+export const AVISO_DA_TROCA_DE_PESSOA =
+  "A pessoa nova entra antes de a antiga sair, e só ela recebe o convite. O texto do contrato não muda.";
+
+/** O que fazer quando o erro está no texto, e não em quem assina. */
+export const AVISO_DO_TEXTO_DO_CONTRATO =
+  "Se o erro está no texto do contrato, trocar quem assina não resolve: o card volta para a análise e o contrato é gerado de novo.";
+
+/**
+ * O AVISO ANTES DE TROCAR QUEM ASSINA: quem entra vai para o fim da fila.
+ *
+ * ⚠️ A MESMA CONTA DE `fraseDaTrocaQueVaiParaOFim`, COM OUTRO SUJEITO. Quem vai para o fim não é a
+ * pessoa da linha, é quem entra no lugar dela; e o número de quem passa a vir antes é o mesmo.
+ */
+export function fraseDaTrocaDePessoaQueVaiParaOFim(nome: string, quantos: number): string {
+  const quem = nome.trim() || "esta pessoa";
+  const esperando =
+    quantos === 1 ? "1 pessoa que ainda não assinou" : `${quantos} pessoas que ainda não assinaram`;
+  return (
+    `Quem entrar no lugar de ${quem} vai para o fim da fila de assinatura (a Clicksign põe quem entra depois do envio atrás de todos) ` +
+    `e passa a esperar ${esperando}.`
+  );
+}

@@ -61,6 +61,14 @@ const espioes = vi.hoisted(() => ({
     ok: true,
     signerId: "signer-novo",
   })),
+  trocarPessoaDoSignatario: vi.fn(async () => ({
+    aviso: null,
+    email: "nova@b.com",
+    nome: "Ana Paula Dias",
+    ok: true,
+    papel: "testemunha",
+    signerId: "signer-da-ana",
+  })),
 }));
 
 vi.mock("@/lib/temis/portao-do-portal", async () => {
@@ -133,6 +141,7 @@ vi.mock("@/lib/assinatura/envio-db", () => ({
 vi.mock("@/lib/temis/trocar-signatario", () => ({
   reenviarConvite: espioes.reenviarConvite,
   trocarEmailDoSignatario: espioes.trocarEmailDoSignatario,
+  trocarPessoaDoSignatario: espioes.trocarPessoaDoSignatario,
 }));
 
 import { lerRegraDeOrdem } from "@/lib/assinatura/ordem";
@@ -164,6 +173,7 @@ function nadaSaiuParaAClicksign() {
   expect(espioes.enviarContratoParaAssinatura).not.toHaveBeenCalled();
   expect(espioes.reenviarConvite).not.toHaveBeenCalled();
   expect(espioes.trocarEmailDoSignatario).not.toHaveBeenCalled();
+  expect(espioes.trocarPessoaDoSignatario).not.toHaveBeenCalled();
 }
 
 const VERBOS: Array<[string, () => Promise<Response>]> = [
@@ -429,5 +439,81 @@ describe("portal: o card dele num produto só consulta (decisão do Lucas, 16/09
     const r = await PORTAL_ENVIAR(post(`${BASE}/enviar`, { propostaId: PROPOSTA }));
     expect(r.status).toBe(200);
     expect(espioes.enviarContratoParaAssinatura).toHaveBeenCalled();
+  });
+});
+
+// ── 5. TROCAR QUEM ASSINA: SÓ NO HUB (03/10/2026) ───────────────────────────
+//
+// Decisão do Lucas, 03/10/2026: o portal continua só com a correção de e-mail. Tirar uma pessoa do
+// contrato e pôr outra é da equipe da Careli, no hub. Esconder o botão no portal não basta: o
+// pedido chega por HTTP, e a recusa tem de ser do servidor.
+
+describe("trocar quem assina: o portal é recusado, o hub troca", () => {
+  const HUB = "https://c2x.app.br/api/temis/assinatura";
+  const BEARER = { authorization: "Bearer tok" };
+  const PEDIDO = {
+    acao: "trocar_pessoa",
+    cpf: "529.982.247-25",
+    email: "nova@b.com",
+    envelopeId: ENVELOPE,
+    nome: "Ana Paula Dias",
+    signerId: "s1",
+  };
+
+  it("portal: 403 com a frase de que é do hub, antes de ler o envelope e sem chamar a troca", async () => {
+    estado.envelopes = [{ proposta_id: PROPOSTA }];
+    const r = await PORTAL_SIGNATARIO(post(`${BASE}/signatario`, PEDIDO));
+
+    expect(r.status).toBe(403);
+    const corpo = (await r.json()) as { erro: string };
+    expect(corpo.erro).toContain("no hub");
+    expect(corpo.erro).toContain("corrigir o e-mail");
+    expect(estado.consultas).toHaveLength(0);
+    nadaSaiuParaAClicksign();
+  });
+
+  it("portal: a correção de e-mail continua como era", async () => {
+    estado.envelopes = [{ proposta_id: PROPOSTA }];
+    const r = await PORTAL_SIGNATARIO(
+      post(`${BASE}/signatario`, { acao: "trocar_email", email: "novo@b.com", envelopeId: ENVELOPE, signerId: "s1" }),
+    );
+    expect(r.status).toBe(200);
+    expect(espioes.trocarEmailDoSignatario).toHaveBeenCalled();
+    expect(espioes.trocarPessoaDoSignatario).not.toHaveBeenCalled();
+  });
+
+  it("hub: troca, e nem a resposta nem o log levam CPF ou nome", async () => {
+    const logs: unknown[][] = [];
+    const espiaoDoLog = vi.spyOn(console, "info").mockImplementation((...args: unknown[]) => {
+      logs.push(args);
+    });
+    try {
+      const r = await HUB_SIGNATARIO(post(`${HUB}/signatario`, PEDIDO, BEARER));
+
+      expect(r.status).toBe(200);
+      expect(espioes.trocarPessoaDoSignatario).toHaveBeenCalledWith(expect.anything(), {
+        cpf: "529.982.247-25",
+        email: "nova@b.com",
+        envelopeId: ENVELOPE,
+        nome: "Ana Paula Dias",
+        signerId: "s1",
+      });
+
+      const texto = JSON.stringify(await r.json());
+      expect(texto).not.toContain("529");
+      expect(texto).not.toMatch(/cpf/i);
+
+      const registro = logs.find((l) => String(l[0]).includes("trocar quem assina"));
+      expect(registro).toBeDefined();
+      const doLog = JSON.stringify(registro);
+      expect(doLog).toContain(ENVELOPE);
+      expect(doLog).toContain("testemunha");
+      expect(doLog).toContain("user-hub");
+      expect(doLog).not.toContain("529");
+      expect(doLog).not.toContain("Ana Paula");
+      expect(doLog).not.toContain("nova@b.com");
+    } finally {
+      espiaoDoLog.mockRestore();
+    }
   });
 });

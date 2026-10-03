@@ -644,6 +644,65 @@ export async function lerDegrausDoEnvelope(
   }
 }
 
+export type DocumentacaoLida = {
+  ok: true;
+  /** `has_documentation` como a Clicksign o tem. `null` = o campo não veio na resposta. */
+  temDocumento: boolean | null;
+};
+
+export type FalhaAoLerDocumentacao = {
+  erro: string;
+  /** 404: o signatário não está mais no envelope. */
+  naoEncontrado: boolean;
+  ok: false;
+  requestId: null | string;
+};
+
+/**
+ * ESTE SIGNATÁRIO ASSINA COM CPF? — `GET /envelopes/{id}/signers/{signer_id}`, o `has_documentation`.
+ *
+ * ⚠️ É ELE QUE SEGURA O NÍVEL DA AUTENTICAÇÃO NA TROCA DE PESSOA (03/10/2026). Com
+ * `has_documentation: true` a Clicksign pede o CPF na hora de assinar; quem entra no lugar de alguém
+ * que assinava assim tem de entrar do mesmo jeito, e o nosso quadro não guarda CPF nem a bandeira.
+ * Só a Clicksign sabe.
+ *
+ * ⚠️ NUNCA LANÇA, e a resposta não carrega o `documentation`: o CPF de quem sai não interessa a ninguém
+ * aqui, e não pode escapar para log nem para a tela.
+ */
+export async function lerDocumentacaoDoSignatario(
+  envelopeId: string,
+  signerId: string,
+  porta: PortaDaClicksign = chamar,
+): Promise<DocumentacaoLida | FalhaAoLerDocumentacao> {
+  const envelope = envelopeId.trim();
+  const id = signerId.trim();
+  if (!envelope || !id) {
+    return {
+      erro: "Sem o envelope e o signatário não dá para ler o cadastro na Clicksign.",
+      naoEncontrado: false,
+      ok: false,
+      requestId: null,
+    };
+  }
+
+  try {
+    const lido = await porta<{ data?: { attributes?: Record<string, unknown> } }>(
+      `/envelopes/${envelope}/signers/${id}`,
+      { metodo: "GET" },
+    );
+    const bandeira = lido?.data?.attributes?.has_documentation;
+    return { ok: true, temDocumento: typeof bandeira === "boolean" ? bandeira : null };
+  } catch (e) {
+    const falha = e instanceof FalhaDaClicksign ? e : null;
+    return {
+      erro: detalheDaFalha(e),
+      naoEncontrado: falha?.erro.status === 404,
+      ok: false,
+      requestId: falha?.erro.requestId ?? null,
+    };
+  }
+}
+
 // ── O CANCELAMENTO ──────────────────────────────────────────────────────────
 
 export type CancelamentoFeito = { envelopeId: string; ok: true };

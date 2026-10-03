@@ -5,6 +5,7 @@ import { createApoloAdminClient } from "@/lib/apolo/server";
 import { conferirConfiguracao, pareceSandbox } from "@/lib/assinatura/clicksign/cliente";
 import { enviarContratoParaAssinatura, prepararEnvio } from "@/lib/assinatura/envio-db";
 import { ENVIO_POR_OUTRO_CANAL, fraseParaOAtor } from "@/lib/assinatura/frase-para-o-portal";
+import { RECUSA_DE_TROCA_DE_PESSOA_NO_PORTAL } from "@/lib/assinatura/recusa-de-reenvio";
 import { descreverRegra, gruposDaRegra, lerRegraDeOrdem, type RegraDeOrdem } from "@/lib/assinatura/ordem";
 import type { AmbienteDoEnvio, RespostaDoEnvio, RespostaDoPreparo } from "@/lib/assinatura/preparo";
 import { rotuloDoPapel } from "@/lib/assinatura/tipos";
@@ -20,7 +21,12 @@ import {
   registrarAtoDoPortal,
   respostaDoAlcance,
 } from "./contrato-servico";
-import { linkDeAssinatura, reenviarConvite, trocarEmailDoSignatario } from "./trocar-signatario";
+import {
+  linkDeAssinatura,
+  reenviarConvite,
+  trocarEmailDoSignatario,
+  trocarPessoaDoSignatario,
+} from "./trocar-signatario";
 
 // A ASSINATURA DO CONTRATO, PARA QUEM ESTIVER OPERANDO — preparar, enviar e consertar signatário.
 //
@@ -256,8 +262,9 @@ export async function enviarContratoDoAtor(
 // ── O SIGNATÁRIO DE ENVELOPE JÁ ENVIADO ─────────────────────────────────────
 
 /**
- * POST `{ acao: "reenviar", envelopeId, signerId }` ou `{ acao: "trocar_email", email, envelopeId,
- * signerId }`.
+ * POST `{ acao: "reenviar", envelopeId, signerId }`, `{ acao: "trocar_email", email, envelopeId,
+ * signerId }`, `{ acao: "trocar_pessoa", cpf?, email, envelopeId, nome, signerId }` (só no hub) ou
+ * `{ acao: "link", envelopeId, signerId }`.
  *
  * Ver o cabeçalho de `app/api/temis/assinatura/signatario/route.ts` para o porquê de cada recusa.
  */
@@ -267,11 +274,23 @@ export async function consertarSignatario(
 ): Promise<NextResponse> {
   const corpo = (await request.json().catch(() => ({}))) as {
     acao?: unknown;
+    /** O CPF de quem entra, só na troca de pessoa. Opcional, e NUNCA volta na resposta nem no log. */
+    cpf?: unknown;
     /** O e-mail NOVO, só na troca. */
     email?: unknown;
     envelopeId?: unknown;
+    /** O nome de quem entra, só na troca de pessoa. */
+    nome?: unknown;
     signerId?: unknown;
   };
+
+  // ⚠️ TROCAR QUEM ASSINA É SÓ DO HUB, E A RECUSA VEM ANTES DE TUDO (decisão do Lucas, 03/10/2026). O
+  // portal continua com a correção de e-mail; tirar uma pessoa do contrato e pôr outra é da equipe
+  // da Careli. Esconder o botão no portal não é a trava: o pedido chega por HTTP.
+  if (corpo.acao === "trocar_pessoa" && ator.tipo !== "hub") {
+    registrarAtoDoPortal(ator, "tentou trocar quem assina e foi recusado", { envelopeId: texto(corpo.envelopeId) });
+    return NextResponse.json({ erro: RECUSA_DE_TROCA_DE_PESSOA_NO_PORTAL }, { status: 403 });
+  }
 
   const envelopeId = texto(corpo.envelopeId);
   const signerId = texto(corpo.signerId);
@@ -341,6 +360,43 @@ export async function consertarSignatario(
     // ⚠️ `aviso` NÃO É ERRO, E RESPONDER 200 AQUI É O PONTO. O signatário novo JÁ ESTÁ no envelope,
     // com os dois requisitos: devolver erro faria o operador clicar em trocar de novo — e o segundo
     // clique REMOVERIA quem acabou de entrar.
+    return NextResponse.json({
+      data: { aviso: troca.aviso, email: troca.email, nome: troca.nome, signerId: troca.signerId },
+    });
+  }
+
+  if (corpo.acao === "trocar_pessoa") {
+    // ⚠️ AS CONFERÊNCIAS DE NOME, E-MAIL E CPF MORAM EM `conferirPessoaDaTroca`, e não aqui: elas
+    // precisam da lista do envelope (o e-mail repetido) e da pessoa que sai (o papel), que só o
+    // serviço lê. Aqui só se garante que veio texto.
+    const troca = await trocarPessoaDoSignatario(sb, {
+      cpf: texto(corpo.cpf) || null,
+      email: texto(corpo.email),
+      envelopeId,
+      nome: texto(corpo.nome),
+      signerId,
+    });
+
+    // ⚠️ O LOG NÃO LEVA NOME, E-MAIL NEM CPF: quem trocou, o envelope, o papel e o que aconteceu.
+    // O nome de quem entrou está no quadro do envelope, que é onde ele precisa estar.
+    if (!troca.ok) {
+      console.info("[temis][trocar quem assina] recusada ou falhou", {
+        envelopeId,
+        quem: ator.tipo === "hub" ? ator.userId : null,
+        removido: troca.removido,
+        status: troca.status,
+      });
+      return NextResponse.json({ erro: troca.erro, removido: troca.removido }, { status: troca.status });
+    }
+
+    console.info("[temis][trocar quem assina] pessoa trocada", {
+      envelopeId,
+      papel: troca.papel,
+      quem: ator.tipo === "hub" ? ator.userId : null,
+    });
+
+    // ⚠️ `aviso` NÃO É ERRO, pelo mesmo motivo da troca de e-mail: a pessoa nova JÁ ESTÁ no envelope.
+    // E o CPF não volta: a tela não precisa dele, e o que não sai não vaza.
     return NextResponse.json({
       data: { aviso: troca.aviso, email: troca.email, nome: troca.nome, signerId: troca.signerId },
     });

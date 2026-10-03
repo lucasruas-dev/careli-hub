@@ -25,6 +25,7 @@ import {
   ScrollText,
   Signature,
   Undo2,
+  UserRoundPen,
   Users,
 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
@@ -59,7 +60,12 @@ import {
 import { contratoVigente } from "@/lib/temis/contrato-guardado";
 import { MOTIVOS } from "@/lib/temis/indeferimento";
 import { recadoDaGeracao } from "@/lib/temis/minuta-da-cadeia";
-import { RECUSA_DE_CHAVE_QUE_NAO_E_DA_CLICKSIGN } from "@/lib/assinatura/recusa-de-reenvio";
+import {
+  AVISO_DA_TROCA_DE_PESSOA,
+  AVISO_DO_TEXTO_DO_CONTRATO,
+  RECUSA_DE_CHAVE_QUE_NAO_E_DA_CLICKSIGN,
+  RECUSA_DE_QUEM_NAO_ESTA_NO_QUADRO,
+} from "@/lib/assinatura/recusa-de-reenvio";
 import { pedidoDoTrabalho } from "@/lib/temis/pedido-do-trabalho";
 import {
   caminhoDoCard,
@@ -281,6 +287,8 @@ type SignatarioNaTela = {
    * servidor, que vê a lista inteira). Ausente ou `null` = a troca não muda a posição de ninguém.
    */
   trocaVaiParaOFim?: null | string;
+  /** O mesmo aviso, na troca de PESSOA: quem entra no lugar desta pessoa vai para o fim da fila. */
+  trocaDePessoaVaiParaOFim?: null | string;
 };
 
 type Card = {
@@ -3457,7 +3465,7 @@ function DegrauDaFila({
           ) : null}
           {degrau.fimDaFila ? (
             <Tooltip
-              content="A Clicksign põe no fim da fila quem tem o e-mail corrigido depois do envio."
+              content="A Clicksign põe no fim da fila quem entra no envelope depois do envio: e-mail corrigido ou pessoa trocada."
               placement="top"
             >
               <span className="inline-flex items-center gap-1 rounded-full border border-line px-1.5 py-px text-[10.5px] font-semibold text-ink-soft">
@@ -3593,7 +3601,16 @@ function LinhaDoSignatario({
   const [erro, setErro] = useState<null | string>(null);
   /** O que deu certo, ou o pedido de esperar um minuto. Some no próximo clique. */
   const [recado, setRecado] = useState<null | string>(null);
-  const { temisFetch } = useApiDaTemis();
+  /** O formulário de "Trocar quem assina" está aberto. */
+  const [trocandoPessoa, setTrocandoPessoa] = useState(false);
+  /**
+   * Quem entra no lugar. Os três campos nascem VAZIOS: é outra pessoa, e nada da que sai serve.
+   *
+   * ⚠️ O CPF SÓ MORA AQUI ENQUANTO O FORMULÁRIO ESTÁ ABERTO: ele é limpo no sucesso e no cancelar, e
+   * nunca volta do servidor.
+   */
+  const [pessoaNova, setPessoaNova] = useState({ cpf: "", email: "", nome: "" });
+  const { autenticacao, temisFetch } = useApiDaTemis();
 
   const signerId = signatario.chave;
   const emailAtual = (signatario.email ?? "").trim();
@@ -3665,6 +3682,30 @@ function LinhaDoSignatario({
     : podeReenviar
       ? "Copiar o link de assinatura (o mesmo do convite por e-mail)"
       : fraseDoReenvio;
+  /**
+   * TROCAR QUEM ASSINA — o botão aparece? Só no hub (decisão do Lucas, 03/10/2026).
+   *
+   * ⚠️ NO PORTAL ELE NÃO EXISTE, NEM DESABILITADO. O portal continua só com a correção de e-mail, e o
+   * servidor recusa a troca de pessoa que chegar de lá (`consertarSignatario`). A porta é a mesma que
+   * esconde o cancelamento do contrato nesta tela: `autenticacao` do provedor da API.
+   */
+  const trocaDePessoaNoHub = autenticacao === "hub";
+  /**
+   * A troca de pessoa pode? A régua da troca de e-mail (id da Clicksign, envelope vivo), e a pessoa
+   * tem de estar no quadro (é dele que sai o papel que quem entra herda).
+   *
+   * ⚠️ VALE PARA TODO PAPEL, ATÉ O COMPRADOR. Lucas, 03/10/2026: *"a troca pode ser para qualquer
+   * pessoa até o comprador"*.
+   */
+  const podeTrocarPessoa = podeTrocarEmail && Boolean(signatario.papel);
+  /** A frase do botão: o que ele faz, ou por que ele não vale nesta linha. */
+  const fraseDaTrocaDePessoa = !podeTrocarEmail
+    ? fraseDaTroca
+    : !signatario.papel
+      ? (signatario.reenvioIndisponivel?.frase ?? RECUSA_DE_QUEM_NAO_ESTA_NO_QUADRO)
+      : "Trocar quem assina: tirar esta pessoa da assinatura e colocar outra no lugar";
+  const nomeDaPessoaNova = pessoaNova.nome.replace(/\s+/g, " ").trim();
+  const emailDaPessoaNova = pessoaNova.email.trim();
   const emailLimpo = emailNovo.trim();
   // O campo nasce com o que está no envelope AGORA: o normal é corrigir uma letra, e digitar o
   // endereço inteiro de novo é como se erra de novo.
@@ -3673,11 +3714,28 @@ function LinhaDoSignatario({
     setRecado(null);
     setLinkParaCopiar(null);
     setEmailNovo(emailAtual);
+    setTrocandoPessoa(false);
     setCorrigindo(true);
+  };
+  const abrirTrocaDePessoa = (): void => {
+    setErro(null);
+    setRecado(null);
+    setLinkParaCopiar(null);
+    setPessoaNova({ cpf: "", email: "", nome: "" });
+    setCorrigindo(false);
+    setTrocandoPessoa(true);
+  };
+  const fecharTrocaDePessoa = (): void => {
+    setTrocandoPessoa(false);
+    setPessoaNova({ cpf: "", email: "", nome: "" });
+    setErro(null);
   };
 
   const executar = async (
-    corpo: { acao: "reenviar" } | { acao: "trocar_email"; email: string },
+    corpo:
+      | { acao: "reenviar" }
+      | { acao: "trocar_email"; email: string }
+      | { acao: "trocar_pessoa"; cpf: string; email: string; nome: string },
   ): Promise<void> => {
     if (envelopeId === null) return;
     if (noArRef.current) return;
@@ -3726,6 +3784,20 @@ function LinhaDoSignatario({
       }
       if (corpo.acao === "reenviar") {
         setRecado("Convite reenviado.");
+      } else if (corpo.acao === "trocar_pessoa") {
+        // ⚠️ O RECADO FICA NO PAINEL, COMO O DA TROCA DE E-MAIL: a linha de quem saiu some na recarga,
+        // e o recado que ela guardasse sumiria junto antes de alguém ler.
+        const aviso = j.data?.aviso ?? null;
+        const quemEntrou = nomeDaPessoaNova || "A pessoa nova";
+        const fila = signatario.trocaDePessoaVaiParaOFim
+          ? ` ${quemEntrou} foi para o fim da fila de assinatura.`
+          : "";
+        const texto = aviso
+          ? `${signatario.nome || "A pessoa"} saiu da assinatura e ${quemEntrou} entrou no lugar.${fila} ${aviso}`
+          : `${signatario.nome || "A pessoa"} saiu da assinatura e ${quemEntrou} entrou no lugar; o convite foi mandado para ${emailDaPessoaNova}.${fila}`;
+        if (aoTrocar) aoTrocar(signerId, texto);
+        else setRecado(texto);
+        fecharTrocaDePessoa();
       } else {
         // ⚠️ O `aviso` VEM NO 200, E É ELE QUE CONTA A METADE QUE FALTOU. A troca deu certo (a pessoa
         // está no envelope, com os dois requisitos), mas o convite pode não ter saído — e sem esta
@@ -3759,7 +3831,7 @@ function LinhaDoSignatario({
           ? "Não consegui falar com o servidor. O envelope continua como estava — tente de novo."
           : "Não consegui falar com o servidor, e a troca pode ter começado do lado da Clicksign. NÃO clique de novo: atualize a tela e confira a lista de signatários antes de tentar outra vez.",
       );
-      if (corpo.acao === "trocar_email") await aoRecarregar();
+      if (corpo.acao !== "reenviar") await aoRecarregar();
     } finally {
       noArRef.current = false;
       setAcaoNoAr(null);
@@ -3862,7 +3934,7 @@ function LinhaDoSignatario({
         {signatario.foiParaOFimEm ? (
           <p className="m-0 mt-0.5 flex items-center gap-1 text-[10.5px] font-semibold text-ink-soft">
             <ArrowDownToLine aria-hidden="true" className="size-3 shrink-0" />
-            Foi para o fim da fila ao corrigir o e-mail ({momento(signatario.foiParaOFimEm)})
+            Foi para o fim da fila ao entrar depois do envio ({momento(signatario.foiParaOFimEm)})
           </p>
         ) : null}
       </div>
@@ -3954,6 +4026,92 @@ function LinhaDoSignatario({
                 </button>
               </div>
             </div>
+          ) : trocandoPessoa ? (
+            <div
+              aria-label={`Trocar quem assina no lugar de ${signatario.nome || "esta pessoa"}`}
+              className="col-span-full mt-1 grid gap-1.5 rounded-lg border border-line bg-subtle px-2 py-2"
+              role="group"
+            >
+              {/* ⚠️ OS AVISOS VÊM ANTES DOS CAMPOS, como na correção de e-mail: é o que faz o
+                  formulário ser uma confirmação, e não um cadastro. Do lado de lá a pessoa é
+                  REMOVIDA de um envelope de produção e outra é criada, e o texto do contrato fica
+                  como está (Lucas, 03/10/2026: só a assinatura muda). */}
+              {signatario.trocaDePessoaVaiParaOFim ? (
+                <p className="m-0 flex gap-1.5 border-l-2 border-ink pl-2 text-[10.5px] font-semibold text-ink">
+                  <ArrowDownToLine aria-hidden="true" className="mt-px size-3 shrink-0" />
+                  {signatario.trocaDePessoaVaiParaOFim}
+                </p>
+              ) : null}
+              <p className="m-0 text-[10.5px] text-ink-soft">{AVISO_DA_TROCA_DE_PESSOA}</p>
+              <p className="m-0 text-[10.5px] text-ink-muted">{AVISO_DO_TEXTO_DO_CONTRATO}</p>
+              <input
+                aria-label="Nome de quem entra"
+                autoComplete="off"
+                className="w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-[11px] text-ink outline-none focus:border-line-strong"
+                disabled={acaoNoAr !== null}
+                onChange={(e) => setPessoaNova((antes) => ({ ...antes, nome: e.target.value }))}
+                placeholder="Nome e sobrenome"
+                type="text"
+                value={pessoaNova.nome}
+              />
+              <input
+                aria-label="E-mail de quem entra"
+                autoComplete="off"
+                className="w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-[11px] text-ink outline-none focus:border-line-strong"
+                disabled={acaoNoAr !== null}
+                inputMode="email"
+                onChange={(e) => setPessoaNova((antes) => ({ ...antes, email: e.target.value }))}
+                placeholder="email@dominio.com.br"
+                type="email"
+                value={pessoaNova.email}
+              />
+              {/* ⚠️ O CPF É OBRIGATÓRIO QUANDO QUEM SAI ASSINA COM CPF, E QUEM SABE É A CLICKSIGN: o
+                  servidor lê antes de mexer e recusa com a frase certa. A tela não adivinha. */}
+              <input
+                aria-label="CPF de quem entra"
+                autoComplete="off"
+                className="w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-[11px] text-ink outline-none focus:border-line-strong"
+                disabled={acaoNoAr !== null}
+                inputMode="numeric"
+                onChange={(e) => setPessoaNova((antes) => ({ ...antes, cpf: e.target.value }))}
+                placeholder="CPF (000.000.000-00)"
+                type="text"
+                value={pessoaNova.cpf}
+              />
+              <p className="m-0 text-[10px] text-ink-muted">
+                O CPF é obrigatório quando a pessoa que sai assina com CPF. Ele vai só para a Clicksign.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-inverse px-3 py-1.5 text-[11px] font-semibold text-brand-ink transition-opacity hover:opacity-90 disabled:opacity-50"
+                  disabled={acaoNoAr !== null || nomeDaPessoaNova === "" || emailDaPessoaNova === ""}
+                  onClick={() =>
+                    void executar({
+                      acao: "trocar_pessoa",
+                      cpf: pessoaNova.cpf.trim(),
+                      email: emailDaPessoaNova,
+                      nome: nomeDaPessoaNova,
+                    })
+                  }
+                  type="button"
+                >
+                  {acaoNoAr === "trocar" ? (
+                    <Loader2 aria-hidden="true" className="size-3 animate-spin" />
+                  ) : (
+                    <UserRoundPen aria-hidden="true" className="size-3" />
+                  )}
+                  {acaoNoAr === "trocar" ? "Trocando…" : "Confirmo: trocar e enviar"}
+                </button>
+                <button
+                  className="inline-flex items-center rounded-lg px-2 py-1.5 text-[11px] font-semibold text-ink-muted transition-colors hover:text-ink disabled:opacity-50"
+                  disabled={acaoNoAr !== null}
+                  onClick={fecharTrocaDePessoa}
+                  type="button"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
           ) : signatario.assinouEm ? null : (
             <div className="col-span-full flex flex-wrap items-center gap-1 @xl:col-span-1 @xl:justify-end">
               {/* ⚠️ A AÇÃO PRINCIPAL É A DO PROBLEMA DAQUELA LINHA, e só ela ganha nome. Lucas
@@ -4008,6 +4166,24 @@ function LinhaDoSignatario({
                   </button>
                 </Tooltip>
               )}
+
+              {/* ⚠️ TROCAR QUEM ASSINA MORA AO LADO DO LÁPIS, E SÓ NO HUB (03/10/2026), em todo papel,
+                  até o comprador. Onde ele não vale (envelope encerrado, linha sem id da Clicksign ou
+                  fora do quadro) fica DESABILITADO, e não some: o motivo no tooltip conduz. */}
+              {trocaDePessoaNoHub ? (
+                <Tooltip content={fraseDaTrocaDePessoa} placement="top">
+                  <button
+                    aria-label="Trocar quem assina"
+                    className="grid size-7 shrink-0 place-items-center rounded-lg border border-line text-ink-muted transition-colors hover:bg-subtle hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={acaoNoAr !== null || !podeTrocarPessoa}
+                    onClick={abrirTrocaDePessoa}
+                    title={fraseDaTrocaDePessoa}
+                    type="button"
+                  >
+                    <UserRoundPen aria-hidden="true" className="size-3.5" />
+                  </button>
+                </Tooltip>
+              ) : null}
 
               {/* ⚠️ REENVIAR VIRA ÍCONE, e some para quem já assinou. O nome vive no `title` e no
                   `aria-label` — a mesma régua dos botões do topo desta tela, pedida pelo Lucas em
