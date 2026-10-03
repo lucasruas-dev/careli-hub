@@ -37,7 +37,7 @@ export type ChangelogEntry = {
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
     buildTag: "2026-10-03-temis-trocar-quem-assina",
-    deployedAt: "__HORA_REAL__",
+    deployedAt: "2026-10-03T15:00:56-03:00",
     modules: [
       {
         module: "Têmis",
