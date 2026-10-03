@@ -10,7 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Lucas, 03/10/2026: *"é basicamente eu tirar uma pessoa e colocar outra para assinar, não precisa
 // mudar em nada no cadastro"*. Estes testes prendem:
 //   - o botão mora ao lado do lápis, só para quem ainda não assinou;
-//   - em comprador e cônjuge ele fica DESABILITADO, com o motivo (são as partes do contrato);
+//   - vale em todo papel, até o comprador (Lucas, 03/10/2026), e fica desabilitado com o motivo
+//     só onde não dá (envelope encerrado);
 //   - o formulário abre vazio, com o aviso do fim da fila e a frase de que o texto não muda;
 //   - o pedido vai com `trocar_pessoa`, e o recado fica no painel;
 //   - NO PORTAL O BOTÃO NÃO EXISTE (o portal continua só com a correção de e-mail).
@@ -31,9 +32,7 @@ vi.mock("@/modules/apolo/data/apolo-operations", () => ({
 
 const { TelaDeTrabalho } = await import("./tela-de-trabalho");
 const { API_DA_TEMIS_DO_PORTAL, ApiDaTemisProvider } = await import("@/modules/temis/api-da-temis");
-const { AVISO_DA_TROCA_DE_PESSOA, RECUSA_DE_TROCA_DE_PARTE_DO_CONTRATO } = await import(
-  "@/lib/assinatura/recusa-de-reenvio"
-);
+const { AVISO_DA_TROCA_DE_PESSOA } = await import("@/lib/assinatura/recusa-de-reenvio");
 
 const ENVELOPE = "0384000d-5299-4dcb-abeb-07a9face1545";
 const AVISO_DO_FIM =
@@ -46,6 +45,8 @@ let pedidos: Array<Record<string, unknown>>;
 /** O que a troca de pessoa responde neste teste. */
 let respostaDaTroca: { corpo: unknown; status: number };
 let depoisDaTroca: boolean;
+/** O envelope já terminou: o servidor manda o motivo pronto em cada linha. */
+let encerrado: boolean;
 
 const CARD = () => ({
   arrependimento_inicio: null,
@@ -77,7 +78,7 @@ const pessoa = (chave: string, nome: string, patch: Record<string, unknown> = {}
   foiParaOFimEm: null,
   nome,
   papel: "testemunha",
-  reenvioIndisponivel: null,
+  reenvioIndisponivel: encerrado ? { frase: "O envelope foi cancelado.", motivo: "envelope_encerrado" } : null,
   trocaVaiParaOFim: null,
   ...patch,
 });
@@ -191,6 +192,7 @@ beforeEach(() => {
   raiz = createRoot(hospedeiro);
   pedidos = [];
   depoisDaTroca = false;
+  encerrado = false;
   respostaDaTroca = {
     corpo: { data: { aviso: null, email: "ana@exemplo.com", nome: "ANA PAULA DIAS", signerId: "s-ana" } },
     status: 200,
@@ -225,14 +227,24 @@ describe("o botão de trocar quem assina", () => {
     expect(linhaDe("RAFAEL GOMES").querySelector('button[aria-label="Corrigir o e-mail"]')).not.toBeNull();
   });
 
-  it("em comprador e cônjuge fica desabilitado, com o motivo", async () => {
+  // ⚠️ LUCAS, 03/10/2026: *"a troca pode ser para qualquer pessoa até o comprador"*.
+  it("em comprador e cônjuge também fica habilitado", async () => {
     await montar();
 
     for (const nome of ["MAURA MARIA PASSOS", "JOAO PASSOS"]) {
       const botao = botaoDeTrocar(nome);
-      expect(botao?.disabled).toBe(true);
-      expect(botao?.title).toBe(RECUSA_DE_TROCA_DE_PARTE_DO_CONTRATO);
+      expect(botao?.disabled).toBe(false);
+      expect(botao?.title).toContain("Trocar quem assina");
     }
+  });
+
+  it("fica desabilitado, com o motivo, quando o envelope já terminou", async () => {
+    encerrado = true;
+    await montar();
+
+    const botao = botaoDeTrocar("RAFAEL GOMES");
+    expect(botao?.disabled).toBe(true);
+    expect(botao?.title).toBe("O envelope foi cancelado.");
   });
 
   it("some para quem já assinou", async () => {

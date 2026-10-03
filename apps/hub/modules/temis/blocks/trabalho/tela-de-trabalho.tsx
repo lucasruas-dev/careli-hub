@@ -63,10 +63,8 @@ import { recadoDaGeracao } from "@/lib/temis/minuta-da-cadeia";
 import {
   AVISO_DA_TROCA_DE_PESSOA,
   AVISO_DO_TEXTO_DO_CONTRATO,
-  papelNaoSeTroca,
   RECUSA_DE_CHAVE_QUE_NAO_E_DA_CLICKSIGN,
   RECUSA_DE_QUEM_NAO_ESTA_NO_QUADRO,
-  RECUSA_DE_TROCA_DE_PARTE_DO_CONTRATO,
 } from "@/lib/assinatura/recusa-de-reenvio";
 import { pedidoDoTrabalho } from "@/lib/temis/pedido-do-trabalho";
 import {
@@ -3693,18 +3691,19 @@ function LinhaDoSignatario({
    */
   const trocaDePessoaNoHub = autenticacao === "hub";
   /**
-   * A troca de pessoa pode? A régua da troca de e-mail (id da Clicksign, envelope vivo), e mais o
-   * papel: comprador e cônjuge são as partes do contrato, e trocá-los é contrato novo.
+   * A troca de pessoa pode? A régua da troca de e-mail (id da Clicksign, envelope vivo), e a pessoa
+   * tem de estar no quadro (é dele que sai o papel que quem entra herda).
+   *
+   * ⚠️ VALE PARA TODO PAPEL, ATÉ O COMPRADOR. Lucas, 03/10/2026: *"a troca pode ser para qualquer
+   * pessoa até o comprador"*.
    */
-  const podeTrocarPessoa = podeTrocarEmail && !papelNaoSeTroca(signatario.papel);
+  const podeTrocarPessoa = podeTrocarEmail && Boolean(signatario.papel);
   /** A frase do botão: o que ele faz, ou por que ele não vale nesta linha. */
   const fraseDaTrocaDePessoa = !podeTrocarEmail
     ? fraseDaTroca
     : !signatario.papel
       ? (signatario.reenvioIndisponivel?.frase ?? RECUSA_DE_QUEM_NAO_ESTA_NO_QUADRO)
-      : papelNaoSeTroca(signatario.papel)
-        ? RECUSA_DE_TROCA_DE_PARTE_DO_CONTRATO
-        : "Trocar quem assina: tirar esta pessoa da assinatura e colocar outra no lugar";
+      : "Trocar quem assina: tirar esta pessoa da assinatura e colocar outra no lugar";
   const nomeDaPessoaNova = pessoaNova.nome.replace(/\s+/g, " ").trim();
   const emailDaPessoaNova = pessoaNova.email.trim();
   const emailLimpo = emailNovo.trim();
@@ -4168,9 +4167,9 @@ function LinhaDoSignatario({
                 </Tooltip>
               )}
 
-              {/* ⚠️ TROCAR QUEM ASSINA MORA AO LADO DO LÁPIS, E SÓ NO HUB (03/10/2026). Em comprador e
-                  cônjuge ele fica DESABILITADO, e não some: o motivo no tooltip é o que conduz quem
-                  procurava o gesto (são as partes do contrato, e trocá-los é contrato novo). */}
+              {/* ⚠️ TROCAR QUEM ASSINA MORA AO LADO DO LÁPIS, E SÓ NO HUB (03/10/2026), em todo papel,
+                  até o comprador. Onde ele não vale (envelope encerrado, linha sem id da Clicksign ou
+                  fora do quadro) fica DESABILITADO, e não some: o motivo no tooltip conduz. */}
               {trocaDePessoaNoHub ? (
                 <Tooltip content={fraseDaTrocaDePessoa} placement="top">
                   <button

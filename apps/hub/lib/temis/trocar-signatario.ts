@@ -16,11 +16,9 @@ import { diarioDaProposta, payloadMaisRecente } from "@/lib/assinatura/diario-do
 import { linkDeAssinaturaNoPayload } from "@/lib/assinatura/marcas";
 import {
   fraseDeEnvelopeEncerrado,
-  papelNaoSeTroca,
   RECUSA_DE_CHAVE_QUE_NAO_E_DA_CLICKSIGN,
   RECUSA_DE_QUEM_NAO_ESTA_NO_QUADRO,
   RECUSA_DE_REENVIO_SEM_ID,
-  RECUSA_DE_TROCA_DE_PARTE_DO_CONTRATO,
 } from "@/lib/assinatura/recusa-de-reenvio";
 import { chamarRegistroDasAssinaturas, type ItemParaGravar } from "@/lib/assinatura/registro-db";
 import { conferirSignatarios, type Pessoa } from "@/lib/assinatura/signatarios";
@@ -264,8 +262,11 @@ export type ConferenciaDaPessoa =
 /**
  * DÁ PARA COLOCAR ESTA PESSOA NO LUGAR? — tudo o que se pergunta antes de falar com a Clicksign.
  *
- * ⚠️ A ORDEM É A DE QUEM LÊ: primeiro o papel (comprador e cônjuge não se trocam, e aí nada do que
- * foi digitado importa), depois o nome, o e-mail, a mesma pessoa de novo, o e-mail repetido e o CPF.
+ * ⚠️ A ORDEM É A DE QUEM LÊ: o nome, o e-mail, a mesma pessoa de novo, o e-mail repetido e o CPF.
+ *
+ * ⚠️ O PAPEL NÃO É CONFERIDO: VALE PARA TODOS, ATÉ O COMPRADOR. Lucas, 03/10/2026: *"a troca pode ser
+ * para qualquer pessoa até o comprador"*. Quem entra herda o papel de quem saiu, então um comprador
+ * trocado continua contando para o Pré-faturamento (`ehCompradorNoQuadro` lê o papel).
  *
  * ⚠️ O E-MAIL REPETIDO REUSA `conferirSignatarios`, como a correção de e-mail. A lista conferida é a
  * PROJETADA: a congelada com a pessoa de saída já trocada pela nova. Por isso o e-mail de quem sai
@@ -282,10 +283,6 @@ export function conferirPessoaDaTroca(pedido: {
   nome: string;
   todos: readonly SignatarioCongelado[];
 }): ConferenciaDaPessoa {
-  if (papelNaoSeTroca(pedido.atual.papel)) {
-    return { erro: RECUSA_DE_TROCA_DE_PARTE_DO_CONTRATO, ok: false, status: 409 };
-  }
-
   const nome = conferirNomeDeQuemAssina(pedido.nome);
   if (!nome.ok) return { erro: nome.erro, ok: false, status: 400 };
 

@@ -2,7 +2,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FalhaDaClicksign, type Opcoes } from "@/lib/assinatura/clicksign/cliente";
-import { RECUSA_DE_TROCA_DE_PARTE_DO_CONTRATO } from "@/lib/assinatura/recusa-de-reenvio";
 
 import {
   conferirNomeDeQuemAssina,
@@ -16,10 +15,11 @@ import {
 // TROCAR QUEM ASSINA, COM O CONTRATO JÁ ENVIADO (03/10/2026).
 //
 // Lucas, 03/10/2026: *"é basicamente eu tirar uma pessoa e colocar outra para assinar, não precisa
-// mudar em nada no cadastro"*. O caso típico é a testemunha ou a vendedora que não pode assinar.
+// mudar em nada no cadastro"*, e no mesmo dia: *"a troca pode ser para qualquer pessoa até o
+// comprador"*.
 //
 // ⚠️ O QUE ESTES TESTES PRENDEM:
-//   - comprador e cônjuge não se trocam (são as partes do contrato);
+//   - todo papel se troca, até o comprador, e quem entra herda o papel;
 //   - nome com sobrenome e sem número, e-mail que não é de outro, CPF com os dígitos certos;
 //   - o nível da autenticação não cai: quem sai assinava com CPF, quem entra também;
 //   - o mesmo caminho da troca de e-mail: cria antes de remover, desfaz no 403, relê na dúvida;
@@ -75,18 +75,12 @@ describe("o que se confere na pessoa nova, antes de qualquer chamada", () => {
       ...patch,
     });
 
-  // ⚠️ DECISÃO PADRÃO DO PEDIDO (03/10/2026), QUE O LUCAS PODE MUDAR: comprador e cônjuge estão no
-  // texto do contrato, e trocá-los é contrato novo.
-  it("comprador e cônjuge são recusados com a frase das partes do contrato", () => {
-    for (const atual of [titular, conjuge]) {
-      const r = conferir({ atual });
-      expect(r).toEqual({ erro: RECUSA_DE_TROCA_DE_PARTE_DO_CONTRATO, ok: false, status: 409 });
+  // ⚠️ LUCAS, 03/10/2026: *"a troca pode ser para qualquer pessoa até o comprador"*. A primeira
+  // versão recusava comprador e cônjuge; o papel deixou de ser conferido.
+  it("todo papel passa: comprador, cônjuge, vendedora e testemunha", () => {
+    for (const atual of [titular, conjuge, vendedora, testemunha]) {
+      expect(conferir({ atual }).ok).toBe(true);
     }
-  });
-
-  it("vendedora e testemunha passam", () => {
-    expect(conferir({ atual: vendedora }).ok).toBe(true);
-    expect(conferir().ok).toBe(true);
   });
 
   it("nome sem sobrenome e nome com número são recusados", () => {
@@ -376,15 +370,23 @@ describe("trocar quem assina, do começo ao fim", () => {
     expect(cadastro()?.data.attributes).toMatchObject({ documentation: CPF, has_documentation: true });
   });
 
-  it("comprador não se troca: recusa sem nenhuma chamada", async () => {
+  // ⚠️ LUCAS, 03/10/2026: *"a troca pode ser para qualquer pessoa até o comprador"*. Quem entra herda
+  // o papel, e é pelo papel que o quadro conta os compradores para o Pré-faturamento.
+  it("o comprador também se troca: a Ana entra como compradora, no fim da fila", async () => {
     const { chamadasDaFuncao, sb } = bancoDeTeste(envelopeGravado);
-    const { chamadas, porta } = portaDeTeste();
+    const { passos, porta } = portaDeTeste({ assinavaComCpf: false });
 
     const r = await trocarPessoaDoSignatario(sb, { ...pedidoDaAna, signerId: "sig-titular" }, porta);
 
-    expect(r).toEqual({ erro: RECUSA_DE_TROCA_DE_PARTE_DO_CONTRATO, ok: false, removido: false, status: 409 });
-    expect(chamadas).toEqual([]);
-    expect(chamadasDaFuncao).toEqual([]);
+    expect(r).toMatchObject({ nome: "Ana Paula Dias", ok: true, papel: "comprador", signerId: "sig-ana" });
+    expect(passos()).toContain("DELETE /envelopes/env-40/signers/sig-titular");
+    expect(chamadasDaFuncao[0]?.p_quadro).toContainEqual({
+      chave: "sig-ana",
+      email: "ana@x.com",
+      nome: "Ana Paula Dias",
+      ordem: 4,
+      papel: "comprador",
+    });
   });
 
   it("quem já assinou não sai: recusa sem nenhuma chamada", async () => {

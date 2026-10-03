@@ -159,29 +159,13 @@ export function fraseDaTrocaQueVaiParaOFim(nome: string, quantos: number): strin
 // Lucas, 03/10/2026: *"é basicamente eu tirar uma pessoa e colocar outra para assinar, não precisa
 // mudar em nada no cadastro"*. O caso típico é a testemunha ou a vendedora que não pode assinar.
 //
-// ⚠️ AS FRASES MORAM AQUI PELO MESMO MOTIVO DAS DE CIMA: a tela desabilita o botão com a mesma
-// frase que o servidor devolve na recusa, e este arquivo é o único que os dois podem importar.
-
-/**
- * Os papéis que a troca de pessoa NÃO alcança.
- *
- * ⚠️ COMPRADOR E CÔNJUGE SÃO AS PARTES DO CONTRATO, e o nome e o CPF deles estão impressos no texto.
- * Trocar um deles é contrato novo, não troca de quem assina (decisão padrão do pedido de 03/10/2026,
- * que o Lucas pode mudar). Vendedora, coordenador, corretor, testemunha e Careli assinam como
- * representantes ou como testemunhas, e é neles que a troca acontece.
- */
-export const PAPEIS_QUE_NAO_SE_TROCAM: readonly string[] = ["comprador", "conjuge"];
-
-/** Este papel fica fora da troca de pessoa? Papel desconhecido fica fora, pela cautela. */
-export function papelNaoSeTroca(papel: null | string | undefined): boolean {
-  const limpo = (papel ?? "").trim();
-  return !limpo || PAPEIS_QUE_NAO_SE_TROCAM.includes(limpo);
-}
-
-/** A frase de quando pedem para trocar comprador ou cônjuge. */
-export const RECUSA_DE_TROCA_DE_PARTE_DO_CONTRATO =
-  "Comprador e cônjuge são as partes do contrato e estão no texto dele: trocar um deles é contrato novo, e não troca de quem assina. " +
-  "Se é a mesma pessoa com o e-mail errado, use Corrigir o e-mail. Se é outra pessoa, o card volta para a análise e o contrato é gerado de novo. Nada foi mexido.";
+// ⚠️ AS FRASES MORAM AQUI PELO MESMO MOTIVO DAS DE CIMA: a tela e o servidor contam a mesma
+// história, e este arquivo é o único que os dois podem importar.
+//
+// ⚠️ VALE PARA TODO PAPEL, INCLUSIVE COMPRADOR E CÔNJUGE. A primeira versão bloqueava os dois (são
+// as partes do contrato, com nome e CPF impressos no texto), e o Lucas decidiu o contrário no mesmo
+// dia: *"a troca pode ser para qualquer pessoa até o comprador"* (03/10/2026). O texto do contrato
+// continua como está; quem precisa de outro texto volta o card para a análise.
 
 /** A frase de quando a troca de pessoa chega pelo portal do incorporador. */
 export const RECUSA_DE_TROCA_DE_PESSOA_NO_PORTAL =
