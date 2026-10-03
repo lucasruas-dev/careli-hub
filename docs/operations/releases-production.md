@@ -95,6 +95,32 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Temis] Categoria e filho no card do quadro, e o painel de assinatura na largura toda (v1.407.1, interna)`.
+- Squad/agente responsavel: `Zeus (sessao Publicacao)`, a pedido direto do Lucas. O card foi feito por um subagente (fix/temis-card-categoria, 5b258c72); o painel, pela propria sessao (fix/temis-painel-assinatura-largura, b08c3402).
+- Data e hora local: `2026-10-03 09:07:42 -03:00` (changelog); deploy pronto as 09:15. O primeiro push de 02/10 18:14 foi interrompido pelo Lucas para incluir o painel na largura toda.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `OK do Lucas ("Pode publicar a 1.407.1"), dado de novo depois que o painel entrou na versao`.
+- Escopo publicado: `origem-do-card.ts (nome pelo cadastro, pai + sigla do filho; categoria pela unidade da proposta; falha branda) usado por trabalhosDoBoard; Card do TemisKanban com nome · categoria · unidade; PainelDaAssinatura divide a largura por container query (@5xl: fila a esquerda, contrato e log em 18 a 26rem a direita) e o teto max-w-3xl sai das etapas Em assinatura e Pre-faturamento quando ha painel`.
+- Commit publicado: `e6158562b6f2226a86fd07163e7568aac399fcb6`.
+- Deployment anterior: `dpl_5cin53HBU84apVJy5rds4FBjoCCd` (commit `d5346c54`, v1.407.0).
+- Deployment novo: `dpl_BzLYVAXjA451R26AJTP2ANfcx6Ld`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Banco: `sem migracao e sem escrita; o board faz de 3 a 4 leituras a mais por carga`.
+- Validacoes executadas:
+  - `teste de tela do card falha sem a correcao`: `1 vermelho de 7 sem, 52 de 52 com`;
+  - `testes da tela de trabalho com o painel novo`: `7 arquivos, 55 testes`;
+  - `suite inteira antes do OK`: `11.691 testes verdes nas tres rodadas; duas rodadas barraram por "Timeout calling onTaskUpdate" do vitest (a maquina estava lenta: o teste do simulador levou 68 s contra 13 s)`;
+  - `hook de pre-push`: `a primeira tentativa barrou com "o typecheck falhou" sem erro impresso; check-types rodado a mao saiu 0; a segunda passou: 759 arquivos, 11.691 testes`.
+- Healthchecks pos-deploy:
+  - `https://c2x.app.br`: `200; /api/version 1.407.1 com buildTag 2026-10-03-temis-card-categoria; /api/temis/trabalhos e /api/incorporador/contratos 401 sem sessao`;
+  - `Vercel runtime errors`: `nenhum nos 10 min depois do deploy`.
+- Rollback definido: `Instant Rollback para dpl_5cin53HBU84apVJy5rds4FBjoCCd (v1.407.0) e seguro`.
+- Riscos conhecidos: `o layout do painel nao foi visto na tela antes do deploy (o hub nao loga fora da producao); falta o print do Lucas`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `conferir por print o card com categoria e um card em Em assinatura no monitor largo`.
+
+Registro de producao:
+
 - Assunto: `[Temis] Tela Em assinatura em fila de degraus, e a troca de e-mail na Clicksign cria antes de remover (v1.407.0, melhoria)`.
 - Squad/agente responsavel: `Zeus (sessao Publicacao)`; entregue por resumo de entrega (feat/temis-tela-em-assinatura), que trouxe junto a correcao nunca publicada fix/clicksign-troca-so-no-ultimo-degrau.
 - Data e hora local: `2026-10-02 17:37:30 -03:00` (changelog); deploy pronto as 17:42, cerca de 3 min depois do push.
