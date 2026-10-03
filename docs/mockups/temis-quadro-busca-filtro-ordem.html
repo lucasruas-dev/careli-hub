@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Têmis · Pesquisa, filtro e ordem</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<script>
+  // As MESMAS classes do hub (styles/globals.css + packages/uix/styles.css), para o porte ser cópia.
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          canvas: "var(--canvas)", surface: "var(--surface)", subtle: "var(--subtle)",
+          inverse: "var(--inverse)", "brand-ink": "var(--brand-ink)",
+          ink: { DEFAULT: "var(--ink)", muted: "var(--ink-muted)" },
+          line: { DEFAULT: "var(--line)", strong: "var(--line-strong)" },
+        },
+      },
+    },
+  };
+</script>
+<style>
+  :root {
+    --canvas: #f7f8fa; --surface: #ffffff; --subtle: #eef1f4; --inverse: #121722; --brand-ink: #ffffff;
+    --ink: #121722; --ink-muted: #667085; --line: #dce2ea; --line-strong: #c5ceda;
+  }
+  html.dark {
+    --canvas: #090d14; --surface: #121722; --subtle: #30394a; --inverse: #ffffff; --brand-ink: #090d14;
+    --ink: #f7f8fa; --ink-muted: #c5ceda; --line: #30394a; --line-strong: #485466;
+  }
+  body { background: var(--canvas); color: var(--ink); font-family: Inter, system-ui, sans-serif; }
+  .moldura-celular { width: 390px; margin: 0 auto; }
+  [data-tip] { position: relative; }
+  [data-tip]:not(.aberto):hover::after {
+    content: attr(data-tip); position: absolute; top: calc(100% + 6px); right: 0; z-index: 50;
+    white-space: nowrap; font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 6px;
+    background: var(--inverse); color: var(--brand-ink); pointer-events: none;
+  }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- ░░ CONTROLES DO MOCKUP (não vão para a tela) ░░ -->
+<div class="sticky top-0 z-40 flex flex-wrap items-center gap-2 border-b border-line bg-surface px-4 py-2 text-xs">
+  <b class="mr-2">Mockup · Têmis, quadro</b>
+  <label class="flex items-center gap-1"><input id="m-escuro" type="checkbox" class="accent-neutral-900 dark:accent-neutral-200"> Escuro</label>
+  <label class="flex items-center gap-1"><input id="m-celular" type="checkbox" class="accent-neutral-900 dark:accent-neutral-200"> Celular (390px)</label>
+  <label class="flex items-center gap-1"><input id="m-portal" type="checkbox" class="accent-neutral-900 dark:accent-neutral-200"> Portal (só leitura)</label>
+  <span class="ml-auto text-ink-muted">Dados de exemplo, nomes e CPFs mascarados.</span>
+</div>
+
+<div id="moldura" class="p-4">
+  <div class="rounded-xl border border-line bg-surface p-3">
+
+    <!-- Já existe na TemisPage: a caixa da supervisão. -->
+    <label id="caixa-supervisao" class="mb-2 flex w-fit cursor-pointer items-center gap-2 text-xs font-semibold text-ink-muted">
+      <input id="ver-incorporadores" type="checkbox" class="size-3.5 accent-current"> Ver também os do incorporador
+    </label>
+
+    <div class="relative flex flex-col gap-3">
+
+      <!-- ░░ A BARRA: abas à esquerda, pesquisa + filtro + ordem à direita ░░ -->
+      <div class="flex flex-wrap items-center gap-2">
+        <div id="abas" class="flex flex-wrap gap-1.5"></div>
+
+        <div class="ml-auto flex w-full items-center gap-1.5 sm:w-auto" id="barra">
+          <label class="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 focus-within:border-ink/40 sm:w-64 sm:flex-none">
+            <i data-lucide="search" class="size-3.5 shrink-0 text-ink-muted"></i>
+            <input id="busca" type="search" placeholder="Nome, CPF, empreendimento, unidade"
+              class="min-w-0 flex-1 bg-transparent text-xs text-ink outline-none placeholder:text-ink-muted [&::-webkit-search-cancel-button]:hidden">
+            <button id="limpar-busca" type="button" aria-label="Limpar a pesquisa" class="hidden shrink-0 rounded-full p-0.5 text-ink-muted hover:bg-subtle">
+              <i data-lucide="x" class="size-3.5"></i>
+            </button>
+          </label>
+
+          <div class="relative">
+            <button id="bt-filtro" type="button" aria-label="Filtros" data-tip="Filtros"
+              class="relative flex size-8 items-center justify-center rounded-full border border-line text-ink-muted hover:bg-subtle">
+              <i data-lucide="list-filter" class="size-4"></i>
+              <span id="conta-filtros" class="absolute -right-1 -top-1 hidden min-w-4 rounded-full bg-inverse px-1 text-center text-[0.6rem] font-bold leading-4 text-brand-ink"></span>
+            </button>
+            <div id="pop-filtro" class="absolute right-0 top-10 z-30 hidden w-[min(20rem,calc(100vw-2rem))] rounded-xl border border-line bg-surface p-3 shadow-lg"></div>
+          </div>
+
+          <div class="relative">
+            <button id="bt-ordem" type="button" aria-label="Ordenar" data-tip="Ordem: Há mais tempo na etapa"
+              class="flex size-8 items-center justify-center rounded-full border border-line text-ink-muted hover:bg-subtle">
+              <i data-lucide="arrow-down-up" class="size-4"></i>
+            </button>
+            <div id="pop-ordem" class="absolute right-0 top-10 z-30 hidden w-60 rounded-xl border border-line bg-surface p-1 shadow-lg"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Os filtros ligados, cada um com o seu x, e o Limpar. -->
+      <div id="chips" class="hidden flex-wrap items-center gap-1.5"></div>
+
+      <div class="overflow-x-auto pb-2">
+        <div id="colunas" class="flex min-w-max gap-3"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ───────────── dados de exemplo (mascarados) ─────────────
+const hoje = new Date("2026-10-03T12:00:00-03:00");
+const dias = (n) => new Date(hoje.getTime() - n * 864e5).toISOString();
+const CARDS = [
+  { id: "a1", tipo: "contrato", estagio: "analise", nome: "Maura M•••• P•••••", cpf: "12345678901", emp: "VOL", empNome: "Vale do Ouro", unidade: "Quadra 03 · Lote 07", criado: dias(1), desde: dias(1), decorridos: 1, atrasado: false },
+  { id: "a2", tipo: "contrato", estagio: "analise", nome: "Ândrea C•••• L••", cpf: "98765432100", emp: "LGB", empNome: "Lagoa Bonita", unidade: "Quadra 11 · Lote 02", criado: dias(9), desde: dias(9), decorridos: 7, atrasado: true, dono: "inc" },
+  { id: "a3", tipo: "cessao", estagio: "analise", nome: "José R•••• S•••", cpf: "45612378955", emp: "VOL", empNome: "Vale do Ouro", unidade: "Quadra 05 · Lote 14", criado: dias(3), desde: dias(3), decorridos: 3, atrasado: false },
+  { id: "c1", tipo: "contrato", estagio: "contrato", nome: "Beatriz F•••• A•••", cpf: "32165498777", emp: "LGB", empNome: "Lagoa Bonita", unidade: "Quadra 02 · Lote 10", criado: dias(12), desde: dias(6), decorridos: 5, atrasado: true, versao: 2 },
+  { id: "c2", tipo: "contrato", estagio: "contrato", nome: "Henrique T•••• M•••", cpf: "74185296333", emp: "CPA", empNome: "Chácaras Primavera", unidade: "Quadra 01 · Lote 01", criado: dias(4), desde: dias(2), decorridos: 2, atrasado: false, versao: 1 },
+  { id: "s1", tipo: "contrato", estagio: "assinatura", nome: "Úrsula N•••• B•••", cpf: "85296374111", emp: "VOL", empNome: "Vale do Ouro", unidade: "Quadra 11 · Lote 20", criado: dias(15), desde: dias(8), decorridos: 6, atrasado: false, assin: { a: 1, t: 4, ca: 0, ct: 1, devolvido: true } },
+  { id: "s2", tipo: "contrato", estagio: "assinatura", nome: "Carlos E•••• V•••", cpf: "15975348622", emp: "LGB", empNome: "Lagoa Bonita", unidade: "Quadra 07 · Lote 03", criado: dias(10), desde: dias(4), decorridos: 4, atrasado: false, assin: { a: 3, t: 5, ca: 1, ct: 2 }, dono: "inc" },
+  { id: "s3", tipo: "distrato", estagio: "assinatura", nome: "Marta G•••• O•••", cpf: "95135745688", emp: "VOL", empNome: "Vale do Ouro", unidade: "Quadra 09 · Lote 11", criado: dias(7), desde: dias(2), decorridos: 2, atrasado: false, assin: { a: 2, t: 3, ca: 2, ct: 2 } },
+  { id: "p1", tipo: "contrato", estagio: "prazo_legal", nome: "Pedro H•••• D•••", cpf: "35795125844", emp: "CPA", empNome: "Chácaras Primavera", unidade: "Quadra 04 · Lote 08", criado: dias(20), desde: dias(5), decorridos: 4, atrasado: false, assin: { a: 5, t: 11, ca: 1, ct: 1 } },
+  { id: "p2", tipo: "contrato", estagio: "prazo_legal", nome: "Lívia S•••• R•••", cpf: "25845678911", emp: "VOL", empNome: "Vale do Ouro", unidade: "Quadra 11 · Lote 05", criado: dias(18), desde: dias(1), decorridos: 1, atrasado: false, assin: { a: 9, t: 11, ca: 2, ct: 2 } },
+  { id: "f1", tipo: "contrato", estagio: "faturado", nome: "Antônio B•••• C•••", cpf: "11122233344", emp: "LGB", empNome: "Lagoa Bonita", unidade: "Quadra 06 · Lote 09", criado: dias(30), desde: dias(10), decorridos: 8, atrasado: false },
+  { id: "x1", tipo: "cancelamento", estagio: "analise", nome: "Rita P•••• L•••", cpf: "66677788899", emp: "VOL", empNome: "Vale do Ouro", unidade: "Quadra 08 · Lote 04", criado: dias(5), desde: dias(5), decorridos: 5, atrasado: true },
+  { id: "i1", tipo: "contrato", estagio: "indeferido", nome: "Fábio K•••• T•••", cpf: "44455566677", emp: "CPA", empNome: "Chácaras Primavera", unidade: "Quadra 10 · Lote 12", criado: dias(25), desde: dias(14), decorridos: 10, atrasado: false },
+];
+
+const QUADROS = [
+  { id: "todos", nome: "Todos", tipos: [] },
+  { id: "contrato", nome: "Contrato novo", tipos: ["contrato"] },
+  { id: "desfazer", nome: "Cancelamento e distrato", tipos: ["cancelamento", "distrato"] },
+  { id: "cessao", nome: "Cessão de direitos", tipos: ["cessao"] },
+  { id: "correcao", nome: "Correção de fluxo", tipos: ["cancelamento_correcao"] },
+];
+const COLUNAS_RESUMO = [
+  { id: "novo", nome: "Novo", desc: "Chegou e ninguém pegou." },
+  { id: "andamento", nome: "Em andamento", desc: "Alguém está tocando." },
+  { id: "finalizado", nome: "Finalizado", desc: "Acabou, com serviço feito ou indeferido." },
+];
+const COLUNAS_CONTRATO = [
+  { id: "analise", nome: "Análise", desc: "Chegou do Hércules." },
+  { id: "contrato", nome: "Contrato", desc: "Gerar e conferir o contrato." },
+  { id: "assinatura", nome: "Em assinatura", desc: "Esperando os signatários." },
+  { id: "prazo_legal", nome: "Pré-faturamento", desc: "Assinado, no prazo legal." },
+  { id: "faturado", nome: "Faturado", desc: "Pronto." },
+  { id: "indeferido", nome: "Indeferido", desc: "Recusado na análise." },
+];
+const balde = (e) => e === "analise" ? "novo" : (e === "faturado" || e === "indeferido") ? "finalizado" : "andamento";
+const NOME_TIPO = { contrato: "Contrato", cessao: "Cessão", distrato: "Distrato", cancelamento: "Cancelamento", cancelamento_correcao: "Correção" };
+const COR_TIPO = {
+  contrato: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+  cessao: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
+  distrato: "bg-rose-200 text-rose-900 dark:bg-rose-500/25 dark:text-rose-200",
+  cancelamento: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
+  cancelamento_correcao: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300",
+};
+const ORDENS = [
+  { id: "padrao", nome: "Há mais tempo na etapa", icone: "hourglass" },
+  { id: "recentes", nome: "Enviados mais recentes", icone: "calendar-arrow-down" },
+  { id: "vencidos", nome: "Prazo vencido primeiro", icone: "clock-alert" },
+  { id: "nome", nome: "Nome de A a Z", icone: "arrow-down-a-z" },
+];
+
+// ───────────── a lógica que vira lib/temis/filtro-do-quadro.ts ─────────────
+const semAcento = (s) => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+// "Quadra 11 · Lote 02", "q11 l02", "quadra 11 lote 2", "Q11L02" → ["q11", "l2"]. O número vale
+// inteiro: Lote 2 é Lote 02, e nunca Lote 20.
+const PEDACO_DA_UNIDADE = /(?<![a-z])(quadra|qd|q|lote|lt|l|bloco|bl|b|apartamento|apto|ap)\s*[.:\-]?\s*(\d+)/g;
+const CURTO = { quadra: "q", qd: "q", q: "q", lote: "l", lt: "l", l: "l", bloco: "b", bl: "b", b: "b", apartamento: "ap", apto: "ap", ap: "ap" };
+function separarUnidade(texto) {
+  const pedacos = [];
+  const resto = semAcento(texto).replace(PEDACO_DA_UNIDADE, (_, palavra, n) => { pedacos.push(CURTO[palavra] + Number(n)); return " "; });
+  return { pedacos, resto };
+}
+function pesquisaCasa(c, q) {
+  const { pedacos, resto } = separarUnidade(q);
+  const daUnidade = new Set(separarUnidade(c.unidade).pedacos);
+  if (!pedacos.every((p) => daUnidade.has(p))) return false;
+  const texto = semAcento([c.nome, c.emp, c.empNome, c.unidade].join(" "));
+  return resto.split(/\s+/).filter(Boolean).every((termo) => {
+    if (texto.includes(termo)) return true;
+    const digitos = termo.replace(/\D/g, "");
+    return digitos.length >= 3 && /^[\d.\-/]+$/.test(termo) && String(c.cpf).includes(digitos);
+  });
+}
+const compradorPendente = (c) => c.estagio === "assinatura" && c.assin && c.assin.ct > 0 && c.assin.ca < c.assin.ct;
+
+// ───────────── estado ─────────────
+const S = { quadro: "todos", q: "", emps: new Set(), vencido: false, devolvido: false, pendente: false, dono: null, ordem: "padrao", aberto: null };
+const portal = () => document.getElementById("m-portal").checked;
+const supervisao = () => !portal() && document.getElementById("ver-incorporadores").checked;
+const visiveis = () => CARDS.filter((c) => supervisao() || portal() || !c.dono);
+
+function passa(c) {
+  if (!pesquisaCasa(c, S.q)) return false;
+  if (S.emps.size && !S.emps.has(c.emp)) return false;
+  if (S.vencido && !c.atrasado) return false;
+  if (S.devolvido && !(c.assin && c.assin.devolvido)) return false;
+  if (S.pendente && !compradorPendente(c)) return false;
+  if (supervisao() && S.dono === "careli" && c.dono) return false;
+  if (supervisao() && S.dono === "inc" && !c.dono) return false;
+  return true;
+}
+function ordenar(lista) {
+  const pos = new Map(lista.map((c, i) => [c.id, i]));
+  const empate = (a, b) => pos.get(a.id) - pos.get(b.id);
+  const r = [...lista];
+  if (S.ordem === "recentes") r.sort((a, b) => b.criado.localeCompare(a.criado) || empate(a, b));
+  if (S.ordem === "vencidos") r.sort((a, b) => (b.atrasado - a.atrasado) || empate(a, b));
+  if (S.ordem === "nome") r.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }) || empate(a, b));
+  return r;
+}
+const filtrosLigados = () => S.emps.size + (S.vencido ? 1 : 0) + (S.devolvido ? 1 : 0) + (S.pendente ? 1 : 0) + (supervisao() && S.dono ? 1 : 0);
+
+// ───────────── desenho ─────────────
+const $ = (id) => document.getElementById(id);
+const chipLigado = "border-transparent bg-inverse text-brand-ink";
+const chipDesligado = "border-line text-ink-muted hover:bg-subtle";
+
+function desenhar() {
+  const base = visiveis().sort((a, b) => a.desde.localeCompare(b.desde));
+  const filtrados = base.filter(passa);
+
+  // abas
+  $("abas").innerHTML = QUADROS.filter((q) => !portal() || q.id === "todos" || base.some((c) => q.tipos.includes(c.tipo)))
+    .map((q) => {
+      const n = filtrados.filter((c) => !q.tipos.length || q.tipos.includes(c.tipo)).length;
+      const aberto = q.id === S.quadro;
+      return `<button data-quadro="${q.id}" class="rounded-full px-3 py-1 text-xs font-semibold transition-colors ${aberto ? "bg-inverse text-brand-ink" : "border border-line text-ink-muted hover:bg-subtle"}">${q.nome}<span class="ml-1.5 opacity-70">${n}</span></button>`;
+    }).join("");
+
+  // colunas
+  const quadro = QUADROS.find((q) => q.id === S.quadro);
+  const cols = quadro.tipos.length ? COLUNAS_CONTRATO : COLUNAS_RESUMO;
+  $("colunas").innerHTML = cols.map((col) => {
+    const cards = ordenar(filtrados.filter((c) => (!quadro.tipos.length || quadro.tipos.includes(c.tipo)) && (quadro.tipos.length ? c.estagio : balde(c.estagio)) === col.id));
+    return `<section class="flex w-[19rem] shrink-0 flex-col gap-2 rounded-xl border border-line bg-subtle/40 p-2">
+      <header class="px-1 pt-1"><h3 class="flex items-baseline gap-2 text-sm font-bold text-ink">${col.nome}<span class="text-xs font-semibold text-ink-muted">${cards.length}</span></h3>
+      ${portal() ? "" : `<p class="text-[0.7rem] text-ink-muted">${col.desc}</p>`}</header>
+      ${cards.length ? cards.map(card).join("") : `<p class="px-1 py-4 text-center text-xs text-ink-muted">Nada aqui.</p>`}
+    </section>`;
+  }).join("");
+
+  // contador do botão de filtro
+  const n = filtrosLigados();
+  $("conta-filtros").textContent = n;
+  $("conta-filtros").classList.toggle("hidden", n === 0);
+  $("bt-filtro").className = `relative flex size-8 items-center justify-center rounded-full border ${n ? chipLigado : chipDesligado}`;
+  const ordem = ORDENS.find((o) => o.id === S.ordem);
+  $("bt-ordem").dataset.tip = `Ordem: ${ordem.nome}`;
+  $("bt-ordem").className = `flex size-8 items-center justify-center rounded-full border ${S.ordem !== "padrao" ? chipLigado : chipDesligado}`;
+  $("limpar-busca").classList.toggle("hidden", !S.q);
+  $("caixa-supervisao").classList.toggle("hidden", portal());
+
+  // chips dos filtros ligados
+  const chips = [];
+  for (const e of S.emps) chips.push([`emp:${e}`, "building-2", base.find((c) => c.emp === e)?.empNome ?? e]);
+  if (S.vencido) chips.push(["vencido", "clock", "Prazo vencido"]);
+  if (S.devolvido) chips.push(["devolvido", "mail-x", "Convite devolvido"]);
+  if (S.pendente) chips.push(["pendente", "pen-line", "Comprador pendente"]);
+  if (supervisao() && S.dono) chips.push(["dono", "users", S.dono === "inc" ? "Incorporador" : "Careli"]);
+  $("chips").classList.toggle("hidden", !chips.length);
+  $("chips").classList.toggle("flex", chips.length > 0);
+  $("chips").innerHTML = chips.map(([k, ic, txt]) => `<span class="flex items-center gap-1 rounded-full bg-inverse py-0.5 pl-2 pr-1 text-[0.7rem] font-semibold text-brand-ink">
+      <i data-lucide="${ic}" class="size-3"></i>${txt}
+      <button data-tira="${k}" aria-label="Tirar o filtro ${txt}" class="rounded-full p-0.5 hover:bg-white/20"><i data-lucide="x" class="size-3"></i></button></span>`).join("")
+    + (chips.length ? `<button id="limpar-tudo" class="rounded-full px-2 py-0.5 text-[0.7rem] font-semibold text-ink-muted underline-offset-2 hover:underline">Limpar</button>` : "");
+
+  // painel de filtros
+  const emps = [...new Map(base.map((c) => [c.emp, c.empNome])).entries()].sort((a, b) => a[1].localeCompare(b[1], "pt-BR"));
+  const toggle = (k, ic, txt, on, tip) => `<button data-liga="${k}" title="${tip}" class="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${on ? chipLigado : chipDesligado}"><i data-lucide="${ic}" class="size-3.5"></i>${txt}</button>`;
+  $("pop-filtro").innerHTML = `
+    <p class="mb-1.5 text-[0.65rem] font-bold uppercase tracking-wide text-ink-muted">Empreendimento</p>
+    <div class="flex flex-wrap gap-1.5">${emps.map(([e, nome]) => `<button data-emp="${e}" class="rounded-full border px-2.5 py-1 text-xs font-semibold ${S.emps.has(e) ? chipLigado : chipDesligado}">${nome}</button>`).join("")}</div>
+    <p class="mb-1.5 mt-3 text-[0.65rem] font-bold uppercase tracking-wide text-ink-muted">Situação</p>
+    <div class="flex flex-wrap gap-1.5">
+      ${toggle("vencido", "clock", "Prazo vencido", S.vencido, "O relógio vermelho: a etapa passou do prazo nosso.")}
+      ${toggle("devolvido", "mail-x", "Convite devolvido", S.devolvido, "O e-mail de um signatário voltou.")}
+      ${toggle("pendente", "pen-line", "Comprador pendente", S.pendente, "Em assinatura, com comprador que ainda não assinou.")}
+    </div>
+    ${supervisao() ? `<p class="mb-1.5 mt-3 text-[0.65rem] font-bold uppercase tracking-wide text-ink-muted">Quem confecciona</p>
+    <div class="inline-flex rounded-full border border-line p-0.5">
+      ${[[null, "Todos"], ["careli", "Careli"], ["inc", "Incorporador"]].map(([v, t]) => `<button data-dono="${v}" class="rounded-full px-2.5 py-0.5 text-xs font-semibold ${S.dono === v ? "bg-inverse text-brand-ink" : "text-ink-muted"}">${t}</button>`).join("")}
+    </div>` : ""}`;
+
+  // menu de ordem
+  $("pop-ordem").innerHTML = ORDENS.map((o) => `<button data-ordem="${o.id}" class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-semibold ${S.ordem === o.id ? "bg-black/[0.045] text-ink dark:bg-white/[0.07]" : "text-ink-muted hover:bg-subtle"}">
+      <i data-lucide="${o.icone}" class="size-3.5 shrink-0"></i><span class="flex-1">${o.nome}</span>${S.ordem === o.id ? '<i data-lucide="check" class="size-3.5"></i>' : ""}</button>`).join("");
+
+  $("pop-filtro").classList.toggle("hidden", S.aberto !== "filtro");
+  $("bt-filtro").classList.toggle("aberto", S.aberto === "filtro");
+  $("bt-ordem").classList.toggle("aberto", S.aberto === "ordem");
+  $("pop-ordem").classList.toggle("hidden", S.aberto !== "ordem");
+  lucide.createIcons();
+}
+
+function card(c) {
+  const cpf = c.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+  const dt = new Date(c.criado).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  const tempo = c.atrasado
+    ? `<span class="flex items-center gap-1 text-[0.65rem] font-bold text-red-600 dark:text-red-400"><i data-lucide="clock" class="size-2.5"></i> ${c.decorridos}d</span>`
+    : `<span class="text-[0.65rem] text-ink-muted">há ${c.decorridos}d</span>`;
+  let selo = "";
+  if (c.assin) {
+    const comp = c.estagio === "assinatura" && c.assin.ct > 0;
+    const num = comp ? `${c.assin.ca}/${c.assin.ct}` : `${c.assin.a}/${c.assin.t}`;
+    const pal = comp ? (c.assin.ct === 1 ? "comprador" : "compradores") : "assinaram";
+    selo = `<p class="mt-1.5 flex items-center gap-1.5 text-[0.7rem] font-semibold"><span class="flex items-center gap-1 text-emerald-700 dark:text-emerald-300"><i data-lucide="pen-line" class="size-2.5"></i><span class="tabular-nums">${num}</span>${pal}</span>${c.assin.devolvido ? '<i data-lucide="mail-x" class="size-3 text-red-600 dark:text-red-400"></i>' : ""}</p>`;
+  }
+  const versao = c.versao ? `<p class="mt-1.5 flex items-center gap-1 text-[0.7rem] font-semibold text-emerald-700 dark:text-emerald-300"><i data-lucide="file-check-2" class="size-2.5"></i>Contrato gerado${c.versao > 1 ? ` · v${c.versao}` : ""}</p>` : "";
+  const dono = supervisao() && c.dono ? `<span class="rounded-full border border-line bg-subtle px-1.5 py-0.5 text-[0.65rem] font-bold text-ink-muted">Incorporador</span>` : "";
+  return `<article class="rounded-lg border bg-surface p-2.5 shadow-sm ${c.atrasado ? "border-red-400/70" : "border-line"}">
+    <div class="flex items-center justify-between gap-2"><span class="flex items-center gap-1"><span class="rounded-full px-1.5 py-0.5 text-[0.65rem] font-bold ${COR_TIPO[c.tipo]}">${NOME_TIPO[c.tipo]}</span>${dono}</span>${tempo}</div>
+    <p class="mt-1.5 text-sm font-semibold leading-tight text-ink">${c.nome.toLocaleUpperCase("pt-BR")}</p>
+    <p class="text-[0.7rem] tabular-nums text-ink-muted">${cpf}</p>
+    <p class="mt-0.5 text-[0.7rem] text-ink-muted">${c.empNome} · ${c.unidade}</p>
+    <p class="mt-1 text-[0.7rem] text-ink-muted">Enviado ${dt}</p>${versao}${selo}
+  </article>`;
+}
+
+// ───────────── eventos ─────────────
+document.addEventListener("click", (ev) => {
+  const t = ev.target.closest("button");
+  const dentro = ev.target.closest("#pop-filtro, #pop-ordem");
+  if (!t) { if (!dentro) { S.aberto = null; desenhar(); } return; }
+  if (t.id === "bt-filtro") S.aberto = S.aberto === "filtro" ? null : "filtro";
+  else if (t.id === "bt-ordem") S.aberto = S.aberto === "ordem" ? null : "ordem";
+  else if (t.id === "limpar-busca") { S.q = ""; $("busca").value = ""; }
+  else if (t.id === "limpar-tudo") { S.emps.clear(); S.vencido = S.devolvido = S.pendente = false; S.dono = null; }
+  else if (t.dataset.quadro) S.quadro = t.dataset.quadro;
+  else if (t.dataset.emp) S.emps.has(t.dataset.emp) ? S.emps.delete(t.dataset.emp) : S.emps.add(t.dataset.emp);
+  else if (t.dataset.liga) S[t.dataset.liga] = !S[t.dataset.liga];
+  else if (t.dataset.dono !== undefined) S.dono = t.dataset.dono === "null" ? null : t.dataset.dono;
+  else if (t.dataset.ordem) { S.ordem = t.dataset.ordem; S.aberto = null; }
+  else if (t.dataset.tira) {
+    const k = t.dataset.tira;
+    if (k.startsWith("emp:")) S.emps.delete(k.slice(4)); else if (k === "dono") S.dono = null; else S[k] = false;
+  }
+  if (!dentro && !["bt-filtro", "bt-ordem"].includes(t.id) && !t.dataset.ordem && !t.dataset.emp && !t.dataset.liga && t.dataset.dono === undefined) S.aberto = null;
+  desenhar();
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { S.aberto = null; desenhar(); } });
+$("busca").addEventListener("input", (e) => { S.q = e.target.value; desenhar(); });
+$("m-escuro").addEventListener("change", (e) => document.documentElement.classList.toggle("dark", e.target.checked));
+// Celular de verdade: a própria página numa janela de 390px, para as quebras (sm:) valerem.
+const so = new URLSearchParams(location.search).get("so");
+if (so) { document.body.firstElementChild.classList.add("hidden"); if (so === "escuro") document.documentElement.classList.add("dark"); }
+$("m-celular").addEventListener("change", (e) => {
+  $("celular")?.remove();
+  $("moldura").classList.toggle("hidden", e.target.checked);
+  if (e.target.checked) $("moldura").insertAdjacentHTML("afterend", `<iframe id="celular" src="${location.pathname}?so=${$("m-escuro").checked ? "escuro" : "claro"}" class="mx-auto my-4 block rounded-[2rem] border-8 border-neutral-800" style="width:406px;height:820px"></iframe>`);
+});
+for (const id of ["m-portal", "ver-incorporadores"]) $(id).addEventListener("change", desenhar);
+desenhar();
+</script>
+</body>
+</html>

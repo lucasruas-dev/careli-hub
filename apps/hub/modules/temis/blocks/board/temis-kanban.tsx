@@ -3,9 +3,22 @@
 import { AlertTriangle, Clock, FileCheck2, Loader2, MailX, PenLine } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { BarraDoQuadro, FiltrosLigados } from "@/modules/temis/blocks/board/barra-do-quadro";
 import { TelaDeTrabalho } from "@/modules/temis/blocks/trabalho/tela-de-trabalho";
 
 import { contratoVigente } from "@/lib/temis/contrato-guardado";
+import {
+  empreendimentosDosCards,
+  FILTROS_VAZIOS,
+  type FiltrosDoQuadro,
+  filtrosQueValem,
+  lerPreferencias,
+  ORDEM_PADRAO,
+  type OrdemDoQuadro,
+  ordenarCards,
+  passaNosFiltros,
+  pesquisaCasa,
+} from "@/lib/temis/filtro-do-quadro";
 import { seloDeAssinaturaDoCard } from "@/lib/temis/selo-do-card";
 import {
   type EstagioDoTrabalho,
@@ -150,6 +163,17 @@ const CLASSE_DO_TIPO: Record<TipoDeTrabalho, string> = {
  * ⚠️ NO FUSO DA OPERAÇÃO (−03:00), e não em UTC: um trabalho aberto às 21h de Brasília é gravado no
  * dia seguinte em UTC, e o card diria que o pedido chegou amanhã.
  */
+/** Quantos cards cada quadro tem: o resumo conta todos, e cada serviço os do seu tipo. */
+function contarPorQuadro(lista: readonly { tipo: TipoDeTrabalho }[]): Map<string, number> {
+  const conta = new Map<string, number>();
+  for (const t of lista) {
+    conta.set(QUADRO_RESUMO, (conta.get(QUADRO_RESUMO) ?? 0) + 1);
+    const doTipo = quadroDoTipo(t.tipo);
+    conta.set(doTipo, (conta.get(doTipo) ?? 0) + 1);
+  }
+  return conta;
+}
+
 function dataCurta(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
@@ -235,6 +259,51 @@ export function TemisKanban({
     const relogio = setTimeout(() => setRecado(null), 8000);
     return () => clearTimeout(relogio);
   }, [recado]);
+
+  /**
+   * PESQUISA, FILTROS E ORDEM (03/10/2026). Lucas: *"preciso de um prompt para tela da temis ter
+   * ordenação, filtro, pesquisa"*. Tudo no navegador, sobre os cards que já vieram: a lógica mora em
+   * `lib/temis/filtro-do-quadro.ts`, com teste.
+   *
+   * ⚠️ A PESQUISA COMEÇA VAZIA A CADA ABERTURA; FILTROS E ORDEM FICAM GUARDADOS no navegador de quem
+   * usa. Um nome esquecido na caixa faria o quadro abrir com um card só.
+   */
+  const [pesquisa, setPesquisa] = useState("");
+  const [filtros, setFiltros] = useState<FiltrosDoQuadro>(FILTROS_VAZIOS);
+  const [ordem, setOrdem] = useState<OrdemDoQuadro>(ORDEM_PADRAO);
+  // O board só-leitura do comercial e o quadro que opera guardam escolhas separadas: o comercial não
+  // tem a supervisão, e o mesmo navegador pode abrir os dois.
+  const chaveDasPreferencias = `temis.quadro.preferencias.v1:${rota ? "leitura" : "operacao"}`;
+
+  // ⚠️ LIDO NUM EFEITO, E NÃO NO `useState`: o componente também é desenhado no servidor, onde não há
+  // `localStorage`, e ler na primeira pintura daria um quadro diferente do que o servidor mandou.
+  // ⚠️ E SEMPRE EM try/catch: janela anônima, site bloqueado ou cota cheia LANÇAM, e o quadro tem de
+  // abrir do mesmo jeito, só sem lembrar.
+  useEffect(() => {
+    try {
+      const guardadas = lerPreferencias(window.localStorage.getItem(chaveDasPreferencias));
+      setFiltros(guardadas.filtros);
+      setOrdem(guardadas.ordem);
+    } catch {
+      // Sem armazenamento: fica o padrão.
+    }
+  }, [chaveDasPreferencias]);
+
+  const guardar = (proximas: { filtros: FiltrosDoQuadro; ordem: OrdemDoQuadro }) => {
+    try {
+      window.localStorage.setItem(chaveDasPreferencias, JSON.stringify(proximas));
+    } catch {
+      // Sem armazenamento: vale só nesta abertura.
+    }
+  };
+  const mudarFiltros = (proximos: FiltrosDoQuadro) => {
+    setFiltros(proximos);
+    guardar({ filtros: proximos, ordem });
+  };
+  const mudarOrdem = (proxima: OrdemDoQuadro) => {
+    setOrdem(proxima);
+    guardar({ filtros, ordem: proxima });
+  };
 
   const { temisFetch } = useApiDaTemis();
 
@@ -333,20 +402,39 @@ export function TemisKanban({
   const quadro = useMemo(() => acharQuadro(quadroId), [quadroId]);
   const colunas = useMemo(() => colunasDoQuadro(quadro), [quadro]);
 
+  /** O selo "Incorporador" e o filtro de dono: só na supervisão da Têmis do hub. */
+  const comDono = incluirIncorporadores && !rota;
+  const empreendimentos = useMemo(() => empreendimentosDosCards(trabalhos ?? []), [trabalhos]);
+  const filtrosValendo = useMemo(
+    () => filtrosQueValem(filtros, { comDono, empreendimentos: empreendimentos.map((e) => e.chave) }),
+    [comDono, empreendimentos, filtros],
+  );
+
+  /**
+   * Os cards que passam na pesquisa e nos filtros, ainda na ordem do servidor.
+   *
+   * ⚠️ É DAQUI QUE SAEM AS CONTAGENS DAS ABAS E DAS COLUNAS: com um filtro ligado, o número diz o que
+   * a tela mostra, e não o que existe por trás.
+   */
+  const { agora, filtrados } = useMemo(() => {
+    const instante = new Date();
+    return {
+      agora: instante,
+      filtrados: (trabalhos ?? []).filter(
+        (t) => pesquisaCasa(t, pesquisa) && passaNosFiltros(t, filtrosValendo, instante),
+      ),
+    };
+  }, [filtrosValendo, pesquisa, trabalhos]);
+
   /** Quantos cards cada quadro tem, para a aba dizer o tamanho antes de ser aberta. */
-  const porQuadro = useMemo(() => {
-    const conta = new Map<string, number>();
-    for (const t of trabalhos ?? []) {
-      conta.set(QUADRO_RESUMO, (conta.get(QUADRO_RESUMO) ?? 0) + 1);
-      const doTipo = quadroDoTipo(t.tipo);
-      conta.set(doTipo, (conta.get(doTipo) ?? 0) + 1);
-    }
-    return conta;
-  }, [trabalhos]);
+  const porQuadro = useMemo(() => contarPorQuadro(filtrados), [filtrados]);
+  // ⚠️ A ABA DO PORTAL SOME PELO TOTAL, e não pelo filtrado: uma pesquisa que zera "Cessão de
+  // direitos" não pode apagar a aba, senão ela some e volta enquanto a pessoa digita.
+  const porQuadroSemFiltro = useMemo(() => contarPorQuadro(trabalhos ?? []), [trabalhos]);
 
   const porEstagio = useMemo(() => {
     const mapa = new Map<string, TrabalhoDaTela[]>();
-    for (const t of trabalhos ?? []) {
+    for (const t of filtrados) {
       // O quadro de um serviço mostra só os tipos dele; o resumo mostra todos.
       if (quadro.tipos.length > 0 && !quadro.tipos.includes(t.tipo)) continue;
       const chave = colunaDoCard(quadro, t.estagio);
@@ -354,8 +442,9 @@ export function TemisKanban({
       lista.push(t);
       mapa.set(chave, lista);
     }
+    for (const [chave, lista] of mapa) mapa.set(chave, ordenarCards(lista, ordem, agora));
     return mapa;
-  }, [quadro, trabalhos]);
+  }, [agora, filtrados, ordem, quadro]);
 
   if (trabalhos === null) {
     return (
@@ -450,34 +539,48 @@ export function TemisKanban({
       {/* ⚠️ UM QUADRO POR SERVIÇO, e o resumo na frente. Antes era um quadro só, com contrato,
           cessão, distrato, cancelamento e correção de fluxo misturados nas mesmas colunas — e
           serviços de caminho diferente dividindo coluna fazem a fila de um parecer a do outro. */}
-      <div className="flex flex-wrap gap-1.5">
-        {QUADROS.filter((q) => {
-          // ⚠️ NO PORTAL, ABA VAZIA NÃO APARECE. Lá o incorporador só acompanha o contrato dele
-          // (`somenteLeitura`), e "Cessão de direitos" ou "Correção de fluxo" zeradas seriam três
-          // abas que ele nunca vai abrir. Na Têmis todas ficam: o quadro é o mapa do trabalho, e
-          // uma aba que some faz quem opera achar que o serviço não existe.
-          if (!somenteLeitura) return true;
-          return q.id === QUADRO_RESUMO || (porQuadro.get(q.id) ?? 0) > 0;
-        }).map((q) => {
-          const aberto = q.id === quadro.id;
-          const quantos = porQuadro.get(q.id) ?? 0;
-          return (
-            <button
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                aberto
-                  ? "bg-ink text-white dark:bg-white dark:text-ink"
-                  : "border border-line text-ink-muted hover:bg-subtle"
-              }`}
-              key={q.id}
-              onClick={() => setQuadroId(q.id)}
-              type="button"
-            >
-              {q.nome}
-              <span className="ml-1.5 opacity-70">{quantos}</span>
-            </button>
-          );
-        })}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap gap-1.5">
+          {QUADROS.filter((q) => {
+            // ⚠️ NO PORTAL, ABA VAZIA NÃO APARECE. Lá o incorporador só acompanha o contrato dele
+            // (`somenteLeitura`), e "Cessão de direitos" ou "Correção de fluxo" zeradas seriam três
+            // abas que ele nunca vai abrir. Na Têmis todas ficam: o quadro é o mapa do trabalho, e
+            // uma aba que some faz quem opera achar que o serviço não existe.
+            if (!somenteLeitura) return true;
+            return q.id === QUADRO_RESUMO || (porQuadroSemFiltro.get(q.id) ?? 0) > 0;
+          }).map((q) => {
+            const aberto = q.id === quadro.id;
+            const quantos = porQuadro.get(q.id) ?? 0;
+            return (
+              <button
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                  // ⚠️ GRAFITE E PRETO, como a barra ao lado (mockup aprovado em 03/10/2026). O par
+                  // antigo, `bg-ink text-white dark:bg-white dark:text-ink`, pintava branco sobre
+                  // branco no modo escuro: lá o `ink` é claro.
+                  aberto ? "bg-inverse text-brand-ink" : "border border-line text-ink-muted hover:bg-subtle"
+                }`}
+                key={q.id}
+                onClick={() => setQuadroId(q.id)}
+                type="button"
+              >
+                {q.nome}
+                <span className="ml-1.5 opacity-70">{quantos}</span>
+              </button>
+            );
+          })}
+        </div>
+        <BarraDoQuadro
+          aoMudarFiltros={mudarFiltros}
+          aoMudarOrdem={mudarOrdem}
+          aoPesquisar={setPesquisa}
+          comDono={comDono}
+          empreendimentos={empreendimentos}
+          filtros={filtrosValendo}
+          ordem={ordem}
+          pesquisa={pesquisa}
+        />
       </div>
+      <FiltrosLigados aoMudarFiltros={mudarFiltros} empreendimentos={empreendimentos} filtros={filtrosValendo} />
 
       {/* ⚠️ ROLA NA HORIZONTAL, e a página nunca. Quatro colunas não cabem em tela estreita, e o
           board inteiro apertado deixa o card ilegível justamente onde ele é lido de relance. */}
@@ -516,7 +619,7 @@ export function TemisKanban({
                       // de trabalho"*. No board só-leitura do comercial, o clique não abre nada.
                       aoAbrir={somenteLeitura ? null : () => setEmTrabalho(t.id)}
                       key={t.id}
-                      mostrarDono={incluirIncorporadores && !rota}
+                      mostrarDono={comDono}
                       somenteLeitura={somenteLeitura}
                       trabalho={t}
                     />
