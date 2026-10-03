@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-10-03-temis-trocar-quem-assina",
+    deployedAt: "__HORA_REAL__",
+    modules: [
+      {
+        module: "Têmis",
+        screens: [
+          {
+            items: [
+              "**Trocar quem assina o contrato depois do envio.** Na etapa Em assinatura e no Pré-faturamento, cada pessoa que ainda não assinou tem um botão novo, ao lado do lápis de corrigir o e-mail. Ele tira essa pessoa da assinatura e coloca outra no lugar, informando Nome, E-mail e CPF de quem entra.",
+              "Vale para qualquer papel, inclusive comprador e cônjuge. A pessoa nova entra antes de a antiga sair e só ela recebe o convite. A Clicksign põe quem entra no fim da fila de assinatura, e a tela avisa antes de confirmar.",
+              "O texto do contrato e o cadastro do cliente não mudam. O CPF é obrigatório quando a pessoa que sai assinava com CPF.",
+              "O botão existe só no hub. O portal do incorporador continua só com a correção de e-mail.",
+            ],
+            screen: "Tela de trabalho da Têmis (Em assinatura e Pré-faturamento)",
+          },
+        ],
+      },
+    ],
+    rollback: "e6158562",
+    technical: {
+      done: "Ação nova `trocar_pessoa` em `consertarSignatario` (lib/temis/assinatura-servico.ts); o portal recusa com 403 antes de qualquer leitura. `trocarPessoaDoSignatario` usa o mesmo caminho da troca de e-mail, extraído em `trocarNoEnvelope` (lib/temis/trocar-signatario.ts): cria antes de remover, desfaz no 403, relê os degraus quando a remoção não responde, adota a troca já feita e grava no quadro com a ordem do fim da fila; `trocar_email` mantém o comportamento. Conferências antes da Clicksign: nome com sobrenome e sem números, e-mail que não é de outro signatário, CPF com dígitos verificadores. `lerDocumentacaoDoSignatario` (GET /envelopes/{id}/signers/{signer_id}) lê `has_documentation` de quem sai: se assinava com CPF, ou se não der para saber, o CPF de quem entra é obrigatório. `quadroComATroca` troca nome e e-mail no quadro, e quem entra herda o papel (um comprador trocado continua contando para o Pré-faturamento). O CPF nunca vai para o quadro, o log ou a resposta; as frases passam por `semCpfNoTexto`. Tela: botão e formulário em tela-de-trabalho.tsx, com o aviso do fim da fila vindo de `trocaDePessoaVaiParaOFim` no diário. Testes novos: trocar-pessoa (lib), trocar-quem-assina (tela) e assinatura-do-portal. Sem migration. Branch feat/temis-trocar-quem-assina (35725070, 1237ab25, base 1.407.1).",
+      motivation: "Lucas (03/10/2026): \"é basicamente eu tirar uma pessoa e colocar outra para assinar, não precisa mudar em nada no cadastro\" (o caso típico é a testemunha ou a vendedora que não pode assinar), e depois \"a troca pode ser para qualquer pessoa até o comprador\".",
+    },
+    title: "Trocar quem assina o contrato depois do envio",
+    type: "novidade",
+    version: "1.408.0",
+  },
+  {
     buildTag: "2026-10-03-temis-card-categoria",
     deployedAt: "2026-10-03T09:07:42-03:00",
     internal: true,
