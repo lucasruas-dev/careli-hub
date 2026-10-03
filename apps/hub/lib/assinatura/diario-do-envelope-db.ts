@@ -12,6 +12,7 @@ import {
   vencimentoDoPayload,
 } from "./diario-do-envelope";
 import {
+  fraseDaTrocaDePessoaQueVaiParaOFim,
   fraseDaTrocaQueVaiParaOFim,
   fraseDoReenvioBloqueado,
   type MotivoDoReenvioBloqueado,
@@ -93,6 +94,11 @@ export type SignatarioDaProposta = SignatarioDoEnvelope & {
    * (ela já é a última, já assinou, ou o envelope terminou). Ver `fraseDaTrocaQueVaiParaOFim`.
    */
   trocaVaiParaOFim: null | string;
+  /**
+   * O mesmo aviso, para quando a troca é de PESSOA (03/10/2026): quem vai para o fim é quem entra no
+   * lugar. Ausente ou `null` nos mesmos casos de `trocaVaiParaOFim`.
+   */
+  trocaDePessoaVaiParaOFim?: null | string;
 };
 
 export type EnvelopeDoDiario = {
@@ -584,7 +590,11 @@ function naOrdemDaFila(
       return j !== i && outra.linha.assinouEm === null && dela !== null && dela >= posicao;
     }).length;
     return passamAFrente > 0
-      ? { ...linha, trocaVaiParaOFim: fraseDaTrocaQueVaiParaOFim(linha.nome, passamAFrente) }
+      ? {
+          ...linha,
+          trocaDePessoaVaiParaOFim: fraseDaTrocaDePessoaQueVaiParaOFim(linha.nome, passamAFrente),
+          trocaVaiParaOFim: fraseDaTrocaQueVaiParaOFim(linha.nome, passamAFrente),
+        }
       : linha;
   });
 }

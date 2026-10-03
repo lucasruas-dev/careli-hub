@@ -631,11 +631,20 @@ describe("a lista na ordem de assinatura", () => {
     expect(de("Rafael O.")?.trocaVaiParaOFim).toBeNull();
     // Dividir o último degrau com alguém pendente também conta: a pessoa passaria a esperar por ele.
     expect(de("Vitor A.")?.trocaVaiParaOFim).toContain("Vitor A.");
+
+    // ⚠️ A TROCA DE PESSOA (03/10/2026) USA A MESMA CONTA, COM OUTRO SUJEITO: quem vai para o fim é
+    // quem entra no lugar. Nasce junto com o aviso da correção de e-mail, e só nele.
+    expect(de("Yasmin L.")?.trocaDePessoaVaiParaOFim).toBe(
+      "Quem entrar no lugar de Yasmin L. vai para o fim da fila de assinatura (a Clicksign põe quem entra depois do envio atrás de todos) e passa a esperar 5 pessoas que ainda não assinaram.",
+    );
+    expect(de("Maura P.")?.trocaDePessoaVaiParaOFim ?? null).toBeNull();
+    expect(de("Rafael O.")?.trocaDePessoaVaiParaOFim ?? null).toBeNull();
   });
 
   it("envelope encerrado não avisa nada", () => {
     const juntos = juntarComOsCongelados(VOC0306.payload, VOC0306.quadro, { envelopeId: "x", estado: "cancelado" });
     expect(juntos.every((s) => s.trocaVaiParaOFim === null)).toBe(true);
+    expect(juntos.every((s) => (s.trocaDePessoaVaiParaOFim ?? null) === null)).toBe(true);
   });
 
   it("envelope sem ordem sai em ordem alfabética, e o recadastrado depois de todos", () => {

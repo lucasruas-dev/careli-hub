@@ -1,10 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { cpfValido, soDigitos } from "@/lib/apolo/documento";
 import type { PortaDaClicksign } from "@/lib/assinatura/clicksign/cliente";
 import {
   acrescentarSignatario,
   type DegrauNaClicksign,
   lerDegrausDoEnvelope,
+  lerDocumentacaoDoSignatario,
   notificarSignatario,
   removerSignatario,
 } from "@/lib/assinatura/clicksign/envelope";
@@ -14,9 +16,11 @@ import { diarioDaProposta, payloadMaisRecente } from "@/lib/assinatura/diario-do
 import { linkDeAssinaturaNoPayload } from "@/lib/assinatura/marcas";
 import {
   fraseDeEnvelopeEncerrado,
+  papelNaoSeTroca,
   RECUSA_DE_CHAVE_QUE_NAO_E_DA_CLICKSIGN,
   RECUSA_DE_QUEM_NAO_ESTA_NO_QUADRO,
   RECUSA_DE_REENVIO_SEM_ID,
+  RECUSA_DE_TROCA_DE_PARTE_DO_CONTRATO,
 } from "@/lib/assinatura/recusa-de-reenvio";
 import { chamarRegistroDasAssinaturas, type ItemParaGravar } from "@/lib/assinatura/registro-db";
 import { conferirSignatarios, type Pessoa } from "@/lib/assinatura/signatarios";
@@ -216,6 +220,140 @@ export function conferirEmailDaTroca(pedido: {
   return { email, ok: true };
 }
 
+// ── TROCAR QUEM ASSINA: O QUE SE CONFERE NA PESSOA NOVA (03/10/2026) ─────────
+//
+// Lucas, 03/10/2026: *"é basicamente eu tirar uma pessoa e colocar outra para assinar, não precisa
+// mudar em nada no cadastro só que vai ter situações que eu vou tirar alguma pessoa da assinatura e
+// colocar outra pessoa para assinar"*. O caso típico é a testemunha ou a vendedora que não pode
+// assinar.
+//
+// ⚠️ SÓ A ASSINATURA MUDA, NA CLICKSIGN. O texto do contrato fica como está, e nada é gravado na
+// ficha, na CAD ou na proposta: o único registro que muda é o quadro de assinatura do envelope.
+
+/** A frase de quando a pessoa que sairia JÁ ASSINOU (ou já começou a assinar, o 403 da Clicksign). */
+export const RECUSA_DE_TROCA_DE_PESSOA_QUE_JA_ASSINOU =
+  "Esta pessoa JÁ ASSINOU (ou já começou a assinar) este documento, e a assinatura dela vale e não se desfaz: não dá para colocar outra pessoa no lugar. " +
+  "Se o documento precisa mudar, o card volta para a análise e o contrato é gerado de novo. Nada foi mexido.";
+
+/**
+ * O NOME DE QUEM VAI ASSINAR, como a Clicksign aceita: nome e sobrenome, sem números.
+ *
+ * ⚠️ CONFERIDO AQUI PARA A RECUSA VIR ANTES DE QUALQUER CHAMADA. A Clicksign recusa o nome sem
+ * sobrenome no cadastro, e o cadastro é o primeiro passo que custa: antes dele, a recusa é de graça.
+ */
+export function conferirNomeDeQuemAssina(bruto: string): { erro: string; ok: false } | { nome: string; ok: true } {
+  const nome = bruto.replace(/\s+/g, " ").trim();
+  if (!nome) return { erro: "Informe o nome de quem vai assinar. Nada foi mexido.", ok: false };
+  if (/\d/.test(nome)) {
+    return { erro: "O nome de quem assina não pode ter números: a Clicksign recusa. Nada foi mexido.", ok: false };
+  }
+  const partes = nome.split(" ").filter((parte) => /\p{L}/u.test(parte));
+  if (partes.length < 2) {
+    return {
+      erro: "Informe nome e sobrenome de quem vai assinar: a Clicksign não aceita só o primeiro nome. Nada foi mexido.",
+      ok: false,
+    };
+  }
+  return { nome, ok: true };
+}
+
+export type ConferenciaDaPessoa =
+  | { cpf: null | string; email: string; nome: string; ok: true }
+  | { erro: string; ok: false; status: 400 | 409 };
+
+/**
+ * DÁ PARA COLOCAR ESTA PESSOA NO LUGAR? — tudo o que se pergunta antes de falar com a Clicksign.
+ *
+ * ⚠️ A ORDEM É A DE QUEM LÊ: primeiro o papel (comprador e cônjuge não se trocam, e aí nada do que
+ * foi digitado importa), depois o nome, o e-mail, a mesma pessoa de novo, o e-mail repetido e o CPF.
+ *
+ * ⚠️ O E-MAIL REPETIDO REUSA `conferirSignatarios`, como a correção de e-mail. A lista conferida é a
+ * PROJETADA: a congelada com a pessoa de saída já trocada pela nova. Por isso o e-mail de quem sai
+ * PODE ser o de quem entra: no coordenador que assina com o e-mail da empresa
+ * (`contrato@fgurgel.com.br`), quem entra no lugar costuma usar a mesma caixa.
+ *
+ * ⚠️ O CPF NUNCA VOLTA NA FRASE. Ele é conferido pelos dígitos verificadores e devolvido só em
+ * dígitos, para o cadastro; nenhuma recusa daqui o repete.
+ */
+export function conferirPessoaDaTroca(pedido: {
+  atual: SignatarioCongelado;
+  cpf: string;
+  email: string;
+  nome: string;
+  todos: readonly SignatarioCongelado[];
+}): ConferenciaDaPessoa {
+  if (papelNaoSeTroca(pedido.atual.papel)) {
+    return { erro: RECUSA_DE_TROCA_DE_PARTE_DO_CONTRATO, ok: false, status: 409 };
+  }
+
+  const nome = conferirNomeDeQuemAssina(pedido.nome);
+  if (!nome.ok) return { erro: nome.erro, ok: false, status: 400 };
+
+  // A mesma régua simples do envio e da correção de e-mail: quem valida de verdade é a Clicksign.
+  const email = pedido.email.trim();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return {
+      erro: `"${email}" não parece um e-mail. Confira o endereço e tente de novo. Nada foi mexido.`,
+      ok: false,
+      status: 400,
+    };
+  }
+
+  const antigo = pedido.atual.email.trim().toLowerCase();
+  const mesmoEmail = email.toLowerCase() === antigo;
+  const mesmoNome = nome.nome.toLowerCase() === pedido.atual.nome.replace(/\s+/g, " ").trim().toLowerCase();
+  if (mesmoEmail && mesmoNome) {
+    return {
+      erro:
+        `${pedido.atual.nome || "Esta pessoa"} já assina com este nome e este e-mail, então não há o que trocar. ` +
+        "Se o convite não chegou, use o botão de reenviar o convite. Nada foi mexido.",
+      ok: false,
+      status: 400,
+    };
+  }
+
+  // ⚠️ UMA LINHA SÓ É TROCADA NA PROJEÇÃO, a primeira com o e-mail de quem sai: `acharOSignatario` já
+  // recusa e-mail repetido no quadro antes de chegar aqui.
+  let trocada = false;
+  const projetada: Pessoa[] = pedido.todos.map((p) => {
+    const ehQuemSai = !trocada && p.email.trim().toLowerCase() === antigo;
+    if (ehQuemSai) trocada = true;
+    return {
+      cpf: null,
+      email: ehQuemSai ? email : p.email,
+      nome: ehQuemSai ? nome.nome : p.nome,
+      papel: p.papel,
+      telefone: null,
+    };
+  });
+  const veredito = conferirSignatarios(projetada);
+  if (!veredito.ok) {
+    return { erro: `${veredito.erro} Nada foi mexido no envelope.`, ok: false, status: 409 };
+  }
+
+  const digitos = soDigitos(pedido.cpf);
+  if (digitos && !cpfValido(digitos)) {
+    return {
+      erro: "O CPF informado não é válido (os dígitos verificadores não batem). Confira e tente de novo. Nada foi mexido.",
+      ok: false,
+      status: 400,
+    };
+  }
+
+  return { cpf: digitos || null, email, nome: nome.nome, ok: true };
+}
+
+/**
+ * Tira de um texto tudo o que tem forma de CPF.
+ *
+ * ⚠️ É A REDE DA RESPOSTA, E NÃO A PRIMEIRA TRAVA. Nenhuma frase daqui escreve o CPF; o que pode
+ * trazê-lo é o detalhe de erro que a Clicksign devolve (`errors[].detail`), que sobe para a tela
+ * inteiro. As fronteiras deixam de fora o pedaço de um id (uuid tem hífen dos dois lados).
+ */
+export function semCpfNoTexto(texto: string): string {
+  return texto.replace(/(?<![\w-])\d{3}\.?\d{3}\.?\d{3}-?\d{2}(?![\w-])/g, "[CPF]");
+}
+
 /**
  * A FRASE DO DESFECHO PIOR — quando a remoção passou e o resto não.
  *
@@ -232,8 +370,37 @@ export function fraseDaFalhaDepoisDeRemover(pedido: {
   envelopeId: string;
   nome: string;
   passo: "requisitos" | "signatario";
+  /** Na troca de pessoa: o nome de quem entra. Ausente = correção de e-mail da mesma pessoa. */
+  pessoaNova?: string;
 }): string {
   const quem = pedido.nome || "O signatário";
+
+  // ⚠️ NA TROCA DE PESSOA, QUEM FICOU FORA É O LUGAR, E NÃO A PESSOA ANTIGA: ela saiu de propósito.
+  // O que falta é quem entra, e é dele que a frase fala.
+  if (pedido.pessoaNova) {
+    const novo = pedido.pessoaNova;
+    if (pedido.passo === "signatario") {
+      return (
+        `${quem} já tinha saído do envelope ${pedido.envelopeId} numa tentativa anterior, e a Clicksign recusou o cadastro de ${novo}: ${pedido.detalhe}. ` +
+        `Enquanto ${novo} não entrar, o contrato não fecha sozinho. ` +
+        "Tente a troca de novo: a nova tentativa refaz o cadastro (não há mais nada a remover). " +
+        "Se falhar outra vez, é a Clicksign que está recusando, e vale conferir o envelope por lá antes de insistir."
+      );
+    }
+    if (pedido.desfeito) {
+      return (
+        `${novo} entrou no envelope ${pedido.envelopeId}, MAS os requisitos de assinatura não foram criados: ${pedido.detalhe}. ` +
+        "Nesse estado o convite chega e a pessoa NÃO TEM O QUE ASSINAR, então o cadastro pela metade foi DESFEITO. " +
+        `O envelope continua sem ninguém no lugar de ${quem}. Tente a troca de novo: a nova tentativa refaz tudo do zero.`
+      );
+    }
+    return (
+      `${novo} entrou no envelope ${pedido.envelopeId}, MAS os requisitos de assinatura não foram criados: ${pedido.detalhe}. ` +
+      "Nesse estado o convite chega, a pessoa abre o contrato e NÃO TEM O QUE ASSINAR. " +
+      "A tentativa de desfazer o cadastro pela metade também falhou, então essa linha CONTINUA no envelope e precisa de mão: " +
+      `remova ${novo} pelo painel da Clicksign (o envelope é o ${pedido.envelopeId}) e refaça a troca por aqui.`
+    );
+  }
 
   if (pedido.passo === "signatario") {
     return (
@@ -282,13 +449,20 @@ export function fraseDaFalhaAntesDeRemover(pedido: {
   nome: string;
   /** Onde parou: no cadastro do novo, nos requisitos dele ou na remoção do antigo. */
   passo: "remocao" | "requisitos" | "signatario";
+  /** Na troca de pessoa: o nome de quem entra. Ausente = correção de e-mail da mesma pessoa. */
+  pessoaNova?: string;
 }): string {
   const quem = pedido.nome || "O signatário";
+  // ⚠️ AS PALAVRAS MUDAM COM A TROCA, A HISTÓRIA NÃO. Na correção de e-mail é a mesma pessoa com dois
+  // endereços; na troca de pessoa são duas pessoas, e "o e-mail antigo" não diria nada a quem lê.
+  const novo = pedido.pessoaNova;
+  const cadastroNovo = novo ? `o cadastro de ${novo}` : "o cadastro com o e-mail novo";
+  const comOAntigo = novo ? "" : " com o e-mail antigo";
 
   if (pedido.passo === "signatario" && pedido.incerto) {
     return (
-      `A Clicksign não respondeu ao cadastro com o e-mail novo (${pedido.detalhe}), e ele pode ter entrado mesmo assim. ` +
-      `${quem} continua no envelope ${pedido.envelopeId} com o e-mail antigo. ` +
+      `A Clicksign não respondeu ao ${cadastroNovo.replace(/^o /, "")} (${pedido.detalhe}), e ele pode ter entrado mesmo assim. ` +
+      `${quem} continua no envelope ${pedido.envelopeId}${comOAntigo}. ` +
       "Pode tentar de novo: a próxima tentativa confere se o cadastro novo já existe e avisa antes de criar outro."
     );
   }
@@ -296,22 +470,22 @@ export function fraseDaFalhaAntesDeRemover(pedido: {
     pedido.passo === "remocao"
       ? `a Clicksign não deixou tirar o cadastro antigo de ${quem}: ${pedido.detalhe}.`
       : pedido.passo === "requisitos"
-        ? `a Clicksign aceitou o cadastro com o e-mail novo e recusou os requisitos de assinatura: ${pedido.detalhe}.`
-        : `a Clicksign recusou o cadastro com o e-mail novo: ${pedido.detalhe}.`;
+        ? `a Clicksign aceitou ${cadastroNovo} e recusou os requisitos de assinatura: ${pedido.detalhe}.`
+        : `a Clicksign recusou ${cadastroNovo}: ${pedido.detalhe}.`;
 
   if (pedido.passo === "signatario" || pedido.desfeito) {
     return (
       `A troca não foi feita: ${motivo} ` +
-      `${quem} continua no envelope ${pedido.envelopeId} com o e-mail antigo, e nada mudou na ordem de assinatura. ` +
+      `${quem} continua no envelope ${pedido.envelopeId}${comOAntigo}, e nada mudou na ordem de assinatura. ` +
       "Pode tentar de novo."
     );
   }
 
   return (
     `A troca parou no meio: ${motivo} ` +
-    `${quem} continua no envelope ${pedido.envelopeId} com o e-mail antigo, e a tentativa de desfazer o cadastro novo também falhou, ` +
+    `${quem} continua no envelope ${pedido.envelopeId}${comOAntigo}, e a tentativa de desfazer ${novo ? cadastroNovo : "o cadastro novo"} também falhou, ` +
     "então o envelope está com as duas linhas e precisa de mão. " +
-    `Remova pelo painel da Clicksign a linha com o e-mail novo (o envelope é o ${pedido.envelopeId}) antes de tentar de novo.`
+    `Remova pelo painel da Clicksign a linha ${novo ? `de ${novo}` : "com o e-mail novo"} (o envelope é o ${pedido.envelopeId}) antes de tentar de novo.`
   );
 }
 
@@ -808,7 +982,10 @@ export type TrocaFeita = {
   aviso: null | string;
   /** O e-mail que passou a valer. */
   email: string;
+  /** O nome que passou a valer: o mesmo na correção de e-mail, o da pessoa nova na troca de pessoa. */
   nome: string;
+  /** O papel no contrato, que a troca nunca muda. É o que o log registra, em vez do nome. */
+  papel: PapelNoContrato;
   /** O id NOVO na Clicksign. O antigo não existe mais. */
   signerId: string;
   ok: true;
@@ -856,12 +1033,86 @@ export async function trocarEmailDoSignatario(
   pedido: { email: string; envelopeId: string; signerId: string },
   porta?: PortaDaClicksign,
 ): Promise<FalhaNaTroca | TrocaFeita> {
+  return trocarNoEnvelope(
+    sb,
+    {
+      // A mesma pessoa, com o MESMO nome (o que foi impresso no contrato) e o e-mail novo.
+      conferir: (atual, todos) => {
+        const conferido = conferirEmailDaTroca({ atual, emailNovo: pedido.email, todos });
+        return conferido.ok ? { cpf: null, email: conferido.email, nome: atual.nome, ok: true } : conferido;
+      },
+      envelopeId: pedido.envelopeId,
+      signerId: pedido.signerId,
+      tipo: "email",
+    },
+    porta,
+  );
+}
+
+/**
+ * TROCA QUEM ASSINA — tira uma pessoa do envelope e põe outra no lugar, com o mesmo papel.
+ *
+ * Lucas, 03/10/2026: *"é basicamente eu tirar uma pessoa e colocar outra para assinar, não precisa
+ * mudar em nada no cadastro"*.
+ *
+ * ⚠️ É O MESMO CAMINHO DA CORREÇÃO DE E-MAIL, e não uma cópia: cria a nova antes de tirar a antiga,
+ * desfaz o cadastro pela metade, relê os degraus quando a remoção não responde e grava no quadro a
+ * posição real (o fim da fila). O que muda é o que se confere antes (`conferirPessoaDaTroca`), o nome
+ * que entra e o CPF.
+ *
+ * ⚠️ O NÍVEL DA AUTENTICAÇÃO NÃO CAI. Quem sai assinava com CPF (`has_documentation`, lido na
+ * Clicksign antes de mexer)? Então quem entra tem de informar o CPF e entra do mesmo jeito. Não
+ * assinava? O CPF é opcional: informado, a pessoa nova entra com CPF; em branco, entra como a antiga.
+ *
+ * ⚠️ O CPF NÃO VAI PARA LUGAR NENHUM ALÉM DA CLICKSIGN: nem para o quadro, nem para o log, nem para a
+ * resposta. As frases que sobem passam por `semCpfNoTexto`, a rede para o detalhe de erro deles.
+ *
+ * ⚠️ SÓ O HUB CHAMA ISTO. O portal do incorporador é recusado na rota (`consertarSignatario`).
+ */
+export async function trocarPessoaDoSignatario(
+  sb: SupabaseClient,
+  pedido: { cpf?: null | string; email: string; envelopeId: string; nome: string; signerId: string },
+  porta?: PortaDaClicksign,
+): Promise<FalhaNaTroca | TrocaFeita> {
+  const feito = await trocarNoEnvelope(
+    sb,
+    {
+      conferir: (atual, todos) =>
+        conferirPessoaDaTroca({ atual, cpf: pedido.cpf ?? "", email: pedido.email, nome: pedido.nome, todos }),
+      envelopeId: pedido.envelopeId,
+      signerId: pedido.signerId,
+      tipo: "pessoa",
+    },
+    porta,
+  );
+  return feito.ok
+    ? { ...feito, aviso: feito.aviso === null ? null : semCpfNoTexto(feito.aviso) }
+    : { ...feito, erro: semCpfNoTexto(feito.erro) };
+}
+
+/**
+ * O CAMINHO DAS DUAS TROCAS — a do e-mail da mesma pessoa e a da pessoa inteira.
+ *
+ * `conferir` recebe a pessoa que sai e a lista congelada, e devolve quem entra (nome, e-mail e o CPF
+ * em dígitos, ou `null`). Ela roda ANTES de qualquer chamada à Clicksign.
+ */
+async function trocarNoEnvelope(
+  sb: SupabaseClient,
+  pedido: {
+    conferir: (atual: SignatarioCongelado, todos: readonly SignatarioCongelado[]) => ConferenciaDaPessoa;
+    envelopeId: string;
+    signerId: string;
+    tipo: "email" | "pessoa";
+  },
+  porta?: PortaDaClicksign,
+): Promise<FalhaNaTroca | TrocaFeita> {
   const envelopeId = pedido.envelopeId.trim();
   const signerId = pedido.signerId.trim();
+  const trocaDePessoa = pedido.tipo === "pessoa";
 
   if (!envelopeId || !signerId) {
     return {
-      erro: "Sem o envelope e o signatário não dá para trocar o e-mail.",
+      erro: `Sem o envelope e o signatário não dá para ${trocaDePessoa ? "trocar quem assina" : "trocar o e-mail"}.`,
       ok: false,
       removido: false,
       status: 404,
@@ -920,17 +1171,32 @@ export async function trocarEmailDoSignatario(
   // em produção em 01/10/2026 (só SELECT): 17 das 87 linhas dos 18 envelopes vivos sem id já têm
   // `assinado_em`, 3 delas num contrato da Têmis de 11 signatários.
   if (alvo.congelado.assinadoEm) {
-    return { erro: RECUSA_DE_TROCA_DE_QUEM_JA_ASSINOU, ok: false, removido: false, status: 409 };
+    return {
+      erro: trocaDePessoa ? RECUSA_DE_TROCA_DE_PESSOA_QUE_JA_ASSINOU : RECUSA_DE_TROCA_DE_QUEM_JA_ASSINOU,
+      ok: false,
+      removido: false,
+      status: 409,
+    };
   }
 
-  const conferido = conferirEmailDaTroca({
-    atual: alvo.congelado,
-    emailNovo: pedido.email,
-    todos: linha.signatarios,
-  });
+  const conferido = pedido.conferir(alvo.congelado, linha.signatarios);
   if (!conferido.ok) {
     return { erro: conferido.erro, ok: false, removido: false, status: conferido.status };
   }
+
+  /**
+   * As palavras de cada desfecho. Na correção de e-mail é a mesma pessoa com dois endereços; na troca
+   * de pessoa são duas pessoas, e é pelo nome que quem lê as distingue.
+   */
+  const fala = {
+    /** Quem continua na tela até o registro atualizar. */
+    antigoNaTela: trocaDePessoa ? alvo.congelado.nome || "a pessoa antiga" : alvo.congelado.email,
+    cadastroNovo: trocaDePessoa ? `o cadastro de ${conferido.nome}` : "o cadastro com o e-mail novo",
+    comOAntigo: trocaDePessoa ? "" : " com o e-mail antigo",
+    entrou: trocaDePessoa ? `${conferido.nome} entrou no envelope` : "O e-mail novo entrou no envelope",
+    linhaAntiga: trocaDePessoa ? `a linha de ${alvo.congelado.nome || "quem saiu"}` : "a linha com o e-mail antigo",
+    pessoaNova: trocaDePessoa ? conferido.nome : undefined,
+  };
 
   // ⚠️ SEM O ID DO DOCUMENTO NÃO SE COMEÇA. Os requisitos apontam para o documento: descobrir a
   // falta dele DEPOIS da remoção deixaria a pessoa fora do envelope sem conserto automático. A
@@ -986,7 +1252,7 @@ export async function trocarEmailDoSignatario(
   if (jaCadastrado && degrau.presente) {
     return {
       erro:
-        `O envelope ${envelopeId} já tem um cadastro com o e-mail ${conferido.email}, além do de ${alvo.congelado.nome || "quem você quer corrigir"} com o e-mail antigo. ` +
+        `O envelope ${envelopeId} já tem um cadastro com o e-mail ${conferido.email}, além do de ${alvo.congelado.nome || "quem você quer corrigir"}${fala.comOAntigo}. ` +
         "Isso acontece quando uma tentativa anterior caiu no meio. Nada foi mexido: confira no painel da Clicksign qual das duas linhas fica e remova a outra antes de tentar de novo.",
       ok: false,
       removido: false,
@@ -1001,6 +1267,7 @@ export async function trocarEmailDoSignatario(
       emailNovo: conferido.email,
       envelopeId,
       lido: linha,
+      nomeNovo: conferido.nome,
       ordemNova:
         typeof grupoDele === "number" && Number.isInteger(grupoDele) && grupoDele >= 1 ? grupoDele : degrau.degrauNovo,
     });
@@ -1009,33 +1276,76 @@ export async function trocarEmailDoSignatario(
         "A troca já tinha sido feita na Clicksign numa tentativa anterior, e agora o Panteon só atualizou o registro. " +
         (gravado
           ? "Se o cliente não recebeu o convite, use o botão de reenviar."
-          : `Mas o registro do envelope não atualizou: a tela pode continuar mostrando ${alvo.congelado.email} até o próximo aviso da Clicksign.`),
+          : `Mas o registro do envelope não atualizou: a tela pode continuar mostrando ${fala.antigoNaTela} até o próximo aviso da Clicksign.`),
       email: conferido.email,
-      nome: alvo.congelado.nome,
+      nome: conferido.nome,
       ok: true,
+      papel: alvo.congelado.papel,
       signerId: jaCadastrado.id,
     };
   }
 
+  // ── 0, SÓ NA TROCA DE PESSOA: QUEM SAI ASSINAVA COM CPF? ──────────────────
+  //
+  // ⚠️ O NÍVEL DA AUTENTICAÇÃO NÃO PODE CAIR. Quem entra no lugar de alguém que assinava com CPF entra
+  // com CPF; o nosso quadro não guarda a bandeira, então ela é lida na Clicksign, antes de mexer.
+  //
+  // ⚠️ QUANDO NÃO DÁ PARA SABER, O CPF É EXIGIDO. Se o cadastro antigo já saiu numa tentativa anterior
+  // (ou a Clicksign não informou a bandeira), pedir o CPF é o lado seguro: no pior caso a operadora
+  // digita um dado a mais; do outro lado, a assinatura entraria mais fraca do que o contrato saiu.
+  if (trocaDePessoa) {
+    let exigeCpf = true;
+    if (degrau.presente) {
+      const documentacao = await lerDocumentacaoDoSignatario(envelopeId, signerId, porta);
+      if (!documentacao.ok) {
+        return {
+          erro:
+            `Não consegui perguntar à Clicksign se ${alvo.congelado.nome || "a pessoa que sai"} assina com CPF (${documentacao.erro}), ` +
+            "e sem isso a pessoa nova poderia entrar com uma autenticação mais fraca. Nada foi mexido. Tente de novo em instantes.",
+          ok: false,
+          removido: false,
+          status: 502,
+        };
+      }
+      exigeCpf = documentacao.temDocumento !== false;
+    }
+    if (exigeCpf && conferido.cpf === null) {
+      return {
+        erro: degrau.presente
+          ? `${alvo.congelado.nome || "A pessoa que sai"} assina este contrato com CPF, e quem entra no lugar precisa entrar do mesmo jeito. ` +
+            `Informe o CPF de ${conferido.nome}. Nada foi mexido.`
+          : `Não dá para saber se ${alvo.congelado.nome || "a pessoa que sai"} assinava com CPF (o cadastro dela já saiu do envelope), ` +
+            `então o CPF de ${conferido.nome} é obrigatório. Nada foi mexido.`,
+        ok: false,
+        removido: false,
+        status: 400,
+      };
+    }
+  }
+
   // ── 1. O CADASTRO DO NOVO E OS DOIS REQUISITOS, ANTES DE TIRAR O ANTIGO ────
   //
-  // ⚠️ O CPF NÃO VOLTA NA TROCA, e é bom que não volte. `temis_envelopes.signatarios` congelou só
-  // nome, e-mail, ordem e papel: o signatário recriado entra com `has_documentation: false`, ou
-  // seja, autenticação só pelo e-mail — o mesmo caminho do `semCpf` do envio, e o desfecho seguro
-  // (sem CPF a Clicksign não pede documento na hora de assinar, e ninguém trava na tela deles).
-  // Adivinhar o CPF aqui é que seria errado; quem quiser mantê-lo tem de gravá-lo no jsonb do envio.
+  // ⚠️ NA CORREÇÃO DE E-MAIL O CPF NÃO VOLTA, e é bom que não volte. `temis_envelopes.signatarios`
+  // congelou só nome, e-mail, ordem e papel: o signatário recriado entra com `has_documentation:
+  // false`, ou seja, autenticação só pelo e-mail — o mesmo caminho do `semCpf` do envio, e o desfecho
+  // seguro (sem CPF a Clicksign não pede documento na hora de assinar, e ninguém trava na tela deles).
+  // Adivinhar o CPF aqui é que seria errado.
+  //
+  // ⚠️ NA TROCA DE PESSOA O CPF VEM DA TELA, conferido pelos dígitos, e entra com `has_documentation:
+  // true` (`atributosDoSignatario`, em `envelope.ts`). Em branco, a pessoa entra só com o e-mail, que
+  // é o nível de quem saiu (a conferência de cima já exigiu o CPF quando não era).
   const acrescimo = await acrescentarSignatario(
     envelopeId,
     {
       documentoId: linha.documentoId,
       pessoa: {
-        cpf: null,
+        cpf: conferido.cpf,
         email: conferido.email,
-        nome: alvo.congelado.nome,
+        nome: conferido.nome,
         ordem: alvo.congelado.ordem,
         papel: alvo.congelado.papel,
       },
-      semCpf: true,
+      semCpf: conferido.cpf === null,
     },
     porta,
   );
@@ -1068,6 +1378,7 @@ export async function trocarEmailDoSignatario(
           incerto: acrescimo.passo === "signatario" && (acrescimo.status === 0 || acrescimo.status >= 500),
           nome: alvo.congelado.nome,
           passo: acrescimo.passo,
+          pessoaNova: fala.pessoaNova,
         }),
         ok: false,
         removido: false,
@@ -1082,6 +1393,7 @@ export async function trocarEmailDoSignatario(
         envelopeId,
         nome: alvo.congelado.nome,
         passo: acrescimo.passo,
+        pessoaNova: fala.pessoaNova,
       }),
       ok: false,
       removido: true,
@@ -1129,7 +1441,7 @@ export async function trocarEmailDoSignatario(
       return {
         erro:
           `A Clicksign não respondeu ao tirar o cadastro antigo de ${alvo.congelado.nome || "esta pessoa"} (${remocao.erro}), e não deu para conferir se ele saiu. ` +
-          `O cadastro com o e-mail novo ficou no envelope ${envelopeId}. Confira no painel da Clicksign se sobrou a linha com o e-mail antigo e, se sobrou, remova-a. Não tente a troca de novo antes disso.`,
+          `${fala.cadastroNovo.charAt(0).toUpperCase()}${fala.cadastroNovo.slice(1)} ficou no envelope ${envelopeId}. Confira no painel da Clicksign se sobrou ${fala.linhaAntiga} e, se sobrou, remova-a. Não tente a troca de novo antes disso.`,
         ok: false,
         removido: false,
         status: 502,
@@ -1140,7 +1452,12 @@ export async function trocarEmailDoSignatario(
       // assinatura, então a Clicksign deixa removê-lo.
       const desfeito = (await removerSignatario(envelopeId, acrescimo.signerId, porta)).ok;
       if (remocao.jaAssinou && desfeito) {
-        return { erro: RECUSA_DE_QUEM_JA_ASSINOU, ok: false, removido: false, status: 409 };
+        return {
+          erro: trocaDePessoa ? RECUSA_DE_TROCA_DE_PESSOA_QUE_JA_ASSINOU : RECUSA_DE_QUEM_JA_ASSINOU,
+          ok: false,
+          removido: false,
+          status: 409,
+        };
       }
       return {
         erro: fraseDaFalhaAntesDeRemover({
@@ -1149,6 +1466,7 @@ export async function trocarEmailDoSignatario(
           envelopeId,
           nome: alvo.congelado.nome,
           passo: "remocao",
+          pessoaNova: fala.pessoaNova,
         }),
         ok: false,
         removido: false,
@@ -1166,8 +1484,8 @@ export async function trocarEmailDoSignatario(
   if (!convite.ok) {
     avisos.push(
       convite.limiteDeEnvio
-        ? "O e-mail novo entrou no envelope, mas a Clicksign pediu para esperar antes de mandar o convite (limite de envios). Use o botão de reenviar convite em um minuto."
-        : `O e-mail novo entrou no envelope, mas o convite não saiu: ${convite.erro}. Use o botão de reenviar convite.`,
+        ? `${fala.entrou}, mas a Clicksign pediu para esperar antes de mandar o convite (limite de envios). Use o botão de reenviar convite em um minuto.`
+        : `${fala.entrou}, mas o convite não saiu: ${convite.erro}. Use o botão de reenviar convite.`,
     );
   }
 
@@ -1178,19 +1496,21 @@ export async function trocarEmailDoSignatario(
     emailNovo: conferido.email,
     envelopeId,
     lido: linha,
+    nomeNovo: conferido.nome,
     ordemNova: degrau.degrauNovo,
   });
   if (!gravado) {
     avisos.push(
-      `A troca foi feita na Clicksign, mas o Panteon não conseguiu atualizar o registro do envelope: a tela pode continuar mostrando ${alvo.congelado.email} até o próximo aviso da Clicksign. O contrato não é afetado.`,
+      `A troca foi feita na Clicksign, mas o Panteon não conseguiu atualizar o registro do envelope: a tela pode continuar mostrando ${fala.antigoNaTela} até o próximo aviso da Clicksign. O contrato não é afetado.`,
     );
   }
 
   return {
     aviso: avisos.length > 0 ? avisos.join(" ") : null,
     email: conferido.email,
-    nome: alvo.congelado.nome,
+    nome: conferido.nome,
     ok: true,
+    papel: alvo.congelado.papel,
     signerId: acrescimo.signerId,
   };
 }
@@ -1457,6 +1777,8 @@ async function gravarTrocaNoRegistro(
     emailNovo: string;
     envelopeId: string;
     lido: EnvelopeLido;
+    /** O nome de quem passa a assinar. Na correção de e-mail é o mesmo de antes. */
+    nomeNovo: string;
     ordemNova: number;
   },
 ): Promise<boolean> {
@@ -1497,7 +1819,10 @@ async function gravarTrocaNoRegistro(
 }
 
 /**
- * A lista congelada com a pessoa trocada: e-mail novo e a chave nova da Clicksign.
+ * A lista congelada com a pessoa trocada: o nome e o e-mail novos e a chave nova da Clicksign.
+ *
+ * ⚠️ O NOME TAMBÉM MUDA DESDE A TROCA DE PESSOA (03/10/2026): a linha passa a ser de quem entrou, com
+ * o mesmo papel. O CPF não entra aqui, e nem tem campo: o quadro é lido por tela e por log.
  *
  * ⚠️ QUEM NÃO TEM `chave` SAI SEM O CAMPO, E NÃO COM `tmp:<posição>` CUNHADA AGORA. Era isso que esta
  * função fazia (`p.chave ?? chaveProvisoria(indice + 1)`), e a chave inventada MOVE ASSINATURA. Medido
@@ -1515,7 +1840,7 @@ async function gravarTrocaNoRegistro(
  */
 function quadroComATroca(
   signatarios: readonly SignatarioCongelado[],
-  dados: { chaveNova: string; emailAntigo: string; emailNovo: string; ordemNova: number },
+  dados: { chaveNova: string; emailAntigo: string; emailNovo: string; nomeNovo?: string; ordemNova: number },
 ): { itens: ItemParaGravar[]; trocou: boolean } {
   const alvo = dados.emailAntigo.trim().toLowerCase();
   // ⚠️ UMA LINHA SÓ, E A PRIMEIRA — porque duas linhas com o mesmo endereço receberiam A MESMA
@@ -1533,7 +1858,7 @@ function quadroComATroca(
       return {
         chave: dados.chaveNova,
         email: dados.emailNovo,
-        nome: p.nome,
+        nome: dados.nomeNovo?.trim() || p.nome,
         ordem: dados.ordemNova,
         papel: p.papel,
       };
