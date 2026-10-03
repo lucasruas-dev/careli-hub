@@ -36,8 +36,8 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
-    buildTag: "2026-10-02-temis-card-categoria",
-    deployedAt: "__HORA_REAL__",
+    buildTag: "2026-10-03-temis-card-categoria",
+    deployedAt: "2026-10-03T09:07:42-03:00",
     internal: true,
     modules: [
       {
